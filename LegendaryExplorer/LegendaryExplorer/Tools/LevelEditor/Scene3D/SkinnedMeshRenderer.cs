@@ -167,6 +167,7 @@ public class SkinnedMeshRenderer
         var skinningMatrices = animPlayer.ComputeSkinningMatrices();
         if (skinningMatrices == null) return;
 
+        mesh.EnsureUniqueVertices();
         int vertexCount = Math.Min(_skinVertices.Length, mesh.Vertices.Count);
         for (int i = 0; i < vertexCount; i++)
         {
@@ -203,6 +204,7 @@ public class SkinnedMeshRenderer
         var skinningMatrices = animPlayer.ComputeSkinningMatrices();
         if (skinningMatrices == null) return;
 
+        mesh.EnsureUniqueVertices();
         int vertexCount = Math.Min(_skinVertices.Length, mesh.Vertices.Count);
         for (int i = 0; i < vertexCount; i++)
         {

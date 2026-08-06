@@ -15,10 +15,14 @@ namespace LegendaryExplorer.Tools.LevelEditor.Scene3D;
 
 public class Mesh<TVertex> : IDisposable where TVertex : IVertexBase
 {
-    public readonly List<Triangle> Triangles;
-    public readonly List<TVertex> Vertices;
-    public SharpDX.Direct3D11.Buffer VertexBuffer { get; private set; }
-    public SharpDX.Direct3D11.Buffer IndexBuffer { get; private set; }
+    public List<Triangle> Triangles { get; private set; }
+    public List<TVertex> Vertices { get; private set; }
+    private SharpDX.Direct3D11.Buffer vertexBuffer;
+    private SharpDX.Direct3D11.Buffer indexBuffer;
+    private SharedMeshData<TVertex> sharedData;
+    private bool verticesAreUnique;
+    public SharpDX.Direct3D11.Buffer VertexBuffer => sharedData?.VertexBuffer ?? vertexBuffer;
+    public SharpDX.Direct3D11.Buffer IndexBuffer => sharedData?.IndexBuffer ?? indexBuffer;
 
     private bool _isDynamic;
 
@@ -55,11 +59,24 @@ public class Mesh<TVertex> : IDisposable where TVertex : IVertexBase
         _isDynamic = isDynamic;
         RebuildBuffer(device);
     }
+
+    internal Mesh(SharedMeshData<TVertex> data)
+    {
+        sharedData = data;
+        sharedData.AddReference();
+        Triangles = data.Triangles;
+        Vertices = data.Vertices;
+        BaseBounds = TransformedBounds = data.Bounds;
+    }
+
     public void RebuildBuffer(Device device)
     {
+        DetachSharedData();
         // Dispose all the old stuff
-        VertexBuffer?.Dispose();
-        IndexBuffer?.Dispose();
+        vertexBuffer?.Dispose();
+        indexBuffer?.Dispose();
+        vertexBuffer = null;
+        indexBuffer = null;
 
 
         // Update the AABB
@@ -75,7 +92,7 @@ public class Mesh<TVertex> : IDisposable where TVertex : IVertexBase
         }
         TransformedBounds = BaseBounds = new BoxSphereBounds(boundingBox);
 
-        IndexBuffer = SharpDX.Direct3D11.Buffer.Create(device, BindFlags.IndexBuffer, Triangles.ToArray());
+        indexBuffer = SharpDX.Direct3D11.Buffer.Create(device, BindFlags.IndexBuffer, Triangles.ToArray());
 
         int stride = TVertex.Stride;
         if (!_isDynamic)
@@ -87,11 +104,11 @@ public class Mesh<TVertex> : IDisposable where TVertex : IVertexBase
             {
                 Vertices[vertIdx].ToFloats(vertexDataSpan[floatIdx..]);
             }
-            VertexBuffer = SharpDX.Direct3D11.Buffer.Create(device, BindFlags.VertexBuffer, vertexdata);
+            vertexBuffer = SharpDX.Direct3D11.Buffer.Create(device, BindFlags.VertexBuffer, vertexdata);
         }
         else
         {
-            VertexBuffer = new SharpDX.Direct3D11.Buffer(device, new BufferDescription(
+            vertexBuffer = new SharpDX.Direct3D11.Buffer(device, new BufferDescription(
                 stride * Vertices.Count,
                 ResourceUsage.Dynamic,
                 BindFlags.VertexBuffer,
@@ -106,10 +123,23 @@ public class Mesh<TVertex> : IDisposable where TVertex : IVertexBase
     {
         if (!_isDynamic || Vertices.Count == 0) return;
 
+        if (sharedData is not null)
+        {
+            DetachSharedData();
+            indexBuffer = SharpDX.Direct3D11.Buffer.Create(context.Device, BindFlags.IndexBuffer, Triangles.ToArray());
+            vertexBuffer = new SharpDX.Direct3D11.Buffer(context.Device, new BufferDescription(
+                TVertex.Stride * Vertices.Count,
+                ResourceUsage.Dynamic,
+                BindFlags.VertexBuffer,
+                CpuAccessFlags.Write,
+                ResourceOptionFlags.None,
+                TVertex.Stride));
+        }
+
         int stride = TVertex.Stride;
         int floatsPerVertex = stride / 4;
 
-        var dataBox = context.MapSubresource(VertexBuffer, 0, MapMode.WriteDiscard, SharpDX.Direct3D11.MapFlags.None);
+        var dataBox = context.MapSubresource(vertexBuffer, 0, MapMode.WriteDiscard, SharpDX.Direct3D11.MapFlags.None);
         var dest = new Span<float>((void*)dataBox.DataPointer, Vertices.Count * floatsPerVertex);
 
         Box boundingBox = new();
@@ -119,7 +149,7 @@ public class Mesh<TVertex> : IDisposable where TVertex : IVertexBase
             boundingBox.Add(v.Position);
             v.ToFloats(dest[fi..]);
         }
-        context.UnmapSubresource(VertexBuffer, 0);
+        context.UnmapSubresource(vertexBuffer, 0);
 
         BaseBounds = new BoxSphereBounds(boundingBox);
         TransformedBounds = BaseBounds.TransformBy(localToWorld);
@@ -133,6 +163,13 @@ public class Mesh<TVertex> : IDisposable where TVertex : IVertexBase
     public void UpdateVertexBuffer(Device device)
     {
         if (Vertices.Count == 0) return;
+        bool wasShared = sharedData is not null;
+        EnsureUniqueVertices();
+        DetachSharedData();
+        if (wasShared)
+        {
+            indexBuffer = SharpDX.Direct3D11.Buffer.Create(device, BindFlags.IndexBuffer, Triangles.ToArray());
+        }
 
         int floatsPerVertex = TVertex.Stride / 4;
         int numFloats = floatsPerVertex * Vertices.Count;
@@ -156,8 +193,8 @@ public class Mesh<TVertex> : IDisposable where TVertex : IVertexBase
             _dynamicVertexBuffer = new SharpDX.Direct3D11.Buffer(device, desc);
 
             // Switch the mesh to use the dynamic buffer
-            VertexBuffer?.Dispose();
-            VertexBuffer = _dynamicVertexBuffer;
+            vertexBuffer?.Dispose();
+            vertexBuffer = _dynamicVertexBuffer;
         }
 
         // Reuse scratch array
@@ -179,10 +216,106 @@ public class Mesh<TVertex> : IDisposable where TVertex : IVertexBase
 
     public void Dispose()
     {
+        if (sharedData is not null)
+        {
+            sharedData.ReleaseReference();
+            sharedData = null;
+            return;
+        }
         // If VertexBuffer == _dynamicVertexBuffer, only dispose once
-        if (VertexBuffer != null && VertexBuffer != _dynamicVertexBuffer)
-            VertexBuffer.Dispose();
+        if (vertexBuffer != null && vertexBuffer != _dynamicVertexBuffer)
+            vertexBuffer.Dispose();
         _dynamicVertexBuffer?.Dispose();
+        indexBuffer?.Dispose();
+    }
+
+    /// <summary>
+    /// Detaches the CPU vertex list before skinning or morphing an instance that currently shares
+    /// immutable bind-pose geometry with other components.
+    /// </summary>
+    internal void EnsureUniqueVertices()
+    {
+        if (sharedData is not null && !verticesAreUnique)
+        {
+            Vertices = new List<TVertex>(Vertices);
+            verticesAreUnique = true;
+            _isDynamic = true;
+        }
+    }
+
+    private void DetachSharedData()
+    {
+        if (sharedData is null)
+        {
+            return;
+        }
+
+        if (!verticesAreUnique)
+        {
+            Vertices = new List<TVertex>(Vertices);
+            verticesAreUnique = true;
+        }
+        sharedData.ReleaseReference();
+        sharedData = null;
+    }
+}
+
+internal interface ISharedMeshData
+{
+    void ReleaseReference();
+}
+
+/// <summary>
+/// Immutable CPU geometry and GPU buffers shared by mesh component instances. Components detach on
+/// their first skinning/morph update, so per-actor deformation remains isolated.
+/// </summary>
+internal sealed class SharedMeshData<TVertex> : ISharedMeshData where TVertex : IVertexBase
+{
+    public List<Triangle> Triangles { get; }
+    public List<TVertex> Vertices { get; }
+    public SharpDX.Direct3D11.Buffer VertexBuffer { get; }
+    public SharpDX.Direct3D11.Buffer IndexBuffer { get; }
+    public BoxSphereBounds Bounds { get; }
+    private int references = 1; // the render-context cache owns the initial reference
+
+    public SharedMeshData(Device device, List<Triangle> triangles, List<TVertex> vertices)
+    {
+        Triangles = triangles;
+        Vertices = vertices;
+        if (vertices.Count == 0 || triangles.Count == 0)
+        {
+            return;
+        }
+
+        Box boundingBox = new();
+        foreach (TVertex vertex in vertices)
+        {
+            boundingBox.Add(vertex.Position);
+        }
+        Bounds = new BoxSphereBounds(boundingBox);
+        IndexBuffer = SharpDX.Direct3D11.Buffer.Create(device, BindFlags.IndexBuffer, triangles.ToArray());
+
+        int floatsPerVertex = TVertex.Stride / 4;
+        float[] vertexData = new float[floatsPerVertex * vertices.Count];
+        Span<float> vertexDataSpan = vertexData;
+        for (int vertexIndex = 0, floatIndex = 0;
+             vertexIndex < vertices.Count;
+             vertexIndex++, floatIndex += floatsPerVertex)
+        {
+            vertices[vertexIndex].ToFloats(vertexDataSpan[floatIndex..]);
+        }
+        VertexBuffer = SharpDX.Direct3D11.Buffer.Create(device, BindFlags.VertexBuffer, vertexData);
+    }
+
+    public void AddReference() => references++;
+
+    public void ReleaseReference()
+    {
+        if (--references != 0)
+        {
+            return;
+        }
+        VertexBuffer?.Dispose();
         IndexBuffer?.Dispose();
     }
 }

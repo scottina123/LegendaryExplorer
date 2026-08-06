@@ -2,7 +2,6 @@
 using LegendaryExplorer.Tools.LevelEditor.Scene3D;
 using LegendaryExplorerCore.Helpers;
 using LegendaryExplorerCore.Packages;
-using LegendaryExplorerCore.Packages.CloningImportingAndRelinking;
 using LegendaryExplorerCore.Unreal;
 using LegendaryExplorerCore.Unreal.Animation;
 using LegendaryExplorerCore.Unreal.BinaryConverters;
@@ -421,15 +420,18 @@ public class DirectionalLightComponentProxy : PrimitiveComponentProxy
 
 public abstract class MeshComponentProxy : PrimitiveComponentProxy
 {
+    protected readonly MeshRenderContext RenderContext;
     public bool IsVolumetric;
     public string MeshIFP { get; protected set; }
     protected ModelPreview<WorldVertex> Mesh;
     protected ModelPreview<LEVertex> GameShaderMesh;
     public int LOD;
     public List<IEntry> MaterialOverrides = [];
+    protected BoxSphereBounds? SerializedMeshBounds;
 
     protected MeshComponentProxy(MeshRenderContext context, ExportEntry componentExport, ActorProxy parent) : base(context, componentExport, parent)
     {
+        RenderContext = context;
         if (Properties.GetProp<ArrayProperty<ObjectProperty>>("Materials") is { } mats)
         {
             MaterialOverrides.AddRange(mats.Select(x => x.Value != 0 ? x.ResolveToEntry(Export.FileRef) : null));
@@ -444,27 +446,28 @@ public abstract class MeshComponentProxy : PrimitiveComponentProxy
         }
         if (Mesh is null || Mesh.LODs.Count <= LOD)
         {
-            return base.GetBounds();
+            return SerializedMeshBounds is { } bounds ? bounds.TransformBy(LocalToWorld) : base.GetBounds();
         }
         return Mesh.LODs[LOD].Mesh.TransformedBounds;
     }
 
+    protected abstract bool EnsureRenderResources(bool respectFrameBudget);
+
     protected bool UseGameShaderPreview(MeshRenderContext context) =>
         context is LevelEditorRenderContext { UseGameShaderMeshPreviews: true };
 
-    protected IEnumerable<string> MaterialNames => GameShaderMesh is not null
-        ? GameShaderMesh.Materials.Keys
-        : Mesh?.Materials.Keys ?? Enumerable.Empty<string>();
+    protected virtual int LiveMaterialLOD => LOD;
 
-    protected void RenderGameShaderMesh(MeshRenderContext context, RenderPass pass)
+    protected void RenderGameShaderMesh(MeshRenderContext context, RenderPass pass, int lod = -1)
     {
-        if (GameShaderMesh is null || LOD < 0 || LOD >= GameShaderMesh.LODs.Count)
+        if (lod < 0) lod = LOD;
+        if (GameShaderMesh is null || lod < 0 || lod >= GameShaderMesh.LODs.Count)
         {
             return;
         }
         if (pass is RenderPass.HitTest)
         {
-            context.RenderNativeMeshHitTest(GameShaderMesh.LODs[LOD].Mesh);
+            context.RenderNativeMeshHitTest(GameShaderMesh.LODs[lod].Mesh);
             return;
         }
 
@@ -472,7 +475,7 @@ public abstract class MeshComponentProxy : PrimitiveComponentProxy
         context.UseCameraRelativeNativeRendering = true;
         try
         {
-            GameShaderMesh.Render(pass, context, LOD);
+            GameShaderMesh.Render(pass, context, lod);
         }
         finally
         {
@@ -482,7 +485,7 @@ public abstract class MeshComponentProxy : PrimitiveComponentProxy
 
     public IEnumerable<(IEntry SourceEntry, MaterialRenderProxy RenderProxy, IReadOnlyList<int> SlotIndexes)> GetLiveMaterialBindings()
     {
-        if (GameShaderMesh is null)
+        if (!EnsureRenderResources(respectFrameBudget: false) || GameShaderMesh is null)
         {
             yield break;
         }
@@ -504,12 +507,17 @@ public abstract class MeshComponentProxy : PrimitiveComponentProxy
     public IEnumerable<(MaterialRenderProxy RenderProxy, float Distance)> GetLiveMaterialHits(
         Vector3 rayOrigin, Vector3 rayDirection)
     {
-        if (!IsVisible || GameShaderMesh is null || LOD < 0 || LOD >= GameShaderMesh.LODs.Count)
+        if (!EnsureRenderResources(respectFrameBudget: false))
+        {
+            yield break;
+        }
+        int liveMaterialLod = LiveMaterialLOD;
+        if (!IsVisible || GameShaderMesh is null || liveMaterialLod < 0 || liveMaterialLod >= GameShaderMesh.LODs.Count)
         {
             yield break;
         }
 
-        ModelPreviewLOD<LEVertex> lod = GameShaderMesh.LODs[LOD];
+        ModelPreviewLOD<LEVertex> lod = GameShaderMesh.LODs[liveMaterialLod];
         Mesh<LEVertex> mesh = lod.Mesh;
         var nearestByMaterial = new Dictionary<MaterialRenderProxy, float>();
         foreach (ModelPreviewSection section in lod.Sections)
@@ -596,34 +604,86 @@ public abstract class MeshComponentProxy : PrimitiveComponentProxy
 
 public class StaticMeshComponentProxy : MeshComponentProxy
 {
-    private readonly Mesh<WorldVertex> CollisionMesh;
+    private Mesh<WorldVertex> CollisionMesh;
+    private readonly StaticMesh staticMesh;
+    private readonly ExportEntry meshExport;
+    private readonly bool useGameShader;
+    private bool hasRenderableMesh;
+    private bool renderResourcesInitialized;
+    private StructProperty collisionGeometry;
+    private bool collisionGeometryLoaded;
 
     public StaticMeshComponentProxy(MeshRenderContext context, ExportEntry componentExport, ActorProxy parent) : base(context, componentExport, parent)
     {
-        if (Properties.GetProp<ObjectProperty>("StaticMesh")?.ResolveToExport(Export.FileRef, context.PackageCache) is ExportEntry meshExport)
+        if (Properties.GetProp<ObjectProperty>("StaticMesh") is { Value: not 0 } meshProperty
+            && context.ResolveExportCached(Export.FileRef, meshProperty.Value) is { } resolvedMeshExport)
         {
-            StaticMesh stm = meshExport.GetBinaryData<StaticMesh>();
-            if (stm.LODModels.Length > LOD)
+            meshExport = resolvedMeshExport;
+            staticMesh = context.GetCachedStaticMesh(meshExport);
+            SerializedMeshBounds = staticMesh.Bounds;
+            if (staticMesh.LODModels.Length > LOD)
             {
-                if (UseGameShaderPreview(context) && meshExport.Game.IsMEGame())
-                {
-                    GameShaderMesh = new ModelPreview<LEVertex>(context, stm, LOD, MaterialOverrides);
-                }
-                else
-                {
-                    Mesh = new ModelPreview<WorldVertex>(context, stm, LOD, MaterialOverrides);
-                }
-                MaterialOverrides.Clear();
+                hasRenderableMesh = true;
+                useGameShader = UseGameShaderPreview(context) && meshExport.Game.IsMEGame();
                 MeshIFP = meshExport.InstancedFullPath;
                 if (MeshIFP.Contains("Volumetric", StringComparison.OrdinalIgnoreCase)
-                    || MaterialNames.Any(matIFP => matIFP.Contains("VolumeLight", StringComparison.OrdinalIgnoreCase)))
+                    || GetEffectiveMaterialEntries().Any(entry => entry?.InstancedFullPath.Contains(
+                        "VolumeLight", StringComparison.OrdinalIgnoreCase) is true))
                 {
                     IsVolumetric = true;
                 }
             }
-            CollisionMesh = context.GetMeshFromAggGeom(stm.GetCollisionMeshProperty(Export.FileRef));
-            UpdateSelfLocalToWorld();
         }
+    }
+
+    private IEnumerable<IEntry> GetEffectiveMaterialEntries()
+    {
+        StaticMeshElement[] elements = staticMesh?.LODModels.Length > LOD
+            ? staticMesh.LODModels[LOD].Elements
+            : [];
+        for (int slot = 0; slot < elements.Length; slot++)
+        {
+            if (slot < MaterialOverrides.Count && MaterialOverrides[slot] is { } materialOverride)
+            {
+                yield return materialOverride;
+            }
+            else if (elements[slot].Material != 0
+                     && meshExport.FileRef.IsEntry(elements[slot].Material))
+            {
+                yield return meshExport.FileRef.GetEntry(elements[slot].Material);
+            }
+        }
+    }
+
+    protected override bool EnsureRenderResources(bool respectFrameBudget)
+    {
+        if (renderResourcesInitialized)
+        {
+            return GameShaderMesh is not null || Mesh is not null;
+        }
+        if (!hasRenderableMesh)
+        {
+            renderResourcesInitialized = true;
+            return false;
+        }
+        if (respectFrameBudget && RenderContext is LevelEditorRenderContext levelContext
+            && !levelContext.TryBeginRenderResourceInitialization())
+        {
+            return false;
+        }
+
+        if (useGameShader)
+        {
+            GameShaderMesh = new ModelPreview<LEVertex>(RenderContext, staticMesh, LOD, MaterialOverrides);
+        }
+        else
+        {
+            Mesh = new ModelPreview<WorldVertex>(RenderContext, staticMesh, LOD, MaterialOverrides);
+        }
+        MaterialOverrides.Clear();
+        renderResourcesInitialized = true;
+        UpdateSelfLocalToWorld();
+        return true;
     }
 
     public override void Render(MeshRenderContext context, RenderPass pass)
@@ -631,12 +691,25 @@ public class StaticMeshComponentProxy : MeshComponentProxy
         if (!IsVisible) return;
         if (pass is RenderPass.Collision)
         {
+            if (!collisionGeometryLoaded)
+            {
+                if (context is LevelEditorRenderContext levelContext
+                    && !levelContext.TryBeginRenderResourceInitialization())
+                {
+                    return;
+                }
+                collisionGeometry = staticMesh?.GetCollisionMeshProperty(Export.FileRef);
+                collisionGeometryLoaded = true;
+            }
+            CollisionMesh ??= context.GetMeshFromAggGeom(collisionGeometry);
             if (CollisionMesh is not null)
             {
+                CollisionMesh.LocalToWorld = LocalToWorld;
                 context.RenderMeshAsWireframe(CollisionMesh);
             }
             return;
         }
+        if (!EnsureRenderResources(respectFrameBudget: true)) return;
         if (GameShaderMesh is not null)
         {
             RenderGameShaderMesh(context, pass);
@@ -688,6 +761,15 @@ public class SkeletalMeshComponentProxy : MeshComponentProxy
     AnimSequencePlayer animPlayer;
     private readonly MeshRenderContext renderContext;
     private SkeletalMesh skeletalMesh;
+    private MEGame skeletalMeshGame;
+    private bool useGameShader;
+    private bool hasRenderableMesh;
+    private bool renderResourcesInitialized;
+    private ExportEntry pendingMorphExport;
+    private bool pendingMorphUsesStoredLods;
+    private bool hasDeformedMesh;
+    private int lastRenderLod;
+    protected override int LiveMaterialLOD => lastRenderLod;
 
     public SkeletalMeshComponentProxy(MeshRenderContext context, ExportEntry componentExport, ActorProxy parent) : base(context, componentExport, parent)
     {
@@ -699,29 +781,58 @@ public class SkeletalMeshComponentProxy : MeshComponentProxy
         {
             LocalToWorld = parentAnimComponent.LocalToWorld;
         }
-        if (Properties.GetProp<ObjectProperty>("SkeletalMesh")?.ResolveToExport(Export.FileRef, context.PackageCache) is ExportEntry meshExport)
+        if (Properties.GetProp<ObjectProperty>("SkeletalMesh") is { Value: not 0 } meshProperty
+            && context.ResolveExportCached(Export.FileRef, meshProperty.Value) is { } meshExport)
         {
-            SkeletalMesh skm = meshExport.GetBinaryData<SkeletalMesh>();
+            SkeletalMesh skm = context.GetCachedSkeletalMesh(meshExport);
             skeletalMesh = skm;
+            skeletalMeshGame = meshExport.FileRef.Game;
+            SerializedMeshBounds = skm.Bounds;
             if (skm.LODModels.Length > LOD)
             {
-                if ((UseGameShaderPreview(context) || parent.UseInGameSkeletalMeshRendering)
-                    && meshExport.Game.IsMEGame())
-                {
-                    GameShaderMesh = new ModelPreview<LEVertex>(context, skm, MaterialOverrides);
-                }
-                else
-                {
-                    Mesh = new ModelPreview<WorldVertex>(context, skm, MaterialOverrides);
-                }
-                MaterialOverrides.Clear();
+                hasRenderableMesh = true;
+                useGameShader = (UseGameShaderPreview(context) || parent.UseInGameSkeletalMeshRendering)
+                                && meshExport.Game.IsMEGame();
                 MeshIFP = meshExport.InstancedFullPath;
-                skinnedMeshRenderer = new SkinnedMeshRenderer();
-                skinnedMeshRenderer.BuildFromSkeletalMesh(meshExport.FileRef.Game, skm.LODModels[LOD]);
-                animPlayer = new AnimSequencePlayer(skm);
             }
-            UpdateSelfLocalToWorld();
         }
+    }
+
+    protected override bool EnsureRenderResources(bool respectFrameBudget)
+    {
+        if (renderResourcesInitialized)
+        {
+            return GameShaderMesh is not null || Mesh is not null;
+        }
+        if (!hasRenderableMesh)
+        {
+            renderResourcesInitialized = true;
+            return false;
+        }
+        if (respectFrameBudget && RenderContext is LevelEditorRenderContext levelContext
+            && !levelContext.TryBeginRenderResourceInitialization())
+        {
+            return false;
+        }
+
+        if (useGameShader)
+        {
+            GameShaderMesh = new ModelPreview<LEVertex>(RenderContext, skeletalMesh, MaterialOverrides);
+        }
+        else
+        {
+            Mesh = new ModelPreview<WorldVertex>(RenderContext, skeletalMesh, MaterialOverrides);
+        }
+        MaterialOverrides.Clear();
+        renderResourcesInitialized = true;
+        UpdateSelfLocalToWorld();
+
+        if (pendingMorphExport is not null)
+        {
+            ApplyPendingMorph();
+            UpdateScene(RenderContext, 0f);
+        }
+        return true;
     }
 
     public override void UpdateScene(MeshRenderContext context, float deltaTime)
@@ -742,22 +853,63 @@ public class SkeletalMeshComponentProxy : MeshComponentProxy
     public override void Render(MeshRenderContext context, RenderPass pass)
     {
         if (!IsVisible) return;
+        if (!EnsureRenderResources(respectFrameBudget: true)) return;
+        int renderLod = GetRenderLod(context);
+        lastRenderLod = renderLod;
         if (GameShaderMesh is not null)
         {
-            RenderGameShaderMesh(context, pass);
+            RenderGameShaderMesh(context, pass, renderLod);
         }
         else
         {
-            Mesh?.Render(pass, context, LOD);
+            Mesh?.Render(pass, context, renderLod);
         }
+    }
+
+    private int GetRenderLod(MeshRenderContext context)
+    {
+        ModelPreviewLOD<LEVertex> gameLod = GameShaderMesh?.LODs.FirstOrDefault();
+        int lodCount = GameShaderMesh?.LODs.Count ?? Mesh?.LODs.Count ?? 0;
+        if (lodCount <= 1 || hasDeformedMesh || context.Height <= 0)
+        {
+            return LOD;
+        }
+
+        BoxSphereBounds bounds = gameLod?.Mesh.TransformedBounds ?? Mesh.LODs[0].Mesh.TransformedBounds;
+        float radiusPixels;
+        if (context.Camera.IsOrthographic)
+        {
+            radiusPixels = bounds.SphereRadius * context.Height / MathF.Max(context.Camera.OrthoSize * 2f, 1f);
+        }
+        else
+        {
+            float depth = Vector3.Transform(bounds.Origin, context.Camera.ViewMatrix).Z;
+            radiusPixels = bounds.SphereRadius * context.Height
+                           / MathF.Max(2f * depth * MathF.Tan(context.Camera.FOV * 0.5f), 1f);
+        }
+
+        if (radiusPixels >= 140f) return 0;
+        if (radiusPixels >= 50f) return Math.Min(1, lodCount - 1);
+        if (radiusPixels >= 20f) return Math.Min(2, lodCount - 1);
+        return lodCount - 1;
+    }
+
+    private void EnsureSkinningRenderer()
+    {
+        if (skinnedMeshRenderer is not null || skeletalMesh is null || skeletalMesh.LODModels.Length <= LOD)
+        {
+            return;
+        }
+        skinnedMeshRenderer = new SkinnedMeshRenderer();
+        skinnedMeshRenderer.BuildFromSkeletalMesh(skeletalMeshGame, skeletalMesh.LODModels[LOD]);
+        animPlayer = new AnimSequencePlayer(skeletalMesh);
     }
 
     public void SetAnimation(AnimSequence animSequence, float pos)
     {
-        if (animPlayer is null) return;
         if (animSequence is null)
         {
-            if (animPlayer.HasAnimation)
+            if (animPlayer?.HasAnimation is true)
             {
                 //cancel animation, reset to ref pose
                 animPlayer.SetAnimation(null);
@@ -765,6 +917,10 @@ public class SkeletalMeshComponentProxy : MeshComponentProxy
             }
             return;
         }
+        if (!EnsureRenderResources(respectFrameBudget: false)) return;
+        EnsureSkinningRenderer();
+        if (animPlayer is null) return;
+        hasDeformedMesh = true;
         if (animSequence.Name != animPlayer.AnimName)
         {
             animPlayer.SetAnimation(animSequence);
@@ -775,14 +931,29 @@ public class SkeletalMeshComponentProxy : MeshComponentProxy
 
     public void ApplyMorph(ExportEntry morphExport, bool useStoredMorphLods)
     {
-        if ((Mesh is null && GameShaderMesh is null) || skeletalMesh is null || morphExport is null)
+        if (skeletalMesh is null || morphExport is null)
         {
             return;
         }
+        pendingMorphExport = morphExport;
+        pendingMorphUsesStoredLods = useStoredMorphLods;
+        if (renderResourcesInitialized)
+        {
+            ApplyPendingMorph();
+        }
+    }
+
+    private void ApplyPendingMorph()
+    {
+        ExportEntry morphExport = pendingMorphExport;
+        if (morphExport is null || (Mesh is null && GameShaderMesh is null)) return;
+        EnsureSkinningRenderer();
+        if (skinnedMeshRenderer is null) return;
+        hasDeformedMesh = true;
 
         (LegendaryExplorerCore.Unreal.Classes.BonePosition[] bonePositions, Vector3[][] morphLods) =
             LegendaryExplorerCore.Unreal.Classes.BioMorphFace.GetBoneAndVertexPositions(morphExport);
-        Vector3[] morphPositions = useStoredMorphLods && morphLods?.Length > LOD ? morphLods[LOD] : null;
+        Vector3[] morphPositions = pendingMorphUsesStoredLods && morphLods?.Length > LOD ? morphLods[LOD] : null;
         skinnedMeshRenderer.ApplyMorph(skeletalMesh.RefSkeleton, bonePositions, morphPositions);
         ApplyMorphMaterialOverrides(morphExport);
     }
@@ -791,7 +962,9 @@ public class SkeletalMeshComponentProxy : MeshComponentProxy
     {
         if (GameShaderMesh is null
             || morphExport.GetProperty<ObjectProperty>("m_oMaterialOverrides")
-                ?.ResolveToExport(morphExport.FileRef, renderContext.PackageCache) is not { } materialOverride)
+                is not { Value: not 0 } materialOverrideProperty
+            || renderContext.ResolveExportCached(morphExport.FileRef, materialOverrideProperty.Value)
+                is not { } materialOverride)
         {
             return;
         }
@@ -844,7 +1017,7 @@ public class SkeletalMeshComponentProxy : MeshComponentProxy
             ExportEntry textureExport = textureEntry switch
             {
                 ExportEntry export when export.IsTexture() => export,
-                ImportEntry import => EntryImporter.ResolveImport(import, renderContext.PackageCache),
+                ImportEntry import => renderContext.ResolveExportCached(import),
                 _ => null
             };
             if (string.IsNullOrEmpty(name))

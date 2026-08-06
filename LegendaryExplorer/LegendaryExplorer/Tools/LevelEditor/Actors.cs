@@ -628,7 +628,8 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy, ITr
                                        ?? Components.OfType<SkeletalMeshComponentProxy>()
                                            .Select(component => component.Properties.GetProp<ObjectProperty>("MorphHead"))
                                            .FirstOrDefault(property => property is { Value: not 0 });
-        if (morphProperty?.ResolveToExport(Pcc, Editor?.PackageCache) is ExportEntry morphHead)
+        if (morphProperty is { Value: not 0 }
+            && Editor?.RenderContext.ResolveExportCached(Pcc, morphProperty.Value) is { } morphHead)
         {
             headMesh?.ApplyMorph(morphHead, true);
             foreach (SkeletalMeshComponentProxy followerMesh in followerMeshes)

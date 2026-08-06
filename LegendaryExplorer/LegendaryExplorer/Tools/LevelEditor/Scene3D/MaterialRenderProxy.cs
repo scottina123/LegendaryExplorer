@@ -570,7 +570,7 @@ public class MaterialRenderProxy : MaterialInstanceConstantLevelEditor, ILiveMat
         ExportEntry textureExport = textureEntry as ExportEntry;
         if (textureEntry is ImportEntry textureImport)
         {
-            textureExport = EntryImporter.ResolveImport(textureImport, context.PackageCache);
+            textureExport = context.ResolveExportCached(textureImport);
         }
         if (textureExport is null)
         {

@@ -467,52 +467,44 @@ public class ModelPreview<TVertex> : IDisposable where TVertex : IVertexBase
         if (selectedLOD < 0)  //PREVIEW BUG WORKAROUND
             return;
 
-        // STEP 1: MESH
+        // STEP 1: MESH. Geometry and immutable GPU buffers are shared between components that use
+        // the same asset/LOD; transforms and materials remain per component.
         var lodModel = m.LODModels[selectedLOD];
-        var triangles = new List<Triangle>(lodModel.IndexBuffer.Length / 3);
-        var vertices = new List<TVertex>((int)lodModel.NumVertices);
-        // Gather all the vertex data
-        // Only one LOD? odd but I guess that's just how it rolls.
-
-        StaticMeshVertexBuffer vertexBuffer = lodModel.VertexBuffer;
-        for (int i = 0; i < lodModel.NumVertices; i++)
+        Mesh<TVertex> mesh = renderContext.GetOrCreateCachedMesh<TVertex>(m.Export, selectedLOD, () =>
         {
-            var position = lodModel.PositionVertexBuffer.VertexData[i];
-            var vertex = vertexBuffer.VertexData[i];
-            Fixed4<Vector4> uvs = default;
-            if (vertexBuffer.bUseFullPrecisionUVs)
+            var triangles = new List<Triangle>(lodModel.IndexBuffer.Length / 3);
+            var vertices = new List<TVertex>((int)lodModel.NumVertices);
+            StaticMeshVertexBuffer vertexBuffer = lodModel.VertexBuffer;
+            for (int i = 0; i < lodModel.NumVertices; i++)
             {
-                for (int j = 0; j < uvs.Length && j < vertex.FullPrecisionUVs.Length; j++)
+                var position = lodModel.PositionVertexBuffer.VertexData[i];
+                var vertex = vertexBuffer.VertexData[i];
+                Fixed4<Vector4> uvs = default;
+                if (vertexBuffer.bUseFullPrecisionUVs)
                 {
-                    uvs[j] = new Vector4(vertex.FullPrecisionUVs[j], 0, 0);
+                    for (int j = 0; j < uvs.Length && j < vertex.FullPrecisionUVs.Length; j++)
+                    {
+                        uvs[j] = new Vector4(vertex.FullPrecisionUVs[j], 0, 0);
+                    }
+                }
+                else
+                {
+                    for (int j = 0; j < uvs.Length && j < vertex.HalfPrecisionUVs.Length; j++)
+                    {
+                        uvs[j] = new Vector4(vertex.HalfPrecisionUVs[j], 0, 0);
+                    }
+                }
+                vertices.Add((TVertex)TVertex.Create(m.Export.Game, new Vector3(position.X, position.Y, position.Z), (Vector3)vertex.TangentX, (Vector4)vertex.TangentZ, uvs));
+            }
+
+            if (lodModel.IndexBuffer.Length > 0)
+            {
+                for (int i = 0; i < lodModel.IndexBuffer.Length; i += 3)
+                {
+                    triangles.Add(new Triangle(lodModel.IndexBuffer[i], lodModel.IndexBuffer[i + 1], lodModel.IndexBuffer[i + 2]));
                 }
             }
-            else
-            {
-                for (int j = 0; j < uvs.Length && j < vertex.HalfPrecisionUVs.Length; j++)
-                {
-                    uvs[j] = new Vector4(vertex.HalfPrecisionUVs[j], 0, 0);
-                }
-            }
-            vertices.Add((TVertex)TVertex.Create(m.Export.Game, new Vector3(position.X, position.Y, position.Z), (Vector3)vertex.TangentX, (Vector4)vertex.TangentZ, uvs));
-        }
-
-        // Sometimes there might not be an index buffer.
-        // If there is one, use that. 
-        // Otherwise, assume that each vertex is used exactly once.
-        // Note that this is based on the earlier implementation which didn't take LODs into consideration, which is odd considering that both the hit testing and the skeletalmesh class do.
-        if (lodModel.IndexBuffer.Length > 0)
-        {
-            // Hey, we have indices all set up for us. How considerate.
-            for (int i = 0; i < lodModel.IndexBuffer.Length; i += 3)
-            {
-                triangles.Add(new Triangle(lodModel.IndexBuffer[i], lodModel.IndexBuffer[i + 1], lodModel.IndexBuffer[i + 2]));
-            }
-        }
-        else
-        {
-            // Gather all the vertex data from the raw triangles, not the Mesh.Vertices.Point list.
-            if (m.Export.Game <= MEGame.ME2)
+            else if (m.Export.Game <= MEGame.ME2)
             {
                 var kdop = m.kDOPTreeME1ME2;
                 for (int i = 0; i < kdop.Triangles.Length; i++)
@@ -528,7 +520,8 @@ public class ModelPreview<TVertex> : IDisposable where TVertex : IVertexBase
                     triangles.Add(new Triangle(kdop.Triangles[i].Vertex1, kdop.Triangles[i].Vertex2, kdop.Triangles[i].Vertex3));
                 }
             }
-        }
+            return (triangles, vertices);
+        });
 
         // STEP 3: SECTIONS
 
@@ -568,7 +561,7 @@ public class ModelPreview<TVertex> : IDisposable where TVertex : IVertexBase
                 }
             }
         }
-        LODs.Add(new ModelPreviewLOD<TVertex>(new Mesh<TVertex>(renderContext.Device, triangles, vertices), sections));
+        LODs.Add(new ModelPreviewLOD<TVertex>(mesh, sections));
     }
 
     /// <summary>
@@ -608,34 +601,38 @@ public class ModelPreview<TVertex> : IDisposable where TVertex : IVertexBase
         }
 
         // STEP 2: LODS
-        foreach (var lodmodel in m.LODModels)
+        for (int lodIndex = 0; lodIndex < m.LODModels.Length; lodIndex++)
         {
-            // Vertices
-            var vertices = new List<TVertex>(m.Export.Game == MEGame.ME1 ? lodmodel.ME1VertexBufferGPUSkin.Length : lodmodel.VertexBufferGPUSkin.VertexData.Length);
-            Fixed4<Vector4> uvs = default;
-            if (m.Export.Game == MEGame.ME1)
+            var lodmodel = m.LODModels[lodIndex];
+            Mesh<TVertex> mesh = renderContext.GetOrCreateCachedMesh<TVertex>(m.Export, lodIndex, () =>
             {
-                foreach (SoftSkinVertex vertex in lodmodel.ME1VertexBufferGPUSkin)
+                // Vertices
+                var vertices = new List<TVertex>(m.Export.Game == MEGame.ME1 ? lodmodel.ME1VertexBufferGPUSkin.Length : lodmodel.VertexBufferGPUSkin.VertexData.Length);
+                Fixed4<Vector4> uvs = default;
+                if (m.Export.Game == MEGame.ME1)
                 {
-                    uvs[0] = new Vector4(vertex.UV, 0, 0);
-                    vertices.Add((TVertex)TVertex.Create(m.Export.Game, new Vector3(vertex.Position.X, vertex.Position.Y, vertex.Position.Z), (Vector3)vertex.TangentX, (Vector4)vertex.TangentZ, uvs));
+                    foreach (SoftSkinVertex vertex in lodmodel.ME1VertexBufferGPUSkin)
+                    {
+                        uvs[0] = new Vector4(vertex.UV, 0, 0);
+                        vertices.Add((TVertex)TVertex.Create(m.Export.Game, new Vector3(vertex.Position.X, vertex.Position.Y, vertex.Position.Z), (Vector3)vertex.TangentX, (Vector4)vertex.TangentZ, uvs));
+                    }
                 }
-            }
-            else
-            {
-                foreach (GPUSkinVertex vertex in lodmodel.VertexBufferGPUSkin.VertexData)
+                else
                 {
-                    uvs[0] = new Vector4(vertex.UV, 0, 0);
-                    vertices.Add((TVertex)TVertex.Create(m.Export.Game, new Vector3(vertex.Position.X, vertex.Position.Y, vertex.Position.Z), (Vector3)vertex.TangentX, (Vector4)vertex.TangentZ, uvs));
+                    foreach (GPUSkinVertex vertex in lodmodel.VertexBufferGPUSkin.VertexData)
+                    {
+                        uvs[0] = new Vector4(vertex.UV, 0, 0);
+                        vertices.Add((TVertex)TVertex.Create(m.Export.Game, new Vector3(vertex.Position.X, vertex.Position.Y, vertex.Position.Z), (Vector3)vertex.TangentX, (Vector4)vertex.TangentZ, uvs));
+                    }
                 }
-            }
-            // Triangles
-            var triangles = new List<Triangle>(lodmodel.IndexBuffer.Length / 3);
-            for (int i = 0; i < lodmodel.IndexBuffer.Length; i += 3)
-            {
-                triangles.Add(new Triangle(lodmodel.IndexBuffer[i], lodmodel.IndexBuffer[i + 1], lodmodel.IndexBuffer[i + 2]));
-            }
-            var mesh = new Mesh<TVertex>(renderContext.Device, triangles, vertices, isDynamic: true);
+                // Triangles
+                var triangles = new List<Triangle>(lodmodel.IndexBuffer.Length / 3);
+                for (int i = 0; i < lodmodel.IndexBuffer.Length; i += 3)
+                {
+                    triangles.Add(new Triangle(lodmodel.IndexBuffer[i], lodmodel.IndexBuffer[i + 1], lodmodel.IndexBuffer[i + 2]));
+                }
+                return (triangles, vertices);
+            });
             // Sections
             var sections = new List<ModelPreviewSection>();
             foreach (var section in lodmodel.Sections)
@@ -665,7 +662,7 @@ public class ModelPreview<TVertex> : IDisposable where TVertex : IVertexBase
         {
             if (matEntry is not ExportEntry matExport)
             {
-                matExport = EntryImporter.ResolveImport((ImportEntry)matEntry, renderContext.PackageCache);
+                matExport = renderContext.ResolveExportCached(matEntry);
                 if (matExport is null)
                 {
                     Debug.WriteLine("Could not find import material.");

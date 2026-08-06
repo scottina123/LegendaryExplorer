@@ -599,16 +599,24 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
     {
         RenderContext.ShowVolumes = ShowVolumes;
         RenderContext.ShowVolumetrics = ShowVolumetrics;
-        Span<RenderPass> passes = ShowCollision
-            ? [RenderPass.Base, RenderPass.Hair, RenderPass.Collision, RenderPass.HitTest]
-            : [RenderPass.Base, RenderPass.Hair, RenderPass.HitTest];
-
-        foreach (RenderPass pass in passes)
+        RenderContext.BeginRenderResourceFrame();
+        try
         {
-            DoRenderPass(pass);
-        }
+            Span<RenderPass> passes = ShowCollision
+                ? [RenderPass.Base, RenderPass.Hair, RenderPass.Collision, RenderPass.HitTest]
+                : [RenderPass.Base, RenderPass.Hair, RenderPass.HitTest];
 
-        RenderContext.DrawUI();
+            foreach (RenderPass pass in passes)
+            {
+                DoRenderPass(pass);
+            }
+
+            RenderContext.DrawUI();
+        }
+        finally
+        {
+            RenderContext.EndRenderResourceFrame();
+        }
     }
     void DoRenderPass(RenderPass pass)
     {
@@ -618,6 +626,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
             if (actor.IsVolume && !ShowVolumes) continue;
             if (actor.IsVolumetricMesh && !ShowVolumetrics) continue;
             if (_zCutoffEnabled && actor.Location.Z >= _zCutoff) continue;
+            if (!RenderContext.IsBoundsVisible(actor.GetBounds())) continue;
             int hitID = actor.HitID;
             RenderContext.CurrentHitTestId = new Vector3((hitID & 0xFF) / 255f, ((hitID >> 8) & 0xFF) / 255f, ((hitID >> 16) & 0xFF) / 255f);
             if (actor == selectedActor)

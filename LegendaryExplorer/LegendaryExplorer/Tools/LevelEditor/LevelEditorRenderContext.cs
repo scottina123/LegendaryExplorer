@@ -43,10 +43,53 @@ public class LevelEditorRenderContext : MeshRenderContext
     public readonly Widget TransformWidget;
 
     private Texture2D _hitStagingTexture;
+    private readonly System.Diagnostics.Stopwatch renderResourceBudget = new();
+    private bool renderResourceFrameActive;
+    private bool deferredRenderResources;
+    private int renderResourcesInitializedThisFrame;
 
     public bool ForceContinuousRendering { get; set; }
 
-    public override bool IsActivelyUpdating() => ForceContinuousRendering || base.IsActivelyUpdating() || TransformWidget.IsDragging;
+    public override bool IsActivelyUpdating() => ForceContinuousRendering || deferredRenderResources
+        || base.IsActivelyUpdating() || TransformWidget.IsDragging;
+
+    /// <summary>
+    /// Starts a small per-frame budget for material/mesh initialization. Actor discovery keeps only
+    /// lightweight metadata; visible render resources are then populated progressively without locking
+    /// the editor for minutes on heavily modded character levels.
+    /// </summary>
+    public void BeginRenderResourceFrame()
+    {
+        renderResourceFrameActive = true;
+        deferredRenderResources = false;
+        renderResourcesInitializedThisFrame = 0;
+        renderResourceBudget.Restart();
+    }
+
+    public void EndRenderResourceFrame()
+    {
+        renderResourceFrameActive = false;
+        renderResourceBudget.Stop();
+    }
+
+    public bool TryBeginRenderResourceInitialization()
+    {
+        if (!renderResourceFrameActive)
+        {
+            return true;
+        }
+
+        // Always make at least one unit of progress. Subsequent components wait for the next frame
+        // once the first initialization or the inexpensive work around it consumes the time slice.
+        if (renderResourcesInitializedThisFrame > 0 && renderResourceBudget.ElapsedMilliseconds >= 12)
+        {
+            deferredRenderResources = true;
+            return false;
+        }
+
+        renderResourcesInitializedThisFrame++;
+        return true;
+    }
 
     public readonly BatchedPrimitives Primitives = new();
 

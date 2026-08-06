@@ -4,8 +4,10 @@ using LegendaryExplorer.Resources;
 using LegendaryExplorerCore.Gammtek;
 using LegendaryExplorerCore.Helpers;
 using LegendaryExplorerCore.Packages;
+using LegendaryExplorerCore.Packages.CloningImportingAndRelinking;
 using LegendaryExplorerCore.SharpDX;
 using LegendaryExplorerCore.Unreal;
+using LegendaryExplorerCore.Unreal.BinaryConverters;
 using SharpDX.D3DCompiler;
 using SharpDX.Direct3D11;
 using SharpDX.DXGI;
@@ -132,7 +134,7 @@ public class MeshRenderContext : RenderContext
     public SamplerState SampleState { get; private set; }
     private readonly Dictionary<(TextureAddressMode U, TextureAddressMode V), SamplerState> TextureSamplerCache = [];
     public readonly SceneCamera Camera = new();
-    public List<SceneLight> SceneLights { get; } = [];
+    public SceneLightCollection SceneLights { get; }
     private bool wireframe;
     public bool Wireframe
     {
@@ -195,14 +197,102 @@ public class MeshRenderContext : RenderContext
     private readonly Dictionary<Guid, InputLayout> InputLayoutCache = [];
     private readonly Dictionary<Guid, PixelShader> PixelShaderCache = [];
     private readonly Dictionary<Guid, PixelShader> NativePixelShaderCache = [];
+    private readonly record struct MeshSourceKey(IMEPackage Package, int UIndex);
+    private readonly record struct MeshGeometryKey(IMEPackage Package, int UIndex, Type VertexType, int LOD);
+    private readonly record struct EntryReferenceKey(IMEPackage Package, int UIndex);
+    private readonly record struct LightQueryKey(Vector3 Position, uint LightingChannelMask);
+    private readonly Dictionary<MeshSourceKey, StaticMesh> StaticMeshCache = [];
+    private readonly Dictionary<MeshSourceKey, SkeletalMesh> SkeletalMeshCache = [];
+    private readonly Dictionary<EntryReferenceKey, ExportEntry> ResolvedExportCache = [];
+    private readonly Dictionary<MeshGeometryKey, ISharedMeshData> MeshGeometryCache = [];
+    private readonly Dictionary<LightQueryKey, SceneLight[]> NearestLightCache = [];
+    private SceneLightSpatialIndex SceneLightIndex;
     public readonly PreviewTextureCache TextureCache;
     public readonly PackageCache PackageCache;
 
     public MeshRenderContext()
     {
         this.Camera.FocusDepth = 100.0f;
+        SceneLights = new SceneLightCollection(InvalidateSceneLightCache);
         TextureCache = new PreviewTextureCache(this);
         PackageCache = new PackageCache();
+    }
+
+    internal StaticMesh GetCachedStaticMesh(ExportEntry export)
+    {
+        var key = new MeshSourceKey(export.FileRef, export.UIndex);
+        if (!StaticMeshCache.TryGetValue(key, out StaticMesh mesh))
+        {
+            mesh = export.GetBinaryData<StaticMesh>();
+            StaticMeshCache.Add(key, mesh);
+        }
+        return mesh;
+    }
+
+    /// <summary>
+    /// Resolving an import may search the game's package directories. Character-heavy levels commonly
+    /// reference the same outfit meshes and materials hundreds of times, so cache both successful and
+    /// failed resolutions for the lifetime of the render context.
+    /// </summary>
+    internal ExportEntry ResolveExportCached(IMEPackage sourcePackage, int uIndex)
+    {
+        if (sourcePackage is null || uIndex == 0)
+        {
+            return null;
+        }
+
+        var key = new EntryReferenceKey(sourcePackage, uIndex);
+        if (ResolvedExportCache.TryGetValue(key, out ExportEntry resolved))
+        {
+            return resolved;
+        }
+
+        resolved = sourcePackage.GetEntry(uIndex) switch
+        {
+            ExportEntry export => export,
+            ImportEntry import => EntryImporter.ResolveImport(import, PackageCache),
+            _ => null
+        };
+        ResolvedExportCache[key] = resolved;
+        return resolved;
+    }
+
+    internal ExportEntry ResolveExportCached(IEntry entry) => entry switch
+    {
+        ExportEntry export => export,
+        ImportEntry import => ResolveExportCached(import.FileRef, import.UIndex),
+        _ => null
+    };
+
+    internal SkeletalMesh GetCachedSkeletalMesh(ExportEntry export)
+    {
+        var key = new MeshSourceKey(export.FileRef, export.UIndex);
+        if (!SkeletalMeshCache.TryGetValue(key, out SkeletalMesh mesh))
+        {
+            mesh = export.GetBinaryData<SkeletalMesh>();
+            SkeletalMeshCache.Add(key, mesh);
+        }
+        return mesh;
+    }
+
+    internal Mesh<TVertex> GetOrCreateCachedMesh<TVertex>(ExportEntry export, int lod,
+        Func<(List<Triangle> Triangles, List<TVertex> Vertices)> createGeometry)
+        where TVertex : IVertexBase
+    {
+        var key = new MeshGeometryKey(export.FileRef, export.UIndex, typeof(TVertex), lod);
+        if (!MeshGeometryCache.TryGetValue(key, out ISharedMeshData cached))
+        {
+            (List<Triangle> triangles, List<TVertex> vertices) = createGeometry();
+            cached = new SharedMeshData<TVertex>(Device, triangles, vertices);
+            MeshGeometryCache.Add(key, cached);
+        }
+        return new Mesh<TVertex>((SharedMeshData<TVertex>)cached);
+    }
+
+    private void InvalidateSceneLightCache()
+    {
+        NearestLightCache.Clear();
+        SceneLightIndex = null;
     }
 
     public override bool IsActivelyUpdating() =>
@@ -692,37 +782,19 @@ public class MeshRenderContext : RenderContext
         WorldConstants constants = new(Matrix4x4.Transpose(Camera.ProjectionMatrix), Matrix4x4.Transpose(Camera.ViewMatrix), Matrix4x4.Transpose(localToWorld), RenderFlags, CurrentHitTestId);
 
         Vector3 objectPosition = localToWorld.Translation;
-        Span<int> nearestLightIndexes = stackalloc int[4] { -1, -1, -1, -1 };
-        Span<float> nearestLightDistances = stackalloc float[4] { float.MaxValue, float.MaxValue, float.MaxValue, float.MaxValue };
-
         uint meshMask = CurrentLightingChannelMask;
-        for (int i = 0; i < SceneLights.Count; i++)
+        var lightQuery = new LightQueryKey(objectPosition, meshMask);
+        if (!NearestLightCache.TryGetValue(lightQuery, out SceneLight[] nearestLights))
         {
-            SceneLight light = SceneLights[i];
-            if (!SceneLight.ChannelsOverlap(light.LightingChannelMask, meshMask))
-                continue;
-            float distanceSquared = Vector3.DistanceSquared(light.Position, objectPosition);
-            for (int slot = 0; slot < nearestLightDistances.Length; slot++)
-            {
-                if (distanceSquared < nearestLightDistances[slot])
-                {
-                    for (int shift = nearestLightDistances.Length - 1; shift > slot; shift--)
-                    {
-                        nearestLightDistances[shift] = nearestLightDistances[shift - 1];
-                        nearestLightIndexes[shift] = nearestLightIndexes[shift - 1];
-                    }
-                    nearestLightDistances[slot] = distanceSquared;
-                    nearestLightIndexes[slot] = i;
-                    break;
-                }
-            }
+            SceneLightIndex ??= new SceneLightSpatialIndex(SceneLights);
+            nearestLights = SceneLightIndex.FindNearest(objectPosition, meshMask);
+            if (NearestLightCache.Count >= 16_384) NearestLightCache.Clear();
+            NearestLightCache[lightQuery] = nearestLights;
         }
 
-        for (int slot = 0; slot < nearestLightIndexes.Length; slot++)
+        for (int slot = 0; slot < nearestLights.Length; slot++)
         {
-            if (nearestLightIndexes[slot] < 0) break;
-
-            SceneLight light = SceneLights[nearestLightIndexes[slot]];
+            SceneLight light = nearestLights[slot];
             constants.LightPositionRadius[slot] = new Vector4(light.Position, light.Radius);
             constants.LightColorIntensity[slot] = new Vector4(light.Color, light.Intensity);
             constants.LightDirectionInnerCone[slot] = new Vector4(light.Direction, light.InnerConeCos);
@@ -1014,6 +1086,16 @@ public class MeshRenderContext : RenderContext
 
     public override void EmptyCaches()
     {
+        foreach (ISharedMeshData geometry in MeshGeometryCache.Values)
+        {
+            geometry.ReleaseReference();
+        }
+        MeshGeometryCache.Clear();
+        StaticMeshCache.Clear();
+        SkeletalMeshCache.Clear();
+        ResolvedExportCache.Clear();
+        NearestLightCache.Clear();
+        SceneLightIndex = null;
         PackageCache?.ReleasePackages();
         TextureCache?.ExpungeStaleCacheItems();
         BlendStateCache.DisposeValuesAndClear();
@@ -1242,6 +1324,43 @@ public class MeshRenderContext : RenderContext
     public Vector4 WorldToScreen(Vector3 point)
     {
         return Vector4.Transform(point, Camera.ViewProjectionMatrix);
+    }
+
+    /// <summary>
+    /// Conservative sphere/frustum test used by the Level Editor before submitting an actor's draw calls.
+    /// Zero/invalid bounds stay visible so helper actors and partially supported exports are never lost.
+    /// </summary>
+    public bool IsBoundsVisible(BoxSphereBounds bounds)
+    {
+        float radius = MathF.Abs(bounds.SphereRadius);
+        if (!(radius > 0f) || !float.IsFinite(radius)
+            || !float.IsFinite(bounds.Origin.X) || !float.IsFinite(bounds.Origin.Y) || !float.IsFinite(bounds.Origin.Z))
+        {
+            return true;
+        }
+
+        Vector3 viewCenter = Vector3.Transform(bounds.Origin, Camera.ViewMatrix);
+        if (viewCenter.Z + radius < Camera.ZNear || viewCenter.Z - radius > Camera.ZFar)
+        {
+            return false;
+        }
+
+        if (Camera.IsOrthographic)
+        {
+            float halfWidth = Camera.OrthoWidth * 0.5f;
+            float halfHeight = Camera.OrthoSize;
+            return MathF.Abs(viewCenter.X) <= halfWidth + radius
+                   && MathF.Abs(viewCenter.Y) <= halfHeight + radius;
+        }
+
+        float tanY = MathF.Tan(Camera.FOV * 0.5f);
+        float tanX = tanY * Camera.aspect;
+        float depth = MathF.Max(viewCenter.Z, Camera.ZNear);
+        // Plane-normal factors make this conservative for spheres intersecting a side plane.
+        float xAllowance = radius * MathF.Sqrt(1f + tanX * tanX);
+        float yAllowance = radius * MathF.Sqrt(1f + tanY * tanY);
+        return MathF.Abs(viewCenter.X) <= depth * tanX + xAllowance
+               && MathF.Abs(viewCenter.Y) <= depth * tanY + yAllowance;
     }
 
     public bool ScreenToPixel(Vector4 point, out Vector2 pixel)
