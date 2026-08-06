@@ -1,16 +1,26 @@
+using LegendaryExplorer.Dialogs;
 using LegendaryExplorer.Misc;
 using LegendaryExplorer.Misc.AppSettings;
 using LegendaryExplorer.Tools.LevelEditor;
 using LegendaryExplorer.Tools.LevelEditor.Scene3D;
+using LegendaryExplorer.UserControls.ExportLoaderControls.MaterialEditor;
 using LegendaryExplorerCore.Helpers;
+using LegendaryExplorerCore.Misc;
 using LegendaryExplorerCore.Packages;
+using LegendaryExplorerCore.Packages.CloningImportingAndRelinking;
 using LegendaryExplorerCore.Shaders;
+using LegendaryExplorerCore.Unreal;
 using LegendaryExplorerCore.Unreal.BinaryConverters;
+using LegendaryExplorerCore.Unreal.ObjectInfo;
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
+using System.Windows.Input;
 using System.Windows.Media;
 
 namespace LegendaryExplorer.UserControls.ExportLoaderControls;
@@ -29,6 +39,89 @@ public partial class ActorPreviewControl : ExportLoaderControl, IActorEditorCont
     private ActorProxy _actor;
     private bool _controlIsLoaded;
     private int _actorLoadVersion;
+    private readonly Dictionary<LiveMaterialEditorMaterial, ActorMaterialBinding> _materialBindings = [];
+
+    private sealed class ActorMaterialBinding
+    {
+        public required MeshComponentProxy Component { get; init; }
+        public required IEntry SourceEntry { get; init; }
+        public required IReadOnlyList<int> SlotIndexes { get; init; }
+    }
+
+    public ObservableCollectionExtended<LiveMaterialEditorMaterial> LiveMaterials { get; } = [];
+
+    private LiveMaterialEditorMaterial _selectedLiveMaterial;
+    public LiveMaterialEditorMaterial SelectedLiveMaterial
+    {
+        get => _selectedLiveMaterial;
+        set
+        {
+            if (SetProperty(ref _selectedLiveMaterial, value))
+            {
+                SelectedLiveScalarParameter = value?.ScalarParameters.FirstOrDefault();
+                SelectedLiveVectorParameter = value?.VectorParameters.FirstOrDefault(parameter =>
+                                                  parameter.ParameterName.StartsWith("TNT_", StringComparison.OrdinalIgnoreCase))
+                                              ?? value?.VectorParameters.FirstOrDefault();
+                UpdateLiveMaterialSaveState();
+            }
+        }
+    }
+
+    private LiveScalarMaterialParameter _selectedLiveScalarParameter;
+    public LiveScalarMaterialParameter SelectedLiveScalarParameter
+    {
+        get => _selectedLiveScalarParameter;
+        set => SetProperty(ref _selectedLiveScalarParameter, value);
+    }
+
+    private LiveVectorMaterialParameter _selectedLiveVectorParameter;
+    public LiveVectorMaterialParameter SelectedLiveVectorParameter
+    {
+        get => _selectedLiveVectorParameter;
+        set => SetProperty(ref _selectedLiveVectorParameter, value);
+    }
+
+    private int _selectedMaterialEditLevelIndex;
+    public int SelectedMaterialEditLevelIndex
+    {
+        get => _selectedMaterialEditLevelIndex;
+        set
+        {
+            if (SetProperty(ref _selectedMaterialEditLevelIndex, value))
+            {
+                UpdateLiveMaterialSaveState();
+            }
+        }
+    }
+
+    public bool IsEditingComponentMaterial => SelectedMaterialEditLevelIndex == 0;
+    public bool IsEditingParentMaterial => SelectedMaterialEditLevelIndex == 1;
+    public bool ShowLiveMaterialEditor => LiveMaterials.Count > 0;
+    public bool CanApplyComponentMicOverrides => IsEditingComponentMaterial && GetSelectedMaterialBinding() is not null;
+    public bool CanOverwriteParentMaterial => IsEditingParentMaterial && GetWritableParentMaterial() is not null;
+    public bool CanCreateParentMic => IsEditingParentMaterial && GetSelectedParentMaterial() is not null;
+    public bool CanRandomizeSelectedLiveMaterialTints =>
+        SelectedLiveMaterial?.VectorParameters.Any(IsTintParameter) == true;
+
+    public string SelectedMaterialTargetPath
+    {
+        get
+        {
+            ActorMaterialBinding binding = GetSelectedMaterialBinding();
+            if (binding is null)
+            {
+                return null;
+            }
+            string slots = string.Join(", ", binding.SlotIndexes);
+            return $"{binding.Component.Export.InstancedFullPath}  •  slot{(binding.SlotIndexes.Count == 1 ? string.Empty : "s")} {slots}";
+        }
+    }
+
+    public string SelectedParentMaterialPath => GetSelectedParentMaterial()?.InstancedFullPath;
+
+    public string ParentMaterialSaveHelpText => GetWritableParentMaterial() is not null
+        ? "Overwrite edits the local parent MIC. Create parent MIC inserts a new MIC in the chain and keeps the component MIC's scalar/vector overrides synchronized."
+        : "This parent is a base or imported material, so it cannot be overwritten in this package. Create a parent MIC to keep the edit local.";
 
     private bool _showWireframe;
     public bool ShowWireframe
@@ -91,7 +184,7 @@ public partial class ActorPreviewControl : ExportLoaderControl, IActorEditorCont
         {
             BackgroundColor = GetThemeDefaultBackgroundColor();
         }
-        RenderContext.Camera.FirstPerson = false;
+        RenderContext.Camera.FirstPerson = true;
         SceneViewer.Loaded += SceneViewer_Loaded;
         SceneViewer.Unloaded += SceneViewer_Unloaded;
         ThemeManager.ThemeChanged += OnThemeChanged;
@@ -226,8 +319,9 @@ public partial class ActorPreviewControl : ExportLoaderControl, IActorEditorCont
                 RenderContext.LoadActors([_actor]);
                 RecenterActorAtOrigin(_actor);
                 BoxSphereBounds bounds = _actor.GetBounds();
-                RenderContext.Camera.Position = bounds.Origin;
+                FrameFirstPersonCamera(bounds);
                 ConfigureDepthRangeForBounds(bounds);
+                PopulateLiveMaterialEditor();
             }
         }
         catch (Exception ex)
@@ -284,6 +378,411 @@ public partial class ActorPreviewControl : ExportLoaderControl, IActorEditorCont
         RenderContext.Camera.ZFar = radius * 500f;
     }
 
+    private void FrameFirstPersonCamera(BoxSphereBounds bounds)
+    {
+        float radius = Math.Max(bounds.SphereRadius, 1f);
+        SceneCamera camera = RenderContext.Camera;
+        camera.FirstPerson = true;
+        camera.FocusDepth = 0;
+        camera.Pitch = 0;
+        camera.Yaw = 0;
+        camera.Position = bounds.Origin - Vector3.UnitX * Math.Max(radius * 2.2f, 100f);
+        camera.OrientTowards(bounds.Origin);
+        RenderContext.CameraSpeed = Math.Max(radius * 1.5f, 50f);
+    }
+
+    private void PopulateLiveMaterialEditor()
+    {
+        LiveMaterials.ClearEx();
+        _materialBindings.Clear();
+        SelectedLiveMaterial = null;
+
+        foreach (ActorProxy actor in EnumerateActors(_actor))
+        {
+            foreach (MeshComponentProxy component in actor.Components.OfType<MeshComponentProxy>())
+            {
+                foreach ((IEntry sourceEntry, MaterialRenderProxy renderProxy, IReadOnlyList<int> slotIndexes)
+                         in component.GetLiveMaterialBindings())
+                {
+                    string slots = string.Join(",", slotIndexes);
+                    string displayName = $"{component.Export.ObjectName.Instanced} [{slots}] — {sourceEntry.ObjectName.Instanced}";
+                    var material = new LiveMaterialEditorMaterial(renderProxy, sourceEntry, displayName,
+                        sourceEntry.InstancedFullPath);
+                    LiveMaterials.Add(material);
+                    _materialBindings[material] = new ActorMaterialBinding
+                    {
+                        Component = component,
+                        SourceEntry = sourceEntry,
+                        SlotIndexes = slotIndexes
+                    };
+                }
+            }
+        }
+
+        SelectedLiveMaterial = LiveMaterials.FirstOrDefault();
+        OnPropertyChanged(nameof(ShowLiveMaterialEditor));
+    }
+
+    private static IEnumerable<ActorProxy> EnumerateActors(ActorProxy root)
+    {
+        if (root is null)
+        {
+            yield break;
+        }
+
+        var pending = new Stack<ActorProxy>();
+        var visited = new HashSet<ActorProxy>();
+        pending.Push(root);
+        while (pending.Count > 0)
+        {
+            ActorProxy actor = pending.Pop();
+            if (!visited.Add(actor))
+            {
+                continue;
+            }
+            yield return actor;
+            foreach (ActorProxy attached in actor.Attached)
+            {
+                pending.Push(attached);
+            }
+        }
+    }
+
+    private void ClearLiveMaterialEditor()
+    {
+        LiveMaterials.ClearEx();
+        _materialBindings.Clear();
+        SelectedLiveMaterial = null;
+        OnPropertyChanged(nameof(ShowLiveMaterialEditor));
+    }
+
+    private ActorMaterialBinding GetSelectedMaterialBinding() =>
+        SelectedLiveMaterial is not null && _materialBindings.TryGetValue(SelectedLiveMaterial, out ActorMaterialBinding binding)
+            ? binding
+            : null;
+
+    private ExportEntry GetAttachedMic(ActorMaterialBinding binding)
+    {
+        ArrayProperty<ObjectProperty> materials = binding?.Component.Export
+            .GetProperty<ArrayProperty<ObjectProperty>>("Materials");
+        if (materials is null)
+        {
+            return null;
+        }
+
+        foreach (int slotIndex in binding.SlotIndexes)
+        {
+            if (slotIndex < materials.Count
+                && materials[slotIndex].ResolveToEntry(binding.Component.Export.FileRef) is ExportEntry candidate
+                && candidate.IsA("MaterialInstanceConstant"))
+            {
+                return candidate;
+            }
+        }
+        return null;
+    }
+
+    private IEntry GetSelectedParentMaterial()
+    {
+        ActorMaterialBinding binding = GetSelectedMaterialBinding();
+        if (binding is null)
+        {
+            return null;
+        }
+
+        ExportEntry attachedMic = GetAttachedMic(binding);
+        return attachedMic?.GetProperty<ObjectProperty>("Parent")?.ResolveToEntry(attachedMic.FileRef)
+               ?? binding.SourceEntry;
+    }
+
+    private ExportEntry GetWritableParentMaterial()
+    {
+        ActorMaterialBinding binding = GetSelectedMaterialBinding();
+        return GetSelectedParentMaterial() is ExportEntry parent
+               && binding is not null
+               && parent.FileRef == binding.Component.Export.FileRef
+               && parent.IsA("MaterialInstanceConstant")
+            ? parent
+            : null;
+    }
+
+    private void UpdateLiveMaterialSaveState()
+    {
+        OnPropertyChanged(nameof(IsEditingComponentMaterial));
+        OnPropertyChanged(nameof(IsEditingParentMaterial));
+        OnPropertyChanged(nameof(CanApplyComponentMicOverrides));
+        OnPropertyChanged(nameof(CanOverwriteParentMaterial));
+        OnPropertyChanged(nameof(CanCreateParentMic));
+        OnPropertyChanged(nameof(CanRandomizeSelectedLiveMaterialTints));
+        OnPropertyChanged(nameof(SelectedMaterialTargetPath));
+        OnPropertyChanged(nameof(SelectedParentMaterialPath));
+        OnPropertyChanged(nameof(ParentMaterialSaveHelpText));
+    }
+
+    private void RandomizeActorMaterialTints_Click(object sender, RoutedEventArgs e)
+    {
+        if (!CanRandomizeSelectedLiveMaterialTints || SelectedLiveMaterial is not { } material)
+        {
+            return;
+        }
+
+        foreach (LiveVectorMaterialParameter parameter in material.VectorParameters.Where(IsTintParameter))
+        {
+            parameter.SetValue(Random.Shared.NextSingle(), Random.Shared.NextSingle(), Random.Shared.NextSingle(), parameter.A);
+        }
+    }
+
+    private static bool IsTintParameter(LiveVectorMaterialParameter parameter) =>
+        parameter.ParameterName.StartsWith("TNT_", StringComparison.OrdinalIgnoreCase);
+
+    private void AddActorMaterialScalar_Click(object sender, RoutedEventArgs e) => AddActorMaterialParameter(isVector: false);
+    private void AddActorMaterialVector_Click(object sender, RoutedEventArgs e) => AddActorMaterialParameter(isVector: true);
+
+    private void AddActorMaterialParameter(bool isVector)
+    {
+        if (SelectedLiveMaterial is not { } material)
+        {
+            return;
+        }
+
+        IReadOnlyList<string> parameterNames;
+        try
+        {
+            using var cache = new PackageCache();
+            var materialInfo = new MaterialInfo { MaterialExport = material.MaterialExport };
+            IEnumerable<string> hierarchyNames = isVector
+                ? materialInfo.GetVectorParameterNames(cache)
+                : materialInfo.GetScalarParameterNames(cache);
+            IEnumerable<string> shaderNames = isVector
+                ? material.RenderProxy.VectorParameters.Keys
+                : material.RenderProxy.ScalarParameters.Keys;
+            parameterNames = hierarchyNames.Concat(shaderNames)
+                .Where(name => !string.IsNullOrWhiteSpace(name))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+        catch (Exception exception)
+        {
+            MessageBox.Show($"The material's parameter list could not be loaded.\n\n{exception.Message}",
+                "Material parameters unavailable", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        string parameterType = isVector ? "vector" : "scalar";
+        if (parameterNames.Count == 0)
+        {
+            MessageBox.Show($"No {parameterType} parameters were found on this material or its parent material.",
+                "No material parameters found", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        HashSet<string> existingNames = new(isVector
+                ? material.VectorParameters.Select(parameter => parameter.ParameterName)
+                : material.ScalarParameters.Select(parameter => parameter.ParameterName),
+            StringComparer.OrdinalIgnoreCase);
+        string selectedName = StringSelectorDialog.GetValue(this,
+            $"Choose a {parameterType} parameter. Type to search the {parameterNames.Count} values supported by this material.",
+            $"Add {parameterType} parameter",
+            parameterNames.Select(name => new StringSelectorItem(name, name,
+                existingNames.Contains(name) ? "Already present" : $"Available {parameterType} parameter")));
+        if (string.IsNullOrWhiteSpace(selectedName))
+        {
+            return;
+        }
+
+        if (isVector)
+        {
+            SelectedLiveVectorParameter = material.AddVectorParameter(selectedName);
+            LiveVectorParameterList.ScrollIntoView(SelectedLiveVectorParameter);
+        }
+        else
+        {
+            SelectedLiveScalarParameter = material.AddScalarParameter(selectedName);
+            LiveScalarParameterList.ScrollIntoView(SelectedLiveScalarParameter);
+        }
+        UpdateLiveMaterialSaveState();
+    }
+
+    private void RemoveActorMaterialScalar_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { DataContext: LiveScalarMaterialParameter parameter }
+            || SelectedLiveMaterial is not { } material)
+        {
+            return;
+        }
+
+        int removedIndex = material.ScalarParameters.IndexOf(parameter);
+        if (material.RemoveScalarParameter(parameter))
+        {
+            SelectedLiveScalarParameter = material.ScalarParameters.Count == 0
+                ? null
+                : material.ScalarParameters[Math.Min(removedIndex, material.ScalarParameters.Count - 1)];
+        }
+    }
+
+    private void RemoveActorMaterialVector_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { DataContext: LiveVectorMaterialParameter parameter }
+            || SelectedLiveMaterial is not { } material)
+        {
+            return;
+        }
+
+        int removedIndex = material.VectorParameters.IndexOf(parameter);
+        if (material.RemoveVectorParameter(parameter))
+        {
+            SelectedLiveVectorParameter = material.VectorParameters.Count == 0
+                ? null
+                : material.VectorParameters[Math.Min(removedIndex, material.VectorParameters.Count - 1)];
+            UpdateLiveMaterialSaveState();
+        }
+    }
+
+    private void ActorMaterialParameterScrubber_DragDelta(object sender, DragDeltaEventArgs e)
+    {
+        float speedMultiplier = Keyboard.Modifiers.HasFlag(ModifierKeys.Shift) ? 10f
+            : Keyboard.Modifiers.HasFlag(ModifierKeys.Control) ? 0.1f
+            : 1f;
+        if (sender is FrameworkElement { DataContext: LiveScalarMaterialParameter scalar })
+        {
+            float unitsPerPixel = Math.Max(Math.Abs(scalar.Value) * 0.01f, 0.01f);
+            scalar.Value += (float)e.HorizontalChange * unitsPerPixel * speedMultiplier;
+        }
+    }
+
+    private void ApplyComponentMicOverrides_Click(object sender, RoutedEventArgs e)
+    {
+        if (SelectedLiveMaterial is not { } material || GetSelectedMaterialBinding() is not { } binding)
+        {
+            return;
+        }
+
+        try
+        {
+            ExportEntry attachedMic = EnsureAttachedMic(binding);
+            MeshRenderer.WriteLiveMaterialParameters(attachedMic, material);
+            material.MarkSaved();
+            UpdateLiveMaterialSaveState();
+        }
+        catch (Exception exception)
+        {
+            new ExceptionHandlerDialog(exception).ShowDialog();
+        }
+    }
+
+    private void OverwriteParentMaterial_Click(object sender, RoutedEventArgs e)
+    {
+        if (SelectedLiveMaterial is not { } material || GetWritableParentMaterial() is not { } parentMic)
+        {
+            return;
+        }
+
+        try
+        {
+            MeshRenderer.WriteLiveMaterialParameters(parentMic, material);
+            material.MarkSaved();
+            UpdateLiveMaterialSaveState();
+        }
+        catch (Exception exception)
+        {
+            new ExceptionHandlerDialog(exception).ShowDialog();
+        }
+    }
+
+    private void CreateParentMic_Click(object sender, RoutedEventArgs e)
+    {
+        if (SelectedLiveMaterial is not { } material
+            || GetSelectedMaterialBinding() is not { } binding
+            || GetSelectedParentMaterial() is not { } currentParent)
+        {
+            return;
+        }
+
+        try
+        {
+            IEntry localParentReference = InterpreterExportLoader.GetOrAddLocalMaterialReference(
+                currentParent, binding.Component.Export.FileRef, RenderContext.PackageCache)
+                ?? throw new InvalidOperationException("Could not create a local reference to the selected parent material.");
+            ExportEntry currentParentExport = ResolveMaterialExport(currentParent);
+            ExportEntry newParentMic = InterpreterExportLoader.CreateMaterialInstanceConstant(
+                binding.Component.Export, localParentReference, currentParentExport);
+            MeshRenderer.WriteLiveMaterialParameters(newParentMic, material);
+
+            ExportEntry attachedMic = GetAttachedMic(binding);
+            if (attachedMic is null)
+            {
+                attachedMic = InterpreterExportLoader.CreateMaterialInstanceConstant(
+                    binding.Component.Export, newParentMic, newParentMic);
+            }
+            else
+            {
+                InterpreterExportLoader.UpdateMaterialInstanceConstantParent(
+                    attachedMic, newParentMic, newParentMic, regenerateGuid: false);
+            }
+
+            // Keep the component-level instance synchronized as requested, even though the new parent
+            // also owns the edited values. This preserves the visible result if the parent is later changed.
+            MeshRenderer.WriteLiveMaterialParameters(attachedMic, material);
+            SetComponentMaterialSlots(binding, attachedMic);
+            material.MarkSaved();
+            UpdateLiveMaterialSaveState();
+        }
+        catch (Exception exception)
+        {
+            new ExceptionHandlerDialog(exception).ShowDialog();
+        }
+    }
+
+    private ExportEntry EnsureAttachedMic(ActorMaterialBinding binding)
+    {
+        if (GetAttachedMic(binding) is { } attachedMic)
+        {
+            SetComponentMaterialSlots(binding, attachedMic);
+            return attachedMic;
+        }
+
+        IEntry localParentReference = InterpreterExportLoader.GetOrAddLocalMaterialReference(
+            binding.SourceEntry, binding.Component.Export.FileRef, RenderContext.PackageCache)
+            ?? throw new InvalidOperationException("Could not create a local reference to the component material.");
+        ExportEntry parentExport = ResolveMaterialExport(binding.SourceEntry);
+        attachedMic = InterpreterExportLoader.CreateMaterialInstanceConstant(
+            binding.Component.Export, localParentReference, parentExport);
+        SetComponentMaterialSlots(binding, attachedMic);
+        return attachedMic;
+    }
+
+    private ExportEntry ResolveMaterialExport(IEntry entry)
+    {
+        if (entry is ExportEntry export)
+        {
+            return export;
+        }
+        if (entry is ImportEntry import)
+        {
+            return EntryImporter.ResolveImport(import, RenderContext.PackageCache);
+        }
+        return null;
+    }
+
+    private static void SetComponentMaterialSlots(ActorMaterialBinding binding, ExportEntry material)
+    {
+        ExportEntry componentExport = binding.Component.Export;
+        PropertyCollection properties = componentExport.GetProperties();
+        ArrayProperty<ObjectProperty> materials = properties.GetProp<ArrayProperty<ObjectProperty>>("Materials")
+                                                   ?? new ArrayProperty<ObjectProperty>("Materials");
+        foreach (int slotIndex in binding.SlotIndexes.OrderBy(index => index))
+        {
+            while (materials.Count <= slotIndex)
+            {
+                materials.Add(new ObjectProperty(0));
+            }
+            materials[slotIndex] = new ObjectProperty(material);
+        }
+        properties.AddOrReplaceProp(materials);
+        componentExport.WriteProperties(properties);
+    }
+
     public override void UnloadExport()
     {
         _actorLoadVersion++;
@@ -297,6 +796,7 @@ public partial class ActorPreviewControl : ExportLoaderControl, IActorEditorCont
             _actor.Dispose();
             _actor = null;
         }
+        ClearLiveMaterialEditor();
         RenderContext.EmptyCaches();
         CurrentLoadedExport = null;
     }

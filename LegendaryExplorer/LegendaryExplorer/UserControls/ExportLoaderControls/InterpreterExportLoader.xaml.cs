@@ -943,7 +943,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             return componentExport.IsA("SkeletalMeshComponent");
         }
 
-        private static IEntry GetOrAddLocalMaterialReference(IEntry sourceMaterialEntry, IMEPackage destinationPackage, PackageCache cache)
+        internal static IEntry GetOrAddLocalMaterialReference(IEntry sourceMaterialEntry, IMEPackage destinationPackage, PackageCache cache)
         {
             if (sourceMaterialEntry is null)
             {
@@ -971,7 +971,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             return clone;
         }
 
-        private static ExportEntry CreateMaterialInstanceConstant(ExportEntry componentExport, IEntry parentMaterialEntry, ExportEntry sourceMaterialExport)
+        internal static ExportEntry CreateMaterialInstanceConstant(ExportEntry componentExport, IEntry parentMaterialEntry, ExportEntry sourceMaterialExport)
         {
             string baseName = $"{componentExport.ObjectName.Name}_MIC";
             var name = new NameReference(baseName);
@@ -995,7 +995,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             return micExport;
         }
 
-        private static void UpdateMaterialInstanceConstantParent(ExportEntry micExport, IEntry parentMaterialEntry, ExportEntry sourceMaterialExport, bool regenerateGuid)
+        internal static void UpdateMaterialInstanceConstantParent(ExportEntry micExport, IEntry parentMaterialEntry, ExportEntry sourceMaterialExport, bool regenerateGuid)
         {
             var micProps = micExport.GetProperties();
             micProps.AddOrReplaceProp(new ObjectProperty(parentMaterialEntry, "Parent"));

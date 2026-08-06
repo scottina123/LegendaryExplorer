@@ -12,13 +12,14 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
+using LegendaryExplorer.UserControls.SharedToolControls;
 
 namespace LegendaryExplorer.Tools.LevelEditor.Scene3D;
 
 //update the name strings too
 using PixelShaderType = TBasePassPixelShader<FNullPolicy>;
 using VertexShaderType = TBasePassVertexShader<FNullPolicy, FNullPolicy>;
-public class MaterialRenderProxy : MaterialInstanceConstantLevelEditor
+public class MaterialRenderProxy : MaterialInstanceConstantLevelEditor, ILiveMaterialRenderProxy
 {
     public const string LocalVertexFactoryType = "FLocalVertexFactory";
     private const string VERTEX_SHADER_TYPE_NAME = "TBasePassVertexShaderFNoLightMapPolicyFNoDensityPolicy";
@@ -66,10 +67,22 @@ public class MaterialRenderProxy : MaterialInstanceConstantLevelEditor
     public PixelShaderType UnrealPixelShader;
     public string VertexFactoryType { get; private set; } = LocalVertexFactoryType;
     public ParticleVertexFactoryRenderParameters ParticleFactoryParameters { get; } = new();
+    public ExportEntry MaterialExport { get; }
+
+    /// <summary>
+    /// Effective scalar parameters used by the preview, including inherited defaults and instance overrides.
+    /// </summary>
+    public IReadOnlyDictionary<string, float> ScalarParameters => ScalarParameterValues;
+
+    /// <summary>
+    /// Effective vector parameters used by the preview, including inherited defaults and instance overrides.
+    /// </summary>
+    public IReadOnlyDictionary<string, LinearColor> VectorParameters => VectorParameterValues;
 
     public MaterialRenderProxy(MeshRenderContext context, ExportEntry export,
         MaterialRenderProxy parameterSource = null) : base(export, context.PackageCache, true)
     {
+        MaterialExport = export;
         if (parameterSource is not null)
         {
             CopyEffectiveParametersFrom(parameterSource);
@@ -79,6 +92,7 @@ public class MaterialRenderProxy : MaterialInstanceConstantLevelEditor
     public MaterialRenderProxy(MeshRenderContext context, ExportEntry export, string vertexFactoryType)
         : base(export, context.PackageCache, true)
     {
+        MaterialExport = export;
         VertexFactoryType = string.IsNullOrWhiteSpace(vertexFactoryType)
             ? LocalVertexFactoryType
             : vertexFactoryType;
@@ -103,6 +117,24 @@ public class MaterialRenderProxy : MaterialInstanceConstantLevelEditor
             ? (true, baseline)
             : (false, default));
         VectorParameterValues[parameterName] = value;
+        CachedPixelFrameNumber = CachedVertexFrameNumber = uint.MaxValue;
+    }
+
+    public void RemoveScalarParameter(string parameterName)
+    {
+        PreviewScalarBaselines.TryAdd(parameterName, ScalarParameterValues.TryGetValue(parameterName, out float baseline)
+            ? (true, baseline)
+            : (false, default));
+        ScalarParameterValues.Remove(parameterName);
+        CachedPixelFrameNumber = CachedVertexFrameNumber = uint.MaxValue;
+    }
+
+    public void RemoveVectorParameter(string parameterName)
+    {
+        PreviewVectorBaselines.TryAdd(parameterName, VectorParameterValues.TryGetValue(parameterName, out LinearColor baseline)
+            ? (true, baseline)
+            : (false, default));
+        VectorParameterValues.Remove(parameterName);
         CachedPixelFrameNumber = CachedVertexFrameNumber = uint.MaxValue;
     }
 

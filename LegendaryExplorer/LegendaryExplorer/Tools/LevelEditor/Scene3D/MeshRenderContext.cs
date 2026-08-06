@@ -194,6 +194,9 @@ public class MeshRenderContext : RenderContext
         PackageCache = new PackageCache();
     }
 
+    public override bool IsActivelyUpdating() =>
+        PressedKeys is not KeyStates.None || PressedMouseButton is not MouseButtons.None || base.IsActivelyUpdating();
+
     public override void Update(float timestep)
     {
         Time += timestep;

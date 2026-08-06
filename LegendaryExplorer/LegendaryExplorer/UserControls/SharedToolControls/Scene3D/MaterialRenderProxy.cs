@@ -10,6 +10,7 @@ using LegendaryExplorerCore.Unreal;
 using LegendaryExplorerCore.Unreal.Classes;
 using LegendaryExplorerCore.Shaders;
 using LegendaryExplorerCore.Unreal.BinaryConverters.Shaders;
+using LegendaryExplorer.UserControls.SharedToolControls;
 
 namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
 {
@@ -17,7 +18,7 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
     using VertexShaderType = TBasePassVertexShader<FNullPolicy, FNullPolicy>;
     using PixelShaderType = TBasePassPixelShader<FNullPolicy>;
     public class MaterialRenderProxy(ExportEntry export, PackageCache assetCache = null)
-        : MaterialInstanceConstant(export, assetCache, true)
+        : MaterialInstanceConstant(export, assetCache, true), ILiveMaterialRenderProxy
     {
         private const string VERTEX_SHADER_TYPE_NAME = "TBasePassVertexShaderFNoLightMapPolicyFNoDensityPolicy";
         private const string LIT_PIXEL_SHADER_TYPE_NAME = "TBasePassPixelShaderFNoLightMapPolicySkyLight";
@@ -58,6 +59,8 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
 
         public VertexShaderType VertexShader;
         public PixelShaderType PixelShader;
+
+        public ExportEntry MaterialExport => Export;
 
         /// <summary>
         /// Effective scalar parameters used by the preview, including inherited defaults and instance overrides.

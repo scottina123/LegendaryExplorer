@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using LegendaryExplorer.Misc;
 using LegendaryExplorer.SharedUI;
-using LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D;
+using LegendaryExplorer.UserControls.SharedToolControls;
 using LegendaryExplorerCore.Misc;
 using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.Unreal.BinaryConverters;
@@ -14,11 +14,11 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 {
     public sealed class LiveMaterialEditorMaterial : NotifyPropertyChangedBase
     {
-        internal MaterialRenderProxy RenderProxy { get; }
-        public ExportEntry MaterialExport => RenderProxy.Export;
+        internal ILiveMaterialRenderProxy RenderProxy { get; }
+        public ExportEntry MaterialExport => RenderProxy.MaterialExport;
         public IEntry SourceEntry { get; }
-        public string DisplayName => $"{SourceEntry?.ObjectName.Instanced ?? MaterialExport.ObjectName.Instanced} ({SourceEntry?.ClassName ?? MaterialExport.ClassName})";
-        public string SourcePath => SourceEntry?.InstancedFullPath ?? MaterialExport.InstancedFullPath;
+        public string DisplayName { get; }
+        public string SourcePath { get; }
         public bool CanSaveToCurrent => SourceEntry is ExportEntry export
                                                && export.FileRef == MaterialExport.FileRef
                                                && export.IsA("MaterialInstanceConstant");
@@ -36,10 +36,14 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             private set => SetProperty(ref _hasUnsavedChanges, value);
         }
 
-        internal LiveMaterialEditorMaterial(MaterialRenderProxy renderProxy, IEntry sourceEntry)
+        internal LiveMaterialEditorMaterial(ILiveMaterialRenderProxy renderProxy, IEntry sourceEntry,
+            string displayName = null, string sourcePath = null)
         {
             RenderProxy = renderProxy;
             SourceEntry = sourceEntry;
+            DisplayName = displayName
+                          ?? $"{SourceEntry?.ObjectName.Instanced ?? MaterialExport.ObjectName.Instanced} ({SourceEntry?.ClassName ?? MaterialExport.ClassName})";
+            SourcePath = sourcePath ?? SourceEntry?.InstancedFullPath ?? MaterialExport.InstancedFullPath;
 
             foreach ((string name, float value) in renderProxy.ScalarParameters.OrderBy(parameter => parameter.Key, StringComparer.OrdinalIgnoreCase))
             {

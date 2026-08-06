@@ -434,6 +434,12 @@ public class ModelPreview<TVertex> : IDisposable where TVertex : IVertexBase
     public Dictionary<string, ModelPreviewMaterial<TVertex>> Materials { get; } = [];
 
     /// <summary>
+    /// Effective material entry for each mesh material slot. Component overrides are represented by
+    /// their real entries rather than by copying package-local UIndexes into an external mesh binary.
+    /// </summary>
+    public List<IEntry> MaterialSlots { get; } = [];
+
+    /// <summary>
     /// Creates a preview of a generic untextured mesh
     /// </summary>
     public ModelPreview(MeshRenderContext renderContext, Mesh<TVertex> mesh, PreloadedModelData preloadedData = null)
@@ -454,7 +460,8 @@ public class ModelPreview<TVertex> : IDisposable where TVertex : IVertexBase
     /// <summary>
     /// Creates a preview of the given <see cref="StaticMesh"/>.
     /// </summary>
-    public ModelPreview(MeshRenderContext renderContext, StaticMesh m, int selectedLOD)
+    public ModelPreview(MeshRenderContext renderContext, StaticMesh m, int selectedLOD,
+        IReadOnlyList<IEntry> materialOverrides = null)
     {
         if (selectedLOD < 0)  //PREVIEW BUG WORKAROUND
             return;
@@ -525,15 +532,31 @@ public class ModelPreview<TVertex> : IDisposable where TVertex : IVertexBase
         // STEP 3: SECTIONS
 
         var sections = new List<ModelPreviewSection>();
-        foreach (var element in lodModel.Elements)
+        for (int materialSlot = 0; materialSlot < lodModel.Elements.Length; materialSlot++)
         {
+            StaticMeshElement element = lodModel.Elements[materialSlot];
             if (element.Material is 0 || !m.Export.FileRef.IsEntry(element.Material))
             {
-                sections.Add(new ModelPreviewSection(null, element.FirstIndex, element.NumTriangles));
+                IEntry overrideEntry = materialOverrides is not null && materialSlot < materialOverrides.Count
+                    ? materialOverrides[materialSlot]
+                    : null;
+                MaterialSlots.Add(overrideEntry);
+                if (overrideEntry is not null && AddMaterial(renderContext, overrideEntry))
+                {
+                    sections.Add(new ModelPreviewSection(overrideEntry.InstancedFullPath, element.FirstIndex, element.NumTriangles));
+                }
+                else
+                {
+                    sections.Add(new ModelPreviewSection(null, element.FirstIndex, element.NumTriangles));
+                }
             }
             else
             {
-                IEntry matEntry = m.Export.FileRef.GetEntry(element.Material);
+                IEntry matEntry = materialOverrides is not null && materialSlot < materialOverrides.Count
+                                  && materialOverrides[materialSlot] is { } overrideEntry
+                    ? overrideEntry
+                    : m.Export.FileRef.GetEntry(element.Material);
+                MaterialSlots.Add(matEntry);
                 if (AddMaterial(renderContext, matEntry))
                 {
                     sections.Add(new ModelPreviewSection(matEntry.InstancedFullPath, element.FirstIndex, element.NumTriangles));
@@ -550,7 +573,8 @@ public class ModelPreview<TVertex> : IDisposable where TVertex : IVertexBase
     /// <summary>
     /// Creates a preview of the given <see cref="SkeletalMesh"/>.
     /// </summary>
-    public ModelPreview(MeshRenderContext renderContext, SkeletalMesh m)
+    public ModelPreview(MeshRenderContext renderContext, SkeletalMesh m,
+        IReadOnlyList<IEntry> materialOverrides = null)
     {
         var mats = new string[m.Materials.Length];
         // STEP 1: MATERIALS
@@ -559,10 +583,25 @@ public class ModelPreview<TVertex> : IDisposable where TVertex : IVertexBase
             int materialUIndex = m.Materials[i];
             if (materialUIndex is not 0)
             {
-                IEntry matEntry = m.Export.FileRef.GetEntry(materialUIndex);
+                IEntry matEntry = materialOverrides is not null && i < materialOverrides.Count
+                                  && materialOverrides[i] is { } overrideEntry
+                    ? overrideEntry
+                    : m.Export.FileRef.GetEntry(materialUIndex);
+                MaterialSlots.Add(matEntry);
                 if (AddMaterial(renderContext, matEntry))
                 {
                     mats[i] = matEntry.InstancedFullPath;
+                }
+            }
+            else
+            {
+                IEntry overrideEntry = materialOverrides is not null && i < materialOverrides.Count
+                    ? materialOverrides[i]
+                    : null;
+                MaterialSlots.Add(overrideEntry);
+                if (overrideEntry is not null && AddMaterial(renderContext, overrideEntry))
+                {
+                    mats[i] = overrideEntry.InstancedFullPath;
                 }
             }
         }
@@ -600,7 +639,7 @@ public class ModelPreview<TVertex> : IDisposable where TVertex : IVertexBase
             var sections = new List<ModelPreviewSection>();
             foreach (var section in lodmodel.Sections)
             {
-                if (section.MaterialIndex < Materials.Count)
+                if (section.MaterialIndex < mats.Length)
                 {
                     sections.Add(new ModelPreviewSection(mats[section.MaterialIndex], section.BaseIndex, (uint)section.NumTriangles));
                 }

@@ -456,6 +456,27 @@ public abstract class MeshComponentProxy : PrimitiveComponentProxy
         ? GameShaderMesh.Materials.Keys
         : Mesh?.Materials.Keys ?? Enumerable.Empty<string>();
 
+    public IEnumerable<(IEntry SourceEntry, MaterialRenderProxy RenderProxy, IReadOnlyList<int> SlotIndexes)> GetLiveMaterialBindings()
+    {
+        if (GameShaderMesh is null)
+        {
+            yield break;
+        }
+
+        foreach (IGrouping<string, (IEntry Entry, int Slot)> group in GameShaderMesh.MaterialSlots
+                     .Select((entry, slot) => (Entry: entry, Slot: slot))
+                     .Where(item => item.Entry is not null)
+                     .GroupBy(item => item.Entry.InstancedFullPath, StringComparer.OrdinalIgnoreCase))
+        {
+            IEntry sourceEntry = group.First().Entry;
+            if (GameShaderMesh.Materials.TryGetValue(sourceEntry.InstancedFullPath, out ModelPreviewMaterial<LEVertex> previewMaterial)
+                && previewMaterial is LEShaderPreviewMaterial shaderMaterial)
+            {
+                yield return (sourceEntry, shaderMaterial.RenderProxy, group.Select(item => item.Slot).ToArray());
+            }
+        }
+    }
+
     protected override void Dispose(bool disposing)
     {
         Mesh?.Dispose();
@@ -475,16 +496,15 @@ public class StaticMeshComponentProxy : MeshComponentProxy
             StaticMesh stm = meshExport.GetBinaryData<StaticMesh>();
             if (stm.LODModels.Length > LOD)
             {
-                stm.SetMaterials(MaterialOverrides, true);
-                MaterialOverrides.Clear();
                 if (UseGameShaderPreview(context) && meshExport.Game.IsMEGame())
                 {
-                    GameShaderMesh = new ModelPreview<LEVertex>(context, stm, LOD);
+                    GameShaderMesh = new ModelPreview<LEVertex>(context, stm, LOD, MaterialOverrides);
                 }
                 else
                 {
-                    Mesh = new ModelPreview<WorldVertex>(context, stm, LOD);
+                    Mesh = new ModelPreview<WorldVertex>(context, stm, LOD, MaterialOverrides);
                 }
+                MaterialOverrides.Clear();
                 MeshIFP = meshExport.InstancedFullPath;
                 if (MeshIFP.Contains("Volumetric", StringComparison.OrdinalIgnoreCase)
                     || MaterialNames.Any(matIFP => matIFP.Contains("VolumeLight", StringComparison.OrdinalIgnoreCase)))
@@ -576,16 +596,15 @@ public class SkeletalMeshComponentProxy : MeshComponentProxy
             skeletalMesh = skm;
             if (skm.LODModels.Length > LOD)
             {
-                skm.SetMaterials(MaterialOverrides, true);
-                MaterialOverrides.Clear();
                 if (UseGameShaderPreview(context) && meshExport.Game.IsMEGame())
                 {
-                    GameShaderMesh = new ModelPreview<LEVertex>(context, skm);
+                    GameShaderMesh = new ModelPreview<LEVertex>(context, skm, MaterialOverrides);
                 }
                 else
                 {
-                    Mesh = new ModelPreview<WorldVertex>(context, skm);
+                    Mesh = new ModelPreview<WorldVertex>(context, skm, MaterialOverrides);
                 }
+                MaterialOverrides.Clear();
                 MeshIFP = meshExport.InstancedFullPath;
                 skinnedMeshRenderer = new SkinnedMeshRenderer();
                 skinnedMeshRenderer.BuildFromSkeletalMesh(meshExport.FileRef.Game, skm.LODModels[LOD]);
