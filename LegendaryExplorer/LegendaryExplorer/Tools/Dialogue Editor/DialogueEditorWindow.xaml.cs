@@ -623,6 +623,7 @@ namespace LegendaryExplorer.DialogueEditor
         private BlockingCollection<ConversationExtended> BackQueue = new();
         private BackgroundWorker BackParser = new();
         private int suppressedPackageUpdateDepth;
+        private readonly bool persistUserState;
         private int suppressInterpDataInterpreterUnloadDepth;
         private DispatcherOperation pendingInterpDataEditorsReload;
         private SequenceEditorWPF embeddedSequenceEditor;
@@ -903,8 +904,13 @@ namespace LegendaryExplorer.DialogueEditor
         #endregion Declarations
 
         #region Startup/Exit
-        public DialogueEditorWindow() : base("Dialogue Editor")
+        public DialogueEditorWindow() : this(true)
         {
+        }
+
+        internal DialogueEditorWindow(bool initializeUserState) : base("Dialogue Editor")
+        {
+            persistUserState = initializeUserState;
             LoadCommands();
             StatusText = "Select package file to load";
             SelectedSpeaker = new SpeakerExtended(-3, "None");
@@ -914,7 +920,10 @@ namespace LegendaryExplorer.DialogueEditor
             SelectBottomViewportTab("Speaker Details", ConversationDetailsTab);
             InlineLinkEditor_DataGrid.ItemsSource = InlineLinkEditorLinks;
             InlineLinkEditor_DataGrid.MouseDoubleClick += InlineLinkEditor_DataGrid_MouseDoubleClick;
-            RecentsController.InitRecentControl(Toolname, Recents_MenuItem, LoadFile);
+            if (initializeUserState)
+            {
+                RecentsController.InitRecentControl(Toolname, Recents_MenuItem, LoadFile);
+            }
 
             // Apply theme-appropriate colors based on current dark mode setting
             ApplyThemeDefaults();
@@ -939,7 +948,8 @@ namespace LegendaryExplorer.DialogueEditor
             RebuildSpeakerNodeFilterMenu();
             // Detect if theme changed while editor was closed so we skip stale saved colors
             bool themeChangedWhileEditorClosed = false;
-            if (File.Exists(OptionsPath)) //Handle options
+            bool hasSavedOptions = initializeUserState && File.Exists(OptionsPath);
+            if (hasSavedOptions) //Handle options
             {
                 var options = JsonConvert.DeserializeObject<Dictionary<string, object>>(File.ReadAllText(OptionsPath));
                 if (options.TryGetValue("LastThemeDarkMode", out var lastThemeValue)
@@ -1088,7 +1098,7 @@ namespace LegendaryExplorer.DialogueEditor
             // If theme changed while editor was closed, or no options file exists,
             // sync color pickers to the current (correct) static color values.
             // ApplyThemeDefaults() + ThemeManager already set the right static colors.
-            if (themeChangedWhileEditorClosed || !File.Exists(OptionsPath))
+            if (themeChangedWhileEditorClosed || !hasSavedOptions)
             {
                 Menu_LineSize_10.IsChecked = true;
                 ClrPcker_Line.SelectedColor = DBox.lineColor.ToWPFColor();
@@ -1380,45 +1390,47 @@ namespace LegendaryExplorer.DialogueEditor
             if (e.Cancel)
                 return;
 
-            if (AutoSaveView_MenuItem.IsChecked)
-                saveView();
+            if (persistUserState)
+            {
+                if (AutoSaveView_MenuItem.IsChecked)
+                    saveView();
 
-            var options = new Dictionary<string, object>
-            {
-                {"LineTextSize", DBox.LineScaleOption},
-                {"LineTextColor", ColorTranslator.ToHtml(DBox.lineColor)},
-                {"LinkTextColor", ColorTranslator.ToHtml(DObj.linkTextColor)},
-                {"ParaIntRColor", ColorTranslator.ToHtml(DObj.paraintColor)},
-                {"RenIntRColor", ColorTranslator.ToHtml(DObj.renintColor)},
-                {"AgreeRColor", ColorTranslator.ToHtml(DObj.agreeColor)},
-                {"DisagreeRColor", ColorTranslator.ToHtml(DObj.disagreeColor)},
-                {"FriendlyRColor", ColorTranslator.ToHtml(DObj.friendlyColor)},
-                {"HostileRColor", ColorTranslator.ToHtml(DObj.hostileColor)},
-                {"ConnectionColor", ColorTranslator.ToHtml(DObj.connectionColor)},
-                {"EntryColor", ColorTranslator.ToHtml(DObj.entryColor)},
-                {"ReplyColor", ColorTranslator.ToHtml(DObj.replyColor)},
-                {"EntryPenColor", ColorTranslator.ToHtml(DObj.entryPenColor)},
-                {"ReplyPenColor", ColorTranslator.ToHtml(DObj.replyPenColor)},
-                {"GraphBackgroundColor", ColorTranslator.ToHtml(DObj.graphBackgroundColor)},
-                {"BoxColor", ColorTranslator.ToHtml(DObj.boxColor)},
-                {"BoxTextColor", ColorTranslator.ToHtml(DObj.boxTextColor)},
-                {"LinesAtTop", DBox.LinesAtTop},
-                {"OutputNumbers", DObj.OutputNumbers},
-                {"HideUnrelatedConnectionsOnSelection", hideUnrelatedConnectionsOnSelection},
-                {"AutoSaveMode", (int)SaveViewMode},
-                {"LayoutMode", (int)LayoutMode},
-                {"RowSpace", RowSpace},
-                {"ColumnSpace", ColumnSpace},
-                {"WaterfallSpace", WaterfallSpace},
-                {"LastThemeDarkMode", Settings.Global_DarkMode_Enabled},
-            };
-            await Task.Run(() =>
-            {
-                if (!Directory.Exists(DialogueEditorDataFolder))
-                    Directory.CreateDirectory(DialogueEditorDataFolder);
-                File.WriteAllText(OptionsPath, JsonConvert.SerializeObject(options));
+                var options = new Dictionary<string, object>
+                {
+                    {"LineTextSize", DBox.LineScaleOption},
+                    {"LineTextColor", ColorTranslator.ToHtml(DBox.lineColor)},
+                    {"LinkTextColor", ColorTranslator.ToHtml(DObj.linkTextColor)},
+                    {"ParaIntRColor", ColorTranslator.ToHtml(DObj.paraintColor)},
+                    {"RenIntRColor", ColorTranslator.ToHtml(DObj.renintColor)},
+                    {"AgreeRColor", ColorTranslator.ToHtml(DObj.agreeColor)},
+                    {"DisagreeRColor", ColorTranslator.ToHtml(DObj.disagreeColor)},
+                    {"FriendlyRColor", ColorTranslator.ToHtml(DObj.friendlyColor)},
+                    {"HostileRColor", ColorTranslator.ToHtml(DObj.hostileColor)},
+                    {"ConnectionColor", ColorTranslator.ToHtml(DObj.connectionColor)},
+                    {"EntryColor", ColorTranslator.ToHtml(DObj.entryColor)},
+                    {"ReplyColor", ColorTranslator.ToHtml(DObj.replyColor)},
+                    {"EntryPenColor", ColorTranslator.ToHtml(DObj.entryPenColor)},
+                    {"ReplyPenColor", ColorTranslator.ToHtml(DObj.replyPenColor)},
+                    {"GraphBackgroundColor", ColorTranslator.ToHtml(DObj.graphBackgroundColor)},
+                    {"BoxColor", ColorTranslator.ToHtml(DObj.boxColor)},
+                    {"BoxTextColor", ColorTranslator.ToHtml(DObj.boxTextColor)},
+                    {"LinesAtTop", DBox.LinesAtTop},
+                    {"OutputNumbers", DObj.OutputNumbers},
+                    {"HideUnrelatedConnectionsOnSelection", hideUnrelatedConnectionsOnSelection},
+                    {"AutoSaveMode", (int)SaveViewMode},
+                    {"LayoutMode", (int)LayoutMode},
+                    {"RowSpace", RowSpace},
+                    {"ColumnSpace", ColumnSpace},
+                    {"WaterfallSpace", WaterfallSpace},
+                    {"LastThemeDarkMode", Settings.Global_DarkMode_Enabled},
+                };
+                await Task.Run(() =>
+                {
+                    if (!Directory.Exists(DialogueEditorDataFolder))
+                        Directory.CreateDirectory(DialogueEditorDataFolder);
+                    File.WriteAllText(OptionsPath, JsonConvert.SerializeObject(options));
+                });
             }
-            );
 
             // Unsubscribe from theme changes to prevent memory leaks
             ThemeManager.ThemeChanged -= OnThemeChanged;
@@ -8611,9 +8623,6 @@ namespace LegendaryExplorer.DialogueEditor
             SelectedDialogueNode = obj.Node;
             SelectedDialogueNode.PropertyChanged += NodePropertyChanged;
             MirrorDialogueNode = new DialogueNodeExtended(SelectedDialogueNode);  //Setup gate
-
-            Node_Combo_Spkr.SelectedIndex = SelectedDialogueNode.SpeakerIndex + 2;
-            Node_Combo_Lstnr.SelectedIndex = SelectedDialogueNode.Listener + 3;
 
             Node_Combo_Spkr.IsEnabled = true; //Enable/disable boxes
 

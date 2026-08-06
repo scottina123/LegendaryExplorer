@@ -19,7 +19,7 @@
         Loaded="DialogueEditorWPF_Loaded"
         Closing="DialogueEditorWPF_Closing"
         PreviewMouseDown="DialogueEditorWPF_PreviewMouseDown"
-        Icon="pack://application:,,,/Tools/Icons/16x16/DialogueEditor_Icon_16.ico"
+        Icon="pack://application:,,,/LegendaryExplorer;component/Tools/Icons/16x16/DialogueEditor_Icon_16.ico"
         Title="Dialogue Editor" Height="750" Width="1300" MinWidth="900" MinHeight="300"
         DataContext="{Binding RelativeSource={RelativeSource Self}}">
     <Window.Resources>
