@@ -679,6 +679,24 @@ internal static class StageBoneOriginResolver
 
         IMEPackage package = interpData.FileRef;
         string sequencePropertyName = package.Game.IsGame1() ? "m_pEvtSystemSeq" : "MatineeSequence";
+        HashSet<int> owningSequenceUIndexes = [];
+        for (IEntry current = interpData.Parent; current is ExportEntry currentExport; current = current.Parent)
+        {
+            if (currentExport.ClassName == "Sequence")
+            {
+                owningSequenceUIndexes.Add(currentExport.UIndex);
+            }
+        }
+
+        foreach (ExportEntry conversation in package.Exports.Where(export => export.ClassName == "BioConversation"))
+        {
+            IEntry linkedSequence = conversation.GetProperty<ObjectProperty>(sequencePropertyName)?.ResolveToEntry(package);
+            if (linkedSequence is not null && owningSequenceUIndexes.Contains(linkedSequence.UIndex))
+            {
+                return conversation.ObjectName.Instanced;
+            }
+        }
+
         foreach (ExportEntry interpAction in package.Exports.Where(export => export.ClassName == "SeqAct_Interp"))
         {
             VarLinkInfo dataLink = KismetHelper.GetVariableLinks(interpAction.GetProperties(), package)

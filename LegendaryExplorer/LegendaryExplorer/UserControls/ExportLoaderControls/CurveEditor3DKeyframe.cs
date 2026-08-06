@@ -99,6 +99,54 @@ public sealed class CurveEditor3DKeyframe : NotifyPropertyChangedBase, IHitProxy
         set => SetRotation(rotation with { Z = value }, nameof(Yaw), commit: true);
     }
 
+    public Vector3 DisplayLocation
+    {
+        get => DisplayOrigin.Location;
+        set => SetDisplayLocation(value, commit: true);
+    }
+
+    public Vector3 DisplayRotation
+    {
+        get => DisplayOrigin.Rotation;
+        set => SetDisplayRotation(value, commit: true);
+    }
+
+    public float DisplayX
+    {
+        get => DisplayLocation.X;
+        set => SetDisplayLocation(DisplayLocation with { X = value }, commit: true);
+    }
+
+    public float DisplayY
+    {
+        get => DisplayLocation.Y;
+        set => SetDisplayLocation(DisplayLocation with { Y = value }, commit: true);
+    }
+
+    public float DisplayZ
+    {
+        get => DisplayLocation.Z;
+        set => SetDisplayLocation(DisplayLocation with { Z = value }, commit: true);
+    }
+
+    public float DisplayRoll
+    {
+        get => DisplayRotation.X;
+        set => SetDisplayRotation(DisplayRotation with { X = value }, commit: true);
+    }
+
+    public float DisplayPitch
+    {
+        get => DisplayRotation.Y;
+        set => SetDisplayRotation(DisplayRotation with { Y = value }, commit: true);
+    }
+
+    public float DisplayYaw
+    {
+        get => DisplayRotation.Z;
+        set => SetDisplayRotation(DisplayRotation with { Z = value }, commit: true);
+    }
+
     public EInterpCurveMode PosTrackInterpMode
     {
         get => posTrackInterpMode;
@@ -152,26 +200,13 @@ public sealed class CurveEditor3DKeyframe : NotifyPropertyChangedBase, IHitProxy
     Vector3 ITransformWidgetTarget.Location
     {
         get => DisplayOrigin.Location;
-        set
-        {
-            Vector3 localLocation = coordinateBasis is { } basis
-                ? InterpTrackMoveTransform.ToLocal(basis, new CameraOrigin(value, DisplayOrigin.Rotation)).Location
-                : value;
-            SetLocation(localLocation, null, commit: true);
-        }
+        set => SetDisplayLocation(value, commit: true);
     }
 
     Rotator ITransformWidgetTarget.Rotation
     {
         get => Rotator.FromDegreesVector(DisplayOrigin.Rotation);
-        set
-        {
-            Vector3 worldRotation = value.GetDegreesVector();
-            Vector3 localRotation = coordinateBasis is { } basis
-                ? InterpTrackMoveTransform.ToLocal(basis, new CameraOrigin(DisplayOrigin.Location, worldRotation)).Rotation
-                : worldRotation;
-            SetRotation(localRotation, null, commit: true);
-        }
+        set => SetDisplayRotation(value.GetDegreesVector(), commit: true);
     }
 
     public float DrawScale { get; set; } = 1f;
@@ -189,7 +224,24 @@ public sealed class CurveEditor3DKeyframe : NotifyPropertyChangedBase, IHitProxy
     internal void SetCoordinateBasis(CameraOrigin? basis)
     {
         coordinateBasis = basis;
+        NotifyDisplayTransformChanged();
         OnPropertyChanged(nameof(LocalToWorld));
+    }
+
+    internal void SetDisplayLocation(Vector3 value, bool commit)
+    {
+        Vector3 localLocation = coordinateBasis is { } basis
+            ? InterpTrackMoveTransform.ToLocal(basis, new CameraOrigin(value, DisplayRotation)).Location
+            : value;
+        SetLocation(localLocation, null, commit);
+    }
+
+    internal void SetDisplayRotation(Vector3 value, bool commit)
+    {
+        Vector3 localRotation = coordinateBasis is { } basis
+            ? InterpTrackMoveTransform.ToLocal(basis, new CameraOrigin(DisplayLocation, value)).Rotation
+            : value;
+        SetRotation(localRotation, null, commit);
     }
 
     internal void SetLocation(Vector3 value, bool commit)
@@ -217,6 +269,8 @@ public sealed class CurveEditor3DKeyframe : NotifyPropertyChangedBase, IHitProxy
             OnPropertyChanged(nameof(Z));
         }
         OnPropertyChanged(nameof(Location));
+        OnPropertyChanged(nameof(LocalToWorld));
+        NotifyDisplayLocationChanged();
         if (commit)
         {
             changed(this, null);
@@ -242,9 +296,33 @@ public sealed class CurveEditor3DKeyframe : NotifyPropertyChangedBase, IHitProxy
             OnPropertyChanged(nameof(Yaw));
         }
         OnPropertyChanged(nameof(Rotation));
+        OnPropertyChanged(nameof(LocalToWorld));
+        NotifyDisplayRotationChanged();
         if (commit)
         {
             changed(this, null);
         }
+    }
+
+    private void NotifyDisplayTransformChanged()
+    {
+        NotifyDisplayLocationChanged();
+        NotifyDisplayRotationChanged();
+    }
+
+    private void NotifyDisplayLocationChanged()
+    {
+        OnPropertyChanged(nameof(DisplayLocation));
+        OnPropertyChanged(nameof(DisplayX));
+        OnPropertyChanged(nameof(DisplayY));
+        OnPropertyChanged(nameof(DisplayZ));
+    }
+
+    private void NotifyDisplayRotationChanged()
+    {
+        OnPropertyChanged(nameof(DisplayRotation));
+        OnPropertyChanged(nameof(DisplayRoll));
+        OnPropertyChanged(nameof(DisplayPitch));
+        OnPropertyChanged(nameof(DisplayYaw));
     }
 }

@@ -492,13 +492,13 @@
                                 <xctk:SingleUpDown x:Name="LocationIncrementUpDown" Grid.Column="1" Value="1" Increment="0.1" Minimum="0.0001"
                                                    ToolTip="Amount added or subtracted by the location arrow buttons"/>
                                 <TextBlock Grid.Row="1" Text="X" Foreground="#FFFF0000" VerticalAlignment="Center"/>
-                                <xctk:SingleUpDown Grid.Row="1" Grid.Column="1" Value="{Binding X, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=150, ValidatesOnExceptions=True}"
+                                <xctk:SingleUpDown Grid.Row="1" Grid.Column="1" Value="{Binding DisplayX, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=150, ValidatesOnExceptions=True}"
                                                    Increment="{Binding Value, ElementName=LocationIncrementUpDown}"/>
                                 <TextBlock Grid.Row="2" Text="Y" Foreground="#FF00FF00" VerticalAlignment="Center"/>
-                                <xctk:SingleUpDown Grid.Row="2" Grid.Column="1" Value="{Binding Y, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=150, ValidatesOnExceptions=True}"
+                                <xctk:SingleUpDown Grid.Row="2" Grid.Column="1" Value="{Binding DisplayY, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=150, ValidatesOnExceptions=True}"
                                                    Increment="{Binding Value, ElementName=LocationIncrementUpDown}"/>
                                 <TextBlock Grid.Row="3" Text="Z" Foreground="#FF0000FF" VerticalAlignment="Center"/>
-                                <xctk:SingleUpDown Grid.Row="3" Grid.Column="1" Value="{Binding Z, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=150, ValidatesOnExceptions=True}"
+                                <xctk:SingleUpDown Grid.Row="3" Grid.Column="1" Value="{Binding DisplayZ, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=150, ValidatesOnExceptions=True}"
                                                    Increment="{Binding Value, ElementName=LocationIncrementUpDown}"/>
                                 <StackPanel Grid.Row="4" Grid.ColumnSpan="2" Margin="0,8,0,0">
                                     <UniformGrid Rows="1" Columns="5" Margin="0,0,0,4">
@@ -546,13 +546,13 @@
                                 <xctk:SingleUpDown x:Name="RotationIncrementUpDown" Grid.Column="1" Value="1" Increment="0.1" Minimum="0.0001"
                                                    ToolTip="Amount added or subtracted by the rotation arrow buttons"/>
                                 <TextBlock Grid.Row="1" Text="X (Roll)" Foreground="#FFFF0000" VerticalAlignment="Center"/>
-                                <xctk:SingleUpDown Grid.Row="1" Grid.Column="1" Value="{Binding Roll, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=150, ValidatesOnExceptions=True}"
+                                <xctk:SingleUpDown Grid.Row="1" Grid.Column="1" Value="{Binding DisplayRoll, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=150, ValidatesOnExceptions=True}"
                                                    Increment="{Binding Value, ElementName=RotationIncrementUpDown}"/>
                                 <TextBlock Grid.Row="2" Text="Y (Pitch)" Foreground="#FF00FF00" VerticalAlignment="Center"/>
-                                <xctk:SingleUpDown Grid.Row="2" Grid.Column="1" Value="{Binding Pitch, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=150, ValidatesOnExceptions=True}"
+                                <xctk:SingleUpDown Grid.Row="2" Grid.Column="1" Value="{Binding DisplayPitch, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=150, ValidatesOnExceptions=True}"
                                                    Increment="{Binding Value, ElementName=RotationIncrementUpDown}"/>
                                 <TextBlock Grid.Row="3" Text="Z (Yaw)" Foreground="#FF0000FF" VerticalAlignment="Center"/>
-                                <xctk:SingleUpDown Grid.Row="3" Grid.Column="1" Value="{Binding Yaw, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=150, ValidatesOnExceptions=True}"
+                                <xctk:SingleUpDown Grid.Row="3" Grid.Column="1" Value="{Binding DisplayYaw, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=150, ValidatesOnExceptions=True}"
                                                    Increment="{Binding Value, ElementName=RotationIncrementUpDown}"/>
                                 <StackPanel Grid.Row="4" Grid.ColumnSpan="2" Margin="0,8,0,0">
                                     <UniformGrid Rows="1" Columns="4" Margin="0,0,0,4">

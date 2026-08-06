@@ -4730,6 +4730,7 @@ namespace LegendaryExplorer.DialogueEditor
             }
             else if (InterpDataEditorTabControl.SelectedItem == InterpData_CurveEditor3DTab)
             {
+                InterpData_CurveEditor3D.ConfigureTrackAnchorConversation(SelectedConv);
                 InterpData_CurveEditor3D.LoadExport(export);
             }
             else

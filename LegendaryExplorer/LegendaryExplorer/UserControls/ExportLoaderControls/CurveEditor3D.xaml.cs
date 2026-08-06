@@ -449,6 +449,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     private readonly PackageCache previewActorGesturePackageCache = new();
     private IMEPackage dialoguePreviewFaceFxPackage;
     private StageConversationContext trackAnchorStageContext;
+    private ConversationExtended trackAnchorConversation;
     private readonly Dictionary<PreviewActorConfiguration, FaceFXAnimSet> dialoguePreviewFaceFxAnimSets = [];
     private readonly ObservableCollection<GestureTrackOption> availableGestureTracks = [];
     private readonly Dictionary<PreviewActorConfiguration, GestureTrackOption> previewActorGestureAssignments = [];
@@ -1190,8 +1191,14 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             return;
         }
 
-        StageBoneOriginResolver.TrySelectContext(Window.GetWindow(this), trackMove.FileRef, trackMove, null,
+        StageBoneOriginResolver.TrySelectContext(Window.GetWindow(this), trackMove.FileRef, trackMove,
+            trackAnchorConversation,
             out trackAnchorStageContext, out _);
+    }
+
+    internal void ConfigureTrackAnchorConversation(ConversationExtended conversation)
+    {
+        trackAnchorConversation = conversation;
     }
 
     private static bool HasAnchorObjectTrack(ExportEntry trackMove)
@@ -2768,11 +2775,11 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             locationScrubAxes.Contains('Z') ? delta : 0);
         if (LocationScrubAllKeysCheckBox.IsChecked == true)
         {
-            ActiveModel.TranslateAllKeyframes(locationDelta);
+            ActiveModel.TranslateAllKeyframesInDisplaySpace(locationDelta);
         }
         else
         {
-            SelectedKeyframe.Location += locationDelta;
+            SelectedKeyframe.DisplayLocation += locationDelta;
             SnapCameraToKey(SelectedKeyframe, focusViewport: false);
         }
     }
@@ -2832,11 +2839,11 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             rotationDialAxis is nameof(CurveEditor3DKeyframe.Yaw) or "All" ? rotationDelta : 0);
         if (RotationDialAllKeysCheckBox.IsChecked == true)
         {
-            ActiveModel.RotateAllKeyframes(rotationDeltaVector);
+            ActiveModel.RotateAllKeyframesInDisplaySpace(rotationDeltaVector);
         }
         else
         {
-            SelectedKeyframe.SetRotation(SelectedKeyframe.Rotation + rotationDeltaVector, commit: true);
+            SelectedKeyframe.SetDisplayRotation(SelectedKeyframe.DisplayRotation + rotationDeltaVector, commit: true);
         }
 
         UpdateRotationDialIndicator();
@@ -2870,10 +2877,10 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
         indicatorTransform.Angle = rotationDialAxis switch
         {
-            nameof(CurveEditor3DKeyframe.Pitch) => SelectedKeyframe?.Pitch ?? 0,
-            nameof(CurveEditor3DKeyframe.Roll) => SelectedKeyframe?.Roll ?? 0,
-            nameof(CurveEditor3DKeyframe.Yaw) => SelectedKeyframe?.Yaw ?? 0,
-            "All" => SelectedKeyframe?.Pitch ?? 0,
+            nameof(CurveEditor3DKeyframe.Pitch) => SelectedKeyframe?.DisplayPitch ?? 0,
+            nameof(CurveEditor3DKeyframe.Roll) => SelectedKeyframe?.DisplayRoll ?? 0,
+            nameof(CurveEditor3DKeyframe.Yaw) => SelectedKeyframe?.DisplayYaw ?? 0,
+            "All" => SelectedKeyframe?.DisplayPitch ?? 0,
             _ => 0
         };
     }

@@ -218,6 +218,24 @@ public sealed class CurveEditor3DModel
         Changed?.Invoke();
     }
 
+    public void TranslateAllKeyframesInDisplaySpace(Vector3 delta)
+    {
+        if (Export is null || delta == Vector3.Zero)
+        {
+            return;
+        }
+
+        foreach (CurveEditor3DKeyframe keyframe in Keyframes)
+        {
+            keyframe.SetDisplayLocation(keyframe.DisplayLocation + delta, commit: false);
+            keyframe.PositionPoint.OutVal = keyframe.Location;
+        }
+
+        PositionTrack.ReCalculateTangents();
+        WriteTracks();
+        Changed?.Invoke();
+    }
+
     public void RotateAllKeyframes(Vector3 delta)
     {
         if (Export is null || delta == Vector3.Zero)
@@ -235,6 +253,29 @@ public sealed class CurveEditor3DModel
                 rotation,
                 keyframe.EulerTrackInterpMode);
             rotationPoint.OutVal = rotation;
+        }
+
+        RotationTrack.ReCalculateTangents();
+        WriteTracks();
+        Changed?.Invoke();
+    }
+
+    public void RotateAllKeyframesInDisplaySpace(Vector3 delta)
+    {
+        if (Export is null || delta == Vector3.Zero)
+        {
+            return;
+        }
+
+        foreach (CurveEditor3DKeyframe keyframe in Keyframes)
+        {
+            keyframe.SetDisplayRotation(keyframe.DisplayRotation + delta, commit: false);
+            InterpCurvePoint<Vector3> rotationPoint = keyframe.RotationPoint ??= AddPoint(
+                RotationTrack,
+                keyframe.Time,
+                keyframe.Rotation,
+                keyframe.EulerTrackInterpMode);
+            rotationPoint.OutVal = keyframe.Rotation;
         }
 
         RotationTrack.ReCalculateTangents();
