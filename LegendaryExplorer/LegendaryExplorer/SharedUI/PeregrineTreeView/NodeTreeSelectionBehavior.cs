@@ -14,6 +14,8 @@ namespace LegendaryExplorer.SharedUI.PeregrineTreeView
 {
     public class NodeTreeSelectionBehavior : Behavior<TreeView>
     {
+        private static readonly TimeSpan DeferredSelectionDelay = TimeSpan.FromMilliseconds(100);
+
         private int _selectionVersion;
 
         public TreeViewEntry SelectedItem
@@ -37,6 +39,9 @@ namespace LegendaryExplorer.SharedUI.PeregrineTreeView
 
         private static void OnSelectedItemChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
         {
+            var behavior = (NodeTreeSelectionBehavior)d;
+            int selectionVersion = ++behavior._selectionVersion;
+
             if (e.OldValue is TreeViewEntry oldNode)
             {
                 oldNode.IsSelected = false;
@@ -44,12 +49,13 @@ namespace LegendaryExplorer.SharedUI.PeregrineTreeView
 
             var newNode = e.NewValue as TreeViewEntry;
             if (newNode == null) return;
-            
-            
-            var behavior = (NodeTreeSelectionBehavior)d;
-            var tree = behavior.AssociatedObject;
 
-            int selectionVersion = ++behavior._selectionVersion;
+            var tree = behavior.AssociatedObject;
+            if (ReferenceEquals(tree.SelectedItem, newNode))
+            {
+                return;
+            }
+
             if (behavior.DeferContainerRealization)
             {
                 _ = behavior.SelectItemDeferredAsync(newNode, selectionVersion);
@@ -93,6 +99,14 @@ namespace LegendaryExplorer.SharedUI.PeregrineTreeView
 
         private async Task SelectItemDeferredAsync(TreeViewEntry newNode, int selectionVersion)
         {
+            // Do not force the virtualizing panel to realize every intermediate
+            // result when the user is searching or navigating rapidly.
+            await Task.Delay(DeferredSelectionDelay);
+            if (selectionVersion != _selectionVersion || _isCleanedUp)
+            {
+                return;
+            }
+
             var nodeDynasty = new List<TreeViewEntry> { newNode };
             for (TreeViewEntry parent = newNode.Parent; parent is not null; parent = parent.Parent)
             {
@@ -111,6 +125,20 @@ namespace LegendaryExplorer.SharedUI.PeregrineTreeView
                 if (ReferenceEquals(node, newNode))
                 {
                     newParent.IsSelected = true;
+                    newParent.BringIntoView();
+
+                    // BringIndexIntoView can initially realize only the requested
+                    // row, leaving a blank viewport. Let WPF process the scroll,
+                    // then measure the surrounding virtualized rows once.
+                    await System.Windows.Threading.Dispatcher.Yield(DispatcherPriority.Background);
+                    if (selectionVersion != _selectionVersion
+                        || _isCleanedUp
+                        || !ReferenceEquals(newParent.DataContext, newNode))
+                    {
+                        return;
+                    }
+
+                    AssociatedObject.UpdateLayout();
                     newParent.BringIntoView();
                     return;
                 }

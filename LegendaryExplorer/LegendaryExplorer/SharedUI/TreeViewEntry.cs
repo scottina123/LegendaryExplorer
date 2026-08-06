@@ -145,11 +145,23 @@ namespace LegendaryExplorer.SharedUI
         /// <returns></returns>
         public List<TreeViewEntry> FlattenTree()
         {
-            var nodes = new List<TreeViewEntry> { this };
-            foreach (TreeViewEntry tve in Sublinks)
+            var nodes = new List<TreeViewEntry>();
+            var nodesToVisit = new Stack<TreeViewEntry>();
+            nodesToVisit.Push(this);
+
+            while (nodesToVisit.Count > 0)
             {
-                nodes.AddRange(tve.FlattenTree());
+                TreeViewEntry node = nodesToVisit.Pop();
+                nodes.Add(node);
+
+                // Push in reverse so the resulting depth-first order remains the
+                // same as the order exposed by Sublinks.
+                for (int i = node.Sublinks.Count - 1; i >= 0; i--)
+                {
+                    nodesToVisit.Push(node.Sublinks[i]);
+                }
             }
+
             return nodes;
         }
 

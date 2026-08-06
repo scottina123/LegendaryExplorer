@@ -86,9 +86,12 @@ namespace LegendaryExplorer.Tools.PackageEditor
 
         private readonly record struct TextureTfcMoveResult(int MovedCount, int FailedCount, List<EntryStringPair> Messages);
 
-        private const int SearchBatchSize = 2048;
+        private const int SearchBatchSize = 512;
+
+        private static readonly TimeSpan SelectionPreviewDelay = TimeSpan.FromMilliseconds(100);
 
         private CancellationTokenSource _entrySearchCancellationTokenSource;
+        private readonly DispatcherTimer _selectionPreviewTimer;
 
         private TextBox _inlineObjectNameEditor;
         private IntegerUpDown _inlineObjectNameIndexEditor;
@@ -206,6 +209,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
             {
                 if (SetProperty(ref _currentView, value))
                 {
+                    CancelEntrySearch();
                     switch (value)
                     {
                         case CurrentViewMode.Names:
@@ -358,8 +362,6 @@ namespace LegendaryExplorer.Tools.PackageEditor
 
         private int QueuedGotoNumber;
         private bool IsLoadingFile;
-        private bool _delaySelectionPreview;
-        private DispatcherOperation _pendingPreviewOperation;
         private bool _pendingPreviewIsRefresh;
         private DispatcherOperation _pendingStringRefNavigationOperation;
         private CancellationTokenSource _stringRefSearchCancellationTokenSource;
@@ -2184,23 +2186,37 @@ namespace LegendaryExplorer.Tools.PackageEditor
             Search_TextBox.SelectAll();
         }
 
-        private CancellationTokenSource BeginEntrySearch()
+        private CancellationTokenSource TryBeginEntrySearch()
         {
-            _entrySearchCancellationTokenSource?.Cancel();
-            _entrySearchCancellationTokenSource?.Dispose();
+            if (_entrySearchCancellationTokenSource is not null)
+            {
+                return null;
+            }
+
             _entrySearchCancellationTokenSource = new CancellationTokenSource();
             return _entrySearchCancellationTokenSource;
+        }
+
+        private void CancelEntrySearch()
+        {
+            CancellationTokenSource searchCancellation = _entrySearchCancellationTokenSource;
+            _entrySearchCancellationTokenSource = null;
+            searchCancellation?.Cancel();
         }
 
         private async Task<bool> ContinueEntrySearchAsync(
             int numSearched,
             IMEPackage package,
             CurrentViewMode view,
-            CancellationToken cancellationToken)
+            CancellationToken cancellationToken,
+            TreeViewEntry treeRoot = null)
         {
             bool canContinue = !cancellationToken.IsCancellationRequested
                                && ReferenceEquals(Pcc, package)
-                               && CurrentView == view;
+                               && CurrentView == view
+                               && (treeRoot is null
+                                   || AllTreeViewNodesX.Count > 0
+                                   && ReferenceEquals(AllTreeViewNodesX[0], treeRoot));
             if (!canContinue || numSearched == 0 || numSearched % SearchBatchSize != 0)
             {
                 return canContinue;
@@ -2209,18 +2225,135 @@ namespace LegendaryExplorer.Tools.PackageEditor
             await Dispatcher.Yield(DispatcherPriority.Background);
             return !cancellationToken.IsCancellationRequested
                    && ReferenceEquals(Pcc, package)
-                   && CurrentView == view;
+                   && CurrentView == view
+                   && (treeRoot is null
+                       || AllTreeViewNodesX.Count > 0
+                       && ReferenceEquals(AllTreeViewNodesX[0], treeRoot));
         }
 
         private void EndEntrySearch(CancellationTokenSource searchCancellation)
         {
-            if (!ReferenceEquals(_entrySearchCancellationTokenSource, searchCancellation))
+            if (ReferenceEquals(_entrySearchCancellationTokenSource, searchCancellation))
             {
-                return;
+                _entrySearchCancellationTokenSource = null;
             }
 
-            _entrySearchCancellationTokenSource = null;
             searchCancellation.Dispose();
+        }
+
+        private static IEnumerable<TreeViewEntry> EnumerateTreeNodes(TreeViewEntry root, bool reverse)
+        {
+            if (!reverse)
+            {
+                yield return root;
+                var forwardFrames = new Stack<(TreeViewEntry Node, int NextChildIndex)>();
+                forwardFrames.Push((root, 0));
+                while (forwardFrames.Count > 0)
+                {
+                    (TreeViewEntry node, int nextChildIndex) = forwardFrames.Pop();
+                    if (nextChildIndex >= node.Sublinks.Count)
+                    {
+                        continue;
+                    }
+
+                    forwardFrames.Push((node, nextChildIndex + 1));
+                    TreeViewEntry child = node.Sublinks[nextChildIndex];
+                    yield return child;
+                    forwardFrames.Push((child, 0));
+                }
+
+                yield break;
+            }
+
+            // Reverse of the normal pre-order traversal: visit each subtree from
+            // right to left, then visit its parent.
+            var reverseFrames = new Stack<(TreeViewEntry Node, int NextChildIndex)>();
+            reverseFrames.Push((root, root.Sublinks.Count - 1));
+            while (reverseFrames.Count > 0)
+            {
+                (TreeViewEntry node, int nextChildIndex) = reverseFrames.Pop();
+                if (nextChildIndex >= node.Sublinks.Count)
+                {
+                    reverseFrames.Push((node, node.Sublinks.Count - 1));
+                    continue;
+                }
+
+                if (nextChildIndex >= 0)
+                {
+                    reverseFrames.Push((node, nextChildIndex - 1));
+                    TreeViewEntry child = node.Sublinks[nextChildIndex];
+                    reverseFrames.Push((child, child.Sublinks.Count - 1));
+                    continue;
+                }
+
+                yield return node;
+            }
+        }
+
+        private async Task<TreeViewEntry> FindNextTreeNodeAsync(
+            TreeViewEntry selectedNode,
+            bool reverse,
+            Func<TreeViewEntry, bool> isMatch,
+            IMEPackage package,
+            CurrentViewMode view,
+            CancellationToken cancellationToken)
+        {
+            if (AllTreeViewNodesX.Count == 0)
+            {
+                return null;
+            }
+
+            TreeViewEntry treeRoot = AllTreeViewNodesX[0];
+            TreeViewEntry searchAnchor = selectedNode ?? treeRoot;
+            bool foundAnchor = false;
+            int numSearched = 0;
+
+            foreach (TreeViewEntry node in EnumerateTreeNodes(treeRoot, reverse))
+            {
+                if (!await ContinueEntrySearchAsync(numSearched++, package, view, cancellationToken, treeRoot))
+                {
+                    return null;
+                }
+
+                if (!foundAnchor)
+                {
+                    foundAnchor = ReferenceEquals(node, searchAnchor);
+                    continue;
+                }
+
+                if (isMatch(node))
+                {
+                    return node;
+                }
+            }
+
+            // Wrap around and search the portion before the original selection.
+            // If the selected node disappeared while searching, this also gives us
+            // one complete pass over the current tree.
+            foreach (TreeViewEntry node in EnumerateTreeNodes(treeRoot, reverse))
+            {
+                if (foundAnchor && ReferenceEquals(node, searchAnchor))
+                {
+                    break;
+                }
+
+                if (!await ContinueEntrySearchAsync(numSearched++, package, view, cancellationToken, treeRoot))
+                {
+                    return null;
+                }
+
+                if (isMatch(node))
+                {
+                    return node;
+                }
+            }
+
+            if (foundAnchor && isMatch(searchAnchor))
+            {
+                return searchAnchor;
+            }
+
+            return null;
         }
 
         private void FocusGoto()
@@ -5406,50 +5539,47 @@ namespace LegendaryExplorer.Tools.PackageEditor
                 return;
             }
 
-            RunWithDeferredPreview(() =>
+            switch (CurrentView)
             {
-                switch (CurrentView)
-                {
-                    case CurrentViewMode.Tree:
-                        if (AllTreeViewNodesX.Count == 0)
+                case CurrentViewMode.Tree:
+                    if (AllTreeViewNodesX.Count == 0)
+                    {
+                        return;
+                    }
+
+                    int primaryUIndex = movedEntries[0].UIndex;
+                    GoToNumber(primaryUIndex);
+                    Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, new Action(() =>
+                    {
+                        var movedNodes = AllTreeViewNodesX[0]
+                            .FlattenTree()
+                            .Where(node => node.Entry is not null && movedEntries.Any(entry => ReferenceEquals(entry, node.Entry)))
+                            .ToList();
+                        if (movedNodes.Count == 0)
                         {
                             return;
                         }
 
-                        int primaryUIndex = movedEntries[0].UIndex;
-                        GoToNumber(primaryUIndex);
-                        Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, new Action(() =>
-                        {
-                            var movedNodes = AllTreeViewNodesX[0]
-                                .FlattenTree()
-                                .Where(node => node.Entry is not null && movedEntries.Any(entry => ReferenceEquals(entry, node.Entry)))
-                                .ToList();
-                            if (movedNodes.Count == 0)
-                            {
-                                return;
-                            }
+                        SetTreeMultiSelection(movedNodes, movedNodes[0], updatePrimarySelection: true);
+                        EnsureTreeNodeVisible(movedNodes[0]);
+                        LeftSide_TreeView.Focus();
+                        Keyboard.Focus(LeftSide_TreeView);
+                    }));
+                    break;
+                case CurrentViewMode.Imports:
+                case CurrentViewMode.Exports:
+                    LeftSide_ListView.SelectedItems.Clear();
+                    foreach (IEntry entry in movedEntries)
+                    {
+                        LeftSide_ListView.SelectedItems.Add(entry);
+                    }
 
-                            SetTreeMultiSelection(movedNodes, movedNodes[0], updatePrimarySelection: true);
-                            EnsureTreeNodeVisible(movedNodes[0]);
-                            LeftSide_TreeView.Focus();
-                            Keyboard.Focus(LeftSide_TreeView);
-                        }));
-                        break;
-                    case CurrentViewMode.Imports:
-                    case CurrentViewMode.Exports:
-                        LeftSide_ListView.SelectedItems.Clear();
-                        foreach (IEntry entry in movedEntries)
-                        {
-                            LeftSide_ListView.SelectedItems.Add(entry);
-                        }
-
-                        LeftSide_ListView.SelectedItem = movedEntries[0];
-                        LeftSide_ListView.Focus();
-                        Keyboard.Focus(LeftSide_ListView);
-                        LeftSide_ListView.ScrollIntoView(movedEntries[0]);
-                        break;
-                }
-            });
+                    LeftSide_ListView.SelectedItem = movedEntries[0];
+                    LeftSide_ListView.Focus();
+                    Keyboard.Focus(LeftSide_ListView);
+                    LeftSide_ListView.ScrollIntoView(movedEntries[0]);
+                    break;
+            }
         }
 
         private void EnsureTreeNodeVisible(TreeViewEntry node)
@@ -5604,6 +5734,11 @@ namespace LegendaryExplorer.Tools.PackageEditor
             LoadCommands();
 
             InitializeComponent();
+            _selectionPreviewTimer = new DispatcherTimer(DispatcherPriority.Background)
+            {
+                Interval = SelectionPreviewDelay
+            };
+            _selectionPreviewTimer.Tick += SelectionPreviewTimer_Tick;
             DataContext = this;
             ((FrameworkElement)Resources["EntryContextMenu"]).DataContext = this;
 
@@ -5752,6 +5887,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
         /// <param name="loadingSize"></param>
         private void preloadPackage(string loadingName, long loadingSize)
         {
+            CancelEntrySearch();
             CancelStringRefSearch();
             CancelPendingStringRefNavigation();
             CloseStringRefSearchResults();
@@ -6356,17 +6492,12 @@ namespace LegendaryExplorer.Tools.PackageEditor
                 return;
             }
 
-            var visibleNodes = GetVisibleTreeNodes();
-            if (visibleNodes.Count == 0)
-            {
-                return;
-            }
-
             bool ctrlPressed = Keyboard.Modifiers.HasFlag(ModifierKeys.Control);
             bool shiftPressed = Keyboard.Modifiers.HasFlag(ModifierKeys.Shift);
 
             if (shiftPressed && _treeSelectionAnchor is not null)
             {
+                var visibleNodes = GetVisibleTreeNodes();
                 int anchorIndex = visibleNodes.IndexOf(_treeSelectionAnchor);
                 int clickedIndex = visibleNodes.IndexOf(clickedNode);
                 if (anchorIndex >= 0 && clickedIndex >= 0)
@@ -6573,56 +6704,28 @@ namespace LegendaryExplorer.Tools.PackageEditor
 
         private void ApplySelectionPreview()
         {
-            if (_delaySelectionPreview)
-            {
-                RequestPreview();
-                return;
-            }
-
-            CancelPendingPreview();
-            Preview();
+            RequestPreview();
         }
 
         private void RequestPreview(bool isRefresh = false)
         {
             _pendingPreviewIsRefresh |= isRefresh;
+            _selectionPreviewTimer.Stop();
+            _selectionPreviewTimer.Start();
+        }
 
-            if (_pendingPreviewOperation?.Status == DispatcherOperationStatus.Pending)
-            {
-                _pendingPreviewOperation.Abort();
-            }
-
-            _pendingPreviewOperation = Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
-            {
-                _pendingPreviewOperation = null;
-                bool refresh = _pendingPreviewIsRefresh;
-                _pendingPreviewIsRefresh = false;
-                Preview(refresh);
-            }));
+        private void SelectionPreviewTimer_Tick(object sender, EventArgs e)
+        {
+            _selectionPreviewTimer.Stop();
+            bool refresh = _pendingPreviewIsRefresh;
+            _pendingPreviewIsRefresh = false;
+            Preview(refresh);
         }
 
         private void CancelPendingPreview()
         {
+            _selectionPreviewTimer.Stop();
             _pendingPreviewIsRefresh = false;
-            if (_pendingPreviewOperation?.Status == DispatcherOperationStatus.Pending)
-            {
-                _pendingPreviewOperation.Abort();
-            }
-
-            _pendingPreviewOperation = null;
-        }
-
-        private void RunWithDeferredPreview(Action action)
-        {
-            _delaySelectionPreview = true;
-            try
-            {
-                action();
-            }
-            finally
-            {
-                _delaySelectionPreview = false;
-            }
         }
 
         private void ClearPreviewPane()
@@ -7424,7 +7527,12 @@ namespace LegendaryExplorer.Tools.PackageEditor
 
             IMEPackage package = Pcc;
             CurrentViewMode view = CurrentView;
-            CancellationTokenSource searchCancellation = BeginEntrySearch();
+            CancellationTokenSource searchCancellation = TryBeginEntrySearch();
+            if (searchCancellation is null)
+            {
+                return;
+            }
+
             CancellationToken cancellationToken = searchCancellation.Token;
 
             void LoopFunc(ref int integer, int count)
@@ -7452,32 +7560,21 @@ namespace LegendaryExplorer.Tools.PackageEditor
             {
                 if (view == CurrentViewMode.Tree)
                 {
-                    TreeViewEntry selectedNode = (TreeViewEntry)LeftSide_TreeView.SelectedItem;
-                    List<TreeViewEntry> items = AllTreeViewNodesX[0].FlattenTree();
-                    int pos = selectedNode == null ? 0 : items.IndexOf(selectedNode);
-                    LoopFunc(ref pos, items.Count);
-                    for (int i = pos, numSearched = 0;
-                        numSearched < items.Count;
-                        LoopFunc(ref i, items.Count), numSearched++)
+                    TreeViewEntry selectedNode = SelectedItem;
+                    TreeViewEntry matchingNode = await FindNextTreeNodeAsync(
+                        selectedNode,
+                        reverse,
+                        node => node.Entry?.ClassName == searchClass,
+                        package,
+                        view,
+                        cancellationToken);
+                    if (matchingNode is not null)
                     {
-                        if (!await ContinueEntrySearchAsync(numSearched, package, view, cancellationToken))
-                        {
-                            return;
-                        }
-
-                        TreeViewEntry node = items[i];
-                        if (node.Entry == null)
-                        {
-                            continue;
-                        }
-
-                        if (node.Entry.ClassName.Equals(searchClass))
-                        {
-                            node.IsProgramaticallySelecting = true;
-                            RunWithDeferredPreview(() => SelectedItem = node);
-                            return;
-                        }
+                        matchingNode.IsProgramaticallySelecting = true;
+                        SelectedItem = matchingNode;
                     }
+
+                    return;
                 }
                 else
                 {
@@ -7496,7 +7593,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
 
                             if (package.Exports[i].ClassName == searchClass)
                             {
-                                RunWithDeferredPreview(() => LeftSide_ListView.SelectedIndex = i);
+                                LeftSide_ListView.SelectedIndex = i;
                                 return;
                             }
                         }
@@ -7514,7 +7611,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
 
                             if (package.Imports[i].ClassName == searchClass)
                             {
-                                RunWithDeferredPreview(() => LeftSide_ListView.SelectedIndex = i);
+                                LeftSide_ListView.SelectedIndex = i;
                                 return;
                             }
                         }
@@ -7624,7 +7721,12 @@ namespace LegendaryExplorer.Tools.PackageEditor
             CurrentViewMode view = CurrentView;
             int start = LeftSide_ListView.SelectedIndex;
             string searchTerm = Search_TextBox.Text.Trim();
-            CancellationTokenSource searchCancellation = BeginEntrySearch();
+            CancellationTokenSource searchCancellation = TryBeginEntrySearch();
+            if (searchCancellation is null)
+            {
+                return;
+            }
+
             CancellationToken cancellationToken = searchCancellation.Token;
 
             void LoopFunc(ref int integer, int count)
@@ -7688,7 +7790,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
 
                         if (package.Imports[i].ObjectName.Name.Contains(searchTerm, StringComparison.InvariantCultureIgnoreCase))
                         {
-                            RunWithDeferredPreview(() => LeftSide_ListView.SelectedIndex = i);
+                            LeftSide_ListView.SelectedIndex = i;
                             return;
                         }
                     }
@@ -7710,7 +7812,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
 
                         if (package.Exports[i].ObjectName.Name.Contains(searchTerm, StringComparison.InvariantCultureIgnoreCase))
                         {
-                            RunWithDeferredPreview(() => LeftSide_ListView.SelectedIndex = i);
+                            LeftSide_ListView.SelectedIndex = i;
                             return;
                         }
                     }
@@ -7718,31 +7820,23 @@ namespace LegendaryExplorer.Tools.PackageEditor
 
                 if (view == CurrentViewMode.Tree && AllTreeViewNodesX.Count > 0)
                 {
-                    TreeViewEntry selectedNode = (TreeViewEntry)LeftSide_TreeView.SelectedItem;
-                    List<TreeViewEntry> items = AllTreeViewNodesX[0].FlattenTree();
-                    int pos = selectedNode == null ? 0 : items.IndexOf(selectedNode);
-                    LoopFunc(ref pos, items.Count);
-
-                    for (int numSearched = 0; numSearched < items.Count; LoopFunc(ref pos, items.Count), numSearched++)
+                    TreeViewEntry selectedNode = SelectedItem;
+                    TreeViewEntry matchingNode = await FindNextTreeNodeAsync(
+                        selectedNode,
+                        reverseSearch,
+                        node => node.Entry?.ObjectName.Instanced.Contains(
+                            searchTerm,
+                            StringComparison.InvariantCultureIgnoreCase) == true,
+                        package,
+                        view,
+                        cancellationToken);
+                    if (matchingNode is not null)
                     {
-                        if (!await ContinueEntrySearchAsync(numSearched, package, view, cancellationToken))
-                        {
-                            return;
-                        }
-
-                        TreeViewEntry node = items[pos];
-                        if (node.Entry == null)
-                        {
-                            continue;
-                        }
-
-                        if (node.Entry.ObjectName.Instanced.Contains(searchTerm, StringComparison.InvariantCultureIgnoreCase))
-                        {
-                            node.IsProgramaticallySelecting = true;
-                            RunWithDeferredPreview(() => SelectedItem = node);
-                            return;
-                        }
+                        matchingNode.IsProgramaticallySelecting = true;
+                        SelectedItem = matchingNode;
                     }
+
+                    return;
                 }
             }
             finally
@@ -7799,9 +7893,11 @@ namespace LegendaryExplorer.Tools.PackageEditor
         {
             if (!e.Cancel)
             {
+                CancelEntrySearch();
                 CancelStringRefSearch();
                 CancelPendingStringRefNavigation();
                 CloseStringRefSearchResults();
+                CancelPendingPreview();
                 SoundTab_Soundpanel.FreeAudioResources();
                 foreach (ExportLoaderControl el in ExportLoaders.Keys)
                 {
