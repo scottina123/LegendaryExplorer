@@ -88,6 +88,52 @@ public partial class MeshRenderer
     private readonly Dictionary<int, MorphTexturePreviewResolution> MorphTexturePreviewCache = [];
     private DispatcherTimer MorphMaterialPreviewTimer;
 
+    private string _morphSaveHelpText =
+        "Override writes this export. Make new clones the morph and its material override, then writes the edited values to the clone.";
+    public string MorphSaveHelpText
+    {
+        get => _morphSaveHelpText;
+        set => SetProperty(ref _morphSaveHelpText, value);
+    }
+
+    private string _morphOverrideLabel = "Override morph";
+    public string MorphOverrideLabel
+    {
+        get => _morphOverrideLabel;
+        set => SetProperty(ref _morphOverrideLabel, value);
+    }
+
+    private string _morphSaveAsNewLabel = "Make new morph…";
+    public string MorphSaveAsNewLabel
+    {
+        get => _morphSaveAsNewLabel;
+        set => SetProperty(ref _morphSaveAsNewLabel, value);
+    }
+
+    /// <summary>
+    /// Optional host callbacks used when Morph Editor is embedded in another export editor.
+    /// The creator returns the export that receives the edited morph values; the completion
+    /// callback can link that export to its host and return a contextual status message.
+    /// </summary>
+    public Func<string, (bool IsValid, string Error)> MorphNewNameValidatorOverride { get; set; }
+    public Func<ExportEntry, string, ExportEntry> MorphSaveTargetCreatorOverride { get; set; }
+    public Func<ExportEntry, string> MorphOverrideCompletedOverride { get; set; }
+    public Func<ExportEntry, string> MorphSaveAsNewCompletedOverride { get; set; }
+
+    private bool _allowMorphOverride = true;
+    public bool AllowMorphOverride
+    {
+        get => _allowMorphOverride;
+        set
+        {
+            if (SetProperty(ref _allowMorphOverride, value))
+            {
+                OnPropertyChanged(nameof(CanOverrideMorph));
+            }
+        }
+    }
+    public bool CanOverrideMorph => HasMorphEditorData && AllowMorphOverride;
+
     public ObservableCollectionExtended<MorphFeatureEditorItem> MorphFeatureItems { get; } = [];
     public IEnumerable<MorphFeatureEditorItem> MatchedMorphFeatureItems =>
         MorphFeatureItems.Where(feature => feature.HasMorphTarget && MatchesMorphEditorSearch(feature.Name)).ToArray();
@@ -160,7 +206,13 @@ public partial class MeshRenderer
     public bool HasMorphEditorData
     {
         get => _hasMorphEditorData;
-        private set => SetProperty(ref _hasMorphEditorData, value);
+        private set
+        {
+            if (SetProperty(ref _hasMorphEditorData, value))
+            {
+                OnPropertyChanged(nameof(CanOverrideMorph));
+            }
+        }
     }
 
     private bool _hasUnsavedMorphChanges;
@@ -1054,7 +1106,7 @@ public partial class MeshRenderer
 
     private void OverrideMorph_Click(object sender, RoutedEventArgs e)
     {
-        if (CurrentLoadedExport is null || !HasMorphEditorData)
+        if (CurrentLoadedExport is null || !CanOverrideMorph)
         {
             return;
         }
@@ -1062,7 +1114,8 @@ public partial class MeshRenderer
         {
             WriteMorphEditorValues(CurrentLoadedExport);
             HasUnsavedMorphChanges = false;
-            MorphEditorStatus = $"Overwrote {CurrentLoadedExport.InstancedFullPath}.";
+            MorphEditorStatus = MorphOverrideCompletedOverride?.Invoke(CurrentLoadedExport)
+                                ?? $"Overwrote {CurrentLoadedExport.InstancedFullPath}.";
         }
         catch (Exception exception)
         {
@@ -1078,19 +1131,22 @@ public partial class MeshRenderer
         }
         string suggestedName = $"{CurrentLoadedExport.ObjectName.Name}_Edited";
         string name = PromptDialog.Prompt(this, "Name the new BioMorphFace:", "Make new morph", suggestedName,
-            selectText: true, validator: ValidateNewMorphName);
+            selectText: true, validator: MorphNewNameValidatorOverride ?? ValidateNewMorphName);
         if (name is null)
         {
             return;
         }
         try
         {
-            ExportEntry clone = EntryCloner.CloneTree(CurrentLoadedExport);
-            clone.ObjectName = new NameReference(name.Trim());
+            string trimmedName = name.Trim();
+            ExportEntry clone = MorphSaveTargetCreatorOverride?.Invoke(CurrentLoadedExport, trimmedName)
+                                ?? EntryCloner.CloneTree(CurrentLoadedExport);
+            clone.ObjectName = new NameReference(trimmedName);
             EnsureNewMorphHasIndependentMaterialOverride(clone);
             WriteMorphEditorValues(clone);
             HasUnsavedMorphChanges = false;
-            MorphEditorStatus = $"Created export {clone.UIndex}: {clone.InstancedFullPath}.";
+            MorphEditorStatus = MorphSaveAsNewCompletedOverride?.Invoke(clone)
+                                ?? $"Created export {clone.UIndex}: {clone.InstancedFullPath}.";
         }
         catch (Exception exception)
         {

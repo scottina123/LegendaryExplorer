@@ -43,6 +43,9 @@
                 <CheckBox Content="Collision" IsChecked="{Binding ShowCollision}" VerticalAlignment="Center" Margin="4,0"/>
                 <Button Content="Snap to actor" Click="SnapCameraToActor_Click" Padding="6,2" Margin="4,0"
                         ToolTip="Recenter the camera in front of the actor"/>
+                <Button Content="{Binding MorphModeButtonLabel}" Click="ToggleMorphEditor_Click" Padding="6,2" Margin="4,0"
+                        Visibility="{Binding HasActorMorph, Converter={StaticResource BoolToVisibilityConverter}}"
+                        ToolTip="Edit the actor's BioMorphFace in a head-focused viewport"/>
                 <Separator Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" Margin="2,0"/>
                 <xctk:DropDownButton Content="View options" Margin="0,3">
                     <xctk:DropDownButton.DropDownContent>
@@ -65,6 +68,8 @@
                 <Separator Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" Margin="2,0"/>
                 <TextBlock Text="WASD move • right-drag look • Q/E up/down" VerticalAlignment="Center" Opacity="0.7" Margin="4,0"/>
             </ToolBar>
+            <Grid>
+                <DockPanel Visibility="{Binding IsMorphEditing, Converter={StaticResource BoolToVisibilityConverter}, ConverterParameter=Not}">
             <Border DockPanel.Dock="Right" Width="380" Padding="7" BorderThickness="1,0,0,0"
                     BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"
                     Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"
@@ -218,6 +223,10 @@
             <scene3D:SceneRenderControl x:Name="SceneViewer"
                                         PreviewMouseDown="SceneViewer_PreviewMouseDownForMaterialPicking"
                                         PreviewMouseUp="SceneViewer_PreviewMouseUpForMaterialPicking"/>
+                </DockPanel>
+                <ContentControl x:Name="ActorMorphEditorHost"
+                                Visibility="{Binding IsMorphEditing, Converter={StaticResource BoolToVisibilityConverter}}"/>
+            </Grid>
         </DockPanel>
     </xctk:BusyIndicator>
 </exportLoaderControls:ExportLoaderControl>

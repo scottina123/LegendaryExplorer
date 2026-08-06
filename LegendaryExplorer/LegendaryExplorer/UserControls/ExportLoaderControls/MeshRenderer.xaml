@@ -141,12 +141,12 @@
                         </StackPanel>
 
                         <StackPanel DockPanel.Dock="Bottom" Margin="0,7,0,0">
-                            <TextBlock Text="Override writes this export. Make new clones the morph and its material override, then writes the edited values to the clone."
+                            <TextBlock Text="{Binding MorphSaveHelpText}"
                                        TextWrapping="Wrap" Opacity="0.72" Margin="0,0,0,5"/>
                             <UniformGrid Rows="1" Columns="2">
-                                <Button Content="Override morph" Padding="6,4" Margin="0,0,3,0"
-                                        IsEnabled="{Binding HasMorphEditorData}" Click="OverrideMorph_Click"/>
-                                <Button Content="Make new morph…" Padding="6,4" Margin="3,0,0,0"
+                                <Button Content="{Binding MorphOverrideLabel}" Padding="6,4" Margin="0,0,3,0"
+                                        IsEnabled="{Binding CanOverrideMorph}" Click="OverrideMorph_Click"/>
+                                <Button Content="{Binding MorphSaveAsNewLabel}" Padding="6,4" Margin="3,0,0,0"
                                         IsEnabled="{Binding HasMorphEditorData}" Click="SaveMorphAsNew_Click"/>
                             </UniformGrid>
                         </StackPanel>

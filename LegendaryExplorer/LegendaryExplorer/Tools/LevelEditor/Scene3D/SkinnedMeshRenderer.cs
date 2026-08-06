@@ -28,6 +28,7 @@ public class SkinnedMeshRenderer
     public bool NeedsUpdate { get; set; }
     private MEGame _game;
     private SkinVertex[] _skinVertices;
+    private Vector3[] _sourceBindPositions;
 
     /// <summary>
     /// Builds per-vertex skinning data from a SkeletalMesh LOD model.
@@ -75,6 +76,7 @@ public class SkinnedMeshRenderer
                 ResolveInfluences(ref skinVert, gv.InfluenceBones, gv.InfluenceWeights, chunk, boneMap);
             }
         }
+        _sourceBindPositions = _skinVertices.Select(vertex => vertex.BindPosition).ToArray();
     }
 
     private static SkelMeshChunk FindChunkForVertex(StaticLODModel lodModel, int vertexIndex)
@@ -227,7 +229,7 @@ public class SkinnedMeshRenderer
     public void ApplyMorph(MeshBone[] bindSkeleton,
         LegendaryExplorerCore.Unreal.Classes.BonePosition[] finalSkeleton, Vector3[] morphPositions)
     {
-        if (_skinVertices is null || bindSkeleton is null)
+        if (_skinVertices is null || _sourceBindPositions is null || bindSkeleton is null)
         {
             return;
         }
@@ -241,7 +243,7 @@ public class SkinnedMeshRenderer
             ref SkinVertex vertex = ref _skinVertices[i];
             Vector3 position = morphPositions is not null && i < morphPositions.Length
                 ? morphPositions[i]
-                : vertex.BindPosition;
+                : _sourceBindPositions[i];
             vertex.BindPosition = LegendaryExplorerCore.Unreal.Classes.BioMorphFace.SkinPreviewPosition(
                 position, skinningMatrices,
                 vertex.Bone0, vertex.Weight0,
@@ -266,6 +268,7 @@ public class SkinnedMeshRenderer
         for (int i = 0; i < _skinVertices.Length && i < positions.Length; i++)
         {
             _skinVertices[i].BindPosition = positions[i];
+            _sourceBindPositions[i] = positions[i];
         }
     }
 }

@@ -43,6 +43,8 @@ public partial class ActorPreviewControl : ExportLoaderControl, IActorEditorCont
     private TabControl _hostingTabControl;
     private TabItem _hostingTabItem;
     private System.Windows.Point? _materialPickMouseDownPosition;
+    private BioMorphFaceEditor _actorMorphEditor;
+    private ExportEntry _actorMorphExport;
     private readonly Dictionary<LiveMaterialEditorMaterial, ActorMaterialBinding> _materialBindings = [];
 
     private sealed class ActorMaterialBinding
@@ -106,6 +108,28 @@ public partial class ActorPreviewControl : ExportLoaderControl, IActorEditorCont
     public bool CanCreateParentMic => IsEditingParentMaterial && GetSelectedParentMaterial() is not null;
     public bool CanRandomizeSelectedLiveMaterialTints =>
         SelectedLiveMaterial?.VectorParameters.Any(IsTintParameter) == true;
+
+    private bool _hasActorMorph;
+    public bool HasActorMorph
+    {
+        get => _hasActorMorph;
+        private set => SetProperty(ref _hasActorMorph, value);
+    }
+
+    private bool _isMorphEditing;
+    public bool IsMorphEditing
+    {
+        get => _isMorphEditing;
+        private set
+        {
+            if (SetProperty(ref _isMorphEditing, value))
+            {
+                OnPropertyChanged(nameof(MorphModeButtonLabel));
+            }
+        }
+    }
+
+    public string MorphModeButtonLabel => IsMorphEditing ? "Back to actor" : "Edit morph";
 
     public string SelectedMaterialTargetPath
     {
@@ -205,7 +229,12 @@ public partial class ActorPreviewControl : ExportLoaderControl, IActorEditorCont
     private void SceneViewer_Loaded(object sender, RoutedEventArgs e)
     {
         AttachHostingTabSelectionHandler();
-        SceneViewer.SetShouldRender(_hostingTabItem is null || ReferenceEquals(_hostingTabControl?.SelectedItem, _hostingTabItem));
+        bool shouldRender = _hostingTabItem is null || ReferenceEquals(_hostingTabControl?.SelectedItem, _hostingTabItem);
+        SceneViewer.SetShouldRender(shouldRender && !IsMorphEditing);
+        if (shouldRender && IsMorphEditing)
+        {
+            _actorMorphEditor?.StartRendering();
+        }
         SceneViewer.MarkRenderDirty();
 
         if (!_controlIsLoaded)
@@ -223,6 +252,7 @@ public partial class ActorPreviewControl : ExportLoaderControl, IActorEditorCont
 
     private void SceneViewer_Unloaded(object sender, RoutedEventArgs e)
     {
+        _actorMorphEditor?.StopRendering();
         DetachHostingTabSelectionHandler();
     }
 
@@ -231,8 +261,19 @@ public partial class ActorPreviewControl : ExportLoaderControl, IActorEditorCont
         if (sender is TabControl tabControl && ReferenceEquals(e.Source, tabControl) && _hostingTabItem is not null)
         {
             bool shouldRender = ReferenceEquals(tabControl.SelectedItem, _hostingTabItem);
-            SceneViewer?.SetShouldRender(shouldRender);
-            if (shouldRender)
+            SceneViewer?.SetShouldRender(shouldRender && !IsMorphEditing);
+            if (IsMorphEditing)
+            {
+                if (shouldRender)
+                {
+                    _actorMorphEditor?.StartRendering();
+                }
+                else
+                {
+                    _actorMorphEditor?.StopRendering();
+                }
+            }
+            else if (shouldRender)
             {
                 SceneViewer?.MarkRenderDirty();
             }
@@ -307,7 +348,9 @@ public partial class ActorPreviewControl : ExportLoaderControl, IActorEditorCont
     }
 
     public override bool CanParse(ExportEntry exportEntry) =>
-        !exportEntry.IsDefaultObject && ActorProxy.CanCreate(exportEntry);
+        !exportEntry.IsDefaultObject
+        && (ActorProxy.CanCreate(exportEntry)
+            || exportEntry.IsA("SkeletalMeshComponent") && HasMorphHeadProperty(exportEntry));
 
     public override void LoadExport(ExportEntry exportEntry)
     {
@@ -337,7 +380,9 @@ public partial class ActorPreviewControl : ExportLoaderControl, IActorEditorCont
             }
 
             BusyText = "Loading actor";
-            _actor = ActorProxy.Create(this, requestedExport);
+            _actor = ActorProxy.CanCreate(requestedExport)
+                ? ActorProxy.Create(this, requestedExport)
+                : new SkeletalMeshComponentPreviewActorProxy(this, requestedExport);
             if (_actor is null)
             {
                 RenderContext.ErrorText = $"Could not create preview object of type: '{requestedExport.ClassName}'";
@@ -351,6 +396,7 @@ public partial class ActorPreviewControl : ExportLoaderControl, IActorEditorCont
                 FrameFirstPersonCamera(bounds);
                 ConfigureDepthRangeForBounds(bounds);
                 PopulateLiveMaterialEditor();
+                UpdateActorMorphAvailability();
                 SceneViewer.MarkRenderDirty();
             }
         }
@@ -385,7 +431,10 @@ public partial class ActorPreviewControl : ExportLoaderControl, IActorEditorCont
     // Nothing in the preview cares about the real world position, so shift the actor to the origin.
     private static void RecenterActorAtOrigin(ActorProxy actor)
     {
-        ApplyWorldOffset(actor, actor.LocalToWorld.Translation);
+        Vector3 offset = actor is SkeletalMeshComponentPreviewActorProxy
+            ? actor.GetBounds().Origin
+            : actor.LocalToWorld.Translation;
+        ApplyWorldOffset(actor, offset);
     }
 
     private static void ApplyWorldOffset(ActorProxy actor, Vector3 offset)
@@ -434,6 +483,221 @@ public partial class ActorPreviewControl : ExportLoaderControl, IActorEditorCont
         SceneViewer.SetShouldRender(true);
         SceneViewer.MarkRenderDirty();
         SceneViewer.Focus();
+    }
+
+    private static bool HasMorphHeadProperty(ExportEntry export)
+    {
+        if (export.GetProperty<ObjectProperty>("MorphHead") is { Value: not 0 })
+        {
+            return true;
+        }
+        try
+        {
+            return export.GetCondensedProperties().GetProp<ObjectProperty>("MorphHead") is { Value: not 0 };
+        }
+        catch
+        {
+            // CanParse should not hide the other export tabs when inherited-property resolution fails.
+            return false;
+        }
+    }
+
+    private void UpdateActorMorphAvailability()
+    {
+        _actorMorphExport = ResolveMorphHead(CurrentLoadedExport);
+        if (_actorMorphExport is null && _actor is not null)
+        {
+            _actorMorphExport = EnumerateActors(_actor)
+                .SelectMany(actor => actor.Components.OfType<SkeletalMeshComponentProxy>())
+                .Select(component => ResolveMorphHead(component.Export))
+                .FirstOrDefault(morph => morph is not null);
+        }
+
+        HasActorMorph = _actorMorphExport is not null;
+        if (!HasActorMorph)
+        {
+            CloseActorMorphEditor(unload: true);
+        }
+    }
+
+    private ExportEntry ResolveMorphHead(ExportEntry owner)
+    {
+        if (owner is null)
+        {
+            return null;
+        }
+
+        ObjectProperty morphProperty = owner.GetCondensedProperties().GetProp<ObjectProperty>("MorphHead")
+                                       ?? owner.GetProperty<ObjectProperty>("MorphHead");
+        return morphProperty?.ResolveToExport(owner.FileRef, RenderContext.PackageCache);
+    }
+
+    private void ToggleMorphEditor_Click(object sender, RoutedEventArgs e)
+    {
+        if (IsMorphEditing)
+        {
+            CloseActorMorphEditor(unload: false);
+        }
+        else
+        {
+            OpenActorMorphEditor();
+        }
+    }
+
+    private void OpenActorMorphEditor()
+    {
+        if (_actorMorphExport is null || CurrentLoadedExport is null)
+        {
+            return;
+        }
+
+        _actorMorphEditor ??= new BioMorphFaceEditor();
+        ConfigureActorMorphEditorSaveTargets();
+        ActorMorphEditorHost.Content = _actorMorphEditor;
+        SceneViewer.SetShouldRender(false);
+        IsMorphEditing = true;
+        if (!ReferenceEquals(_actorMorphEditor.CurrentLoadedExport, _actorMorphExport))
+        {
+            _actorMorphEditor.LoadExport(_actorMorphExport);
+        }
+        Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(_actorMorphEditor.StartRendering));
+    }
+
+    private void CloseActorMorphEditor(bool unload)
+    {
+        if (_actorMorphEditor is not null)
+        {
+            _actorMorphEditor.StopRendering();
+            if (unload)
+            {
+                _actorMorphEditor.UnloadExport();
+                ActorMorphEditorHost.Content = null;
+            }
+        }
+        IsMorphEditing = false;
+        if (SceneViewer is not null && IsLoaded)
+        {
+            SceneViewer.SetShouldRender(true);
+            SceneViewer.MarkRenderDirty();
+        }
+    }
+
+    private void ConfigureActorMorphEditorSaveTargets()
+    {
+        string targetType = CurrentLoadedExport.IsA("SkeletalMeshComponent")
+            ? "skeletal mesh component"
+            : CurrentLoadedExport.IsA("SFXStuntActor") ? "stunt actor" : "actor";
+        _actorMorphEditor.MorphOverrideLabel = "Override existing morph";
+        _actorMorphEditor.MorphSaveAsNewLabel = $"Apply to {targetType}…";
+        bool sourceIsLocal = ReferenceEquals(_actorMorphExport?.FileRef, CurrentLoadedExport.FileRef);
+        _actorMorphEditor.AllowMorphOverride = sourceIsLocal;
+        _actorMorphEditor.MorphSaveHelpText = sourceIsLocal
+            ? $"Override writes the currently linked BioMorphFace. Apply creates a new local morph and writes the MorphHead property on this {targetType}."
+            : $"The linked morph is in another package, so it cannot be overwritten here. Apply creates an editable local morph and writes the MorphHead property on this {targetType}.";
+        _actorMorphEditor.MorphNewNameValidatorOverride = ValidateActorMorphName;
+        _actorMorphEditor.MorphSaveTargetCreatorOverride = CreateActorMorphSaveTarget;
+        _actorMorphEditor.MorphOverrideCompletedOverride = OnActorMorphOverwritten;
+        _actorMorphEditor.MorphSaveAsNewCompletedOverride = OnActorMorphCreated;
+    }
+
+    private (bool IsValid, string Error) ValidateActorMorphName(string value)
+    {
+        string name = value?.Trim();
+        if (string.IsNullOrEmpty(name))
+        {
+            return (false, "Enter a morph name.");
+        }
+        if (!(char.IsLetter(name[0]) || name[0] == '_')
+            || name.Skip(1).Any(character => !(char.IsLetterOrDigit(character) || character == '_')))
+        {
+            return (false, "Use letters, numbers, and underscores; the first character cannot be a number.");
+        }
+
+        string path = $"{CurrentLoadedExport.InstancedFullPath}.{name}";
+        return CurrentLoadedExport.FileRef.FindEntry(path) is null
+            ? (true, null)
+            : (false, "An entry with that name already exists on this preview target.");
+    }
+
+    private ExportEntry CreateActorMorphSaveTarget(ExportEntry sourceMorph, string name)
+    {
+        ExportEntry target = CurrentLoadedExport
+                             ?? throw new InvalidOperationException("The actor preview no longer has a save target.");
+        if (ReferenceEquals(sourceMorph.FileRef, target.FileRef))
+        {
+            ExportEntry clone = EntryCloner.CloneTree(sourceMorph);
+            clone.Parent = target;
+            clone.ObjectName = new NameReference(name);
+            return clone;
+        }
+
+        // Only the head/hair references need to cross the package boundary. They are emitted as
+        // imports when resolvable, while the editable BioMorphFace and BioMaterialOverride stay local.
+        ExportEntry created = ExportCreator.CreateExport(target.FileRef, name, "BioMorphFace", target, indexed: false);
+        PropertyCollection sourceProperties = sourceMorph.GetProperties();
+        var createdProperties = new PropertyCollection();
+        CopyMorphDependency("m_oBaseHead");
+        CopyMorphDependency("m_oHairMesh");
+        created.WritePropertiesAndBinary(createdProperties,
+            LegendaryExplorerCore.Unreal.BinaryConverters.BioMorphFace.Create());
+        return created;
+
+        void CopyMorphDependency(NameReference propertyName)
+        {
+            ObjectProperty property = sourceProperties.GetProp<ObjectProperty>(propertyName);
+            if (property is null || property.Value == 0)
+            {
+                return;
+            }
+            IEntry sourceEntry = property.ResolveToEntry(sourceMorph.FileRef);
+            if (sourceEntry is null)
+            {
+                return;
+            }
+            var relinkerOptions = new RelinkerOptionsPackage
+            {
+                Cache = RenderContext.PackageCache,
+                PortExportsAsImportsWhenPossible = true,
+                PortImportsMemorySafe = true
+            };
+            IEntry localEntry = EntryImporter.GetOrAddCrossImportOrPackage(
+                sourceEntry.InstancedFullPath, sourceEntry.FileRef, target.FileRef, relinkerOptions);
+            createdProperties.AddOrReplaceProp(new ObjectProperty(localEntry, propertyName));
+        }
+    }
+
+    private string OnActorMorphOverwritten(ExportEntry morph)
+    {
+        ApplyMorphToActorPreview(morph);
+        return $"Overwrote {morph.InstancedFullPath}; the Actor Preview will use the updated morph.";
+    }
+
+    private string OnActorMorphCreated(ExportEntry morph)
+    {
+        ExportEntry target = CurrentLoadedExport
+                             ?? throw new InvalidOperationException("The actor preview no longer has a MorphHead target.");
+        PropertyCollection properties = target.GetProperties();
+        properties.AddOrReplaceProp(new ObjectProperty(morph, "MorphHead"));
+        target.WriteProperties(properties);
+
+        _actorMorphExport = morph;
+        HasActorMorph = true;
+        ApplyMorphToActorPreview(morph);
+        Dispatcher.BeginInvoke(DispatcherPriority.Background,
+            new Action(() =>
+            {
+                if (ReferenceEquals(CurrentLoadedExport, target))
+                {
+                    _actorMorphEditor?.LoadExport(morph);
+                }
+            }));
+        return $"Created {morph.InstancedFullPath} and applied MorphHead to {target.InstancedFullPath}.";
+    }
+
+    private void ApplyMorphToActorPreview(ExportEntry morph)
+    {
+        _actor?.ApplyMorphHead(morph);
+        SceneViewer.MarkRenderDirty();
     }
 
     private void PopulateLiveMaterialEditor()
@@ -1040,6 +1304,9 @@ public partial class ActorPreviewControl : ExportLoaderControl, IActorEditorCont
     public override void UnloadExport()
     {
         _actorLoadVersion++;
+        CloseActorMorphEditor(unload: true);
+        _actorMorphExport = null;
+        HasActorMorph = false;
         RenderContext.Camera.ZNear = DefaultZNear;
         RenderContext.Camera.ZFar = DefaultZFar;
         BusyText = null;
@@ -1067,6 +1334,8 @@ public partial class ActorPreviewControl : ExportLoaderControl, IActorEditorCont
         RenderContext.RenderScene -= OnRenderScene;
         _actor?.Dispose();
         _actor = null;
+        _actorMorphEditor?.Dispose();
+        _actorMorphEditor = null;
         SceneViewer?.Dispose();
     }
 

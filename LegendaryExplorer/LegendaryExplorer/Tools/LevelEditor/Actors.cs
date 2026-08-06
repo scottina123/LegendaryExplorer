@@ -616,7 +616,12 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy, ITr
 
     protected void ApplyMorphFace(SkeletalMeshComponentProxy headMesh, params SkeletalMeshComponentProxy[] followerMeshes)
     {
-        if (Properties.GetProp<ObjectProperty>("MorphHead")?.ResolveToExport(Pcc, Editor?.PackageCache) is ExportEntry morphHead)
+        ObjectProperty morphProperty = Properties.GetProp<ObjectProperty>("MorphHead")
+                                       ?? headMesh?.Properties.GetProp<ObjectProperty>("MorphHead")
+                                       ?? Components.OfType<SkeletalMeshComponentProxy>()
+                                           .Select(component => component.Properties.GetProp<ObjectProperty>("MorphHead"))
+                                           .FirstOrDefault(property => property is { Value: not 0 });
+        if (morphProperty?.ResolveToExport(Pcc, Editor?.PackageCache) is ExportEntry morphHead)
         {
             headMesh?.ApplyMorph(morphHead, true);
             foreach (SkeletalMeshComponentProxy followerMesh in followerMeshes)
@@ -625,6 +630,11 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy, ITr
             }
         }
     }
+
+    /// <summary>
+    /// Applies a morph to the mesh roles represented by this preview actor without serializing it.
+    /// </summary>
+    public virtual bool ApplyMorphHead(ExportEntry morphHead) => false;
 
     #region IDisposable
     protected bool isDisposed;
@@ -669,11 +679,25 @@ public class SkeletalMeshActorProxy : ActorProxy
     public SkeletalMeshActorProxy(IActorEditorContext context, ExportEntry actorExport) : base(context, actorExport)
     {
         AddComponent(context.RenderContext, ref SkeletalMeshComponent);
+        if (GetType() == typeof(SkeletalMeshActorProxy))
+        {
+            ApplyMorphFace(SkeletalMeshComponent);
+        }
     }
 
     public override void SetAnimation(AnimSequence animSequence, float pos)
     {
         SkeletalMeshComponent?.SetAnimation(animSequence, pos);
+    }
+
+    public override bool ApplyMorphHead(ExportEntry morphHead)
+    {
+        if (SkeletalMeshComponent is null || morphHead is null)
+        {
+            return false;
+        }
+        SkeletalMeshComponent.ApplyMorph(morphHead, true);
+        return true;
     }
 }
 
@@ -696,6 +720,17 @@ public class SFXSkeletalMeshActorProxy : SkeletalMeshActorProxy
         HeadMesh?.SetAnimation(animSequence, pos);
         HairMesh?.SetAnimation(animSequence, pos);
         HeadGearMesh?.SetAnimation(animSequence, pos);
+    }
+
+    public override bool ApplyMorphHead(ExportEntry morphHead)
+    {
+        if (HeadMesh is null || morphHead is null)
+        {
+            return false;
+        }
+        HeadMesh.ApplyMorph(morphHead, true);
+        HairMesh?.ApplyMorph(morphHead, false);
+        return true;
     }
 }
 
@@ -750,6 +785,51 @@ public class SFXStuntActorProxy : ActorProxy
         HairMesh?.SetAnimation(animSequence, pos);
         HeadGearMesh?.SetAnimation(animSequence, pos);
     }
+
+    public override bool ApplyMorphHead(ExportEntry morphHead)
+    {
+        if (HeadMesh is null || morphHead is null)
+        {
+            return false;
+        }
+        HeadMesh.ApplyMorph(morphHead, true);
+        HairMesh?.ApplyMorph(morphHead, false);
+        return true;
+    }
+}
+
+/// <summary>
+/// Minimal actor wrapper used by Actor Preview when a SkeletalMeshComponent is selected directly
+/// beneath PersistentLevel.
+/// </summary>
+public sealed class SkeletalMeshComponentPreviewActorProxy : ActorProxy
+{
+    public SkeletalMeshComponentProxy SkeletalMeshComponent { get; }
+
+    public SkeletalMeshComponentPreviewActorProxy(IActorEditorContext context, ExportEntry componentExport)
+        : base(context, componentExport)
+    {
+        SkeletalMeshComponent = PrimitiveComponentProxy.Create(context.RenderContext, componentExport, this)
+                                as SkeletalMeshComponentProxy;
+        if (SkeletalMeshComponent is not null)
+        {
+            Components.Add(SkeletalMeshComponent);
+            ApplyMorphFace(SkeletalMeshComponent);
+        }
+    }
+
+    public override void SetAnimation(AnimSequence animSequence, float pos) =>
+        SkeletalMeshComponent?.SetAnimation(animSequence, pos);
+
+    public override bool ApplyMorphHead(ExportEntry morphHead)
+    {
+        if (SkeletalMeshComponent is null || morphHead is null)
+        {
+            return false;
+        }
+        SkeletalMeshComponent.ApplyMorph(morphHead, true);
+        return true;
+    }
 }
 public class BioArtPlaceableProxy : ActorProxy
 {
@@ -771,11 +851,25 @@ public class PawnProxy : ActorProxy
     public PawnProxy(IActorEditorContext context, ExportEntry actorExport) : base(context, actorExport)
     {
         AddComponent(context.RenderContext, ref Mesh);
+        if (GetType() == typeof(PawnProxy))
+        {
+            ApplyMorphFace(Mesh);
+        }
     }
 
     public override void SetAnimation(AnimSequence animSequence, float pos)
     {
         Mesh?.SetAnimation(animSequence, pos);
+    }
+
+    public override bool ApplyMorphHead(ExportEntry morphHead)
+    {
+        if (Mesh is null || morphHead is null)
+        {
+            return false;
+        }
+        Mesh.ApplyMorph(morphHead, true);
+        return true;
     }
 }
 public class BioPawnProxy : PawnProxy
@@ -810,6 +904,17 @@ public class BioPawnProxy : PawnProxy
         {
             accessory?.SetAnimation(animSequence, pos);
         }
+    }
+
+    public override bool ApplyMorphHead(ExportEntry morphHead)
+    {
+        if (HeadMesh is null || morphHead is null)
+        {
+            return false;
+        }
+        HeadMesh.ApplyMorph(morphHead, true);
+        m_oHairMesh?.ApplyMorph(morphHead, false);
+        return true;
     }
 }
 
