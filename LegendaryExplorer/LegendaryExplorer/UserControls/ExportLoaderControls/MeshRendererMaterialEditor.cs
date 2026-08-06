@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using LegendaryExplorer.Misc;
 using LegendaryExplorer.SharedUI;
@@ -25,6 +26,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         public ObservableCollectionExtended<LiveScalarMaterialParameter> ScalarParameters { get; } = [];
         public ObservableCollectionExtended<LiveVectorMaterialParameter> VectorParameters { get; } = [];
+        private readonly Dictionary<string, float> _removedScalarValues = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, LinearColor> _removedVectorValues = new(StringComparer.OrdinalIgnoreCase);
 
         private bool _hasUnsavedChanges;
         public bool HasUnsavedChanges
@@ -51,6 +54,84 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         internal void MarkChanged() => HasUnsavedChanges = true;
         internal void MarkSaved() => HasUnsavedChanges = false;
+
+        internal LiveScalarMaterialParameter AddScalarParameter(string parameterName)
+        {
+            LiveScalarMaterialParameter existing = ScalarParameters.FirstOrDefault(parameter =>
+                parameter.ParameterName.Equals(parameterName, StringComparison.OrdinalIgnoreCase));
+            if (existing is not null)
+            {
+                return existing;
+            }
+
+            float value = _removedScalarValues.Remove(parameterName, out float removedValue)
+                ? removedValue
+                : RenderProxy.ScalarParameters.GetValueOrDefault(parameterName);
+            RenderProxy.SetScalarParameter(parameterName, value);
+            var parameter = new LiveScalarMaterialParameter(this, parameterName, value);
+            ScalarParameters.Insert(GetInsertionIndex(ScalarParameters.Select(item => item.ParameterName), parameterName), parameter);
+            MarkChanged();
+            return parameter;
+        }
+
+        internal LiveVectorMaterialParameter AddVectorParameter(string parameterName)
+        {
+            LiveVectorMaterialParameter existing = VectorParameters.FirstOrDefault(parameter =>
+                parameter.ParameterName.Equals(parameterName, StringComparison.OrdinalIgnoreCase));
+            if (existing is not null)
+            {
+                return existing;
+            }
+
+            LinearColor value = _removedVectorValues.Remove(parameterName, out LinearColor removedValue)
+                ? removedValue
+                : RenderProxy.VectorParameters.GetValueOrDefault(parameterName, LinearColor.Black);
+            RenderProxy.SetVectorParameter(parameterName, value);
+            var parameter = new LiveVectorMaterialParameter(this, parameterName, value);
+            VectorParameters.Insert(GetInsertionIndex(VectorParameters.Select(item => item.ParameterName), parameterName), parameter);
+            MarkChanged();
+            return parameter;
+        }
+
+        internal bool RemoveScalarParameter(LiveScalarMaterialParameter parameter)
+        {
+            if (parameter is null || !ScalarParameters.Remove(parameter))
+            {
+                return false;
+            }
+
+            _removedScalarValues[parameter.ParameterName] = parameter.Value;
+            RenderProxy.RemoveScalarParameter(parameter.ParameterName);
+            MarkChanged();
+            return true;
+        }
+
+        internal bool RemoveVectorParameter(LiveVectorMaterialParameter parameter)
+        {
+            if (parameter is null || !VectorParameters.Remove(parameter))
+            {
+                return false;
+            }
+
+            _removedVectorValues[parameter.ParameterName] = new LinearColor(parameter.R, parameter.G, parameter.B, parameter.A);
+            RenderProxy.RemoveVectorParameter(parameter.ParameterName);
+            MarkChanged();
+            return true;
+        }
+
+        private static int GetInsertionIndex(IEnumerable<string> parameterNames, string parameterName)
+        {
+            int index = 0;
+            foreach (string existingName in parameterNames)
+            {
+                if (StringComparer.OrdinalIgnoreCase.Compare(existingName, parameterName) > 0)
+                {
+                    break;
+                }
+                index++;
+            }
+            return index;
+        }
     }
 
     public sealed class LiveScalarMaterialParameter : NotifyPropertyChangedBase

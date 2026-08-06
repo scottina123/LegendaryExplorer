@@ -4,6 +4,7 @@ using LegendaryExplorer.Misc.AppSettings;
 using LegendaryExplorer.SharedUI;
 using LegendaryExplorer.SharedUI.Bases;
 using LegendaryExplorer.UnrealExtensions.Classes;
+using LegendaryExplorer.UserControls.ExportLoaderControls.MaterialEditor;
 using LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D;
 using LegendaryExplorer.UserControls.ExportLoaderControls.TextureViewer;
 using LegendaryExplorer.UserControls.Interfaces;
@@ -321,6 +322,19 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 ? SelectedLiveMaterial.SourceEntry is not null
                 : SelectedLiveMaterial.CanCreateNew);
 
+        private bool _showLiveMaterialTintRandomizationControl;
+        public bool ShowLiveMaterialTintRandomizationControl
+        {
+            get => _showLiveMaterialTintRandomizationControl;
+            set
+            {
+                if (SetProperty(ref _showLiveMaterialTintRandomizationControl, value))
+                {
+                    OnPropertyChanged(nameof(CanRandomizeSelectedLiveMaterialTints));
+                }
+            }
+        }
+
         private bool _showLiveMaterialRandomizationControls;
         public bool ShowLiveMaterialRandomizationControls
         {
@@ -367,6 +381,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         public bool CanRandomizeSelectedLiveMaterialVectors => ShowLiveMaterialRandomizationControls
             && RandomizeLiveMaterialVectorsOverride is not null
             && SelectedLiveMaterial?.VectorParameters.Count > 0;
+        public bool CanRandomizeSelectedLiveMaterialTints => ShowLiveMaterialTintRandomizationControl
+            && SelectedLiveMaterial?.VectorParameters.Any(IsTintParameter) == true;
 
         private LiveMaterialEditorMaterial _selectedLiveMaterial;
         public LiveMaterialEditorMaterial SelectedLiveMaterial
@@ -376,13 +392,22 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             {
                 if (SetProperty(ref _selectedLiveMaterial, value))
                 {
+                    SelectedLiveScalarParameter = value?.ScalarParameters.FirstOrDefault();
                     SelectedLiveVectorParameter = GetPreferredVectorParameter(value);
                     OnPropertyChanged(nameof(CanSaveSelectedLiveMaterialToCurrent));
                     OnPropertyChanged(nameof(CanSaveSelectedLiveMaterialAsNew));
                     OnPropertyChanged(nameof(CanRandomizeSelectedLiveMaterialScalars));
                     OnPropertyChanged(nameof(CanRandomizeSelectedLiveMaterialVectors));
+                    OnPropertyChanged(nameof(CanRandomizeSelectedLiveMaterialTints));
                 }
             }
+        }
+
+        private LiveScalarMaterialParameter _selectedLiveScalarParameter;
+        public LiveScalarMaterialParameter SelectedLiveScalarParameter
+        {
+            get => _selectedLiveScalarParameter;
+            set => SetProperty(ref _selectedLiveScalarParameter, value);
         }
 
         private LiveVectorMaterialParameter _selectedLiveVectorParameter;
@@ -2120,6 +2145,146 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             catch (Exception exception)
             {
                 new ExceptionHandlerDialog(exception).ShowDialog();
+            }
+        }
+
+        private void RandomizeLiveMaterialTints_Click(object sender, RoutedEventArgs e)
+        {
+            if (SelectedLiveMaterial is not { } material || !CanRandomizeSelectedLiveMaterialTints)
+            {
+                return;
+            }
+
+            foreach (LiveVectorMaterialParameter parameter in material.VectorParameters.Where(IsTintParameter))
+            {
+                parameter.SetValue(
+                    Random.Shared.NextSingle(),
+                    Random.Shared.NextSingle(),
+                    Random.Shared.NextSingle(),
+                    parameter.A);
+            }
+        }
+
+        private static bool IsTintParameter(LiveVectorMaterialParameter parameter) =>
+            parameter.ParameterName.StartsWith("TNT_", StringComparison.OrdinalIgnoreCase);
+
+        private void AddLiveMaterialScalar_Click(object sender, RoutedEventArgs e) => AddLiveMaterialParameter(isVector: false);
+
+        private void AddLiveMaterialVector_Click(object sender, RoutedEventArgs e) => AddLiveMaterialParameter(isVector: true);
+
+        private void RemoveLiveMaterialScalar_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is not FrameworkElement { DataContext: LiveScalarMaterialParameter parameter }
+                || SelectedLiveMaterial is not { } material)
+            {
+                return;
+            }
+
+            int removedIndex = material.ScalarParameters.IndexOf(parameter);
+            if (material.RemoveScalarParameter(parameter))
+            {
+                SelectedLiveScalarParameter = material.ScalarParameters.Count == 0
+                    ? null
+                    : material.ScalarParameters[Math.Min(removedIndex, material.ScalarParameters.Count - 1)];
+                OnPropertyChanged(nameof(CanRandomizeSelectedLiveMaterialScalars));
+            }
+        }
+
+        private void RemoveLiveMaterialVector_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is not FrameworkElement { DataContext: LiveVectorMaterialParameter parameter }
+                || SelectedLiveMaterial is not { } material)
+            {
+                return;
+            }
+
+            int removedIndex = material.VectorParameters.IndexOf(parameter);
+            if (material.RemoveVectorParameter(parameter))
+            {
+                SelectedLiveVectorParameter = material.VectorParameters.Count == 0
+                    ? null
+                    : material.VectorParameters[Math.Min(removedIndex, material.VectorParameters.Count - 1)];
+                OnPropertyChanged(nameof(CanRandomizeSelectedLiveMaterialVectors));
+                OnPropertyChanged(nameof(CanRandomizeSelectedLiveMaterialTints));
+            }
+        }
+
+        private void AddLiveMaterialParameter(bool isVector)
+        {
+            if (SelectedLiveMaterial is not { } material)
+            {
+                return;
+            }
+
+            IReadOnlyList<string> parameterNames;
+            try
+            {
+                using var cache = new PackageCache();
+                var materialInfo = new MaterialInfo { MaterialExport = material.MaterialExport };
+                IEnumerable<string> hierarchyNames = isVector
+                    ? materialInfo.GetVectorParameterNames(cache)
+                    : materialInfo.GetScalarParameterNames(cache);
+                IEnumerable<string> shaderNames = isVector
+                    ? material.RenderProxy.VectorParameters.Keys
+                    : material.RenderProxy.ScalarParameters.Keys;
+                parameterNames = hierarchyNames
+                    .Concat(shaderNames)
+                    .Where(name => !string.IsNullOrWhiteSpace(name))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+            }
+            catch (Exception exception)
+            {
+                MessageBox.Show(
+                    $"The material's parameter list could not be loaded.\n\n{exception.Message}",
+                    "Material parameters unavailable",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+                return;
+            }
+
+            string parameterType = isVector ? "vector" : "scalar";
+            if (parameterNames.Count == 0)
+            {
+                MessageBox.Show(
+                    $"No {parameterType} parameters were found on this material or its parent material.",
+                    "No material parameters found",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+                return;
+            }
+
+            HashSet<string> existingNames = new(
+                isVector
+                    ? material.VectorParameters.Select(parameter => parameter.ParameterName)
+                    : material.ScalarParameters.Select(parameter => parameter.ParameterName),
+                StringComparer.OrdinalIgnoreCase);
+            string selectedName = StringSelectorDialog.GetValue(
+                this,
+                $"Choose a {parameterType} parameter. Type to search the {parameterNames.Count} values supported by this material.",
+                $"Add {parameterType} parameter",
+                parameterNames.Select(name => new StringSelectorItem(
+                    name,
+                    name,
+                    existingNames.Contains(name) ? "Already present" : $"Available {parameterType} parameter")));
+            if (string.IsNullOrWhiteSpace(selectedName))
+            {
+                return;
+            }
+
+            if (isVector)
+            {
+                SelectedLiveVectorParameter = material.AddVectorParameter(selectedName);
+                LiveVectorParameterList.ScrollIntoView(SelectedLiveVectorParameter);
+                OnPropertyChanged(nameof(CanRandomizeSelectedLiveMaterialVectors));
+                OnPropertyChanged(nameof(CanRandomizeSelectedLiveMaterialTints));
+            }
+            else
+            {
+                SelectedLiveScalarParameter = material.AddScalarParameter(selectedName);
+                LiveScalarParameterList.ScrollIntoView(SelectedLiveScalarParameter);
+                OnPropertyChanged(nameof(CanRandomizeSelectedLiveMaterialScalars));
             }
         }
 

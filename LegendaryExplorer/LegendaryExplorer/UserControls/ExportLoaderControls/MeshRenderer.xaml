@@ -314,6 +314,11 @@
                         <StackPanel DockPanel.Dock="Top">
                             <TextBlock Text="Live Material Editor" FontWeight="Bold" FontSize="15"/>
                             <TextBlock Margin="0,2,0,6" Text="Changes update the in-game shader preview immediately. Click a mesh region to detect and focus the vector parameter affecting that pixel." TextWrapping="Wrap"/>
+                            <Button Content="Randomize tints" Margin="0,0,0,7" Padding="5,3"
+                                    Visibility="{Binding ShowLiveMaterialTintRandomizationControl, Converter={StaticResource BoolToVisibilityConverter}}"
+                                    IsEnabled="{Binding CanRandomizeSelectedLiveMaterialTints}"
+                                    Click="RandomizeLiveMaterialTints_Click"
+                                    ToolTip="Randomize the RGB values of every vector parameter whose name starts with TNT_. Alpha values are preserved."/>
                             <UniformGrid Rows="1" Columns="2" Margin="0,0,0,7"
                                          Visibility="{Binding ShowLiveMaterialRandomizationControls, Converter={StaticResource BoolToVisibilityConverter}}">
                                 <Button Content="Randomize scalars" Margin="0,0,3,0" Padding="5,3"
@@ -349,11 +354,35 @@
                         <ScrollViewer x:Name="LiveMaterialEditorScrollViewer" VerticalScrollBarVisibility="Auto">
                             <StackPanel>
                                 <GroupBox Header="Scalar parameters" Margin="0,2,0,6">
-                                    <ItemsControl ItemsSource="{Binding SelectedLiveMaterial.ScalarParameters}">
-                                        <ItemsControl.ItemTemplate>
-                                            <DataTemplate>
+                                    <StackPanel>
+                                        <Button Content="Add scalar parameter..." Margin="4,4,4,1" Padding="5,3"
+                                                HorizontalAlignment="Stretch" Click="AddLiveMaterialScalar_Click"
+                                                ToolTip="Choose from every scalar parameter supported by this material and its parent material."/>
+                                        <ListBox x:Name="LiveScalarParameterList"
+                                                 ItemsSource="{Binding SelectedLiveMaterial.ScalarParameters}"
+                                                 SelectedItem="{Binding SelectedLiveScalarParameter}"
+                                                 Background="Transparent" BorderThickness="0"
+                                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                                 ScrollViewer.VerticalScrollBarVisibility="Disabled">
+                                            <ListBox.ItemContainerStyle>
+                                                <Style TargetType="ListBoxItem">
+                                                    <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                                    <Setter Property="Padding" Value="0"/>
+                                                </Style>
+                                            </ListBox.ItemContainerStyle>
+                                            <ListBox.ItemTemplate>
+                                                <DataTemplate>
                                                 <StackPanel Margin="4,3">
-                                                    <TextBlock Text="{Binding ParameterName}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                                                    <Grid>
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*"/>
+                                                            <ColumnDefinition Width="Auto"/>
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBlock Text="{Binding ParameterName}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                                                        <Button Grid.Column="1" Content="×" Width="22" Height="22" Margin="4,0,0,0" Padding="0"
+                                                                ToolTip="Remove this scalar parameter. It remains available from the Add list."
+                                                                Click="RemoveLiveMaterialScalar_Click"/>
+                                                    </Grid>
                                                     <Grid Margin="0,2,0,0">
                                                         <Grid.ColumnDefinitions>
                                                             <ColumnDefinition Width="Auto"/>
@@ -365,29 +394,43 @@
                                                                            Increment="0.01" AllowInputSpecialValues="None"/>
                                                     </Grid>
                                                 </StackPanel>
-                                            </DataTemplate>
-                                        </ItemsControl.ItemTemplate>
-                                    </ItemsControl>
+                                                </DataTemplate>
+                                            </ListBox.ItemTemplate>
+                                        </ListBox>
+                                    </StackPanel>
                                 </GroupBox>
 
                                 <GroupBox Header="Vector parameters" Margin="0,0,0,2">
-                                    <ListBox x:Name="LiveVectorParameterList"
-                                             ItemsSource="{Binding SelectedLiveMaterial.VectorParameters}"
-                                             SelectedItem="{Binding SelectedLiveVectorParameter}"
-                                             Background="Transparent" BorderThickness="0"
-                                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                                             ScrollViewer.VerticalScrollBarVisibility="Disabled">
-                                        <ListBox.ItemContainerStyle>
+                                    <StackPanel>
+                                        <Button Content="Add vector parameter..." Margin="4,4,4,1" Padding="5,3"
+                                                HorizontalAlignment="Stretch" Click="AddLiveMaterialVector_Click"
+                                                ToolTip="Choose from every vector parameter supported by this material and its parent material."/>
+                                        <ListBox x:Name="LiveVectorParameterList"
+                                                 ItemsSource="{Binding SelectedLiveMaterial.VectorParameters}"
+                                                 SelectedItem="{Binding SelectedLiveVectorParameter}"
+                                                 Background="Transparent" BorderThickness="0"
+                                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                                 ScrollViewer.VerticalScrollBarVisibility="Disabled">
+                                            <ListBox.ItemContainerStyle>
                                             <Style TargetType="ListBoxItem">
                                                 <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
                                                 <Setter Property="Padding" Value="0"/>
                                             </Style>
-                                        </ListBox.ItemContainerStyle>
-                                        <ListBox.ItemTemplate>
+                                            </ListBox.ItemContainerStyle>
+                                            <ListBox.ItemTemplate>
                                             <DataTemplate>
                                                 <Border BorderThickness="0,0,0,1" BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}" Padding="4,5">
                                                     <StackPanel>
-                                                        <TextBlock Text="{Binding ParameterName}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                                                        <Grid>
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="*"/>
+                                                                <ColumnDefinition Width="Auto"/>
+                                                            </Grid.ColumnDefinitions>
+                                                            <TextBlock Text="{Binding ParameterName}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                                                            <Button Grid.Column="1" Content="×" Width="22" Height="22" Margin="4,0,0,0" Padding="0"
+                                                                    ToolTip="Remove this vector parameter. It remains available from the Add list."
+                                                                    Click="RemoveLiveMaterialVector_Click"/>
+                                                        </Grid>
                                                         <xctk:ColorCanvas Margin="0,3,0,0"
                                                                           HorizontalAlignment="Stretch"
                                                                           Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"
@@ -399,8 +442,9 @@
                                                     </StackPanel>
                                                 </Border>
                                             </DataTemplate>
-                                        </ListBox.ItemTemplate>
-                                    </ListBox>
+                                            </ListBox.ItemTemplate>
+                                        </ListBox>
+                                    </StackPanel>
                                 </GroupBox>
                             </StackPanel>
                         </ScrollViewer>

@@ -87,6 +87,24 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
             CachedPixelFrameNumber = CachedVertexFrameNumber = uint.MaxValue;
         }
 
+        public void RemoveScalarParameter(string parameterName)
+        {
+            PreviewScalarBaselines.TryAdd(parameterName, ScalarParameterValues.TryGetValue(parameterName, out float baseline)
+                ? (true, baseline)
+                : (false, default));
+            ScalarParameterValues.Remove(parameterName);
+            CachedPixelFrameNumber = CachedVertexFrameNumber = uint.MaxValue;
+        }
+
+        public void RemoveVectorParameter(string parameterName)
+        {
+            PreviewVectorBaselines.TryAdd(parameterName, VectorParameterValues.TryGetValue(parameterName, out LinearColor baseline)
+                ? (true, baseline)
+                : (false, default));
+            VectorParameterValues.Remove(parameterName);
+            CachedPixelFrameNumber = CachedVertexFrameNumber = uint.MaxValue;
+        }
+
         /// <summary>
         /// Replaces a texture parameter for the live preview. The caller owns the cached GPU texture.
         /// </summary>

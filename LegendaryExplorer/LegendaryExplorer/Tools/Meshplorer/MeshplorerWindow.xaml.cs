@@ -78,6 +78,7 @@ namespace LegendaryExplorer.Tools.Meshplorer
         {
             LoadCommands();
             InitializeComponent();
+            Mesh3DViewer.ShowLiveMaterialTintRandomizationControl = true;
             Mesh3DViewer.IsBusyChanged += RendererIsBusyChanged;
             MeshesView.Filter = FilterExportList;
             RecentsController.InitRecentControl(Toolname, Recents_MenuItem, fileToOpen => LoadFile(fileToOpen));
