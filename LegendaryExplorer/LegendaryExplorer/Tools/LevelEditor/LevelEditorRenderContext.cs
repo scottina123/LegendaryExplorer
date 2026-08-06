@@ -14,6 +14,7 @@ using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Input;
 
@@ -21,6 +22,8 @@ namespace LegendaryExplorer.Tools.LevelEditor;
 
 public class LevelEditorRenderContext : MeshRenderContext
 {
+    protected override bool SupportsConcurrentResourceCreation => true;
+
     /// <summary>
     /// Uses the compiled local-vertex-factory material preview for actor mesh components instead of
     /// the diffuse-only Level Editor preview. Actor Preview enables this so character materials match
@@ -43,64 +46,120 @@ public class LevelEditorRenderContext : MeshRenderContext
     public readonly Widget TransformWidget;
 
     private Texture2D _hitStagingTexture;
+    private readonly object renderResourceQueueLock = new();
     private readonly Queue<MeshComponentProxy> pendingRenderResources = new();
     private readonly HashSet<MeshComponentProxy> pendingRenderResourceSet = [];
-    private readonly System.Diagnostics.Stopwatch renderResourceBudget = new();
+    private CancellationTokenSource renderResourceCancellation = new();
+    private Task renderResourceWorker;
+    private int renderResourceRedrawRequested;
+    private ActorProxy prioritizedResourceActor;
     private long lastPointerActivityTimestamp;
     private long lastHoverHitTestTimestamp;
 
     public bool ForceContinuousRendering { get; set; }
     public override bool RenderOnUnhandledMouseMove => false;
-    public override bool HasPendingBackgroundWork => pendingRenderResourceSet.Count > 0;
-    public bool ShouldRenderHitTestPass => !HasPendingBackgroundWork && !HasActiveInput
-        && !TransformWidget.IsDragging;
+    // The worker does not need the composition callback to advance. Wake the render path only when
+    // it publishes a completed scene/selected actor, rather than polling throughout the whole load.
+    public override bool HasPendingBackgroundWork => Volatile.Read(ref renderResourceRedrawRequested) != 0;
+    public bool ShouldRenderHitTestPass => !HasActiveInput && !TransformWidget.IsDragging;
 
     public override bool IsActivelyUpdating() => ForceContinuousRendering || base.IsActivelyUpdating()
         || TransformWidget.IsDragging;
 
     /// <summary>
-    /// Builds render resources independently of visibility so moving the camera can never trigger mesh,
-    /// material, or shader construction. Work pauses while the user is navigating and otherwise uses a
-    /// small time slice. This keeps interaction responsive while ensuring off-screen actors are ready.
+    /// Resource construction runs on a dedicated worker. The composition callback only consumes a redraw
+    /// flag, keeping package, material, texture, shader, and buffer work off the WPF UI thread.
     /// </summary>
-    public override bool ProcessBackgroundWork()
+    public override bool ProcessBackgroundWork() =>
+        Interlocked.Exchange(ref renderResourceRedrawRequested, 0) != 0;
+
+    private void StartRenderResourceWorker()
     {
-        if (pendingRenderResourceSet.Count == 0 || HasActiveInput || TransformWidget.IsDragging
-            || SecondsSince(lastPointerActivityTimestamp) < 0.1)
+        lock (renderResourceQueueLock)
         {
-            return false;
+            if (pendingRenderResourceSet.Count == 0 || renderResourceCancellation.IsCancellationRequested
+                || renderResourceWorker is { IsCompleted: false })
+            {
+                return;
+            }
+
+            CancellationToken token = renderResourceCancellation.Token;
+            renderResourceWorker = Task.Factory.StartNew(() => RunRenderResourceWorker(token), token,
+                TaskCreationOptions.LongRunning, TaskScheduler.Default);
         }
+    }
 
-        renderResourceBudget.Restart();
-        int initialized = 0;
-        while (pendingRenderResources.Count > 0)
+    private void RunRenderResourceWorker(CancellationToken token)
+    {
+        try
         {
-            MeshComponentProxy component = pendingRenderResources.Dequeue();
-            if (!pendingRenderResourceSet.Remove(component))
+            Thread.CurrentThread.Priority = ThreadPriority.BelowNormal;
+            while (!token.IsCancellationRequested)
             {
-                continue;
-            }
+                while (SecondsSince(Interlocked.Read(ref lastPointerActivityTimestamp)) < 0.1)
+                {
+                    if (token.WaitHandle.WaitOne(20)) return;
+                }
 
-            try
-            {
+                MeshComponentProxy component = null;
+                lock (renderResourceQueueLock)
+                {
+                    while (pendingRenderResources.Count > 0)
+                    {
+                        MeshComponentProxy candidate = pendingRenderResources.Dequeue();
+                        if (pendingRenderResourceSet.Remove(candidate))
+                        {
+                            component = candidate;
+                            break;
+                        }
+                    }
+                }
+
+                if (component is null) break;
                 component.PrepareRenderResources();
+
+                bool priorityReady = false;
+                lock (renderResourceQueueLock)
+                {
+                    ActorProxy priorityActor = prioritizedResourceActor;
+                    if (priorityActor is not null
+                        && priorityActor.Components.OfType<MeshComponentProxy>()
+                            .All(candidate => candidate.RenderResourcesInitialized))
+                    {
+                        prioritizedResourceActor = null;
+                        priorityReady = true;
+                    }
+                }
+                if (priorityReady)
+                {
+                    Interlocked.Exchange(ref renderResourceRedrawRequested, 1);
+                }
             }
-            catch (Exception exception)
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        {
+        }
+        catch (Exception exception)
+        {
+            lock (renderResourceQueueLock)
             {
                 pendingRenderResources.Clear();
                 pendingRenderResourceSet.Clear();
-                ErrorText = exception.FlattenException();
-                renderResourceBudget.Stop();
-                return true;
             }
-            initialized++;
-            if (initialized > 0 && renderResourceBudget.ElapsedMilliseconds >= 8)
-            {
-                break;
-            }
+            ErrorText = exception.FlattenException();
+            Interlocked.Exchange(ref renderResourceRedrawRequested, 1);
         }
-        renderResourceBudget.Stop();
-        return pendingRenderResourceSet.Count == 0;
+        finally
+        {
+            bool restart;
+            lock (renderResourceQueueLock)
+            {
+                renderResourceWorker = null;
+                restart = pendingRenderResourceSet.Count > 0 && !renderResourceCancellation.IsCancellationRequested;
+            }
+            Interlocked.Exchange(ref renderResourceRedrawRequested, 1);
+            if (restart) StartRenderResourceWorker();
+        }
     }
 
     private static double SecondsSince(long timestamp)
@@ -204,19 +263,29 @@ public class LevelEditorRenderContext : MeshRenderContext
     }
 
     const int HitTestSize = 3;
+    private IHitProxy mouseDownHitProxy;
 
     public override bool MouseUp(MouseButtons button, int x, int y)
     {
         if (TransformWidget.IsDragging)
         {
+            mouseDownHitProxy = null;
             TransformWidget.EndDrag();
             return true;
         }
-        if (base.MouseUp(button, x, y)) return true;
+        if (base.MouseUp(button, x, y))
+        {
+            mouseDownHitProxy = null;
+            return true;
+        }
 
         if (HitBufferView is not null)
         {
-            IHitProxy selected = GetHitProxy(x, y);
+            // A mouse-down frame may omit the hit-test pass while navigation input is active. Preserve
+            // the hit captured at the start of the gesture instead of reading that intentionally-cleared
+            // buffer on mouse-up.
+            IHitProxy selected = mouseDownHitProxy ?? GetHitProxy(x, y);
+            mouseDownHitProxy = null;
 
             if (button == MouseButtons.Right)
             {
@@ -258,6 +327,7 @@ public class LevelEditorRenderContext : MeshRenderContext
 
     public override bool MouseDown(MouseButtons button, int x, int y)
     {
+        mouseDownHitProxy = null;
         if (TransformWidget.IsDragging)
         {
             //failsafe if mouseup event was not captured
@@ -269,6 +339,7 @@ public class LevelEditorRenderContext : MeshRenderContext
         if (HitBufferView is not null)
         {
             IHitProxy selected = GetHitProxy(x, y);
+            mouseDownHitProxy = selected;
 
             TransformWidget.CurrentAxis = EWidgetAxis.None;
             switch (selected)
@@ -293,7 +364,7 @@ public class LevelEditorRenderContext : MeshRenderContext
 
     public override bool MouseMove(int x, int y)
     {
-        lastPointerActivityTimestamp = System.Diagnostics.Stopwatch.GetTimestamp();
+        Interlocked.Exchange(ref lastPointerActivityTimestamp, System.Diagnostics.Stopwatch.GetTimestamp());
         if (TransformWidget.IsDragging)
         {
             //failsafe if mouseup event was not captured
@@ -312,7 +383,9 @@ public class LevelEditorRenderContext : MeshRenderContext
         // GPU→CPU sync (MapSubresource) on every single mouse-move event.
         int dx = x - _lastHitTestX;
         int dy = y - _lastHitTestY;
-        if (pendingRenderResourceSet.Count == 0 && TransformWidget.Attach is not null
+        if (TransformWidget.Attach is ActorProxy attachedActor
+            && attachedActor.Components.OfType<MeshComponentProxy>()
+                .All(component => component.RenderResourcesInitialized)
             && HitBufferView is not null && dx * dx + dy * dy >= 9
             && SecondsSince(lastHoverHitTestTimestamp) >= 1.0 / 30.0)
         {
@@ -336,7 +409,7 @@ public class LevelEditorRenderContext : MeshRenderContext
 
     public override bool MouseScroll(int delta)
     {
-        lastPointerActivityTimestamp = System.Diagnostics.Stopwatch.GetTimestamp();
+        Interlocked.Exchange(ref lastPointerActivityTimestamp, System.Diagnostics.Stopwatch.GetTimestamp());
         return base.MouseScroll(delta);
     }
 
@@ -423,6 +496,7 @@ public class LevelEditorRenderContext : MeshRenderContext
             CacheSceneLight(actor);
             QueueRenderResources(actor);
         }
+        StartRenderResourceWorker();
         if (!DrawList_UI.Contains(LightIcons))
         {
             DrawList_UI.Add(LightIcons);
@@ -432,20 +506,124 @@ public class LevelEditorRenderContext : MeshRenderContext
 
     private void QueueRenderResources(ActorProxy actor)
     {
-        foreach (MeshComponentProxy component in actor.Components.OfType<MeshComponentProxy>())
+        lock (renderResourceQueueLock)
         {
-            if (!component.RenderResourcesInitialized && pendingRenderResourceSet.Add(component))
+            foreach (MeshComponentProxy component in actor.Components.OfType<MeshComponentProxy>())
             {
-                pendingRenderResources.Enqueue(component);
+                if (!component.RenderResourcesInitialized && pendingRenderResourceSet.Add(component))
+                {
+                    pendingRenderResources.Enqueue(component);
+                }
             }
         }
     }
 
     private void RemoveQueuedRenderResources(ActorProxy actor)
     {
-        foreach (MeshComponentProxy component in actor.Components.OfType<MeshComponentProxy>())
+        lock (renderResourceQueueLock)
         {
-            pendingRenderResourceSet.Remove(component);
+            foreach (MeshComponentProxy component in actor.Components.OfType<MeshComponentProxy>())
+            {
+                pendingRenderResourceSet.Remove(component);
+            }
+            if (ReferenceEquals(prioritizedResourceActor, actor))
+            {
+                prioritizedResourceActor = null;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Moves the selected actor to the front of the preparation queue without doing any resource work
+    /// on the UI thread. This makes the selection outline and transform widget appear as soon as possible.
+    /// </summary>
+    internal void PrioritizeActorResources(ActorProxy actor)
+    {
+        if (actor is null)
+        {
+            lock (renderResourceQueueLock)
+            {
+                prioritizedResourceActor = null;
+            }
+            return;
+        }
+
+        List<MeshComponentProxy> priorityComponents = actor.Components.OfType<MeshComponentProxy>()
+            .Where(component => !component.RenderResourcesInitialized).ToList();
+        lock (renderResourceQueueLock)
+        {
+            prioritizedResourceActor = actor;
+            foreach (MeshComponentProxy component in priorityComponents)
+            {
+                pendingRenderResourceSet.Add(component);
+            }
+
+            var prioritySet = priorityComponents.ToHashSet();
+            MeshComponentProxy[] remainder = pendingRenderResources
+                .Where(component => pendingRenderResourceSet.Contains(component) && !prioritySet.Contains(component))
+                .ToArray();
+            pendingRenderResources.Clear();
+            foreach (MeshComponentProxy component in priorityComponents)
+            {
+                if (pendingRenderResourceSet.Contains(component))
+                {
+                    pendingRenderResources.Enqueue(component);
+                }
+            }
+            foreach (MeshComponentProxy component in remainder)
+            {
+                pendingRenderResources.Enqueue(component);
+            }
+        }
+
+        if (priorityComponents.Count == 0)
+        {
+            lock (renderResourceQueueLock)
+            {
+                if (ReferenceEquals(prioritizedResourceActor, actor))
+                {
+                    prioritizedResourceActor = null;
+                }
+            }
+            Interlocked.Exchange(ref renderResourceRedrawRequested, 1);
+        }
+        StartRenderResourceWorker();
+    }
+
+    private void StopRenderResourceWorker()
+    {
+        Task worker;
+        CancellationTokenSource cancellation;
+        lock (renderResourceQueueLock)
+        {
+            cancellation = renderResourceCancellation;
+            cancellation.Cancel();
+            pendingRenderResources.Clear();
+            pendingRenderResourceSet.Clear();
+            worker = renderResourceWorker;
+        }
+
+        if (worker is not null)
+        {
+            try
+            {
+                worker.GetAwaiter().GetResult();
+            }
+            catch (OperationCanceledException)
+            {
+            }
+        }
+
+        lock (renderResourceQueueLock)
+        {
+            if (ReferenceEquals(renderResourceCancellation, cancellation))
+            {
+                renderResourceWorker = null;
+                renderResourceCancellation.Dispose();
+                renderResourceCancellation = new CancellationTokenSource();
+            }
+            prioritizedResourceActor = null;
+            Interlocked.Exchange(ref renderResourceRedrawRequested, 0);
         }
     }
 
@@ -483,8 +661,7 @@ public class LevelEditorRenderContext : MeshRenderContext
 
     public void UnloadLevel()
     {
-        pendingRenderResources.Clear();
-        pendingRenderResourceSet.Clear();
+        StopRenderResourceWorker();
         EmptyCaches();
         HitProxies.Reset();
         foreach (ActorProxy actor in DrawList_3D)
@@ -524,6 +701,12 @@ public class LevelEditorRenderContext : MeshRenderContext
         base.DisposeSizeDependentResources();
     }
 
+    public override void DisposeResources()
+    {
+        StopRenderResourceWorker();
+        base.DisposeResources();
+    }
+
     internal void RemoveActor(ActorProxy actor)
     {
         if (DrawList_3D.Remove(actor))
@@ -544,6 +727,7 @@ public class LevelEditorRenderContext : MeshRenderContext
             actor.PropertyChanged += Actor_PropertyChanged;
             CacheSceneLight(actor);
             QueueRenderResources(actor);
+            StartRenderResourceWorker();
         }
     }
 }

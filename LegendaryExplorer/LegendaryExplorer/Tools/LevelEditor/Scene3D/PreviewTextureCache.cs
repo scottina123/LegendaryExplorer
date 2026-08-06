@@ -355,13 +355,13 @@ public class PreviewTextureCache : IDisposable
             return null;
         }
         string ifp = textureEntry.InstancedFullPath;
-        if (AssetCache.TryGetValue(ifp, out TextureEntry entry))
-        {
-            entry.LastUsageTime = DateTime.Now;
-            return entry;
-        }
         lock (textureLoadLock)
         {
+            if (AssetCache.TryGetValue(ifp, out TextureEntry entry))
+            {
+                entry.LastUsageTime = DateTime.Now;
+                return entry;
+            }
             if (textureEntry is ImportEntry import)
             {
                 textureEntry = EntryImporter.ResolveImport(import, packageCache);

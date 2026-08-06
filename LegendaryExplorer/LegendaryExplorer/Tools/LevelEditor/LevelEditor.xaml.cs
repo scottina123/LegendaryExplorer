@@ -729,22 +729,24 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
                 prev.PropertyChanged -= OnActorPropertyChanged;
             }
             if (selectedActor is not null)
+            {
+                RenderContext.TransformWidget.Attach = selectedActor;
+                RenderContext.PrioritizeActorResources(selectedActor);
+                if (focus)
                 {
-                    if (focus)
-                    {
-                        FocusOnBounds(selectedActor.GetBounds());
-                        RenderContext.TransformWidget.Attach = selectedActor;
-                    }
-                    selectedActor.PropertyChanged += OnActorPropertyChanged;
-                    _preEditSnapshot = selectedActor.SnapshotTransform();
-
+                    FocusOnBounds(selectedActor.GetBounds());
+                }
+                selectedActor.PropertyChanged += OnActorPropertyChanged;
+                _preEditSnapshot = selectedActor.SnapshotTransform();
                 RefreshPropertiesExportSelection(selectedActor, PropertiesTabControl.SelectedIndex);
-                }
-                else
-                {
-                    _preEditSnapshot = null;
-                    UnloadPropertyTabs();
-                }
+            }
+            else
+            {
+                RenderContext.TransformWidget.Attach = null;
+                RenderContext.PrioritizeActorResources(null);
+                _preEditSnapshot = null;
+                UnloadPropertyTabs();
+            }
             SynchronizeLevelLiveMaterialEditor(selectedActor);
             UpdateActorRotationDialIndicator();
             UpdateLightValueDialIndicator();
@@ -1531,7 +1533,13 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
             return;
         }
 
-        using IMEPackage pcc = MEPackageHandler.OpenMEPackage(path);
+        IsBusy = true;
+        BusyText = $"Opening {Path.GetFileName(path)}...";
+        await Task.Yield();
+
+        // Package decompression, level-binary parsing, and actor-proxy discovery are CPU and IO heavy
+        // for large modded levels. None of them mutate WPF collections, so keep them off the dispatcher.
+        using IMEPackage pcc = await Task.Run(() => MEPackageHandler.OpenMEPackage(path)).ConfigureAwait(true);
         if (OpenFiles.Count > 0 && pcc.Game != Game)
         {
             MessageBox.Show(this, $"Cannot mix games. The open files are {Game}, but {Path.GetFileName(path)} is {pcc.Game}.");
@@ -1554,16 +1562,12 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
 
         RecordCurrentFilesAsRecent();
 
-        Level levelBin = levelExport.GetBinaryData<Level>();
         bool isFirstFile = OpenFiles.Count == 1;
 
-        IsBusy = true;
-        BusyText = $"Loading {Path.GetFileName(path)}...";
-
-        // Yield to let the BusyIndicator paint before the heavy work begins
-        await Task.Delay(1).ConfigureAwait(true);
-
-        var (actors, ignoredClasses) = LoadActors(levelBin, openFile);
+        BusyText = $"Scanning {Path.GetFileName(path)}...";
+        Level levelBin = await Task.Run(() => levelExport.GetBinaryData<Level>()).ConfigureAwait(true);
+        LoadActorsResult actorLoad = await Task.Run(() => LoadActors(levelBin, openFile)).ConfigureAwait(true);
+        var (actors, ignoredClasses) = actorLoad;
         var sorted = actors.OrderBy(actor => actor.Export.UIndex).ToList();
         openFile.Actors.AddRange(sorted);
         Actors.AddRange(sorted);

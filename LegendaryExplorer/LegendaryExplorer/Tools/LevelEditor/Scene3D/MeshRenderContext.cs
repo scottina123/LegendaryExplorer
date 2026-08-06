@@ -198,6 +198,7 @@ public class MeshRenderContext : RenderContext
     private readonly Dictionary<Guid, InputLayout> InputLayoutCache = [];
     private readonly Dictionary<Guid, PixelShader> PixelShaderCache = [];
     private readonly Dictionary<Guid, PixelShader> NativePixelShaderCache = [];
+    private readonly object ShaderObjectCacheLock = new();
     private readonly record struct MeshSourceKey(IMEPackage Package, int UIndex);
     private readonly record struct MeshGeometryKey(IMEPackage Package, int UIndex, Type VertexType, int LOD);
     private readonly record struct EntryReferenceKey(IMEPackage Package, int UIndex);
@@ -206,6 +207,7 @@ public class MeshRenderContext : RenderContext
     private readonly Dictionary<MeshSourceKey, SkeletalMesh> SkeletalMeshCache = [];
     private readonly Dictionary<EntryReferenceKey, ExportEntry> ResolvedExportCache = [];
     private readonly Dictionary<MeshGeometryKey, ISharedMeshData> MeshGeometryCache = [];
+    private readonly object ResourcePreparationCacheLock = new();
     private readonly Dictionary<LightQueryKey, SceneLight[]> NearestLightCache = [];
     private SceneLightSpatialIndex SceneLightIndex;
     public readonly PreviewTextureCache TextureCache;
@@ -221,13 +223,16 @@ public class MeshRenderContext : RenderContext
 
     internal StaticMesh GetCachedStaticMesh(ExportEntry export)
     {
-        var key = new MeshSourceKey(export.FileRef, export.UIndex);
-        if (!StaticMeshCache.TryGetValue(key, out StaticMesh mesh))
+        lock (ResourcePreparationCacheLock)
         {
-            mesh = export.GetBinaryData<StaticMesh>();
-            StaticMeshCache.Add(key, mesh);
+            var key = new MeshSourceKey(export.FileRef, export.UIndex);
+            if (!StaticMeshCache.TryGetValue(key, out StaticMesh mesh))
+            {
+                mesh = export.GetBinaryData<StaticMesh>();
+                StaticMeshCache.Add(key, mesh);
+            }
+            return mesh;
         }
-        return mesh;
     }
 
     /// <summary>
@@ -242,20 +247,23 @@ public class MeshRenderContext : RenderContext
             return null;
         }
 
-        var key = new EntryReferenceKey(sourcePackage, uIndex);
-        if (ResolvedExportCache.TryGetValue(key, out ExportEntry resolved))
+        lock (ResourcePreparationCacheLock)
         {
+            var key = new EntryReferenceKey(sourcePackage, uIndex);
+            if (ResolvedExportCache.TryGetValue(key, out ExportEntry resolved))
+            {
+                return resolved;
+            }
+
+            resolved = sourcePackage.GetEntry(uIndex) switch
+            {
+                ExportEntry export => export,
+                ImportEntry import => EntryImporter.ResolveImport(import, PackageCache),
+                _ => null
+            };
+            ResolvedExportCache[key] = resolved;
             return resolved;
         }
-
-        resolved = sourcePackage.GetEntry(uIndex) switch
-        {
-            ExportEntry export => export,
-            ImportEntry import => EntryImporter.ResolveImport(import, PackageCache),
-            _ => null
-        };
-        ResolvedExportCache[key] = resolved;
-        return resolved;
     }
 
     internal ExportEntry ResolveExportCached(IEntry entry) => entry switch
@@ -267,27 +275,33 @@ public class MeshRenderContext : RenderContext
 
     internal SkeletalMesh GetCachedSkeletalMesh(ExportEntry export)
     {
-        var key = new MeshSourceKey(export.FileRef, export.UIndex);
-        if (!SkeletalMeshCache.TryGetValue(key, out SkeletalMesh mesh))
+        lock (ResourcePreparationCacheLock)
         {
-            mesh = export.GetBinaryData<SkeletalMesh>();
-            SkeletalMeshCache.Add(key, mesh);
+            var key = new MeshSourceKey(export.FileRef, export.UIndex);
+            if (!SkeletalMeshCache.TryGetValue(key, out SkeletalMesh mesh))
+            {
+                mesh = export.GetBinaryData<SkeletalMesh>();
+                SkeletalMeshCache.Add(key, mesh);
+            }
+            return mesh;
         }
-        return mesh;
     }
 
     internal Mesh<TVertex> GetOrCreateCachedMesh<TVertex>(ExportEntry export, int lod,
         Func<(List<Triangle> Triangles, List<TVertex> Vertices)> createGeometry)
         where TVertex : IVertexBase
     {
-        var key = new MeshGeometryKey(export.FileRef, export.UIndex, typeof(TVertex), lod);
-        if (!MeshGeometryCache.TryGetValue(key, out ISharedMeshData cached))
+        lock (ResourcePreparationCacheLock)
         {
-            (List<Triangle> triangles, List<TVertex> vertices) = createGeometry();
-            cached = new SharedMeshData<TVertex>(Device, triangles, vertices);
-            MeshGeometryCache.Add(key, cached);
+            var key = new MeshGeometryKey(export.FileRef, export.UIndex, typeof(TVertex), lod);
+            if (!MeshGeometryCache.TryGetValue(key, out ISharedMeshData cached))
+            {
+                (List<Triangle> triangles, List<TVertex> vertices) = createGeometry();
+                cached = new SharedMeshData<TVertex>(Device, triangles, vertices);
+                MeshGeometryCache.Add(key, cached);
+            }
+            return new Mesh<TVertex>((SharedMeshData<TVertex>)cached);
         }
-        return new Mesh<TVertex>((SharedMeshData<TVertex>)cached);
     }
 
     private void InvalidateSceneLightCache()
@@ -860,20 +874,23 @@ public class MeshRenderContext : RenderContext
 
     public BlendState GetCachedBlendState(RenderTargetBlendDescription renderTargetBlendDesc)
     {
-        if (!BlendStateCache.TryGetValue(renderTargetBlendDesc, out BlendState blendState))
+        lock (ShaderObjectCacheLock)
         {
-            blendState = new BlendState(Device, new BlendStateDescription
+            if (!BlendStateCache.TryGetValue(renderTargetBlendDesc, out BlendState blendState))
             {
-                AlphaToCoverageEnable = false,
-                IndependentBlendEnable = true,
-                RenderTarget =
+                blendState = new BlendState(Device, new BlendStateDescription
                 {
-                    [0] = renderTargetBlendDesc
-                }
-            });
-            BlendStateCache.Add(renderTargetBlendDesc, blendState);
+                    AlphaToCoverageEnable = false,
+                    IndependentBlendEnable = true,
+                    RenderTarget =
+                    {
+                        [0] = renderTargetBlendDesc
+                    }
+                });
+                BlendStateCache.Add(renderTargetBlendDesc, blendState);
+            }
+            return blendState;
         }
-        return blendState;
     }
 
     public (VertexShader, InputLayout) GetCachedVertexShader(Guid id, byte[] shaderBytecode)
@@ -882,19 +899,22 @@ public class MeshRenderContext : RenderContext
     public (VertexShader, InputLayout) GetCachedVertexShader<TVertex>(Guid id, byte[] shaderBytecode)
         where TVertex : IVertexBase
     {
-        InputLayout inputLayout;
-        if (VertexShaderCache.TryGetValue(id, out VertexShader shader))
+        lock (ShaderObjectCacheLock)
         {
-            inputLayout = InputLayoutCache[id];
+            InputLayout inputLayout;
+            if (VertexShaderCache.TryGetValue(id, out VertexShader shader))
+            {
+                inputLayout = InputLayoutCache[id];
+            }
+            else
+            {
+                shader = new VertexShader(Device, shaderBytecode);
+                VertexShaderCache.Add(id, shader);
+                inputLayout = new InputLayout(Device, shaderBytecode, TVertex.InputElements);
+                InputLayoutCache.Add(id, inputLayout);
+            }
+            return (shader, inputLayout);
         }
-        else
-        {
-            shader = new VertexShader(Device, shaderBytecode);
-            VertexShaderCache.Add(id, shader);
-            inputLayout = new InputLayout(Device, shaderBytecode, TVertex.InputElements);
-            InputLayoutCache.Add(id, inputLayout);
-        }
-        return (shader, inputLayout);
     }
 
     /// <summary>
@@ -1047,27 +1067,51 @@ public class MeshRenderContext : RenderContext
 
     public PixelShader GetCachedPixelShader(Guid id, byte[] shaderBytecode)
     {
-        if (!PixelShaderCache.TryGetValue(id, out PixelShader shader))
+        lock (ShaderObjectCacheLock)
         {
-            string code = HLSLDecompiler.DecompileShader(shaderBytecode, false);
-            //HACK: LE shaders seem to always output pixels with no alpha (Maybe it's inverted? Investigate transparent mats) 
-            code = code.Replace("o0.w = 0;", "o0.w = 1;", StringComparison.Ordinal);
-            //3DMigoto outputs "inf" for the infinity constant, but that's not valid HLSL
-            code = code.Replace("// 3Dmigoto declarations", "// 3Dmigoto declarations\n" +
-                                                            "#define inf 1.#INF");
-            try
+            if (PixelShaderCache.TryGetValue(id, out PixelShader cachedShader))
             {
-                shaderBytecode = ShaderBytecode.Compile(code, "main", "ps_5_0");
+                return cachedShader;
             }
-            catch (Exception e)
+        }
+
+        // Decompilation and recompilation can be expensive. Do it outside the cache lock so an already
+        // rendered scene never waits behind preparation of an unrelated material.
+        string code = HLSLDecompiler.DecompileShader(shaderBytecode, false);
+        //HACK: LE shaders seem to always output pixels with no alpha (Maybe it's inverted? Investigate transparent mats)
+        code = code.Replace("o0.w = 0;", "o0.w = 1;", StringComparison.Ordinal);
+        //3DMigoto outputs "inf" for the infinity constant, but that's not valid HLSL
+        code = code.Replace("// 3Dmigoto declarations", "// 3Dmigoto declarations\n" +
+                                                        "#define inf 1.#INF");
+        try
+        {
+            shaderBytecode = ShaderBytecode.Compile(code, "main", "ps_5_0");
+        }
+        catch (Exception e)
+        {
+            // A worker cannot display a modal dialog, but preserve the existing diagnostic when this
+            // path is reached by a foreground preview tool.
+            if (System.Windows.Application.Current?.Dispatcher.CheckAccess() is true)
             {
                 MessageBox.Show(e.Message);
             }
-
-            shader = new PixelShader(Device, shaderBytecode);
-            PixelShaderCache.Add(id, shader);
+            else
+            {
+                Debug.WriteLine(e.Message);
+            }
         }
-        return shader;
+
+        var shader = new PixelShader(Device, shaderBytecode);
+        lock (ShaderObjectCacheLock)
+        {
+            if (PixelShaderCache.TryGetValue(id, out PixelShader cachedShader))
+            {
+                shader.Dispose();
+                return cachedShader;
+            }
+            PixelShaderCache.Add(id, shader);
+            return shader;
+        }
     }
 
     /// <summary>
@@ -1076,33 +1120,42 @@ public class MeshRenderContext : RenderContext
     /// </summary>
     public PixelShader GetCachedNativePixelShader(Guid id, byte[] shaderBytecode)
     {
-        if (!NativePixelShaderCache.TryGetValue(id, out PixelShader shader))
+        lock (ShaderObjectCacheLock)
         {
-            shader = new PixelShader(Device, shaderBytecode);
-            NativePixelShaderCache.Add(id, shader);
+            if (!NativePixelShaderCache.TryGetValue(id, out PixelShader shader))
+            {
+                shader = new PixelShader(Device, shaderBytecode);
+                NativePixelShaderCache.Add(id, shader);
+            }
+            return shader;
         }
-        return shader;
     }
 
     public override void EmptyCaches()
     {
-        foreach (ISharedMeshData geometry in MeshGeometryCache.Values)
+        lock (ResourcePreparationCacheLock)
         {
-            geometry.ReleaseReference();
+            foreach (ISharedMeshData geometry in MeshGeometryCache.Values)
+            {
+                geometry.ReleaseReference();
+            }
+            MeshGeometryCache.Clear();
+            StaticMeshCache.Clear();
+            SkeletalMeshCache.Clear();
+            ResolvedExportCache.Clear();
         }
-        MeshGeometryCache.Clear();
-        StaticMeshCache.Clear();
-        SkeletalMeshCache.Clear();
-        ResolvedExportCache.Clear();
         NearestLightCache.Clear();
         SceneLightIndex = null;
         PackageCache?.ReleasePackages();
         TextureCache?.ExpungeStaleCacheItems();
-        BlendStateCache.DisposeValuesAndClear();
-        VertexShaderCache.DisposeValuesAndClear();
-        InputLayoutCache.DisposeValuesAndClear();
-        PixelShaderCache.DisposeValuesAndClear();
-        NativePixelShaderCache.DisposeValuesAndClear();
+        lock (ShaderObjectCacheLock)
+        {
+            BlendStateCache.DisposeValuesAndClear();
+            VertexShaderCache.DisposeValuesAndClear();
+            InputLayoutCache.DisposeValuesAndClear();
+            PixelShaderCache.DisposeValuesAndClear();
+            NativePixelShaderCache.DisposeValuesAndClear();
+        }
     }
 
     private System.Drawing.Point mouseDownPos;

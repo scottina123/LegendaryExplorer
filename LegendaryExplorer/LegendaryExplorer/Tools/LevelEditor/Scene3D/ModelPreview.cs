@@ -356,6 +356,19 @@ internal class LEShaderPreviewMaterial : ModelPreviewMaterial<LEVertex>
     internal LEShaderPreviewMaterial CreateEffectOverride(MeshRenderContext renderContext, ExportEntry effectMaterial)
         => new(renderContext, effectMaterial, (MaterialRenderProxy)Material);
 
+    internal void PrepareGraphicsResources(MeshRenderContext context)
+    {
+        var material = (MaterialRenderProxy)Material;
+        if (!CanRender)
+        {
+            return;
+        }
+        material.HasRequiredTextures(context);
+        context.GetCachedPixelShader(material.UnrealPixelShader.Guid, material.UnrealPixelShader.ShaderByteCode);
+        context.GetCachedVertexShader(material.UnrealVertexShader.Guid, material.UnrealVertexShader.ShaderByteCode);
+        context.GetCachedBlendState(BlendDescription);
+    }
+
 
 
     /// <summary>
@@ -802,6 +815,18 @@ public class ModelPreview<TVertex> : IDisposable where TVertex : IVertexBase
         foreach (var lod in LODs)
         {
             lod.Mesh.LocalToWorld = ltw;
+        }
+    }
+
+    /// <summary>
+    /// Creates the immutable D3D shader/layout/blend objects needed by this preview before it is published
+    /// to the render thread. Non-game-shader materials have no lazy graphics objects to prepare here.
+    /// </summary>
+    internal void PrepareGraphicsResources(MeshRenderContext context)
+    {
+        foreach (LEShaderPreviewMaterial material in Materials.Values.OfType<LEShaderPreviewMaterial>())
+        {
+            material.PrepareGraphicsResources(context);
         }
     }
 

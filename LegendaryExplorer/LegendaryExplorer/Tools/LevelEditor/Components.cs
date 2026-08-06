@@ -428,7 +428,13 @@ public abstract class MeshComponentProxy : PrimitiveComponentProxy
     public int LOD;
     public List<IEntry> MaterialOverrides = [];
     protected BoxSphereBounds? SerializedMeshBounds;
-    internal bool RenderResourcesInitialized { get; private protected set; }
+    private volatile bool renderResourcesInitialized;
+    protected readonly object RenderResourceLock = new();
+    internal bool RenderResourcesInitialized
+    {
+        get => renderResourcesInitialized;
+        private protected set => renderResourcesInitialized = value;
+    }
 
     protected MeshComponentProxy(MeshRenderContext context, ExportEntry componentExport, ActorProxy parent) : base(context, componentExport, parent)
     {
@@ -441,7 +447,7 @@ public abstract class MeshComponentProxy : PrimitiveComponentProxy
 
     public override BoxSphereBounds GetBounds()
     {
-        if (GameShaderMesh is { } gameShaderMesh && gameShaderMesh.LODs.Count > LOD)
+        if (RenderResourcesInitialized && GameShaderMesh is { } gameShaderMesh && gameShaderMesh.LODs.Count > LOD)
         {
             return gameShaderMesh.LODs[LOD].Mesh.TransformedBounds;
         }
@@ -452,7 +458,15 @@ public abstract class MeshComponentProxy : PrimitiveComponentProxy
         return Mesh.LODs[LOD].Mesh.TransformedBounds;
     }
 
-    protected abstract bool EnsureRenderResources();
+    protected bool EnsureRenderResources()
+    {
+        lock (RenderResourceLock)
+        {
+            return EnsureRenderResourcesCore();
+        }
+    }
+
+    protected abstract bool EnsureRenderResourcesCore();
 
     internal void PrepareRenderResources() => EnsureRenderResources();
 
@@ -599,8 +613,13 @@ public abstract class MeshComponentProxy : PrimitiveComponentProxy
 
     protected override void Dispose(bool disposing)
     {
-        Mesh?.Dispose();
-        GameShaderMesh?.Dispose();
+        lock (RenderResourceLock)
+        {
+            Mesh?.Dispose();
+            Mesh = null;
+            GameShaderMesh?.Dispose();
+            GameShaderMesh = null;
+        }
         base.Dispose(disposing);
     }
 }
@@ -657,7 +676,7 @@ public class StaticMeshComponentProxy : MeshComponentProxy
         }
     }
 
-    protected override bool EnsureRenderResources()
+    protected override bool EnsureRenderResourcesCore()
     {
         if (RenderResourcesInitialized)
         {
@@ -672,14 +691,15 @@ public class StaticMeshComponentProxy : MeshComponentProxy
         if (useGameShader)
         {
             GameShaderMesh = new ModelPreview<LEVertex>(RenderContext, staticMesh, LOD, MaterialOverrides);
+            GameShaderMesh.PrepareGraphicsResources(RenderContext);
         }
         else
         {
             Mesh = new ModelPreview<WorldVertex>(RenderContext, staticMesh, LOD, MaterialOverrides);
         }
         MaterialOverrides.Clear();
+        UpdateSelfLocalToWorld(force: true);
         RenderResourcesInitialized = true;
-        UpdateSelfLocalToWorld();
         return true;
     }
 
@@ -724,17 +744,17 @@ public class StaticMeshComponentProxy : MeshComponentProxy
         UpdateSelfLocalToWorld();
     }
 
-    private void UpdateSelfLocalToWorld()
+    private void UpdateSelfLocalToWorld(bool force = false)
     {
         if (CollisionMesh is not null)
         {
             CollisionMesh.LocalToWorld = LocalToWorld;
         }
-        if (Mesh is not null)
+        if ((force || RenderResourcesInitialized) && Mesh is not null)
         {
             Mesh.UpdateLocalToWorld(LocalToWorld);
         }
-        if (GameShaderMesh is not null)
+        if ((force || RenderResourcesInitialized) && GameShaderMesh is not null)
         {
             GameShaderMesh.UpdateLocalToWorld(LocalToWorld);
         }
@@ -786,7 +806,7 @@ public class SkeletalMeshComponentProxy : MeshComponentProxy
         }
     }
 
-    protected override bool EnsureRenderResources()
+    protected override bool EnsureRenderResourcesCore()
     {
         if (RenderResourcesInitialized)
         {
@@ -802,6 +822,7 @@ public class SkeletalMeshComponentProxy : MeshComponentProxy
         {
             GameShaderMesh = new ModelPreview<LEVertex>(RenderContext, skeletalMesh, MaterialOverrides,
                 loadOnlyFirstLod: true);
+            GameShaderMesh.PrepareGraphicsResources(RenderContext);
         }
         else
         {
@@ -809,14 +830,14 @@ public class SkeletalMeshComponentProxy : MeshComponentProxy
                 loadOnlyFirstLod: true);
         }
         MaterialOverrides.Clear();
-        RenderResourcesInitialized = true;
-        UpdateSelfLocalToWorld();
+        UpdateSelfLocalToWorld(force: true);
 
         if (pendingMorphExport is not null)
         {
             ApplyPendingMorph();
             UpdateScene(RenderContext, 0f);
         }
+        RenderResourcesInitialized = true;
         return true;
     }
 
@@ -890,11 +911,14 @@ public class SkeletalMeshComponentProxy : MeshComponentProxy
         {
             return;
         }
-        pendingMorphExport = morphExport;
-        pendingMorphUsesStoredLods = useStoredMorphLods;
-        if (RenderResourcesInitialized)
+        lock (RenderResourceLock)
         {
-            ApplyPendingMorph();
+            pendingMorphExport = morphExport;
+            pendingMorphUsesStoredLods = useStoredMorphLods;
+            if (RenderResourcesInitialized)
+            {
+                ApplyPendingMorph();
+            }
         }
     }
 
@@ -1004,10 +1028,13 @@ public class SkeletalMeshComponentProxy : MeshComponentProxy
         UpdateSelfLocalToWorld();
     }
 
-    private void UpdateSelfLocalToWorld()
+    private void UpdateSelfLocalToWorld(bool force = false)
     {
-        Mesh?.UpdateLocalToWorld(LocalToWorld);
-        GameShaderMesh?.UpdateLocalToWorld(LocalToWorld);
+        if (force || RenderResourcesInitialized)
+        {
+            Mesh?.UpdateLocalToWorld(LocalToWorld);
+            GameShaderMesh?.UpdateLocalToWorld(LocalToWorld);
+        }
     }
 }
 

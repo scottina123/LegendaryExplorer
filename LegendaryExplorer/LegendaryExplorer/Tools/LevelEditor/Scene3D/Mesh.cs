@@ -9,6 +9,7 @@ using System.Collections.Generic;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Threading;
 using Device = SharpDX.Direct3D11.Device;
 
 namespace LegendaryExplorer.Tools.LevelEditor.Scene3D;
@@ -307,11 +308,11 @@ internal sealed class SharedMeshData<TVertex> : ISharedMeshData where TVertex : 
         VertexBuffer = SharpDX.Direct3D11.Buffer.Create(device, BindFlags.VertexBuffer, vertexData);
     }
 
-    public void AddReference() => references++;
+    public void AddReference() => Interlocked.Increment(ref references);
 
     public void ReleaseReference()
     {
-        if (--references != 0)
+        if (Interlocked.Decrement(ref references) != 0)
         {
             return;
         }

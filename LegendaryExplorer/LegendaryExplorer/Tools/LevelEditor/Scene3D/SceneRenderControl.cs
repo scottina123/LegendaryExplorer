@@ -20,6 +20,7 @@ using LegendaryExplorerCore.Packages;
 using Texture2D = SharpDX.Direct3D11.Texture2D;
 using LegendaryExplorer.Dialogs;
 using System.Numerics;
+using System.Runtime.InteropServices;
 
 namespace LegendaryExplorer.Tools.LevelEditor.Scene3D;
 
@@ -78,14 +79,27 @@ public static class RenderContextExtensions
     public static Texture2D LoadTextureCube(this RenderContext renderContext, uint size, Format format, Fixed6<byte[]> faceData)
     {
         Texture2DDescription texture2DDescription = GetTextureDescription(size, size, format, true, out int pitch);
-        var tex = new Texture2D(renderContext.Device, texture2DDescription);
-
-        for (int i = 0; i < faceData.Length; i++)
+        var handles = new GCHandle[faceData.Length];
+        var initialData = new SharpDX.DataRectangle[faceData.Length];
+        try
         {
-            renderContext.Device.ImmediateContext.UpdateSubresource(faceData[i], tex, i, pitch);
+            for (int i = 0; i < faceData.Length; i++)
+            {
+                handles[i] = GCHandle.Alloc(faceData[i], GCHandleType.Pinned);
+                initialData[i] = new SharpDX.DataRectangle(handles[i].AddrOfPinnedObject(), pitch);
+            }
+            return new Texture2D(renderContext.Device, texture2DDescription, initialData);
         }
-
-        return tex;
+        finally
+        {
+            foreach (GCHandle handle in handles)
+            {
+                if (handle.IsAllocated)
+                {
+                    handle.Free();
+                }
+            }
+        }
     }
 
     public static unsafe Texture2D LoadTextureFromFile(this RenderContext renderContext, string filename)
@@ -179,9 +193,18 @@ public abstract class RenderContext
     public BlendState AlphaBlendState { get; private set; } // A BlendState that uses standard alpha blending
     public bool IsReady => Device != null;
 
+    /// <summary>
+    /// Opts a renderer into D3D11's normal multithread protection when it prepares immutable resources
+    /// away from the render thread. Single-threaded tools retain their lower-overhead device mode.
+    /// </summary>
+    protected virtual bool SupportsConcurrentResourceCreation => false;
+
     public virtual void CreateResources()
     {
-        DeviceCreationFlags deviceFlags = DeviceCreationFlags.BgraSupport | DeviceCreationFlags.SingleThreaded;
+        DeviceCreationFlags deviceFlags = DeviceCreationFlags.BgraSupport
+                                          | (SupportsConcurrentResourceCreation
+                                              ? DeviceCreationFlags.None
+                                              : DeviceCreationFlags.SingleThreaded);
 #if DEBUG
         deviceFlags |= DeviceCreationFlags.Debug;
 #endif
