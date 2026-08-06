@@ -400,9 +400,15 @@ internal class LEShaderPreviewMaterial : ModelPreviewMaterial<LEVertex>
                 DynamicScale = Vector4.One,
             };
 
-            material.UpdateShaderParams(effect.VertexShaderConstantBuffer, effect.PixelShaderConstantBuffer, context, mesh);
-
-            effect.RenderObject(context.ImmediateContext, vsConstants, psConstants, mesh, (int)s.StartIndex, (int)s.TriangleCount * 3);
+            try
+            {
+                material.UpdateShaderParams(effect.VertexShaderConstantBuffer, effect.PixelShaderConstantBuffer, context, mesh);
+                effect.RenderObject(context.ImmediateContext, vsConstants, psConstants, mesh, (int)s.StartIndex, (int)s.TriangleCount * 3);
+            }
+            finally
+            {
+                context.ResetTextureSamplers();
+            }
         }
 
     protected override MaterialInstanceConstantLevelEditor CreateMaterial(MeshRenderContext renderContext, ExportEntry export)

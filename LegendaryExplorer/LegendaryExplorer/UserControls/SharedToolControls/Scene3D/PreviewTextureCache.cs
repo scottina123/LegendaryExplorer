@@ -44,6 +44,8 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
             public DateTime LastUsageTime = DateTime.Now;
 
             public readonly bool IsTextureCube;
+            public readonly TextureAddressMode AddressU;
+            public readonly TextureAddressMode AddressV;
 
             /// <summary>
             /// Creates a new cache entry for the given texture.
@@ -55,10 +57,20 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
                 SourcePackagePath = export.FileRef.FilePath;
                 SourcePackageIdentity = RuntimeHelpers.GetHashCode(export.FileRef);
                 IsTextureCube = export.ClassName == "TextureCube";
+                AddressU = GetTextureAddressMode(export, "AddressX");
+                AddressV = GetTextureAddressMode(export, "AddressY");
 
                 Texture = IsTextureCube ? renderContext.LoadUnrealTextureCube(export) : renderContext.LoadUnrealTexture(export);
                 TextureView = new ShaderResourceView(renderContext.Device, Texture);
             }
+
+            private static TextureAddressMode GetTextureAddressMode(ExportEntry export, string propertyName)
+                => export.GetProperty<EnumProperty>(propertyName)?.Value.Name switch
+                {
+                    "TA_Clamp" => TextureAddressMode.Clamp,
+                    "TA_Mirror" => TextureAddressMode.Mirror,
+                    _ => TextureAddressMode.Wrap
+                };
 
             /// <summary>
             /// Disposes <see cref="TextureView"/> and <see cref="Texture"/> if they have been loaded.

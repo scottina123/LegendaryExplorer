@@ -100,6 +100,7 @@ public class MeshRenderContext : LegacyRenderContext
     private RasterizerState FillRasterizerState;
     private RasterizerState WireframeRasterizerState;
     public SamplerState SampleState { get; private set; }
+    private readonly Dictionary<(TextureAddressMode U, TextureAddressMode V), SamplerState> TextureSamplerCache = [];
     public PreviewTextureCache TextureCache { get; private set; }
     public readonly SceneCamera Camera = new();
     private bool wireframe;
@@ -284,21 +285,8 @@ public class MeshRenderContext : LegacyRenderContext
         WireframeRasterizerState = new RasterizerState(Device, wrs);
 
         // Set texture sampler state
-        var ssd = new SamplerStateDescription
-        {
-            AddressU = TextureAddressMode.Wrap,
-            AddressV = TextureAddressMode.Wrap,
-            AddressW = TextureAddressMode.Wrap,
-            Filter = Filter.Anisotropic,
-            MaximumAnisotropy = 8
-        };
-        SampleState = new SamplerState(Device, ssd);
-        //just set all the sample state slots.
-        const int numSampleStates = 16;
-        for (int i = 0; i < numSampleStates; i++)
-        {
-            ImmediateContext.PixelShader.SetSampler(i, SampleState);
-        }
+        SampleState = new SamplerState(Device, CreateSamplerDescription(TextureAddressMode.Wrap, TextureAddressMode.Wrap));
+        ResetTextureSamplers();
 
         // Load the default texture
         DefaultTexture = this.LoadFile(Path.Combine(AppDirectories.ExecFolder, "Default.png"));
@@ -325,6 +313,43 @@ public class MeshRenderContext : LegacyRenderContext
         LEEffect = new LEEffect(Device);
         HumanLashEffect = new LEEffect(Device);
     }
+
+    public SamplerState GetTextureSampler(PreviewTextureCache.TextureEntry texture)
+    {
+        if (texture is null || (texture.AddressU == TextureAddressMode.Wrap && texture.AddressV == TextureAddressMode.Wrap))
+        {
+            return SampleState;
+        }
+
+        var key = (U: texture.AddressU, V: texture.AddressV);
+        if (!TextureSamplerCache.TryGetValue(key, out SamplerState sampler))
+        {
+            sampler = new SamplerState(Device, CreateSamplerDescription(key.U, key.V));
+            TextureSamplerCache.Add(key, sampler);
+        }
+        return sampler;
+    }
+
+    public void ResetTextureSamplers()
+    {
+        // Most preview effects rely on the renderer's default wrap sampler. Compiled game
+        // materials temporarily replace individual slots with their texture's address mode.
+        const int numSampleStates = 16;
+        for (int i = 0; i < numSampleStates; i++)
+        {
+            ImmediateContext.PixelShader.SetSampler(i, SampleState);
+        }
+    }
+
+    private static SamplerStateDescription CreateSamplerDescription(TextureAddressMode addressU, TextureAddressMode addressV)
+        => new()
+        {
+            AddressU = addressU,
+            AddressV = addressV,
+            AddressW = TextureAddressMode.Wrap,
+            Filter = Filter.Anisotropic,
+            MaximumAnisotropy = 8
+        };
 
     public override void CreateSizeDependentResources(int width, int height, Texture2D newBackBuffer)
     {
@@ -474,6 +499,11 @@ public class MeshRenderContext : LegacyRenderContext
         DefaultTexture?.Dispose();
         WhiteTextureCube?.Dispose();
         WhiteTex?.Dispose();
+        foreach (SamplerState sampler in TextureSamplerCache.Values)
+        {
+            sampler.Dispose();
+        }
+        TextureSamplerCache.Clear();
         SampleState?.Dispose();
         DefaultEffect?.Dispose();
         LEEffect?.Dispose();

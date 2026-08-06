@@ -45,6 +45,8 @@ public class PreviewTextureCache : IDisposable
         public DateTime LastUsageTime = DateTime.Now;
 
         public readonly bool IsTextureCube;
+        public readonly TextureAddressMode AddressU;
+        public readonly TextureAddressMode AddressV;
         public int Width => Texture?.Description.Width ?? 1;
         public int Height => Texture?.Description.Height ?? 1;
 
@@ -56,10 +58,20 @@ public class PreviewTextureCache : IDisposable
             MemoryAnalyzer.AddTrackedMemoryItem($"PreviewTexture {export.ObjectName}", new WeakReference(this));
             InstanceFullPath = export.InstancedFullPath;
             IsTextureCube = export.ClassName == "TextureCube";
+            AddressU = GetTextureAddressMode(export, "AddressX");
+            AddressV = GetTextureAddressMode(export, "AddressY");
 
             Texture = IsTextureCube ? renderContext.LoadUnrealTextureCube(export) : renderContext.LoadUnrealTexture(export);
             TextureView = new ShaderResourceView(renderContext.Device, Texture);
         }
+
+        private static TextureAddressMode GetTextureAddressMode(ExportEntry export, string propertyName)
+            => export.GetProperty<EnumProperty>(propertyName)?.Value.Name switch
+            {
+                "TA_Clamp" => TextureAddressMode.Clamp,
+                "TA_Mirror" => TextureAddressMode.Mirror,
+                _ => TextureAddressMode.Wrap
+            };
 
         /// <summary>
         /// Disposes <see cref="TextureView"/> and <see cref="Texture"/> if they have been loaded.

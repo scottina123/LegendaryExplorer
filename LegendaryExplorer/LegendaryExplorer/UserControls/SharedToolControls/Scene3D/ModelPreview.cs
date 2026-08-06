@@ -464,9 +464,15 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
                 DynamicScale = Vector4.One,
             };
 
-            material.UpdateShaderParams(effect.VertexShaderConstantBuffer, effect.PixelShaderConstantBuffer, context, mesh);
-
-            effect.RenderObject(context.ImmediateContext, vsConstants, psConstants, mesh, (int)s.StartIndex, (int)s.TriangleCount * 3);
+            try
+            {
+                material.UpdateShaderParams(effect.VertexShaderConstantBuffer, effect.PixelShaderConstantBuffer, context, mesh);
+                effect.RenderObject(context.ImmediateContext, vsConstants, psConstants, mesh, (int)s.StartIndex, (int)s.TriangleCount * 3);
+            }
+            finally
+            {
+                context.ResetTextureSamplers();
+            }
         }
     }
 

@@ -106,13 +106,17 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
             }
             foreach (TUniformParameter<FShaderResourceParameter> texParam in p.UniformPixel2DShaderResourceParameters)
             {
-                ShaderResourceView view = tex2dParamValues[texParam.Index]?.TextureView ?? context.WhiteTexView;
+                PreviewTextureCache.TextureEntry texture = tex2dParamValues[texParam.Index];
+                ShaderResourceView view = texture?.TextureView ?? context.WhiteTexView;
                 context.ImmediateContext.PixelShader.SetShaderResource(texParam.Param.BaseIndex, view);
+                context.ImmediateContext.PixelShader.SetSampler(texParam.Param.SamplerIndex, context.GetTextureSampler(texture));
             }
             foreach (TUniformParameter<FShaderResourceParameter> cubeParam in p.UniformPixelCubeShaderResourceParameters)
             {
-                ShaderResourceView view = cubeMapParamValues[cubeParam.Index]?.TextureView ?? context.WhiteTextureCubeView;
+                PreviewTextureCache.TextureEntry texture = cubeMapParamValues[cubeParam.Index];
+                ShaderResourceView view = texture?.TextureView ?? context.WhiteTextureCubeView;
                 context.ImmediateContext.PixelShader.SetShaderResource(cubeParam.Param.BaseIndex, view);
+                context.ImmediateContext.PixelShader.SetSampler(cubeParam.Param.SamplerIndex, context.GetTextureSampler(texture));
             }
 
 
