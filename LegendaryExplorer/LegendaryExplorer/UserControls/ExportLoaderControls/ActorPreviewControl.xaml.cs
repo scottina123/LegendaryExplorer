@@ -131,6 +131,12 @@ public partial class ActorPreviewControl : ExportLoaderControl, IActorEditorCont
 
     public string MorphModeButtonLabel => IsMorphEditing ? "Back to actor" : "Edit morph";
 
+    /// <summary>
+    /// Opens the integrated morph editor as soon as the actor and its MorphHead have loaded.
+    /// Used by callers that launch Actor Preview specifically to edit an actor morph.
+    /// </summary>
+    public bool OpenMorphEditorOnLoad { get; set; }
+
     public string SelectedMaterialTargetPath
     {
         get
@@ -397,6 +403,10 @@ public partial class ActorPreviewControl : ExportLoaderControl, IActorEditorCont
                 ConfigureDepthRangeForBounds(bounds);
                 PopulateLiveMaterialEditor();
                 UpdateActorMorphAvailability();
+                if (OpenMorphEditorOnLoad && HasActorMorph)
+                {
+                    OpenActorMorphEditor();
+                }
                 SceneViewer.MarkRenderDirty();
             }
         }

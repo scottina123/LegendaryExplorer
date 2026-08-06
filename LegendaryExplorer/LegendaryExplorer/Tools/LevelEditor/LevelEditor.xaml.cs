@@ -2138,27 +2138,45 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
             && _selectedPropertiesExportPackage == file.Package
             && updatedExports.Contains(_selectedPropertiesExportUIndex))
         {
+            ExportEntry updatedPropertiesExport = file.Package.GetEntry(_selectedPropertiesExportUIndex) as ExportEntry;
             if (file.Actors.FirstOrDefault(actor => actor.TestUIndexes(updatedExports)) is { } actor)
             {
+                int actorUIndex = actor.Export.UIndex;
+                bool rebuildMeshActor = actor is not CollectionActorComponentProxy
+                                        && updatedPropertiesExport is not null
+                                        && (updatedPropertiesExport.IsA("StaticMeshComponent")
+                                            || updatedPropertiesExport.IsA("SkeletalMeshComponent"));
                 _isRefreshingActorFromPackageUpdate = true;
                 try
                 {
-                    actor.RefreshFromExport();
+                    if (rebuildMeshActor)
+                    {
+                        // Mesh references are constructor-time render resources. Recreate the proxy so an
+                        // edit made in the embedded property panel is visible immediately. The remembered
+                        // package/UIndex pair keeps the same actor/component selected in the dropdown.
+                        RefreshActorInViewport(actor);
+                        actor = file.Actors.FirstOrDefault(candidate => candidate.Export.UIndex == actorUIndex);
+                    }
+                    else
+                    {
+                        actor.RefreshFromExport();
+                    }
                 }
                 finally
                 {
                     _isRefreshingActorFromPackageUpdate = false;
                 }
 
-                if (actor == SelectedActor)
+                if (actor is not null && actor == SelectedActor)
                 {
                     _preEditSnapshot = SelectedActor.SnapshotTransform();
                 }
             }
 
-            if (file.Package.GetEntry(_selectedPropertiesExportUIndex) is ExportEntry updatedPropertiesExport)
+            if (updatedPropertiesExport is not null)
             {
                 _selectedPropertiesExport = updatedPropertiesExport;
+                OnPropertyChanged(nameof(SelectedPropertiesExport));
                 LevelEditorInterpreter.LoadExport(updatedPropertiesExport);
                 LevelEditorMetadata.LoadExport(updatedPropertiesExport);
             }
@@ -3253,6 +3271,26 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         };
         contextMenu.Items.Add(openPEItem);
 
+        if (actor is SkeletalMeshActorProxy or SFXStuntActorProxy)
+        {
+            var liveMaterialEditorItem = new System.Windows.Controls.MenuItem
+            {
+                Header = "Open Live Material Editor..."
+            };
+            liveMaterialEditorItem.Click += (_, _) => OpenActorPreviewEditor(actor, openMorphEditor: false);
+            contextMenu.Items.Add(liveMaterialEditorItem);
+        }
+
+        if (ActorHasEditableMorph(actor))
+        {
+            var morphEditorItem = new System.Windows.Controls.MenuItem
+            {
+                Header = "Open Morph Editor..."
+            };
+            morphEditorItem.Click += (_, _) => OpenActorPreviewEditor(actor, openMorphEditor: true);
+            contextMenu.Items.Add(morphEditorItem);
+        }
+
         ExportEntry lightingTargetExport = GetLightingChannelsTargetExport(actor);
         if (lightingTargetExport is not null)
         {
@@ -3453,6 +3491,67 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         contextMenu.Items.Add(trashItem);
 
         return contextMenu;
+    }
+
+    private void OpenActorPreviewEditor(ActorProxy actor, bool openMorphEditor)
+    {
+        SelectedActor = actor;
+        var preview = new ActorPreviewControl
+        {
+            OpenMorphEditorOnLoad = openMorphEditor
+        };
+        var window = new ExportLoaderHostedWindow(preview, actor.Export)
+        {
+            Owner = this,
+            Title = openMorphEditor
+                ? $"Morph Editor - {actor.Export.UIndex}: {actor.Export.ObjectName.Instanced}"
+                : $"Live Material Editor - {actor.Export.UIndex}: {actor.Export.ObjectName.Instanced}"
+        };
+        window.Show();
+    }
+
+    private bool ActorHasEditableMorph(ActorProxy rootActor)
+    {
+        var pending = new Stack<ActorProxy>();
+        var visited = new HashSet<ActorProxy>();
+        pending.Push(rootActor);
+
+        while (pending.Count > 0)
+        {
+            ActorProxy actor = pending.Pop();
+            if (!visited.Add(actor))
+            {
+                continue;
+            }
+
+            if (HasResolvableMorphHead(actor.Export)
+                || actor.Components.OfType<SkeletalMeshComponentProxy>()
+                    .Any(component => HasResolvableMorphHead(component.Export)))
+            {
+                return true;
+            }
+
+            foreach (ActorProxy attachedActor in actor.Attached)
+            {
+                pending.Push(attachedActor);
+            }
+        }
+
+        return false;
+    }
+
+    private bool HasResolvableMorphHead(ExportEntry owner)
+    {
+        try
+        {
+            ObjectProperty morphHead = owner.GetCondensedProperties().GetProp<ObjectProperty>("MorphHead")
+                                       ?? owner.GetProperty<ObjectProperty>("MorphHead");
+            return morphHead?.ResolveToExport(owner.FileRef, RenderContext.PackageCache) is not null;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private void AddPropertiesMenuItems(System.Windows.Controls.ContextMenu contextMenu, ExportEntry export, string label)
