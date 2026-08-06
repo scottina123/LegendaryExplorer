@@ -17,6 +17,7 @@ namespace LegendaryExplorer.SharedUI.PeregrineTreeView
         private static readonly TimeSpan DeferredSelectionDelay = TimeSpan.FromMilliseconds(100);
 
         private int _selectionVersion;
+        private bool _isUnselectingPreviousItem;
 
         public TreeViewEntry SelectedItem
         {
@@ -44,7 +45,15 @@ namespace LegendaryExplorer.SharedUI.PeregrineTreeView
 
             if (e.OldValue is TreeViewEntry oldNode)
             {
-                oldNode.IsSelected = false;
+                behavior._isUnselectingPreviousItem = true;
+                try
+                {
+                    oldNode.IsSelected = false;
+                }
+                finally
+                {
+                    behavior._isUnselectingPreviousItem = false;
+                }
             }
 
             var newNode = e.NewValue as TreeViewEntry;
@@ -309,6 +318,15 @@ namespace LegendaryExplorer.SharedUI.PeregrineTreeView
 
         private void OnTreeViewSelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
         {
+            // Clearing the old node above makes TreeView briefly report a null
+            // selection. Do not feed that transient value back into the behavior:
+            // it would advance _selectionVersion and cancel the deferred selection
+            // of the replacement node before its virtualized container is realized.
+            if (_isUnselectingPreviousItem && e.NewValue is null)
+            {
+                return;
+            }
+
             SelectedItem = e.NewValue as TreeViewEntry;
         }
 
