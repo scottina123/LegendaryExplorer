@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Linq;
+using System.Windows.Data;
 using LegendaryExplorer.Misc;
 using LegendaryExplorer.SharedUI;
 using LegendaryExplorer.UserControls.SharedToolControls;
@@ -26,8 +28,36 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         public ObservableCollectionExtended<LiveScalarMaterialParameter> ScalarParameters { get; } = [];
         public ObservableCollectionExtended<LiveVectorMaterialParameter> VectorParameters { get; } = [];
+        public ICollectionView FilteredScalarParameters { get; }
+        public ICollectionView FilteredVectorParameters { get; }
         private readonly Dictionary<string, float> _removedScalarValues = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, LinearColor> _removedVectorValues = new(StringComparer.OrdinalIgnoreCase);
+
+        private string _scalarFilterText;
+        public string ScalarFilterText
+        {
+            get => _scalarFilterText;
+            set
+            {
+                if (SetProperty(ref _scalarFilterText, value))
+                {
+                    FilteredScalarParameters.Refresh();
+                }
+            }
+        }
+
+        private string _vectorFilterText;
+        public string VectorFilterText
+        {
+            get => _vectorFilterText;
+            set
+            {
+                if (SetProperty(ref _vectorFilterText, value))
+                {
+                    FilteredVectorParameters.Refresh();
+                }
+            }
+        }
 
         private bool _hasUnsavedChanges;
         public bool HasUnsavedChanges
@@ -45,6 +75,13 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                           ?? $"{SourceEntry?.ObjectName.Instanced ?? MaterialExport.ObjectName.Instanced} ({SourceEntry?.ClassName ?? MaterialExport.ClassName})";
             SourcePath = sourcePath ?? SourceEntry?.InstancedFullPath ?? MaterialExport.InstancedFullPath;
 
+            FilteredScalarParameters = CollectionViewSource.GetDefaultView(ScalarParameters);
+            FilteredScalarParameters.Filter = item => MatchesFilter(
+                (item as LiveScalarMaterialParameter)?.ParameterName, ScalarFilterText);
+            FilteredVectorParameters = CollectionViewSource.GetDefaultView(VectorParameters);
+            FilteredVectorParameters.Filter = item => MatchesFilter(
+                (item as LiveVectorMaterialParameter)?.ParameterName, VectorFilterText);
+
             foreach ((string name, float value) in renderProxy.ScalarParameters.OrderBy(parameter => parameter.Key, StringComparer.OrdinalIgnoreCase))
             {
                 ScalarParameters.Add(new LiveScalarMaterialParameter(this, name, value));
@@ -54,6 +91,13 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             {
                 VectorParameters.Add(new LiveVectorMaterialParameter(this, name, value));
             }
+        }
+
+        private static bool MatchesFilter(string parameterName, string filterText)
+        {
+            string filter = filterText?.Trim();
+            return string.IsNullOrEmpty(filter)
+                   || parameterName?.Contains(filter, StringComparison.OrdinalIgnoreCase) == true;
         }
 
         internal void MarkChanged() => HasUnsavedChanges = true;

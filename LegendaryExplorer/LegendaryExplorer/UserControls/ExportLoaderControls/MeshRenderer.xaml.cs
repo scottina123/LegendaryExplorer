@@ -1858,6 +1858,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 return;
             }
 
+            selectedMaterial.VectorFilterText = null;
             SelectedLiveMaterial = selectedMaterial;
             SelectedLiveVectorParameter = selectedParameter;
             FocusSelectedLiveVectorParameter();
@@ -2065,6 +2066,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
             Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(() =>
             {
+                LiveVectorParameterList.ScrollIntoView(parameter);
                 LiveVectorParameterList.UpdateLayout();
                 if (LiveVectorParameterList.ItemContainerGenerator.ContainerFromItem(parameter) is FrameworkElement container)
                 {

@@ -358,12 +358,17 @@
                                         <Button Content="Add scalar parameter..." Margin="4,4,4,1" Padding="5,3"
                                                 HorizontalAlignment="Stretch" Click="AddLiveMaterialScalar_Click"
                                                 ToolTip="Choose from every scalar parameter supported by this material and its parent material."/>
+                                        <xctk:WatermarkTextBox Watermark="Filter scalar parameters..." Margin="4,3,4,1"
+                                                               Text="{Binding SelectedLiveMaterial.ScalarFilterText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
                                         <ListBox x:Name="LiveScalarParameterList"
-                                                 ItemsSource="{Binding SelectedLiveMaterial.ScalarParameters}"
+                                                 ItemsSource="{Binding SelectedLiveMaterial.FilteredScalarParameters}"
                                                  SelectedItem="{Binding SelectedLiveScalarParameter}"
-                                                 Background="Transparent" BorderThickness="0"
+                                                 Background="Transparent" BorderThickness="0" MaxHeight="320"
+                                                 VirtualizingPanel.IsVirtualizing="True"
+                                                 VirtualizingPanel.VirtualizationMode="Recycling"
+                                                 ScrollViewer.CanContentScroll="True"
                                                  ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                                                 ScrollViewer.VerticalScrollBarVisibility="Disabled">
+                                                 ScrollViewer.VerticalScrollBarVisibility="Auto">
                                             <ListBox.ItemContainerStyle>
                                                 <Style TargetType="ListBoxItem">
                                                     <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
@@ -405,12 +410,17 @@
                                         <Button Content="Add vector parameter..." Margin="4,4,4,1" Padding="5,3"
                                                 HorizontalAlignment="Stretch" Click="AddLiveMaterialVector_Click"
                                                 ToolTip="Choose from every vector parameter supported by this material and its parent material."/>
+                                        <xctk:WatermarkTextBox Watermark="Filter vector parameters..." Margin="4,3,4,1"
+                                                               Text="{Binding SelectedLiveMaterial.VectorFilterText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
                                         <ListBox x:Name="LiveVectorParameterList"
-                                                 ItemsSource="{Binding SelectedLiveMaterial.VectorParameters}"
+                                                 ItemsSource="{Binding SelectedLiveMaterial.FilteredVectorParameters}"
                                                  SelectedItem="{Binding SelectedLiveVectorParameter}"
-                                                 Background="Transparent" BorderThickness="0"
+                                                 Background="Transparent" BorderThickness="0" MaxHeight="320"
+                                                 VirtualizingPanel.IsVirtualizing="True"
+                                                 VirtualizingPanel.VirtualizationMode="Recycling"
+                                                 ScrollViewer.CanContentScroll="True"
                                                  ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                                                 ScrollViewer.VerticalScrollBarVisibility="Disabled">
+                                                 ScrollViewer.VerticalScrollBarVisibility="Auto">
                                             <ListBox.ItemContainerStyle>
                                             <Style TargetType="ListBoxItem">
                                                 <Setter Property="HorizontalContentAlignment" Value="Stretch"/>

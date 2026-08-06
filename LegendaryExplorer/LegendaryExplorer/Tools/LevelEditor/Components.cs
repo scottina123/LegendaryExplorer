@@ -477,6 +477,91 @@ public abstract class MeshComponentProxy : PrimitiveComponentProxy
         }
     }
 
+    public IEnumerable<(MaterialRenderProxy RenderProxy, float Distance)> GetLiveMaterialHits(
+        Vector3 rayOrigin, Vector3 rayDirection)
+    {
+        if (!IsVisible || GameShaderMesh is null || LOD < 0 || LOD >= GameShaderMesh.LODs.Count)
+        {
+            yield break;
+        }
+
+        ModelPreviewLOD<LEVertex> lod = GameShaderMesh.LODs[LOD];
+        Mesh<LEVertex> mesh = lod.Mesh;
+        var nearestByMaterial = new Dictionary<MaterialRenderProxy, float>();
+        foreach (ModelPreviewSection section in lod.Sections)
+        {
+            if (section.MaterialName is null
+                || !GameShaderMesh.Materials.TryGetValue(section.MaterialName, out ModelPreviewMaterial<LEVertex> previewMaterial)
+                || previewMaterial is not LEShaderPreviewMaterial shaderMaterial)
+            {
+                continue;
+            }
+
+            int firstTriangle = (int)(section.StartIndex / 3);
+            int endTriangle = Math.Min(mesh.Triangles.Count, firstTriangle + (int)section.TriangleCount);
+            for (int triangleIndex = firstTriangle; triangleIndex < endTriangle; triangleIndex++)
+            {
+                Triangle triangle = mesh.Triangles[triangleIndex];
+                if (triangle.Vertex1 >= (uint)mesh.Vertices.Count
+                    || triangle.Vertex2 >= (uint)mesh.Vertices.Count
+                    || triangle.Vertex3 >= (uint)mesh.Vertices.Count)
+                {
+                    continue;
+                }
+
+                Vector3 vertex0 = Vector3.Transform(mesh.Vertices[(int)triangle.Vertex1].Position, mesh.LocalToWorld);
+                Vector3 vertex1 = Vector3.Transform(mesh.Vertices[(int)triangle.Vertex2].Position, mesh.LocalToWorld);
+                Vector3 vertex2 = Vector3.Transform(mesh.Vertices[(int)triangle.Vertex3].Position, mesh.LocalToWorld);
+                if (RayIntersectsTriangle(rayOrigin, rayDirection, vertex0, vertex1, vertex2, out float distance)
+                    && (!nearestByMaterial.TryGetValue(shaderMaterial.RenderProxy, out float nearestDistance)
+                        || distance < nearestDistance))
+                {
+                    nearestByMaterial[shaderMaterial.RenderProxy] = distance;
+                }
+            }
+        }
+
+        foreach ((MaterialRenderProxy renderProxy, float distance) in nearestByMaterial.OrderBy(pair => pair.Value))
+        {
+            yield return (renderProxy, distance);
+        }
+    }
+
+    private static bool RayIntersectsTriangle(Vector3 rayOrigin, Vector3 rayDirection,
+        Vector3 vertex0, Vector3 vertex1, Vector3 vertex2, out float distance)
+    {
+        const float epsilon = 0.000001f;
+        Vector3 edge1 = vertex1 - vertex0;
+        Vector3 edge2 = vertex2 - vertex0;
+        Vector3 cross = Vector3.Cross(rayDirection, edge2);
+        float determinant = Vector3.Dot(edge1, cross);
+        if (Math.Abs(determinant) < epsilon)
+        {
+            distance = 0;
+            return false;
+        }
+
+        float inverseDeterminant = 1f / determinant;
+        Vector3 originToVertex = rayOrigin - vertex0;
+        float u = Vector3.Dot(originToVertex, cross) * inverseDeterminant;
+        if (u < 0 || u > 1)
+        {
+            distance = 0;
+            return false;
+        }
+
+        Vector3 secondCross = Vector3.Cross(originToVertex, edge1);
+        float v = Vector3.Dot(rayDirection, secondCross) * inverseDeterminant;
+        if (v < 0 || u + v > 1)
+        {
+            distance = 0;
+            return false;
+        }
+
+        distance = Vector3.Dot(edge2, secondCross) * inverseDeterminant;
+        return distance > epsilon;
+    }
+
     protected override void Dispose(bool disposing)
     {
         Mesh?.Dispose();

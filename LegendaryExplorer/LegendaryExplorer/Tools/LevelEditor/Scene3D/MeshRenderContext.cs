@@ -98,6 +98,7 @@ public class MeshRenderContext : RenderContext
     public DepthStencilView DepthBufferView { get; private set; }
     protected Texture2D HitBuffer;
     protected RenderTargetView HitBufferView;
+    private Texture2D PixelReadbackTexture;
 
     protected D2D.RenderTarget RenderTarget2D;
     private DW.TextFormat statsTextFormat;
@@ -432,6 +433,19 @@ public class MeshRenderContext : RenderContext
     {
         base.CreateSizeDependentResources(width, height, newBackBuffer);
         BackbufferView = new RenderTargetView(Device, Backbuffer);
+        PixelReadbackTexture = new Texture2D(Device, new Texture2DDescription
+        {
+            ArraySize = 1,
+            BindFlags = BindFlags.None,
+            CpuAccessFlags = CpuAccessFlags.Read,
+            Format = Backbuffer.Description.Format,
+            Height = 3,
+            Width = 3,
+            MipLevels = 1,
+            OptionFlags = ResourceOptionFlags.None,
+            SampleDescription = new SampleDescription(1, 0),
+            Usage = ResourceUsage.Staging
+        });
         DepthBuffer = new Texture2D(Device, new Texture2DDescription
         {
             ArraySize = 1,
@@ -492,9 +506,67 @@ public class MeshRenderContext : RenderContext
         labelBackgroundBrush = new D2D.SolidColorBrush(RenderTarget2D, new RawColor4(0, 0, 0, 0.65f), new D2D.BrushProperties { Opacity = 1 });
     }
 
+    /// <summary>
+    /// Reads the average color of the 3x3 backbuffer region centered on a pixel.
+    /// Used by live material parameter picking.
+    /// </summary>
+    public unsafe bool TryReadBackbufferPixelNeighborhood(int x, int y, out Vector4 color)
+    {
+        color = default;
+        if (PixelReadbackTexture is null || Backbuffer is null || Width <= 0 || Height <= 0)
+        {
+            return false;
+        }
+
+        int minX = Math.Max(x - 1, 0);
+        int maxX = Math.Min(x + 1, Width - 1);
+        int minY = Math.Max(y - 1, 0);
+        int maxY = Math.Min(y + 1, Height - 1);
+        int sampleWidth = maxX - minX + 1;
+        int sampleHeight = maxY - minY + 1;
+
+        Format format = Backbuffer.Description.Format;
+        bool isBgra = format is Format.B8G8R8A8_UNorm or Format.B8G8R8A8_UNorm_SRgb;
+        bool isRgba = format is Format.R8G8B8A8_UNorm or Format.R8G8B8A8_UNorm_SRgb;
+        if (!isBgra && !isRgba)
+        {
+            return false;
+        }
+
+        ImmediateContext.CopySubresourceRegion(Backbuffer, 0,
+            new ResourceRegion(minX, minY, 0, maxX + 1, maxY + 1, 1), PixelReadbackTexture, 0);
+        SharpDX.DataBox mapped = ImmediateContext.MapSubresource(
+            PixelReadbackTexture, 0, MapMode.Read, SharpDX.Direct3D11.MapFlags.None);
+        try
+        {
+            Vector4 sum = default;
+            for (int sampleY = 0; sampleY < sampleHeight; sampleY++)
+            {
+                var row = new Span<SharpDX.Color>(
+                    (mapped.DataPointer + sampleY * mapped.RowPitch).ToPointer(), sampleWidth);
+                foreach (SharpDX.Color pixel in row)
+                {
+                    sum.X += (isBgra ? pixel.B : pixel.R) / 255f;
+                    sum.Y += pixel.G / 255f;
+                    sum.Z += (isBgra ? pixel.R : pixel.B) / 255f;
+                    sum.W += pixel.A / 255f;
+                }
+            }
+
+            color = sum / (sampleWidth * sampleHeight);
+            return true;
+        }
+        finally
+        {
+            ImmediateContext.UnmapSubresource(PixelReadbackTexture, 0);
+        }
+    }
+
     public override void DisposeSizeDependentResources()
     {
         ImmediateContext.OutputMerger.SetRenderTargets((RenderTargetView)null);
+        PixelReadbackTexture?.Dispose();
+        PixelReadbackTexture = null;
         BackbufferView.Dispose();
         BackbufferView = null;
         DepthBufferView.Dispose();

@@ -22,6 +22,7 @@ using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Threading;
 
 namespace LegendaryExplorer.UserControls.ExportLoaderControls;
 
@@ -39,6 +40,9 @@ public partial class ActorPreviewControl : ExportLoaderControl, IActorEditorCont
     private ActorProxy _actor;
     private bool _controlIsLoaded;
     private int _actorLoadVersion;
+    private TabControl _hostingTabControl;
+    private TabItem _hostingTabItem;
+    private System.Windows.Point? _materialPickMouseDownPosition;
     private readonly Dictionary<LiveMaterialEditorMaterial, ActorMaterialBinding> _materialBindings = [];
 
     private sealed class ActorMaterialBinding
@@ -200,35 +204,60 @@ public partial class ActorPreviewControl : ExportLoaderControl, IActorEditorCont
 
     private void SceneViewer_Loaded(object sender, RoutedEventArgs e)
     {
-        if (_controlIsLoaded)
+        AttachHostingTabSelectionHandler();
+        SceneViewer.SetShouldRender(_hostingTabItem is null || ReferenceEquals(_hostingTabControl?.SelectedItem, _hostingTabItem));
+        SceneViewer.MarkRenderDirty();
+
+        if (!_controlIsLoaded)
         {
-            if (CurrentLoadedExport is not null && _actor is null)
-            {
-                LoadActor();
-            }
-            return;
+            _controlIsLoaded = true;
+            RenderContext.UpdateScene += OnUpdateScene;
+            RenderContext.RenderScene += OnRenderScene;
         }
 
-        _controlIsLoaded = true;
-        RenderContext.UpdateScene += OnUpdateScene;
-        RenderContext.RenderScene += OnRenderScene;
-        if (Parent is TabItem { Parent: TabControl tc })
-            tc.SelectionChanged += HostingTabSelectionChanged;
+        if (CurrentLoadedExport is not null && _actor is null)
+        {
+            LoadActor();
+        }
     }
 
     private void SceneViewer_Unloaded(object sender, RoutedEventArgs e)
     {
-        if (Parent is TabItem { Parent: TabControl tc })
-            tc.SelectionChanged -= HostingTabSelectionChanged;
+        DetachHostingTabSelectionHandler();
     }
 
     private void HostingTabSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (Parent is TabItem ti)
+        if (sender is TabControl tabControl && ReferenceEquals(e.Source, tabControl) && _hostingTabItem is not null)
         {
-            bool shouldRender = e.AddedItems.Contains(ti);
+            bool shouldRender = ReferenceEquals(tabControl.SelectedItem, _hostingTabItem);
             SceneViewer?.SetShouldRender(shouldRender);
+            if (shouldRender)
+            {
+                SceneViewer?.MarkRenderDirty();
+            }
         }
+    }
+
+    private void AttachHostingTabSelectionHandler()
+    {
+        DetachHostingTabSelectionHandler();
+        if (Parent is TabItem { Parent: TabControl tabControl } tabItem)
+        {
+            _hostingTabItem = tabItem;
+            _hostingTabControl = tabControl;
+            _hostingTabControl.SelectionChanged += HostingTabSelectionChanged;
+        }
+    }
+
+    private void DetachHostingTabSelectionHandler()
+    {
+        if (_hostingTabControl is not null)
+        {
+            _hostingTabControl.SelectionChanged -= HostingTabSelectionChanged;
+        }
+        _hostingTabControl = null;
+        _hostingTabItem = null;
     }
 
     private void OnUpdateScene(object sender, float deltaTime)
@@ -322,6 +351,7 @@ public partial class ActorPreviewControl : ExportLoaderControl, IActorEditorCont
                 FrameFirstPersonCamera(bounds);
                 ConfigureDepthRangeForBounds(bounds);
                 PopulateLiveMaterialEditor();
+                SceneViewer.MarkRenderDirty();
             }
         }
         catch (Exception ex)
@@ -386,9 +416,24 @@ public partial class ActorPreviewControl : ExportLoaderControl, IActorEditorCont
         camera.FocusDepth = 0;
         camera.Pitch = 0;
         camera.Yaw = 0;
-        camera.Position = bounds.Origin - Vector3.UnitX * Math.Max(radius * 2.2f, 100f);
+        camera.Position = bounds.Origin + Vector3.UnitX * Math.Max(radius * 2.2f, 100f);
         camera.OrientTowards(bounds.Origin);
         RenderContext.CameraSpeed = Math.Max(radius * 1.5f, 50f);
+    }
+
+    private void SnapCameraToActor_Click(object sender, RoutedEventArgs e)
+    {
+        if (_actor is null)
+        {
+            return;
+        }
+
+        BoxSphereBounds bounds = _actor.GetBounds();
+        FrameFirstPersonCamera(bounds);
+        ConfigureDepthRangeForBounds(bounds);
+        SceneViewer.SetShouldRender(true);
+        SceneViewer.MarkRenderDirty();
+        SceneViewer.Focus();
     }
 
     private void PopulateLiveMaterialEditor()
@@ -534,6 +579,215 @@ public partial class ActorPreviewControl : ExportLoaderControl, IActorEditorCont
 
     private static bool IsTintParameter(LiveVectorMaterialParameter parameter) =>
         parameter.ParameterName.StartsWith("TNT_", StringComparison.OrdinalIgnoreCase);
+
+    private void SceneViewer_PreviewMouseDownForMaterialPicking(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ChangedButton == MouseButton.Left && _actor is not null && LiveMaterials.Count > 0)
+        {
+            _materialPickMouseDownPosition = e.GetPosition(SceneViewer);
+        }
+    }
+
+    private void SceneViewer_PreviewMouseUpForMaterialPicking(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ChangedButton != MouseButton.Left || _materialPickMouseDownPosition is not { } mouseDownPosition)
+        {
+            return;
+        }
+
+        _materialPickMouseDownPosition = null;
+        System.Windows.Point mouseUpPosition = e.GetPosition(SceneViewer);
+        System.Windows.Vector clickMovement = mouseUpPosition - mouseDownPosition;
+        if (clickMovement.LengthSquared > 16
+            || !TryPickActorMaterials(mouseUpPosition, out List<LiveMaterialEditorMaterial> hitMaterials)
+            || !TryFindInfluencingVectorParameter(mouseUpPosition, hitMaterials,
+                out LiveMaterialEditorMaterial selectedMaterial, out LiveVectorMaterialParameter selectedParameter))
+        {
+            return;
+        }
+
+        selectedMaterial.VectorFilterText = null;
+        SelectedLiveMaterial = selectedMaterial;
+        SelectedLiveVectorParameter = selectedParameter;
+        FocusSelectedLiveVectorParameter();
+    }
+
+    private bool TryPickActorMaterials(System.Windows.Point screenPosition,
+        out List<LiveMaterialEditorMaterial> hitMaterials)
+    {
+        hitMaterials = [];
+        if (_actor is null || SceneViewer.ActualWidth <= 0 || SceneViewer.ActualHeight <= 0)
+        {
+            return false;
+        }
+
+        float normalizedX = (float)(screenPosition.X / SceneViewer.ActualWidth * 2.0 - 1.0);
+        float normalizedY = (float)(1.0 - screenPosition.Y / SceneViewer.ActualHeight * 2.0);
+        Matrix4x4 viewProjection = RenderContext.Camera.ViewMatrix * RenderContext.Camera.ProjectionMatrix;
+        if (!Matrix4x4.Invert(viewProjection, out Matrix4x4 inverseViewProjection))
+        {
+            return false;
+        }
+
+        Vector4 nearClip = Vector4.Transform(new Vector4(normalizedX, normalizedY, 0, 1), inverseViewProjection);
+        Vector4 farClip = Vector4.Transform(new Vector4(normalizedX, normalizedY, 1, 1), inverseViewProjection);
+        if (Math.Abs(nearClip.W) < float.Epsilon || Math.Abs(farClip.W) < float.Epsilon)
+        {
+            return false;
+        }
+
+        Vector3 rayOrigin = new(nearClip.X / nearClip.W, nearClip.Y / nearClip.W, nearClip.Z / nearClip.W);
+        Vector3 farPoint = new(farClip.X / farClip.W, farClip.Y / farClip.W, farClip.Z / farClip.W);
+        Vector3 rayDirection = Vector3.Normalize(farPoint - rayOrigin);
+        var nearestByMaterial = new Dictionary<LiveMaterialEditorMaterial, float>();
+        foreach (MeshComponentProxy component in EnumerateActors(_actor)
+                     .SelectMany(actor => actor.Components.OfType<MeshComponentProxy>()))
+        {
+            foreach ((MaterialRenderProxy renderProxy, float distance) in component.GetLiveMaterialHits(rayOrigin, rayDirection))
+            {
+                LiveMaterialEditorMaterial material = LiveMaterials.FirstOrDefault(candidate =>
+                    ReferenceEquals(candidate.RenderProxy, renderProxy));
+                if (material is not null
+                    && (!nearestByMaterial.TryGetValue(material, out float nearestDistance) || distance < nearestDistance))
+                {
+                    nearestByMaterial[material] = distance;
+                }
+            }
+        }
+
+        hitMaterials = nearestByMaterial.OrderBy(pair => pair.Value).Select(pair => pair.Key).ToList();
+        return hitMaterials.Count > 0;
+    }
+
+    private bool TryFindInfluencingVectorParameter(System.Windows.Point screenPosition,
+        IReadOnlyCollection<LiveMaterialEditorMaterial> hitMaterials,
+        out LiveMaterialEditorMaterial selectedMaterial,
+        out LiveVectorMaterialParameter selectedParameter)
+    {
+        selectedMaterial = null;
+        selectedParameter = null;
+        if (RenderContext.Backbuffer is null || RenderContext.Width <= 0 || RenderContext.Height <= 0
+            || SceneViewer.ActualWidth <= 0 || SceneViewer.ActualHeight <= 0)
+        {
+            return false;
+        }
+
+        List<(LiveMaterialEditorMaterial Material, LiveVectorMaterialParameter Parameter)> candidates =
+            hitMaterials.SelectMany(material => material.VectorParameters
+                .Where(parameter => !IsGlobalOverlayParameter(parameter))
+                .Select(parameter => (Material: material, Parameter: parameter)))
+                .ToList();
+        if (candidates.Count == 0)
+        {
+            return false;
+        }
+
+        int pixelX = Math.Clamp((int)(screenPosition.X / SceneViewer.ActualWidth * RenderContext.Width),
+            0, RenderContext.Width - 1);
+        int pixelY = Math.Clamp((int)(screenPosition.Y / SceneViewer.ActualHeight * RenderContext.Height),
+            0, RenderContext.Height - 1);
+
+        RenderContext.Render();
+        if (!RenderContext.TryReadBackbufferPixelNeighborhood(pixelX, pixelY, out Vector4 baselineColor))
+        {
+            return false;
+        }
+
+        float strongestResponse = 0;
+        try
+        {
+            foreach ((LiveMaterialEditorMaterial material, LiveVectorMaterialParameter parameter) in candidates)
+            {
+                var currentValue = new LinearColor(parameter.R, parameter.G, parameter.B, parameter.A);
+                material.RenderProxy.SetVectorParameter(parameter.ParameterName, CreateVectorParameterProbe(currentValue));
+                try
+                {
+                    RenderContext.Render();
+                    if (RenderContext.TryReadBackbufferPixelNeighborhood(pixelX, pixelY, out Vector4 probeColor))
+                    {
+                        Vector3 response = new(probeColor.X - baselineColor.X,
+                            probeColor.Y - baselineColor.Y, probeColor.Z - baselineColor.Z);
+                        float responseStrength = response.LengthSquared();
+                        if (responseStrength > strongestResponse)
+                        {
+                            strongestResponse = responseStrength;
+                            selectedMaterial = material;
+                            selectedParameter = parameter;
+                        }
+                    }
+                }
+                finally
+                {
+                    material.RenderProxy.SetVectorParameter(parameter.ParameterName, currentValue);
+                }
+            }
+        }
+        finally
+        {
+            RenderContext.Render();
+            SceneViewer.MarkRenderDirty();
+        }
+
+        const float minimumResponse = 3f / (255f * 255f);
+        return selectedParameter is not null && strongestResponse >= minimumResponse;
+    }
+
+    private static LinearColor CreateVectorParameterProbe(LinearColor value)
+    {
+        static float FarthestEndpoint(float component) => Math.Abs(component) >= Math.Abs(component - 1f) ? 0f : 1f;
+        return new LinearColor(FarthestEndpoint(value.R), FarthestEndpoint(value.G),
+            FarthestEndpoint(value.B), FarthestEndpoint(value.A));
+    }
+
+    private static bool IsGlobalOverlayParameter(LiveVectorMaterialParameter parameter)
+    {
+        string name = parameter.ParameterName;
+        return name.Contains("Selection", StringComparison.OrdinalIgnoreCase)
+               || name.Contains("Highlight", StringComparison.OrdinalIgnoreCase)
+               || name.Contains("Overlay", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void FocusSelectedLiveVectorParameter()
+    {
+        LiveVectorMaterialParameter parameter = SelectedLiveVectorParameter;
+        if (parameter is null)
+        {
+            return;
+        }
+
+        Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(() =>
+        {
+            LiveVectorParameterList.ScrollIntoView(parameter);
+            LiveVectorParameterList.UpdateLayout();
+            if (LiveVectorParameterList.ItemContainerGenerator.ContainerFromItem(parameter) is FrameworkElement container)
+            {
+                container.BringIntoView();
+                FindVisualDescendant<Xceed.Wpf.Toolkit.ColorCanvas>(container)?.Focus();
+            }
+        }));
+    }
+
+    private static T FindVisualDescendant<T>(DependencyObject parent) where T : DependencyObject
+    {
+        if (parent is null)
+        {
+            return null;
+        }
+
+        for (int i = 0; i < VisualTreeHelper.GetChildrenCount(parent); i++)
+        {
+            DependencyObject child = VisualTreeHelper.GetChild(parent, i);
+            if (child is T match)
+            {
+                return match;
+            }
+            if (FindVisualDescendant<T>(child) is { } descendant)
+            {
+                return descendant;
+            }
+        }
+        return null;
+    }
 
     private void AddActorMaterialScalar_Click(object sender, RoutedEventArgs e) => AddActorMaterialParameter(isVector: false);
     private void AddActorMaterialVector_Click(object sender, RoutedEventArgs e) => AddActorMaterialParameter(isVector: true);
@@ -807,6 +1061,7 @@ public partial class ActorPreviewControl : ExportLoaderControl, IActorEditorCont
     public override void Dispose()
     {
         _actorLoadVersion++;
+        DetachHostingTabSelectionHandler();
         ThemeManager.ThemeChanged -= OnThemeChanged;
         RenderContext.UpdateScene -= OnUpdateScene;
         RenderContext.RenderScene -= OnRenderScene;

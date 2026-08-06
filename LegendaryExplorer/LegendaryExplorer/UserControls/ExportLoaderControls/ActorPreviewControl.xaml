@@ -41,6 +41,8 @@
             <ToolBar DockPanel.Dock="Top" ToolBarTray.IsLocked="True">
                 <CheckBox Content="Wireframe" IsChecked="{Binding ShowWireframe}" VerticalAlignment="Center" Margin="4,0"/>
                 <CheckBox Content="Collision" IsChecked="{Binding ShowCollision}" VerticalAlignment="Center" Margin="4,0"/>
+                <Button Content="Snap to actor" Click="SnapCameraToActor_Click" Padding="6,2" Margin="4,0"
+                        ToolTip="Recenter the camera in front of the actor"/>
                 <Separator Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" Margin="2,0"/>
                 <xctk:DropDownButton Content="View options" Margin="0,3">
                     <xctk:DropDownButton.DropDownContent>
@@ -116,12 +118,17 @@
                                 <StackPanel>
                                     <Button Content="Add scalar parameter..." Margin="4,4,4,1" Padding="5,3"
                                             Click="AddActorMaterialScalar_Click"/>
+                                    <xctk:WatermarkTextBox Watermark="Filter scalar parameters..." Margin="4,3,4,1"
+                                                           Text="{Binding SelectedLiveMaterial.ScalarFilterText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
                                     <ListBox x:Name="LiveScalarParameterList"
-                                             ItemsSource="{Binding SelectedLiveMaterial.ScalarParameters}"
+                                             ItemsSource="{Binding SelectedLiveMaterial.FilteredScalarParameters}"
                                              SelectedItem="{Binding SelectedLiveScalarParameter}"
-                                             Background="Transparent" BorderThickness="0"
+                                             Background="Transparent" BorderThickness="0" MaxHeight="320"
+                                             VirtualizingPanel.IsVirtualizing="True"
+                                             VirtualizingPanel.VirtualizationMode="Recycling"
+                                             ScrollViewer.CanContentScroll="True"
                                              ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                                             ScrollViewer.VerticalScrollBarVisibility="Disabled">
+                                             ScrollViewer.VerticalScrollBarVisibility="Auto">
                                         <ListBox.ItemContainerStyle>
                                             <Style TargetType="ListBoxItem">
                                                 <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
@@ -161,12 +168,17 @@
                                 <StackPanel>
                                     <Button Content="Add vector parameter..." Margin="4,4,4,1" Padding="5,3"
                                             Click="AddActorMaterialVector_Click"/>
+                                    <xctk:WatermarkTextBox Watermark="Filter vector parameters..." Margin="4,3,4,1"
+                                                           Text="{Binding SelectedLiveMaterial.VectorFilterText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
                                     <ListBox x:Name="LiveVectorParameterList"
-                                             ItemsSource="{Binding SelectedLiveMaterial.VectorParameters}"
+                                             ItemsSource="{Binding SelectedLiveMaterial.FilteredVectorParameters}"
                                              SelectedItem="{Binding SelectedLiveVectorParameter}"
-                                             Background="Transparent" BorderThickness="0"
+                                             Background="Transparent" BorderThickness="0" MaxHeight="320"
+                                             VirtualizingPanel.IsVirtualizing="True"
+                                             VirtualizingPanel.VirtualizationMode="Recycling"
+                                             ScrollViewer.CanContentScroll="True"
                                              ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                                             ScrollViewer.VerticalScrollBarVisibility="Disabled">
+                                             ScrollViewer.VerticalScrollBarVisibility="Auto">
                                         <ListBox.ItemContainerStyle>
                                             <Style TargetType="ListBoxItem">
                                                 <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
@@ -203,7 +215,9 @@
                     </ScrollViewer>
                 </DockPanel>
             </Border>
-            <scene3D:SceneRenderControl x:Name="SceneViewer"/>
+            <scene3D:SceneRenderControl x:Name="SceneViewer"
+                                        PreviewMouseDown="SceneViewer_PreviewMouseDownForMaterialPicking"
+                                        PreviewMouseUp="SceneViewer_PreviewMouseUpForMaterialPicking"/>
         </DockPanel>
     </xctk:BusyIndicator>
 </exportLoaderControls:ExportLoaderControl>
