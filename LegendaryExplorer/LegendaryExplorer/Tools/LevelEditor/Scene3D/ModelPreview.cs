@@ -140,6 +140,7 @@ public abstract class ModelPreviewMaterial<Vertex> where Vertex : IVertexBase
 public class TexturedPreviewMaterial : ModelPreviewMaterial<WorldVertex>
 {
     private readonly PreviewTextureCache.TextureEntry DiffTexture;
+    private readonly bool IsOpacityOnly;
 
     public TexturedPreviewMaterial(MeshRenderContext renderContext, ExportEntry export) : base(renderContext, export)
     {
@@ -151,6 +152,11 @@ public class TexturedPreviewMaterial : ModelPreviewMaterial<WorldVertex>
         {
             DiffTexture = renderContext.TextureCache.LoadTexture(diffEntry, renderContext.PackageCache);
         }
+        // The simple standard shader cannot reproduce opacity-only shells such as human eyelashes.
+        // Rendering them with a stand-in diffuse texture paints an opaque shell over the eyes, so omit
+        // only that unsupported shell in standard mode. The in-game shader path still renders it normally.
+        IsOpacityOnly = diffuseIFP is null
+                        && mat.Textures.Any(texture => texture.ObjectName.Name.Contains("opac", StringComparison.OrdinalIgnoreCase));
     }
 
     private string FindDiffuse(string matPackage, MaterialInstanceConstantLevelEditor mat)
@@ -199,6 +205,7 @@ public class TexturedPreviewMaterial : ModelPreviewMaterial<WorldVertex>
     /// <param name="s">Which faces to render.</param>
     public override void RenderSection(ModelPreviewLOD<WorldVertex> lod, ModelPreviewSection s, MeshRenderContext context)
     {
+        if (IsOpacityOnly) return;
         context.DefaultEffect.PrepDraw(context.ImmediateContext, context.AlphaBlendState, context.GetWorldConstants(lod.Mesh.LocalToWorld));
 
         ShaderResourceView diffTextureView = DiffTexture?.TextureView ?? context.DefaultTextureView;
