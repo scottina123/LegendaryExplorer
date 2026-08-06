@@ -44,6 +44,9 @@ namespace LegendaryExplorer.Resources
 
         public static string LevelEditorShader => GetResourceString("LegendaryExplorer.Resources.LevelEditorShader.hlsl");
 
+        public static string LevelEditorNativeHitTestShader =>
+            GetResourceString("LegendaryExplorer.Resources.LevelEditorNativeHitTestShader.hlsl");
+
         public static string TextureShader => GetResourceString("LegendaryExplorer.Resources.TextureShader.hlsl");
 
         private static IHighlightingDefinition _hlslSyntaxDefinition;

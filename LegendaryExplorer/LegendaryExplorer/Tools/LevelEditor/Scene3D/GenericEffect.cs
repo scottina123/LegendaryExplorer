@@ -20,7 +20,7 @@ public sealed class GenericEffect<ConstantBufferData> : IDisposable where Consta
     public Buffer ConstantBuffer { get; }
     public InputLayout InputLayout { get; }
 
-    public GenericEffect(SharpDX.Direct3D11.Device device, string shaderCode)
+    public GenericEffect(SharpDX.Direct3D11.Device device, string shaderCode, InputElement[] inputElements = null)
     {
         // Load vertex shader
         SharpDX.D3DCompiler.CompilationResult result = SharpDX.D3DCompiler.ShaderBytecode.Compile(shaderCode, VERTEX_SHADER_ENTRYPOINT, "vs_5_0");
@@ -38,7 +38,7 @@ public sealed class GenericEffect<ConstantBufferData> : IDisposable where Consta
 
         // Create input layout. This tells the input-assembler stage how to map items from our vertex structures into vertices for the vertex shader.
         // It is validated against the vertex shader bytecode because it needs to match properly.
-        InputLayout = new InputLayout(device, vsb, WorldVertex.InputElements);
+        InputLayout = new InputLayout(device, vsb, inputElements ?? WorldVertex.InputElements);
         vsb.Dispose();
     }
 
@@ -85,6 +85,20 @@ public sealed class GenericEffect<ConstantBufferData> : IDisposable where Consta
     public void RenderObject(DeviceContext context, Mesh<WorldVertex> mesh, params ReadOnlySpan<ShaderResourceView> textures)
     {
         RenderObject(context, mesh, 0, mesh.Triangles.Count * 3, textures);
+    }
+
+    public void RenderObjectWithLayout<TVertex>(DeviceContext context, Mesh<TVertex> mesh, int indexstart, int indexcount)
+        where TVertex : IVertexBase
+    {
+        if (mesh.Vertices.Count is 0)
+        {
+            return;
+        }
+
+        context.InputAssembler.SetVertexBuffers(0, new VertexBufferBinding(mesh.VertexBuffer, TVertex.Stride, 0));
+        context.InputAssembler.SetIndexBuffer(mesh.IndexBuffer, Format.R32_UInt, 0);
+        context.InputAssembler.PrimitiveTopology = SharpDX.Direct3D.PrimitiveTopology.TriangleList;
+        context.DrawIndexed(indexcount, indexstart, 0);
     }
 
 

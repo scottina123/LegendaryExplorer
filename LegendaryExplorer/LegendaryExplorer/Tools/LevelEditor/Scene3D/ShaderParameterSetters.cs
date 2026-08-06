@@ -73,8 +73,9 @@ internal static class ShaderParameterSetters
     public static void WriteValues<TVertex>(this ref FMaterialVertexShaderParameters p, Span<byte> buffer, MeshRenderContext context, Mesh<TVertex> mesh, MaterialRenderProxy mat)
         where TVertex : IVertexBase
     {
-        buffer.WriteVal(p.CameraWorldPosition, context.Camera.Position);
-        buffer.WriteVal(p.ObjectWorldPositionAndRadius, new Vector4(mesh.TransformedBounds.Origin, mesh.TransformedBounds.SphereRadius));
+        buffer.WriteVal(p.CameraWorldPosition, context.GetNativeShaderCameraPosition());
+        buffer.WriteVal(p.ObjectWorldPositionAndRadius, new Vector4(
+            context.GetNativeShaderWorldPosition(mesh.TransformedBounds.Origin), mesh.TransformedBounds.SphereRadius));
         buffer.WriteVal(p.ObjectOrientation, mesh.LocalToWorld.GetAxis(2).Normal());
         buffer.WriteVal(p.WindDirectionAndSpeed, Vector4.Zero);
         buffer.WriteVal(p.FoliageImpulseDirection, Vector3.Zero);
@@ -93,8 +94,9 @@ internal static class ShaderParameterSetters
     public static void WriteValues<TVertex>(this ref FMaterialPixelShaderParameters p, Span<byte> buffer, MeshRenderContext context, Mesh<TVertex> mesh, MaterialRenderProxy mat)
         where TVertex : IVertexBase
     {
-        buffer.WriteVal(p.CameraWorldPosition, context.Camera.Position);
-        buffer.WriteVal(p.ObjectWorldPositionAndRadius, new Vector4(mesh.TransformedBounds.Origin, mesh.TransformedBounds.SphereRadius));
+        buffer.WriteVal(p.CameraWorldPosition, context.GetNativeShaderCameraPosition());
+        buffer.WriteVal(p.ObjectWorldPositionAndRadius, new Vector4(
+            context.GetNativeShaderWorldPosition(mesh.TransformedBounds.Origin), mesh.TransformedBounds.SphereRadius));
         buffer.WriteVal(p.ObjectOrientation, mesh.LocalToWorld.GetAxis(2).Normal());
         buffer.WriteVal(p.WindDirectionAndSpeed, Vector4.Zero);
         buffer.WriteVal(p.FoliageImpulseDirection, Vector3.Zero);
@@ -129,9 +131,9 @@ internal static class ShaderParameterSetters
         }
 
         SceneCamera camera = context.Camera;
-        buffer.WriteVal(p.LocalToWorld, mesh.LocalToWorld);
+        buffer.WriteVal(p.LocalToWorld, context.GetNativeShaderLocalToWorld(mesh.LocalToWorld));
         buffer.WriteVal(p.WorldToLocal, mesh.WorldToLocal);
-        Matrix4x4 viewMatrix = camera.ViewMatrix;
+        Matrix4x4 viewMatrix = context.GetNativeShaderViewMatrix();
         buffer.WriteVal(p.WorldToView, new Matrix3x3(viewMatrix.M11, viewMatrix.M12, viewMatrix.M13, viewMatrix.M21, viewMatrix.M22, viewMatrix.M23, viewMatrix.M31, viewMatrix.M32, viewMatrix.M33));
         Matrix4x4.Invert(viewMatrix, out Matrix4x4 inverseViewMatrix);
         Matrix4x4 projectionMatrix = camera.ProjectionMatrix;
@@ -220,7 +222,7 @@ internal static class ShaderParameterSetters
     public static void WriteValues<TVertex>(this FLocalVertexFactoryShaderParameters p, Span<byte> buffer, MeshRenderContext context, Mesh<TVertex> mesh, MaterialRenderProxy mat)
         where TVertex : IVertexBase
     {
-        buffer.WriteVal(p.LocalToWorld, mesh.LocalToWorld);
+        buffer.WriteVal(p.LocalToWorld, context.GetNativeShaderLocalToWorld(mesh.LocalToWorld));
         buffer.WriteVal(p.WorldToLocal, mesh.WorldToLocal);
         buffer.WriteVal(p.LocalToWorldRotDeterminantFlip, mesh.LocalToWorld.GetDeterminant() >= 0 ? 1f : -1f);
     }

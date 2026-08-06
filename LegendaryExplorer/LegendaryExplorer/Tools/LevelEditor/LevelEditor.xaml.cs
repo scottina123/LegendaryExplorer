@@ -588,8 +588,8 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         RenderContext.ShowVolumes = ShowVolumes;
         RenderContext.ShowVolumetrics = ShowVolumetrics;
         Span<RenderPass> passes = ShowCollision
-            ? [RenderPass.Base, RenderPass.Hair, RenderPass.Collision]
-            : [RenderPass.Base, RenderPass.Hair];
+            ? [RenderPass.Base, RenderPass.Hair, RenderPass.Collision, RenderPass.HitTest]
+            : [RenderPass.Base, RenderPass.Hair, RenderPass.HitTest];
 
         foreach (RenderPass pass in passes)
         {

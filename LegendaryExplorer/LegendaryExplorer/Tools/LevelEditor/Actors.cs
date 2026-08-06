@@ -29,6 +29,13 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy, ITr
 
     public List<PrimitiveComponentProxy> Components = [];
 
+    /// <summary>
+    /// Opts this actor's skeletal-mesh components into the compiled in-game material renderer.
+    /// This is deliberately actor-scoped so unrelated Level Editor actor types retain their
+    /// existing lightweight preview path.
+    /// </summary>
+    internal virtual bool UseInGameSkeletalMeshRendering => false;
+
     #region UProp mirrors. DO NOT CHANGE NAMES!
     public ActorProxy Base;
     public SkeletalMeshComponentProxy BaseSkelComponent;
@@ -675,6 +682,8 @@ public class StaticMeshActorProxy : ActorProxy
 
 public class SkeletalMeshActorProxy : ActorProxy
 {
+    internal override bool UseInGameSkeletalMeshRendering => true;
+
     public SkeletalMeshComponentProxy SkeletalMeshComponent;
     public SkeletalMeshActorProxy(IActorEditorContext context, ExportEntry actorExport) : base(context, actorExport)
     {
@@ -760,6 +769,8 @@ public class BrushProxy : ActorProxy
 }
 public class SFXStuntActorProxy : ActorProxy
 {
+    internal override bool UseInGameSkeletalMeshRendering => true;
+
     public SkeletalMeshComponentProxy BodyMesh;
     public SkeletalMeshComponentProxy HeadMesh;
     public SkeletalMeshComponentProxy HairMesh;

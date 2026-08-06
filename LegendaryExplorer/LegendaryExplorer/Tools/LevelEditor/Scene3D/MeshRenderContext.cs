@@ -110,6 +110,7 @@ public class MeshRenderContext : RenderContext
     private D2D.SolidColorBrush labelBackgroundBrush;
     #endregion
     public GenericEffect<WorldConstants> DefaultEffect { get; private set; }
+    private GenericEffect<WorldConstants> NativeHitTestEffect;
     public LEEffect LEEffect { get; private set; }
     public LEEffect HumanLashEffect { get; private set; }
     private Texture2D DefaultTexture;
@@ -126,6 +127,8 @@ public class MeshRenderContext : RenderContext
     public virtual ShaderResourceView PreviewSceneDepthTextureView => null;
     private RasterizerState FillRasterizerState;
     private RasterizerState WireframeRasterizerState;
+    private BlendState NativeHitTestBlendState;
+    private DepthStencilState NativeHitTestDepthState;
     public SamplerState SampleState { get; private set; }
     private readonly Dictionary<(TextureAddressMode U, TextureAddressMode V), SamplerState> TextureSamplerCache = [];
     public readonly SceneCamera Camera = new();
@@ -176,6 +179,13 @@ public class MeshRenderContext : RenderContext
 
     public Vector3 CurrentHitTestId;
     public uint CurrentLightingChannelMask;
+
+    /// <summary>
+    /// Native UE3 mesh shaders normally receive absolute level coordinates. Character actors can be
+    /// far enough from the origin for those float values to collapse the separation between layered
+    /// surfaces, so their component renderer enables camera-relative coordinates for the duration of a draw.
+    /// </summary>
+    internal bool UseCameraRelativeNativeRendering { get; set; }
 
     public event EventHandler<float> UpdateScene;
     public event EventHandler RenderScene;
@@ -377,6 +387,47 @@ public class MeshRenderContext : RenderContext
 
         // Load the default position-texture shader
         DefaultEffect = new GenericEffect<WorldConstants>(Device, EmbeddedResources.LevelEditorShader);
+        NativeHitTestEffect = new GenericEffect<WorldConstants>(
+            Device,
+            EmbeddedResources.LevelEditorNativeHitTestShader,
+            [new InputElement("POSITION", 0, Format.R32G32B32A32_Float, 0)]);
+        NativeHitTestBlendState = new BlendState(Device, new BlendStateDescription
+        {
+            AlphaToCoverageEnable = false,
+            IndependentBlendEnable = true,
+            RenderTarget =
+            {
+                [0] = new RenderTargetBlendDescription
+                {
+                    RenderTargetWriteMask = ColorWriteMaskFlags.All,
+                    BlendOperation = BlendOperation.Add,
+                    AlphaBlendOperation = BlendOperation.Add,
+                    SourceBlend = BlendOption.SourceAlpha,
+                    DestinationBlend = BlendOption.InverseSourceAlpha,
+                    SourceAlphaBlend = BlendOption.One,
+                    DestinationAlphaBlend = BlendOption.InverseSourceAlpha,
+                    IsBlendEnabled = true
+                },
+                [1] = new RenderTargetBlendDescription
+                {
+                    RenderTargetWriteMask = ColorWriteMaskFlags.All,
+                    BlendOperation = BlendOperation.Add,
+                    AlphaBlendOperation = BlendOperation.Add,
+                    SourceBlend = BlendOption.One,
+                    DestinationBlend = BlendOption.Zero,
+                    SourceAlphaBlend = BlendOption.One,
+                    DestinationAlphaBlend = BlendOption.Zero,
+                    IsBlendEnabled = false
+                }
+            }
+        });
+        NativeHitTestDepthState = new DepthStencilState(Device, new DepthStencilStateDescription
+        {
+            IsDepthEnabled = true,
+            DepthWriteMask = DepthWriteMask.Zero,
+            DepthComparison = Comparison.LessEqual,
+            IsStencilEnabled = false
+        });
 
         //create fallback textures
         var whiteCubeData = new Fixed6<byte[]>();
@@ -607,6 +658,9 @@ public class MeshRenderContext : RenderContext
         TextureSamplerCache.Clear();
         SampleState?.Dispose();
         DefaultEffect?.Dispose();
+        NativeHitTestEffect?.Dispose();
+        NativeHitTestBlendState?.Dispose();
+        NativeHitTestDepthState?.Dispose();
         LEEffect?.Dispose();
         HumanLashEffect?.Dispose();
         FillRasterizerState?.Dispose();
@@ -676,6 +730,60 @@ public class MeshRenderContext : RenderContext
         }
 
         return constants;
+    }
+
+    internal Matrix4x4 GetNativeShaderViewMatrix()
+    {
+        Matrix4x4 view = Camera.ViewMatrix;
+        if (UseCameraRelativeNativeRendering)
+        {
+            view.Translation = Vector3.Zero;
+        }
+        return view;
+    }
+
+    internal Matrix4x4 GetNativeShaderLocalToWorld(Matrix4x4 localToWorld)
+    {
+        if (UseCameraRelativeNativeRendering)
+        {
+            localToWorld.Translation -= Camera.Position;
+        }
+        return localToWorld;
+    }
+
+    internal Vector3 GetNativeShaderCameraPosition() =>
+        UseCameraRelativeNativeRendering ? Vector3.Zero : Camera.Position;
+
+    internal Vector3 GetNativeShaderWorldPosition(Vector3 worldPosition) =>
+        UseCameraRelativeNativeRendering ? worldPosition - Camera.Position : worldPosition;
+
+    internal void RenderNativeMeshHitTest(Mesh<LEVertex> mesh)
+    {
+        if (mesh?.Vertices.Count is not > 0 || mesh.Triangles.Count == 0)
+        {
+            return;
+        }
+
+        bool previousCameraRelative = UseCameraRelativeNativeRendering;
+        UseCameraRelativeNativeRendering = true;
+        try
+        {
+            WorldConstants constants = new(
+                Matrix4x4.Transpose(Camera.ProjectionMatrix),
+                Matrix4x4.Transpose(GetNativeShaderViewMatrix()),
+                Matrix4x4.Transpose(GetNativeShaderLocalToWorld(mesh.LocalToWorld)),
+                RenderFlags,
+                CurrentHitTestId);
+            ImmediateContext.OutputMerger.SetDepthStencilState(NativeHitTestDepthState);
+            NativeHitTestEffect.PrepDraw(ImmediateContext, NativeHitTestBlendState, constants);
+            NativeHitTestEffect.RenderObjectWithLayout(
+                ImmediateContext, mesh, 0, mesh.Triangles.Count * 3);
+        }
+        finally
+        {
+            ImmediateContext.OutputMerger.SetDepthStencilState(null);
+            UseCameraRelativeNativeRendering = previousCameraRelative;
+        }
     }
 
     public BlendState GetCachedBlendState(RenderTargetBlendDescription renderTargetBlendDesc)

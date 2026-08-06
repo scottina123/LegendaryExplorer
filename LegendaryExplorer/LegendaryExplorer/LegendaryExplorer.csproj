@@ -204,6 +204,7 @@
 	<ItemGroup>
 		<EmbeddedResource Include="Resources\TextureShader.hlsl" />
 		<EmbeddedResource Include="Resources\LevelEditorShader.hlsl" />
+		<EmbeddedResource Include="Resources\LevelEditorNativeHitTestShader.hlsl" />
 		<EmbeddedResource Include="Resources\HLSL.xshd" />
 	</ItemGroup>
 

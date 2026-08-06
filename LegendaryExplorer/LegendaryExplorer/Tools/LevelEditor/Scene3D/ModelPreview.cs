@@ -88,6 +88,7 @@ public enum RenderPass
     
     //special types
     Collision,
+    HitTest,
 
     //override, most always be last
     ANY
@@ -379,11 +380,11 @@ internal class LEShaderPreviewMaterial : ModelPreviewMaterial<LEVertex>
             (VertexShader vs, InputLayout inputLayout) = context.GetCachedVertexShader(material.UnrealVertexShader.Guid, material.UnrealVertexShader.ShaderByteCode);
             effect.PrepDraw(context.ImmediateContext, vs, ps, inputLayout, context.GetCachedBlendState(BlendDescription));
 
-            Matrix4x4 viewMatrix = camera.ViewMatrix;
+            Matrix4x4 viewMatrix = context.GetNativeShaderViewMatrix();
             var vsConstants = new LEVSConstants
             {
                 ViewProjectionMatrix = viewMatrix * camera.ProjectionMatrix,
-                CameraPosition = new Vector4(camera.Position, 1),
+                CameraPosition = new Vector4(context.GetNativeShaderCameraPosition(), 1),
                 PreViewTranslation = Vector4.Zero,
             };
             float depthMul = camera.ProjectionMatrix[2, 2];

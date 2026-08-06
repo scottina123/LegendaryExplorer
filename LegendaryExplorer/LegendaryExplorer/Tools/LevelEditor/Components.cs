@@ -456,6 +456,30 @@ public abstract class MeshComponentProxy : PrimitiveComponentProxy
         ? GameShaderMesh.Materials.Keys
         : Mesh?.Materials.Keys ?? Enumerable.Empty<string>();
 
+    protected void RenderGameShaderMesh(MeshRenderContext context, RenderPass pass)
+    {
+        if (GameShaderMesh is null || LOD < 0 || LOD >= GameShaderMesh.LODs.Count)
+        {
+            return;
+        }
+        if (pass is RenderPass.HitTest)
+        {
+            context.RenderNativeMeshHitTest(GameShaderMesh.LODs[LOD].Mesh);
+            return;
+        }
+
+        bool previousCameraRelative = context.UseCameraRelativeNativeRendering;
+        context.UseCameraRelativeNativeRendering = true;
+        try
+        {
+            GameShaderMesh.Render(pass, context, LOD);
+        }
+        finally
+        {
+            context.UseCameraRelativeNativeRendering = previousCameraRelative;
+        }
+    }
+
     public IEnumerable<(IEntry SourceEntry, MaterialRenderProxy RenderProxy, IReadOnlyList<int> SlotIndexes)> GetLiveMaterialBindings()
     {
         if (GameShaderMesh is null)
@@ -615,7 +639,7 @@ public class StaticMeshComponentProxy : MeshComponentProxy
         }
         if (GameShaderMesh is not null)
         {
-            GameShaderMesh.Render(pass, context, LOD);
+            RenderGameShaderMesh(context, pass);
         }
         else
         {
@@ -681,7 +705,8 @@ public class SkeletalMeshComponentProxy : MeshComponentProxy
             skeletalMesh = skm;
             if (skm.LODModels.Length > LOD)
             {
-                if (UseGameShaderPreview(context) && meshExport.Game.IsMEGame())
+                if ((UseGameShaderPreview(context) || parent.UseInGameSkeletalMeshRendering)
+                    && meshExport.Game.IsMEGame())
                 {
                     GameShaderMesh = new ModelPreview<LEVertex>(context, skm, MaterialOverrides);
                 }
@@ -719,7 +744,7 @@ public class SkeletalMeshComponentProxy : MeshComponentProxy
         if (!IsVisible) return;
         if (GameShaderMesh is not null)
         {
-            GameShaderMesh.Render(pass, context, LOD);
+            RenderGameShaderMesh(context, pass);
         }
         else
         {
