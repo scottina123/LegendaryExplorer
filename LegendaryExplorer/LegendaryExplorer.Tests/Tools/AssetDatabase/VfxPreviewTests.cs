@@ -737,6 +737,65 @@ float4 main(VSInput input) : SV_POSITION
     }
 
     [TestMethod]
+    public void DirectLocationOverwritesIntegratedMotionAndPreservesPreviousPosition()
+    {
+        var definition = new VfxPreviewDefinition { Name = "DirectLocation" };
+        definition.Emitters.Add(new VfxEmitterDefinition
+        {
+            Duration = 1,
+            Loops = 1,
+            Bursts = [new VfxBurst(0, 1)],
+            Lifetime = new VfxConstantDistribution<float>(1),
+            InitialVelocity = new VfxConstantDistribution<Vector3>(new Vector3(1000, 0, 0)),
+            DirectLocation = new VfxDirectLocationDefinition(
+                new VfxCurveVectorDistribution([Vector3.Zero, new Vector3(10, 0, 0)]),
+                new VfxConstantDistribution<Vector3>(new Vector3(5, 0, 0)),
+                new VfxConstantDistribution<Vector3>(Vector3.One))
+        });
+        var simulation = new VfxSimulation { Loop = false };
+        simulation.Load(definition);
+        simulation.Tick(0.01f);
+
+        Assert.AreEqual(new Vector3(5, 0, 0), simulation.Emitters[0].Particles[0].Position);
+
+        simulation.Tick(0.1f);
+
+        VfxParticle particle = simulation.Emitters[0].Particles[0];
+        Assert.AreEqual(6, particle.Position.X, 0.0001f);
+        Assert.AreEqual(10, particle.Velocity.X, 0.001f);
+        Assert.IsTrue(particle.PreviousPosition.X < particle.Position.X);
+        Assert.IsTrue(particle.PreviousPosition.X > 5);
+    }
+
+    [TestMethod]
+    public void NativeSubUVFramesStayInsideAtlasCellBorders()
+    {
+        var emitter = new VfxEmitterDefinition
+        {
+            SubImagesHorizontal = 4,
+            SubImagesVertical = 2,
+            SubUVInterpolation = VfxSubUVInterpolation.LinearBlend
+        };
+
+        VfxGameShaderRenderer.GetFrameData(
+            emitter,
+            5.25f,
+            out Vector2 currentMinimum,
+            out Vector2 currentMaximum,
+            out Vector2 nextMinimum,
+            out Vector2 nextMaximum,
+            out float interpolation,
+            400,
+            200);
+
+        Assert.AreEqual(new Vector2(0.25125f, 0.5025f), currentMinimum);
+        Assert.AreEqual(new Vector2(0.49875f, 0.9975f), currentMaximum);
+        Assert.AreEqual(new Vector2(0.50125f, 0.5025f), nextMinimum);
+        Assert.AreEqual(new Vector2(0.74875f, 0.9975f), nextMaximum);
+        Assert.AreEqual(0.25f, interpolation, 0.0001f);
+    }
+
+    [TestMethod]
     public void ColorScaleOverLifeMultipliesParticleColor()
     {
         var definition = new VfxPreviewDefinition { Name = "ColorScale" };

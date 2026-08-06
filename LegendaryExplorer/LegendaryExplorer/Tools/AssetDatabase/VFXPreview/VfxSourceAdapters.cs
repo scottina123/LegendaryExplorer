@@ -660,6 +660,7 @@ public sealed class ParticleSystemSourceAdapter : IVfxSourceAdapter
         bool eventDrivenSpawn = false;
         bool eventSpawnAtSystemLocation = false;
         IVfxDistribution<Vector3> sourceMovementScale = new VfxConstantDistribution<Vector3>(Vector3.Zero);
+        VfxDirectLocationDefinition directLocation = null;
 
         foreach (ExportEntry module in modules)
         {
@@ -670,15 +671,12 @@ public sealed class ParticleSystemSourceAdapter : IVfxSourceAdapter
                     break;
                 case "ParticleModuleLocation":
                     location = ReadVectorDistribution(module, Vector3.Zero, "StartLocationRw", "StartLocation");
-                    spawnInitializers.Add(new VfxLocationSpawnInitializer(location));
                     break;
                 case "ParticleModuleLocationDirect":
-                    location = Add(
+                    directLocation = new VfxDirectLocationDefinition(
                         ReadVectorDistribution(module, Vector3.Zero, "LocationRw", "Location"),
-                        ReadVectorDistribution(module, Vector3.Zero, "LocationOffsetRw", "LocationOffset"));
-                    spawnInitializers.Add(new VfxVelocitySpawnInitializer(Multiply(
-                        ReadVectorDistribution(module, Vector3.Zero, "DirectionRw", "Direction"),
-                        ReadFloatDistribution(module, 1, "ScaleFactorRw", "ScaleFactor"))));
+                        ReadVectorDistribution(module, Vector3.Zero, "LocationOffsetRw", "LocationOffset"),
+                        ReadVectorDistribution(module, Vector3.One, "ScaleFactorRw", "ScaleFactor"));
                     break;
                 case "ParticleModuleLocationEmitter":
                     spawnInitializers.Add(new VfxEmitterLocationSpawnInitializer(
@@ -696,7 +694,6 @@ public sealed class ParticleSystemSourceAdapter : IVfxSourceAdapter
                 case "ParticleModuleVelocity":
                 case "BioParticleModuleVelocityWorldSpace":
                     velocity = ReadVectorDistribution(module, Vector3.Zero, "StartVelocityRw", "StartVelocity");
-                    spawnInitializers.Add(new VfxVelocitySpawnInitializer(velocity));
                     if (module.GetProperty<StructProperty>("StartVelocityRadial") is not null)
                     {
                         spawnInitializers.Add(new VfxRadialVelocitySpawnInitializer(
@@ -1041,6 +1038,7 @@ public sealed class ParticleSystemSourceAdapter : IVfxSourceAdapter
             DynamicParameters = dynamicParameters,
             VelocityOverLife = velocityOverLife,
             VelocityOverLifeIsAbsolute = velocityOverLifeIsAbsolute,
+            DirectLocation = directLocation,
             AccelerationOverLife = accelerationOverLife,
             SourceMovementScale = sourceMovementScale,
             EventSpawnAtSystemLocation = eventSpawnAtSystemLocation,

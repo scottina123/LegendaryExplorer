@@ -164,6 +164,15 @@ public sealed record VfxDynamicParameterDefinition(
     bool ScaleVelocityByParamValue);
 
 /// <summary>
+/// ParticleModuleLocationDirect overwrites the particle position from a relative-life curve. The offset is
+/// sampled once at spawn using emitter time; ScaleFactor controls the velocity reconstructed from that path.
+/// </summary>
+public sealed record VfxDirectLocationDefinition(
+    IVfxDistribution<Vector3> Location,
+    IVfxDistribution<Vector3> LocationOffset,
+    IVfxDistribution<Vector3> ScaleFactor);
+
+/// <summary>
 /// A database-backed package candidate used when an import cannot be resolved through the game's normal
 /// associated-package rules. Seek-free level packages can reference shared VFX materials that were embedded
 /// in a different level package, so the asset database is the only reliable way to locate a preview copy.
@@ -491,6 +500,7 @@ public sealed class VfxEmitterDefinition
     public IReadOnlyList<VfxDynamicParameterDefinition> DynamicParameters { get; init; } = [];
     public IVfxDistribution<Vector3> VelocityOverLife { get; init; } = new VfxConstantDistribution<Vector3>(Vector3.One);
     public bool VelocityOverLifeIsAbsolute { get; init; }
+    public VfxDirectLocationDefinition DirectLocation { get; init; }
     public IVfxDistribution<Vector3> AccelerationOverLife { get; init; } = new VfxConstantDistribution<Vector3>(Vector3.Zero);
     /// <summary>
     /// ParticleModuleSourceMovement's component-motion multiplier. The preview component is stationary at the
@@ -532,6 +542,7 @@ public sealed record VfxKillHeight(
 public struct VfxParticle
 {
     public Vector3 Position;
+    public Vector3 PreviousPosition;
     public Vector3 BaseVelocity;
     public Vector3 Velocity;
     public Vector3 Acceleration;
@@ -539,6 +550,8 @@ public struct VfxParticle
     public Vector3 OrbitRotation;
     public Vector3 OrbitRotationRate;
     public Vector3 OrbitOffset;
+    public Vector3 PreviousOrbitOffset;
+    public Vector3 DirectLocationOffset;
     public Vector3 BaseSize;
     public Vector3 Size;
     public Vector4 Color;

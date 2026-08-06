@@ -152,6 +152,8 @@ public sealed class VfxSimulation
         for (int index = emitter.Particles.Count - 1; index >= 0; index--)
         {
             VfxParticle particle = emitter.Particles[index];
+            particle.PreviousPosition = particle.Position;
+            particle.PreviousOrbitOffset = particle.OrbitOffset;
             particle.Age += timestep;
             if (!particle.IsAlive)
             {
@@ -170,6 +172,7 @@ public sealed class VfxSimulation
                 ? velocityOverLife
                 : particle.BaseVelocity * velocityOverLife;
             particle.Position += particle.Velocity * timestep;
+            ApplyDirectLocation(emitter.Definition, ref particle, relativeTime, timestep);
             if (ApplyGroundCollision(emitter.Definition, ref particle, relativeTime))
             {
                 emitter.Particles.RemoveAt(index);
@@ -333,11 +336,42 @@ public sealed class VfxSimulation
                 particle.MeshRotationRate = meshDefinition.StartRotationRate.Evaluate(emitterTime, random.NextFloat());
             }
             ApplySpawnInitializers(emitter, ref particle, emitterTime);
+            if (emitter.Definition.DirectLocation is { } directLocation)
+            {
+                particle.DirectLocationOffset = directLocation.LocationOffset.Evaluate(emitterTime, random.NextFloat());
+                particle.Position = directLocation.Location.Evaluate(0, particle.Random)
+                    + particle.DirectLocationOffset;
+            }
             particle.BaseVelocity = particle.Velocity;
+            particle.PreviousPosition = particle.Position;
+            particle.PreviousOrbitOffset = particle.OrbitOffset;
             UpdateDynamicParameters(emitter, ref particle, spawn: true);
             particle.SubImageIndex = EvaluateSubImageIndex(emitter, particle);
             emitter.Particles.Add(particle);
         }
+    }
+
+    private static void ApplyDirectLocation(
+        VfxEmitterDefinition definition,
+        ref VfxParticle particle,
+        float relativeTime,
+        float timestep)
+    {
+        if (definition.DirectLocation is not { } directLocation)
+        {
+            return;
+        }
+
+        // Direct Location is an update module, not initial velocity. It overwrites every earlier positional
+        // contribution with the authored relative-life path and derives velocity from the real displacement.
+        Vector3 position = directLocation.Location.Evaluate(relativeTime, particle.Random)
+            + particle.DirectLocationOffset;
+        Vector3 velocity = timestep > 0
+            ? (position - particle.PreviousPosition) / timestep
+            : Vector3.Zero;
+        particle.Position = position;
+        particle.Velocity = velocity * directLocation.ScaleFactor.Evaluate(relativeTime, particle.Random);
+        particle.BaseVelocity = particle.Velocity;
     }
 
     private void ApplySpawnInitializers(VfxEmitterState emitter, ref VfxParticle particle, float emitterTime)

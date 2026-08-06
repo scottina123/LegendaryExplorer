@@ -36,6 +36,8 @@ public sealed class VfxGameShaderRenderer : IDisposable
         public bool DepthTest;
         public bool DepthWrite;
         public int ParticleCapacity;
+        public int AtlasWidth;
+        public int AtlasHeight;
 
         public void Dispose()
         {
@@ -157,8 +159,13 @@ public sealed class VfxGameShaderRenderer : IDisposable
                     continue;
                 }
 
-                LoadMaterialTextures(context, material);
+                Dictionary<string, PreviewTextureCache.TextureEntry> loadedTextures = LoadMaterialTextures(context, material);
                 ConfigureFactoryConstants(material.ParticleFactoryParameters, emitter);
+                PreviewTextureCache.TextureEntry atlasTexture = null;
+                if (emitter.ParticleMaterial.Texture is { } authoredTexture)
+                {
+                    loadedTextures.TryGetValue(authoredTexture.InstancedFullPath, out atlasTexture);
+                }
 
                 const int initialParticleCapacity = 1;
                 spriteEmitters[emitter] = new SpriteResources
@@ -171,7 +178,9 @@ public sealed class VfxGameShaderRenderer : IDisposable
                     UsesDynamicParameter = candidateFactory.Contains("DynamicParameter", StringComparison.Ordinal),
                     DepthTest = !emitter.ParticleMaterial.DisableDepthTest,
                     DepthWrite = material.BlendMode is EBlendMode.BLEND_Opaque or EBlendMode.BLEND_Masked,
-                    ParticleCapacity = initialParticleCapacity
+                    ParticleCapacity = initialParticleCapacity,
+                    AtlasWidth = atlasTexture?.Width ?? 0,
+                    AtlasHeight = atlasTexture?.Height ?? 0
                 };
                 return true;
             }
@@ -245,7 +254,9 @@ public sealed class VfxGameShaderRenderer : IDisposable
         return false;
     }
 
-    private static void LoadMaterialTextures(MeshRenderContext context, MaterialRenderProxy material)
+    private static Dictionary<string, PreviewTextureCache.TextureEntry> LoadMaterialTextures(
+        MeshRenderContext context,
+        MaterialRenderProxy material)
     {
         var textureMap = new Dictionary<string, PreviewTextureCache.TextureEntry>(StringComparer.OrdinalIgnoreCase);
         foreach (IEntry textureEntry in material.Textures)
@@ -259,6 +270,7 @@ public sealed class VfxGameShaderRenderer : IDisposable
             textureMap[textureEntry.InstancedFullPath] = texture;
         }
         material.TextureMap = textureMap;
+        return textureMap;
     }
 
     public bool TryRenderSprite(
@@ -294,7 +306,8 @@ public sealed class VfxGameShaderRenderer : IDisposable
         for (int particleIndex = 0; particleIndex < particles.Count; particleIndex++)
         {
             VfxParticle particle = particles[particleIndex];
-            Vector3 localPosition = particle.Position + particle.OrbitOffset;
+            Vector3 localCenter = particle.Position + particle.OrbitOffset;
+            Vector3 previousLocalCenter = particle.PreviousPosition + particle.PreviousOrbitOffset;
             Vector3 size = GetParticleSize(particle, emitter.Definition);
 
             // Pivot is not a separate native stream. UE3 bakes it into the particle center before submitting
@@ -307,16 +320,26 @@ public sealed class VfxGameShaderRenderer : IDisposable
                 emitter.Definition.ScreenAlignment,
                 emitter.Definition.AxisLock,
                 particle.Rotation);
-            localPosition += pivotBasis.Right * emitter.Definition.PivotOffset.X * size.X;
-            localPosition += pivotBasis.Up * emitter.Definition.PivotOffset.Y * size.Y;
+            Vector3 pivotOffset = pivotBasis.Right * emitter.Definition.PivotOffset.X * size.X
+                + pivotBasis.Up * emitter.Definition.PivotOffset.Y * size.Y;
+            Vector3 localPosition = localCenter + pivotOffset;
+            Vector3 oldLocalPosition = previousLocalCenter + pivotOffset;
+            if (Vector3.DistanceSquared(localPosition, oldLocalPosition) < 0.000001f
+                && particle.Velocity.LengthSquared() > 0.000001f)
+            {
+                // Newly spawned velocity-aligned particles have no prior simulation sample yet. Seed one step
+                // behind them so the native factory has a valid direction on their first rendered frame.
+                oldLocalPosition = localPosition - (particle.Velocity / 60f);
+            }
 
             Vector3 worldPosition = Vector3.Transform(localPosition, transform);
-            Vector3 oldLocalPosition = localPosition - (particle.Velocity / 60f);
             Vector3 oldWorldPosition = Vector3.Transform(oldLocalPosition, transform);
             GetFrameData(emitter.Definition, particle.SubImageIndex,
                 out Vector2 currentMinimum, out Vector2 currentMaximum,
                 out Vector2 nextMinimum, out Vector2 nextMaximum,
-                out float interpolation);
+                out float interpolation,
+                resources.AtlasWidth,
+                resources.AtlasHeight);
 
             int vertexStart = particleIndex * 4;
             WriteParticleVertex(mesh.Vertices, vertexStart, worldPosition, oldWorldPosition, size, particle,
@@ -654,14 +677,16 @@ public sealed class VfxGameShaderRenderer : IDisposable
         return new Vector3(width, height, MathF.Abs(particle.Size.Z));
     }
 
-    private static void GetFrameData(
+    public static void GetFrameData(
         VfxEmitterDefinition emitter,
         float subImageIndex,
         out Vector2 currentMinimum,
         out Vector2 currentMaximum,
         out Vector2 nextMinimum,
         out Vector2 nextMaximum,
-        out float interpolation)
+        out float interpolation,
+        int textureWidth = 0,
+        int textureHeight = 0)
     {
         int columns = Math.Max(1, emitter.SubImagesHorizontal);
         int rows = Math.Max(1, emitter.SubImagesVertical);
@@ -674,6 +699,16 @@ public sealed class VfxGameShaderRenderer : IDisposable
             : 0;
         GetFrameUV(columns, rows, currentFrame, out currentMinimum, out currentMaximum);
         GetFrameUV(columns, rows, nextFrame, out nextMinimum, out nextMaximum);
+        if ((columns > 1 || rows > 1) && textureWidth > 0 && textureHeight > 0)
+        {
+            // Keep anisotropic/bilinear samples inside the selected atlas cells. Sampling their exact borders
+            // blends adjacent flame frames and makes the moving card edges visible.
+            Vector2 halfTexel = new(0.5f / textureWidth, 0.5f / textureHeight);
+            currentMinimum += halfTexel;
+            currentMaximum -= halfTexel;
+            nextMinimum += halfTexel;
+            nextMaximum -= halfTexel;
+        }
     }
 
     private static void GetFrameUV(int columns, int rows, int frame, out Vector2 minimum, out Vector2 maximum)
