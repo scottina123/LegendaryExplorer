@@ -159,6 +159,7 @@ public class MeshRenderContext : RenderContext
     }
     private KeyStates PressedKeys;
     private MouseButtons PressedMouseButton;
+    protected bool HasActiveInput => PressedKeys is not KeyStates.None || PressedMouseButton is not MouseButtons.None;
     public float CameraSpeed { get; set; } = 500.0f; // Units per second
     public float Time { get; private set; }
     public uint NumFrames { get; private set; }
@@ -295,8 +296,7 @@ public class MeshRenderContext : RenderContext
         SceneLightIndex = null;
     }
 
-    public override bool IsActivelyUpdating() =>
-        PressedKeys is not KeyStates.None || PressedMouseButton is not MouseButtons.None || base.IsActivelyUpdating();
+    public override bool IsActivelyUpdating() => HasActiveInput || base.IsActivelyUpdating();
 
     public override void Update(float timestep)
     {

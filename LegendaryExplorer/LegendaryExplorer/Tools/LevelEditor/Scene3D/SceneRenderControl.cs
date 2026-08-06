@@ -292,6 +292,19 @@ public abstract class RenderContext
     /// and must be re-rendered every frame.
     /// </summary>
     public virtual bool IsActivelyUpdating() => false;
+
+    /// <summary>
+    /// Allows expensive resource preparation to advance without forcing a complete scene redraw for
+    /// every unit of work. Return true from <see cref="ProcessBackgroundWork"/> when a redraw is needed.
+    /// </summary>
+    public virtual bool HasPendingBackgroundWork => false;
+    public virtual bool ProcessBackgroundWork() => false;
+
+    /// <summary>
+    /// Some previews use passive mouse movement to animate hover state. Contexts that return false
+    /// can avoid redrawing a complex scene for mouse movement that did not change anything.
+    /// </summary>
+    public virtual bool RenderOnUnhandledMouseMove => true;
 }
 
 /// <summary>
@@ -307,6 +320,12 @@ public sealed class SceneRenderControl : ContentControl, IDisposable, INotifyPro
     private RenderContext _context;
     private Action _onImageRendered;
     private bool _captureNextFrame;
+    private long _lastRenderRequestTimestamp;
+
+    /// <summary>
+    /// Maximum number of frames submitted per second. Zero leaves the control uncapped.
+    /// </summary>
+    public double MaximumFramesPerSecond { get; set; }
 
     public RenderContext Context
     {
@@ -482,10 +501,29 @@ public sealed class SceneRenderControl : ContentControl, IDisposable, INotifyPro
     {
         if (_shouldRender && Context is { IsReady: true })
         {
-            if (_renderDirty || Context.IsActivelyUpdating())
+            bool hasBackgroundWork = Context.HasPendingBackgroundWork;
+            bool isActivelyUpdating = Context.IsActivelyUpdating();
+            if (_renderDirty || isActivelyUpdating || hasBackgroundWork)
             {
-                _renderDirty = false;
-                D3DImage?.RequestRender();
+                long timestamp = Stopwatch.GetTimestamp();
+                if (MaximumFramesPerSecond > 0
+                    && _lastRenderRequestTimestamp != 0
+                    && timestamp - _lastRenderRequestTimestamp
+                    < Stopwatch.Frequency / MaximumFramesPerSecond)
+                {
+                    return;
+                }
+
+                _lastRenderRequestTimestamp = timestamp;
+                if (hasBackgroundWork && Context.ProcessBackgroundWork())
+                {
+                    _renderDirty = true;
+                }
+                if (_renderDirty || isActivelyUpdating)
+                {
+                    _renderDirty = false;
+                    D3DImage?.RequestRender();
+                }
             }
         }
     }
@@ -590,8 +628,12 @@ public sealed class SceneRenderControl : ContentControl, IDisposable, INotifyPro
     private void SceneRenderControlWPF_PreviewMouseMove(object sender, MouseEventArgs e)
     {
         Point position = e.GetPosition(this);
-        e.Handled = Context.MouseMove((int)position.X, (int)position.Y);
-        _renderDirty = true;
+        bool handled = Context.MouseMove((int)position.X, (int)position.Y);
+        e.Handled = handled;
+        if (handled || Context.RenderOnUnhandledMouseMove)
+        {
+            _renderDirty = true;
+        }
     }
 
     private void SceneRenderControlWPF_PreviewMouseWheel(object sender, MouseWheelEventArgs e)

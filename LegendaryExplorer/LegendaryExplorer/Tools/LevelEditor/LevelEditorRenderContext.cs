@@ -43,52 +43,74 @@ public class LevelEditorRenderContext : MeshRenderContext
     public readonly Widget TransformWidget;
 
     private Texture2D _hitStagingTexture;
+    private readonly Queue<MeshComponentProxy> pendingRenderResources = new();
+    private readonly HashSet<MeshComponentProxy> pendingRenderResourceSet = [];
     private readonly System.Diagnostics.Stopwatch renderResourceBudget = new();
-    private bool renderResourceFrameActive;
-    private bool deferredRenderResources;
-    private int renderResourcesInitializedThisFrame;
+    private long lastPointerActivityTimestamp;
+    private long lastHoverHitTestTimestamp;
 
     public bool ForceContinuousRendering { get; set; }
+    public override bool RenderOnUnhandledMouseMove => false;
+    public override bool HasPendingBackgroundWork => pendingRenderResourceSet.Count > 0;
+    public bool ShouldRenderHitTestPass => !HasPendingBackgroundWork && !HasActiveInput
+        && !TransformWidget.IsDragging;
 
-    public override bool IsActivelyUpdating() => ForceContinuousRendering || deferredRenderResources
-        || base.IsActivelyUpdating() || TransformWidget.IsDragging;
+    public override bool IsActivelyUpdating() => ForceContinuousRendering || base.IsActivelyUpdating()
+        || TransformWidget.IsDragging;
 
     /// <summary>
-    /// Starts a small per-frame budget for material/mesh initialization. Actor discovery keeps only
-    /// lightweight metadata; visible render resources are then populated progressively without locking
-    /// the editor for minutes on heavily modded character levels.
+    /// Builds render resources independently of visibility so moving the camera can never trigger mesh,
+    /// material, or shader construction. Work pauses while the user is navigating and otherwise uses a
+    /// small time slice. This keeps interaction responsive while ensuring off-screen actors are ready.
     /// </summary>
-    public void BeginRenderResourceFrame()
+    public override bool ProcessBackgroundWork()
     {
-        renderResourceFrameActive = true;
-        deferredRenderResources = false;
-        renderResourcesInitializedThisFrame = 0;
-        renderResourceBudget.Restart();
-    }
-
-    public void EndRenderResourceFrame()
-    {
-        renderResourceFrameActive = false;
-        renderResourceBudget.Stop();
-    }
-
-    public bool TryBeginRenderResourceInitialization()
-    {
-        if (!renderResourceFrameActive)
+        if (pendingRenderResourceSet.Count == 0 || HasActiveInput || TransformWidget.IsDragging
+            || SecondsSince(lastPointerActivityTimestamp) < 0.1)
         {
-            return true;
-        }
-
-        // Always make at least one unit of progress. Subsequent components wait for the next frame
-        // once the first initialization or the inexpensive work around it consumes the time slice.
-        if (renderResourcesInitializedThisFrame > 0 && renderResourceBudget.ElapsedMilliseconds >= 12)
-        {
-            deferredRenderResources = true;
             return false;
         }
 
-        renderResourcesInitializedThisFrame++;
-        return true;
+        renderResourceBudget.Restart();
+        int initialized = 0;
+        while (pendingRenderResources.Count > 0)
+        {
+            MeshComponentProxy component = pendingRenderResources.Dequeue();
+            if (!pendingRenderResourceSet.Remove(component))
+            {
+                continue;
+            }
+
+            try
+            {
+                component.PrepareRenderResources();
+            }
+            catch (Exception exception)
+            {
+                pendingRenderResources.Clear();
+                pendingRenderResourceSet.Clear();
+                ErrorText = exception.FlattenException();
+                renderResourceBudget.Stop();
+                return true;
+            }
+            initialized++;
+            if (initialized > 0 && renderResourceBudget.ElapsedMilliseconds >= 8)
+            {
+                break;
+            }
+        }
+        renderResourceBudget.Stop();
+        return pendingRenderResourceSet.Count == 0;
+    }
+
+    private static double SecondsSince(long timestamp)
+    {
+        if (timestamp == 0)
+        {
+            return double.PositiveInfinity;
+        }
+        return (System.Diagnostics.Stopwatch.GetTimestamp() - timestamp)
+               / (double)System.Diagnostics.Stopwatch.Frequency;
     }
 
     public readonly BatchedPrimitives Primitives = new();
@@ -271,6 +293,7 @@ public class LevelEditorRenderContext : MeshRenderContext
 
     public override bool MouseMove(int x, int y)
     {
+        lastPointerActivityTimestamp = System.Diagnostics.Stopwatch.GetTimestamp();
         if (TransformWidget.IsDragging)
         {
             //failsafe if mouseup event was not captured
@@ -289,12 +312,16 @@ public class LevelEditorRenderContext : MeshRenderContext
         // GPU→CPU sync (MapSubresource) on every single mouse-move event.
         int dx = x - _lastHitTestX;
         int dy = y - _lastHitTestY;
-        if (HitBufferView is not null && dx * dx + dy * dy >= 9)
+        if (pendingRenderResourceSet.Count == 0 && TransformWidget.Attach is not null
+            && HitBufferView is not null && dx * dx + dy * dy >= 9
+            && SecondsSince(lastHoverHitTestTimestamp) >= 1.0 / 30.0)
         {
+            lastHoverHitTestTimestamp = System.Diagnostics.Stopwatch.GetTimestamp();
             _lastHitTestX = x;
             _lastHitTestY = y;
             IHitProxy selected = GetHitProxy(x, y);
 
+            EWidgetAxis previousAxis = TransformWidget.CurrentAxis;
             TransformWidget.CurrentAxis = EWidgetAxis.None;
             switch (selected)
             {
@@ -302,8 +329,15 @@ public class LevelEditorRenderContext : MeshRenderContext
                     TransformWidget.CurrentAxis = axisProxy.Axis;
                     break;
             }
+            return previousAxis != TransformWidget.CurrentAxis;
         }
         return false;
+    }
+
+    public override bool MouseScroll(int delta)
+    {
+        lastPointerActivityTimestamp = System.Diagnostics.Stopwatch.GetTimestamp();
+        return base.MouseScroll(delta);
     }
 
     private IHitProxy GetHitProxy(int x, int y)
@@ -387,12 +421,32 @@ public class LevelEditorRenderContext : MeshRenderContext
             actor.HitID = HitProxies.Add(actor);
             actor.PropertyChanged += Actor_PropertyChanged;
             CacheSceneLight(actor);
+            QueueRenderResources(actor);
         }
         if (!DrawList_UI.Contains(LightIcons))
         {
             DrawList_UI.Add(LightIcons);
         }
         EnableTransformWidget();
+    }
+
+    private void QueueRenderResources(ActorProxy actor)
+    {
+        foreach (MeshComponentProxy component in actor.Components.OfType<MeshComponentProxy>())
+        {
+            if (!component.RenderResourcesInitialized && pendingRenderResourceSet.Add(component))
+            {
+                pendingRenderResources.Enqueue(component);
+            }
+        }
+    }
+
+    private void RemoveQueuedRenderResources(ActorProxy actor)
+    {
+        foreach (MeshComponentProxy component in actor.Components.OfType<MeshComponentProxy>())
+        {
+            pendingRenderResourceSet.Remove(component);
+        }
     }
 
     public void EnableTransformWidget()
@@ -429,6 +483,8 @@ public class LevelEditorRenderContext : MeshRenderContext
 
     public void UnloadLevel()
     {
+        pendingRenderResources.Clear();
+        pendingRenderResourceSet.Clear();
         EmptyCaches();
         HitProxies.Reset();
         foreach (ActorProxy actor in DrawList_3D)
@@ -472,6 +528,7 @@ public class LevelEditorRenderContext : MeshRenderContext
     {
         if (DrawList_3D.Remove(actor))
         {
+            RemoveQueuedRenderResources(actor);
             actor.PropertyChanged -= Actor_PropertyChanged;
             RemoveSceneLight(actor);
             HitProxies.RemoveAt(actor.HitID);
@@ -486,6 +543,7 @@ public class LevelEditorRenderContext : MeshRenderContext
             actor.HitID = HitProxies.Add(actor);
             actor.PropertyChanged += Actor_PropertyChanged;
             CacheSceneLight(actor);
+            QueueRenderResources(actor);
         }
     }
 }

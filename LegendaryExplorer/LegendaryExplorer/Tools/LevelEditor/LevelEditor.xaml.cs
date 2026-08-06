@@ -599,24 +599,20 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
     {
         RenderContext.ShowVolumes = ShowVolumes;
         RenderContext.ShowVolumetrics = ShowVolumetrics;
-        RenderContext.BeginRenderResourceFrame();
-        try
+        Span<RenderPass> passes = (ShowCollision, RenderContext.ShouldRenderHitTestPass) switch
         {
-            Span<RenderPass> passes = ShowCollision
-                ? [RenderPass.Base, RenderPass.Hair, RenderPass.Collision, RenderPass.HitTest]
-                : [RenderPass.Base, RenderPass.Hair, RenderPass.HitTest];
+            (true, true) => [RenderPass.Base, RenderPass.Hair, RenderPass.Collision, RenderPass.HitTest],
+            (true, false) => [RenderPass.Base, RenderPass.Hair, RenderPass.Collision],
+            (false, true) => [RenderPass.Base, RenderPass.Hair, RenderPass.HitTest],
+            _ => [RenderPass.Base, RenderPass.Hair]
+        };
 
-            foreach (RenderPass pass in passes)
-            {
-                DoRenderPass(pass);
-            }
-
-            RenderContext.DrawUI();
-        }
-        finally
+        foreach (RenderPass pass in passes)
         {
-            RenderContext.EndRenderResourceFrame();
+            DoRenderPass(pass);
         }
+
+        RenderContext.DrawUI();
     }
     void DoRenderPass(RenderPass pass)
     {
@@ -626,6 +622,13 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
             if (actor.IsVolume && !ShowVolumes) continue;
             if (actor.IsVolumetricMesh && !ShowVolumetrics) continue;
             if (_zCutoffEnabled && actor.Location.Z >= _zCutoff) continue;
+            // Character actors appear as a coherent unit. Rendering a body before its head/hair/outfit
+            // resources are ready produces the black, triangle-like flicker seen during population.
+            if ((actor is SkeletalMeshActorProxy or SFXStuntActorProxy)
+                && actor.Components.OfType<MeshComponentProxy>().Any(component => !component.RenderResourcesInitialized))
+            {
+                continue;
+            }
             if (!RenderContext.IsBoundsVisible(actor.GetBounds())) continue;
             int hitID = actor.HitID;
             RenderContext.CurrentHitTestId = new Vector3((hitID & 0xFF) / 255f, ((hitID >> 8) & 0xFF) / 255f, ((hitID >> 16) & 0xFF) / 255f);

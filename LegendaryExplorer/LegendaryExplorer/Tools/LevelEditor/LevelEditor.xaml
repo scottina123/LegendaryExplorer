@@ -379,7 +379,7 @@
                     </ListBox>
                 </DockPanel>
 
-                <scene3D:SceneRenderControl Grid.Column="2" x:Name="SceneViewer"
+                <scene3D:SceneRenderControl Grid.Column="2" x:Name="SceneViewer" MaximumFramesPerSecond="60"
                                             PreviewMouseDown="SceneViewer_PreviewMouseDownForMaterialPicking"
                                             PreviewMouseUp="SceneViewer_PreviewMouseUpForMaterialPicking" />
 

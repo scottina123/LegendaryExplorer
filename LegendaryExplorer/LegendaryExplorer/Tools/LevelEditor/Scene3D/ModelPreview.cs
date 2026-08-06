@@ -568,7 +568,7 @@ public class ModelPreview<TVertex> : IDisposable where TVertex : IVertexBase
     /// Creates a preview of the given <see cref="SkeletalMesh"/>.
     /// </summary>
     public ModelPreview(MeshRenderContext renderContext, SkeletalMesh m,
-        IReadOnlyList<IEntry> materialOverrides = null)
+        IReadOnlyList<IEntry> materialOverrides = null, bool loadOnlyFirstLod = false)
     {
         var mats = new string[m.Materials.Length];
         // STEP 1: MATERIALS
@@ -601,7 +601,8 @@ public class ModelPreview<TVertex> : IDisposable where TVertex : IVertexBase
         }
 
         // STEP 2: LODS
-        for (int lodIndex = 0; lodIndex < m.LODModels.Length; lodIndex++)
+        int lodCount = loadOnlyFirstLod ? Math.Min(1, m.LODModels.Length) : m.LODModels.Length;
+        for (int lodIndex = 0; lodIndex < lodCount; lodIndex++)
         {
             var lodmodel = m.LODModels[lodIndex];
             Mesh<TVertex> mesh = renderContext.GetOrCreateCachedMesh<TVertex>(m.Export, lodIndex, () =>
