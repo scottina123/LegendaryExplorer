@@ -16,6 +16,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 {
     public sealed class LiveMaterialEditorMaterial : NotifyPropertyChangedBase
     {
+        public event EventHandler PreviewChanged;
+
         internal ILiveMaterialRenderProxy RenderProxy { get; }
         public ExportEntry MaterialExport => RenderProxy.MaterialExport;
         public IEntry SourceEntry { get; }
@@ -100,7 +102,11 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                    || parameterName?.Contains(filter, StringComparison.OrdinalIgnoreCase) == true;
         }
 
-        internal void MarkChanged() => HasUnsavedChanges = true;
+        internal void MarkChanged()
+        {
+            HasUnsavedChanges = true;
+            PreviewChanged?.Invoke(this, EventArgs.Empty);
+        }
         internal void MarkSaved() => HasUnsavedChanges = false;
 
         internal LiveScalarMaterialParameter AddScalarParameter(string parameterName)

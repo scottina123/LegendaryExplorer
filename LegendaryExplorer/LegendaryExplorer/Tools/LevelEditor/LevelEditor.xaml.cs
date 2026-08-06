@@ -181,6 +181,16 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
     }
 
     private ActorProxy selectedActor;
+    private ActorProxy _levelLiveMaterialActor;
+    private IMEPackage _levelLiveMaterialActorPackage;
+    private int _levelLiveMaterialActorUIndex;
+    private Point? _levelMaterialPickMouseDownPosition;
+    private bool _isLevelMaterialEditorOpen;
+    public bool IsLevelMaterialEditorOpen
+    {
+        get => _isLevelMaterialEditorOpen;
+        private set => SetProperty(ref _isLevelMaterialEditorOpen, value);
+    }
     private char _actorLocationScrubAxis = 'X';
     private double _actorLocationScrubAccumulator;
     private double _actorLocationScrubPreviousHorizontalChange;
@@ -556,6 +566,8 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
 
         LoadCommands();
         InitializeComponent();
+        LevelLiveMaterialEditor.CloseMaterialEditorRequested += LevelLiveMaterialEditor_CloseRequested;
+        LevelLiveMaterialEditor.LiveMaterialPreviewChanged += LevelLiveMaterialEditor_PreviewChanged;
         LoadRecentSets();
 
         SceneViewer.Context = RenderContext;
@@ -721,6 +733,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
                     _preEditSnapshot = null;
                     UnloadPropertyTabs();
                 }
+            SynchronizeLevelLiveMaterialEditor(selectedActor);
             UpdateActorRotationDialIndicator();
             UpdateLightValueDialIndicator();
         }
@@ -2567,6 +2580,9 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         UndoHistory.PropertyChanged -= UndoHistory_PropertyChanged;
         UndoHistory.Clear();
 
+        LevelLiveMaterialEditor.CloseMaterialEditorRequested -= LevelLiveMaterialEditor_CloseRequested;
+        LevelLiveMaterialEditor.LiveMaterialPreviewChanged -= LevelLiveMaterialEditor_PreviewChanged;
+        LevelLiveMaterialEditor.Dispose();
         SceneViewer.Dispose();
     }
 
@@ -3496,18 +3512,96 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
     private void OpenActorPreviewEditor(ActorProxy actor, bool openMorphEditor)
     {
         SelectedActor = actor;
+        if (!openMorphEditor)
+        {
+            OpenLevelLiveMaterialEditor(actor);
+            return;
+        }
+
         var preview = new ActorPreviewControl
         {
-            OpenMorphEditorOnLoad = openMorphEditor
+            OpenMorphEditorOnLoad = true
         };
         var window = new ExportLoaderHostedWindow(preview, actor.Export)
         {
             Owner = this,
-            Title = openMorphEditor
-                ? $"Morph Editor - {actor.Export.UIndex}: {actor.Export.ObjectName.Instanced}"
-                : $"Live Material Editor - {actor.Export.UIndex}: {actor.Export.ObjectName.Instanced}"
+            Title = $"Morph Editor - {actor.Export.UIndex}: {actor.Export.ObjectName.Instanced}"
         };
         window.Show();
+    }
+
+    private void OpenLevelLiveMaterialEditor(ActorProxy actor)
+    {
+        _levelLiveMaterialActor = actor;
+        _levelLiveMaterialActorPackage = actor.Export.FileRef;
+        _levelLiveMaterialActorUIndex = actor.Export.UIndex;
+        LevelLiveMaterialEditor.LoadExternalLiveMaterialEditor(actor, RenderContext);
+        IsLevelMaterialEditorOpen = true;
+        SceneViewer.MarkRenderDirty();
+    }
+
+    private void CloseLevelLiveMaterialEditor()
+    {
+        IsLevelMaterialEditorOpen = false;
+        _levelMaterialPickMouseDownPosition = null;
+        _levelLiveMaterialActor = null;
+        _levelLiveMaterialActorPackage = null;
+        _levelLiveMaterialActorUIndex = 0;
+        LevelLiveMaterialEditor.UnloadExternalLiveMaterialEditor();
+        SceneViewer.MarkRenderDirty();
+    }
+
+    private void SynchronizeLevelLiveMaterialEditor(ActorProxy actor)
+    {
+        if (!IsLevelMaterialEditorOpen)
+        {
+            return;
+        }
+
+        if (actor is null
+            || actor.Export.FileRef != _levelLiveMaterialActorPackage
+            || actor.Export.UIndex != _levelLiveMaterialActorUIndex)
+        {
+            CloseLevelLiveMaterialEditor();
+            return;
+        }
+
+        if (!ReferenceEquals(actor, _levelLiveMaterialActor))
+        {
+            _levelLiveMaterialActor = actor;
+            LevelLiveMaterialEditor.LoadExternalLiveMaterialEditor(actor, RenderContext);
+        }
+    }
+
+    private void LevelLiveMaterialEditor_CloseRequested(object sender, EventArgs e) =>
+        CloseLevelLiveMaterialEditor();
+
+    private void LevelLiveMaterialEditor_PreviewChanged(object sender, EventArgs e) =>
+        SceneViewer.MarkRenderDirty();
+
+    private void SceneViewer_PreviewMouseDownForMaterialPicking(object sender, MouseButtonEventArgs e)
+    {
+        if (IsLevelMaterialEditorOpen && e.ChangedButton == MouseButton.Left && _levelLiveMaterialActor is not null)
+        {
+            _levelMaterialPickMouseDownPosition = e.GetPosition(SceneViewer);
+        }
+    }
+
+    private void SceneViewer_PreviewMouseUpForMaterialPicking(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ChangedButton != MouseButton.Left || _levelMaterialPickMouseDownPosition is not { } mouseDownPosition)
+        {
+            return;
+        }
+
+        _levelMaterialPickMouseDownPosition = null;
+        Point mouseUpPosition = e.GetPosition(SceneViewer);
+        System.Windows.Vector clickMovement = mouseUpPosition - mouseDownPosition;
+        if (clickMovement.LengthSquared <= 16)
+        {
+            LevelLiveMaterialEditor.TrySelectLiveMaterialVectorAtPixel(
+                _levelLiveMaterialActor, mouseUpPosition, SceneViewer, RenderContext);
+        }
     }
 
     private bool ActorHasEditableMorph(ActorProxy rootActor)

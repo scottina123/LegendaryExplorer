@@ -38,7 +38,8 @@
     </Control.Resources>
     <xctk:BusyIndicator IsBusy="{Binding IsBusy}" BusyContent="{Binding BusyText}">
         <DockPanel>
-            <ToolBar DockPanel.Dock="Top" ToolBarTray.IsLocked="True">
+            <ToolBar DockPanel.Dock="Top" ToolBarTray.IsLocked="True"
+                     Visibility="{Binding IsMaterialEditorOnly, Converter={StaticResource BoolToVisibilityConverter}, ConverterParameter=Not}">
                 <CheckBox Content="Wireframe" IsChecked="{Binding ShowWireframe}" VerticalAlignment="Center" Margin="4,0"/>
                 <CheckBox Content="Collision" IsChecked="{Binding ShowCollision}" VerticalAlignment="Center" Margin="4,0"/>
                 <Button Content="Snap to actor" Click="SnapCameraToActor_Click" Padding="6,2" Margin="4,0"
@@ -70,13 +71,33 @@
             </ToolBar>
             <Grid>
                 <DockPanel Visibility="{Binding IsMorphEditing, Converter={StaticResource BoolToVisibilityConverter}, ConverterParameter=Not}">
-            <Border DockPanel.Dock="Right" Width="380" Padding="7" BorderThickness="1,0,0,0"
+            <Border DockPanel.Dock="Right" Padding="7" BorderThickness="1,0,0,0"
                     BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"
                     Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"
                     Visibility="{Binding ShowLiveMaterialEditor, Converter={StaticResource BoolToVisibilityConverter}}">
+                <Border.Style>
+                    <Style TargetType="Border">
+                        <Setter Property="Width" Value="380"/>
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsMaterialEditorOnly}" Value="True">
+                                <Setter Property="Width" Value="Auto"/>
+                                <Setter Property="HorizontalAlignment" Value="Stretch"/>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Border.Style>
                 <DockPanel>
                     <StackPanel DockPanel.Dock="Top">
-                        <TextBlock Text="Live Material Editor" FontWeight="Bold" FontSize="15"/>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="Live Material Editor" FontWeight="Bold" FontSize="15" VerticalAlignment="Center"/>
+                            <Button Grid.Column="1" Content="Ã—" Width="24" Height="24" Padding="0" Margin="5,0,0,0"
+                                    Visibility="{Binding IsMaterialEditorOnly, Converter={StaticResource BoolToVisibilityConverter}}"
+                                    Click="CloseEmbeddedMaterialEditor_Click" ToolTip="Close live material editor"/>
+                        </Grid>
                         <TextBlock Text="Changes update the actor immediately. Choose whether saves target the component MIC or its parent material."
                                    TextWrapping="Wrap" Margin="0,2,0,6"/>
                         <Button Content="Randomize tints" Padding="5,3" Margin="0,0,0,7"
@@ -221,6 +242,7 @@
                 </DockPanel>
             </Border>
             <scene3D:SceneRenderControl x:Name="SceneViewer"
+                                        Visibility="{Binding IsMaterialEditorOnly, Converter={StaticResource BoolToVisibilityConverter}, ConverterParameter=Not}"
                                         PreviewMouseDown="SceneViewer_PreviewMouseDownForMaterialPicking"
                                         PreviewMouseUp="SceneViewer_PreviewMouseUpForMaterialPicking"/>
                 </DockPanel>

@@ -45,7 +45,12 @@ public partial class ActorPreviewControl : ExportLoaderControl, IActorEditorCont
     private System.Windows.Point? _materialPickMouseDownPosition;
     private BioMorphFaceEditor _actorMorphEditor;
     private ExportEntry _actorMorphExport;
+    private ActorProxy _externalLiveMaterialActor;
+    private LevelEditorRenderContext _externalLiveMaterialRenderContext;
     private readonly Dictionary<LiveMaterialEditorMaterial, ActorMaterialBinding> _materialBindings = [];
+
+    public event EventHandler CloseMaterialEditorRequested;
+    public event EventHandler LiveMaterialPreviewChanged;
 
     private sealed class ActorMaterialBinding
     {
@@ -102,7 +107,7 @@ public partial class ActorPreviewControl : ExportLoaderControl, IActorEditorCont
 
     public bool IsEditingComponentMaterial => SelectedMaterialEditLevelIndex == 0;
     public bool IsEditingParentMaterial => SelectedMaterialEditLevelIndex == 1;
-    public bool ShowLiveMaterialEditor => LiveMaterials.Count > 0;
+    public bool ShowLiveMaterialEditor => IsMaterialEditorOnly || LiveMaterials.Count > 0;
     public bool CanApplyComponentMicOverrides => IsEditingComponentMaterial && GetSelectedMaterialBinding() is not null;
     public bool CanOverwriteParentMaterial => IsEditingParentMaterial && GetWritableParentMaterial() is not null;
     public bool CanCreateParentMic => IsEditingParentMaterial && GetSelectedParentMaterial() is not null;
@@ -130,6 +135,19 @@ public partial class ActorPreviewControl : ExportLoaderControl, IActorEditorCont
     }
 
     public string MorphModeButtonLabel => IsMorphEditing ? "Back to actor" : "Edit morph";
+
+    private bool _isMaterialEditorOnly;
+    public bool IsMaterialEditorOnly
+    {
+        get => _isMaterialEditorOnly;
+        set
+        {
+            if (SetProperty(ref _isMaterialEditorOnly, value))
+            {
+                OnPropertyChanged(nameof(ShowLiveMaterialEditor));
+            }
+        }
+    }
 
     /// <summary>
     /// Opens the integrated morph editor as soon as the actor and its MorphHead have loaded.
@@ -401,7 +419,7 @@ public partial class ActorPreviewControl : ExportLoaderControl, IActorEditorCont
                 BoxSphereBounds bounds = _actor.GetBounds();
                 FrameFirstPersonCamera(bounds);
                 ConfigureDepthRangeForBounds(bounds);
-                PopulateLiveMaterialEditor();
+                PopulateLiveMaterialEditor(_actor);
                 UpdateActorMorphAvailability();
                 if (OpenMorphEditorOnLoad && HasActorMorph)
                 {
@@ -710,13 +728,28 @@ public partial class ActorPreviewControl : ExportLoaderControl, IActorEditorCont
         SceneViewer.MarkRenderDirty();
     }
 
-    private void PopulateLiveMaterialEditor()
+    public void LoadExternalLiveMaterialEditor(ActorProxy actor, LevelEditorRenderContext renderContext)
     {
-        LiveMaterials.ClearEx();
-        _materialBindings.Clear();
-        SelectedLiveMaterial = null;
+        _externalLiveMaterialActor = actor;
+        _externalLiveMaterialRenderContext = renderContext;
+        PopulateLiveMaterialEditor(actor);
+    }
 
-        foreach (ActorProxy actor in EnumerateActors(_actor))
+    public void UnloadExternalLiveMaterialEditor()
+    {
+        _externalLiveMaterialActor = null;
+        _externalLiveMaterialRenderContext = null;
+        ClearLiveMaterialEditor();
+    }
+
+    private PackageCache LiveMaterialPackageCache =>
+        _externalLiveMaterialRenderContext?.PackageCache ?? RenderContext.PackageCache;
+
+    private void PopulateLiveMaterialEditor(ActorProxy rootActor)
+    {
+        ClearLiveMaterialEditor();
+
+        foreach (ActorProxy actor in EnumerateActors(rootActor))
         {
             foreach (MeshComponentProxy component in actor.Components.OfType<MeshComponentProxy>())
             {
@@ -727,6 +760,7 @@ public partial class ActorPreviewControl : ExportLoaderControl, IActorEditorCont
                     string displayName = $"{component.Export.ObjectName.Instanced} [{slots}] — {sourceEntry.ObjectName.Instanced}";
                     var material = new LiveMaterialEditorMaterial(renderProxy, sourceEntry, displayName,
                         sourceEntry.InstancedFullPath);
+                    material.PreviewChanged += LiveMaterial_PreviewChanged;
                     LiveMaterials.Add(material);
                     _materialBindings[material] = new ActorMaterialBinding
                     {
@@ -769,11 +803,24 @@ public partial class ActorPreviewControl : ExportLoaderControl, IActorEditorCont
 
     private void ClearLiveMaterialEditor()
     {
+        foreach (LiveMaterialEditorMaterial material in LiveMaterials)
+        {
+            material.PreviewChanged -= LiveMaterial_PreviewChanged;
+        }
         LiveMaterials.ClearEx();
         _materialBindings.Clear();
         SelectedLiveMaterial = null;
         OnPropertyChanged(nameof(ShowLiveMaterialEditor));
     }
+
+    private void LiveMaterial_PreviewChanged(object sender, EventArgs e)
+    {
+        SceneViewer?.MarkRenderDirty();
+        LiveMaterialPreviewChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void CloseEmbeddedMaterialEditor_Click(object sender, RoutedEventArgs e) =>
+        CloseMaterialEditorRequested?.Invoke(this, EventArgs.Empty);
 
     private ActorMaterialBinding GetSelectedMaterialBinding() =>
         SelectedLiveMaterial is not null && _materialBindings.TryGetValue(SelectedLiveMaterial, out ActorMaterialBinding binding)
@@ -872,32 +919,46 @@ public partial class ActorPreviewControl : ExportLoaderControl, IActorEditorCont
         _materialPickMouseDownPosition = null;
         System.Windows.Point mouseUpPosition = e.GetPosition(SceneViewer);
         System.Windows.Vector clickMovement = mouseUpPosition - mouseDownPosition;
-        if (clickMovement.LengthSquared > 16
-            || !TryPickActorMaterials(mouseUpPosition, out List<LiveMaterialEditorMaterial> hitMaterials)
-            || !TryFindInfluencingVectorParameter(mouseUpPosition, hitMaterials,
-                out LiveMaterialEditorMaterial selectedMaterial, out LiveVectorMaterialParameter selectedParameter))
+        if (clickMovement.LengthSquared > 16)
         {
             return;
+        }
+
+        TrySelectLiveMaterialVectorAtPixel(_actor, mouseUpPosition, SceneViewer, RenderContext);
+    }
+
+    public bool TrySelectLiveMaterialVectorAtPixel(ActorProxy actor, System.Windows.Point screenPosition,
+        SceneRenderControl viewport, LevelEditorRenderContext renderContext)
+    {
+        actor ??= _externalLiveMaterialActor;
+        if (!TryPickActorMaterials(actor, screenPosition, viewport, renderContext,
+                out List<LiveMaterialEditorMaterial> hitMaterials)
+            || !TryFindInfluencingVectorParameter(screenPosition, viewport, renderContext, hitMaterials,
+                out LiveMaterialEditorMaterial selectedMaterial, out LiveVectorMaterialParameter selectedParameter))
+        {
+            return false;
         }
 
         selectedMaterial.VectorFilterText = null;
         SelectedLiveMaterial = selectedMaterial;
         SelectedLiveVectorParameter = selectedParameter;
         FocusSelectedLiveVectorParameter();
+        return true;
     }
 
-    private bool TryPickActorMaterials(System.Windows.Point screenPosition,
+    private bool TryPickActorMaterials(ActorProxy actor, System.Windows.Point screenPosition,
+        SceneRenderControl viewport, LevelEditorRenderContext renderContext,
         out List<LiveMaterialEditorMaterial> hitMaterials)
     {
         hitMaterials = [];
-        if (_actor is null || SceneViewer.ActualWidth <= 0 || SceneViewer.ActualHeight <= 0)
+        if (actor is null || viewport.ActualWidth <= 0 || viewport.ActualHeight <= 0)
         {
             return false;
         }
 
-        float normalizedX = (float)(screenPosition.X / SceneViewer.ActualWidth * 2.0 - 1.0);
-        float normalizedY = (float)(1.0 - screenPosition.Y / SceneViewer.ActualHeight * 2.0);
-        Matrix4x4 viewProjection = RenderContext.Camera.ViewMatrix * RenderContext.Camera.ProjectionMatrix;
+        float normalizedX = (float)(screenPosition.X / viewport.ActualWidth * 2.0 - 1.0);
+        float normalizedY = (float)(1.0 - screenPosition.Y / viewport.ActualHeight * 2.0);
+        Matrix4x4 viewProjection = renderContext.Camera.ViewMatrix * renderContext.Camera.ProjectionMatrix;
         if (!Matrix4x4.Invert(viewProjection, out Matrix4x4 inverseViewProjection))
         {
             return false;
@@ -914,7 +975,7 @@ public partial class ActorPreviewControl : ExportLoaderControl, IActorEditorCont
         Vector3 farPoint = new(farClip.X / farClip.W, farClip.Y / farClip.W, farClip.Z / farClip.W);
         Vector3 rayDirection = Vector3.Normalize(farPoint - rayOrigin);
         var nearestByMaterial = new Dictionary<LiveMaterialEditorMaterial, float>();
-        foreach (MeshComponentProxy component in EnumerateActors(_actor)
+        foreach (MeshComponentProxy component in EnumerateActors(actor)
                      .SelectMany(actor => actor.Components.OfType<MeshComponentProxy>()))
         {
             foreach ((MaterialRenderProxy renderProxy, float distance) in component.GetLiveMaterialHits(rayOrigin, rayDirection))
@@ -934,14 +995,15 @@ public partial class ActorPreviewControl : ExportLoaderControl, IActorEditorCont
     }
 
     private bool TryFindInfluencingVectorParameter(System.Windows.Point screenPosition,
+        SceneRenderControl viewport, LevelEditorRenderContext renderContext,
         IReadOnlyCollection<LiveMaterialEditorMaterial> hitMaterials,
         out LiveMaterialEditorMaterial selectedMaterial,
         out LiveVectorMaterialParameter selectedParameter)
     {
         selectedMaterial = null;
         selectedParameter = null;
-        if (RenderContext.Backbuffer is null || RenderContext.Width <= 0 || RenderContext.Height <= 0
-            || SceneViewer.ActualWidth <= 0 || SceneViewer.ActualHeight <= 0)
+        if (renderContext.Backbuffer is null || renderContext.Width <= 0 || renderContext.Height <= 0
+            || viewport.ActualWidth <= 0 || viewport.ActualHeight <= 0)
         {
             return false;
         }
@@ -956,13 +1018,13 @@ public partial class ActorPreviewControl : ExportLoaderControl, IActorEditorCont
             return false;
         }
 
-        int pixelX = Math.Clamp((int)(screenPosition.X / SceneViewer.ActualWidth * RenderContext.Width),
-            0, RenderContext.Width - 1);
-        int pixelY = Math.Clamp((int)(screenPosition.Y / SceneViewer.ActualHeight * RenderContext.Height),
-            0, RenderContext.Height - 1);
+        int pixelX = Math.Clamp((int)(screenPosition.X / viewport.ActualWidth * renderContext.Width),
+            0, renderContext.Width - 1);
+        int pixelY = Math.Clamp((int)(screenPosition.Y / viewport.ActualHeight * renderContext.Height),
+            0, renderContext.Height - 1);
 
-        RenderContext.Render();
-        if (!RenderContext.TryReadBackbufferPixelNeighborhood(pixelX, pixelY, out Vector4 baselineColor))
+        renderContext.Render();
+        if (!renderContext.TryReadBackbufferPixelNeighborhood(pixelX, pixelY, out Vector4 baselineColor))
         {
             return false;
         }
@@ -976,8 +1038,8 @@ public partial class ActorPreviewControl : ExportLoaderControl, IActorEditorCont
                 material.RenderProxy.SetVectorParameter(parameter.ParameterName, CreateVectorParameterProbe(currentValue));
                 try
                 {
-                    RenderContext.Render();
-                    if (RenderContext.TryReadBackbufferPixelNeighborhood(pixelX, pixelY, out Vector4 probeColor))
+                    renderContext.Render();
+                    if (renderContext.TryReadBackbufferPixelNeighborhood(pixelX, pixelY, out Vector4 probeColor))
                     {
                         Vector3 response = new(probeColor.X - baselineColor.X,
                             probeColor.Y - baselineColor.Y, probeColor.Z - baselineColor.Z);
@@ -998,8 +1060,8 @@ public partial class ActorPreviewControl : ExportLoaderControl, IActorEditorCont
         }
         finally
         {
-            RenderContext.Render();
-            SceneViewer.MarkRenderDirty();
+            renderContext.Render();
+            viewport.MarkRenderDirty();
         }
 
         const float minimumResponse = 3f / (255f * 255f);
@@ -1190,6 +1252,9 @@ public partial class ActorPreviewControl : ExportLoaderControl, IActorEditorCont
         {
             ExportEntry attachedMic = EnsureAttachedMic(binding);
             MeshRenderer.WriteLiveMaterialParameters(attachedMic, material);
+            // Link after serialization so an external viewport that rebuilds on the component update
+            // sees the completed MIC rather than an empty, just-created instance.
+            SetComponentMaterialSlots(binding, attachedMic);
             material.MarkSaved();
             UpdateLiveMaterialSaveState();
         }
@@ -1230,7 +1295,7 @@ public partial class ActorPreviewControl : ExportLoaderControl, IActorEditorCont
         try
         {
             IEntry localParentReference = InterpreterExportLoader.GetOrAddLocalMaterialReference(
-                currentParent, binding.Component.Export.FileRef, RenderContext.PackageCache)
+                currentParent, binding.Component.Export.FileRef, LiveMaterialPackageCache)
                 ?? throw new InvalidOperationException("Could not create a local reference to the selected parent material.");
             ExportEntry currentParentExport = ResolveMaterialExport(currentParent);
             ExportEntry newParentMic = InterpreterExportLoader.CreateMaterialInstanceConstant(
@@ -1266,17 +1331,15 @@ public partial class ActorPreviewControl : ExportLoaderControl, IActorEditorCont
     {
         if (GetAttachedMic(binding) is { } attachedMic)
         {
-            SetComponentMaterialSlots(binding, attachedMic);
             return attachedMic;
         }
 
         IEntry localParentReference = InterpreterExportLoader.GetOrAddLocalMaterialReference(
-            binding.SourceEntry, binding.Component.Export.FileRef, RenderContext.PackageCache)
+            binding.SourceEntry, binding.Component.Export.FileRef, LiveMaterialPackageCache)
             ?? throw new InvalidOperationException("Could not create a local reference to the component material.");
         ExportEntry parentExport = ResolveMaterialExport(binding.SourceEntry);
         attachedMic = InterpreterExportLoader.CreateMaterialInstanceConstant(
             binding.Component.Export, localParentReference, parentExport);
-        SetComponentMaterialSlots(binding, attachedMic);
         return attachedMic;
     }
 
@@ -1288,7 +1351,7 @@ public partial class ActorPreviewControl : ExportLoaderControl, IActorEditorCont
         }
         if (entry is ImportEntry import)
         {
-            return EntryImporter.ResolveImport(import, RenderContext.PackageCache);
+            return EntryImporter.ResolveImport(import, LiveMaterialPackageCache);
         }
         return null;
     }
@@ -1346,6 +1409,9 @@ public partial class ActorPreviewControl : ExportLoaderControl, IActorEditorCont
         _actor = null;
         _actorMorphEditor?.Dispose();
         _actorMorphEditor = null;
+        _externalLiveMaterialActor = null;
+        _externalLiveMaterialRenderContext = null;
+        ClearLiveMaterialEditor();
         SceneViewer?.Dispose();
     }
 

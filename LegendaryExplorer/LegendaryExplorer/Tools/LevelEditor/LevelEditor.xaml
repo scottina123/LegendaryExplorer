@@ -379,7 +379,9 @@
                     </ListBox>
                 </DockPanel>
 
-                <scene3D:SceneRenderControl Grid.Column="2" x:Name="SceneViewer" />
+                <scene3D:SceneRenderControl Grid.Column="2" x:Name="SceneViewer"
+                                            PreviewMouseDown="SceneViewer_PreviewMouseDownForMaterialPicking"
+                                            PreviewMouseUp="SceneViewer_PreviewMouseUpForMaterialPicking" />
 
 
                 <Grid Grid.Column="4">
@@ -774,6 +776,11 @@
                     </WrapPanel>
                         </StackPanel>
                     </ScrollViewer>
+
+                    <exportLoaderControls:ActorPreviewControl x:Name="LevelLiveMaterialEditor"
+                                                              Grid.RowSpan="4" Panel.ZIndex="10"
+                                                              IsMaterialEditorOnly="True"
+                                                              Visibility="{Binding IsLevelMaterialEditorOpen, RelativeSource={RelativeSource AncestorType={x:Type local:LevelEditor}}, Converter={StaticResource BoolToVisibilityConverter}}"/>
                 </Grid>
 
                 <StackPanel Grid.Column="0" Grid.ColumnSpan="5" Visibility="{Binding HasAnyFileOpen, Converter={StaticResource BoolToVisibilityConverter}, ConverterParameter='Not'}"
