@@ -614,12 +614,15 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy, ITr
         }
     }
 
-    protected void ApplyMorphFace(SkeletalMeshComponentProxy skeletalMeshComponent)
+    protected void ApplyMorphFace(SkeletalMeshComponentProxy headMesh, params SkeletalMeshComponentProxy[] followerMeshes)
     {
         if (Properties.GetProp<ObjectProperty>("MorphHead")?.ResolveToExport(Pcc, Editor?.PackageCache) is ExportEntry morphHead)
         {
-            (BonePosition[] bonePositions, Vector3[][] vertexOffsets) = LegendaryExplorerCore.Unreal.Classes.BioMorphFace.GetBoneAndVertexPositions(morphHead);
-            skeletalMeshComponent.ApplyMorph(bonePositions, vertexOffsets);
+            headMesh?.ApplyMorph(morphHead, true);
+            foreach (SkeletalMeshComponentProxy followerMesh in followerMeshes)
+            {
+                followerMesh?.ApplyMorph(morphHead, false);
+            }
         }
     }
 
@@ -682,9 +685,9 @@ public class SFXSkeletalMeshActorProxy : SkeletalMeshActorProxy
     public SFXSkeletalMeshActorProxy(IActorEditorContext context, ExportEntry actorExport) : base(context, actorExport)
     {
         AddComponent(context.RenderContext, ref HeadMesh);
-        ApplyMorphFace(HeadMesh);
         AddComponent(context.RenderContext, ref HairMesh);
         AddComponent(context.RenderContext, ref HeadGearMesh);
+        ApplyMorphFace(HeadMesh, HairMesh);
     }
 
     public override void SetAnimation(AnimSequence animSequence, float pos)
@@ -735,9 +738,9 @@ public class SFXStuntActorProxy : ActorProxy
             BodyMesh.Translation = new Vector3(0, 0, -88);
         }
         AddComponent(context.RenderContext, ref HeadMesh);
-        ApplyMorphFace(HeadMesh);
         AddComponent(context.RenderContext, ref HairMesh);
         AddComponent(context.RenderContext, ref HeadGearMesh);
+        ApplyMorphFace(HeadMesh, HairMesh);
     }
 
     public override void SetAnimation(AnimSequence animSequence, float pos)
@@ -787,12 +790,12 @@ public class BioPawnProxy : PawnProxy
     public BioPawnProxy(IActorEditorContext context, ExportEntry actorExport) : base(context, actorExport)
     {
         AddComponent(context.RenderContext, ref HeadMesh, actorExport.Game.IsGame1() ? "m_oHeadMesh" : nameof(HeadMesh));
-        ApplyMorphFace(HeadMesh);
         AddComponent(context.RenderContext, ref m_oHairMesh);
         AddComponent(context.RenderContext, ref m_oHeadGearMesh);
         AddComponent(context.RenderContext, ref m_oVisorMesh);
         AddComponent(context.RenderContext, ref m_oFacePlateMesh);
         AddComponentArray(context.RenderContext, ref m_aoAccessories);
+        ApplyMorphFace(HeadMesh, m_oHairMesh);
     }
 
     public override void SetAnimation(AnimSequence animSequence, float pos)

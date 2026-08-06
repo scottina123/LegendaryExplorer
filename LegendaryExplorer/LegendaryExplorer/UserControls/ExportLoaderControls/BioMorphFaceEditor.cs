@@ -704,6 +704,7 @@ public partial class MeshRenderer
                         normal = new Vector4(deformedNormal, normal.W);
                     }
                     mesh.Vertices[i] = mesh.Vertices[i].WithPositionAndNormal(
+                        CurrentLoadedExport.Game,
                         ToRendererSpace(skinnedPosition),
                         ToRendererSpace(normal));
                 }
@@ -775,46 +776,8 @@ public partial class MeshRenderer
         ComputeSkinningMatrices(MorphBindSkeleton, MorphPreviewSkeletalMesh?.RefSkeleton);
 
     private static Matrix4x4[] ComputeSkinningMatrices(MeshBone[] bindSkeleton, MeshBone[] editedSkeleton)
-    {
-        int boneCount = Math.Min(bindSkeleton?.Length ?? 0, editedSkeleton?.Length ?? 0);
-        if (boneCount == 0)
-        {
-            return [];
-        }
-
-        var bindComponentSpace = new Matrix4x4[boneCount];
-        var editedComponentSpace = new Matrix4x4[boneCount];
-        var skinningMatrices = new Matrix4x4[boneCount];
-        for (int boneIndex = 0; boneIndex < boneCount; boneIndex++)
-        {
-            MeshBone bindBone = bindSkeleton[boneIndex];
-            MeshBone editedBone = editedSkeleton[boneIndex];
-            Matrix4x4 bindLocal = Matrix4x4.CreateFromQuaternion(bindBone.Orientation)
-                                  * Matrix4x4.CreateTranslation(bindBone.Position);
-            Matrix4x4 editedLocal = Matrix4x4.CreateFromQuaternion(editedBone.Orientation)
-                                    * Matrix4x4.CreateTranslation(editedBone.Position);
-            if (bindBone.ParentIndex >= 0 && bindBone.ParentIndex < boneIndex)
-            {
-                bindComponentSpace[boneIndex] = bindLocal * bindComponentSpace[bindBone.ParentIndex];
-            }
-            else
-            {
-                bindComponentSpace[boneIndex] = bindLocal;
-            }
-            if (editedBone.ParentIndex >= 0 && editedBone.ParentIndex < boneIndex)
-            {
-                editedComponentSpace[boneIndex] = editedLocal * editedComponentSpace[editedBone.ParentIndex];
-            }
-            else
-            {
-                editedComponentSpace[boneIndex] = editedLocal;
-            }
-            skinningMatrices[boneIndex] = Matrix4x4.Invert(bindComponentSpace[boneIndex], out Matrix4x4 inverseBind)
-                ? inverseBind * editedComponentSpace[boneIndex]
-                : Matrix4x4.Identity;
-        }
-        return skinningMatrices;
-    }
+        => LegendaryExplorerCore.Unreal.Classes.BioMorphFace.ComputePreviewSkinningMatrices(
+            bindSkeleton, editedSkeleton);
 
     private Vector3 SkinMorphPosition(Vector3 position, int lodIndex, int vertexIndex, Matrix4x4[] skinningMatrices)
         => SkinPosition(position, lodIndex, vertexIndex, skinningMatrices, MorphSkinningInfluences);
@@ -829,15 +792,13 @@ public partial class MeshRenderer
             return position;
         }
         MorphSkinInfluences influence = influences[lodIndex][vertexIndex];
-        Matrix4x4 blended = GetSkinningMatrix(skinningMatrices, influence.Bone0) * influence.Weight0;
-        if (influence.Weight1 > 0) blended += GetSkinningMatrix(skinningMatrices, influence.Bone1) * influence.Weight1;
-        if (influence.Weight2 > 0) blended += GetSkinningMatrix(skinningMatrices, influence.Bone2) * influence.Weight2;
-        if (influence.Weight3 > 0) blended += GetSkinningMatrix(skinningMatrices, influence.Bone3) * influence.Weight3;
-        return Vector3.Transform(position, blended);
+        return LegendaryExplorerCore.Unreal.Classes.BioMorphFace.SkinPreviewPosition(
+            position, skinningMatrices,
+            influence.Bone0, influence.Weight0,
+            influence.Bone1, influence.Weight1,
+            influence.Bone2, influence.Weight2,
+            influence.Bone3, influence.Weight3);
     }
-
-    private static Matrix4x4 GetSkinningMatrix(Matrix4x4[] matrices, int boneIndex) =>
-        boneIndex >= 0 && boneIndex < matrices.Length ? matrices[boneIndex] : Matrix4x4.Identity;
 
     private static MorphSkinInfluences[][] BuildMorphSkinningInfluences(SkeletalMesh skeletalMesh)
     {

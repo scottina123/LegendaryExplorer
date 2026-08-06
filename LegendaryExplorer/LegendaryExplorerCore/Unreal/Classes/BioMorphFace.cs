@@ -38,6 +38,97 @@ namespace LegendaryExplorerCore.Unreal.Classes
             return (boneOffsets, vertexOffsets);
         }
 
+        /// <summary>
+        /// Builds the edited local-space skeleton represented by m_aFinalSkeleton while retaining the
+        /// base-head bind pose for bones that are not present in the morph.
+        /// </summary>
+        public static MeshBone[] CreateFinalSkeleton(MeshBone[] bindSkeleton, IEnumerable<BonePosition> finalBonePositions)
+        {
+            MeshBone[] editedSkeleton = bindSkeleton?.Select(bone => new MeshBone
+            {
+                Name = bone.Name,
+                Flags = bone.Flags,
+                Orientation = bone.Orientation,
+                Position = bone.Position,
+                NumChildren = bone.NumChildren,
+                ParentIndex = bone.ParentIndex,
+                BoneColor = bone.BoneColor
+            }).ToArray() ?? [];
+            if (finalBonePositions is null)
+            {
+                return editedSkeleton;
+            }
+
+            Dictionary<string, Vector3> editedPositions = finalBonePositions
+                .GroupBy(position => position.Name, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(group => group.Key, group => group.Last().Position, StringComparer.OrdinalIgnoreCase);
+            foreach (MeshBone bone in editedSkeleton)
+            {
+                if (editedPositions.TryGetValue(bone.Name.Instanced, out Vector3 position))
+                {
+                    bone.Position = position;
+                }
+            }
+            return editedSkeleton;
+        }
+
+        /// <summary>
+        /// Computes the same inverse-bind-to-final-skeleton matrices used by the morph editor preview.
+        /// </summary>
+        public static Matrix4x4[] ComputePreviewSkinningMatrices(MeshBone[] bindSkeleton, MeshBone[] editedSkeleton)
+        {
+            int boneCount = Math.Min(bindSkeleton?.Length ?? 0, editedSkeleton?.Length ?? 0);
+            if (boneCount == 0)
+            {
+                return [];
+            }
+
+            var bindComponentSpace = new Matrix4x4[boneCount];
+            var editedComponentSpace = new Matrix4x4[boneCount];
+            var skinningMatrices = new Matrix4x4[boneCount];
+            for (int boneIndex = 0; boneIndex < boneCount; boneIndex++)
+            {
+                MeshBone bindBone = bindSkeleton[boneIndex];
+                MeshBone editedBone = editedSkeleton[boneIndex];
+                Matrix4x4 bindLocal = Matrix4x4.CreateFromQuaternion(bindBone.Orientation)
+                                      * Matrix4x4.CreateTranslation(bindBone.Position);
+                Matrix4x4 editedLocal = Matrix4x4.CreateFromQuaternion(editedBone.Orientation)
+                                        * Matrix4x4.CreateTranslation(editedBone.Position);
+                bindComponentSpace[boneIndex] = bindBone.ParentIndex >= 0 && bindBone.ParentIndex < boneIndex
+                    ? bindLocal * bindComponentSpace[bindBone.ParentIndex]
+                    : bindLocal;
+                editedComponentSpace[boneIndex] = editedBone.ParentIndex >= 0 && editedBone.ParentIndex < boneIndex
+                    ? editedLocal * editedComponentSpace[editedBone.ParentIndex]
+                    : editedLocal;
+                skinningMatrices[boneIndex] = Matrix4x4.Invert(bindComponentSpace[boneIndex], out Matrix4x4 inverseBind)
+                    ? inverseBind * editedComponentSpace[boneIndex]
+                    : Matrix4x4.Identity;
+            }
+            return skinningMatrices;
+        }
+
+        /// <summary>
+        /// Applies the morph editor's normalized four-bone matrix blend to one stored morph vertex.
+        /// </summary>
+        public static Vector3 SkinPreviewPosition(Vector3 position, Matrix4x4[] skinningMatrices,
+            int bone0, float weight0, int bone1, float weight1,
+            int bone2, float weight2, int bone3, float weight3)
+        {
+            if (skinningMatrices is not { Length: > 0 })
+            {
+                return position;
+            }
+
+            Matrix4x4 blended = GetPreviewSkinningMatrix(skinningMatrices, bone0) * weight0;
+            if (weight1 > 0) blended += GetPreviewSkinningMatrix(skinningMatrices, bone1) * weight1;
+            if (weight2 > 0) blended += GetPreviewSkinningMatrix(skinningMatrices, bone2) * weight2;
+            if (weight3 > 0) blended += GetPreviewSkinningMatrix(skinningMatrices, bone3) * weight3;
+            return Vector3.Transform(position, blended);
+        }
+
+        private static Matrix4x4 GetPreviewSkinningMatrix(Matrix4x4[] matrices, int boneIndex) =>
+            boneIndex >= 0 && boneIndex < matrices.Length ? matrices[boneIndex] : Matrix4x4.Identity;
+
         private void ParseProperties(PropertyCollection props)
         {
             var headProp = props.GetProp<ObjectProperty>("m_oBaseHead");

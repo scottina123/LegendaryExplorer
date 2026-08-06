@@ -5,6 +5,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using LegendaryExplorerCore.Gammtek;
 using LegendaryExplorerCore.Gammtek.Extensions;
+using LegendaryExplorerCore.Packages;
 using SharpDX.Direct3D11;
 using SharpDX.DXGI;
 using Device = SharpDX.Direct3D11.Device;
@@ -124,7 +125,7 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
 
         public static abstract int Stride { get; }
 
-        public static abstract IVertexBase Create(Vector3 position, Vector3 tangent, Vector4 normal, Fixed4<Vector4> uvs);
+        public static abstract IVertexBase Create(MEGame game, Vector3 position, Vector3 tangent, Vector4 normal, Fixed4<Vector4> uvs);
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 4)]
@@ -158,14 +159,14 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
 
         public static unsafe int Stride => sizeof(Vector3) + sizeof(Vector3) + sizeof(Vector2);
 
-        public static IVertexBase Create(Vector3 position, Vector3 tangent, Vector4 normal, Fixed4<Vector4> uvs)
+        public static IVertexBase Create(MEGame game, Vector3 position, Vector3 tangent, Vector4 normal, Fixed4<Vector4> uvs)
         {
             return new WorldVertex(position, new Vector3(normal.X, normal.Y, normal.Z), new Vector2(uvs[0].X, uvs[0].Y));
         }
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 4)]
-    //Vertex used for FLocalVertexFactory vertex shaders in LE games
+    // Vertex used for compiled FLocalVertexFactory game shaders.
     public struct LEVertex : IVertexBase
     {
         private Vector4 position;
@@ -190,28 +191,36 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
         public LEVertex WithPosition(Vector3 newPosition) =>
             new(new Vector4(newPosition, position.W), tangent, normal, color, uvs);
 
-        public LEVertex WithPositionAndNormal(Vector3 newPosition, Vector4 newNormal) =>
-            new(new Vector4(newPosition, position.W), tangent, PackShaderNormal(newNormal), color, uvs);
+        public LEVertex WithPositionAndNormal(MEGame game, Vector3 newPosition, Vector4 newNormal) =>
+            new(new Vector4(newPosition, position.W), tangent, EncodeShaderNormal(game, newNormal), color, uvs);
 
         public void ToFloats(Span<float> floats) => MemoryMarshal.CreateSpan(ref Unsafe.As<LEVertex, float>(ref this), Stride / 4).CopyTo(floats);
 
-        public static IVertexBase Create(Vector3 position, Vector3 tangent, Vector4 normal, Fixed4<Vector4> uvs)
+        public static IVertexBase Create(MEGame game, Vector3 position, Vector3 tangent, Vector4 normal, Fixed4<Vector4> uvs)
         {
             return new LEVertex(
                 new Vector4(position, 1),
-                PackShaderNormal(tangent),
-                PackShaderNormal(normal),
+                EncodeShaderNormal(game, tangent),
+                EncodeShaderNormal(game, normal),
                 Vector4.Zero,
                 uvs);
         }
 
-        // FLocalVertexFactory shaders expect packed-normal vertex inputs in the
-        // unsigned 0..1 range, then unpack them with input * 2 - 1.
-        private static Vector3 PackShaderNormal(Vector3 value) =>
-            Vector3.Clamp((value + Vector3.One) * 0.5f, Vector3.Zero, Vector3.One);
+        // OT shaders preserve original UBYTE4 values and unpack with value * (2 / 255) - 1.
+        // LE shaders receive normalized values and unpack with value * 2 - 1.
+        private static Vector3 EncodeShaderNormal(MEGame game, Vector3 value)
+        {
+            float scale = game.IsLEGame() ? 0.5f : 127.5f;
+            float max = game.IsLEGame() ? 1f : 255f;
+            return Vector3.Clamp((value + Vector3.One) * scale, Vector3.Zero, new Vector3(max));
+        }
 
-        private static Vector4 PackShaderNormal(Vector4 value) =>
-            Vector4.Clamp((value + Vector4.One) * 0.5f, Vector4.Zero, Vector4.One);
+        private static Vector4 EncodeShaderNormal(MEGame game, Vector4 value)
+        {
+            float scale = game.IsLEGame() ? 0.5f : 127.5f;
+            float max = game.IsLEGame() ? 1f : 255f;
+            return Vector4.Clamp((value + Vector4.One) * scale, Vector4.Zero, new Vector4(max));
+        }
         public static unsafe int Stride => sizeof(Vector4) + sizeof(Vector3) + sizeof(Vector4) + sizeof(Vector4) + sizeof(Vector4) * 3 + sizeof(Vector2);
 
 

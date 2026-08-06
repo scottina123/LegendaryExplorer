@@ -21,6 +21,13 @@ namespace LegendaryExplorer.Tools.LevelEditor;
 
 public class LevelEditorRenderContext : MeshRenderContext
 {
+    /// <summary>
+    /// Uses the compiled local-vertex-factory material preview for actor mesh components instead of
+    /// the diffuse-only Level Editor preview. Actor Preview enables this so character materials match
+    /// the in-game shader preview used by Meshplorer and Morph Editor.
+    /// </summary>
+    public bool UseGameShaderMeshPreviews { get; set; }
+
     public event Action<ActorProxy> SelectActor;
     public event Action<ActorProxy> RightClickActor;
     public event Action<IHitProxy> SelectHitProxy;

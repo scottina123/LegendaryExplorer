@@ -544,7 +544,7 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
                         uvs[j] = new Vector4(vertex.HalfPrecisionUVs[j], 0, 0);
                     }
                 }
-                vertices.Add((TVertex)TVertex.Create(
+                vertices.Add((TVertex)TVertex.Create(m.Export.Game,
                     ToRendererSpace(position),
                     ToRendererSpace((Vector3)vertex.TangentX),
                     ToRendererSpace((Vector4)vertex.TangentZ),
@@ -695,7 +695,7 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
                     foreach (SoftSkinVertex vertex in lodmodel.ME1VertexBufferGPUSkin)
                     {
                         uvs[0] = new Vector4(vertex.UV, 0, 0);
-                        vertices.Add((TVertex)TVertex.Create(
+                        vertices.Add((TVertex)TVertex.Create(m.Export.Game,
                             ToRendererSpace(vertex.Position),
                             ToRendererSpace((Vector3)vertex.TangentX),
                             ToRendererSpace((Vector4)vertex.TangentZ),
@@ -707,7 +707,7 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
                     foreach (GPUSkinVertex vertex in lodmodel.VertexBufferGPUSkin.VertexData)
                     {
                         uvs[0] = new Vector4(vertex.UV, 0, 0);
-                        vertices.Add((TVertex)TVertex.Create(
+                        vertices.Add((TVertex)TVertex.Create(m.Export.Game,
                             ToRendererSpace(vertex.Position),
                             ToRendererSpace((Vector3)vertex.TangentX),
                             ToRendererSpace((Vector4)vertex.TangentZ),

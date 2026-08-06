@@ -17,6 +17,7 @@ public struct SkinVertex
 {
     public Vector3 BindPosition;  // Unreal space (Z-up)
     public Vector3 BindNormal;    // Unreal space
+    public float BindNormalW;     // Tangent-basis handedness from TangentZ.W
     public Vector2 UV;
     public int Bone0, Bone1, Bone2, Bone3;       // skeleton-wide bone indices
     public float Weight0, Weight1, Weight2, Weight3; // normalized weights
@@ -25,6 +26,7 @@ public struct SkinVertex
 public class SkinnedMeshRenderer
 {
     public bool NeedsUpdate { get; set; }
+    private MEGame _game;
     private SkinVertex[] _skinVertices;
 
     /// <summary>
@@ -37,6 +39,7 @@ public class SkinnedMeshRenderer
     public void BuildFromSkeletalMesh(MEGame game, StaticLODModel lodModel, MeshBone[] sourceSkeleton,
         MeshBone[] animationSkeleton)
     {
+        _game = game;
         bool isME1 = game == MEGame.ME1;
         int vertexCount = isME1 ? lodModel.ME1VertexBufferGPUSkin.Length : (int)lodModel.NumVertices;
         _skinVertices = new SkinVertex[vertexCount];
@@ -52,6 +55,7 @@ public class SkinnedMeshRenderer
                 ref var skinVert = ref _skinVertices[v];
                 skinVert.BindPosition = sv.Position;
                 skinVert.BindNormal = (Vector3)sv.TangentZ;
+                skinVert.BindNormalW = ((Vector4)sv.TangentZ).W;
                 skinVert.UV = sv.UV;
                 ResolveInfluences(ref skinVert, sv.InfluenceBones, sv.InfluenceWeights, chunk, boneMap);
             }
@@ -66,6 +70,7 @@ public class SkinnedMeshRenderer
                 ref var skinVert = ref _skinVertices[v];
                 skinVert.BindPosition = gv.Position;
                 skinVert.BindNormal = (Vector3)gv.TangentZ;
+                skinVert.BindNormalW = ((Vector4)gv.TangentZ).W;
                 skinVert.UV = gv.UV;
                 ResolveInfluences(ref skinVert, gv.InfluenceBones, gv.InfluenceWeights, chunk, boneMap);
             }
@@ -182,6 +187,69 @@ public class SkinnedMeshRenderer
         }
 
         mesh.UpdateVertices(context);
+    }
+
+    /// <summary>
+    /// Updates the local-vertex-factory mesh used by the compiled game-shader preview while preserving
+    /// its tangents, UV sets, and vertex color.
+    /// </summary>
+    public void UpdateSkinning(DeviceContext context, Mesh<LEVertex> mesh, AnimPlayer animPlayer)
+    {
+        NeedsUpdate = false;
+        if (_skinVertices == null || mesh == null) return;
+
+        var skinningMatrices = animPlayer.ComputeSkinningMatrices();
+        if (skinningMatrices == null) return;
+
+        int vertexCount = Math.Min(_skinVertices.Length, mesh.Vertices.Count);
+        for (int i = 0; i < vertexCount; i++)
+        {
+            ref var sv = ref _skinVertices[i];
+            var blended = BlendMatrix(
+                skinningMatrices, sv.Bone0, sv.Weight0,
+                sv.Bone1, sv.Weight1,
+                sv.Bone2, sv.Weight2,
+                sv.Bone3, sv.Weight3);
+
+            var skinnedPos = Vector3.Transform(sv.BindPosition, blended);
+            var skinnedNormal = Vector3.TransformNormal(sv.BindNormal, blended);
+            mesh.Vertices[i] = mesh.Vertices[i].WithPositionAndNormal(
+                _game, skinnedPos, new Vector4(skinnedNormal, sv.BindNormalW));
+        }
+
+        mesh.UpdateVertices(context);
+    }
+
+    /// <summary>
+    /// Bakes a BioMorphFace's stored vertex LOD and final skeleton into this component's bind positions.
+    /// The matrix and four-bone blend are shared with the morph editor preview.
+    /// </summary>
+    public void ApplyMorph(MeshBone[] bindSkeleton,
+        LegendaryExplorerCore.Unreal.Classes.BonePosition[] finalSkeleton, Vector3[] morphPositions)
+    {
+        if (_skinVertices is null || bindSkeleton is null)
+        {
+            return;
+        }
+
+        MeshBone[] editedSkeleton = LegendaryExplorerCore.Unreal.Classes.BioMorphFace.CreateFinalSkeleton(
+            bindSkeleton, finalSkeleton);
+        Matrix4x4[] skinningMatrices = LegendaryExplorerCore.Unreal.Classes.BioMorphFace
+            .ComputePreviewSkinningMatrices(bindSkeleton, editedSkeleton);
+        for (int i = 0; i < _skinVertices.Length; i++)
+        {
+            ref SkinVertex vertex = ref _skinVertices[i];
+            Vector3 position = morphPositions is not null && i < morphPositions.Length
+                ? morphPositions[i]
+                : vertex.BindPosition;
+            vertex.BindPosition = LegendaryExplorerCore.Unreal.Classes.BioMorphFace.SkinPreviewPosition(
+                position, skinningMatrices,
+                vertex.Bone0, vertex.Weight0,
+                vertex.Bone1, vertex.Weight1,
+                vertex.Bone2, vertex.Weight2,
+                vertex.Bone3, vertex.Weight3);
+        }
+        NeedsUpdate = true;
     }
 
     private static Matrix4x4 BlendMatrix(Matrix4x4[] matrices, int b0, float w0, int b1, float w1, int b2, float w2, int b3, float w3)

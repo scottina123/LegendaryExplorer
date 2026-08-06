@@ -473,7 +473,7 @@ public class ModelPreview<TVertex> : IDisposable where TVertex : IVertexBase
                     uvs[j] = new Vector4(vertex.HalfPrecisionUVs[j], 0, 0);
                 }
             }
-            vertices.Add((TVertex)TVertex.Create(new Vector3(position.X, position.Y, position.Z), (Vector3)vertex.TangentX, (Vector4)vertex.TangentZ, uvs));
+            vertices.Add((TVertex)TVertex.Create(m.Export.Game, new Vector3(position.X, position.Y, position.Z), (Vector3)vertex.TangentX, (Vector4)vertex.TangentZ, uvs));
         }
 
         // Sometimes there might not be an index buffer.
@@ -565,7 +565,7 @@ public class ModelPreview<TVertex> : IDisposable where TVertex : IVertexBase
                 foreach (SoftSkinVertex vertex in lodmodel.ME1VertexBufferGPUSkin)
                 {
                     uvs[0] = new Vector4(vertex.UV, 0, 0);
-                    vertices.Add((TVertex)TVertex.Create(new Vector3(vertex.Position.X, vertex.Position.Y, vertex.Position.Z), (Vector3)vertex.TangentX, (Vector4)vertex.TangentZ, uvs));
+                    vertices.Add((TVertex)TVertex.Create(m.Export.Game, new Vector3(vertex.Position.X, vertex.Position.Y, vertex.Position.Z), (Vector3)vertex.TangentX, (Vector4)vertex.TangentZ, uvs));
                 }
             }
             else
@@ -573,7 +573,7 @@ public class ModelPreview<TVertex> : IDisposable where TVertex : IVertexBase
                 foreach (GPUSkinVertex vertex in lodmodel.VertexBufferGPUSkin.VertexData)
                 {
                     uvs[0] = new Vector4(vertex.UV, 0, 0);
-                    vertices.Add((TVertex)TVertex.Create(new Vector3(vertex.Position.X, vertex.Position.Y, vertex.Position.Z), (Vector3)vertex.TangentX, (Vector4)vertex.TangentZ, uvs));
+                    vertices.Add((TVertex)TVertex.Create(m.Export.Game, new Vector3(vertex.Position.X, vertex.Position.Y, vertex.Position.Z), (Vector3)vertex.TangentX, (Vector4)vertex.TangentZ, uvs));
                 }
             }
             // Triangles

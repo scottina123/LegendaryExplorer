@@ -1,5 +1,6 @@
 ﻿using LegendaryExplorerCore.Helpers;
 using LegendaryExplorerCore.Packages;
+using LegendaryExplorerCore.Packages.CloningImportingAndRelinking;
 using LegendaryExplorerCore.Gammtek;
 using LegendaryExplorerCore.Shaders;
 using LegendaryExplorerCore.Unreal;
@@ -33,9 +34,20 @@ public class MaterialRenderProxy : MaterialInstanceConstantLevelEditor
     private readonly Dictionary<string, float> ScalarParameterValues = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, LinearColor> VectorParameterValues = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, string> TextureParameterValues = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, IEntry> TextureParameterEntries = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, HashSet<string>> DefaultTextureParameterNames = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, (bool Exists, float Value)> PreviewScalarBaselines = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, (bool Exists, LinearColor Value)> PreviewVectorBaselines = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, (bool Exists, string Value)> PreviewTextureBaselines = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<string> Uniform2DTextureExpressions = [];
     public Dictionary<string, PreviewTextureCache.TextureEntry> TextureMap;
     private MaterialShaderMap ShaderMap;
+    private MaterialUniformExpression[] PixelVectorExpressions = [];
+    private MaterialUniformExpression[] PixelScalarExpressions = [];
+    private MaterialUniformExpressionTexture[] Pixel2DTextureExpressions = [];
+    private MaterialUniformExpressionTexture[] PixelCubeTextureExpressions = [];
+    private MaterialUniformExpression[] VertexVectorExpressions = [];
+    private MaterialUniformExpression[] VertexScalarExpressions = [];
     private uint CachedPixelFrameNumber = uint.MaxValue;
     private uint CachedVertexFrameNumber = uint.MaxValue;
     private readonly List<Vector4> CachedVertexScalarParameters = [];
@@ -48,6 +60,7 @@ public class MaterialRenderProxy : MaterialInstanceConstantLevelEditor
     // reached by MaterialInstanceConstantLevelEditor is the shader owner. Static MICs replace this with their
     // own permutation resource when bHasStaticPermutationResource is true.
     private ExportEntry ShaderOwner;
+    private MaterialResource ShaderOwnerResource;
 
     public VertexShaderType UnrealVertexShader;
     public PixelShaderType UnrealPixelShader;
@@ -72,7 +85,65 @@ public class MaterialRenderProxy : MaterialInstanceConstantLevelEditor
         // ReadBaseMaterial runs during the base constructor, before a derived constructor can select its
         // particle factory. Reload from the actual shader owner rather than blindly parsing the selected MIC.
         // Non-static MICs have no serialized MaterialInstance binary and must inherit their parent's shaders.
-        LoadShaders(ShaderOwner ?? export);
+        LoadShaders(ShaderOwner ?? export, ShaderOwnerResource);
+    }
+
+    public void SetScalarParameter(string parameterName, float value)
+    {
+        PreviewScalarBaselines.TryAdd(parameterName, ScalarParameterValues.TryGetValue(parameterName, out float baseline)
+            ? (true, baseline)
+            : (false, default));
+        ScalarParameterValues[parameterName] = value;
+        CachedPixelFrameNumber = CachedVertexFrameNumber = uint.MaxValue;
+    }
+
+    public void SetVectorParameter(string parameterName, LinearColor value)
+    {
+        PreviewVectorBaselines.TryAdd(parameterName, VectorParameterValues.TryGetValue(parameterName, out LinearColor baseline)
+            ? (true, baseline)
+            : (false, default));
+        VectorParameterValues[parameterName] = value;
+        CachedPixelFrameNumber = CachedVertexFrameNumber = uint.MaxValue;
+    }
+
+    public void SetTextureParameter(string parameterName, string texturePath, PreviewTextureCache.TextureEntry texture)
+    {
+        PreviewTextureBaselines.TryAdd(parameterName, TextureParameterValues.TryGetValue(parameterName, out string baseline)
+            ? (true, baseline)
+            : (false, default));
+        if (string.IsNullOrEmpty(texturePath) || texture is null)
+        {
+            TextureParameterValues.Remove(parameterName);
+        }
+        else
+        {
+            TextureMap[texturePath] = texture;
+            TextureParameterValues[parameterName] = texturePath;
+        }
+        CachedPixelFrameNumber = uint.MaxValue;
+    }
+
+    public void ResetPreviewParameterOverrides()
+    {
+        foreach ((string name, (bool exists, float value)) in PreviewScalarBaselines)
+        {
+            if (exists) ScalarParameterValues[name] = value;
+            else ScalarParameterValues.Remove(name);
+        }
+        foreach ((string name, (bool exists, LinearColor value)) in PreviewVectorBaselines)
+        {
+            if (exists) VectorParameterValues[name] = value;
+            else VectorParameterValues.Remove(name);
+        }
+        foreach ((string name, (bool exists, string value)) in PreviewTextureBaselines)
+        {
+            if (exists) TextureParameterValues[name] = value;
+            else TextureParameterValues.Remove(name);
+        }
+        PreviewScalarBaselines.Clear();
+        PreviewVectorBaselines.Clear();
+        PreviewTextureBaselines.Clear();
+        CachedPixelFrameNumber = CachedVertexFrameNumber = uint.MaxValue;
     }
 
     /// <summary>
@@ -94,6 +165,10 @@ public class MaterialRenderProxy : MaterialInstanceConstantLevelEditor
         {
             TextureParameterValues[name] = value;
         }
+        foreach ((string name, IEntry value) in source.TextureParameterEntries)
+        {
+            TextureParameterEntries[name] = value;
+        }
         Textures.UnionWith(source.Textures);
         CachedPixelFrameNumber = CachedVertexFrameNumber = uint.MaxValue;
     }
@@ -101,8 +176,6 @@ public class MaterialRenderProxy : MaterialInstanceConstantLevelEditor
     protected override void ReadBaseMaterial(ExportEntry mat, PackageCache assetCache, Material parsedMaterial)
     {
         base.ReadBaseMaterial(mat, assetCache, parsedMaterial);
-
-        if (!Game.IsLEGame()) return;
 
         var props = mat.GetProperties(packageCache: assetCache);
         Enum.TryParse(props.GetProp<EnumProperty>("BlendMode")?.Value ?? "BLEND_Opaque", out BlendMode);
@@ -139,13 +212,16 @@ public class MaterialRenderProxy : MaterialInstanceConstantLevelEditor
                     {
                         VectorParameterValues.TryAdd(paramNameProp.Value.Instanced, CommonStructs.GetLinearColor(defaultVectorProp));
                     }
-                    else if (expressionProps.GetProp<ObjectProperty>("Texture") is {} textureProp)
+                    else if (expressionProps.GetProp<ObjectProperty>("Texture") is {} textureProp
+                             && mat.FileRef.GetEntry(textureProp.Value) is {} texEntry)
                     {
-                        if (!TextureParameterValues.ContainsKey(paramNameProp.Value.Instanced) 
-                            && mat.FileRef.GetEntry(textureProp.Value) is {} texEntry)
+                        string parameterName = paramNameProp.Value.Instanced;
+                        RegisterDefaultTextureParameter(texEntry, parameterName);
+                        if (!TextureParameterValues.ContainsKey(parameterName))
                         {
                             Textures.Add(texEntry);
-                            TextureParameterValues.Add(paramNameProp.Value.Instanced, texEntry.InstancedFullPath);
+                            TextureParameterValues.Add(parameterName, texEntry.InstancedFullPath);
+                            TextureParameterEntries.TryAdd(parameterName, texEntry);
                         }
                     }
                 }
@@ -155,27 +231,80 @@ public class MaterialRenderProxy : MaterialInstanceConstantLevelEditor
         //if the MIC had a StaticPermutationResource, this is already set
         if (ShaderMap is null)
         {
-            LoadShaders(mat);
+            LoadShaders(mat, parsedMaterial.SM3MaterialResource);
         }
     }
 
-    private void LoadShaders(ExportEntry mat)
+    private void LoadShaders(ExportEntry mat, MaterialResource legacyMaterialResource = null)
     {
         string factoryType = VertexFactoryType ?? LocalVertexFactoryType;
         (ShaderMap, Shader[] shaders) = ShaderCacheManipulator.GetMaterialShaderMapAndShadersForVertexFactory(
             mat, factoryType, VERTEX_SHADER_TYPE_NAME, LIT_PIXEL_SHADER_TYPE_NAME, UNLIT_PIXEL_SHADER_TYPE_NAME);
 
         ShaderOwner = mat;
+        ShaderOwnerResource = legacyMaterialResource;
+
+        if (mat.Game < MEGame.ME3)
+        {
+            // ME1 and ME2 store uniform expressions on the material resource. Their shader maps contain
+            // only shader references, so reading expressions from the map drops the actor's parameters.
+            PixelVectorExpressions = legacyMaterialResource?.UniformPixelVectorExpressions ?? [];
+            PixelScalarExpressions = legacyMaterialResource?.UniformPixelScalarExpressions ?? [];
+            Pixel2DTextureExpressions = legacyMaterialResource?.Uniform2DTextureExpressions ?? [];
+            PixelCubeTextureExpressions = legacyMaterialResource?.UniformCubeTextureExpressions ?? [];
+            VertexVectorExpressions = [];
+            VertexScalarExpressions = [];
+        }
+        else
+        {
+            PixelVectorExpressions = ShaderMap.UniformPixelVectorExpressions ?? [];
+            PixelScalarExpressions = ShaderMap.UniformPixelScalarExpressions ?? [];
+            Pixel2DTextureExpressions = ShaderMap.Uniform2DTextureExpressions ?? [];
+            PixelCubeTextureExpressions = ShaderMap.UniformCubeTextureExpressions ?? [];
+            VertexVectorExpressions = ShaderMap.UniformVertexVectorExpressions ?? [];
+            VertexScalarExpressions = ShaderMap.UniformVertexScalarExpressions ?? [];
+        }
+
+        foreach (MaterialUniformExpression expression in VertexScalarExpressions
+                     .Concat(VertexVectorExpressions)
+                     .Concat(PixelScalarExpressions)
+                     .Concat(PixelVectorExpressions))
+        {
+            AddUniformExpressionParameters(expression);
+        }
 
         UnrealVertexShader = (VertexShaderType)shaders[0];
         UnrealPixelShader = (PixelShaderType)(shaders[1] ?? shaders[2]);
     }
 
+    private void AddUniformExpressionParameters(MaterialUniformExpression expression)
+    {
+        switch (expression)
+        {
+            case MaterialUniformExpressionScalarParameter scalarParameter:
+                ScalarParameterValues.TryAdd(scalarParameter.ParameterName.Instanced, scalarParameter.DefaultValue);
+                break;
+            case MaterialUniformExpressionVectorParameter vectorParameter:
+                VectorParameterValues.TryAdd(vectorParameter.ParameterName.Instanced, vectorParameter.DefaultValue);
+                break;
+            case MaterialUniformExpressionUnaryOp unaryOperation:
+                AddUniformExpressionParameters(unaryOperation.X);
+                break;
+            case MaterialUniformExpressionBinaryOp binaryOperation:
+                AddUniformExpressionParameters(binaryOperation.A);
+                AddUniformExpressionParameters(binaryOperation.B);
+                break;
+            case MaterialUniformExpressionClamp clamp:
+                AddUniformExpressionParameters(clamp.Input);
+                AddUniformExpressionParameters(clamp.Min);
+                AddUniformExpressionParameters(clamp.Max);
+                break;
+        }
+    }
+
     protected override void ReadMaterialInstanceConstant(ExportEntry matInst, PropertyCollection props)
     {
         base.ReadMaterialInstanceConstant(matInst, props);
-
-        if (!Game.IsLEGame()) return;
 
         if (props.GetProp<ArrayProperty<StructProperty>>("ScalarParameterValues") is { } scalarValues)
         {
@@ -184,7 +313,7 @@ public class MaterialRenderProxy : MaterialInstanceConstantLevelEditor
                 if (scalarValue.GetProp<NameProperty>("ParameterName") is { } paramNameProp
                     && scalarValue.GetProp<FloatProperty>("ParameterValue") is { } valProp)
                 {
-                    ScalarParameterValues[paramNameProp.Value.Instanced] = valProp.Value;
+                    ScalarParameterValues.TryAdd(paramNameProp.Value.Instanced, valProp.Value);
                 }
             }
         }
@@ -195,7 +324,7 @@ public class MaterialRenderProxy : MaterialInstanceConstantLevelEditor
                 if (vectorValue.GetProp<NameProperty>("ParameterName") is { } paramNameProp
                     && vectorValue.GetProp<StructProperty>("ParameterValue") is { } valProp)
                 {
-                    VectorParameterValues[paramNameProp.Value.Instanced] = CommonStructs.GetLinearColor(valProp);
+                    VectorParameterValues.TryAdd(paramNameProp.Value.Instanced, CommonStructs.GetLinearColor(valProp));
                 }
             }
         }
@@ -206,7 +335,12 @@ public class MaterialRenderProxy : MaterialInstanceConstantLevelEditor
                 if (textureValue.GetProp<NameProperty>("ParameterName") is { } paramNameProp
                     && textureValue.GetProp<ObjectProperty>("ParameterValue") is { } valProp)
                 {
-                    TextureParameterValues[paramNameProp.Value.Instanced] = valProp.ResolveToEntry(matInst.FileRef)?.InstancedFullPath;
+                    IEntry textureEntry = valProp.ResolveToEntry(matInst.FileRef);
+                    TextureParameterValues.TryAdd(paramNameProp.Value.Instanced, textureEntry?.InstancedFullPath);
+                    if (textureEntry is not null)
+                    {
+                        TextureParameterEntries.TryAdd(paramNameProp.Value.Instanced, textureEntry);
+                    }
                 }
             }
         }
@@ -218,7 +352,7 @@ public class MaterialRenderProxy : MaterialInstanceConstantLevelEditor
             {
                 Uniform2DTextureExpressions.Add(matInst.FileRef.GetEntry(uIndex)?.InstancedFullPath);
             }
-            LoadShaders(matInst);
+            LoadShaders(matInst, binary.SM3StaticPermutationResource);
         }
     }
 
@@ -268,7 +402,7 @@ public class MaterialRenderProxy : MaterialInstanceConstantLevelEditor
             context.Time, context.Time, GetFlipBookTextureOffset);
 
         UpdateExpressions(uniformContext,
-            ShaderMap.UniformVertexVectorExpressions, ShaderMap.UniformVertexScalarExpressions,
+            VertexVectorExpressions, VertexScalarExpressions,
             CachedVertexScalarParameters, CachedVertexVectorParameters);
     }
 
@@ -286,11 +420,11 @@ public class MaterialRenderProxy : MaterialInstanceConstantLevelEditor
             context.Time, context.Time, GetFlipBookTextureOffset);
 
         UpdateExpressions(uniformContext,
-            ShaderMap.UniformPixelVectorExpressions, ShaderMap.UniformPixelScalarExpressions,
+            PixelVectorExpressions, PixelScalarExpressions,
             CachedPixelScalarParameters, CachedPixelVectorParameters);
 
-        UpdateTextureExpressions(ShaderMap.Uniform2DTextureExpressions, CachedTexture2DParameters);
-        UpdateTextureExpressions(ShaderMap.UniformCubeTextureExpressions, CachedCubeTextureParameters);
+        UpdateTextureExpressions(Pixel2DTextureExpressions, CachedTexture2DParameters, context);
+        UpdateTextureExpressions(PixelCubeTextureExpressions, CachedCubeTextureParameters, context);
     }
 
     private LinearColor GetFlipBookTextureOffset(UniformExpressionRenderContext context, int texIndex)
@@ -305,7 +439,8 @@ public class MaterialRenderProxy : MaterialInstanceConstantLevelEditor
         return LinearColor.Black;
     }
 
-    private void UpdateTextureExpressions(MaterialUniformExpressionTexture[] textureExpressions, List<PreviewTextureCache.TextureEntry> textureCache)
+    private void UpdateTextureExpressions(MaterialUniformExpressionTexture[] textureExpressions,
+        List<PreviewTextureCache.TextureEntry> textureCache, MeshRenderContext context)
     {
         foreach (MaterialUniformExpressionTexture texExpression in textureExpressions)
         {
@@ -313,32 +448,113 @@ public class MaterialRenderProxy : MaterialInstanceConstantLevelEditor
             // The human-lash shader serializes its opacity texture as a plain uniform expression. Meshplorer
             // deliberately resolves that slot from the effective child-MIC parameter instead of the master's
             // default lash texture, which otherwise produces an opaque white shell around the eyes.
-            if (IsHumanLashMaterial
-                && TextureParameterValues.TryGetValue(HUMAN_LASH_OPACITY_PARAMETER_NAME, out string lashTextureIfp))
+            if (IsHumanLashMaterial && TextureParameterValues.ContainsKey(HUMAN_LASH_OPACITY_PARAMETER_NAME))
             {
-                TextureMap.TryGetValue(lashTextureIfp, out texture);
-                textureCache.Add(texture);
+                textureCache.Add(ResolveTextureParameter(HUMAN_LASH_OPACITY_PARAMETER_NAME, context));
                 continue;
             }
             switch (texExpression)
             {
                 case MaterialUniformExpressionTextureParameter texParamExpression:
-                    if (TextureParameterValues.TryGetValue(texParamExpression.ParameterName.Instanced, out string texIfp)
-                        && texIfp is not null)
-                    {
-                        TextureMap.TryGetValue(texIfp, out texture);
-                    }
+                    texture = ResolveTextureParameter(texParamExpression.ParameterName.Instanced, context);
                     break;
                 default:
                     if ((uint)texExpression.TextureIndex < Uniform2DTextureExpressions.Count
                         && Uniform2DTextureExpressions[texExpression.TextureIndex] is {} texifp)
                     {
-                        TextureMap.TryGetValue(texifp, out texture);
+                        texture = ResolveDefaultTextureOverride(texifp, context);
+                        texture ??= TextureMap.GetValueOrDefault(texifp);
                     }
                     break;
             }
             textureCache.Add(texture);
         }
+    }
+
+    private void RegisterDefaultTextureParameter(IEntry textureEntry, string parameterName)
+    {
+        foreach (string texturePath in new[] { textureEntry.FullPath, textureEntry.InstancedFullPath })
+        {
+            if (string.IsNullOrEmpty(texturePath)) continue;
+            if (!DefaultTextureParameterNames.TryGetValue(texturePath, out HashSet<string> parameterNames))
+            {
+                parameterNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                DefaultTextureParameterNames.Add(texturePath, parameterNames);
+            }
+            parameterNames.Add(parameterName);
+        }
+    }
+
+    private PreviewTextureCache.TextureEntry ResolveDefaultTextureOverride(string defaultTexturePath,
+        MeshRenderContext context)
+    {
+        if (!DefaultTextureParameterNames.TryGetValue(defaultTexturePath, out HashSet<string> parameterNames))
+        {
+            return null;
+        }
+
+        PreviewTextureCache.TextureEntry selectedTexture = null;
+        foreach (string parameterName in parameterNames)
+        {
+            if (!TextureParameterValues.TryGetValue(parameterName, out string overridePath)
+                || string.IsNullOrEmpty(overridePath)
+                || string.Equals(overridePath, defaultTexturePath, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            PreviewTextureCache.TextureEntry candidate = ResolveTextureParameter(parameterName, context);
+            if (candidate is null)
+            {
+                continue;
+            }
+            if (selectedTexture is not null && !ReferenceEquals(selectedTexture, candidate))
+            {
+                return null;
+            }
+            selectedTexture = candidate;
+        }
+        return selectedTexture;
+    }
+
+    private PreviewTextureCache.TextureEntry ResolveTextureParameter(string parameterName, MeshRenderContext context)
+    {
+        if (!TextureParameterValues.TryGetValue(parameterName, out string texturePath)
+            || string.IsNullOrEmpty(texturePath))
+        {
+            return null;
+        }
+        if (TextureMap.TryGetValue(texturePath, out PreviewTextureCache.TextureEntry texture))
+        {
+            return texture;
+        }
+        if (!TextureParameterEntries.TryGetValue(parameterName, out IEntry textureEntry)
+            || (!string.Equals(texturePath, textureEntry.InstancedFullPath, StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(texturePath, textureEntry.FullPath, StringComparison.OrdinalIgnoreCase)))
+        {
+            return null;
+        }
+
+        ExportEntry textureExport = textureEntry as ExportEntry;
+        if (textureEntry is ImportEntry textureImport)
+        {
+            textureExport = EntryImporter.ResolveImport(textureImport, context.PackageCache);
+        }
+        if (textureExport is null)
+        {
+            return null;
+        }
+
+        texture = context.TextureCache.LoadTexture(textureExport, context.PackageCache);
+        if (texture is null)
+        {
+            return null;
+        }
+        TextureMap[textureEntry.FullPath] = texture;
+        TextureMap[textureEntry.InstancedFullPath] = texture;
+        TextureMap[textureExport.FullPath] = texture;
+        TextureMap[textureExport.InstancedFullPath] = texture;
+        return texture;
     }
 
     public bool HasRequiredTextures(MeshRenderContext context)
