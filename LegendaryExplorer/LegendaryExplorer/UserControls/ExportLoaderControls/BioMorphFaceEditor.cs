@@ -174,6 +174,24 @@ public partial class MeshRenderer
         }
     }
 
+    private float _morphRandomizationStrength = 1f;
+    /// <summary>
+    /// Scales the displacement from the current face to a generated BioWare face.
+    /// One preserves the original randomizer behavior; zero leaves the current values
+    /// unchanged, and values above one extrapolate past the generated reference.
+    /// </summary>
+    public float MorphRandomizationStrength
+    {
+        get => _morphRandomizationStrength;
+        set
+        {
+            if (float.IsFinite(value))
+            {
+                SetProperty(ref _morphRandomizationStrength, Math.Clamp(value, 0f, 2f));
+            }
+        }
+    }
+
     private string _morphBaseHeadPath;
     public string MorphBaseHeadPath
     {
@@ -1293,6 +1311,13 @@ public partial class MeshRenderer
             return;
         }
 
+        float strength = MorphRandomizationStrength;
+        if (strength <= 0f)
+        {
+            MorphEditorStatus = "Randomization strength is 0%; the current morph and material values were left unchanged.";
+            return;
+        }
+
         BioMorphSpecies species = MorphBaseHeadExport.ObjectName.Name.GetBioMorphSpecies();
         if (species == BioMorphSpecies.Unknown)
         {
@@ -1409,7 +1434,8 @@ public partial class MeshRenderer
                 {
                     if (existingFeatures.TryGetValue(targetName, out List<MorphFeatureEditorItem> features))
                     {
-                        features[0].Value = value;
+                        float currentValue = features.Sum(feature => feature.Value);
+                        features[0].Value = ApplyMorphRandomizationStrength(currentValue, value, strength);
                         foreach (MorphFeatureEditorItem duplicate in features.Skip(1))
                         {
                             duplicate.Value = 0;
@@ -1417,7 +1443,12 @@ public partial class MeshRenderer
                     }
                     else if (value != 0)
                     {
-                        MorphFeatureItems.Add(new MorphFeatureEditorItem(targetName, value, OnMorphFeatureChanged)
+                        float randomizedValue = ApplyMorphRandomizationStrength(0f, value, strength);
+                        if (Math.Abs(randomizedValue) < 0.0001f)
+                        {
+                            continue;
+                        }
+                        MorphFeatureItems.Add(new MorphFeatureEditorItem(targetName, randomizedValue, OnMorphFeatureChanged)
                         {
                             HasMorphTarget = true
                         });
@@ -1425,6 +1456,11 @@ public partial class MeshRenderer
                 }
             }
 
+            List<MaterialRenderProxy> previewMaterials = GetMorphMaterialPreviewTargets();
+            Dictionary<string, float> effectiveScalars = previewMaterials
+                .SelectMany(material => material.ScalarParameters)
+                .GroupBy(parameter => parameter.Key, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(group => group.Key, group => group.First().Value, StringComparer.OrdinalIgnoreCase);
             Dictionary<string, MorphScalarOverrideItem> existingScalars = MorphScalarOverrides
                 .Where(item => !string.IsNullOrWhiteSpace(item.Name))
                 .GroupBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
@@ -1433,13 +1469,19 @@ public partial class MeshRenderer
             {
                 if (existingScalars.TryGetValue(name, out MorphScalarOverrideItem existing))
                 {
-                    existing.Value = value;
+                    existing.Value = ApplyMorphRandomizationStrength(existing.Value, value, strength);
                 }
                 else
                 {
-                    MorphScalarOverrides.Add(new MorphScalarOverrideItem(name, value, OnMorphMaterialChanged));
+                    float currentValue = effectiveScalars.GetValueOrDefault(name, value);
+                    MorphScalarOverrides.Add(new MorphScalarOverrideItem(
+                        name, ApplyMorphRandomizationStrength(currentValue, value, strength), OnMorphMaterialChanged));
                 }
             }
+            Dictionary<string, LinearColor> effectiveColors = previewMaterials
+                .SelectMany(material => material.VectorParameters)
+                .GroupBy(parameter => parameter.Key, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(group => group.Key, group => group.First().Value, StringComparer.OrdinalIgnoreCase);
             Dictionary<string, MorphColorOverrideItem> existingColors = MorphColorOverrides
                 .Where(item => !string.IsNullOrWhiteSpace(item.Name))
                 .GroupBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
@@ -1448,14 +1490,17 @@ public partial class MeshRenderer
             {
                 if (existingColors.TryGetValue(name, out MorphColorOverrideItem existing))
                 {
-                    existing.R = value.R;
-                    existing.G = value.G;
-                    existing.B = value.B;
-                    existing.A = value.A;
+                    LinearColor randomizedValue = ApplyMorphRandomizationStrength(existing.Value, value, strength);
+                    existing.R = randomizedValue.R;
+                    existing.G = randomizedValue.G;
+                    existing.B = randomizedValue.B;
+                    existing.A = randomizedValue.A;
                 }
                 else
                 {
-                    MorphColorOverrides.Add(new MorphColorOverrideItem(name, value, OnMorphMaterialChanged));
+                    LinearColor currentValue = effectiveColors.GetValueOrDefault(name, value);
+                    MorphColorOverrides.Add(new MorphColorOverrideItem(
+                        name, ApplyMorphRandomizationStrength(currentValue, value, strength), OnMorphMaterialChanged));
                 }
             }
         }
@@ -1473,8 +1518,18 @@ public partial class MeshRenderer
         string geometryStatus = randomizedValues is null
             ? "Morph features were left unchanged because no compatible targets were found."
             : $"Randomized {randomizedValues.Count(value => value.Value != 0)} morph features.";
-        MorphEditorStatus = $"Randomized {randomizedScalars.Count} {species.ToDisplayName()} scalar overrides and {randomizedColors.Count} color overrides from {materialFaces.Count} Asset Database material profiles. {geometryStatus} Texture overrides were left unchanged.";
+        MorphEditorStatus = $"Randomized at {strength:P0} strength: {randomizedScalars.Count} {species.ToDisplayName()} scalar overrides and {randomizedColors.Count} color overrides from {materialFaces.Count} Asset Database material profiles. {geometryStatus} Texture overrides were left unchanged.";
     }
+
+    private static float ApplyMorphRandomizationStrength(float currentValue, float randomizedValue, float strength) =>
+        currentValue + (randomizedValue - currentValue) * strength;
+
+    private static LinearColor ApplyMorphRandomizationStrength(
+        LinearColor currentValue, LinearColor randomizedValue, float strength) => new(
+        ApplyMorphRandomizationStrength(currentValue.R, randomizedValue.R, strength),
+        ApplyMorphRandomizationStrength(currentValue.G, randomizedValue.G, strength),
+        ApplyMorphRandomizationStrength(currentValue.B, randomizedValue.B, strength),
+        ApplyMorphRandomizationStrength(currentValue.A, randomizedValue.A, strength));
 
     private static Dictionary<string, float> BlendMorphScalarOverrides(
         BioMorphReferenceFace firstFace, BioMorphReferenceFace secondFace, float firstWeight, float secondWeight)
