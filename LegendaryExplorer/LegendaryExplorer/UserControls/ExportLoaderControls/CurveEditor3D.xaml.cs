@@ -34,6 +34,8 @@ using LegendaryExplorerCore.Unreal.ObjectInfo;
 using Newtonsoft.Json;
 using System.Windows.Threading;
 using CameraOrigin = LegendaryExplorer.Tools.InterpEditor.CameraOrigin;
+using InterpTrackMoveTransform = LegendaryExplorer.Tools.InterpEditor.InterpTrackMoveTransform;
+using StageBoneOriginResolver = LegendaryExplorer.Tools.InterpEditor.StageBoneOriginResolver;
 using StageConversationContext = LegendaryExplorer.Tools.InterpEditor.StageConversationContext;
 using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
 using InterpCurveFloat = LegendaryExplorerCore.Unreal.BinaryConverters.InterpCurve<float>;
@@ -411,7 +413,6 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         public PreviewActorConfiguration Actor { get; init; }
         public TrackMovePlaybackOption TrackMove { get; init; }
         public CameraOrigin OriginalOrigin { get; init; }
-        public CameraOrigin TrackStartOrigin { get; init; }
         public EInterpTrackMoveFrame MoveFrame { get; init; }
     }
 
@@ -447,6 +448,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     private readonly PreviewActorWidgetTarget previewActorWidgetTarget = new();
     private readonly PackageCache previewActorGesturePackageCache = new();
     private IMEPackage dialoguePreviewFaceFxPackage;
+    private StageConversationContext trackAnchorStageContext;
     private readonly Dictionary<PreviewActorConfiguration, FaceFXAnimSet> dialoguePreviewFaceFxAnimSets = [];
     private readonly ObservableCollection<GestureTrackOption> availableGestureTracks = [];
     private readonly Dictionary<PreviewActorConfiguration, GestureTrackOption> previewActorGestureAssignments = [];
@@ -557,6 +559,12 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
     private ExportEntry ActiveTrackMoveExport => ActiveModel.Export ?? CurrentLoadedExport;
 
+    private CameraOrigin? ActiveTrackCoordinateBasis =>
+        GetTrackMoveFrame(ActiveTrackMoveExport) == EInterpTrackMoveFrame.IMF_AnchorObject
+        && TrackAnchorOrigin is { } anchor
+            ? anchor
+            : null;
+
     public CurveEditor3D() : base("3D Curve Editor")
     {
         RenderContext = new LevelEditorRenderContext();
@@ -632,6 +640,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         ArgumentNullException.ThrowIfNull(actors);
         ArgumentNullException.ThrowIfNull(levelPaths);
         ArgumentNullException.ThrowIfNull(stageContext);
+        ReleaseTrackAnchorStageContext();
         isDialogueConversationPreview = false;
         dialogueNodePreview = new DialogueNodePreviewConfiguration(conversation, node, actors, levelPaths, stageContext,
             GetDialoguePreviewVoStartTime(node.InterpData));
@@ -1091,6 +1100,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         StopPlayback(false);
         UnregisterKeyframes();
         CurrentLoadedExport = exportEntry;
+        ResolveTrackAnchorStageContext(exportEntry);
         model.Load(exportEntry);
         RefreshAvailableGestureTracks(exportEntry);
         RefreshMulticamPlaybackOptions(exportEntry);
@@ -1117,6 +1127,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     {
         StopPlayback(false);
         UnregisterKeyframes();
+        ReleaseTrackAnchorStageContext();
         model.Clear();
         trajectorySamples = [];
         trajectorySamplesDirty = false;
@@ -1169,6 +1180,38 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         previewActorGesturePackageCache.ReleasePackages();
         dialogueNodePreview?.StageContext.Dispose();
         SceneViewer.Dispose();
+    }
+
+    private void ResolveTrackAnchorStageContext(ExportEntry trackMove)
+    {
+        ReleaseTrackAnchorStageContext();
+        if (dialogueNodePreview is not null || !HasAnchorObjectTrack(trackMove))
+        {
+            return;
+        }
+
+        StageBoneOriginResolver.TrySelectContext(Window.GetWindow(this), trackMove.FileRef, trackMove, null,
+            out trackAnchorStageContext, out _);
+    }
+
+    private static bool HasAnchorObjectTrack(ExportEntry trackMove)
+    {
+        if (GetTrackMoveFrame(trackMove) == EInterpTrackMoveFrame.IMF_AnchorObject)
+        {
+            return true;
+        }
+
+        ExportEntry interpData = FindOwningInterpData(trackMove);
+        return GetReferencedExports(interpData, "InterpGroups")
+            .SelectMany(group => GetReferencedExports(group, "InterpTracks"))
+            .Any(track => track.ClassName == "InterpTrackMove"
+                          && GetTrackMoveFrame(track) == EInterpTrackMoveFrame.IMF_AnchorObject);
+    }
+
+    private void ReleaseTrackAnchorStageContext()
+    {
+        trackAnchorStageContext?.Dispose();
+        trackAnchorStageContext = null;
     }
 
     private void RefreshAvailableGestureTracks(ExportEntry trackMove)
@@ -3135,6 +3178,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             return;
         }
 
+        newKeyframe.SetCoordinateBasis(ActiveTrackCoordinateBasis);
         RenderContext.AddHitProxy(newKeyframe);
         SelectedKeyframe = newKeyframe;
         SceneStatus = $"Added keyframe at InVal {newKeyframe.Time:0.###}; {ActiveModel.Keyframes.Count} trajectory keyframe(s).";
@@ -3197,6 +3241,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             return;
         }
 
+        newKeyframe.SetCoordinateBasis(ActiveTrackCoordinateBasis);
         RenderContext.AddHitProxy(newKeyframe);
         SelectedKeyframe = newKeyframe;
         SceneStatus = $"Added keyframe at InVal {newKeyframe.Time:0.###}; {ActiveModel.Keyframes.Count} trajectory keyframe(s).";
@@ -3326,7 +3371,8 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         };
         Vector3 actorLocation = selectedPreviewActor is null
             ? default
-            : GetViewportKeyframeLocation(viewportPoint, selectedPreviewActor.Origin.Location);
+            : GetViewportKeyframeLocation(viewportPoint, selectedPreviewActor.Origin.Location,
+                returnTrackSpace: false);
         snapActorItem.Click += (_, _) =>
         {
             if (selectedPreviewActor is not null)
@@ -3347,14 +3393,24 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         menu.IsOpen = true;
     }
 
-    private Vector3 GetViewportKeyframeLocation(Point viewportPoint, Vector3? depthReference = null)
+    private Vector3 GetViewportKeyframeLocation(Point viewportPoint, Vector3? depthReference = null,
+        bool returnTrackSpace = true)
     {
+        CameraOrigin? coordinateBasis = returnTrackSpace ? ActiveTrackCoordinateBasis : null;
+        Vector3 ToTrackSpace(Vector3 worldLocation) => coordinateBasis is { } basis
+            ? InterpTrackMoveTransform.ToLocal(basis, new CameraOrigin(worldLocation, Vector3.Zero)).Location
+            : worldLocation;
         if (depthReference is null && ActiveModel.Keyframes.Count == 0)
         {
-            return RenderContext.Camera.Position + RenderContext.Camera.CameraForward * 100f;
+            return ToTrackSpace(RenderContext.Camera.Position + RenderContext.Camera.CameraForward * 100f);
         }
 
         Vector3 referenceLocation = depthReference ?? ActiveModel.Keyframes[^1].Location;
+        if (coordinateBasis is { } activeBasis)
+        {
+            referenceLocation = InterpTrackMoveTransform.ToWorld(activeBasis,
+                new CameraOrigin(referenceLocation, Vector3.Zero)).Location;
+        }
         float width = MathF.Max(RenderContext.Width, 1f);
         float height = MathF.Max(RenderContext.Height, 1f);
         float normalizedX = ((float)viewportPoint.X / width * 2f) - 1f;
@@ -3377,16 +3433,16 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         float denominator = Vector3.Dot(rayDirection, forward);
         if (MathF.Abs(denominator) < 0.0001f)
         {
-            return referenceLocation;
+            return ToTrackSpace(referenceLocation);
         }
 
         float distance = Vector3.Dot(referenceLocation - cameraPosition, forward) / denominator;
         if (distance <= 0f || float.IsNaN(distance) || float.IsInfinity(distance))
         {
-            return referenceLocation;
+            return ToTrackSpace(referenceLocation);
         }
 
-        return cameraPosition + rayDirection * distance;
+        return ToTrackSpace(cameraPosition + rayDirection * distance);
     }
 
     private void RefreshKeyframePanel()
@@ -3415,10 +3471,11 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     {
         const float degreesToRadians = 0.017453292519943295f;
         const float cameraDistance = 150f;
-        RenderContext.Camera.Roll = keyframe.Roll * degreesToRadians;
-        RenderContext.Camera.Pitch = keyframe.Pitch * degreesToRadians;
-        RenderContext.Camera.Yaw = keyframe.Yaw * degreesToRadians;
-        RenderContext.Camera.Position = keyframe.Location - RenderContext.Camera.CameraForward * cameraDistance;
+        CameraOrigin displayOrigin = keyframe.DisplayOrigin;
+        RenderContext.Camera.Roll = displayOrigin.Rotation.X * degreesToRadians;
+        RenderContext.Camera.Pitch = displayOrigin.Rotation.Y * degreesToRadians;
+        RenderContext.Camera.Yaw = displayOrigin.Rotation.Z * degreesToRadians;
+        RenderContext.Camera.Position = displayOrigin.Location - RenderContext.Camera.CameraForward * cameraDistance;
         RenderContext.Camera.FocusDepth = 0f;
         UpdateCameraPositionText();
         UpdateCameraRotationText();
@@ -3507,7 +3564,6 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                 Actor = actor,
                 TrackMove = trackMove,
                 OriginalOrigin = originalOrigin,
-                TrackStartOrigin = GetTrackStartOrigin(trackMove),
                 MoveFrame = GetTrackMoveFrame(trackMove)
             });
         }
@@ -3763,7 +3819,6 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                 Actor = actor,
                 TrackMove = trackMove,
                 OriginalOrigin = originalOrigin,
-                TrackStartOrigin = GetTrackStartOrigin(trackMove),
                 MoveFrame = GetTrackMoveFrame(trackMove)
             });
         }
@@ -3912,20 +3967,33 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     }
 
     private static EInterpTrackMoveFrame GetTrackMoveFrame(TrackMovePlaybackOption trackMove) =>
-        trackMove?.TrackMove?.GetProperty<EnumProperty>("MoveFrame")
+        GetTrackMoveFrame(trackMove?.TrackMove);
+
+    private static EInterpTrackMoveFrame GetTrackMoveFrame(ExportEntry trackMove) =>
+        trackMove?.GetProperty<EnumProperty>("MoveFrame")
             .GetEnumValOrDefault(EInterpTrackMoveFrame.IMF_World)
         ?? EInterpTrackMoveFrame.IMF_World;
 
-    private static CameraOrigin GetTrackStartOrigin(TrackMovePlaybackOption trackMove) =>
-        trackMove?.Model?.Keyframes is { Count: > 0 } keys
-            ? EvaluateTrackMove(trackMove.Model, keys[0].Time)
-            : default;
+    private CameraOrigin? TrackAnchorOrigin =>
+        dialogueNodePreview?.StageContext.StageOrigin ?? trackAnchorStageContext?.StageOrigin;
+
+    private CameraOrigin ResolveAnchorObjectTrackOrigin(CameraOrigin trackOrigin)
+        => TrackAnchorOrigin is { } anchor
+            ? InterpTrackMoveTransform.ToWorld(anchor, trackOrigin)
+            : trackOrigin;
+
+    private CameraOrigin ResolveCameraTrackOrigin(TrackMovePlaybackOption trackMove, CameraOrigin trackOrigin)
+        => GetTrackMoveFrame(trackMove?.TrackMove ?? ActiveTrackMoveExport) == EInterpTrackMoveFrame.IMF_AnchorObject
+            ? ResolveAnchorObjectTrackOrigin(trackOrigin)
+            : trackOrigin;
 
     private CameraOrigin ResolveActorTrackOrigin(PreviewActorPlaybackState state, CameraOrigin trackOrigin)
     {
         CameraOrigin origin = state.MoveFrame switch
         {
-            EInterpTrackMoveFrame.IMF_RelativeToInitial => ComposeRelativeOrigin(state.OriginalOrigin, trackOrigin),
+            EInterpTrackMoveFrame.IMF_RelativeToInitial =>
+                InterpTrackMoveTransform.ToWorld(state.OriginalOrigin, trackOrigin),
+            EInterpTrackMoveFrame.IMF_AnchorObject => ResolveAnchorObjectTrackOrigin(trackOrigin),
             _ => trackOrigin
         };
         Vector3 location = origin.Location;
@@ -3934,13 +4002,6 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             location.Z = state.OriginalOrigin.Location.Z;
         }
         return new CameraOrigin(location, origin.Rotation);
-    }
-
-    private static CameraOrigin ComposeRelativeOrigin(CameraOrigin basis, CameraOrigin relative)
-    {
-        Quaternion rotation = Rotator.FromDegreesVector(basis.Rotation).ToQuaternion();
-        Vector3 location = basis.Location + Vector3.Transform(relative.Location, rotation);
-        return new CameraOrigin(location, basis.Rotation + relative.Rotation);
     }
 
     private void ApplyViewportCameraOrigin(CameraOrigin origin)
@@ -3957,7 +4018,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         const float defaultFovDegrees = 60f;
         const float degreesToRadians = 0.017453292519943295f;
         CurveEditor3DModel cameraModel = camera?.Model ?? ActiveModel;
-        ApplyViewportCameraOrigin(EvaluateTrackMove(cameraModel, time));
+        ApplyViewportCameraOrigin(ResolveCameraTrackOrigin(camera, EvaluateTrackMove(cameraModel, time)));
         RenderContext.Camera.FOV = (camera?.FovTrack?.Eval(time, defaultFovDegrees) ?? defaultFovDegrees)
                                    * degreesToRadians;
     }
@@ -4204,6 +4265,10 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         StopPlayback(false);
         UnregisterKeyframes();
         trajectorySamplesDirty = true;
+        foreach (CurveEditor3DKeyframe keyframe in ActiveModel.Keyframes)
+        {
+            keyframe.SetCoordinateBasis(ActiveTrackCoordinateBasis);
+        }
         KeyframeList.ItemsSource = ActiveModel.Keyframes;
         RegisterKeyframes();
         SelectedKeyframe = ActiveModel.Keyframes.FirstOrDefault();
@@ -4300,16 +4365,22 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     private void DrawTrajectory(CurveEditor3DModel activeModel)
     {
         IReadOnlyList<Vector3> samples = GetTrajectorySamples(activeModel);
+        CameraOrigin? coordinateBasis = ActiveTrackCoordinateBasis;
+        Vector3 ToDisplayLocation(Vector3 location) => coordinateBasis is { } basis
+            ? InterpTrackMoveTransform.ToWorld(basis, new CameraOrigin(location, Vector3.Zero)).Location
+            : location;
         Vector4 pathColor = new(1f, 0.65f, 0.05f, 1f);
         for (int i = 1; i < samples.Count; i++)
         {
-            RenderContext.Primitives.AddLine(samples[i - 1], samples[i], pathColor, 0);
+            RenderContext.Primitives.AddLine(ToDisplayLocation(samples[i - 1]), ToDisplayLocation(samples[i]),
+                pathColor, 0);
         }
 
         Vector4 connectorColor = new(1f, 0.85f, 0.2f, 1f);
         for (int i = 1; i < activeModel.Keyframes.Count; i++)
         {
-            RenderContext.Primitives.AddLine(activeModel.Keyframes[i - 1].Location, activeModel.Keyframes[i].Location, connectorColor, 0);
+            RenderContext.Primitives.AddLine(activeModel.Keyframes[i - 1].DisplayOrigin.Location,
+                activeModel.Keyframes[i].DisplayOrigin.Location, connectorColor, 0);
         }
 
         foreach (CurveEditor3DKeyframe keyframe in activeModel.Keyframes)
@@ -4333,9 +4404,10 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     {
         const float cubeHalfSize = 22f;
         const float axisLength = 55f;
-        Vector3 position = keyframe.Location;
+        CameraOrigin displayOrigin = keyframe.DisplayOrigin;
+        Vector3 position = displayOrigin.Location;
         Vector4 markerColor = keyframe == SelectedKeyframe ? new Vector4(1f, 1f, 1f, 1f) : new Vector4(1f, 0.8f, 0.1f, 1f);
-        Quaternion orientation = Rotator.FromDegreesVector(keyframe.Rotation).ToQuaternion();
+        Quaternion orientation = Rotator.FromDegreesVector(displayOrigin.Rotation).ToQuaternion();
         Matrix4x4 cubeTransform = Matrix4x4.CreateFromQuaternion(orientation) * Matrix4x4.CreateTranslation(position);
         var cube = RenderContext.Primitives.BuildMesh(markerColor, keyframe.HitID, cubeTransform);
         cube.AddVertex(-cubeHalfSize, -cubeHalfSize, -cubeHalfSize);

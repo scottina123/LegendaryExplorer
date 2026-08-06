@@ -838,7 +838,8 @@ namespace LegendaryExplorer.DialogueEditor
                 .ToArray();
             var actorOrigins = new Dictionary<string, CameraOrigin>(StringComparer.OrdinalIgnoreCase);
             var context = new CameraActorAnchorContext(SelectedConv, SelectedDialogueNode, actorTags);
-            ActorSceneStatePath bestPath = CameraActorSceneStateResolver.ResolvePaths(context, actorTags)
+            ActorSceneStatePath bestPath = CameraActorSceneStateResolver.ResolvePaths(context, actorTags,
+                    stageContext.StageOrigin)
                 .OrderByDescending(path => actorTags.Count(path.ActorTransforms.ContainsKey))
                 .ThenBy(path => path.PathId, StringComparer.Ordinal)
                 .FirstOrDefault();
@@ -5840,7 +5841,8 @@ namespace LegendaryExplorer.DialogueEditor
                 .ToArray();
             var actorOrigins = new Dictionary<string, CameraOrigin>(StringComparer.OrdinalIgnoreCase);
             var context = new CameraActorAnchorContext(conversation, startNode, actorTags);
-            ActorSceneStatePath bestPath = CameraActorSceneStateResolver.ResolvePaths(context, actorTags)
+            ActorSceneStatePath bestPath = CameraActorSceneStateResolver.ResolvePaths(context, actorTags,
+                    stageContext.StageOrigin)
                 .OrderByDescending(path => actorTags.Count(path.ActorTransforms.ContainsKey))
                 .ThenBy(path => path.PathId, StringComparer.Ordinal)
                 .FirstOrDefault();

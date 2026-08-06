@@ -1,6 +1,7 @@
 using System;
 using System.Numerics;
 using LegendaryExplorer.Misc;
+using LegendaryExplorer.Tools.InterpEditor;
 using LegendaryExplorer.Tools.LevelEditor;
 using LegendaryExplorerCore.Unreal;
 using LegendaryExplorerCore.Unreal.BinaryConverters;
@@ -13,6 +14,7 @@ public sealed class CurveEditor3DKeyframe : NotifyPropertyChangedBase, IHitProxy
     private float time;
     private Vector3 location;
     private Vector3 rotation;
+    private CameraOrigin? coordinateBasis;
     private EInterpCurveMode posTrackInterpMode;
     private EInterpCurveMode eulerTrackInterpMode;
 
@@ -143,10 +145,33 @@ public sealed class CurveEditor3DKeyframe : NotifyPropertyChangedBase, IHitProxy
 
     public int HitPriority => IHitProxy.UIPriority;
 
+    internal CameraOrigin DisplayOrigin => coordinateBasis is { } basis
+        ? InterpTrackMoveTransform.ToWorld(basis, new CameraOrigin(location, rotation))
+        : new CameraOrigin(location, rotation);
+
+    Vector3 ITransformWidgetTarget.Location
+    {
+        get => DisplayOrigin.Location;
+        set
+        {
+            Vector3 localLocation = coordinateBasis is { } basis
+                ? InterpTrackMoveTransform.ToLocal(basis, new CameraOrigin(value, DisplayOrigin.Rotation)).Location
+                : value;
+            SetLocation(localLocation, null, commit: true);
+        }
+    }
+
     Rotator ITransformWidgetTarget.Rotation
     {
-        get => Rotator.FromDegreesVector(rotation);
-        set => SetRotation(value.GetDegreesVector(), null, commit: true);
+        get => Rotator.FromDegreesVector(DisplayOrigin.Rotation);
+        set
+        {
+            Vector3 worldRotation = value.GetDegreesVector();
+            Vector3 localRotation = coordinateBasis is { } basis
+                ? InterpTrackMoveTransform.ToLocal(basis, new CameraOrigin(DisplayOrigin.Location, worldRotation)).Rotation
+                : worldRotation;
+            SetRotation(localRotation, null, commit: true);
+        }
     }
 
     public float DrawScale { get; set; } = 1f;
@@ -155,9 +180,17 @@ public sealed class CurveEditor3DKeyframe : NotifyPropertyChangedBase, IHitProxy
 
     public bool IsReadOnly => false;
 
-    public Matrix4x4 LocalToWorld => ActorUtils.ComposeLocalToWorld(Location, Rotator.FromDegreesVector(Rotation), Vector3.One);
+    public Matrix4x4 LocalToWorld => ActorUtils.ComposeLocalToWorld(DisplayOrigin.Location,
+        Rotator.FromDegreesVector(DisplayOrigin.Rotation), Vector3.One);
 
-    public TransformSnapshot SnapshotTransform() => new(Location, Rotator.FromDegreesVector(Rotation), DrawScale, DrawScale3D);
+    public TransformSnapshot SnapshotTransform() => new(DisplayOrigin.Location,
+        Rotator.FromDegreesVector(DisplayOrigin.Rotation), DrawScale, DrawScale3D);
+
+    internal void SetCoordinateBasis(CameraOrigin? basis)
+    {
+        coordinateBasis = basis;
+        OnPropertyChanged(nameof(LocalToWorld));
+    }
 
     internal void SetLocation(Vector3 value, bool commit)
         => SetLocation(value, null, commit);

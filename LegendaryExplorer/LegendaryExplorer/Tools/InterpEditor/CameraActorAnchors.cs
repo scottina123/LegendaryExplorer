@@ -169,7 +169,7 @@ public static class CameraActorAnchorResolver
 public static class CameraActorSceneStateResolver
 {
     public static IReadOnlyList<ActorSceneStatePath> ResolvePaths(CameraActorAnchorContext context,
-        IReadOnlyCollection<string> actorTags)
+        IReadOnlyCollection<string> actorTags, CameraOrigin? trackAnchorOrigin = null)
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(actorTags);
@@ -187,7 +187,8 @@ public static class CameraActorSceneStateResolver
                 ResolvedActorTransform transform = null;
                 foreach (DialogueNodeExtended node in nodes.TakeWhile(node => !ReferenceEquals(node, context.SelectedNode)))
                 {
-                    if (TryResolveNodeTrackMove(node, actorTag, out ResolvedActorTransform nodeTransform))
+                    if (TryResolveNodeTrackMove(node, actorTag, trackAnchorOrigin,
+                            out ResolvedActorTransform nodeTransform))
                     {
                         transform = nodeTransform;
                     }
@@ -285,7 +286,7 @@ public static class CameraActorSceneStateResolver
         (node.IsReply, node.NodeCount);
 
     private static bool TryResolveNodeTrackMove(DialogueNodeExtended node, string actorTag,
-        out ResolvedActorTransform transform)
+        CameraOrigin? trackAnchorOrigin, out ResolvedActorTransform transform)
     {
         transform = null;
         if (node.InterpData is null)
@@ -323,8 +324,22 @@ public static class CameraActorSceneStateResolver
             {
                 if (TryReadLastTrackMoveKey(trackMove, out Vector3 location, out Vector3 rotation))
                 {
-                    transform = new ResolvedActorTransform(actorTag, location, rotation, trackMove, node,
-                        $"{GetNodeLabel(node)} / {group.InstancedFullPath} / {trackMove.ObjectName.Instanced} final key");
+                    var trackOrigin = new CameraOrigin(location, rotation);
+                    EInterpTrackMoveFrame moveFrame = trackMove.GetProperty<EnumProperty>("MoveFrame")
+                        .GetEnumValOrDefault(EInterpTrackMoveFrame.IMF_World);
+                    CameraOrigin resolvedOrigin = moveFrame switch
+                    {
+                        EInterpTrackMoveFrame.IMF_AnchorObject when trackAnchorOrigin is { } anchor =>
+                            InterpTrackMoveTransform.ToWorld(anchor, trackOrigin),
+                        _ => trackOrigin,
+                    };
+                    string resolution = moveFrame == EInterpTrackMoveFrame.IMF_AnchorObject
+                                        && trackAnchorOrigin.HasValue
+                        ? " final key anchored to the conversation stage"
+                        : " final key";
+                    transform = new ResolvedActorTransform(actorTag, resolvedOrigin.Location,
+                        resolvedOrigin.Rotation, trackMove, node,
+                        $"{GetNodeLabel(node)} / {group.InstancedFullPath} / {trackMove.ObjectName.Instanced}{resolution}");
                     return true;
                 }
             }
