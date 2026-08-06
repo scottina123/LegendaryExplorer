@@ -49,7 +49,8 @@ internal static class ShaderParameterSetters
     {
         //TODO: LightMapPolicy params
         shader.MaterialParameters.WriteValues(buffer, context, mesh, mat);
-        bool drawUnlit = mat.IsUnlit;
+        bool drawUnlit = mat.IsUnlit
+                          || (context.RenderFlags & RenderContext.ShaderFlags.Unlit) != 0;
         bool skylight = !drawUnlit;
         buffer.WriteVal(shader.AmbientColorAndSkyFactor, drawUnlit ? new LinearColor(1, 1, 1, 0) : new LinearColor(0, 0, 0, 1));
         Vector3 upperSkyColor = Vector3.Zero;
