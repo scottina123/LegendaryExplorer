@@ -325,6 +325,7 @@
                     <ListBox DockPanel.Dock="Bottom" ItemsSource="{Binding ActorsView}" Name="MeshExportsList" SelectedItem="{Binding SelectedActor}" HorizontalContentAlignment="Stretch"
                              VirtualizingStackPanel.IsVirtualizing="True" VirtualizingStackPanel.VirtualizationMode="Recycling"
                              VirtualizingPanel.IsVirtualizingWhenGrouping="True"
+                             MouseDoubleClick="MeshExportsList_MouseDoubleClick"
                              ContextMenuOpening="MeshExportsList_ContextMenuOpening">
                         <ListBox.GroupStyle>
                             <GroupStyle>

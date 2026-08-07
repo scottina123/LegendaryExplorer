@@ -634,7 +634,9 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
             if (!RenderContext.IsBoundsVisible(actorBounds)) continue;
             int hitID = actor.HitID;
             RenderContext.CurrentHitTestId = new Vector3((hitID & 0xFF) / 255f, ((hitID >> 8) & 0xFF) / 255f, ((hitID >> 16) & 0xFF) / 255f);
-            if (actor == selectedActor)
+            // Keep the actor selected for material picking and editor synchronization, but do not tint it
+            // blue while evaluating live material changes. The selection shader obscures the actual result.
+            if (actor == selectedActor && !IsLevelMaterialEditorOpen)
             {
                 RenderContext.RenderFlags |= LevelEditorRenderContext.ShaderFlags.Selected;
             }
@@ -3259,6 +3261,25 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         contextMenu.Placement = System.Windows.Controls.Primitives.PlacementMode.MousePoint;
         contextMenu.IsOpen = true;
         e.Handled = true;
+    }
+
+    private void MeshExportsList_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        if (e.OriginalSource is not DependencyObject current)
+        {
+            return;
+        }
+
+        if (ItemsControl.ContainerFromElement(MeshExportsList, current)
+            is ListBoxItem { DataContext: ActorProxy actor })
+        {
+            // Selection assignment alone does nothing when this item was already selected, so focus
+            // explicitly on every double-click.
+            SelectedActor = actor;
+            FocusOnBounds(actor.GetBounds());
+            SceneViewer.MarkRenderDirty();
+            e.Handled = true;
+        }
     }
 
     private System.Windows.Controls.ContextMenu BuildActorContextMenu(ActorProxy actor, Point? viewportPoint = null)
