@@ -129,6 +129,16 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
         }
 
         /// <summary>
+        /// Accepts the current preview values as the new rollback baseline after they have been serialized.
+        /// </summary>
+        public void CommitPreviewParameterOverrides()
+        {
+            PreviewScalarBaselines.Clear();
+            PreviewVectorBaselines.Clear();
+            PreviewTextureBaselines.Clear();
+        }
+
+        /// <summary>
         /// Restores parameters changed through the live-preview setters to their material values.
         /// </summary>
         public void ResetPreviewParameterOverrides()

@@ -17,5 +17,6 @@ public interface ILiveMaterialRenderProxy
     void SetVectorParameter(string parameterName, LinearColor value);
     void RemoveScalarParameter(string parameterName);
     void RemoveVectorParameter(string parameterName);
+    void CommitPreviewParameterOverrides();
     void ResetPreviewParameterOverrides();
 }

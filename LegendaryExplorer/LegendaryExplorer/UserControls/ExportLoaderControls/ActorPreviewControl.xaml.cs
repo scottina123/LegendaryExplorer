@@ -803,14 +803,21 @@ public partial class ActorPreviewControl : ExportLoaderControl, IActorEditorCont
 
     private void ClearLiveMaterialEditor()
     {
+        bool discardedPreviewChanges = false;
         foreach (LiveMaterialEditorMaterial material in LiveMaterials)
         {
             material.PreviewChanged -= LiveMaterial_PreviewChanged;
+            discardedPreviewChanges |= material.DiscardUnsavedChanges();
         }
         LiveMaterials.ClearEx();
         _materialBindings.Clear();
         SelectedLiveMaterial = null;
         OnPropertyChanged(nameof(ShowLiveMaterialEditor));
+        if (discardedPreviewChanges)
+        {
+            SceneViewer?.MarkRenderDirty();
+            LiveMaterialPreviewChanged?.Invoke(this, EventArgs.Empty);
+        }
     }
 
     private void LiveMaterial_PreviewChanged(object sender, EventArgs e)

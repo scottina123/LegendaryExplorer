@@ -155,6 +155,13 @@ public class MaterialRenderProxy : MaterialInstanceConstantLevelEditor, ILiveMat
         CachedPixelFrameNumber = uint.MaxValue;
     }
 
+    public void CommitPreviewParameterOverrides()
+    {
+        PreviewScalarBaselines.Clear();
+        PreviewVectorBaselines.Clear();
+        PreviewTextureBaselines.Clear();
+    }
+
     public void ResetPreviewParameterOverrides()
     {
         foreach ((string name, (bool exists, float value)) in PreviewScalarBaselines)

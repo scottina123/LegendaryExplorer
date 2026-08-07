@@ -107,7 +107,24 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             HasUnsavedChanges = true;
             PreviewChanged?.Invoke(this, EventArgs.Empty);
         }
-        internal void MarkSaved() => HasUnsavedChanges = false;
+        internal void MarkSaved()
+        {
+            RenderProxy.CommitPreviewParameterOverrides();
+            _removedScalarValues.Clear();
+            _removedVectorValues.Clear();
+            HasUnsavedChanges = false;
+        }
+
+        internal bool DiscardUnsavedChanges()
+        {
+            if (!HasUnsavedChanges)
+            {
+                return false;
+            }
+            RenderProxy.ResetPreviewParameterOverrides();
+            HasUnsavedChanges = false;
+            return true;
+        }
 
         internal LiveScalarMaterialParameter AddScalarParameter(string parameterName)
         {

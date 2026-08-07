@@ -8,6 +8,7 @@
     xmlns:exportLoaderControls="clr-namespace:LegendaryExplorer.UserControls.ExportLoaderControls"
     xmlns:converters="clr-namespace:LegendaryExplorer.SharedUI.Converters"
     xmlns:xctk="http://schemas.xceed.com/wpf/xaml/toolkit"
+    xmlns:fa5="http://schemas.fontawesome.com/icons/"
     mc:Ignorable="d"
     d:DesignHeight="450" d:DesignWidth="800">
     <Control.Resources>
@@ -94,9 +95,12 @@
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
                             <TextBlock Text="Live Material Editor" FontWeight="Bold" FontSize="15" VerticalAlignment="Center"/>
-                            <Button Grid.Column="1" Content="Ã—" Width="24" Height="24" Padding="0" Margin="5,0,0,0"
+                            <Button Grid.Column="1" Width="26" Height="26" Padding="0" Margin="5,0,0,0"
+                                    HorizontalAlignment="Right" VerticalAlignment="Top"
                                     Visibility="{Binding IsMaterialEditorOnly, Converter={StaticResource BoolToVisibilityConverter}}"
-                                    Click="CloseEmbeddedMaterialEditor_Click" ToolTip="Close live material editor"/>
+                                    Click="CloseEmbeddedMaterialEditor_Click" ToolTip="Close live material editor">
+                                <fa5:FontAwesome Icon="Solid_Times" FontSize="14"/>
+                            </Button>
                         </Grid>
                         <TextBlock Text="Changes update the actor immediately. Choose whether saves target the component MIC or its parent material."
                                    TextWrapping="Wrap" Margin="0,2,0,6"/>
