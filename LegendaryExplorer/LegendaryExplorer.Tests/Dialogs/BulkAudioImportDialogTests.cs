@@ -10,6 +10,8 @@ using LegendaryExplorerCore.Packages;
 using ME3Tweaks.Wwiser;
 using ME3Tweaks.Wwiser.Model.Hierarchy;
 using ME3Tweaks.Wwiser.Model.Hierarchy.Enums;
+using ME3Tweaks.Wwiser.Model.ParameterNode;
+using ME3Tweaks.Wwiser.Model.ParameterNode.Positioning;
 using ME3Tweaks.Wwiser.Model.RTPC;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -30,7 +32,10 @@ public class BulkAudioImportDialogTests
     private const uint MusicDuckingStateGroupId = 0x7BC046C4;
     private const uint MusicDuckingStateId = 0x61030AE6;
     private const uint MusicDuckingStateInstanceId = 0x25716DBE;
+    private const uint StandardAttenuationSourceId = 0x13ED5249;
     private const string MusicDuckingStateHirc = "AQwAAAC+bXElAQAAAAAAQMA=";
+    private const string StandardAttenuationHirc =
+        "DpsAAABJUu0TAQAAtEIAAHVDAABAwAAA8EEAAAAAAAEC//8D/wQCAgAAAAAAAAAAAAAAAAAAAIxCkud3vwQAAAACAgAAAAAAIYiVvgQAAAAAAIxCY2T/vgQAAAACAgAAAAAAIYiVvgQAAAAAAIxCY2T/vgQAAAAAAwAAAAAAAADIQQQAAAAAAOBAAAAAAAkAAAAAAIxCAAAAAAQAAAAAAA==";
     private const string BioWareRadioFutzBoxHirc =
         "EJ4AAAAIu3cHAxBuAIsAAAAAAAAAAADgEkYAAAAAAQAAAAAAlkMAAAAAAQQAAAAAAPBBAAAAAAAAAAAAAQAAAAAAekQAAAAAAAAAAAAAAPjBAGAuRQAAekQAAAAAAAAgwgAAIEEBEgAAAAAAyEIAAACgwQAAoMLNzMw9AAAgQQAAIEEACAAAAAQAAAAAAAAAAAAAAAAAoEAAAMhCAAAAAAAAAA==";
     private const string BioWareRadioEqHirc =
@@ -60,6 +65,17 @@ public class BulkAudioImportDialogTests
         Assert.IsTrue((bool)method.Invoke(null, [MEGame.LE3, "Mus-1-Moderate Ducking"]));
         Assert.IsFalse((bool)method.Invoke(null, [MEGame.LE2, "Env-Music"]));
         Assert.IsFalse((bool)method.Invoke(null, [MEGame.LE3, "Env-VO-Conversation"]));
+    }
+
+    [TestMethod]
+    public void StandardAttenuationIsAvailableForEveryLe3Bus()
+    {
+        var method = typeof(BulkAudioImportDialog).GetMethod(
+            "SupportsStandardAttenuation", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.IsNotNull(method);
+
+        Assert.IsTrue((bool)method.Invoke(null, [MEGame.LE3]));
+        Assert.IsFalse((bool)method.Invoke(null, [MEGame.LE2]));
     }
 
     [TestMethod]
@@ -310,6 +326,138 @@ public class BulkAudioImportDialogTests
                     stateChunk.PropertyInfo.Select(property => property.PropertyId.Value).ToArray());
                 Assert.AreEqual((uint)stateChunk.PropertyInfo.Count, stateChunk.StatePropsCount.Value);
             }
+        }
+        finally
+        {
+            File.Delete(testBankPath);
+        }
+    }
+
+    [TestMethod]
+    public void AppliesExactStandardKroGarAttenuationToRootActorMixers()
+    {
+        var sourceBankPath = FindWwiserTestBank("LE3_v134_1.bnk");
+        var testBankPath = Path.Combine(Path.GetTempPath(), $"LEX_Attenuation_Test_{Guid.NewGuid():N}.bnk");
+        File.Copy(sourceBankPath, testBankPath);
+
+        try
+        {
+            var method = typeof(BulkAudioImportDialog).GetMethod(
+                "ApplyStandardAttenuationToBank", BindingFlags.NonPublic | BindingFlags.Static);
+            Assert.IsNotNull(method);
+
+            method.Invoke(null, [testBankPath, 1d]);
+            method.Invoke(null, [testBankPath, 1d]);
+
+            using var stream = File.OpenRead(testBankPath);
+            var bank = WwiseBankParser.Deserialize(stream);
+            Assert.AreEqual(134u, bank.BKHD.BankGeneratorVersion);
+            Assert.IsNotNull(bank.HIRC);
+
+            var actorMixers = bank.HIRC.Items.Select(item => item.Item).OfType<ActorMixer>().ToList();
+            var actorMixerIds = actorMixers.Select(item => item.Id).ToHashSet();
+            var rootActorMixers = actorMixers
+                .Where(item => item.NodeBaseParameters.DirectParentId == 0 ||
+                               !actorMixerIds.Contains(item.NodeBaseParameters.DirectParentId))
+                .ToList();
+            Assert.IsNotEmpty(rootActorMixers);
+
+            uint? attenuationId = null;
+            foreach (var rootActorMixer in rootActorMixers)
+            {
+                var initialParams = rootActorMixer.NodeBaseParameters.InitialParams62;
+                var attenuationReferences = initialParams.ParameterIds
+                    .Select((parameter, index) => (parameter, index))
+                    .Where(pair => pair.parameter.PropValue == PropId.AttenuationID)
+                    .ToList();
+                Assert.HasCount(1, attenuationReferences);
+                var value = initialParams.ParameterValues[attenuationReferences[0].index];
+                uint rootAttenuationId = value.StoredAsFloat
+                    ? BitConverter.SingleToUInt32Bits(value.Float)
+                    : value.Integer;
+                attenuationId ??= rootAttenuationId;
+                Assert.AreEqual(attenuationId.Value, rootAttenuationId);
+
+                var positioning = rootActorMixer.NodeBaseParameters.PositioningChunk;
+                Assert.IsTrue(positioning.HasPositioning);
+                Assert.IsTrue(positioning.Has3DPositioning);
+                Assert.AreEqual(PositioningChunk.SpeakerPanningType.DirectSpeakerAssignment,
+                    positioning.PanningType);
+                Assert.AreEqual(PositioningChunk.PositionType3D.Emitter, positioning.PositionType);
+                Assert.IsTrue(positioning.Mode.HasFlag(SpatializationMode.PositionAndOrientation));
+                Assert.IsTrue(positioning.Mode.HasFlag(SpatializationMode.EnableAttenuation));
+                Assert.IsFalse(positioning.Mode.HasFlag(SpatializationMode.PositionOnly));
+            }
+
+            Assert.IsTrue(attenuationId.HasValue);
+            var attenuationContainers = bank.HIRC.Items
+                .Where(item => item.Item.Id == attenuationId.Value)
+                .ToList();
+            Assert.HasCount(1, attenuationContainers);
+            var attenuation = attenuationContainers[0].Item as Attenuation;
+            Assert.IsNotNull(attenuation);
+
+            attenuation.Id = StandardAttenuationSourceId;
+            using var serializedAttenuation = new MemoryStream();
+            new BinarySerializer().Serialize(serializedAttenuation, attenuationContainers[0],
+                BankSerializationContext.FromBank(bank));
+            CollectionAssert.AreEqual(Convert.FromBase64String(StandardAttenuationHirc),
+                serializedAttenuation.ToArray());
+        }
+        finally
+        {
+            File.Delete(testBankPath);
+        }
+    }
+
+    [TestMethod]
+    public void ScalesEveryStandardAttenuationDistanceCurve()
+    {
+        var sourceBankPath = FindWwiserTestBank("LE3_v134_1.bnk");
+        var testBankPath = Path.Combine(Path.GetTempPath(), $"LEX_AttenuationScale_Test_{Guid.NewGuid():N}.bnk");
+        File.Copy(sourceBankPath, testBankPath);
+
+        try
+        {
+            var method = typeof(BulkAudioImportDialog).GetMethod(
+                "ApplyStandardAttenuationToBank", BindingFlags.NonPublic | BindingFlags.Static);
+            Assert.IsNotNull(method);
+
+            method.Invoke(null, [testBankPath, 2d]);
+            method.Invoke(null, [testBankPath, 2d]);
+
+            using var stream = File.OpenRead(testBankPath);
+            var bank = WwiseBankParser.Deserialize(stream);
+            Assert.IsNotNull(bank.HIRC);
+
+            var attenuationIds = bank.HIRC.Items.Select(item => item.Item).OfType<ActorMixer>()
+                .SelectMany(actorMixer => actorMixer.NodeBaseParameters.InitialParams62.ParameterIds
+                    .Select((parameter, index) => (parameter, index, actorMixer)))
+                .Where(pair => pair.parameter.PropValue == PropId.AttenuationID)
+                .Select(pair =>
+                {
+                    var value = pair.actorMixer.NodeBaseParameters.InitialParams62.ParameterValues[pair.index];
+                    return value.StoredAsFloat ? BitConverter.SingleToUInt32Bits(value.Float) : value.Integer;
+                })
+                .Distinct()
+                .ToList();
+            Assert.HasCount(1, attenuationIds);
+
+            var attenuationContainers = bank.HIRC.Items
+                .Where(item => item.Item.Id == attenuationIds[0])
+                .ToList();
+            Assert.HasCount(1, attenuationContainers);
+            var attenuation = attenuationContainers[0].Item as Attenuation;
+            Assert.IsNotNull(attenuation);
+            Assert.HasCount(4, attenuation.Curves);
+            CollectionAssert.AreEqual(new[] { 0f, 140f },
+                attenuation.Curves[0].Graph.Select(point => point.From).ToArray());
+            CollectionAssert.AreEqual(new[] { 0f, 140f },
+                attenuation.Curves[1].Graph.Select(point => point.From).ToArray());
+            CollectionAssert.AreEqual(new[] { 0f, 140f },
+                attenuation.Curves[2].Graph.Select(point => point.From).ToArray());
+            CollectionAssert.AreEqual(new[] { 0f, 14f, 140f },
+                attenuation.Curves[3].Graph.Select(point => point.From).ToArray());
         }
         finally
         {

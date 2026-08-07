@@ -131,6 +131,8 @@ namespace LegendaryExplorer.Dialogs
                 HelmetEffectCheckBox.ToolTip = "The helmet voice filter is only available for LE3 banks.";
                 DuckAudioCheckBox.IsEnabled = false;
                 DuckAudioCheckBox.ToolTip = "The shipped music ducking state is only available for LE3 banks.";
+                AttenuationCheckBox.IsEnabled = false;
+                AttenuationCheckBox.ToolTip = "The standard BioWare distance attenuation is only available for LE3 banks.";
             }
 
             UpdateOutputBusOptions();
@@ -246,7 +248,7 @@ namespace LegendaryExplorer.Dialogs
         private void UpdateOutputBusOptions()
         {
             if (OutputBusComboBox == null || RadioEffectCheckBox == null || QecEffectCheckBox == null ||
-                HelmetEffectCheckBox == null || DuckAudioCheckBox == null)
+                HelmetEffectCheckBox == null || DuckAudioCheckBox == null || AttenuationCheckBox == null)
             {
                 return;
             }
@@ -260,6 +262,7 @@ namespace LegendaryExplorer.Dialogs
             RadioEffectCheckBox.IsEnabled = isLe3;
             QecEffectCheckBox.IsEnabled = isLe3;
             DuckAudioCheckBox.IsEnabled = supportsMusicDucking;
+            AttenuationCheckBox.IsEnabled = SupportsStandardAttenuation(_package.Game);
             if (!supportsMusicDucking)
             {
                 DuckAudioCheckBox.IsChecked = false;
@@ -280,6 +283,8 @@ namespace LegendaryExplorer.Dialogs
                 DuckAudioCheckBox.ToolTip = supportsMusicDucking
                     ? "Adds the -3 dB Volume state (group 0x7BC046C4, state 0x61030AE6) used by wwise_cithub_streaming in BioSnd_CitHub."
                     : "Select a music output bus to enable the shipped LE3 music ducking state.";
+                AttenuationCheckBox.ToolTip =
+                    "Adds the standard four-curve voice attenuation used in BioD_KroGar_300Tower_LOC_INT. Available for every LE3 output bus.";
             }
         }
 
@@ -290,6 +295,19 @@ namespace LegendaryExplorer.Dialogs
             game == MEGame.LE3 && !string.IsNullOrWhiteSpace(outputBus) &&
             (outputBus.Contains("Music", StringComparison.OrdinalIgnoreCase) ||
              outputBus.StartsWith("Mus-", StringComparison.OrdinalIgnoreCase));
+
+        private static bool SupportsStandardAttenuation(MEGame game) => game == MEGame.LE3;
+
+        private void AttenuationScaleSlider_ValueChanged(object sender,
+            RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (AttenuationScaleValueTextBlock != null)
+            {
+                double maximumDistance = WwiseBankEffectPresets.StandardAttenuationOriginalMaxDistance *
+                                         e.NewValue / 100d;
+                AttenuationScaleValueTextBlock.Text = $"{e.NewValue:0}% ({maximumDistance:0.#} max)";
+            }
+        }
 
         private void HelmetEffectCheckBox_CheckedChanged(object sender, RoutedEventArgs e)
         {
@@ -388,6 +406,8 @@ namespace LegendaryExplorer.Dialogs
             var applyQecEffect = QecEffectCheckBox.IsChecked == true;
             var applyHelmetEffect = HelmetEffectCheckBox.IsChecked == true;
             var applyMusicDucking = DuckAudioCheckBox.IsChecked == true;
+            var applyStandardAttenuation = AttenuationCheckBox.IsChecked == true;
+            var attenuationDistanceScale = AttenuationScaleSlider.Value / 100d;
             var createSharedStopEvent = CreateSharedStopEventCheckBox.IsChecked == true;
             var createFaceFxAssets = _allowFaceFxAssetCreation && CreateFaceFXAssetsCheckBox.IsChecked == true;
             var topFolderName = TopFolderTextBox.Text.Trim();
@@ -424,7 +444,8 @@ namespace LegendaryExplorer.Dialogs
             {
                 var result = await Task.Run(() => RunBulkAudioImport(bankName, isDialogue, volume, outputBusName,
                     generateGenderedEvents, loopAudio, applyRadioEffect, applyQecEffect, applyHelmetEffect,
-                    applyMusicDucking, createSharedStopEvent, createFaceFxAssets, topFolderName,
+                    applyMusicDucking, applyStandardAttenuation, attenuationDistanceScale,
+                    createSharedStopEvent, createFaceFxAssets, topFolderName,
                     femaleFaceFxAssetName, maleFaceFxAssetName));
                 if (result != null)
                 {
@@ -454,7 +475,8 @@ namespace LegendaryExplorer.Dialogs
 
         private string RunBulkAudioImport(string bankName, bool isDialogue, double volume, string outputBusName,
             bool generateGenderedEvents, bool loopAudio, bool applyRadioEffect, bool applyQecEffect,
-            bool applyHelmetEffect, bool applyMusicDucking, bool createSharedStopEvent, bool createFaceFxAssets,
+            bool applyHelmetEffect, bool applyMusicDucking, bool applyStandardAttenuation,
+            double attenuationDistanceScale, bool createSharedStopEvent, bool createFaceFxAssets,
             string topFolderName, string femaleFaceFxAssetName, string maleFaceFxAssetName)
         {
             var audioImportItems = Dispatcher.Invoke(() => WavFileItems
@@ -603,6 +625,11 @@ namespace LegendaryExplorer.Dialogs
                     ApplyMusicDuckingToBank(bnkPath);
                 }
 
+                if (applyStandardAttenuation)
+                {
+                    ApplyStandardAttenuationToBank(bnkPath, attenuationDistanceScale);
+                }
+
                 Dispatcher.Invoke(() => StatusTextBlock.Text = "Importing soundbank into package...");
 
                 var effectiveBankPackageName = _bankPackageName;
@@ -739,6 +766,65 @@ namespace LegendaryExplorer.Dialogs
             }
 
             WwiseBankEffectPresets.SetMusicDuckingOnScopes(rootActorMixers, true);
+            bank.HIRC.ItemCount = checked((uint)bank.HIRC.Items.Count);
+            using var output = new MemoryStream();
+            WwiseBankParser.Serialize(bank, output);
+            File.WriteAllBytes(bnkPath, output.ToArray());
+        }
+
+        /// <summary>
+        /// Adds the standard four-curve distance attenuation used by the root dialogue
+        /// ActorMixer in BioD_KroGar_300Tower_LOC_INT. All curve distances are scaled
+        /// together so their volume and filter transitions retain the shipped shape.
+        /// </summary>
+        private static void ApplyStandardAttenuationToBank(string bnkPath, double distanceScale)
+        {
+            if (double.IsNaN(distanceScale) || double.IsInfinity(distanceScale) || distanceScale <= 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(distanceScale),
+                    "The attenuation distance scale must be greater than zero.");
+            }
+
+            ME3Tweaks.Wwiser.WwiseBank bank;
+            using (var input = new MemoryStream(File.ReadAllBytes(bnkPath), false))
+            {
+                bank = WwiseBankParser.Deserialize(input);
+            }
+
+            if (bank.BKHD.BankGeneratorVersion != WwiseBankEffectPresets.BankVersion)
+            {
+                throw new InvalidOperationException(
+                    $"Standard attenuation requires a version-{WwiseBankEffectPresets.BankVersion} LE3 Wwise bank, " +
+                    $"but WwiseCLI generated version {bank.BKHD.BankGeneratorVersion}.");
+            }
+
+            if (bank.HIRC == null)
+            {
+                throw new InvalidOperationException("WwiseCLI generated a bank without an audio hierarchy.");
+            }
+
+            if (!WwiseBankEffectPresets.EnsureStandardAttenuationData(bank,
+                    checked((float)distanceScale), out uint attenuationId))
+            {
+                throw new InvalidOperationException(
+                    "The generated bank could not add its standard BioWare attenuation ShareSet.");
+            }
+
+            var actorMixers = bank.HIRC.Items
+                .Select(item => item.Item)
+                .OfType<WwiserActorMixer>()
+                .ToList();
+            var actorMixerIds = actorMixers.Select(actorMixer => actorMixer.Id).ToHashSet();
+            var rootActorMixers = actorMixers
+                .Where(actorMixer => actorMixer.NodeBaseParameters.DirectParentId == 0 ||
+                                     !actorMixerIds.Contains(actorMixer.NodeBaseParameters.DirectParentId))
+                .ToList();
+            if (rootActorMixers.Count == 0)
+            {
+                throw new InvalidOperationException("WwiseCLI generated a bank without a root ActorMixer.");
+            }
+
+            WwiseBankEffectPresets.SetStandardAttenuationOnScopes(rootActorMixers, attenuationId, true);
             bank.HIRC.ItemCount = checked((uint)bank.HIRC.Items.Count);
             using var output = new MemoryStream();
             WwiseBankParser.Serialize(bank, output);

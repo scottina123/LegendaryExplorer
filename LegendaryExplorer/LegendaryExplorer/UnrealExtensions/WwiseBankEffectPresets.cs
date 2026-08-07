@@ -6,6 +6,8 @@ using ME3Tweaks.Wwiser;
 using ME3Tweaks.Wwiser.Formats;
 using ME3Tweaks.Wwiser.Model.Hierarchy;
 using ME3Tweaks.Wwiser.Model.Hierarchy.Enums;
+using ME3Tweaks.Wwiser.Model.ParameterNode;
+using ME3Tweaks.Wwiser.Model.ParameterNode.Positioning;
 using ME3Tweaks.Wwiser.Model.RTPC;
 using ME3Tweaks.Wwiser.Model.State;
 using HierarchyState = ME3Tweaks.Wwiser.Model.Hierarchy.State;
@@ -30,8 +32,13 @@ internal static class WwiseBankEffectPresets
     internal const uint MusicDuckingStateId = 0x61030AE6;
     internal const uint MusicDuckingStateInstanceId = 0x25716DBE;
     internal const float MusicDuckingVolumeDb = -3f;
+    internal const uint StandardAttenuationSourceId = 0x13ED5249;
+    internal const float StandardAttenuationOriginalMaxDistance = 70f;
     // Exact version-134 State HIRC from wwise_cithub_streaming in BioSnd_CitHub.
     private const string MusicDuckingStateHirc = "AQwAAAC+bXElAQAAAAAAQMA=";
+    // Exact version-134 Attenuation HIRC used by the localized KroGar dialogue banks.
+    private const string StandardAttenuationHirc =
+        "DpsAAABJUu0TAQAAtEIAAHVDAABAwAAA8EEAAAAAAAEC//8D/wQCAgAAAAAAAAAAAAAAAAAAAIxCkud3vwQAAAACAgAAAAAAIYiVvgQAAAAAAIxCY2T/vgQAAAACAgAAAAAAIYiVvgQAAAAAAIxCY2T/vgQAAAAAAwAAAAAAAADIQQQAAAAAAOBAAAAAAAkAAAAAAIxCAAAAAAQAAAAAAA==";
 
     internal static IReadOnlyList<WwiseBankEffect> FactoryRadio { get; } =
     [
@@ -108,6 +115,113 @@ internal static class WwiseBankEffectPresets
 
     internal static bool HasHelmetRtpcOnAllScopes(IReadOnlyCollection<IHasNode> scopes) =>
         scopes.Count > 0 && scopes.All(scope => scope.NodeBaseParameters.Rtpc.Rtpcs.Any(IsHelmetRtpc));
+
+    internal static bool EnsureStandardAttenuationData(ME3Tweaks.Wwiser.WwiseBank bank,
+        float distanceScale, out uint attenuationId)
+    {
+        attenuationId = 0;
+        if (bank.HIRC == null || bank.BKHD.BankGeneratorVersion != BankVersion ||
+            float.IsNaN(distanceScale) || float.IsInfinity(distanceScale) || distanceScale <= 0)
+        {
+            return false;
+        }
+
+        uint generatedAttenuationId = GenerateShortId($"lex_standard_attenuation_{bank.BKHD.SoundBankId:X8}");
+        attenuationId = generatedAttenuationId;
+        var existingIndex = bank.HIRC.Items.FindIndex(item => item.Item.Id == generatedAttenuationId);
+        if (existingIndex >= 0 && bank.HIRC.Items[existingIndex].Item is not Attenuation)
+        {
+            return false;
+        }
+
+        var serializer = new BinarySerializer();
+        var attenuationContainer = serializer.Deserialize<HircItemContainer>(
+            Convert.FromBase64String(StandardAttenuationHirc), BankSerializationContext.FromBank(bank));
+        if (attenuationContainer.Item is not Attenuation attenuation ||
+            attenuation.Id != StandardAttenuationSourceId)
+        {
+            return false;
+        }
+
+        attenuation.Id = generatedAttenuationId;
+        foreach (var curve in attenuation.Curves)
+        {
+            foreach (var point in curve.Graph)
+            {
+                point.From *= distanceScale;
+            }
+        }
+
+        if (existingIndex >= 0)
+        {
+            bank.HIRC.Items[existingIndex] = attenuationContainer;
+        }
+        else
+        {
+            bank.HIRC.Items.Add(attenuationContainer);
+        }
+
+        bank.HIRC.ItemCount = checked((uint)bank.HIRC.Items.Count);
+        return true;
+    }
+
+    internal static bool HasStandardAttenuationOnAllScopes(IReadOnlyCollection<IHasNode> scopes,
+        uint attenuationId) => scopes.Count > 0 && scopes.All(scope =>
+    {
+        var initialParams = scope.NodeBaseParameters.InitialParams62;
+        var positioning = scope.NodeBaseParameters.PositioningChunk;
+        return initialParams.ParameterIds.Zip(initialParams.ParameterValues)
+                   .Any(parameter => parameter.First.PropValue == PropId.AttenuationID &&
+                                     GetRawParameterValue(parameter.Second) == attenuationId) &&
+               positioning.HasPositioning && positioning.Has3DPositioning &&
+               positioning.Mode.HasFlag(SpatializationMode.PositionAndOrientation) &&
+               positioning.Mode.HasFlag(SpatializationMode.EnableAttenuation);
+    });
+
+    internal static void SetStandardAttenuationOnScopes(IEnumerable<IHasNode> scopes,
+        uint attenuationId, bool enabled)
+    {
+        foreach (var scope in scopes.Distinct())
+        {
+            var initialParams = scope.NodeBaseParameters.InitialParams62;
+            for (int index = initialParams.ParameterIds.Count - 1; index >= 0; index--)
+            {
+                if (initialParams.ParameterIds[index].PropValue != PropId.AttenuationID)
+                {
+                    continue;
+                }
+
+                initialParams.ParameterIds.RemoveAt(index);
+                initialParams.ParameterValues.RemoveAt(index);
+            }
+
+            var positioning = scope.NodeBaseParameters.PositioningChunk;
+            if (enabled)
+            {
+                initialParams.AddParameter(PropId.AttenuationID, new InitialParamsV62.ParameterValue
+                {
+                    Integer = attenuationId,
+                    StoredAsFloat = false
+                });
+                positioning.HasPositioning = true;
+                positioning.Has3DPositioning = true;
+                positioning.PanningType = PositioningChunk.SpeakerPanningType.DirectSpeakerAssignment;
+                if (!positioning.HasAutomation)
+                {
+                    positioning.PositionType = PositioningChunk.PositionType3D.Emitter;
+                }
+                positioning.Mode &= ~SpatializationMode.PositionOnly;
+                positioning.Mode |= SpatializationMode.PositionAndOrientation |
+                                    SpatializationMode.EnableAttenuation;
+            }
+            else
+            {
+                positioning.Mode &= ~SpatializationMode.EnableAttenuation;
+            }
+
+            initialParams.ParamLength = checked((byte)initialParams.ParameterIds.Count);
+        }
+    }
 
     internal static bool CanEnsureMusicDuckingData(ME3Tweaks.Wwiser.WwiseBank bank)
     {
@@ -242,6 +356,9 @@ internal static class WwiseBankEffectPresets
                graph[0].From == 0 && graph[0].To == 1 && graph[0].Interp == CurveInterpolation.Constant &&
                graph[1].From == 1 && graph[1].To == 0 && graph[1].Interp == CurveInterpolation.Constant;
     }
+
+    private static uint GetRawParameterValue(InitialParamsV62.ParameterValue value) =>
+        value.StoredAsFloat ? BitConverter.SingleToUInt32Bits(value.Float) : value.Integer;
 
     private static bool IsMusicDuckingState(HierarchyState state) =>
         state.Prop.PropIds.Count == 1 && state.Prop.PropValues.Count == 1 &&
