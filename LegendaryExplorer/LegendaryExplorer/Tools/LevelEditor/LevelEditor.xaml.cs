@@ -4204,71 +4204,10 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         return null;
     }
 
-    private ExportEntry ResolveStaticMeshImportParent(ExportEntry sourceMeshExport, IMEPackage destinationPackage)
-    {
-        List<ExportEntry> sourcePackageChain = [];
-        for (IEntry entry = sourceMeshExport.Parent; entry is not null; entry = entry.Parent)
-        {
-            if (entry is ExportEntry { ClassName: "Package" } packageExport)
-            {
-                sourcePackageChain.Add(packageExport);
-            }
-        }
-
-        if (sourcePackageChain.Count == 0)
-        {
-            return null;
-        }
-
-        sourcePackageChain.Reverse();
-
-        ExportEntry currentParent = null;
-        foreach (ExportEntry sourcePackageExport in sourcePackageChain)
-        {
-            currentParent = destinationPackage.CreatePackageExport(sourcePackageExport.ObjectName, currentParent);
-        }
-
-        return currentParent;
-    }
-
-    private static RelinkerOptionsPackage CreateMeshImportRelinkerOptions()
-    {
-        return new RelinkerOptionsPackage
-        {
-            ImportExportDependencies = true,
-            PortImportsMemorySafe = true,
-            Cache = new PackageCache(),
-            CustomRelinkUIndex = PreserveRelinkedMaterialTextureReference
-        };
-    }
-
-    private static bool PreserveRelinkedMaterialTextureReference(
-        IMEPackage sourcePackage,
-        ExportEntry destinationExport,
-        ref int uIndex,
-        string propertyName,
-        string prefix,
-        RelinkerOptionsPackage options,
-        out EntryStringPair result)
-    {
-        result = null;
-        string fullPropertyPath = $"{prefix}{propertyName}";
-        if (!fullPropertyPath.Contains("UniformExpressionTextures[", StringComparison.Ordinal)
-            || sourcePackage.GetEntry(uIndex) is not null
-            || destinationExport.FileRef.GetEntry(uIndex) is null)
-        {
-            return false;
-        }
-
-        return true;
-    }
-
     private async Task<bool> ReplaceStaticMesh(ActorProxy actor, ExportEntry componentExport, bool refreshActor = true)
     {
         var picker = new StaticMeshPickerDialog(Game, componentExport.FileRef, this);
         if (picker.ShowDialog() != true || picker.SelectedResult is null) return false;
-
-        var (sourcePath, sourceUIndex) = picker.SelectedResult.Value;
 
         IsBusy = true;
         BusyText = "Replacing static mesh...";
@@ -4276,48 +4215,18 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
 
         try
         {
-            if (sourcePath is null)
+            MeshImportResult importResult = MeshImportHelper.GetOrImportMesh(
+                picker.SelectedResult.Value,
+                componentExport.FileRef,
+                "StaticMesh");
+            var props = componentExport.GetProperties();
+            props.AddOrReplaceProp(new ObjectProperty(importResult.Entry.UIndex, "StaticMesh"));
+            componentExport.WriteProperties(props);
+
+            if (importResult.RelinkWarnings.Count > 0)
             {
-                // Local mesh – just update the property reference
-                var props = componentExport.GetProperties();
-                props.AddOrReplaceProp(new ObjectProperty(sourceUIndex, "StaticMesh"));
-                componentExport.WriteProperties(props);
-            }
-            else
-            {
-                // External mesh – import with dependencies
-                using IMEPackage sourcePcc = MEPackageHandler.OpenMEPackage(sourcePath);
-                ExportEntry meshExport = sourcePcc.GetUExport(sourceUIndex);
-                ExportEntry importParent = ResolveStaticMeshImportParent(meshExport, componentExport.FileRef);
-
-                RelinkerOptionsPackage rop = CreateMeshImportRelinkerOptions();
-
-                var relinkResults = EntryImporter.ImportAndRelinkEntries(
-                    EntryImporter.PortingOption.CloneAllDependencies,
-                    meshExport,
-                    componentExport.FileRef,
-                    importParent,
-                    true,
-                    rop,
-                    out IEntry importedEntry);
-
-                if (importedEntry is ExportEntry importedExport && importParent is not null && importedExport.Parent != importParent)
-                {
-                    importedExport.Parent = importParent;
-                }
-
-                if (importedEntry is not null)
-                {
-                    var props = componentExport.GetProperties();
-                    props.AddOrReplaceProp(new ObjectProperty(importedEntry.UIndex, "StaticMesh"));
-                    componentExport.WriteProperties(props);
-                }
-
-                if (relinkResults?.Count > 0)
-                {
-                    string warnings = string.Join("\n", relinkResults.Select(r => r.Message));
-                    MessageBox.Show(this, $"Import completed with {relinkResults.Count} relink warning(s):\n{warnings}", "Import Warnings");
-                }
+                string warnings = string.Join("\n", importResult.RelinkWarnings);
+                MessageBox.Show(this, $"Import completed with {importResult.RelinkWarnings.Count} relink warning(s):\n{warnings}", "Import Warnings");
             }
 
             if (refreshActor)
@@ -4382,56 +4291,24 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         var picker = new SkeletalMeshPickerDialog(Game, componentExport.FileRef, this);
         if (picker.ShowDialog() != true || picker.SelectedResult is null) return;
 
-        var (sourcePath, sourceUIndex) = picker.SelectedResult.Value;
-
         IsBusy = true;
         BusyText = "Replacing skeletal mesh...";
         await Task.Delay(1).ConfigureAwait(true);
 
         try
         {
-            if (sourcePath is null)
+            MeshImportResult importResult = MeshImportHelper.GetOrImportMesh(
+                picker.SelectedResult.Value,
+                componentExport.FileRef,
+                "SkeletalMesh");
+            var props = componentExport.GetProperties();
+            props.AddOrReplaceProp(new ObjectProperty(importResult.Entry.UIndex, "SkeletalMesh"));
+            componentExport.WriteProperties(props);
+
+            if (importResult.RelinkWarnings.Count > 0)
             {
-                // Local mesh – just update the property reference
-                var props = componentExport.GetProperties();
-                props.AddOrReplaceProp(new ObjectProperty(sourceUIndex, "SkeletalMesh"));
-                componentExport.WriteProperties(props);
-            }
-            else
-            {
-                // External mesh – import with dependencies
-                using IMEPackage sourcePcc = MEPackageHandler.OpenMEPackage(sourcePath);
-                ExportEntry meshExport = sourcePcc.GetUExport(sourceUIndex);
-                ExportEntry importParent = ResolveStaticMeshImportParent(meshExport, componentExport.FileRef);
-
-                RelinkerOptionsPackage rop = CreateMeshImportRelinkerOptions();
-
-                var relinkResults = EntryImporter.ImportAndRelinkEntries(
-                    EntryImporter.PortingOption.CloneAllDependencies,
-                    meshExport,
-                    componentExport.FileRef,
-                    importParent,
-                    true,
-                    rop,
-                    out IEntry importedEntry);
-
-                if (importedEntry is ExportEntry importedExport && importParent is not null && importedExport.Parent != importParent)
-                {
-                    importedExport.Parent = importParent;
-                }
-
-                if (importedEntry is not null)
-                {
-                    var props = componentExport.GetProperties();
-                    props.AddOrReplaceProp(new ObjectProperty(importedEntry.UIndex, "SkeletalMesh"));
-                    componentExport.WriteProperties(props);
-                }
-
-                if (relinkResults?.Count > 0)
-                {
-                    string warnings = string.Join("\n", relinkResults.Select(r => r.Message));
-                    MessageBox.Show(this, $"Import completed with {relinkResults.Count} relink warning(s):\n{warnings}", "Import Warnings");
-                }
+                string warnings = string.Join("\n", importResult.RelinkWarnings);
+                MessageBox.Show(this, $"Import completed with {importResult.RelinkWarnings.Count} relink warning(s):\n{warnings}", "Import Warnings");
             }
 
             // Match MaterialInstanceConstants to the new SkeletalMesh

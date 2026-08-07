@@ -24,6 +24,7 @@ using LegendaryExplorer.SharedUI;
 using LegendaryExplorer.SharedUI.Interfaces;
 using LegendaryExplorer.Tools.AssetDatabase;
 using LegendaryExplorer.Tools.ConditionalsEditor;
+using LegendaryExplorer.Tools.LevelEditor;
 using LegendaryExplorer.Tools.PackageEditor;
 using LegendaryExplorer.Tools.PlotDatabase;
 using LegendaryExplorer.Tools.PlotEditor;
@@ -4427,6 +4428,73 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             TryCommitInlineEditor(node);
         }
 
+        private async void MeshPickerButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is not FrameworkElement { Tag: UPropertyTreeViewEntry node }
+                || node.Property is not ObjectProperty
+                || node.MeshReferenceClass is not ("StaticMesh" or "SkeletalMesh")
+                || CurrentLoadedExport is null)
+            {
+                return;
+            }
+
+            Window owner = Window.GetWindow(this);
+            (string FilePath, int UIndex)? selection;
+            if (node.MeshReferenceClass == "SkeletalMesh")
+            {
+                var picker = new SkeletalMeshPickerDialog(Pcc.Game, Pcc, owner);
+                selection = picker.ShowDialog() == true ? picker.SelectedResult : null;
+            }
+            else
+            {
+                var picker = new StaticMeshPickerDialog(Pcc.Game, Pcc, owner);
+                selection = picker.ShowDialog() == true ? picker.SelectedResult : null;
+            }
+
+            if (selection is null)
+            {
+                return;
+            }
+
+            IsEnabled = false;
+            Mouse.OverrideCursor = Cursors.Wait;
+            await Task.Delay(1).ConfigureAwait(true);
+            try
+            {
+                MeshImportResult importResult = MeshImportHelper.GetOrImportMesh(
+                    selection.Value,
+                    Pcc,
+                    node.MeshReferenceClass);
+
+                node.InlineObjectIndexValue = importResult.Entry.UIndex.ToString(CultureInfo.InvariantCulture);
+                UpdateInlineObjectPropertyDisplayText(node, GetObjectPropertyDisplayText(node.InlineObjectIndexValue));
+                TryCommitInlineEditor(node);
+
+                if (importResult.RelinkWarnings.Count > 0)
+                {
+                    string warnings = string.Join("\n", importResult.RelinkWarnings);
+                    MessageBox.Show(
+                        owner,
+                        $"Import completed with {importResult.RelinkWarnings.Count} relink warning(s):\n{warnings}",
+                        "Import Warnings");
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(
+                    owner,
+                    $"Failed to select {node.MeshReferenceClass}:\n{ex.Message}",
+                    "Mesh Import Error",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+            }
+            finally
+            {
+                Mouse.OverrideCursor = null;
+                IsEnabled = true;
+            }
+        }
+
         private async void PropActionPickerButton_Click(object sender, RoutedEventArgs e)
         {
             if (sender is not FrameworkElement { Tag: UPropertyTreeViewEntry node }
@@ -6281,6 +6349,50 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         public bool ShowNameInlineEditor => IsNameProperty;
         public bool ShowPropActionPicker { get; set; }
         public bool ShowClientEffectPicker { get; set; }
+        public string MeshReferenceClass
+        {
+            get
+            {
+                if (Property is not ObjectProperty objectProperty || AttachedExport is null)
+                {
+                    return null;
+                }
+
+                NameReference propertyName;
+                string container;
+                if (objectProperty.Name.Name is not null)
+                {
+                    propertyName = objectProperty.Name;
+                    container = UPParent?.Property is StructProperty ownerStruct
+                        ? ownerStruct.StructType
+                        : AttachedExport.ClassName;
+                }
+                else if (UPParent?.Property is ArrayPropertyBase arrayProperty
+                         && arrayProperty.Name.Name is not null)
+                {
+                    propertyName = arrayProperty.Name;
+                    container = UPParent.UPParent?.Property is StructProperty arrayOwnerStruct
+                        ? arrayOwnerStruct.StructType
+                        : AttachedExport.ClassName;
+                }
+                else
+                {
+                    return null;
+                }
+
+                string reference = GlobalUnrealObjectInfo.GetPropertyInfo(
+                    AttachedExport.Game,
+                    propertyName,
+                    container,
+                    containingExport: AttachedExport)?.Reference;
+                return reference is "StaticMesh" or "SkeletalMesh" ? reference : null;
+            }
+        }
+        public bool ShowMeshPicker => MeshReferenceClass is not null;
+        public string MeshPickerButtonText => MeshReferenceClass == "SkeletalMesh"
+            ? "Choose skeletal mesh..."
+            : "Choose static mesh...";
+        public string MeshPickerToolTip => $"Choose a {MeshReferenceClass} from this package or the {AttachedExport?.Game} Asset Database.";
         public string MaterialParameterArrayName => Property is NameProperty { Name.Name: "ParameterName" }
                                                     && AttachedExport?.IsA("MaterialInstanceConstant") == true
                                                     && UPParent?.UPParent?.Property is ArrayPropertyBase parameterArray
