@@ -27,6 +27,10 @@ public class BulkAudioImportDialogTests
     private const uint FactoryRadioEffectId = 2952825346;
     private const uint HelmetFilterEffectId = BioWareRadioFutzBoxEffectId;
     private const uint HelmetRtpcId = 0xAA2B753F;
+    private const uint MusicDuckingStateGroupId = 0x7BC046C4;
+    private const uint MusicDuckingStateId = 0x61030AE6;
+    private const uint MusicDuckingStateInstanceId = 0x25716DBE;
+    private const string MusicDuckingStateHirc = "AQwAAAC+bXElAQAAAAAAQMA=";
     private const string BioWareRadioFutzBoxHirc =
         "EJ4AAAAIu3cHAxBuAIsAAAAAAAAAAADgEkYAAAAAAQAAAAAAlkMAAAAAAQQAAAAAAPBBAAAAAAAAAAAAAQAAAAAAekQAAAAAAAAAAAAAAPjBAGAuRQAAekQAAAAAAAAgwgAAIEEBEgAAAAAAyEIAAACgwQAAoMLNzMw9AAAgQQAAIEEACAAAAAQAAAAAAAAAAAAAAAAAoEAAAMhCAAAAAAAAAA==";
     private const string BioWareRadioEqHirc =
@@ -42,6 +46,20 @@ public class BulkAudioImportDialogTests
         Assert.IsTrue((bool)method.Invoke(null, [MEGame.LE3, "Env-VO-Conversation"]));
         Assert.IsFalse((bool)method.Invoke(null, [MEGame.LE2, "Env-VO-Conversation"]));
         Assert.IsFalse((bool)method.Invoke(null, [MEGame.LE3, "Master Audio Bus"]));
+    }
+
+    [TestMethod]
+    public void MusicDuckingIsAvailableOnlyForLe3MusicBuses()
+    {
+        var method = typeof(BulkAudioImportDialog).GetMethod(
+            "SupportsMusicDucking", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.IsNotNull(method);
+
+        Assert.IsTrue((bool)method.Invoke(null, [MEGame.LE3, "Env-Music"]));
+        Assert.IsTrue((bool)method.Invoke(null, [MEGame.LE3, "NonSlowdown-Music"]));
+        Assert.IsTrue((bool)method.Invoke(null, [MEGame.LE3, "Mus-1-Moderate Ducking"]));
+        Assert.IsFalse((bool)method.Invoke(null, [MEGame.LE2, "Env-Music"]));
+        Assert.IsFalse((bool)method.Invoke(null, [MEGame.LE3, "Env-VO-Conversation"]));
     }
 
     [TestMethod]
@@ -219,6 +237,79 @@ public class BulkAudioImportDialogTests
 
             CollectionAssert.AreEqual(new byte[] { 0x3F, 0x75, 0x2B, 0xAA },
                 BitConverter.GetBytes(HelmetRtpcId));
+        }
+        finally
+        {
+            File.Delete(testBankPath);
+        }
+    }
+
+    [TestMethod]
+    public void AppliesExactCitHubMusicDuckingStateToRootActorMixers()
+    {
+        var sourceBankPath = FindWwiserTestBank("LE3_v134_1.bnk");
+        var testBankPath = Path.Combine(Path.GetTempPath(), $"LEX_MusicDucking_Test_{Guid.NewGuid():N}.bnk");
+        File.Copy(sourceBankPath, testBankPath);
+
+        try
+        {
+            var method = typeof(BulkAudioImportDialog).GetMethod(
+                "ApplyMusicDuckingToBank", BindingFlags.NonPublic | BindingFlags.Static);
+            Assert.IsNotNull(method);
+
+            method.Invoke(null, [testBankPath]);
+            method.Invoke(null, [testBankPath]);
+
+            using var stream = File.OpenRead(testBankPath);
+            var bank = WwiseBankParser.Deserialize(stream);
+            Assert.AreEqual(134u, bank.BKHD.BankGeneratorVersion);
+            Assert.IsNotNull(bank.HIRC);
+
+            var duckingStateContainer = bank.HIRC.Items
+                .Single(item => item.Item.Id == MusicDuckingStateInstanceId);
+            var duckingState = duckingStateContainer.Item as ME3Tweaks.Wwiser.Model.Hierarchy.State;
+            Assert.IsNotNull(duckingState);
+            Assert.HasCount(1, duckingState.Prop.PropIds);
+            Assert.AreEqual(ParameterId.RtpcParameterId.Volume, duckingState.Prop.PropIds[0].ParamId);
+            CollectionAssert.AreEqual(new[] { -3f }, duckingState.Prop.PropValues.ToArray());
+            using (var serializedState = new MemoryStream())
+            {
+                new BinarySerializer().Serialize(serializedState, duckingStateContainer,
+                    BankSerializationContext.FromBank(bank));
+                CollectionAssert.AreEqual(Convert.FromBase64String(MusicDuckingStateHirc),
+                    serializedState.ToArray());
+            }
+
+            var actorMixers = bank.HIRC.Items
+                .Select(item => item.Item)
+                .OfType<ActorMixer>()
+                .ToList();
+            var actorMixerIds = actorMixers.Select(item => item.Id).ToHashSet();
+            var rootActorMixers = actorMixers
+                .Where(item => item.NodeBaseParameters.DirectParentId == 0 ||
+                               !actorMixerIds.Contains(item.NodeBaseParameters.DirectParentId))
+                .ToList();
+            Assert.IsNotEmpty(rootActorMixers);
+
+            foreach (var rootActorMixer in rootActorMixers)
+            {
+                var stateChunk = rootActorMixer.NodeBaseParameters.StateChunk;
+                var duckingGroup = stateChunk.GroupChunks
+                    .Single(group => group.Id == MusicDuckingStateGroupId);
+                Assert.AreEqual(ME3Tweaks.Wwiser.Model.State.SyncType.SyncTypeInner.Immediate,
+                    duckingGroup.StateGroup.StateSyncType.Value);
+                Assert.HasCount(1, duckingGroup.StateGroup.States);
+                Assert.AreEqual(MusicDuckingStateId, duckingGroup.StateGroup.States[0].Id);
+                Assert.AreEqual(MusicDuckingStateInstanceId,
+                    duckingGroup.StateGroup.States[0].StateInstanceId);
+                Assert.AreEqual((uint)duckingGroup.StateGroup.States.Count,
+                    duckingGroup.StateGroup.StateCount.Value);
+                Assert.AreEqual((uint)stateChunk.GroupChunks.Count, stateChunk.StateGroupsCount.Value);
+
+                CollectionAssert.IsSubsetOf(new uint[] { 4, 3, 7, 2, 0 },
+                    stateChunk.PropertyInfo.Select(property => property.PropertyId.Value).ToArray());
+                Assert.AreEqual((uint)stateChunk.PropertyInfo.Count, stateChunk.StatePropsCount.Value);
+            }
         }
         finally
         {

@@ -129,9 +129,11 @@ namespace LegendaryExplorer.Dialogs
                 QecEffectCheckBox.ToolTip = "The QEC effect is only available for LE3 banks.";
                 HelmetEffectCheckBox.IsEnabled = false;
                 HelmetEffectCheckBox.ToolTip = "The helmet voice filter is only available for LE3 banks.";
+                DuckAudioCheckBox.IsEnabled = false;
+                DuckAudioCheckBox.ToolTip = "The shipped music ducking state is only available for LE3 banks.";
             }
 
-            UpdateHelmetEffectRequirement();
+            UpdateOutputBusOptions();
 
             if (!_allowFaceFxAssetCreation)
             {
@@ -239,23 +241,29 @@ namespace LegendaryExplorer.Dialogs
         }
 
         private void OutputBusComboBox_SelectionChanged(object sender,
-            System.Windows.Controls.SelectionChangedEventArgs e) => UpdateHelmetEffectRequirement();
+            System.Windows.Controls.SelectionChangedEventArgs e) => UpdateOutputBusOptions();
 
-        private void UpdateHelmetEffectRequirement()
+        private void UpdateOutputBusOptions()
         {
             if (OutputBusComboBox == null || RadioEffectCheckBox == null || QecEffectCheckBox == null ||
-                HelmetEffectCheckBox == null)
+                HelmetEffectCheckBox == null || DuckAudioCheckBox == null)
             {
                 return;
             }
 
             bool isLe3 = _package.Game == MEGame.LE3;
-            bool defaultsToHelmetEffect = DefaultsToHelmetEffect(_package.Game,
-                OutputBusComboBox.SelectedItem as string);
+            string outputBus = OutputBusComboBox.SelectedItem as string;
+            bool defaultsToHelmetEffect = DefaultsToHelmetEffect(_package.Game, outputBus);
+            bool supportsMusicDucking = SupportsMusicDucking(_package.Game, outputBus);
 
             HelmetEffectCheckBox.IsEnabled = isLe3;
             RadioEffectCheckBox.IsEnabled = isLe3;
             QecEffectCheckBox.IsEnabled = isLe3;
+            DuckAudioCheckBox.IsEnabled = supportsMusicDucking;
+            if (!supportsMusicDucking)
+            {
+                DuckAudioCheckBox.IsChecked = false;
+            }
             if (defaultsToHelmetEffect)
             {
                 HelmetEffectCheckBox.IsChecked = true;
@@ -269,11 +277,19 @@ namespace LegendaryExplorer.Dialogs
                     "Applies the exact BioWare FutzBox and Parametric EQ radio chain used in cit001_postbridge_lovei_b_dlg.";
                 QecEffectCheckBox.ToolTip =
                     "Applies the McDSP FutzBox and Wwise Flanger settings used for Admiral Hackett over the QEC.";
+                DuckAudioCheckBox.ToolTip = supportsMusicDucking
+                    ? "Adds the -3 dB Volume state (group 0x7BC046C4, state 0x61030AE6) used by wwise_cithub_streaming in BioSnd_CitHub."
+                    : "Select a music output bus to enable the shipped LE3 music ducking state.";
             }
         }
 
         private static bool DefaultsToHelmetEffect(MEGame game, string outputBus) =>
             game == MEGame.LE3 && string.Equals(outputBus, ConversationOutputBus, StringComparison.Ordinal);
+
+        private static bool SupportsMusicDucking(MEGame game, string outputBus) =>
+            game == MEGame.LE3 && !string.IsNullOrWhiteSpace(outputBus) &&
+            (outputBus.Contains("Music", StringComparison.OrdinalIgnoreCase) ||
+             outputBus.StartsWith("Mus-", StringComparison.OrdinalIgnoreCase));
 
         private void HelmetEffectCheckBox_CheckedChanged(object sender, RoutedEventArgs e)
         {
@@ -371,6 +387,7 @@ namespace LegendaryExplorer.Dialogs
             var applyRadioEffect = RadioEffectCheckBox.IsChecked == true;
             var applyQecEffect = QecEffectCheckBox.IsChecked == true;
             var applyHelmetEffect = HelmetEffectCheckBox.IsChecked == true;
+            var applyMusicDucking = DuckAudioCheckBox.IsChecked == true;
             var createSharedStopEvent = CreateSharedStopEventCheckBox.IsChecked == true;
             var createFaceFxAssets = _allowFaceFxAssetCreation && CreateFaceFXAssetsCheckBox.IsChecked == true;
             var topFolderName = TopFolderTextBox.Text.Trim();
@@ -406,7 +423,8 @@ namespace LegendaryExplorer.Dialogs
             try
             {
                 var result = await Task.Run(() => RunBulkAudioImport(bankName, isDialogue, volume, outputBusName,
-                    generateGenderedEvents, loopAudio, applyRadioEffect, applyQecEffect, applyHelmetEffect, createSharedStopEvent, createFaceFxAssets, topFolderName,
+                    generateGenderedEvents, loopAudio, applyRadioEffect, applyQecEffect, applyHelmetEffect,
+                    applyMusicDucking, createSharedStopEvent, createFaceFxAssets, topFolderName,
                     femaleFaceFxAssetName, maleFaceFxAssetName));
                 if (result != null)
                 {
@@ -435,7 +453,8 @@ namespace LegendaryExplorer.Dialogs
         }
 
         private string RunBulkAudioImport(string bankName, bool isDialogue, double volume, string outputBusName,
-            bool generateGenderedEvents, bool loopAudio, bool applyRadioEffect, bool applyQecEffect, bool applyHelmetEffect, bool createSharedStopEvent, bool createFaceFxAssets,
+            bool generateGenderedEvents, bool loopAudio, bool applyRadioEffect, bool applyQecEffect,
+            bool applyHelmetEffect, bool applyMusicDucking, bool createSharedStopEvent, bool createFaceFxAssets,
             string topFolderName, string femaleFaceFxAssetName, string maleFaceFxAssetName)
         {
             var audioImportItems = Dispatcher.Invoke(() => WavFileItems
@@ -579,6 +598,11 @@ namespace LegendaryExplorer.Dialogs
                     ApplyHelmetEffectToBank(bnkPath);
                 }
 
+                if (applyMusicDucking)
+                {
+                    ApplyMusicDuckingToBank(bnkPath);
+                }
+
                 Dispatcher.Invoke(() => StatusTextBlock.Text = "Importing soundbank into package...");
 
                 var effectiveBankPackageName = _bankPackageName;
@@ -668,6 +692,57 @@ namespace LegendaryExplorer.Dialogs
         {
             ApplyExactEffectChainToBank(bnkPath, "helmet voice", WwiseBankEffectPresets.HelmetFilter,
                 applyHelmetRtpc: true);
+        }
+
+        /// <summary>
+        /// Adds the -3 dB Volume state used by the music in wwise_cithub_streaming from
+        /// BioSnd_CitHub and applies it to the generated root ActorMixer.
+        /// </summary>
+        private static void ApplyMusicDuckingToBank(string bnkPath)
+        {
+            ME3Tweaks.Wwiser.WwiseBank bank;
+            using (var input = new MemoryStream(File.ReadAllBytes(bnkPath), false))
+            {
+                bank = WwiseBankParser.Deserialize(input);
+            }
+
+            if (bank.BKHD.BankGeneratorVersion != WwiseBankEffectPresets.BankVersion)
+            {
+                throw new InvalidOperationException(
+                    $"Music ducking requires a version-{WwiseBankEffectPresets.BankVersion} LE3 Wwise bank, " +
+                    $"but WwiseCLI generated version {bank.BKHD.BankGeneratorVersion}.");
+            }
+
+            if (bank.HIRC == null)
+            {
+                throw new InvalidOperationException("WwiseCLI generated a bank without an audio hierarchy.");
+            }
+
+            if (!WwiseBankEffectPresets.EnsureMusicDuckingData(bank))
+            {
+                throw new InvalidOperationException(
+                    "The generated bank already uses the shipped music ducking State ID for another object.");
+            }
+
+            var actorMixers = bank.HIRC.Items
+                .Select(item => item.Item)
+                .OfType<WwiserActorMixer>()
+                .ToList();
+            var actorMixerIds = actorMixers.Select(actorMixer => actorMixer.Id).ToHashSet();
+            var rootActorMixers = actorMixers
+                .Where(actorMixer => actorMixer.NodeBaseParameters.DirectParentId == 0 ||
+                                     !actorMixerIds.Contains(actorMixer.NodeBaseParameters.DirectParentId))
+                .ToList();
+            if (rootActorMixers.Count == 0)
+            {
+                throw new InvalidOperationException("WwiseCLI generated a bank without a root ActorMixer.");
+            }
+
+            WwiseBankEffectPresets.SetMusicDuckingOnScopes(rootActorMixers, true);
+            bank.HIRC.ItemCount = checked((uint)bank.HIRC.Items.Count);
+            using var output = new MemoryStream();
+            WwiseBankParser.Serialize(bank, output);
+            File.WriteAllBytes(bnkPath, output.ToArray());
         }
 
         private static void ApplyExactEffectChainToBank(string bnkPath, string effectName,

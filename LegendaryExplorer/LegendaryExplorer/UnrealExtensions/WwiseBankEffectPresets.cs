@@ -7,6 +7,9 @@ using ME3Tweaks.Wwiser.Formats;
 using ME3Tweaks.Wwiser.Model.Hierarchy;
 using ME3Tweaks.Wwiser.Model.Hierarchy.Enums;
 using ME3Tweaks.Wwiser.Model.RTPC;
+using ME3Tweaks.Wwiser.Model.State;
+using HierarchyState = ME3Tweaks.Wwiser.Model.Hierarchy.State;
+using StateEntry = ME3Tweaks.Wwiser.Model.State.State;
 
 namespace LegendaryExplorer.UnrealExtensions;
 
@@ -23,6 +26,12 @@ internal static class WwiseBankEffectPresets
     internal const uint QecFlangerEffectId = 1487904704;
     // The source bank stores this uint as the little-endian bytes 3F 75 2B AA.
     internal const uint HelmetRtpcId = 0xAA2B753F;
+    internal const uint MusicDuckingStateGroupId = 0x7BC046C4;
+    internal const uint MusicDuckingStateId = 0x61030AE6;
+    internal const uint MusicDuckingStateInstanceId = 0x25716DBE;
+    internal const float MusicDuckingVolumeDb = -3f;
+    // Exact version-134 State HIRC from wwise_cithub_streaming in BioSnd_CitHub.
+    private const string MusicDuckingStateHirc = "AQwAAAC+bXElAQAAAAAAQMA=";
 
     internal static IReadOnlyList<WwiseBankEffect> FactoryRadio { get; } =
     [
@@ -100,6 +109,90 @@ internal static class WwiseBankEffectPresets
     internal static bool HasHelmetRtpcOnAllScopes(IReadOnlyCollection<IHasNode> scopes) =>
         scopes.Count > 0 && scopes.All(scope => scope.NodeBaseParameters.Rtpc.Rtpcs.Any(IsHelmetRtpc));
 
+    internal static bool CanEnsureMusicDuckingData(ME3Tweaks.Wwiser.WwiseBank bank)
+    {
+        if (bank.HIRC == null || bank.BKHD.BankGeneratorVersion != BankVersion)
+        {
+            return false;
+        }
+
+        var existingItem = bank.HIRC.Items.FirstOrDefault(item => item.Item.Id == MusicDuckingStateInstanceId);
+        return existingItem == null || existingItem.Item is HierarchyState state && IsMusicDuckingState(state);
+    }
+
+    internal static bool EnsureMusicDuckingData(ME3Tweaks.Wwiser.WwiseBank bank)
+    {
+        if (!CanEnsureMusicDuckingData(bank))
+        {
+            return false;
+        }
+
+        if (bank.HIRC.Items.All(item => item.Item.Id != MusicDuckingStateInstanceId))
+        {
+            var serializer = new BinarySerializer();
+            bank.HIRC.Items.Add(serializer.Deserialize<HircItemContainer>(
+                Convert.FromBase64String(MusicDuckingStateHirc), BankSerializationContext.FromBank(bank)));
+        }
+
+        bank.HIRC.ItemCount = checked((uint)bank.HIRC.Items.Count);
+        return true;
+    }
+
+    internal static bool HasMusicDuckingOnAllScopes(IReadOnlyCollection<IHasNode> scopes) =>
+        scopes.Count > 0 && scopes.All(scope =>
+            scope.NodeBaseParameters.StateChunk.GroupChunks.Any(IsMusicDuckingGroup));
+
+    internal static void SetMusicDuckingOnScopes(IEnumerable<IHasNode> scopes, bool enabled)
+    {
+        foreach (var scope in scopes.Distinct())
+        {
+            var stateChunk = scope.NodeBaseParameters.StateChunk;
+            var duckingGroup = stateChunk.GroupChunks.FirstOrDefault(group => group.Id == MusicDuckingStateGroupId);
+
+            if (!enabled)
+            {
+                if (duckingGroup != null)
+                {
+                    duckingGroup.StateGroup.States.RemoveAll(state => state.Id == MusicDuckingStateId);
+                    duckingGroup.StateGroup.StateCount.Value =
+                        checked((uint)duckingGroup.StateGroup.States.Count);
+                    if (duckingGroup.StateGroup.States.Count == 0)
+                    {
+                        stateChunk.GroupChunks.Remove(duckingGroup);
+                    }
+                }
+
+                stateChunk.StateGroupsCount.Value = checked((uint)stateChunk.GroupChunks.Count);
+                continue;
+            }
+
+            EnsureMusicDuckingPropertyInfo(stateChunk);
+            if (duckingGroup == null)
+            {
+                duckingGroup = new StateGroupChunk
+                {
+                    Id = MusicDuckingStateGroupId,
+                    StateGroup = new StateGroup
+                    {
+                        StateSyncType = new SyncType { Value = SyncType.SyncTypeInner.Immediate },
+                        StateCount = new StateCount()
+                    }
+                };
+                stateChunk.GroupChunks.Add(duckingGroup);
+            }
+
+            duckingGroup.StateGroup.StateSyncType.Value = SyncType.SyncTypeInner.Immediate;
+            duckingGroup.StateGroup.States.RemoveAll(state => state.Id == MusicDuckingStateId);
+            duckingGroup.StateGroup.States.Add(new StateEntry
+            {
+                Id = MusicDuckingStateId,
+                StateInstanceId = MusicDuckingStateInstanceId
+            });
+            duckingGroup.StateGroup.StateCount.Value = checked((uint)duckingGroup.StateGroup.States.Count);
+            stateChunk.StateGroupsCount.Value = checked((uint)stateChunk.GroupChunks.Count);
+        }
+    }
+
     internal static void SetHelmetRtpcOnScopes(IEnumerable<IHasNode> scopes, bool enabled)
     {
         foreach (var scope in scopes.Distinct())
@@ -148,6 +241,42 @@ internal static class WwiseBankEffectPresets
                graph.Count == 2 &&
                graph[0].From == 0 && graph[0].To == 1 && graph[0].Interp == CurveInterpolation.Constant &&
                graph[1].From == 1 && graph[1].To == 0 && graph[1].Interp == CurveInterpolation.Constant;
+    }
+
+    private static bool IsMusicDuckingState(HierarchyState state) =>
+        state.Prop.PropIds.Count == 1 && state.Prop.PropValues.Count == 1 &&
+        state.Prop.PropIds[0].ParamId == ParameterId.RtpcParameterId.Volume &&
+        state.Prop.PropValues[0] == MusicDuckingVolumeDb;
+
+    private static bool IsMusicDuckingGroup(StateGroupChunk group) =>
+        group.Id == MusicDuckingStateGroupId && group.StateGroup.States.Any(state =>
+            state.Id == MusicDuckingStateId && state.StateInstanceId == MusicDuckingStateInstanceId);
+
+    private static void EnsureMusicDuckingPropertyInfo(StateChunk stateChunk)
+    {
+        (uint Id, bool InDb)[] shippedPropertyInfo =
+        [
+            (4, false),
+            (3, false),
+            (7, true),
+            (2, false),
+            (0, true)
+        ];
+
+        foreach (var (id, inDb) in shippedPropertyInfo)
+        {
+            var propertyInfo = stateChunk.PropertyInfo.FirstOrDefault(property => property.PropertyId.Value == id);
+            if (propertyInfo == null)
+            {
+                propertyInfo = new StateProp { PropertyId = new VarCount { Value = id } };
+                stateChunk.PropertyInfo.Add(propertyInfo);
+            }
+
+            propertyInfo.AccumType = new AccumType(AccumType.AccumTypeInner.Additive);
+            propertyInfo.InDb = inDb;
+        }
+
+        stateChunk.StatePropsCount.Value = checked((uint)stateChunk.PropertyInfo.Count);
     }
 
     private static uint GenerateShortId(string name)
