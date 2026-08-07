@@ -1,5 +1,6 @@
 ﻿using LegendaryExplorer.Misc;
 using LegendaryExplorer.Tools.LevelEditor.Scene3D;
+using LegendaryExplorer.UserControls.ExportLoaderControls;
 using LegendaryExplorerCore.Helpers;
 using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.Unreal;
@@ -53,6 +54,16 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy, ITr
     public string OwningFileName => System.IO.Path.GetFileName(Pcc.FilePath);
 
     public string DisplayText { get; }
+
+    private string displaySubtitle;
+    /// <summary>
+    /// Optional second line used to identify actors whose numbered object name is not descriptive.
+    /// </summary>
+    public string DisplaySubtitle
+    {
+        get => displaySubtitle;
+        protected set => SetProperty(ref displaySubtitle, value);
+    }
 
     private string previewAnimationName;
     /// <summary>
@@ -814,6 +825,18 @@ public sealed class EmitterActorProxy : ActorProxy
                 Components.Add(component);
             }
         }
+        RefreshDisplaySubtitle();
+    }
+
+    public override void RefreshFromExport()
+    {
+        base.RefreshFromExport();
+        RefreshDisplaySubtitle();
+    }
+
+    private void RefreshDisplaySubtitle()
+    {
+        DisplaySubtitle = ParticleSystemExportLoader.ResolveParticleSystemEntry(Export)?.ObjectName.Instanced;
     }
 }
 

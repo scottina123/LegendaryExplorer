@@ -609,6 +609,14 @@ namespace LegendaryExplorer.SharedUI
                             }
                         }
 
+                        // Emitter actor names are generally just numbered placeholders. Show the actual
+                        // particle-system template so the export is identifiable without expanding its component.
+                        if (ee.IsA("Emitter")
+                            && ParticleSystemExportLoader.ResolveParticleSystemEntry(ee) is { } particleSystem)
+                        {
+                            _subtext = particleSystem.ObjectName.Instanced;
+                        }
+
                         if (ee.ClassName == "SFXPointOfInterest" && ResolvePointOfInterestGameName(ee) is { } gameName)
                         {
                             _subtext = _subtext != null

@@ -23,14 +23,14 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         /// Determines whether the selected export is, or is connected to, a particle system that can be previewed.
         /// </summary>
         public static bool CanPreview(ExportEntry exportEntry) =>
-            exportEntry is { IsDefaultObject: false } && FindParticleSystemEntry(exportEntry) is not null;
+            exportEntry is { IsDefaultObject: false } && ResolveParticleSystemEntry(exportEntry) is not null;
 
         /// <summary>
         /// Resolves the particle system represented by a direct particle-system selection, an Emitter actor's
         /// ParticleSystemComponent, or a ParticleEmitter referenced by a particle system.
         /// </summary>
         public static ExportEntry ResolveParticleSystem(ExportEntry exportEntry, PackageCache packageCache = null) =>
-            FindParticleSystemEntry(exportEntry) switch
+            ResolveParticleSystemEntry(exportEntry) switch
             {
                 ExportEntry particleSystem => particleSystem,
                 ImportEntry particleSystemImport when packageCache is not null =>
@@ -38,7 +38,11 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 _ => null
             };
 
-        private static IEntry FindParticleSystemEntry(ExportEntry exportEntry)
+        /// <summary>
+        /// Resolves the package entry referenced by a particle-system selection without loading an imported
+        /// package. This is suitable for labels that only need the referenced template's object name.
+        /// </summary>
+        public static IEntry ResolveParticleSystemEntry(ExportEntry exportEntry)
         {
             if (exportEntry is null)
             {
@@ -54,6 +58,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             {
                 IEntry component = exportEntry.GetProperty<ObjectProperty>("ParticleSystemComponent")
                     ?.ResolveToEntry(exportEntry.FileRef);
+                component ??= exportEntry.GetChildren<ExportEntry>()
+                    .FirstOrDefault(child => child.IsA("ParticleSystemComponent"));
                 if (component is ExportEntry particleSystemComponent)
                 {
                     IEntry template = particleSystemComponent.GetProperty<ObjectProperty>("Template")

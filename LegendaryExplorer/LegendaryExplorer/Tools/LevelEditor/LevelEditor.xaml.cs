@@ -2485,7 +2485,8 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         if (string.IsNullOrEmpty(_actorFilterText)) return true;
         return obj is ActorProxy actor &&
                (actor.Export.ObjectName.Instanced.Contains(_actorFilterText, StringComparison.OrdinalIgnoreCase)
-                || actor.Tag.Instanced.Contains(_actorFilterText, StringComparison.OrdinalIgnoreCase));
+                || actor.Tag.Instanced.Contains(_actorFilterText, StringComparison.OrdinalIgnoreCase)
+                || actor.DisplaySubtitle?.Contains(_actorFilterText, StringComparison.OrdinalIgnoreCase) == true);
     }
 
     private void ActorFilter_TextBox_KeyUp(object sender, KeyEventArgs e)

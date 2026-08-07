@@ -365,14 +365,21 @@
                         </ListBox.GroupStyle>
                         <ListBox.Resources>
                             <DataTemplate DataType="{x:Type local:ActorProxy}">
-                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Stretch" Margin="0" x:Name="ExportContainer">
-                                    <StackPanel>
-                                        <StackPanel Orientation="Horizontal">
-                                            <TextBlock Text="{Binding Export.UIndex, Mode=OneTime}" VerticalAlignment="Center" Margin="0,0,5,0" FontWeight="Bold" ToolTip="Export index"/>
-                                            <TextBlock Text="{Binding DisplayText, Mode=OneTime}" VerticalAlignment="Center"/>
-                                        </StackPanel>
-                                    </StackPanel>
-                                </StackPanel>
+                                <Grid HorizontalAlignment="Stretch" Margin="0" x:Name="ExportContainer">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                    </Grid.RowDefinitions>
+                                    <TextBlock Grid.Row="0" Grid.Column="0" Text="{Binding Export.UIndex, Mode=OneTime}" VerticalAlignment="Center" Margin="0,0,5,0" FontWeight="Bold" ToolTip="Export index"/>
+                                    <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding DisplayText, Mode=OneTime}" VerticalAlignment="Center"/>
+                                    <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding DisplaySubtitle}" FontSize="10" Foreground="{DynamicResource SecondaryTextBrush}"
+                                               TextTrimming="CharacterEllipsis" ToolTip="{Binding DisplaySubtitle}"
+                                               Visibility="{Binding DisplaySubtitle, Converter={StaticResource NullVisibilityConverter}}"/>
+                                </Grid>
                                 <DataTemplate.Triggers>
                                     <DataTrigger Binding="{Binding IsDirty}" Value="true">
                                         <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.ControlLightBrushKey}}" TargetName="ExportContainer"/>
