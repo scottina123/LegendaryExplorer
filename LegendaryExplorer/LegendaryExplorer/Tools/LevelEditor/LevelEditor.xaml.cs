@@ -3050,6 +3050,10 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         staticMeshActorItem.Click += async (_, _) => await CreateStaticMeshActor("StaticMeshActor", location);
         createMenu.Items.Add(staticMeshActorItem);
 
+        var emitterItem = new System.Windows.Controls.MenuItem { Header = "Emitter..." };
+        emitterItem.Click += async (_, _) => await CreateEmitter(location);
+        createMenu.Items.Add(emitterItem);
+
         var pointLightItem = new System.Windows.Controls.MenuItem { Header = "Point Light" };
         pointLightItem.Click += (_, _) => CreatePointLight(location);
         createMenu.Items.Add(pointLightItem);
@@ -3201,6 +3205,92 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         ];
     }
 
+    private async Task CreateEmitter(Vector3 location)
+    {
+        if (ActiveFile is not { IsReadOnly: false } activeFile)
+        {
+            return;
+        }
+
+        var picker = new ParticleSystemPickerDialog(Game, activeFile.Package, this);
+        if (picker.ShowDialog() != true || picker.SelectedResult is null)
+        {
+            return;
+        }
+
+        ExportEntry actorExport = null;
+        ActorProxy actor = null;
+        IsBusy = true;
+        BusyText = "Creating emitter...";
+        await Task.Delay(1).ConfigureAwait(true);
+
+        try
+        {
+            IMEPackage package = activeFile.Package;
+            AssetImportResult importResult = AssetImportHelper.GetOrImportAsset(
+                picker.SelectedResult.Value,
+                package,
+                "ParticleSystem");
+
+            actorExport = ExportCreator.CreateExport(package, "Emitter", "Emitter", activeFile.LevelExport, createWithStack: true);
+            ExportEntry componentExport = ExportCreator.CreateExport(
+                package,
+                "ParticleSystemComponent",
+                "ParticleSystemComponent",
+                actorExport,
+                prePropBinary: new byte[8]);
+            componentExport.ObjectFlags |= UnrealFlags.EObjectFlags.Transactional;
+            componentExport.Archetype = PreviewLevelBuilder.GetImportArchetype(
+                package,
+                "Engine",
+                "Default__Emitter.ParticleSystemComponent0");
+
+            actorExport.WriteProperties([
+                new ObjectProperty(componentExport, "ParticleSystemComponent"),
+                CommonStructs.Vector3Prop(location, "Location")
+            ]);
+            componentExport.WriteProperties([
+                new ObjectProperty(importResult.Entry, "Template"),
+                new BoolProperty(true, "bJustAttached"),
+                new ObjectProperty(0, "ReplacementPrimitive"),
+                CreateInitializedLightingChannelsProperty("Static", "Dynamic", "CompositeDynamic")
+            ]);
+
+            actor = ActorProxy.Create(this, actorExport)
+                    ?? throw new InvalidOperationException("The level editor cannot render Emitter actors.");
+            actor.OwningFile = activeFile;
+
+            _pendingSelect = (actorExport.UIndex, package, false);
+            Level level = activeFile.LevelExport.GetBinaryData<Level>();
+            level.Actors.Add(actorExport.UIndex);
+            activeFile.LevelExport.WriteBinary(level);
+            UndoHistory.Clear();
+            _preEditSnapshot = null;
+
+            if (importResult.RelinkWarnings.Count > 0)
+            {
+                string warnings = string.Join("\n", importResult.RelinkWarnings);
+                MessageBox.Show(
+                    this,
+                    $"Import completed with {importResult.RelinkWarnings.Count} relink warning(s):\n{warnings}",
+                    "Import Warnings");
+            }
+        }
+        catch (Exception ex)
+        {
+            if (actorExport is not null && !actorExport.IsTrash())
+            {
+                EntryPruner.TrashEntryAndDescendants(actorExport);
+            }
+            MessageBox.Show(this, $"Failed to create Emitter:\n{ex.Message}", "Error");
+        }
+        finally
+        {
+            actor?.Dispose();
+            IsBusy = false;
+        }
+    }
+
     private async Task CreateStaticMeshActor(string actorClassName, Vector3 location)
     {
         if (ActiveFile is not { IsReadOnly: false } activeFile)
@@ -3263,12 +3353,14 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         }
     }
 
-    private static StructProperty CreateInitializedLightingChannelsProperty()
+    private static StructProperty CreateInitializedLightingChannelsProperty(params string[] enabledChannels)
     {
         PropertyCollection properties = [];
         foreach ((string propertyName, _) in LightingChannelMenuItems)
         {
-            properties.Add(new BoolProperty(propertyName == "bInitialized", propertyName));
+            bool isEnabled = propertyName == "bInitialized"
+                             || enabledChannels.Contains(propertyName, StringComparer.Ordinal);
+            properties.Add(new BoolProperty(isEnabled, propertyName));
         }
 
         return new StructProperty("LightingChannelContainer", properties, "LightingChannels");
@@ -4215,7 +4307,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
 
         try
         {
-            MeshImportResult importResult = MeshImportHelper.GetOrImportMesh(
+            AssetImportResult importResult = AssetImportHelper.GetOrImportAsset(
                 picker.SelectedResult.Value,
                 componentExport.FileRef,
                 "StaticMesh");
@@ -4297,7 +4389,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
 
         try
         {
-            MeshImportResult importResult = MeshImportHelper.GetOrImportMesh(
+            AssetImportResult importResult = AssetImportHelper.GetOrImportAsset(
                 picker.SelectedResult.Value,
                 componentExport.FileRef,
                 "SkeletalMesh");

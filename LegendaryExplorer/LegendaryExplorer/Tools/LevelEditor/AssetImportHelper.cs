@@ -8,31 +8,31 @@ using System.Linq;
 
 namespace LegendaryExplorer.Tools.LevelEditor;
 
-internal readonly record struct MeshImportResult(IEntry Entry, IReadOnlyList<string> RelinkWarnings);
+internal readonly record struct AssetImportResult(IEntry Entry, IReadOnlyList<string> RelinkWarnings);
 
 /// <summary>
-/// Imports meshes selected by the Level Editor mesh pickers while preserving their package hierarchy.
+/// Imports assets selected by Level Editor pickers while preserving their package hierarchy.
 /// </summary>
-internal static class MeshImportHelper
+internal static class AssetImportHelper
 {
-    public static MeshImportResult GetOrImportMesh(
+    public static AssetImportResult GetOrImportAsset(
         (string FilePath, int UIndex) selection,
         IMEPackage destinationPackage,
-        string expectedMeshClass)
+        string expectedAssetClass)
     {
         var (sourcePath, sourceUIndex) = selection;
         if (sourcePath is null)
         {
             IEntry localEntry = destinationPackage.GetEntry(sourceUIndex);
-            ValidateMesh(localEntry, expectedMeshClass);
-            return new MeshImportResult(localEntry, []);
+            ValidateAsset(localEntry, expectedAssetClass);
+            return new AssetImportResult(localEntry, []);
         }
 
         using IMEPackage sourcePackage = MEPackageHandler.OpenMEPackage(sourcePath);
-        ExportEntry sourceMesh = sourcePackage.GetUExport(sourceUIndex);
-        ValidateMesh(sourceMesh, expectedMeshClass);
+        ExportEntry sourceAsset = sourcePackage.GetUExport(sourceUIndex);
+        ValidateAsset(sourceAsset, expectedAssetClass);
 
-        ExportEntry importParent = ResolveImportParent(sourceMesh, destinationPackage);
+        ExportEntry importParent = ResolveImportParent(sourceAsset, destinationPackage);
         using var packageCache = new PackageCache();
         var relinkerOptions = new RelinkerOptionsPackage
         {
@@ -44,7 +44,7 @@ internal static class MeshImportHelper
 
         var relinkResults = EntryImporter.ImportAndRelinkEntries(
             EntryImporter.PortingOption.CloneAllDependencies,
-            sourceMesh,
+            sourceAsset,
             destinationPackage,
             importParent,
             true,
@@ -53,7 +53,7 @@ internal static class MeshImportHelper
 
         if (importedEntry is null)
         {
-            throw new InvalidOperationException($"Could not import {sourceMesh.InstancedFullPath}.");
+            throw new InvalidOperationException($"Could not import {sourceAsset.InstancedFullPath}.");
         }
 
         if (importedEntry is ExportEntry importedExport
@@ -63,25 +63,25 @@ internal static class MeshImportHelper
             importedExport.Parent = importParent;
         }
 
-        return new MeshImportResult(
+        return new AssetImportResult(
             importedEntry,
             relinkResults?.Select(result => result.Message).ToList() ?? []);
     }
 
-    private static void ValidateMesh(IEntry entry, string expectedMeshClass)
+    private static void ValidateAsset(IEntry entry, string expectedAssetClass)
     {
-        if (entry is not ExportEntry meshExport || !meshExport.IsA(expectedMeshClass))
+        if (entry is not ExportEntry assetExport || !assetExport.IsA(expectedAssetClass))
         {
             string actualClass = entry?.ClassName ?? "missing entry";
             throw new InvalidOperationException(
-                $"The selected entry is {actualClass}, not a {expectedMeshClass}.");
+                $"The selected entry is {actualClass}, not a {expectedAssetClass}.");
         }
     }
 
-    private static ExportEntry ResolveImportParent(ExportEntry sourceMesh, IMEPackage destinationPackage)
+    private static ExportEntry ResolveImportParent(ExportEntry sourceAsset, IMEPackage destinationPackage)
     {
         List<ExportEntry> sourcePackageChain = [];
-        for (IEntry entry = sourceMesh.Parent; entry is not null; entry = entry.Parent)
+        for (IEntry entry = sourceAsset.Parent; entry is not null; entry = entry.Parent)
         {
             if (entry is ExportEntry { ClassName: "Package" } packageExport)
             {

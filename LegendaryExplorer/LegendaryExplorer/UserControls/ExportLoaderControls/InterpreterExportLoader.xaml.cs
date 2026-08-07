@@ -4428,11 +4428,11 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             TryCommitInlineEditor(node);
         }
 
-        private async void MeshPickerButton_Click(object sender, RoutedEventArgs e)
+        private async void AssetPickerButton_Click(object sender, RoutedEventArgs e)
         {
             if (sender is not FrameworkElement { Tag: UPropertyTreeViewEntry node }
                 || node.Property is not ObjectProperty
-                || node.MeshReferenceClass is not ("StaticMesh" or "SkeletalMesh")
+                || node.AssetReferenceClass is not ("StaticMesh" or "SkeletalMesh" or "ParticleSystem")
                 || CurrentLoadedExport is null)
             {
                 return;
@@ -4440,14 +4440,19 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
             Window owner = Window.GetWindow(this);
             (string FilePath, int UIndex)? selection;
-            if (node.MeshReferenceClass == "SkeletalMesh")
+            if (node.AssetReferenceClass == "SkeletalMesh")
             {
                 var picker = new SkeletalMeshPickerDialog(Pcc.Game, Pcc, owner);
                 selection = picker.ShowDialog() == true ? picker.SelectedResult : null;
             }
-            else
+            else if (node.AssetReferenceClass == "StaticMesh")
             {
                 var picker = new StaticMeshPickerDialog(Pcc.Game, Pcc, owner);
+                selection = picker.ShowDialog() == true ? picker.SelectedResult : null;
+            }
+            else
+            {
+                var picker = new ParticleSystemPickerDialog(Pcc.Game, Pcc, owner);
                 selection = picker.ShowDialog() == true ? picker.SelectedResult : null;
             }
 
@@ -4461,10 +4466,10 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             await Task.Delay(1).ConfigureAwait(true);
             try
             {
-                MeshImportResult importResult = MeshImportHelper.GetOrImportMesh(
+                AssetImportResult importResult = AssetImportHelper.GetOrImportAsset(
                     selection.Value,
                     Pcc,
-                    node.MeshReferenceClass);
+                    node.AssetReferenceClass);
 
                 node.InlineObjectIndexValue = importResult.Entry.UIndex.ToString(CultureInfo.InvariantCulture);
                 UpdateInlineObjectPropertyDisplayText(node, GetObjectPropertyDisplayText(node.InlineObjectIndexValue));
@@ -4483,8 +4488,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             {
                 MessageBox.Show(
                     owner,
-                    $"Failed to select {node.MeshReferenceClass}:\n{ex.Message}",
-                    "Mesh Import Error",
+                    $"Failed to select {node.AssetReferenceClass}:\n{ex.Message}",
+                    "Asset Import Error",
                     MessageBoxButton.OK,
                     MessageBoxImage.Error);
             }
@@ -6349,7 +6354,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         public bool ShowNameInlineEditor => IsNameProperty;
         public bool ShowPropActionPicker { get; set; }
         public bool ShowClientEffectPicker { get; set; }
-        public string MeshReferenceClass
+        public string AssetReferenceClass
         {
             get
             {
@@ -6385,14 +6390,22 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     propertyName,
                     container,
                     containingExport: AttachedExport)?.Reference;
-                return reference is "StaticMesh" or "SkeletalMesh" ? reference : null;
+                return reference is "StaticMesh" or "SkeletalMesh" or "ParticleSystem" ? reference : null;
             }
         }
-        public bool ShowMeshPicker => MeshReferenceClass is not null;
-        public string MeshPickerButtonText => MeshReferenceClass == "SkeletalMesh"
-            ? "Choose skeletal mesh..."
-            : "Choose static mesh...";
-        public string MeshPickerToolTip => $"Choose a {MeshReferenceClass} from this package or the {AttachedExport?.Game} Asset Database.";
+        public bool ShowAssetPicker => AssetReferenceClass is not null;
+        public string AssetPickerButtonText => AssetReferenceClass switch
+        {
+            "SkeletalMesh" => "Choose skeletal mesh...",
+            "StaticMesh" => "Choose static mesh...",
+            _ => "Choose particle system..."
+        };
+        public string AssetPickerToolTip => AssetReferenceClass switch
+        {
+            "SkeletalMesh" => $"Choose a skeletal mesh from this package or the {AttachedExport?.Game} Asset Database.",
+            "StaticMesh" => $"Choose a static mesh from this package or the {AttachedExport?.Game} Asset Database.",
+            _ => $"Choose a particle system template from this package or the {AttachedExport?.Game} Asset Database."
+        };
         public string MaterialParameterArrayName => Property is NameProperty { Name.Name: "ParameterName" }
                                                     && AttachedExport?.IsA("MaterialInstanceConstant") == true
                                                     && UPParent?.UPParent?.Property is ArrayPropertyBase parameterArray

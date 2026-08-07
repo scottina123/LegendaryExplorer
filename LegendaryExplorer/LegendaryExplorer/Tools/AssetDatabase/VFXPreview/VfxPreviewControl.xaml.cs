@@ -135,6 +135,7 @@ public partial class VfxPreviewControl : UserControl, INotifyPropertyChanged
         ThemeManager.ThemeChanged -= ThemeManager_ThemeChanged;
         ThemeManager.ThemeChanged += ThemeManager_ThemeChanged;
         statusTimer.Start();
+        Viewport.SetShouldRender(true);
         Viewport.MarkRenderDirty();
     }
 
@@ -142,6 +143,7 @@ public partial class VfxPreviewControl : UserControl, INotifyPropertyChanged
     {
         ThemeManager.ThemeChanged -= ThemeManager_ThemeChanged;
         statusTimer.Stop();
+        Viewport.SetShouldRender(false);
     }
 
     private void ThemeManager_ThemeChanged(object sender, bool isDarkMode)
