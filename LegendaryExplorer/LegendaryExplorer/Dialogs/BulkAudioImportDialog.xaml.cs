@@ -23,10 +23,7 @@ using Microsoft.Win32;
 using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
 using LegendaryExplorerCore.Helpers;
 using ME3Tweaks.Wwiser;
-using ME3Tweaks.Wwiser.Formats;
-using ME3Tweaks.Wwiser.Model.Hierarchy.Enums;
 using ME3Tweaks.Wwiser.Model.ParameterNode;
-using ME3Tweaks.Wwiser.Model.RTPC;
 using WwiserActorMixer = ME3Tweaks.Wwiser.Model.Hierarchy.ActorMixer;
 
 namespace LegendaryExplorer.Dialogs
@@ -102,6 +99,7 @@ namespace LegendaryExplorer.Dialogs
         private readonly string _bankPackageName;
         private readonly string _bankStreamingAudioPackageName;
         private readonly bool _allowFaceFxAssetCreation;
+        private const string ConversationOutputBus = "Env-VO-Conversation";
         private bool _syncFaceFxAssetNames = true;
         private bool _updatingFaceFxAssetNames;
 
@@ -132,6 +130,8 @@ namespace LegendaryExplorer.Dialogs
                 HelmetEffectCheckBox.IsEnabled = false;
                 HelmetEffectCheckBox.ToolTip = "The helmet voice filter is only available for LE3 banks.";
             }
+
+            UpdateHelmetEffectRequirement();
 
             if (!_allowFaceFxAssetCreation)
             {
@@ -237,6 +237,43 @@ namespace LegendaryExplorer.Dialogs
                 VolumeTextBox.Text = "-10";
             }
         }
+
+        private void OutputBusComboBox_SelectionChanged(object sender,
+            System.Windows.Controls.SelectionChangedEventArgs e) => UpdateHelmetEffectRequirement();
+
+        private void UpdateHelmetEffectRequirement()
+        {
+            if (OutputBusComboBox == null || RadioEffectCheckBox == null || QecEffectCheckBox == null ||
+                HelmetEffectCheckBox == null)
+            {
+                return;
+            }
+
+            bool isLe3 = _package.Game == MEGame.LE3;
+            bool defaultsToHelmetEffect = DefaultsToHelmetEffect(_package.Game,
+                OutputBusComboBox.SelectedItem as string);
+
+            HelmetEffectCheckBox.IsEnabled = isLe3;
+            RadioEffectCheckBox.IsEnabled = isLe3;
+            QecEffectCheckBox.IsEnabled = isLe3;
+            if (defaultsToHelmetEffect)
+            {
+                HelmetEffectCheckBox.IsChecked = true;
+            }
+
+            if (isLe3)
+            {
+                HelmetEffectCheckBox.ToolTip =
+                    "Adds the LE3 helmet FutzBox and the Helmet RTPC (0xAA2B753F). RTPC value 0 bypasses the filter; value 1 enables it. Selected by default for Env-VO-Conversation.";
+                RadioEffectCheckBox.ToolTip =
+                    "Applies the exact BioWare FutzBox and Parametric EQ radio chain used in cit001_postbridge_lovei_b_dlg.";
+                QecEffectCheckBox.ToolTip =
+                    "Applies the McDSP FutzBox and Wwise Flanger settings used for Admiral Hackett over the QEC.";
+            }
+        }
+
+        private static bool DefaultsToHelmetEffect(MEGame game, string outputBus) =>
+            game == MEGame.LE3 && string.Equals(outputBus, ConversationOutputBus, StringComparison.Ordinal);
 
         private void HelmetEffectCheckBox_CheckedChanged(object sender, RoutedEventArgs e)
         {
@@ -693,7 +730,7 @@ namespace LegendaryExplorer.Dialogs
 
                 if (applyHelmetRtpc)
                 {
-                    ApplyHelmetRtpc(actorMixer);
+                    WwiseBankEffectPresets.SetHelmetRtpcOnScopes([actorMixer], true);
                 }
             }
 
@@ -701,34 +738,6 @@ namespace LegendaryExplorer.Dialogs
             using var output = new MemoryStream();
             WwiseBankParser.Serialize(bank, output);
             File.WriteAllBytes(bnkPath, output.ToArray());
-        }
-
-        // The source bank stores this uint as the little-endian bytes 3F 75 2B AA.
-        private const uint HelmetRtpcId = 0xAA2B753F;
-
-        private static void ApplyHelmetRtpc(WwiserActorMixer actorMixer)
-        {
-            var rtpcParameters = actorMixer.NodeBaseParameters.Rtpc;
-            rtpcParameters.Rtpcs.RemoveAll(rtpc => rtpc.RtpcId == HelmetRtpcId);
-            rtpcParameters.Rtpcs.Add(new Rtpc
-            {
-                RtpcId = HelmetRtpcId,
-                RtpcType = new RtpcType(RtpcType.RtpcTypeInner.GameParameter),
-                RtpcAccum = new AccumType(AccumType.AccumTypeInner.Boolean),
-                ParamId = new ParameterId { ParamId = ParameterId.RtpcParameterId.BypassFX0 },
-                RtpcCurveId = GenerateShortId($"{actorMixer.Id:X8}_helmet_bypass_fx0"),
-                RtpcConversionTable = new RtpcConversionTable
-                {
-                    Scaling = new CurveScaling { Value = CurveScaling.CurveScalingInner.None },
-                    GraphPointCount = new V36ShortCount { Value = 2 },
-                    Graph =
-                    [
-                        new RtpcGraphItem { From = 0, To = 1, Interp = CurveInterpolation.Constant },
-                        new RtpcGraphItem { From = 1, To = 0, Interp = CurveInterpolation.Constant }
-                    ]
-                }
-            });
-            rtpcParameters.RTPCCount.Value = checked((ushort)rtpcParameters.Rtpcs.Count);
         }
 
         /// <summary>

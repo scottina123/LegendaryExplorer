@@ -505,13 +505,18 @@ namespace LegendaryExplorer.Tools.WwiseEditor
                     .ToList() ?? [];
                 bool? loopAudio = GetLoopAudioState(sounds);
                 bool factoryRadioEffect = HasEffectOnAllScopes(effectScopeNodes, WwiseBankEffectPresets.FactoryRadio);
-                bool bioWareRadioEffect = HasEffectOnAllScopes(effectScopeNodes, WwiseBankEffectPresets.BioWareRadio);
+                bool helmetEffect = HasEffectOnAllScopes(effectScopeNodes, WwiseBankEffectPresets.HelmetFilter) &&
+                                    WwiseBankEffectPresets.HasHelmetRtpcOnAllScopes(effectScopeNodes);
+                bool bioWareRadioEffect = !helmetEffect &&
+                                           HasEffectOnAllScopes(effectScopeNodes, WwiseBankEffectPresets.BioWareRadio);
                 bool qecEffect = HasEffectOnAllScopes(effectScopeNodes, WwiseBankEffectPresets.HackettQec);
                 bool canApplyFactoryRadioEffect = CanApplyEffect(bank, effectScopeNodes, WwiseBankEffectPresets.FactoryRadio);
                 bool canApplyBioWareRadioEffect = Pcc.Game == MEGame.LE3 &&
                                                    CanApplyEffect(bank, effectScopeNodes, WwiseBankEffectPresets.BioWareRadio);
                 bool canApplyQecEffect = Pcc.Game == MEGame.LE3 &&
                                          CanApplyEffect(bank, effectScopeNodes, WwiseBankEffectPresets.HackettQec);
+                bool canApplyHelmetEffect = Pcc.Game == MEGame.LE3 &&
+                                            CanApplyEffect(bank, effectScopeNodes, WwiseBankEffectPresets.HelmetFilter);
                 bool stopAllEventExists = HasCompleteStopAllEvent(bank, CurrentExport, sounds);
                 bool canCreateStopAllEvent = Pcc.Game == MEGame.LE3 && CanCreateStopAllEvent(bank, CurrentExport, sounds);
                 float currentVolume = GetNodeVolume(rootNodes[0]);
@@ -519,6 +524,7 @@ namespace LegendaryExplorer.Tools.WwiseEditor
                     factoryRadioEffect, canApplyFactoryRadioEffect,
                     bioWareRadioEffect, canApplyBioWareRadioEffect,
                     qecEffect, canApplyQecEffect,
+                    helmetEffect, canApplyHelmetEffect,
                     stopAllEventExists, canCreateStopAllEvent)
                 {
                     Owner = this
@@ -533,9 +539,10 @@ namespace LegendaryExplorer.Tools.WwiseEditor
                 bool factoryRadioChanged = settingsDialog.FactoryRadioEffect != factoryRadioEffect;
                 bool bioWareRadioChanged = settingsDialog.BioWareRadioEffect != bioWareRadioEffect;
                 bool qecChanged = settingsDialog.QecEffect != qecEffect;
+                bool helmetChanged = settingsDialog.HelmetEffect != helmetEffect;
                 bool createStopAllEvent = settingsDialog.CreateStopAllEvent;
                 if (!volumeChanged && !loopChanged && !factoryRadioChanged && !bioWareRadioChanged &&
-                    !qecChanged && !createStopAllEvent)
+                    !qecChanged && !helmetChanged && !createStopAllEvent)
                 {
                     return;
                 }
@@ -547,7 +554,9 @@ namespace LegendaryExplorer.Tools.WwiseEditor
                              (settingsDialog.BioWareRadioEffect, bioWareRadioChanged,
                                  "BioWare radio", WwiseBankEffectPresets.BioWareRadio),
                              (settingsDialog.QecEffect, qecChanged,
-                                 "Hackett QEC", WwiseBankEffectPresets.HackettQec)
+                                 "Hackett QEC", WwiseBankEffectPresets.HackettQec),
+                             (settingsDialog.HelmetEffect, helmetChanged,
+                                 "helmet voice", WwiseBankEffectPresets.HelmetFilter)
                          })
                 {
                     if (changed && enabled && !WwiseBankEffectPresets.EnsureEffectData(bank, effectChain))
@@ -580,6 +589,10 @@ namespace LegendaryExplorer.Tools.WwiseEditor
                 {
                     SetEffectPresetOnScopes(effectScopeNodes, WwiseBankEffectPresets.HackettQec);
                 }
+                else if (helmetChanged && settingsDialog.HelmetEffect)
+                {
+                    SetEffectPresetOnScopes(effectScopeNodes, WwiseBankEffectPresets.HelmetFilter);
+                }
                 else
                 {
                     if (factoryRadioChanged)
@@ -593,6 +606,11 @@ namespace LegendaryExplorer.Tools.WwiseEditor
                     if (qecChanged)
                     {
                         SetEffectOnScopes(effectScopeNodes, WwiseBankEffectPresets.HackettQec, false);
+                    }
+                    if (helmetChanged)
+                    {
+                        SetEffectOnScopes(effectScopeNodes, WwiseBankEffectPresets.HelmetFilter, false);
+                        WwiseBankEffectPresets.SetHelmetRtpcOnScopes(effectScopeNodes, false);
                     }
                 }
 
@@ -734,6 +752,7 @@ namespace LegendaryExplorer.Tools.WwiseEditor
             var replaceableEffectIds = WwiseBankEffectPresets.FactoryRadio
                 .Concat(WwiseBankEffectPresets.BioWareRadio)
                 .Concat(WwiseBankEffectPresets.HackettQec)
+                .Concat(WwiseBankEffectPresets.HelmetFilter)
                 .Select(effect => effect.Id)
                 .ToHashSet();
             return effectScopeNodes.All(node =>
@@ -789,10 +808,17 @@ namespace LegendaryExplorer.Tools.WwiseEditor
             IReadOnlyList<WwiseBankEffect> selectedEffectChain)
         {
             var scopes = effectScopeNodes.ToList();
+            WwiseBankEffectPresets.SetHelmetRtpcOnScopes(scopes, false);
             SetEffectOnScopes(scopes, WwiseBankEffectPresets.FactoryRadio, false);
             SetEffectOnScopes(scopes, WwiseBankEffectPresets.BioWareRadio, false);
             SetEffectOnScopes(scopes, WwiseBankEffectPresets.HackettQec, false);
+            SetEffectOnScopes(scopes, WwiseBankEffectPresets.HelmetFilter, false);
             SetEffectOnScopes(scopes, selectedEffectChain, true);
+            if (selectedEffectChain.Select(effect => effect.Id)
+                .SequenceEqual(WwiseBankEffectPresets.HelmetFilter.Select(effect => effect.Id)))
+            {
+                WwiseBankEffectPresets.SetHelmetRtpcOnScopes(scopes, true);
+            }
         }
 
         private static bool HasCompleteStopAllEvent(ME3Tweaks.Wwiser.WwiseBank bank,

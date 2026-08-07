@@ -17,12 +17,14 @@ namespace LegendaryExplorer.Dialogs
         public bool FactoryRadioEffect => FactoryRadioEffectCheckBox.IsChecked == true;
         public bool BioWareRadioEffect => BioWareRadioEffectCheckBox.IsChecked == true;
         public bool QecEffect => QecEffectCheckBox.IsChecked == true;
+        public bool HelmetEffect => HelmetEffectCheckBox.IsChecked == true;
         public bool CreateStopAllEvent => !_stopAllEventExists && StopAllEventCheckBox.IsChecked == true;
 
         public WwiseBankVolumeDialog(float currentVolume, bool? loopAudio,
             bool factoryRadioEffect, bool canApplyFactoryRadioEffect,
             bool bioWareRadioEffect, bool canApplyBioWareRadioEffect,
             bool qecEffect, bool canApplyQecEffect,
+            bool helmetEffect, bool canApplyHelmetEffect,
             bool stopAllEventExists, bool canCreateStopAllEvent)
         {
             InitializeComponent();
@@ -42,11 +44,13 @@ namespace LegendaryExplorer.Dialogs
             FactoryRadioEffectCheckBox.IsChecked = factoryRadioEffect;
             BioWareRadioEffectCheckBox.IsChecked = bioWareRadioEffect;
             QecEffectCheckBox.IsChecked = qecEffect;
+            HelmetEffectCheckBox.IsChecked = helmetEffect;
             _initializingEffects = false;
 
             FactoryRadioEffectCheckBox.IsEnabled = canApplyFactoryRadioEffect || factoryRadioEffect;
             BioWareRadioEffectCheckBox.IsEnabled = canApplyBioWareRadioEffect || bioWareRadioEffect;
             QecEffectCheckBox.IsEnabled = canApplyQecEffect || qecEffect;
+            HelmetEffectCheckBox.IsEnabled = canApplyHelmetEffect || helmetEffect;
             StopAllEventCheckBox.IsChecked = stopAllEventExists;
             StopAllEventCheckBox.IsEnabled = !stopAllEventExists && canCreateStopAllEvent;
             if (stopAllEventExists)
@@ -55,7 +59,7 @@ namespace LegendaryExplorer.Dialogs
             }
 
             EffectUnavailableText.Visibility = canApplyFactoryRadioEffect || canApplyBioWareRadioEffect ||
-                                               canApplyQecEffect || canCreateStopAllEvent
+                                               canApplyQecEffect || canApplyHelmetEffect || canCreateStopAllEvent
                 ? Visibility.Collapsed
                 : Visibility.Visible;
         }
@@ -79,6 +83,10 @@ namespace LegendaryExplorer.Dialogs
             if (sender != QecEffectCheckBox)
             {
                 QecEffectCheckBox.IsChecked = false;
+            }
+            if (sender != HelmetEffectCheckBox)
+            {
+                HelmetEffectCheckBox.IsChecked = false;
             }
             _initializingEffects = false;
 

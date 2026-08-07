@@ -28,6 +28,8 @@ public class WwiseEditorWindowTests
 {
     private const uint StopAllEventId = 788884573;
     private const uint FactoryRadioEffectId = 2952825346;
+    private const uint HelmetFilterEffectId = 125287176;
+    private const uint HelmetRtpcId = 0xAA2B753F;
     private static readonly uint[] BioWareRadioEffectIds = [125287176, 1177780410];
 
     [ClassInitialize]
@@ -109,6 +111,62 @@ public class WwiseEditorWindowTests
             Assert.IsTrue(BioWareRadioEffectIds.All(id =>
                 reparsedScope.NodeBaseParameters.FxParams.FxChunks.Any(chunk => chunk.Id == id)));
         }
+    }
+
+    [TestMethod]
+    public void HelmetEffectAppliesFilterAndRtpcToEveryInheritanceScope()
+    {
+        var bank = LoadTestBank();
+        var nodes = GetParameterNodes(bank);
+        Assert.IsGreaterThanOrEqualTo(2, nodes.Count);
+
+        var scopes = new List<WwiserIHasNode> { nodes[0].Node, nodes[1].Node };
+        foreach (var scope in scopes)
+        {
+            scope.NodeBaseParameters.FxParams.FxChunks.Clear();
+            scope.NodeBaseParameters.FxParams.NumFx = 0;
+            scope.NodeBaseParameters.Rtpc.Rtpcs.RemoveAll(rtpc => rtpc.RtpcId == HelmetRtpcId);
+            scope.NodeBaseParameters.Rtpc.RTPCCount.Value =
+                checked((ushort)scope.NodeBaseParameters.Rtpc.Rtpcs.Count);
+        }
+
+        object helmetFilter = GetPreset("HelmetFilter");
+        Assert.IsTrue(InvokePresetMethod("EnsureEffectData", bank, helmetFilter));
+        InvokePrivate("SetEffectPresetOnScopes", scopes, helmetFilter);
+        InvokePrivate("SetEffectPresetOnScopes", scopes, helmetFilter);
+
+        Assert.IsTrue(InvokePresetMethod("HasHelmetRtpcOnAllScopes", scopes));
+        foreach (var scope in scopes)
+        {
+            CollectionAssert.AreEqual(new[] { HelmetFilterEffectId },
+                scope.NodeBaseParameters.FxParams.FxChunks.Select(chunk => chunk.Id).ToArray());
+            var helmetRtpcs = scope.NodeBaseParameters.Rtpc.Rtpcs
+                .Where(rtpc => rtpc.RtpcId == HelmetRtpcId)
+                .ToList();
+            Assert.HasCount(1, helmetRtpcs);
+            var helmetRtpc = helmetRtpcs[0];
+            Assert.AreEqual(RtpcType.RtpcTypeInner.GameParameter, helmetRtpc.RtpcType.Value);
+            Assert.AreEqual(AccumType.AccumTypeInner.Boolean, helmetRtpc.RtpcAccum.Value);
+            Assert.AreEqual(ParameterId.RtpcParameterId.BypassFX0, helmetRtpc.ParamId.ParamId);
+            CollectionAssert.AreEqual(new[] { 0f, 1f },
+                helmetRtpc.RtpcConversionTable.Graph.Select(point => point.From).ToArray());
+            CollectionAssert.AreEqual(new[] { 1f, 0f },
+                helmetRtpc.RtpcConversionTable.Graph.Select(point => point.To).ToArray());
+        }
+
+        var reparsed = RoundTrip(bank);
+        var reparsedScopes = reparsed.HIRC.Items.Select(item => item.Item)
+            .OfType<WwiserIHasNode>()
+            .Where(scope => scopes.Select(item => ((ME3Tweaks.Wwiser.Model.Hierarchy.HircItem)item).Id)
+                .Contains(((ME3Tweaks.Wwiser.Model.Hierarchy.HircItem)scope).Id))
+            .ToList();
+        Assert.HasCount(scopes.Count, reparsedScopes);
+        Assert.IsTrue(InvokePresetMethod("HasHelmetRtpcOnAllScopes", reparsedScopes));
+
+        object bioWareRadio = GetPreset("BioWareRadio");
+        Assert.IsTrue(InvokePresetMethod("EnsureEffectData", bank, bioWareRadio));
+        InvokePrivate("SetEffectPresetOnScopes", scopes, bioWareRadio);
+        Assert.IsFalse(InvokePresetMethod("HasHelmetRtpcOnAllScopes", scopes));
     }
 
     [TestMethod]

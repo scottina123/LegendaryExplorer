@@ -1,7 +1,7 @@
 <Window x:Class="LegendaryExplorer.Dialogs.WwiseBankVolumeDialog"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Adjust Bank Settings" Width="540" Height="455"
+        Title="Adjust Bank Settings" Width="540" Height="490"
         ResizeMode="NoResize" WindowStartupLocation="CenterOwner">
     <Grid Margin="12">
         <Grid.RowDefinitions>
@@ -49,6 +49,10 @@
                       Checked="EffectCheckBox_Checked"
                       Content="Apply Hackett QEC transmission effect"
                       ToolTip="Applies the exact McDSP FutzBox and Wwise Flanger chain used for Admiral Hackett over the QEC."/>
+            <CheckBox x:Name="HelmetEffectCheckBox" Margin="0,4"
+                      Checked="EffectCheckBox_Checked"
+                      Content="Apply helmet voice filter"
+                      ToolTip="Adds the LE3 helmet FutzBox and Helmet RTPC. RTPC value 0 bypasses the filter; value 1 enables it."/>
             <CheckBox x:Name="StopAllEventCheckBox" Margin="0,8,0,4"
                       Content="Create one Stop event for all bank audio"
                       ToolTip="Adds a postable WwiseEvent named Stop with a stop action for every Sound object in this bank."/>
