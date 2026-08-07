@@ -9,15 +9,25 @@ namespace LegendaryExplorer.Dialogs
     public partial class WwiseBankVolumeDialog : Window
     {
         private bool _updatingVolume;
+        private bool _initializingEffects;
+        private readonly bool _stopAllEventExists;
 
         public float SelectedVolume => (float)VolumeSlider.Value;
         public bool? LoopAudio => LoopAudioCheckBox.IsChecked;
-        public bool RadioEffect => RadioEffectCheckBox.IsChecked == true;
+        public bool FactoryRadioEffect => FactoryRadioEffectCheckBox.IsChecked == true;
+        public bool BioWareRadioEffect => BioWareRadioEffectCheckBox.IsChecked == true;
+        public bool QecEffect => QecEffectCheckBox.IsChecked == true;
+        public bool CreateStopAllEvent => !_stopAllEventExists && StopAllEventCheckBox.IsChecked == true;
 
-        public WwiseBankVolumeDialog(float currentVolume, bool? loopAudio, bool radioEffect, bool canApplyRadioEffect)
+        public WwiseBankVolumeDialog(float currentVolume, bool? loopAudio,
+            bool factoryRadioEffect, bool canApplyFactoryRadioEffect,
+            bool bioWareRadioEffect, bool canApplyBioWareRadioEffect,
+            bool qecEffect, bool canApplyQecEffect,
+            bool stopAllEventExists, bool canCreateStopAllEvent)
         {
             InitializeComponent();
             CustomWindowChrome.ApplyCustomChrome(this);
+            _stopAllEventExists = stopAllEventExists;
 
             VolumeSlider.Minimum = Math.Min(-96, currentVolume);
             VolumeSlider.Maximum = Math.Max(12, currentVolume);
@@ -27,11 +37,55 @@ namespace LegendaryExplorer.Dialogs
             _updatingVolume = false;
             CurrentVolumeRun.Text = $"{currentVolume.ToString("0.0", CultureInfo.InvariantCulture)} dB";
             LoopAudioCheckBox.IsChecked = loopAudio;
-            RadioEffectCheckBox.IsChecked = radioEffect;
-            RadioEffectCheckBox.IsEnabled = canApplyRadioEffect || radioEffect;
-            RadioEffectUnavailableText.Visibility = canApplyRadioEffect || radioEffect
+
+            _initializingEffects = true;
+            FactoryRadioEffectCheckBox.IsChecked = factoryRadioEffect;
+            BioWareRadioEffectCheckBox.IsChecked = bioWareRadioEffect;
+            QecEffectCheckBox.IsChecked = qecEffect;
+            _initializingEffects = false;
+
+            FactoryRadioEffectCheckBox.IsEnabled = canApplyFactoryRadioEffect || factoryRadioEffect;
+            BioWareRadioEffectCheckBox.IsEnabled = canApplyBioWareRadioEffect || bioWareRadioEffect;
+            QecEffectCheckBox.IsEnabled = canApplyQecEffect || qecEffect;
+            StopAllEventCheckBox.IsChecked = stopAllEventExists;
+            StopAllEventCheckBox.IsEnabled = !stopAllEventExists && canCreateStopAllEvent;
+            if (stopAllEventExists)
+            {
+                StopAllEventCheckBox.Content = "Stop event for all bank audio already exists";
+            }
+
+            EffectUnavailableText.Visibility = canApplyFactoryRadioEffect || canApplyBioWareRadioEffect ||
+                                               canApplyQecEffect || canCreateStopAllEvent
                 ? Visibility.Collapsed
                 : Visibility.Visible;
+        }
+
+        private void EffectCheckBox_Checked(object sender, RoutedEventArgs e)
+        {
+            if (_initializingEffects)
+            {
+                return;
+            }
+
+            _initializingEffects = true;
+            if (sender != FactoryRadioEffectCheckBox)
+            {
+                FactoryRadioEffectCheckBox.IsChecked = false;
+            }
+            if (sender != BioWareRadioEffectCheckBox)
+            {
+                BioWareRadioEffectCheckBox.IsChecked = false;
+            }
+            if (sender != QecEffectCheckBox)
+            {
+                QecEffectCheckBox.IsChecked = false;
+            }
+            _initializingEffects = false;
+
+            if (sender == BioWareRadioEffectCheckBox)
+            {
+                VolumeSlider.Value = 12;
+            }
         }
 
         private void VolumeSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)

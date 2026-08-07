@@ -22,31 +22,14 @@ using LegendaryExplorerCore.Unreal.BinaryConverters;
 using Microsoft.Win32;
 using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
 using LegendaryExplorerCore.Helpers;
-using BinarySerialization;
 using ME3Tweaks.Wwiser;
 using ME3Tweaks.Wwiser.Model.ParameterNode;
 using WwiserActorMixer = ME3Tweaks.Wwiser.Model.Hierarchy.ActorMixer;
-using WwiserFxShareSet = ME3Tweaks.Wwiser.Model.Hierarchy.FxShareSet;
-using WwiserHircItemContainer = ME3Tweaks.Wwiser.Model.Hierarchy.HircItemContainer;
 
 namespace LegendaryExplorer.Dialogs
 {
     public partial class BulkAudioImportDialog : Window
     {
-        private const uint QecFutzBoxEffectId = 1827713496;
-        private const uint QecFlangerEffectId = 1487904704;
-        private const uint BioWareRadioFutzBoxEffectId = 125287176;
-        private const uint BioWareRadioEqEffectId = 1177780410;
-        private const uint Le3EffectBankVersion = 134;
-        private const string QecFutzBoxHirc =
-            "EJ4AAADYsfBsAxBuAIsAAAAAAAAAAACgjEYAAAAAAAAAAAAAIEIAAAAAAQQAAAAAAPBBAAAAAAAAAAAAAQAAAAAAekQAAAAAAAAAAAAAAMDCAKCMRgAAIEIAAAAAAACgwQAAoEEBAwAAAAAAyEIAAAAgwgAAAAAAAIA/AAAgQQAAyEIAAAAAAAAAAAAAAAAAAAAAAAAAAEAAAMhCAAAAAAAAAA==";
-        private const string QecFlangerHirc =
-            "EE4AAADAn69YAwB9ADsAAAAAACBBAACAPwAAgD8AAAAAAABIQs3MzD0AAAAAAAAAAAAASEIAALRCAAAAAAAAAAAAAAAAAABIQgEBAAAAAAAAAAA=";
-        private const string BioWareRadioFutzBoxHirc =
-            "EJ4AAAAIu3cHAxBuAIsAAAAAAAAAAADgEkYAAAAAAQAAAAAAlkMAAAAAAQQAAAAAAPBBAAAAAAAAAAAAAQAAAAAAekQAAAAAAAAAAAAAAPjBAGAuRQAAekQAAAAAAAAgwgAAIEEBEgAAAAAAyEIAAACgwQAAoMLNzMw9AAAgQQAAIEEACAAAAAQAAAAAAAAAAAAAAAAAoEAAAMhCAAAAAAAAAA==";
-        private const string BioWareRadioEqHirc =
-            "EL0AAAC6gDNGAwBpADgAAAAEAAAAAAAAAACA/EMAAIA/AQYAAAAAAAAAAMDNRAAAQEAABQAAAAAAwMEAQJxGAACAPwEAAAAAAQADAKhWFSkAAQE2GTELAgIAAAAAAGNk/74EAAAAAEAcRvXYb78EAAAAqFYVKQABDNVnOioAAgAAAAAAAGBqRgAAAAAAQBxGAIC7RAQAAACoVhUpAAECWsrmPgACAAAAAAAAAKBBBAAAAABAHEYAAPpEBAAAAAAAAAA=";
-
         public ObservableCollection<AudioImportItem> WavFileItems { get; } = new();
         public IEnumerable<string> WavFiles => WavFileItems.Select(item => item.FilePath);
 
@@ -594,9 +577,7 @@ namespace LegendaryExplorer.Dialogs
         /// </summary>
         private static void ApplyQecEffectToBank(string bnkPath)
         {
-            ApplyExactEffectChainToBank(bnkPath, "Hackett QEC",
-                (QecFutzBoxEffectId, 0x006E1003u, QecFutzBoxHirc),
-                (QecFlangerEffectId, 0x007D0003u, QecFlangerHirc));
+            ApplyExactEffectChainToBank(bnkPath, "Hackett QEC", WwiseBankEffectPresets.HackettQec);
         }
 
         /// <summary>
@@ -607,13 +588,11 @@ namespace LegendaryExplorer.Dialogs
         /// </summary>
         private static void ApplyBioWareRadioEffectToBank(string bnkPath)
         {
-            ApplyExactEffectChainToBank(bnkPath, "BioWare radio",
-                (BioWareRadioFutzBoxEffectId, 0x006E1003u, BioWareRadioFutzBoxHirc),
-                (BioWareRadioEqEffectId, 0x00690003u, BioWareRadioEqHirc));
+            ApplyExactEffectChainToBank(bnkPath, "BioWare radio", WwiseBankEffectPresets.BioWareRadio);
         }
 
         private static void ApplyExactEffectChainToBank(string bnkPath, string effectName,
-            params (uint EffectId, uint PluginId, string SerializedHirc)[] effectChain)
+            IReadOnlyList<WwiseBankEffect> effectChain)
         {
             ME3Tweaks.Wwiser.WwiseBank bank;
             using (var input = new MemoryStream(File.ReadAllBytes(bnkPath), false))
@@ -621,10 +600,10 @@ namespace LegendaryExplorer.Dialogs
                 bank = WwiseBankParser.Deserialize(input);
             }
 
-            if (bank.BKHD.BankGeneratorVersion != Le3EffectBankVersion)
+            if (bank.BKHD.BankGeneratorVersion != WwiseBankEffectPresets.BankVersion)
             {
                 throw new InvalidOperationException(
-                    $"The {effectName} effect requires a version-{Le3EffectBankVersion} LE3 Wwise bank, " +
+                    $"The {effectName} effect requires a version-{WwiseBankEffectPresets.BankVersion} LE3 Wwise bank, " +
                     $"but WwiseCLI generated version {bank.BKHD.BankGeneratorVersion}.");
             }
 
@@ -633,24 +612,10 @@ namespace LegendaryExplorer.Dialogs
                 throw new InvalidOperationException("WwiseCLI generated a bank without an audio hierarchy.");
             }
 
-            var serializer = new BinarySerializer();
-            var serializationContext = BankSerializationContext.FromBank(bank);
-            foreach (var (effectId, pluginId, serializedHirc) in effectChain)
+            if (!WwiseBankEffectPresets.EnsureEffectData(bank, effectChain))
             {
-                var existingItem = bank.HIRC.Items.FirstOrDefault(item => item.Item.Id == effectId);
-                if (existingItem != null)
-                {
-                    if (existingItem.Item is not WwiserFxShareSet shareSet || shareSet.Plugin.PluginId != pluginId)
-                    {
-                        throw new InvalidOperationException(
-                            $"The generated bank already uses {effectName} ShareSet ID {effectId} for another object.");
-                    }
-                    continue;
-                }
-
-                var effect = serializer.Deserialize<WwiserHircItemContainer>(
-                    Convert.FromBase64String(serializedHirc), serializationContext);
-                bank.HIRC.Items.Add(effect);
+                throw new InvalidOperationException(
+                    $"The generated bank already uses a {effectName} ShareSet ID for another object.");
             }
 
             var actorMixers = bank.HIRC.Items
@@ -671,12 +636,12 @@ namespace LegendaryExplorer.Dialogs
             {
                 var effects = actorMixer.NodeBaseParameters.FxParams;
                 effects.FxChunks.Clear();
-                for (var effectIndex = 0; effectIndex < effectChain.Length; effectIndex++)
+                for (var effectIndex = 0; effectIndex < effectChain.Count; effectIndex++)
                 {
                     effects.FxChunks.Add(new FxChunk
                     {
                         FxIndex = checked((byte)effectIndex),
-                        Id = effectChain[effectIndex].EffectId,
+                        Id = effectChain[effectIndex].Id,
                         IsShareSet = true
                     });
                 }

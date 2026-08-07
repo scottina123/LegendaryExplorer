@@ -18,6 +18,7 @@ using LegendaryExplorer.SharedUI.Bases;
 using LegendaryExplorer.SharedUI;
 using LegendaryExplorer.SharedUI.Interfaces;
 using LegendaryExplorer.UserControls.SharedToolControls;
+using LegendaryExplorer.UnrealExtensions;
 using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.Unreal;
 using LegendaryExplorerCore.Unreal.BinaryConverters;
@@ -29,11 +30,16 @@ using LegendaryExplorerCore.Misc;
 using Piccolo;
 using Piccolo.Event;
 using Piccolo.Nodes;
-using BinarySerialization;
 using ME3Tweaks.Wwiser;
 using ME3Tweaks.Wwiser.Formats;
+using ME3Tweaks.Wwiser.Model.Action;
+using ME3Tweaks.Wwiser.Model.Hierarchy.Enums;
 using ME3Tweaks.Wwiser.Model.ParameterNode;
-using WwiserFxShareSet = ME3Tweaks.Wwiser.Model.Hierarchy.FxShareSet;
+using ME3Tweaks.Wwiser.Model.RTPC;
+using WwiserAction = ME3Tweaks.Wwiser.Model.Hierarchy.Action;
+using WwiserActiveFlags = ME3Tweaks.Wwiser.Model.Action.Specific.ActiveFlags;
+using WwiserPauseResume = ME3Tweaks.Wwiser.Model.Action.Specific.PauseResume;
+using WwiserEvent = ME3Tweaks.Wwiser.Model.Hierarchy.Event;
 using WwiserHircItemContainer = ME3Tweaks.Wwiser.Model.Hierarchy.HircItemContainer;
 using WwiserIHasNode = ME3Tweaks.Wwiser.Model.Hierarchy.IHasNode;
 using WwiserSound = ME3Tweaks.Wwiser.Model.Hierarchy.Sound;
@@ -43,6 +49,7 @@ using Image = System.Drawing.Image;
 using Path = System.IO.Path;
 using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
 using CoreWwiseBank = LegendaryExplorerCore.Unreal.BinaryConverters.WwiseBank;
+using CoreWwiseEvent = LegendaryExplorerCore.Unreal.BinaryConverters.WwiseEvent;
 
 namespace LegendaryExplorer.Tools.WwiseEditor
 {
@@ -51,10 +58,8 @@ namespace LegendaryExplorer.Tools.WwiseEditor
     /// </summary>
     public partial class WwiseEditorWindow : WPFBase, IRecents
     {
-        private const uint DualFiltersRadioCommId = 2952825346;
-        private const uint RadioEffectBankVersion = 134;
-        private const string DualFiltersRadioCommHirc =
-            "EEsAAAACigCwAwBpADgAAAABAAAAAAAAAAAASEQAAIA/AQYAAAAAAJBBAIA7RQAAgD8BAAAAAAAAAAAAoJFFAACAPwEAAEDBAQAAAAAAAAA=";
+        private const uint StopAllEventId = 788884573;
+        private const int MaximumEffectSlots = 4;
 
         private struct SaveData
         {
@@ -479,16 +484,13 @@ namespace LegendaryExplorer.Tools.WwiseEditor
                     .Where(item => item.Item is WwiserIHasNode)
                     .Select(item => (item.Item.Id, Node: (WwiserIHasNode)item.Item))
                     .ToList() ?? [];
-                var parameterNodeIds = parameterNodes.Select(item => item.Id).ToHashSet();
-                var rootNodes = parameterNodes
-                    .Where(item => item.Node.NodeBaseParameters.DirectParentId == 0 ||
-                                   !parameterNodeIds.Contains(item.Node.NodeBaseParameters.DirectParentId))
-                    .Select(item => item.Node)
-                    .ToList();
+                var rootNodes = GetRootNodes(parameterNodes);
                 if (rootNodes.Count == 0)
                 {
                     rootNodes.AddRange(parameterNodes.Select(item => item.Node));
                 }
+
+                var effectScopeNodes = GetEffectScopeNodes(parameterNodes);
 
                 if (rootNodes.Count == 0)
                 {
@@ -502,10 +504,22 @@ namespace LegendaryExplorer.Tools.WwiseEditor
                     .OfType<WwiserSound>()
                     .ToList() ?? [];
                 bool? loopAudio = GetLoopAudioState(sounds);
-                bool radioEffect = rootNodes.All(HasRadioEffect);
-                bool canApplyRadioEffect = CanApplyRadioEffect(bank);
+                bool factoryRadioEffect = HasEffectOnAllScopes(effectScopeNodes, WwiseBankEffectPresets.FactoryRadio);
+                bool bioWareRadioEffect = HasEffectOnAllScopes(effectScopeNodes, WwiseBankEffectPresets.BioWareRadio);
+                bool qecEffect = HasEffectOnAllScopes(effectScopeNodes, WwiseBankEffectPresets.HackettQec);
+                bool canApplyFactoryRadioEffect = CanApplyEffect(bank, effectScopeNodes, WwiseBankEffectPresets.FactoryRadio);
+                bool canApplyBioWareRadioEffect = Pcc.Game == MEGame.LE3 &&
+                                                   CanApplyEffect(bank, effectScopeNodes, WwiseBankEffectPresets.BioWareRadio);
+                bool canApplyQecEffect = Pcc.Game == MEGame.LE3 &&
+                                         CanApplyEffect(bank, effectScopeNodes, WwiseBankEffectPresets.HackettQec);
+                bool stopAllEventExists = HasCompleteStopAllEvent(bank, CurrentExport, sounds);
+                bool canCreateStopAllEvent = Pcc.Game == MEGame.LE3 && CanCreateStopAllEvent(bank, CurrentExport, sounds);
                 float currentVolume = GetNodeVolume(rootNodes[0]);
-                var settingsDialog = new WwiseBankVolumeDialog(currentVolume, loopAudio, radioEffect, canApplyRadioEffect)
+                var settingsDialog = new WwiseBankVolumeDialog(currentVolume, loopAudio,
+                    factoryRadioEffect, canApplyFactoryRadioEffect,
+                    bioWareRadioEffect, canApplyBioWareRadioEffect,
+                    qecEffect, canApplyQecEffect,
+                    stopAllEventExists, canCreateStopAllEvent)
                 {
                     Owner = this
                 };
@@ -516,18 +530,33 @@ namespace LegendaryExplorer.Tools.WwiseEditor
 
                 bool volumeChanged = settingsDialog.SelectedVolume != currentVolume;
                 bool loopChanged = settingsDialog.LoopAudio.HasValue && settingsDialog.LoopAudio != loopAudio;
-                bool radioChanged = settingsDialog.RadioEffect != radioEffect;
-                if (!volumeChanged && !loopChanged && !radioChanged)
+                bool factoryRadioChanged = settingsDialog.FactoryRadioEffect != factoryRadioEffect;
+                bool bioWareRadioChanged = settingsDialog.BioWareRadioEffect != bioWareRadioEffect;
+                bool qecChanged = settingsDialog.QecEffect != qecEffect;
+                bool createStopAllEvent = settingsDialog.CreateStopAllEvent;
+                if (!volumeChanged && !loopChanged && !factoryRadioChanged && !bioWareRadioChanged &&
+                    !qecChanged && !createStopAllEvent)
                 {
                     return;
                 }
 
-                if (settingsDialog.RadioEffect && !EnsureRadioEffectData(bank))
+                foreach (var (enabled, changed, name, effectChain) in new[]
+                         {
+                             (settingsDialog.FactoryRadioEffect, factoryRadioChanged,
+                                 "Dual_Filters_Radio_Comm", WwiseBankEffectPresets.FactoryRadio),
+                             (settingsDialog.BioWareRadioEffect, bioWareRadioChanged,
+                                 "BioWare radio", WwiseBankEffectPresets.BioWareRadio),
+                             (settingsDialog.QecEffect, qecChanged,
+                                 "Hackett QEC", WwiseBankEffectPresets.HackettQec)
+                         })
                 {
-                    MessageBox.Show(this,
-                        "The Dual_Filters_Radio_Comm data could not be added to this bank version.",
-                        "Radio effect unavailable", MessageBoxButton.OK, MessageBoxImage.Warning);
-                    return;
+                    if (changed && enabled && !WwiseBankEffectPresets.EnsureEffectData(bank, effectChain))
+                    {
+                        MessageBox.Show(this,
+                            $"The {name} effect data could not be added to this bank version.",
+                            "Effect unavailable", MessageBoxButton.OK, MessageBoxImage.Warning);
+                        return;
+                    }
                 }
 
                 foreach (var node in rootNodes)
@@ -537,10 +566,33 @@ namespace LegendaryExplorer.Tools.WwiseEditor
                         SetInitialParameter(node.NodeBaseParameters.InitialParams62, PropId.Volume,
                             settingsDialog.SelectedVolume, true);
                     }
+                }
 
-                    if (radioChanged)
+                if (factoryRadioChanged && settingsDialog.FactoryRadioEffect)
+                {
+                    SetEffectPresetOnScopes(effectScopeNodes, WwiseBankEffectPresets.FactoryRadio);
+                }
+                else if (bioWareRadioChanged && settingsDialog.BioWareRadioEffect)
+                {
+                    SetEffectPresetOnScopes(effectScopeNodes, WwiseBankEffectPresets.BioWareRadio);
+                }
+                else if (qecChanged && settingsDialog.QecEffect)
+                {
+                    SetEffectPresetOnScopes(effectScopeNodes, WwiseBankEffectPresets.HackettQec);
+                }
+                else
+                {
+                    if (factoryRadioChanged)
                     {
-                        SetRadioEffect(node, settingsDialog.RadioEffect);
+                        SetEffectOnScopes(effectScopeNodes, WwiseBankEffectPresets.FactoryRadio, false);
+                    }
+                    if (bioWareRadioChanged)
+                    {
+                        SetEffectOnScopes(effectScopeNodes, WwiseBankEffectPresets.BioWareRadio, false);
+                    }
+                    if (qecChanged)
+                    {
+                        SetEffectOnScopes(effectScopeNodes, WwiseBankEffectPresets.HackettQec, false);
                     }
                 }
 
@@ -552,9 +604,18 @@ namespace LegendaryExplorer.Tools.WwiseEditor
                     }
                 }
 
+                if (createStopAllEvent)
+                {
+                    EnsureStopAllEventInBank(bank, sounds);
+                }
+
                 using var output = new MemoryStream();
                 WwiseBankParser.Serialize(bank, output);
                 CoreWwiseBank.WriteBankRaw(output.ToArray(), CurrentExport);
+                if (createStopAllEvent)
+                {
+                    EnsureStopAllEventExport(CurrentExport, sounds);
+                }
                 RefreshView();
                 StatusBar_LeftMostText.Text = $"Updated settings for {CurrentExport.ObjectName}";
             }
@@ -605,6 +666,30 @@ namespace LegendaryExplorer.Tools.WwiseEditor
         private static bool IsLooping(WwiserSound sound) =>
             sound.NodeBaseParameters.InitialParams62.ParameterIds.Any(id => id.PropValue == PropId.Loop);
 
+        private static List<WwiserIHasNode> GetRootNodes(
+            IReadOnlyCollection<(uint Id, WwiserIHasNode Node)> parameterNodes)
+        {
+            var parameterNodeIds = parameterNodes.Select(item => item.Id).ToHashSet();
+            return parameterNodes
+                .Where(item => item.Node.NodeBaseParameters.DirectParentId == 0 ||
+                               !parameterNodeIds.Contains(item.Node.NodeBaseParameters.DirectParentId))
+                .Select(item => item.Node)
+                .Distinct()
+                .ToList();
+        }
+
+        private static List<WwiserIHasNode> GetEffectScopeNodes(
+            IReadOnlyCollection<(uint Id, WwiserIHasNode Node)> parameterNodes)
+        {
+            var rootNodes = GetRootNodes(parameterNodes);
+            return rootNodes
+                .Concat(parameterNodes
+                    .Where(item => item.Node.NodeBaseParameters.FxParams.IsOverrideParentFx)
+                    .Select(item => item.Node))
+                .Distinct()
+                .ToList();
+        }
+
         private static void SetLoopAudio(WwiserSound sound, bool enabled)
         {
             var parameters = sound.NodeBaseParameters.InitialParams62;
@@ -618,70 +703,286 @@ namespace LegendaryExplorer.Tools.WwiseEditor
             }
         }
 
-        private static bool HasRadioEffect(WwiserIHasNode node) =>
-            node.NodeBaseParameters.FxParams.FxChunks.Any(effect => effect.Id == DualFiltersRadioCommId);
-
-        private static bool CanApplyRadioEffect(ME3Tweaks.Wwiser.WwiseBank bank)
+        private static bool HasEffectOnAllScopes(IReadOnlyCollection<WwiserIHasNode> effectScopeNodes,
+            IReadOnlyList<WwiseBankEffect> effectChain)
         {
-            if (bank.HIRC == null)
+            if (effectScopeNodes.Count == 0)
             {
                 return false;
             }
 
-            bool containsRadioData = bank.HIRC.Items.Any(item =>
-                item.Item is WwiserFxShareSet { Id: DualFiltersRadioCommId });
-            bool idIsAvailable = bank.HIRC.Items.All(item => item.Item.Id != DualFiltersRadioCommId);
-            return containsRadioData || bank.BKHD.BankGeneratorVersion == RadioEffectBankVersion && idIsAvailable;
+            var effectIds = effectChain.Select(effect => effect.Id).ToArray();
+            return effectScopeNodes.All(node =>
+            {
+                var appliedIds = node.NodeBaseParameters.FxParams.FxChunks
+                    .Where(chunk => effectIds.Contains(chunk.Id))
+                    .OrderBy(chunk => chunk.FxIndex)
+                    .Select(chunk => chunk.Id)
+                    .ToArray();
+                return appliedIds.SequenceEqual(effectIds);
+            });
         }
 
-        private static bool EnsureRadioEffectData(ME3Tweaks.Wwiser.WwiseBank bank)
+        private static bool CanApplyEffect(ME3Tweaks.Wwiser.WwiseBank bank,
+            IReadOnlyCollection<WwiserIHasNode> effectScopeNodes, IReadOnlyList<WwiseBankEffect> effectChain)
         {
-            if (bank.HIRC == null)
+            if (!WwiseBankEffectPresets.CanEnsureEffectData(bank, effectChain))
             {
                 return false;
             }
 
-            if (bank.HIRC.Items.Any(item => item.Item is WwiserFxShareSet { Id: DualFiltersRadioCommId }))
-            {
-                return true;
-            }
-
-            if (bank.BKHD.BankGeneratorVersion != RadioEffectBankVersion ||
-                bank.HIRC.Items.Any(item => item.Item.Id == DualFiltersRadioCommId))
-            {
-                return false;
-            }
-
-            var serializer = new BinarySerialization.BinarySerializer();
-            var radioEffect = serializer.Deserialize<WwiserHircItemContainer>(
-                Convert.FromBase64String(DualFiltersRadioCommHirc), BankSerializationContext.FromBank(bank));
-            bank.HIRC.Items.Add(radioEffect);
-            bank.HIRC.ItemCount = checked((uint)bank.HIRC.Items.Count);
-            return true;
+            var replaceableEffectIds = WwiseBankEffectPresets.FactoryRadio
+                .Concat(WwiseBankEffectPresets.BioWareRadio)
+                .Concat(WwiseBankEffectPresets.HackettQec)
+                .Select(effect => effect.Id)
+                .ToHashSet();
+            return effectScopeNodes.All(node =>
+                node.NodeBaseParameters.FxParams.FxChunks.Count(chunk => !replaceableEffectIds.Contains(chunk.Id)) +
+                effectChain.Count <= MaximumEffectSlots);
         }
 
-        private static void SetRadioEffect(WwiserIHasNode node, bool enabled)
+        private static void SetEffectOnScopes(IEnumerable<WwiserIHasNode> effectScopeNodes,
+            IReadOnlyList<WwiseBankEffect> effectChain, bool enabled)
         {
-            var effects = node.NodeBaseParameters.FxParams;
-            if (enabled && !effects.FxChunks.Any(effect => effect.Id == DualFiltersRadioCommId))
+            var effectIds = effectChain.Select(effect => effect.Id).ToHashSet();
+            foreach (var node in effectScopeNodes)
             {
-                byte effectIndex = effects.FxChunks.Count == 0
-                    ? (byte)0
-                    : checked((byte)(effects.FxChunks.Max(effect => effect.FxIndex) + 1));
-                effects.FxChunks.Add(new FxChunk
+                var effects = node.NodeBaseParameters.FxParams;
+                effects.FxChunks.RemoveAll(chunk => effectIds.Contains(chunk.Id));
+
+                if (enabled)
                 {
-                    FxIndex = effectIndex,
-                    Id = DualFiltersRadioCommId,
-                    IsShareSet = true
-                });
+                    var usedSlots = effects.FxChunks.Select(chunk => (int)chunk.FxIndex).ToHashSet();
+                    var availableSlots = Enumerable.Range(0, MaximumEffectSlots)
+                        .Where(slot => !usedSlots.Contains(slot))
+                        .Take(effectChain.Count)
+                        .ToArray();
+                    if (availableSlots.Length != effectChain.Count)
+                    {
+                        throw new InvalidOperationException(
+                            "This bank has no room for the selected effect chain. Wwise supports four effect slots per audio node.");
+                    }
+
+                    for (int i = 0; i < effectChain.Count; i++)
+                    {
+                        effects.FxChunks.Add(new FxChunk
+                        {
+                            FxIndex = checked((byte)availableSlots[i]),
+                            Id = effectChain[i].Id,
+                            IsShareSet = true
+                        });
+                    }
+                    effects.BitsFxBypass = 0;
+                    effects.IsOverrideParentFx = true;
+                }
+                else if (effects.FxChunks.Count == 0)
+                {
+                    effects.IsOverrideParentFx = false;
+                }
+
+                effects.FxChunks.Sort((left, right) => left.FxIndex.CompareTo(right.FxIndex));
+                effects.NumFx = checked((byte)effects.FxChunks.Count);
             }
-            else if (!enabled)
+        }
+
+        private static void SetEffectPresetOnScopes(IEnumerable<WwiserIHasNode> effectScopeNodes,
+            IReadOnlyList<WwiseBankEffect> selectedEffectChain)
+        {
+            var scopes = effectScopeNodes.ToList();
+            SetEffectOnScopes(scopes, WwiseBankEffectPresets.FactoryRadio, false);
+            SetEffectOnScopes(scopes, WwiseBankEffectPresets.BioWareRadio, false);
+            SetEffectOnScopes(scopes, WwiseBankEffectPresets.HackettQec, false);
+            SetEffectOnScopes(scopes, selectedEffectChain, true);
+        }
+
+        private static bool HasCompleteStopAllEvent(ME3Tweaks.Wwiser.WwiseBank bank,
+            ExportEntry bankExport, IReadOnlyCollection<WwiserSound> sounds)
+        {
+            if (bank.HIRC == null || sounds.Count == 0 ||
+                bank.HIRC.Items.FirstOrDefault(item => item.Item.Id == StopAllEventId)?.Item is not WwiserEvent stopEvent)
             {
-                effects.FxChunks.RemoveAll(effect => effect.Id == DualFiltersRadioCommId);
+                return false;
             }
 
-            effects.NumFx = checked((byte)effects.FxChunks.Count);
-            effects.IsOverrideParentFx = effects.NumFx > 0;
+            var actionsById = bank.HIRC.Items
+                .Select(item => item.Item)
+                .OfType<WwiserAction>()
+                .ToDictionary(action => action.Id);
+            var stoppedSoundIds = stopEvent.ActionIds
+                .Where(actionsById.ContainsKey)
+                .Select(actionId => actionsById[actionId])
+                .Where(action => action.Type.Value == ActionTypeValue.Stop)
+                .Select(action => action.TargetId)
+                .ToHashSet();
+            return sounds.All(sound => stoppedSoundIds.Contains(sound.Id)) && HasStopAllEventExport(bankExport);
+        }
+
+        private static bool CanCreateStopAllEvent(ME3Tweaks.Wwiser.WwiseBank bank,
+            ExportEntry bankExport, IReadOnlyCollection<WwiserSound> sounds)
+        {
+            if (bank.HIRC == null || bank.BKHD.BankGeneratorVersion != WwiseBankEffectPresets.BankVersion ||
+                sounds.Count == 0)
+            {
+                return false;
+            }
+
+            var existingHirc = bank.HIRC.Items.FirstOrDefault(item => item.Item.Id == StopAllEventId);
+            if (existingHirc != null && existingHirc.Item is not WwiserEvent)
+            {
+                return false;
+            }
+
+            var existingExport = bankExport.FileRef.Exports.FirstOrDefault(export =>
+                export.Parent == bankExport.Parent && export.ObjectNameString == "Stop");
+            return existingExport == null || existingExport.ClassName == "WwiseEvent";
+        }
+
+        private static void EnsureStopAllEventInBank(ME3Tweaks.Wwiser.WwiseBank bank,
+            IReadOnlyCollection<WwiserSound> sounds)
+        {
+            if (bank.HIRC == null)
+            {
+                throw new InvalidOperationException("The bank has no audio hierarchy.");
+            }
+
+            var usedIds = bank.HIRC.Items.Select(item => item.Item.Id).ToHashSet();
+            var stopEventItem = bank.HIRC.Items.FirstOrDefault(item => item.Item.Id == StopAllEventId);
+            WwiserEvent stopEvent;
+            bool addStopEvent = false;
+            if (stopEventItem == null)
+            {
+                stopEvent = new WwiserEvent
+                {
+                    Id = StopAllEventId,
+                    ActionCount = new VarCount(),
+                    ActionIds = []
+                };
+                stopEventItem = new WwiserHircItemContainer
+                {
+                    Type = new HircSmartType { Value = HircType.Event },
+                    Item = stopEvent
+                };
+                addStopEvent = true;
+                usedIds.Add(StopAllEventId);
+            }
+            else if (stopEventItem.Item is WwiserEvent existingStopEvent)
+            {
+                stopEvent = existingStopEvent;
+            }
+            else
+            {
+                throw new InvalidOperationException($"HIRC ID {StopAllEventId} is already used by another object.");
+            }
+
+            var actionsById = bank.HIRC.Items
+                .Select(item => item.Item)
+                .OfType<WwiserAction>()
+                .ToDictionary(action => action.Id);
+            var stoppedSoundIds = stopEvent.ActionIds
+                .Where(actionsById.ContainsKey)
+                .Select(actionId => actionsById[actionId])
+                .Where(action => action.Type.Value == ActionTypeValue.Stop)
+                .Select(action => action.TargetId)
+                .ToHashSet();
+
+            foreach (var sound in sounds.Where(sound => !stoppedSoundIds.Contains(sound.Id)))
+            {
+                uint actionId = GenerateUniqueHircId($"Stop_{sound.Id}_StopAction", usedIds);
+                var stopAction = new WwiserAction
+                {
+                    Id = actionId,
+                    Type = new ActionType
+                    {
+                        Value = ActionTypeValue.Stop,
+                        Data = ActionFlagsUnk.Unk4
+                    },
+                    TargetId = sound.Id,
+                    IsBus = false,
+                    PropBundle = new InitialParamsV62(),
+                    ActionParams = new Active
+                    {
+                        Params = new ActiveParams
+                        {
+                            CurveInterpolation = CurveInterpolation.Linear,
+                            SpecificParams = new WwiserPauseResume
+                            {
+                                Flags = new WwiserActiveFlags
+                                {
+                                    ApplyToStateTransitions = true,
+                                    ApplyToDynamicSequence = true
+                                }
+                            },
+                            ExceptParams = new ExceptParams()
+                        }
+                    }
+                };
+                bank.HIRC.Items.Add(new WwiserHircItemContainer
+                {
+                    Type = new HircSmartType { Value = HircType.Action },
+                    Item = stopAction
+                });
+                stopEvent.ActionIds.Add(actionId);
+            }
+
+            stopEvent.ActionCount.Value = checked((uint)stopEvent.ActionIds.Count);
+            if (addStopEvent)
+            {
+                bank.HIRC.Items.Add(stopEventItem);
+            }
+            bank.HIRC.ItemCount = checked((uint)bank.HIRC.Items.Count);
+        }
+
+        private static bool HasStopAllEventExport(ExportEntry bankExport) =>
+            bankExport.FileRef.Exports.Any(export => export.ClassName == "WwiseEvent" &&
+                export.Parent == bankExport.Parent &&
+                unchecked((uint)(export.GetProperty<IntProperty>("Id")?.Value ?? 0)) == StopAllEventId &&
+                export.GetProperty<StructProperty>("Relationships")?.Properties
+                    .GetProp<ObjectProperty>("Bank")?.Value == bankExport.UIndex);
+
+        private static void EnsureStopAllEventExport(ExportEntry bankExport,
+            IReadOnlyCollection<WwiserSound> sounds)
+        {
+            var package = bankExport.FileRef;
+            var eventExport = package.Exports.FirstOrDefault(export => export.ClassName == "WwiseEvent" &&
+                                  export.Parent == bankExport.Parent &&
+                                  unchecked((uint)(export.GetProperty<IntProperty>("Id")?.Value ?? 0)) == StopAllEventId)
+                              ?? package.FindExport($"{bankExport.Parent.InstancedFullPath}.Stop", "WwiseEvent")
+                              ?? ExportCreator.CreateExport(package, "Stop", "WwiseEvent", bankExport.Parent, indexed: false);
+
+            var properties = eventExport.GetProperties();
+            properties.AddOrReplaceProp(new StructProperty("WwiseRelationships", false,
+                new ObjectProperty(bankExport, "Bank")) { Name = "Relationships" });
+            properties.AddOrReplaceProp(new IntProperty(unchecked((int)StopAllEventId), "Id"));
+            if (bankExport.GetProperty<BoolProperty>("IsLocalised")?.Value == true)
+            {
+                properties.AddOrReplaceProp(new BoolProperty(true, "IsLocalised"));
+            }
+
+            var sourceIds = sounds.Select(sound => sound.BankSourceData.MediaInformation.SourceId).ToHashSet();
+            var streamIndexes = package.Exports
+                .Where(export => export.ClassName == "WwiseStream" &&
+                                 sourceIds.Contains(unchecked((uint)(export.GetProperty<IntProperty>("Id")?.Value ?? 0))))
+                .Select(export => export.UIndex)
+                .ToList();
+            var eventBinary = CoreWwiseEvent.Create();
+            eventBinary.Links[0].WwiseStreams = streamIndexes;
+            eventExport.WritePropertiesAndBinary(properties, eventBinary);
+        }
+
+        private static uint GenerateUniqueHircId(string name, HashSet<uint> usedIds)
+        {
+            uint id = 2166136261;
+            foreach (char character in name.ToLowerInvariant())
+            {
+                id *= 16777619;
+                id ^= character;
+            }
+
+            while (!usedIds.Add(id))
+            {
+                id++;
+            }
+            return id;
         }
 
         private static void SetInitialParameter(InitialParamsV62 parameters, PropId id, float value, bool storedAsFloat)
