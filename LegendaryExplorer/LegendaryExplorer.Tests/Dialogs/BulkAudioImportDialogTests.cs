@@ -8,6 +8,8 @@ using BinarySerialization;
 using LegendaryExplorer.Dialogs;
 using ME3Tweaks.Wwiser;
 using ME3Tweaks.Wwiser.Model.Hierarchy;
+using ME3Tweaks.Wwiser.Model.Hierarchy.Enums;
+using ME3Tweaks.Wwiser.Model.RTPC;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace LegendaryExplorer.Tests.Dialogs;
@@ -22,6 +24,8 @@ public class BulkAudioImportDialogTests
     private const uint BioWareRadioFutzBoxEffectId = 125287176;
     private const uint BioWareRadioEqEffectId = 1177780410;
     private const uint FactoryRadioEffectId = 2952825346;
+    private const uint HelmetFilterEffectId = BioWareRadioFutzBoxEffectId;
+    private const uint HelmetRtpcId = 0xAA2B753F;
     private const string BioWareRadioFutzBoxHirc =
         "EJ4AAAAIu3cHAxBuAIsAAAAAAAAAAADgEkYAAAAAAQAAAAAAlkMAAAAAAQQAAAAAAPBBAAAAAAAAAAAAAQAAAAAAekQAAAAAAAAAAAAAAPjBAGAuRQAAekQAAAAAAAAgwgAAIEEBEgAAAAAAyEIAAACgwQAAoMLNzMw9AAAgQQAAIEEACAAAAAQAAAAAAAAAAAAAAAAAoEAAAMhCAAAAAAAAAA==";
     private const string BioWareRadioEqHirc =
@@ -131,6 +135,77 @@ public class BulkAudioImportDialogTests
                     rootActorMixer.NodeBaseParameters.FxParams.FxChunks.Select(item => item.Id).ToArray());
                 Assert.IsTrue(rootActorMixer.NodeBaseParameters.FxParams.IsOverrideParentFx);
             }
+        }
+        finally
+        {
+            File.Delete(testBankPath);
+        }
+    }
+
+    [TestMethod]
+    public void AppliesHelmetFilterControlledByShippedLe3Rtpc()
+    {
+        var sourceBankPath = FindWwiserTestBank("LE3_v134_1.bnk");
+        var testBankPath = Path.Combine(Path.GetTempPath(), $"LEX_Helmet_Test_{Guid.NewGuid():N}.bnk");
+        File.Copy(sourceBankPath, testBankPath);
+
+        try
+        {
+            var method = typeof(BulkAudioImportDialog).GetMethod(
+                "ApplyHelmetEffectToBank", BindingFlags.NonPublic | BindingFlags.Static);
+            Assert.IsNotNull(method);
+
+            method.Invoke(null, [testBankPath]);
+            method.Invoke(null, [testBankPath]);
+
+            using var stream = File.OpenRead(testBankPath);
+            var bank = WwiseBankParser.Deserialize(stream);
+            Assert.AreEqual(134u, bank.BKHD.BankGeneratorVersion);
+            Assert.IsNotNull(bank.HIRC);
+
+            var helmetEffect = bank.HIRC.Items.Single(item => item.Item.Id == HelmetFilterEffectId);
+            AssertExactShareSet(helmetEffect, 0x006E1003u, BioWareRadioFutzBoxHirc, bank);
+
+            var actorMixers = bank.HIRC.Items
+                .Select(item => item.Item)
+                .OfType<ActorMixer>()
+                .ToList();
+            var actorMixerIds = actorMixers.Select(item => item.Id).ToHashSet();
+            var rootActorMixers = actorMixers
+                .Where(item => item.NodeBaseParameters.DirectParentId == 0 ||
+                               !actorMixerIds.Contains(item.NodeBaseParameters.DirectParentId))
+                .ToList();
+            Assert.IsNotEmpty(rootActorMixers);
+
+            foreach (var rootActorMixer in rootActorMixers)
+            {
+                var effects = rootActorMixer.NodeBaseParameters.FxParams;
+                Assert.HasCount(1, effects.FxChunks);
+                Assert.AreEqual(HelmetFilterEffectId, effects.FxChunks[0].Id);
+                Assert.AreEqual((byte)0, effects.FxChunks[0].FxIndex);
+                Assert.IsTrue(effects.FxChunks[0].IsShareSet);
+                Assert.IsTrue(effects.IsOverrideParentFx);
+
+                var rtpcParameters = rootActorMixer.NodeBaseParameters.Rtpc;
+                Assert.AreEqual(rtpcParameters.Rtpcs.Count, rtpcParameters.RTPCCount.Value);
+                var helmetRtpcs = rtpcParameters.Rtpcs.Where(rtpc => rtpc.RtpcId == HelmetRtpcId).ToList();
+                Assert.HasCount(1, helmetRtpcs);
+                var helmetRtpc = helmetRtpcs[0];
+                Assert.AreEqual(RtpcType.RtpcTypeInner.GameParameter, helmetRtpc.RtpcType.Value);
+                Assert.AreEqual(AccumType.AccumTypeInner.Boolean, helmetRtpc.RtpcAccum.Value);
+                Assert.AreEqual(ParameterId.RtpcParameterId.BypassFX0, helmetRtpc.ParamId.ParamId);
+                Assert.AreEqual(CurveScaling.CurveScalingInner.None, helmetRtpc.RtpcConversionTable.Scaling.Value);
+                Assert.AreEqual((ushort)2, helmetRtpc.RtpcConversionTable.GraphPointCount.Value);
+                CollectionAssert.AreEqual(new[] { 0f, 1f },
+                    helmetRtpc.RtpcConversionTable.Graph.Select(point => point.From).ToArray());
+                CollectionAssert.AreEqual(new[] { 1f, 0f },
+                    helmetRtpc.RtpcConversionTable.Graph.Select(point => point.To).ToArray());
+                Assert.IsTrue(helmetRtpc.RtpcConversionTable.Graph.All(
+                    point => point.Interp == CurveInterpolation.Constant));
+            }
+
+            CollectionAssert.AreEqual(new byte[] { 0x3F, 0x75, 0x2B, 0xAA },
+                BitConverter.GetBytes(HelmetRtpcId));
         }
         finally
         {

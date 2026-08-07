@@ -13,7 +13,8 @@ internal static class WwiseBankEffectPresets
 {
     internal const uint BankVersion = 134;
     internal const uint FactoryRadioEffectId = 2952825346;
-    internal const uint BioWareRadioFutzBoxEffectId = 125287176;
+    internal const uint HelmetFilterEffectId = 125287176;
+    internal const uint BioWareRadioFutzBoxEffectId = HelmetFilterEffectId;
     internal const uint BioWareRadioEqEffectId = 1177780410;
     internal const uint QecFutzBoxEffectId = 1827713496;
     internal const uint QecFlangerEffectId = 1487904704;
@@ -24,10 +25,15 @@ internal static class WwiseBankEffectPresets
             "EEsAAAACigCwAwBpADgAAAABAAAAAAAAAAAASEQAAIA/AQYAAAAAAJBBAIA7RQAAgD8BAAAAAAAAAAAAoJFFAACAPwEAAEDBAQAAAAAAAAA=")
     ];
 
+    private static WwiseBankEffect BioWareFutzBox { get; } =
+        new(HelmetFilterEffectId, 0x006E1003u,
+            "EJ4AAAAIu3cHAxBuAIsAAAAAAAAAAADgEkYAAAAAAQAAAAAAlkMAAAAAAQQAAAAAAPBBAAAAAAAAAAAAAQAAAAAAekQAAAAAAAAAAAAAAPjBAGAuRQAAekQAAAAAAAAgwgAAIEEBEgAAAAAAyEIAAACgwQAAoMLNzMw9AAAgQQAAIEEACAAAAAQAAAAAAAAAAAAAAAAAoEAAAMhCAAAAAAAAAA==");
+
+    internal static IReadOnlyList<WwiseBankEffect> HelmetFilter { get; } = [BioWareFutzBox];
+
     internal static IReadOnlyList<WwiseBankEffect> BioWareRadio { get; } =
     [
-        new(BioWareRadioFutzBoxEffectId, 0x006E1003u,
-            "EJ4AAAAIu3cHAxBuAIsAAAAAAAAAAADgEkYAAAAAAQAAAAAAlkMAAAAAAQQAAAAAAPBBAAAAAAAAAAAAAQAAAAAAekQAAAAAAAAAAAAAAPjBAGAuRQAAekQAAAAAAAAgwgAAIEEBEgAAAAAAyEIAAACgwQAAoMLNzMw9AAAgQQAAIEEACAAAAAQAAAAAAAAAAAAAAAAAoEAAAMhCAAAAAAAAAA=="),
+        BioWareFutzBox,
         new(BioWareRadioEqEffectId, 0x00690003u,
             "EL0AAAC6gDNGAwBpADgAAAAEAAAAAAAAAACA/EMAAIA/AQYAAAAAAAAAAMDNRAAAQEAABQAAAAAAwMEAQJxGAACAPwEAAAAAAQADAKhWFSkAAQE2GTELAgIAAAAAAGNk/74EAAAAAEAcRvXYb78EAAAAqFYVKQABDNVnOioAAgAAAAAAAGBqRgAAAAAAQBxGAIC7RAQAAACoVhUpAAECWsrmPgACAAAAAAAAAKBBBAAAAABAHEYAAPpEBAAAAAAAAAA=")
     ];

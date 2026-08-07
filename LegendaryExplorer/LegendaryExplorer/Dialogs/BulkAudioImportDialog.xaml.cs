@@ -23,7 +23,10 @@ using Microsoft.Win32;
 using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
 using LegendaryExplorerCore.Helpers;
 using ME3Tweaks.Wwiser;
+using ME3Tweaks.Wwiser.Formats;
+using ME3Tweaks.Wwiser.Model.Hierarchy.Enums;
 using ME3Tweaks.Wwiser.Model.ParameterNode;
+using ME3Tweaks.Wwiser.Model.RTPC;
 using WwiserActorMixer = ME3Tweaks.Wwiser.Model.Hierarchy.ActorMixer;
 
 namespace LegendaryExplorer.Dialogs
@@ -126,6 +129,8 @@ namespace LegendaryExplorer.Dialogs
                 RadioEffectCheckBox.ToolTip = "The BioWare radio effect is only available for LE3 banks.";
                 QecEffectCheckBox.IsEnabled = false;
                 QecEffectCheckBox.ToolTip = "The QEC effect is only available for LE3 banks.";
+                HelmetEffectCheckBox.IsEnabled = false;
+                HelmetEffectCheckBox.ToolTip = "The helmet voice filter is only available for LE3 banks.";
             }
 
             if (!_allowFaceFxAssetCreation)
@@ -197,7 +202,7 @@ namespace LegendaryExplorer.Dialogs
 
         private void RadioEffectCheckBox_CheckedChanged(object sender, RoutedEventArgs e)
         {
-            if (QecEffectCheckBox == null || VolumeTextBox == null)
+            if (QecEffectCheckBox == null || HelmetEffectCheckBox == null || VolumeTextBox == null)
             {
                 return;
             }
@@ -205,9 +210,10 @@ namespace LegendaryExplorer.Dialogs
             if (RadioEffectCheckBox.IsChecked == true)
             {
                 QecEffectCheckBox.IsChecked = false;
+                HelmetEffectCheckBox.IsChecked = false;
                 VolumeTextBox.Text = "12";
             }
-            else if (QecEffectCheckBox.IsChecked != true)
+            else if (QecEffectCheckBox.IsChecked != true && HelmetEffectCheckBox.IsChecked != true)
             {
                 VolumeTextBox.Text = "-10";
             }
@@ -215,7 +221,7 @@ namespace LegendaryExplorer.Dialogs
 
         private void QecEffectCheckBox_CheckedChanged(object sender, RoutedEventArgs e)
         {
-            if (RadioEffectCheckBox == null || VolumeTextBox == null)
+            if (RadioEffectCheckBox == null || HelmetEffectCheckBox == null || VolumeTextBox == null)
             {
                 return;
             }
@@ -223,9 +229,29 @@ namespace LegendaryExplorer.Dialogs
             if (QecEffectCheckBox.IsChecked == true)
             {
                 RadioEffectCheckBox.IsChecked = false;
+                HelmetEffectCheckBox.IsChecked = false;
                 VolumeTextBox.Text = "-10";
             }
-            else if (RadioEffectCheckBox.IsChecked != true)
+            else if (RadioEffectCheckBox.IsChecked != true && HelmetEffectCheckBox.IsChecked != true)
+            {
+                VolumeTextBox.Text = "-10";
+            }
+        }
+
+        private void HelmetEffectCheckBox_CheckedChanged(object sender, RoutedEventArgs e)
+        {
+            if (RadioEffectCheckBox == null || QecEffectCheckBox == null || VolumeTextBox == null)
+            {
+                return;
+            }
+
+            if (HelmetEffectCheckBox.IsChecked == true)
+            {
+                RadioEffectCheckBox.IsChecked = false;
+                QecEffectCheckBox.IsChecked = false;
+                VolumeTextBox.Text = "-10";
+            }
+            else if (RadioEffectCheckBox.IsChecked != true && QecEffectCheckBox.IsChecked != true)
             {
                 VolumeTextBox.Text = "-10";
             }
@@ -307,6 +333,7 @@ namespace LegendaryExplorer.Dialogs
             var loopAudio = LoopAudioCheckBox.IsChecked == true;
             var applyRadioEffect = RadioEffectCheckBox.IsChecked == true;
             var applyQecEffect = QecEffectCheckBox.IsChecked == true;
+            var applyHelmetEffect = HelmetEffectCheckBox.IsChecked == true;
             var createSharedStopEvent = CreateSharedStopEventCheckBox.IsChecked == true;
             var createFaceFxAssets = _allowFaceFxAssetCreation && CreateFaceFXAssetsCheckBox.IsChecked == true;
             var topFolderName = TopFolderTextBox.Text.Trim();
@@ -342,7 +369,7 @@ namespace LegendaryExplorer.Dialogs
             try
             {
                 var result = await Task.Run(() => RunBulkAudioImport(bankName, isDialogue, volume, outputBusName,
-                    generateGenderedEvents, loopAudio, applyRadioEffect, applyQecEffect, createSharedStopEvent, createFaceFxAssets, topFolderName,
+                    generateGenderedEvents, loopAudio, applyRadioEffect, applyQecEffect, applyHelmetEffect, createSharedStopEvent, createFaceFxAssets, topFolderName,
                     femaleFaceFxAssetName, maleFaceFxAssetName));
                 if (result != null)
                 {
@@ -371,7 +398,7 @@ namespace LegendaryExplorer.Dialogs
         }
 
         private string RunBulkAudioImport(string bankName, bool isDialogue, double volume, string outputBusName,
-            bool generateGenderedEvents, bool loopAudio, bool applyRadioEffect, bool applyQecEffect, bool createSharedStopEvent, bool createFaceFxAssets,
+            bool generateGenderedEvents, bool loopAudio, bool applyRadioEffect, bool applyQecEffect, bool applyHelmetEffect, bool createSharedStopEvent, bool createFaceFxAssets,
             string topFolderName, string femaleFaceFxAssetName, string maleFaceFxAssetName)
         {
             var audioImportItems = Dispatcher.Invoke(() => WavFileItems
@@ -510,6 +537,10 @@ namespace LegendaryExplorer.Dialogs
                 {
                     ApplyQecEffectToBank(bnkPath);
                 }
+                else if (applyHelmetEffect)
+                {
+                    ApplyHelmetEffectToBank(bnkPath);
+                }
 
                 Dispatcher.Invoke(() => StatusTextBlock.Text = "Importing soundbank into package...");
 
@@ -591,8 +622,19 @@ namespace LegendaryExplorer.Dialogs
             ApplyExactEffectChainToBank(bnkPath, "BioWare radio", WwiseBankEffectPresets.BioWareRadio);
         }
 
+        /// <summary>
+        /// Adds the helmet FutzBox used by player and henchman dialogue in
+        /// BioD_KroGar_300Tower_LOC_INT. The Helmet RTPC controls BypassFX0 so the
+        /// filter is bypassed at 0 and enabled at 1, matching the shipped LE3 banks.
+        /// </summary>
+        private static void ApplyHelmetEffectToBank(string bnkPath)
+        {
+            ApplyExactEffectChainToBank(bnkPath, "helmet voice", WwiseBankEffectPresets.HelmetFilter,
+                applyHelmetRtpc: true);
+        }
+
         private static void ApplyExactEffectChainToBank(string bnkPath, string effectName,
-            IReadOnlyList<WwiseBankEffect> effectChain)
+            IReadOnlyList<WwiseBankEffect> effectChain, bool applyHelmetRtpc = false)
         {
             ME3Tweaks.Wwiser.WwiseBank bank;
             using (var input = new MemoryStream(File.ReadAllBytes(bnkPath), false))
@@ -648,12 +690,45 @@ namespace LegendaryExplorer.Dialogs
                 effects.BitsFxBypass = 0;
                 effects.NumFx = checked((byte)effects.FxChunks.Count);
                 effects.IsOverrideParentFx = true;
+
+                if (applyHelmetRtpc)
+                {
+                    ApplyHelmetRtpc(actorMixer);
+                }
             }
 
             bank.HIRC.ItemCount = checked((uint)bank.HIRC.Items.Count);
             using var output = new MemoryStream();
             WwiseBankParser.Serialize(bank, output);
             File.WriteAllBytes(bnkPath, output.ToArray());
+        }
+
+        // The source bank stores this uint as the little-endian bytes 3F 75 2B AA.
+        private const uint HelmetRtpcId = 0xAA2B753F;
+
+        private static void ApplyHelmetRtpc(WwiserActorMixer actorMixer)
+        {
+            var rtpcParameters = actorMixer.NodeBaseParameters.Rtpc;
+            rtpcParameters.Rtpcs.RemoveAll(rtpc => rtpc.RtpcId == HelmetRtpcId);
+            rtpcParameters.Rtpcs.Add(new Rtpc
+            {
+                RtpcId = HelmetRtpcId,
+                RtpcType = new RtpcType(RtpcType.RtpcTypeInner.GameParameter),
+                RtpcAccum = new AccumType(AccumType.AccumTypeInner.Boolean),
+                ParamId = new ParameterId { ParamId = ParameterId.RtpcParameterId.BypassFX0 },
+                RtpcCurveId = GenerateShortId($"{actorMixer.Id:X8}_helmet_bypass_fx0"),
+                RtpcConversionTable = new RtpcConversionTable
+                {
+                    Scaling = new CurveScaling { Value = CurveScaling.CurveScalingInner.None },
+                    GraphPointCount = new V36ShortCount { Value = 2 },
+                    Graph =
+                    [
+                        new RtpcGraphItem { From = 0, To = 1, Interp = CurveInterpolation.Constant },
+                        new RtpcGraphItem { From = 1, To = 0, Interp = CurveInterpolation.Constant }
+                    ]
+                }
+            });
+            rtpcParameters.RTPCCount.Value = checked((ushort)rtpcParameters.Rtpcs.Count);
         }
 
         /// <summary>
