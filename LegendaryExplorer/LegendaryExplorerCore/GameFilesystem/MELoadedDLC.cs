@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using LegendaryExplorerCore.DebugTools;
+using LegendaryExplorerCore.Helpers;
 using LegendaryExplorerCore.Misc;
 using LegendaryExplorerCore.Packages;
 
@@ -14,6 +15,18 @@ namespace LegendaryExplorerCore.GameFilesystem
     public static class MELoadedDLC
     {
         /// <summary>
+        /// Gets all unpacked DLC folders, including disabled folders whose names begin with <c>OFFDLC_</c>.
+        /// </summary>
+        /// <param name="game">Game to get DLC for</param>
+        /// <param name="gameDirectoryOverride">Optional: override game path root</param>
+        /// <returns>An enumerable of full paths to enabled and disabled DLC folders</returns>
+        public static IEnumerable<string> GetAllDLCFolders(MEGame game, string gameDirectoryOverride = null) =>
+            Directory.Exists(MEDirectories.GetDLCPath(game, gameDirectoryOverride))
+                ? Directory.EnumerateDirectories(MEDirectories.GetDLCPath(game, gameDirectoryOverride))
+                    .Where(dir => Path.GetFileName(dir).NormalizeDLCFolderName() is not null)
+                : Enumerable.Empty<string>();
+
+        /// <summary>
         /// Gets the base DLC directory of each unpacked DLC that will load in game. Includes
         /// </summary>
         /// <param name="game">Game to get DLC for</param>
@@ -23,6 +36,53 @@ namespace LegendaryExplorerCore.GameFilesystem
             Directory.Exists(MEDirectories.GetDLCPath(game, gameDirectoryOverride))
                 ? Directory.EnumerateDirectories(MEDirectories.GetDLCPath(game, gameDirectoryOverride)).Where(dir => IsEnabledDLC(dir, game))
                 : Enumerable.Empty<string>();
+
+        /// <summary>
+        /// Resolves a file path beneath a DLC folder after the folder has been toggled between its
+        /// <c>DLC_*</c> and <c>OFFDLC_*</c> names.
+        /// </summary>
+        /// <param name="filePath">The current or previously saved path to a file inside a DLC folder</param>
+        /// <returns>The existing equivalent path if one is found; otherwise <paramref name="filePath"/></returns>
+        public static string ResolveToggledDLCFilePath(string filePath)
+        {
+            if (string.IsNullOrWhiteSpace(filePath) || File.Exists(filePath))
+            {
+                return filePath;
+            }
+
+            var file = new FileInfo(filePath);
+            DirectoryInfo dlcDirectory = file.Directory;
+            while (dlcDirectory?.Parent is not null
+                   && (dlcDirectory.Name.NormalizeDLCFolderName() is null
+                       || !dlcDirectory.Parent.Name.Equals("DLC", StringComparison.OrdinalIgnoreCase)))
+            {
+                dlcDirectory = dlcDirectory.Parent;
+            }
+
+            string normalizedDLCName = dlcDirectory?.Name.NormalizeDLCFolderName();
+            if (normalizedDLCName is null || dlcDirectory.Parent is not { Exists: true } dlcRoot)
+            {
+                return filePath;
+            }
+
+            string relativePath = Path.GetRelativePath(dlcDirectory.FullName, file.FullName);
+            foreach (DirectoryInfo sibling in dlcRoot.EnumerateDirectories())
+            {
+                if (sibling.Name.Equals(dlcDirectory.Name, StringComparison.OrdinalIgnoreCase)
+                    || !string.Equals(sibling.Name.NormalizeDLCFolderName(), normalizedDLCName, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                string candidate = Path.Combine(sibling.FullName, relativePath);
+                if (File.Exists(candidate))
+                {
+                    return candidate;
+                }
+            }
+
+            return filePath;
+        }
 
         /// <summary>
         /// Gets the base DLC directory of each unpacked official DLC

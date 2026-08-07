@@ -1,4 +1,5 @@
 ﻿using LegendaryExplorerCore.Packages;
+using LegendaryExplorerCore.Helpers;
 using LegendaryExplorerCore.TLK;
 using LegendaryExplorerCore.TLK.ME1;
 using LegendaryExplorerCore.TLK.ME2ME3;
@@ -88,12 +89,12 @@ namespace LegendaryExplorerCore.GameFilesystem
 
             if (Directory.Exists(dlcPath))
             {
-                var dlcFolders = Directory.GetDirectories(dlcPath, "DLC_*");
-                var dlcMounts = new List<(string dlcName, int mountPriority, List<string> globalTalkTables)>();
+                var dlcFolders = MELoadedDLC.GetAllDLCFolders(game, gamePath);
+                var dlcMounts = new List<(string dlcFolder, int mountPriority, List<string> globalTalkTables)>();
 
                 foreach (var dlcFolder in dlcFolders)
                 {
-                    var dlcName = Path.GetFileName(dlcFolder);
+                    var dlcName = Path.GetFileName(dlcFolder).NormalizeDLCFolderName();
                     var autoloadPath = Path.Combine(dlcFolder, "Autoload.ini");
 
                     if (File.Exists(autoloadPath))
@@ -174,7 +175,7 @@ namespace LegendaryExplorerCore.GameFilesystem
 
                         if (modMount.HasValue && globalTalkTables.Count > 0)
                         {
-                            dlcMounts.Add((dlcName, modMount.Value, globalTalkTables));
+                            dlcMounts.Add((dlcFolder, modMount.Value, globalTalkTables));
                         }
                     }
 
@@ -182,11 +183,11 @@ namespace LegendaryExplorerCore.GameFilesystem
                     {
                         if (dlcName == "DLC_UNC")
                         {
-                            dlcMounts.Add((dlcName, 1, ["DLC_UNC_GlobalTlk.GlobalTlk_tlk"]));
+                            dlcMounts.Add((dlcFolder, 1, ["DLC_UNC_GlobalTlk.GlobalTlk_tlk"]));
                         }
                         else if (dlcName == "DLC_Vegas")
                         {
-                            dlcMounts.Add((dlcName, 2, ["DLC_Vegas_GlobalTlk.GlobalTlk_tlk"]));
+                            dlcMounts.Add((dlcFolder, 2, ["DLC_Vegas_GlobalTlk.GlobalTlk_tlk"]));
                         }
                     }
                 }
@@ -195,9 +196,9 @@ namespace LegendaryExplorerCore.GameFilesystem
                 dlcMounts.Sort((a, b) => a.mountPriority.CompareTo(b.mountPriority));
 
                 // Load TLK files from each DLC
-                foreach (var (dlcName, mountPriority, globalTalkTables) in dlcMounts)
+                foreach (var (dlcFolder, _, globalTalkTables) in dlcMounts)
                 {
-                    var cookedPath = Path.Combine(dlcPath, dlcName, game.CookedDirName());
+                    var cookedPath = Path.Combine(dlcFolder, game.CookedDirName());
 
                     foreach (var globalTalkTable in globalTalkTables)
                     {
@@ -268,12 +269,12 @@ namespace LegendaryExplorerCore.GameFilesystem
             var dlcPath = Path.Combine(gamePath, "BIOGame", "DLC");
             if (Directory.Exists(dlcPath))
             {
-                var dlcFolders = Directory.GetDirectories(dlcPath, "DLC_*");
-                var dlcMounts = new List<(string dlcName, MountFile mount)>();
+                var dlcFolders = MELoadedDLC.GetAllDLCFolders(game, gamePath);
+                var dlcMounts = new List<(string dlcFolder, string dlcName, MountFile mount)>();
 
                 foreach (var dlcFolder in dlcFolders)
                 {
-                    var dlcName = Path.GetFileName(dlcFolder);
+                    var dlcName = Path.GetFileName(dlcFolder).NormalizeDLCFolderName();
                     var cookedPath = Path.Combine(dlcFolder, game.CookedDirName());
                     var mountPath = Path.Combine(cookedPath, "Mount.dlc");
 
@@ -282,7 +283,7 @@ namespace LegendaryExplorerCore.GameFilesystem
                     if (File.Exists(mountPath))
                     {
                         mount = new MountFile(mountPath);
-                        dlcMounts.Add((dlcName, mount));
+                        dlcMounts.Add((dlcFolder, dlcName, mount));
                     }
                 }
 
@@ -290,9 +291,9 @@ namespace LegendaryExplorerCore.GameFilesystem
                 dlcMounts.Sort((a, b) => a.mount.MountPriority.CompareTo(b.mount.MountPriority));
 
                 // Load TLK files from each DLC
-                foreach (var (dlcName, mount) in dlcMounts)
+                foreach (var (dlcFolder, dlcName, mount) in dlcMounts)
                 {
-                    var cookedPath = Path.Combine(dlcPath, dlcName, game.CookedDirName());
+                    var cookedPath = Path.Combine(dlcFolder, game.CookedDirName());
                     var bioEngine = Path.Combine(cookedPath, "BIOEngine.ini");
 
                     int? moduleNum = null;
@@ -367,12 +368,12 @@ namespace LegendaryExplorerCore.GameFilesystem
             var dlcPath = Path.Combine(gamePath, "BIOGame", "DLC");
             if (Directory.Exists(dlcPath))
             {
-                var dlcFolders = Directory.GetDirectories(dlcPath, "DLC_*");
-                var dlcMounts = new List<(string dlcName, MountFile mount)>();
+                var dlcFolders = MELoadedDLC.GetAllDLCFolders(game, gamePath);
+                var dlcMounts = new List<(string dlcFolder, string dlcName, MountFile mount)>();
 
                 foreach (var dlcFolder in dlcFolders)
                 {
-                    var dlcName = Path.GetFileName(dlcFolder);
+                    var dlcName = Path.GetFileName(dlcFolder).NormalizeDLCFolderName();
                     var cookedPath = Path.Combine(dlcFolder, "CookedPCConsole");
                     var mountPath = Path.Combine(cookedPath, "Mount.dlc");
 
@@ -408,7 +409,7 @@ namespace LegendaryExplorerCore.GameFilesystem
 
                     if (mount != null)
                     {
-                        dlcMounts.Add((dlcName, mount));
+                        dlcMounts.Add((dlcFolder, dlcName, mount));
                     }
                 }
 
@@ -416,9 +417,10 @@ namespace LegendaryExplorerCore.GameFilesystem
                 dlcMounts.Sort((a, b) => a.mount.MountPriority.CompareTo(b.mount.MountPriority));
 
                 // Load TLK files from each DLC
-                foreach (var (dlcName, mount) in dlcMounts)
+                foreach (var (dlcFolder, dlcName, mount) in dlcMounts)
                 {
-                    var dlcTlkPath = Path.Combine(dlcPath, dlcName, "CookedPCConsole", $"{dlcName}_{localization}.tlk");
+                    var cookedPath = Path.Combine(dlcFolder, "CookedPCConsole");
+                    var dlcTlkPath = Path.Combine(cookedPath, $"{dlcName}_{localization}.tlk");
                     if (File.Exists(dlcTlkPath))
                     {
                         var tlk = new ME2ME3TalkFile(dlcTlkPath);
@@ -427,7 +429,6 @@ namespace LegendaryExplorerCore.GameFilesystem
                     else if (game == MEGame.ME3)
                     {
                         // Try to get TLK from Default.sfar
-                        var cookedPath = Path.Combine(dlcPath, dlcName, "CookedPCConsole");
                         var sfarPath = Path.Combine(cookedPath, "Default.sfar");
                         if (File.Exists(sfarPath))
                         {

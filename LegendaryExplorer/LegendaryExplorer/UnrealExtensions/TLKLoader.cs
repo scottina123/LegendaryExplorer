@@ -33,7 +33,7 @@ namespace LegendaryExplorer.UnrealExtensions
                 var files = JsonConvert.DeserializeObject<List<(int, string)>>(File.ReadAllText(LoadedTLKsPathME1));
                 foreach ((int exportnum, string filename) in files)
                 {
-                    ME1TalkFiles.LoadTlkData(filename, exportnum);
+                    ME1TalkFiles.LoadTlkData(MELoadedDLC.ResolveToggledDLCFilePath(filename), exportnum);
                 }
             }
             else
@@ -62,7 +62,7 @@ namespace LegendaryExplorer.UnrealExtensions
                 {
                     try
                     {
-                        ME2TalkFiles.LoadTlkData(filePath);
+                        ME2TalkFiles.LoadTlkData(MELoadedDLC.ResolveToggledDLCFilePath(filePath));
                     }
                     catch
                     {
@@ -85,7 +85,7 @@ namespace LegendaryExplorer.UnrealExtensions
                 {
                     try
                     {
-                        ME3TalkFiles.LoadTlkData(filePath);
+                        ME3TalkFiles.LoadTlkData(MELoadedDLC.ResolveToggledDLCFilePath(filePath));
                     }
                     catch
                     {
@@ -106,7 +106,7 @@ namespace LegendaryExplorer.UnrealExtensions
                 var files = JsonConvert.DeserializeObject<List<(int, string)>>(File.ReadAllText(LoadedTLKsPathLE1));
                 foreach ((int exportnum, string filename) in files)
                 {
-                    LE1TalkFiles.LoadTlkData(filename, exportnum);
+                    LE1TalkFiles.LoadTlkData(MELoadedDLC.ResolveToggledDLCFilePath(filename), exportnum);
                 }
             }
         }
@@ -120,7 +120,7 @@ namespace LegendaryExplorer.UnrealExtensions
                 {
                     try
                     {
-                        LE2TalkFiles.LoadTlkData(filePath);
+                        LE2TalkFiles.LoadTlkData(MELoadedDLC.ResolveToggledDLCFilePath(filePath));
                     }
                     catch
                     {
@@ -143,7 +143,7 @@ namespace LegendaryExplorer.UnrealExtensions
                 {
                     try
                     {
-                        LE3TalkFiles.LoadTlkData(filePath);
+                        LE3TalkFiles.LoadTlkData(MELoadedDLC.ResolveToggledDLCFilePath(filePath));
                     }
                     catch
                     {
