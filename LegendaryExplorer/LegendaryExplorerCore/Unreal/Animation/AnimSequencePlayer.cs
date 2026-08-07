@@ -95,7 +95,8 @@ public class AnimSequencePlayer : AnimPlayer
     /// <summary>
     /// Maps animation bone names to skeleton bone indices and prepares for playback.
     /// </summary>
-    public void SetAnimation(AnimSequence animSequence, PackageCache packageCache = null)
+    public void SetAnimation(AnimSequence animSequence, PackageCache packageCache = null,
+        bool animationDataIsPrepared = false)
     {
         _scheduledClips = null;
         _scheduledBasePose = null;
@@ -112,7 +113,10 @@ public class AnimSequencePlayer : AnimPlayer
             return;
         }
 
-        animSequence.DecompressAnimationData();
+        if (!animationDataIsPrepared)
+        {
+            animSequence.DecompressAnimationData();
+        }
         if (animSequence.RawAnimationData is null)
         {
             throw new InvalidOperationException("AnimSequence has no animation data!");

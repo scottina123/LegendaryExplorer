@@ -778,6 +778,7 @@ public class SkeletalMeshComponentProxy : MeshComponentProxy
     private bool hasRenderableMesh;
     private ExportEntry pendingMorphExport;
     private bool pendingMorphUsesStoredLods;
+    private ActorPreviewAnimation pendingPreviewAnimation;
 
     public SkeletalMeshComponentProxy(MeshRenderContext context, ExportEntry componentExport, ActorProxy parent) : base(context, componentExport, parent)
     {
@@ -835,8 +836,9 @@ public class SkeletalMeshComponentProxy : MeshComponentProxy
         if (pendingMorphExport is not null)
         {
             ApplyPendingMorph();
-            UpdateScene(RenderContext, 0f);
         }
+        ApplyPendingPreviewAnimation();
+        UpdateScene(RenderContext, 0f);
         RenderResourcesInitialized = true;
         return true;
     }
@@ -899,9 +901,53 @@ public class SkeletalMeshComponentProxy : MeshComponentProxy
         if (animPlayer is null) return;
         if (animSequence.Name != animPlayer.AnimName)
         {
-            animPlayer.SetAnimation(animSequence);
+            animPlayer.SetAnimation(animSequence, renderContext.PackageCache);
         }
         animPlayer.SetCurrentTime(pos);
+        skinnedMeshRenderer.NeedsUpdate = true;
+    }
+
+    internal void ConfigurePreviewAnimation(ActorPreviewAnimation animation)
+    {
+        lock (RenderResourceLock)
+        {
+            pendingPreviewAnimation = animation;
+            if (!RenderResourcesInitialized)
+            {
+                return;
+            }
+
+            if (animation is null)
+            {
+                SetAnimation(null, 0f);
+            }
+            else
+            {
+                ApplyPendingPreviewAnimation();
+            }
+            UpdateScene(RenderContext, 0f);
+        }
+    }
+
+    private void ApplyPendingPreviewAnimation()
+    {
+        AnimSequence animation = pendingPreviewAnimation?.Resolve(renderContext);
+        if (animation is null)
+        {
+            return;
+        }
+
+        EnsureSkinningRenderer();
+        if (animPlayer is null)
+        {
+            return;
+        }
+
+        if (animation.Name != animPlayer.AnimName)
+        {
+            animPlayer.SetAnimation(animation, renderContext.PackageCache, animationDataIsPrepared: true);
+        }
+        animPlayer.SetCurrentTime(animation.SequenceLength * ActorPreviewAnimation.RepresentativePoseFraction);
         skinnedMeshRenderer.NeedsUpdate = true;
     }
 

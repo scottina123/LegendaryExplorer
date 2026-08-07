@@ -138,6 +138,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
     ];
 
     public LevelEditorRenderContext RenderContext { get; }
+    public bool PreviewConfiguredActorAnimations => true;
 
     public ObservableCollectionExtended<OpenLevelFile> OpenFiles { get; } = [];
     private OpenLevelFile _activeFile;
@@ -629,7 +630,8 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
             {
                 continue;
             }
-            if (!RenderContext.IsBoundsVisible(actor.GetBounds())) continue;
+            BoxSphereBounds actorBounds = actor.GetBounds();
+            if (!RenderContext.IsBoundsVisible(actorBounds)) continue;
             int hitID = actor.HitID;
             RenderContext.CurrentHitTestId = new Vector3((hitID & 0xFF) / 255f, ((hitID >> 8) & 0xFF) / 255f, ((hitID >> 16) & 0xFF) / 255f);
             if (actor == selectedActor)
@@ -637,6 +639,17 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
                 RenderContext.RenderFlags |= LevelEditorRenderContext.ShaderFlags.Selected;
             }
             actor.Render(RenderContext, pass);
+            if (pass == RenderPass.Base && actor == selectedActor
+                && !string.IsNullOrWhiteSpace(actor.PreviewAnimationName))
+            {
+                Vector3 labelPosition = actorBounds.Origin
+                                        + Vector3.UnitZ * (MathF.Abs(actorBounds.BoxExtent.Z) + 20f);
+                if (RenderContext.WorldToPixel(labelPosition, out Vector2 pixel))
+                {
+                    RenderContext.ScreenLabels.Add(new ScreenLabel(pixel.X, pixel.Y,
+                        $"Animation: {actor.PreviewAnimationName}"));
+                }
+            }
             RenderContext.RenderFlags &= ~LevelEditorRenderContext.ShaderFlags.Selected;
         }
     }

@@ -202,9 +202,12 @@ public class MeshRenderContext : RenderContext
     private readonly record struct MeshSourceKey(IMEPackage Package, int UIndex);
     private readonly record struct MeshGeometryKey(IMEPackage Package, int UIndex, Type VertexType, int LOD);
     private readonly record struct EntryReferenceKey(IMEPackage Package, int UIndex);
+    private readonly record struct AnimationLookupKey(IMEPackage Package, int AnimSetUIndex, string AnimationName);
     private readonly record struct LightQueryKey(Vector3 Position, uint LightingChannelMask);
     private readonly Dictionary<MeshSourceKey, StaticMesh> StaticMeshCache = [];
     private readonly Dictionary<MeshSourceKey, SkeletalMesh> SkeletalMeshCache = [];
+    private readonly Dictionary<MeshSourceKey, AnimSequence> AnimSequenceCache = [];
+    private readonly Dictionary<AnimationLookupKey, AnimSequence> ConfiguredAnimationCache = [];
     private readonly Dictionary<EntryReferenceKey, ExportEntry> ResolvedExportCache = [];
     private readonly Dictionary<MeshGeometryKey, ISharedMeshData> MeshGeometryCache = [];
     private readonly object ResourcePreparationCacheLock = new();
@@ -285,6 +288,86 @@ public class MeshRenderContext : RenderContext
             }
             return mesh;
         }
+    }
+
+    /// <summary>
+    /// Resolves an actor's configured animation through one of its AnimSet/BioDynamicAnimSet references.
+    /// Both successful and failed lookups are cached because character-heavy levels frequently reuse the
+    /// same animation set and pose hundreds of times.
+    /// </summary>
+    internal AnimSequence ResolveConfiguredAnimation(IMEPackage sourcePackage,
+        IReadOnlyList<int> animSetUIndexes, NameReference animationName)
+    {
+        if (sourcePackage is null || animSetUIndexes is null || animSetUIndexes.Count == 0
+            || string.IsNullOrWhiteSpace(animationName.Name)
+            || animationName.Name.Equals("None", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        string lookupName = animationName.Instanced.ToUpperInvariant();
+        lock (ResourcePreparationCacheLock)
+        {
+            foreach (int animSetUIndex in animSetUIndexes)
+            {
+                if (animSetUIndex == 0)
+                {
+                    continue;
+                }
+
+                var lookupKey = new AnimationLookupKey(sourcePackage, animSetUIndex, lookupName);
+                if (ConfiguredAnimationCache.TryGetValue(lookupKey, out AnimSequence cachedAnimation))
+                {
+                    if (cachedAnimation is not null)
+                    {
+                        return cachedAnimation;
+                    }
+                    continue;
+                }
+
+                AnimSequence resolvedAnimation = null;
+                ExportEntry animSet = ResolveExportCached(sourcePackage, animSetUIndex);
+                if (animSet?.GetProperty<ArrayProperty<ObjectProperty>>("Sequences") is { } sequences)
+                {
+                    foreach (ObjectProperty sequenceReference in sequences)
+                    {
+                        ExportEntry sequenceExport = ResolveExportCached(animSet.FileRef, sequenceReference.Value);
+                        if (sequenceExport?.ClassName != "AnimSequence")
+                        {
+                            continue;
+                        }
+
+                        NameReference sequenceName = sequenceExport.GetProperty<NameProperty>("SequenceName")?.Value
+                                                     ?? sequenceExport.ObjectName;
+                        if (sequenceName.Name.Equals(animationName.Name, StringComparison.OrdinalIgnoreCase))
+                        {
+                            resolvedAnimation = GetCachedAnimSequence(sequenceExport);
+                            break;
+                        }
+                    }
+                }
+
+                ConfiguredAnimationCache[lookupKey] = resolvedAnimation;
+                if (resolvedAnimation is not null)
+                {
+                    return resolvedAnimation;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private AnimSequence GetCachedAnimSequence(ExportEntry export)
+    {
+        var key = new MeshSourceKey(export.FileRef, export.UIndex);
+        if (!AnimSequenceCache.TryGetValue(key, out AnimSequence animation))
+        {
+            animation = ObjectBinary.From<AnimSequence>(export, PackageCache);
+            animation.DecompressAnimationData();
+            AnimSequenceCache.Add(key, animation);
+        }
+        return animation;
     }
 
     internal Mesh<TVertex> GetOrCreateCachedMesh<TVertex>(ExportEntry export, int lod,
@@ -1142,6 +1225,8 @@ public class MeshRenderContext : RenderContext
             MeshGeometryCache.Clear();
             StaticMeshCache.Clear();
             SkeletalMeshCache.Clear();
+            AnimSequenceCache.Clear();
+            ConfiguredAnimationCache.Clear();
             ResolvedExportCache.Clear();
         }
         NearestLightCache.Clear();

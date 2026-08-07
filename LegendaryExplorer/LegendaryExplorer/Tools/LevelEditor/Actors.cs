@@ -54,6 +54,16 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy, ITr
 
     public string DisplayText { get; }
 
+    private string previewAnimationName;
+    /// <summary>
+    /// Animation sampled for this actor's static Level Editor viewport pose.
+    /// </summary>
+    public string PreviewAnimationName
+    {
+        get => previewAnimationName;
+        private set => SetProperty(ref previewAnimationName, value);
+    }
+
     private bool isDirty;
     public bool IsDirty
     {
@@ -639,6 +649,105 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy, ITr
         }
     }
 
+    protected void ConfigureAnimationFromSkeletalMeshComponent(SkeletalMeshComponentProxy animationComponent,
+        params SkeletalMeshComponentProxy[] poseComponents)
+    {
+        if (Editor?.PreviewConfiguredActorAnimations != true || animationComponent is null)
+        {
+            return;
+        }
+
+        ObjectProperty animationNodeReference = animationComponent.Properties.GetProp<ObjectProperty>("Animations");
+        ExportEntry animationNode = animationNodeReference is { Value: not 0 }
+            ? Editor.RenderContext.ResolveExportCached(animationComponent.Export.FileRef, animationNodeReference.Value)
+            : null;
+        animationNode ??= animationComponent.Export.FileRef.Exports.FirstOrDefault(export =>
+            export.idxLink == animationComponent.Export.UIndex
+            && export.ClassName is "AnimNodeSequence" or "BioAnimNodeSequence");
+        NameReference animationName = animationNode?.GetCondensedProperties()
+            .GetProp<NameProperty>("AnimSeqName")?.Value ?? NameReference.None;
+
+        List<int> animSetReferences = animationComponent.Properties
+            .GetProp<ArrayProperty<ObjectProperty>>("AnimSets")?
+            .Where(reference => reference.Value != 0)
+            .Select(reference => reference.Value)
+            .ToList() ?? [];
+        if (animSetReferences.Count == 0)
+        {
+            animSetReferences.AddRange(animationComponent.Export.FileRef.Exports
+                .Where(export => export.idxLink == animationComponent.Export.UIndex
+                                 && export.ClassName is "AnimSet" or "BioDynamicAnimSet")
+                .Select(export => export.UIndex));
+        }
+
+        ConfigurePreviewAnimation(CreatePreviewAnimation(animationComponent.Export.FileRef,
+            animationName, animSetReferences), poseComponents);
+    }
+
+    protected void ConfigureAnimationFromStuntGestureModule(params SkeletalMeshComponentProxy[] poseComponents)
+    {
+        if (Editor?.PreviewConfiguredActorAnimations != true)
+        {
+            return;
+        }
+
+        ExportEntry gestureModule = null;
+        if (Properties.GetProp<ArrayProperty<ObjectProperty>>("Modules") is { } modules)
+        {
+            foreach (ObjectProperty moduleReference in modules)
+            {
+                ExportEntry candidate = Editor.RenderContext.ResolveExportCached(Pcc, moduleReference.Value);
+                if (candidate?.ClassName == "SFXModule_Gestures")
+                {
+                    gestureModule = candidate;
+                    break;
+                }
+            }
+        }
+        gestureModule ??= Pcc.Exports.FirstOrDefault(export =>
+            export.idxLink == Export.UIndex && export.ClassName == "SFXModule_Gestures");
+
+        PropertyCollection gestureProperties = gestureModule?.GetCondensedProperties();
+        NameReference animationName = gestureProperties?.GetProp<NameProperty>("m_nmDefaultPoseAnim")?.Value
+                                      ?? NameReference.None;
+        List<int> animSetReferences = [];
+        if (gestureProperties?.GetProp<ObjectProperty>("m_pDefaultPoseSet") is { Value: not 0 } defaultPoseSet)
+        {
+            animSetReferences.Add(defaultPoseSet.Value);
+        }
+        if (animSetReferences.Count == 0 && gestureModule is not null)
+        {
+            animSetReferences.AddRange(Pcc.Exports
+                .Where(export => export.idxLink == gestureModule.UIndex
+                                 && export.ClassName is "AnimSet" or "BioDynamicAnimSet")
+                .Select(export => export.UIndex));
+        }
+
+        ConfigurePreviewAnimation(CreatePreviewAnimation(Pcc, animationName, animSetReferences), poseComponents);
+    }
+
+    private static ActorPreviewAnimation CreatePreviewAnimation(IMEPackage sourcePackage,
+        NameReference animationName, IReadOnlyList<int> animSetReferences)
+    {
+        if (sourcePackage is null || animSetReferences.Count == 0
+            || string.IsNullOrWhiteSpace(animationName.Name)
+            || animationName.Name.Equals("None", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+        return new ActorPreviewAnimation(sourcePackage, animationName, animSetReferences);
+    }
+
+    private void ConfigurePreviewAnimation(ActorPreviewAnimation animation,
+        IEnumerable<SkeletalMeshComponentProxy> poseComponents)
+    {
+        PreviewAnimationName = animation?.DisplayName;
+        foreach (SkeletalMeshComponentProxy component in poseComponents.Where(component => component is not null).Distinct())
+        {
+            component.ConfigurePreviewAnimation(animation);
+        }
+    }
+
     /// <summary>
     /// Applies a morph to the mesh roles represented by this preview actor without serializing it.
     /// </summary>
@@ -692,6 +801,7 @@ public class SkeletalMeshActorProxy : ActorProxy
         if (GetType() == typeof(SkeletalMeshActorProxy))
         {
             ApplyMorphFace(SkeletalMeshComponent);
+            ConfigureAnimationFromSkeletalMeshComponent(SkeletalMeshComponent, SkeletalMeshComponent);
         }
     }
 
@@ -722,6 +832,8 @@ public class SFXSkeletalMeshActorProxy : SkeletalMeshActorProxy
         AddComponent(context.RenderContext, ref HairMesh);
         AddComponent(context.RenderContext, ref HeadGearMesh);
         ApplyMorphFace(HeadMesh, HairMesh);
+        ConfigureAnimationFromSkeletalMeshComponent(SkeletalMeshComponent,
+            SkeletalMeshComponent, HeadMesh, HairMesh, HeadGearMesh);
     }
 
     public override void SetAnimation(AnimSequence animSequence, float pos)
@@ -788,6 +900,7 @@ public class SFXStuntActorProxy : ActorProxy
         AddComponent(context.RenderContext, ref HairMesh);
         AddComponent(context.RenderContext, ref HeadGearMesh);
         ApplyMorphFace(HeadMesh, HairMesh);
+        ConfigureAnimationFromStuntGestureModule(BodyMesh, HeadMesh, HairMesh, HeadGearMesh);
     }
 
     public override void SetAnimation(AnimSequence animSequence, float pos)
