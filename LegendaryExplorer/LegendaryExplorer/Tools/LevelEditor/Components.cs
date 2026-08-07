@@ -871,6 +871,10 @@ public class SkeletalMeshComponentProxy : MeshComponentProxy
     private ExportEntry pendingMorphExport;
     private bool pendingMorphUsesStoredLods;
     private ActorPreviewAnimation pendingPreviewAnimation;
+    // Resource preparation can run on Level Editor's loader thread. CPU skinning is safe there,
+    // but D3D11's immediate context is owned by the render thread, so publish the prepared vertices
+    // and defer only their dynamic-buffer upload until the component is actually rendered.
+    private volatile bool preparedSkinningUploadPending;
 
     public SkeletalMeshComponentProxy(MeshRenderContext context, ExportEntry componentExport, ActorProxy parent) : base(context, componentExport, parent)
     {
@@ -930,13 +934,14 @@ public class SkeletalMeshComponentProxy : MeshComponentProxy
             ApplyPendingMorph();
         }
         ApplyPendingPreviewAnimation();
-        UpdateScene(RenderContext, 0f);
+        PrepareSkinningForUpload();
         RenderResourcesInitialized = true;
         return true;
     }
 
     public override void UpdateScene(MeshRenderContext context, float deltaTime)
     {
+        UploadPreparedSkinning(context);
         if (skinnedMeshRenderer?.NeedsUpdate is true)
         {
             if (GameShaderMesh is not null)
@@ -954,6 +959,7 @@ public class SkeletalMeshComponentProxy : MeshComponentProxy
     {
         if (!IsVisible) return;
         if (!RenderResourcesInitialized) return;
+        UploadPreparedSkinning(context);
         int renderLod = LOD;
         if (GameShaderMesh is not null)
         {
@@ -963,6 +969,36 @@ public class SkeletalMeshComponentProxy : MeshComponentProxy
         {
             Mesh?.Render(pass, context, renderLod);
         }
+    }
+
+    private void PrepareSkinningForUpload()
+    {
+        if (skinnedMeshRenderer?.NeedsUpdate is not true)
+        {
+            return;
+        }
+
+        preparedSkinningUploadPending = GameShaderMesh is not null
+            ? skinnedMeshRenderer.PrepareSkinning(GameShaderMesh.LODs[LOD].Mesh, animPlayer)
+            : Mesh is not null && skinnedMeshRenderer.PrepareSkinning(Mesh.LODs[LOD].Mesh, animPlayer);
+    }
+
+    private void UploadPreparedSkinning(MeshRenderContext context)
+    {
+        if (!preparedSkinningUploadPending)
+        {
+            return;
+        }
+
+        if (GameShaderMesh is not null)
+        {
+            GameShaderMesh.LODs[LOD].Mesh.UpdateVertices(context.ImmediateContext);
+        }
+        else
+        {
+            Mesh?.LODs[LOD].Mesh.UpdateVertices(context.ImmediateContext);
+        }
+        preparedSkinningUploadPending = false;
     }
 
     private void EnsureSkinningRenderer()

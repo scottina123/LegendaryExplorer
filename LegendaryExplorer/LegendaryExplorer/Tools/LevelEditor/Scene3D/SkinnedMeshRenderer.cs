@@ -155,17 +155,17 @@ public class SkinnedMeshRenderer
     }
 
     /// <summary>
-    /// Performs CPU skinning: blends skinning matrices per vertex, transforms bind-pose position/normal,
-    /// writes results to the mesh vertex list with Unreal-to-renderer coordinate conversion,
-    /// then rebuilds the D3D vertex buffer.
+    /// Performs the CPU portion of skinning: blends matrices per vertex, transforms the bind-pose
+    /// position/normal, and writes the results to the mesh vertex list. The caller can upload those
+    /// prepared vertices later when it owns the D3D immediate context.
     /// </summary>
-    public void UpdateSkinning(DeviceContext context, Mesh<WorldVertex> mesh, AnimPlayer animPlayer)
+    public bool PrepareSkinning(Mesh<WorldVertex> mesh, AnimPlayer animPlayer)
     {
         NeedsUpdate = false;
-        if (_skinVertices == null || mesh == null) return;
+        if (_skinVertices == null || mesh == null || animPlayer == null) return false;
 
         var skinningMatrices = animPlayer.ComputeSkinningMatrices();
-        if (skinningMatrices == null) return;
+        if (skinningMatrices == null) return false;
 
         mesh.EnsureUniqueVertices();
         int vertexCount = Math.Min(_skinVertices.Length, mesh.Vertices.Count);
@@ -189,20 +189,28 @@ public class SkinnedMeshRenderer
             mesh.Vertices[i] = new WorldVertex(skinnedPos, rendererNormal, sv.UV);
         }
 
-        mesh.UpdateVertices(context);
+        return true;
+    }
+
+    public void UpdateSkinning(DeviceContext context, Mesh<WorldVertex> mesh, AnimPlayer animPlayer)
+    {
+        if (PrepareSkinning(mesh, animPlayer))
+        {
+            mesh.UpdateVertices(context);
+        }
     }
 
     /// <summary>
     /// Updates the local-vertex-factory mesh used by the compiled game-shader preview while preserving
     /// its tangents, UV sets, and vertex color.
     /// </summary>
-    public void UpdateSkinning(DeviceContext context, Mesh<LEVertex> mesh, AnimPlayer animPlayer)
+    public bool PrepareSkinning(Mesh<LEVertex> mesh, AnimPlayer animPlayer)
     {
         NeedsUpdate = false;
-        if (_skinVertices == null || mesh == null) return;
+        if (_skinVertices == null || mesh == null || animPlayer == null) return false;
 
         var skinningMatrices = animPlayer.ComputeSkinningMatrices();
-        if (skinningMatrices == null) return;
+        if (skinningMatrices == null) return false;
 
         mesh.EnsureUniqueVertices();
         int vertexCount = Math.Min(_skinVertices.Length, mesh.Vertices.Count);
@@ -221,7 +229,15 @@ public class SkinnedMeshRenderer
                 _game, skinnedPos, new Vector4(skinnedNormal, sv.BindNormalW));
         }
 
-        mesh.UpdateVertices(context);
+        return true;
+    }
+
+    public void UpdateSkinning(DeviceContext context, Mesh<LEVertex> mesh, AnimPlayer animPlayer)
+    {
+        if (PrepareSkinning(mesh, animPlayer))
+        {
+            mesh.UpdateVertices(context);
+        }
     }
 
     /// <summary>
