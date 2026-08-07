@@ -22,6 +22,11 @@ public static class NavigationSerializer
 {
     private const string ReachSpecClass = "ReachSpec";
     private const string SlotReachSpecClass = "SlotToSlotReachSpec";
+    private const string MantleReachSpecClass = "MantleReachSpec";
+    private const float StandardNodeRadius = 40f;
+    private const float StandardNodeHeight = 95f;
+    private const float CoverLinkRadius = 105f;
+    private const float CoverLinkHeight = 145f;
 
     public static NavigationSerializationResult Write(OpenLevelFile file, NavigationGenerationResult result,
         NavigationGenerationSettings settings)
@@ -49,11 +54,13 @@ public static class NavigationSerializer
             throw new ArgumentException("The level export does not belong to the supplied package.", nameof(levelExport));
 
         Level level = levelExport.GetBinaryData<Level>();
+        float nodeRadius = MathF.Max(settings.PawnRadius, StandardNodeRadius);
+        float nodeHeight = MathF.Max(settings.PawnHeight, StandardNodeHeight);
         var pathExports = new List<ExportEntry>(result.Nodes.Count);
         foreach (GeneratedNavigationNode node in result.Nodes)
         {
             pathExports.Add(CreateNavigationActor(package, levelExport, "PathNode", node.Position,
-                default, settings.PawnRadius, settings.PawnHeight));
+                default, nodeRadius, nodeHeight));
         }
 
         var coverLinks = new List<ExportEntry>(result.CoverLinks.Count);
@@ -63,29 +70,44 @@ public static class NavigationSerializer
         {
             Rotator linkRotation = Rotator.FromDirectionVector(generatedLink.Facing);
             ExportEntry link = CreateNavigationActor(package, levelExport, "CoverLink", generatedLink.Position,
-                linkRotation, settings.PawnRadius, settings.PawnHeight);
+                linkRotation, MathF.Max(settings.PawnRadius, CoverLinkRadius),
+                MathF.Max(settings.PawnHeight, CoverLinkHeight));
             var markers = new List<ExportEntry>(generatedLink.Slots.Count);
-            var slotProperties = new List<StructProperty>(generatedLink.Slots.Count);
             for (int slotIndex = 0; slotIndex < generatedLink.Slots.Count; slotIndex++)
             {
                 GeneratedCoverSlot generatedSlot = generatedLink.Slots[slotIndex];
                 Rotator slotRotation = Rotator.FromDirectionVector(generatedSlot.Facing);
                 ExportEntry marker = CreateNavigationActor(package, levelExport, "CoverSlotMarker",
-                    generatedSlot.Position, slotRotation, settings.PawnRadius, settings.PawnHeight);
+                    generatedSlot.Position, slotRotation, nodeRadius, nodeHeight);
                 marker.WriteProperty(CreateCoverInfo(link, slotIndex, "OwningSlot"));
                 marker.WriteProperty(new ObjectProperty(link, "Owner"));
                 markers.Add(marker);
+                coverSlotCount++;
+            }
+            coverLinks.Add(link);
+            markerGroups.Add(markers);
+        }
 
+        for (int linkIndex = 0; linkIndex < result.CoverLinks.Count; linkIndex++)
+        {
+            GeneratedCoverLink generatedLink = result.CoverLinks[linkIndex];
+            ExportEntry link = coverLinks[linkIndex];
+            Rotator linkRotation = Rotator.FromDirectionVector(generatedLink.Facing);
+            var slotProperties = new List<StructProperty>(generatedLink.Slots.Count);
+            for (int slotIndex = 0; slotIndex < generatedLink.Slots.Count; slotIndex++)
+            {
+                GeneratedCoverSlot generatedSlot = generatedLink.Slots[slotIndex];
+                Rotator slotRotation = Rotator.FromDirectionVector(generatedSlot.Facing);
                 Vector3 localOffset = Vector3.TransformNormal(generatedSlot.Position - generatedLink.Position,
                     ActorUtils.InverseRotation(linkRotation));
                 int relativeYaw = slotRotation.Yaw - linkRotation.Yaw;
-                slotProperties.Add(CreateGame3CoverSlot(package, localOffset, relativeYaw, marker,
-                    generatedSlot));
-                coverSlotCount++;
+                ExportEntry mantleTarget = IsValidMantleTarget(result.CoverLinks, generatedSlot)
+                    ? coverLinks[generatedSlot.MantleTargetLink]
+                    : null;
+                slotProperties.Add(CreateGame3CoverSlot(package, localOffset, relativeYaw,
+                    markerGroups[linkIndex][slotIndex], generatedSlot, mantleTarget));
             }
             link.WriteProperty(new ArrayProperty<StructProperty>(slotProperties, "Slots"));
-            coverLinks.Add(link);
-            markerGroups.Add(markers);
         }
 
         var navigationChain = new List<ExportEntry>(pathExports.Count + coverLinks.Count + coverSlotCount);
@@ -137,6 +159,14 @@ public static class NavigationSerializer
                     PathTools.CreateReachSpec(marker, true, markers[slotIndex + 1], SlotReachSpecClass,
                         settings.PawnRadius, settings.PawnHeight);
                 }
+                if (IsValidMantleTarget(result.CoverLinks, slot) &&
+                    (linkIndex < slot.MantleTargetLink ||
+                     linkIndex == slot.MantleTargetLink && slotIndex < slot.MantleTargetSlot))
+                {
+                    ExportEntry targetMarker = markerGroups[slot.MantleTargetLink][slot.MantleTargetSlot];
+                    PathTools.CreateReachSpec(marker, true, targetMarker, MantleReachSpecClass,
+                        settings.PawnRadius, settings.PawnHeight);
+                }
             }
         }
 
@@ -186,7 +216,7 @@ public static class NavigationSerializer
         new("CoverInfo", [new ObjectProperty(link, "Link"), new IntProperty(slotIndex, "SlotIdx")], name, true);
 
     private static StructProperty CreateGame3CoverSlot(IMEPackage package, Vector3 localOffset, int relativeYaw,
-        ExportEntry marker, GeneratedCoverSlot slot)
+        ExportEntry marker, GeneratedCoverSlot slot, ExportEntry mantleTargetLink)
     {
         PropertyCollection properties = GlobalUnrealObjectInfo.getDefaultStructValue(
             package.Game, "CoverSlot", stripTransients: true, package)
@@ -205,7 +235,8 @@ public static class NavigationSerializer
         SetBool(properties, "bLeanRight", slot.LeanRight);
         SetBool(properties, "bForceCanPopUp", false);
         SetBool(properties, "bCanPopUp", !slot.IsStanding);
-        SetBool(properties, "bCanMantle", false);
+        SetBool(properties, "bCanMantle", mantleTargetLink is not null);
+        SetBool(properties, "bAllowMantle", true);
         SetBool(properties, "bCanClimbUp", false);
         SetBool(properties, "bForceCanCoverSlip_Left", false);
         SetBool(properties, "bForceCanCoverSlip_Right", false);
@@ -216,11 +247,21 @@ public static class NavigationSerializer
         SetBool(properties, "bCanCoverTurn_Left", slot.LeanLeft);
         SetBool(properties, "bCanCoverTurn_Right", slot.LeanRight);
         SetBool(properties, "bEnabled", true);
+        if (mantleTargetLink is not null && properties.GetProp<StructProperty>("MantleTarget") is { } mantleTarget)
+        {
+            mantleTarget.Properties.AddOrReplaceProp(new IntProperty(slot.MantleTargetSlot, "SlotIdx"));
+            mantleTarget.Properties.AddOrReplaceProp(new IntProperty(0, "Direction"));
+            mantleTarget.Properties.AddOrReplaceProp(new ObjectProperty(mantleTargetLink, "Actor"));
+        }
         string coverType = slot.IsStanding ? "CT_Standing" : "CT_MidLevel";
         properties.AddOrReplaceProp(new EnumProperty(coverType, "ECoverType", package.Game, "ForceCoverType"));
         properties.AddOrReplaceProp(new EnumProperty(coverType, "ECoverType", package.Game, "CoverType"));
         return new StructProperty("CoverSlot", properties, isImmutable: true);
     }
+
+    private static bool IsValidMantleTarget(IReadOnlyList<GeneratedCoverLink> links, GeneratedCoverSlot slot) =>
+        (uint)slot.MantleTargetLink < links.Count &&
+        (uint)slot.MantleTargetSlot < links[slot.MantleTargetLink].Slots.Count;
 
     private static void SetBool(PropertyCollection properties, string name, bool value)
     {

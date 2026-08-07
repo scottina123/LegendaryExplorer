@@ -2009,19 +2009,28 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
             ActorProxy[] collisionActors = Actors.ToArray();
             Vector3 generationCenter = RenderContext.Camera.Position;
             var progress = new Progress<string>(message => BusyText = message);
-            NavigationGenerationResult generated = await Task.Run(() =>
+            var generation = await Task.Run(() =>
             {
                 LevelCollisionScene collision = LevelCollisionScene.Build(collisionActors);
-                return new NavigationGenerator(collision, settings).Generate(generationCenter,
-                    CancellationToken.None, progress);
+                NavigationGenerationResult result = new NavigationGenerator(collision, settings).Generate(
+                    generationCenter, CancellationToken.None, progress);
+                return (Result: result, collision.NavigationSourceCount, collision.CoverSourceCount,
+                    collision.NavigationTriangleCount, collision.CoverTriangleCount);
             }).ConfigureAwait(true);
+            NavigationGenerationResult generated = generation.Result;
 
             IsBusy = false;
             IsBusyTaskbar = false;
+            int mantleConnections = generated.CoverLinks.Sum(link =>
+                link.Slots.Count(slot => slot.MantleTargetLink >= 0)) / 2;
             string summary = $"Generated {generated.Nodes.Count:N0} path nodes, " +
                              $"{generated.Edges.Count:N0} directed connections, " +
                              $"{generated.CoverLinks.Count:N0} cover links, and " +
-                             $"{generated.CoverLinks.Sum(link => link.Slots.Count):N0} cover slots.\n\n" +
+                             $"{generated.CoverLinks.Sum(link => link.Slots.Count):N0} cover slots, including " +
+                             $"{mantleConnections:N0} validated vault connections.\n\n" +
+                             $"Scanned {generation.CoverSourceCount:N0} mesh/brush components for cover " +
+                             $"({generation.CoverTriangleCount:N0} triangles); " +
+                             $"{generation.NavigationSourceCount:N0} components provide blocking navigation collision.\n\n" +
                              $"Append these objects to {activeFile.FileName}? Existing navigation is preserved, " +
                              "and the package is not saved to disk until you use Save.";
             if (MessageBox.Show(this, summary, "Navigation Generator", MessageBoxButton.YesNo,
@@ -2037,7 +2046,8 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
             ShowCover = GenerateCover;
             TextBelowActors = $"Navigation generator: {serialized.PathNodeCount:N0} nodes, " +
                               $"{serialized.ReachSpecCount:N0} ReachSpecs, " +
-                              $"{serialized.CoverLinkCount:N0} cover links / {serialized.CoverSlotCount:N0} slots.";
+                              $"{serialized.CoverLinkCount:N0} cover links / {serialized.CoverSlotCount:N0} slots; " +
+                              $"cover geometry from {generation.CoverSourceCount:N0} components.";
             SceneViewer?.MarkRenderDirty();
         }
         catch (Exception exception)

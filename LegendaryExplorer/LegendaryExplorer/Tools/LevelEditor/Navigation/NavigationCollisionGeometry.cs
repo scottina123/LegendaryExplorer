@@ -11,22 +11,25 @@ internal static class NavigationCollisionGeometry
 {
     public static LevelCollisionFlags GetFlags(PrimitiveComponentProxy component)
     {
+        // Every loaded static mesh, including collection components and decorative/nonblocking meshes,
+        // contributes visible surfaces to cover discovery. Gameplay collision remains separately filtered
+        // so those meshes do not become floors or block generated paths.
+        LevelCollisionFlags flags = LevelCollisionFlags.CoverProbe;
         PropertyCollection actorProperties = component.Actor.Export.GetCondensedProperties();
         if (IsNoCollision(component.Properties) || IsNoCollision(actorProperties) ||
             IsFalse(component.Properties, "CollideActors", "bCollideActors") ||
             IsFalse(actorProperties, "CollideActors", "bCollideActors"))
         {
-            return LevelCollisionFlags.None;
+            return flags;
         }
 
         bool blocksActors = GetBool(component.Properties, "BlockActors", "bBlockActors") ??
                             GetBool(actorProperties, "BlockActors", "bBlockActors") ?? true;
         if (!blocksActors)
         {
-            return LevelCollisionFlags.None;
+            return flags;
         }
 
-        LevelCollisionFlags flags = LevelCollisionFlags.None;
         if (GetBool(component.Properties, "BlockZeroExtent", "bBlockZeroExtent") ??
             GetBool(actorProperties, "BlockZeroExtent", "bBlockZeroExtent") ?? true)
         {
@@ -41,15 +44,15 @@ internal static class NavigationCollisionGeometry
     }
 
     public static void AppendStaticMesh(List<LevelCollisionTriangle> output, StaticMesh mesh,
-        Matrix4x4 localToWorld, LevelCollisionFlags flags, ExportEntry source)
+        ExportEntry meshExport, Matrix4x4 localToWorld, LevelCollisionFlags flags, ExportEntry source)
     {
-        if (mesh is null || flags == LevelCollisionFlags.None)
+        if (mesh is null || meshExport is null || flags == LevelCollisionFlags.None)
         {
             return;
         }
 
         int initialCount = output.Count;
-        AppendAggregateGeometry(output, mesh.GetCollisionMeshProperty(source.FileRef), localToWorld, flags, source);
+        AppendAggregateGeometry(output, mesh.GetCollisionMeshProperty(meshExport.FileRef), localToWorld, flags, source);
         if (output.Count > initialCount || mesh.LODModels is not { Length: > 0 })
         {
             return;
@@ -82,15 +85,18 @@ internal static class NavigationCollisionGeometry
         }
         foreach (StaticMeshElement element in lod.Elements ?? [])
         {
+            LevelCollisionFlags elementFlags = flags;
             if (!element.EnableCollision && !element.OldEnableCollision)
             {
-                continue;
+                elementFlags &= LevelCollisionFlags.CoverProbe;
+                if (elementFlags == LevelCollisionFlags.None)
+                    continue;
             }
             int end = Math.Min(indices.Length, (int)element.FirstIndex + (int)element.NumTriangles * 3);
             for (int index = (int)element.FirstIndex; index + 2 < end; index += 3)
             {
                 AppendTriangle(output, vertices, indices[index], indices[index + 1], indices[index + 2],
-                    localToWorld, flags, source);
+                    localToWorld, elementFlags, source);
             }
         }
     }

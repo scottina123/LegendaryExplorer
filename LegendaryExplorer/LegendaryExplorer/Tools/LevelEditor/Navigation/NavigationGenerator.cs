@@ -40,7 +40,8 @@ public sealed record NavigationGenerationSettings
 public sealed record GeneratedNavigationNode(Vector3 Position, Vector3 FloorNormal);
 public sealed record GeneratedNavigationEdge(int StartNode, int EndNode);
 public sealed record GeneratedCoverSlot(Vector3 Position, Vector3 Facing, bool IsStanding,
-    bool LeanLeft, bool LeanRight, int NearestNavigationNode);
+    bool LeanLeft, bool LeanRight, int NearestNavigationNode,
+    int MantleTargetLink = -1, int MantleTargetSlot = -1);
 public sealed record GeneratedCoverLink(Vector3 Position, Vector3 Facing, IReadOnlyList<GeneratedCoverSlot> Slots);
 
 public sealed record NavigationGenerationResult(
@@ -59,6 +60,7 @@ public sealed record NavigationGenerationResult(
 public sealed class NavigationGenerator
 {
     private const int MaximumCandidateCount = 20000;
+    private const int MaximumCoverSampleCount = 100000;
     private readonly LevelCollisionScene collision;
     private readonly NavigationGenerationSettings settings;
     private readonly float minimumWalkableNormalZ;
@@ -78,7 +80,7 @@ public sealed class NavigationGenerator
     public NavigationGenerationResult Generate(Vector3 center, CancellationToken cancellationToken = default,
         IProgress<string> progress = null)
     {
-        if (collision.TriangleCount == 0)
+        if (collision.NavigationTriangleCount == 0)
             throw new InvalidOperationException("The loaded levels do not contain usable blocking mesh collision.");
 
         progress?.Report("Detecting walkable surfaces...");
@@ -90,10 +92,16 @@ public sealed class NavigationGenerator
         progress?.Report($"Testing connectivity for {candidates.Count:N0} walkable samples...");
         List<GeneratedNavigationEdge> edges = BuildConnectivity(candidates, cancellationToken);
 
-        progress?.Report("Detecting cover surfaces...");
-        List<CoverCandidate> coverCandidates = settings.GenerateCover
-            ? DetectCover(candidates, cancellationToken)
-            : [];
+        List<CoverCandidate> coverCandidates = [];
+        if (settings.GenerateCover && collision.CoverTriangleCount > 0)
+        {
+            progress?.Report("Sampling walkable approaches around cover...");
+            List<Candidate> coverFloors = SampleCoverSurfaces(center, candidates, cancellationToken);
+            progress?.Report($"Detecting cover surfaces from {coverFloors.Count:N0} approach samples...");
+            coverCandidates = DetectCover(coverFloors, cancellationToken);
+            progress?.Report("Probing vertical mesh faces directly...");
+            DetectCoverFromMeshSurfaces(coverCandidates, center, cancellationToken);
+        }
 
         progress?.Report("Pruning redundant navigation points...");
         Prune(candidates, edges, coverCandidates, cancellationToken);
@@ -102,6 +110,8 @@ public sealed class NavigationGenerator
 
         progress?.Report("Grouping cover slots...");
         List<GeneratedCoverLink> coverLinks = GroupCover(coverCandidates, generatedNodes);
+        progress?.Report("Pairing vaultable cover slots...");
+        AssignMantleTargets(coverLinks);
         return new NavigationGenerationResult(generatedNodes, generatedEdges, coverLinks,
             sampleCount, rejectedForSlope, rejectedForClearance);
     }
@@ -174,6 +184,68 @@ public sealed class NavigationGenerator
             }
         }
         return candidates;
+    }
+
+    private List<Candidate> SampleCoverSurfaces(Vector3 center, List<Candidate> navigationCandidates,
+        CancellationToken cancellationToken)
+    {
+        float spacing = MathF.Min(settings.GridSpacing,
+            MathF.Max(settings.PawnRadius * 2f, settings.CoverSlotInterval * 0.75f));
+        if (spacing >= settings.GridSpacing - 0.01f)
+            return navigationCandidates;
+
+        Vector3 minimum = collision.Minimum;
+        Vector3 maximum = collision.Maximum;
+        if (settings.GenerationRadius > 0f)
+        {
+            minimum.X = MathF.Max(minimum.X, center.X - settings.GenerationRadius);
+            minimum.Y = MathF.Max(minimum.Y, center.Y - settings.GenerationRadius);
+            maximum.X = MathF.Min(maximum.X, center.X + settings.GenerationRadius);
+            maximum.Y = MathF.Min(maximum.Y, center.Y + settings.GenerationRadius);
+        }
+
+        float startX = MathF.Floor(minimum.X / spacing) * spacing;
+        float startY = MathF.Floor(minimum.Y / spacing) * spacing;
+        float rayStartZ = maximum.Z + PawnFullHeight + settings.MaximumStepUp + 10f;
+        float rayDistance = rayStartZ - minimum.Z + PawnFullHeight + settings.MaximumSafeDrop;
+        var samples = new List<Candidate>();
+        int gridX = 0;
+        for (float x = startX; x <= maximum.X; x += spacing, gridX++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            int gridY = 0;
+            for (float y = startY; y <= maximum.Y; y += spacing, gridY++)
+            {
+                if (settings.GenerationRadius > 0f &&
+                    Vector2.DistanceSquared(new Vector2(x, y), new Vector2(center.X, center.Y)) >
+                    settings.GenerationRadius * settings.GenerationRadius)
+                    continue;
+
+                float previousAcceptedZ = float.PositiveInfinity;
+                foreach (LevelCollisionHit hit in collision.RaycastAll(
+                             new Vector3(x, y, rayStartZ), -Vector3.UnitZ, rayDistance))
+                {
+                    if (previousAcceptedZ - hit.Position.Z < MathF.Max(4f, settings.MaximumStepUp * 0.5f) ||
+                        hit.Normal.Z < minimumWalkableNormalZ)
+                        continue;
+
+                    Vector3 position = hit.Position + Vector3.UnitZ;
+                    if (collision.OverlapCapsule(GetClearancePosition(position, hit.Normal),
+                            settings.PawnRadius, PawnFullHeight))
+                        continue;
+
+                    samples.Add(new Candidate(position, hit.Normal, gridX, gridY));
+                    previousAcceptedZ = hit.Position.Z;
+                    if (samples.Count > MaximumCoverSampleCount)
+                    {
+                        throw new InvalidOperationException(
+                            $"Cover generation exceeded {MaximumCoverSampleCount:N0} approach samples. " +
+                            "Increase cover slot interval or reduce generation radius.");
+                    }
+                }
+            }
+        }
+        return samples;
     }
 
     private List<GeneratedNavigationEdge> BuildConnectivity(List<Candidate> candidates,
@@ -297,7 +369,8 @@ public sealed class NavigationGenerator
                 float angle = directionIndex * MathF.PI / 4f;
                 Vector3 direction = new(MathF.Cos(angle), MathF.Sin(angle), 0f);
                 Vector3 origin = floor + Vector3.UnitZ * middleHeight;
-                if (!collision.Raycast(origin, direction, probeDistance, out LevelCollisionHit middleHit) ||
+                if (!collision.Raycast(origin, direction, probeDistance, out LevelCollisionHit middleHit,
+                        LevelCollisionFlags.CoverProbe) ||
                     MathF.Abs(middleHit.Normal.Z) > 0.35f)
                     continue;
 
@@ -309,19 +382,88 @@ public sealed class NavigationGenerator
                     continue;
 
                 bool standing = collision.Raycast(slotPosition + Vector3.UnitZ * standingHeight,
-                    -wallNormal, settings.PawnRadius + 12f, out LevelCollisionHit standingHit) &&
+                    -wallNormal, settings.PawnRadius + 12f, out LevelCollisionHit standingHit,
+                    LevelCollisionFlags.CoverProbe) &&
                     MathF.Abs(standingHit.Normal.Z) <= 0.35f;
                 var cover = new CoverCandidate(slotPosition, -wallNormal, standing);
-                if (!coverCandidates.Any(existing =>
-                        Vector3.DistanceSquared(existing.Position, cover.Position) <
-                        settings.CoverSlotInterval * settings.CoverSlotInterval * 0.2f &&
-                        Vector3.Dot(existing.Facing, cover.Facing) > 0.9f))
-                {
-                    coverCandidates.Add(cover);
-                }
+                TryAddCoverCandidate(coverCandidates, cover);
             }
         }
         return coverCandidates;
+    }
+
+    private void DetectCoverFromMeshSurfaces(List<CoverCandidate> coverCandidates, Vector3 center,
+        CancellationToken cancellationToken)
+    {
+        float seedSpacing = MathF.Max(settings.PawnRadius * 2f, settings.CoverSlotInterval * 0.5f);
+        IReadOnlyList<LevelCoverSurfaceSeed> seeds = collision.GetCoverSurfaceSeeds(seedSpacing, center,
+            settings.GenerationRadius);
+        float middleHeight = MathF.Min(PawnFullHeight - settings.PawnRadius, 72f);
+        float standingHeight = MathF.Min(PawnFullHeight - 5f, 128f);
+        float approachOffset = settings.PawnRadius + 4f;
+        foreach (LevelCoverSurfaceSeed seed in seeds)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            for (int side = -1; side <= 1; side += 2)
+            {
+                Vector3 outward = seed.Normal * side;
+                if (!TryFindCoverFloor(seed.Position + outward * approachOffset,
+                        out LevelCollisionHit floorHit))
+                    continue;
+
+                Vector3 floor = floorHit.Position + Vector3.UnitZ;
+                Vector3 origin = floor + Vector3.UnitZ * middleHeight;
+                if (!collision.Raycast(origin, -outward, settings.CoverProbeDistance,
+                        out LevelCollisionHit middleHit, LevelCollisionFlags.CoverProbe) ||
+                    MathF.Abs(middleHit.Normal.Z) > 0.35f ||
+                    Vector3.Dot(middleHit.Normal, outward) < 0.5f)
+                    continue;
+
+                Vector3 wallNormal = Vector3.Normalize(new Vector3(
+                    middleHit.Normal.X, middleHit.Normal.Y, 0f));
+                Vector3 slotPosition = middleHit.Position + wallNormal * approachOffset;
+                slotPosition.Z = floor.Z;
+                if (collision.OverlapCapsule(GetClearancePosition(slotPosition, floorHit.Normal),
+                        settings.PawnRadius, PawnFullHeight))
+                    continue;
+
+                bool standing = collision.Raycast(slotPosition + Vector3.UnitZ * standingHeight,
+                    -wallNormal, settings.PawnRadius + 12f, out LevelCollisionHit standingHit,
+                    LevelCollisionFlags.CoverProbe) && MathF.Abs(standingHit.Normal.Z) <= 0.35f;
+                TryAddCoverCandidate(coverCandidates,
+                    new CoverCandidate(slotPosition, -wallNormal, standing));
+            }
+        }
+    }
+
+    private bool TryFindCoverFloor(Vector3 nearSurface, out LevelCollisionHit floor)
+    {
+        float probeAbove = PawnFullHeight + settings.MaximumStepUp;
+        float probeDistance = PawnFullHeight * 2f + settings.MaximumSafeDrop + settings.MaximumStepUp;
+        Vector3 origin = new(nearSurface.X, nearSurface.Y, nearSurface.Z + probeAbove);
+        foreach (LevelCollisionHit hit in collision.RaycastAll(origin, -Vector3.UnitZ, probeDistance))
+        {
+            if (hit.Normal.Z < minimumWalkableNormalZ)
+                continue;
+            Vector3 position = hit.Position + Vector3.UnitZ;
+            if (!collision.OverlapCapsule(GetClearancePosition(position, hit.Normal),
+                    settings.PawnRadius, PawnFullHeight))
+            {
+                floor = hit;
+                return true;
+            }
+        }
+        floor = default;
+        return false;
+    }
+
+    private void TryAddCoverCandidate(List<CoverCandidate> coverCandidates, CoverCandidate cover)
+    {
+        if (!coverCandidates.Any(existing =>
+                Vector3.DistanceSquared(existing.Position, cover.Position) <
+                settings.CoverSlotInterval * settings.CoverSlotInterval * 0.2f &&
+                Vector3.Dot(existing.Facing, cover.Facing) > 0.9f))
+            coverCandidates.Add(cover);
     }
 
     private Vector3 GetClearancePosition(Vector3 floorPosition, Vector3 floorNormal)
@@ -464,18 +606,31 @@ public sealed class NavigationGenerator
             group.Sort((left, right) => Vector3.Dot(left.Position, tangent).CompareTo(Vector3.Dot(right.Position, tangent)));
             foreach (List<CoverCandidate> run in SplitCoverRun(group))
             {
-                Vector3 position = run.Aggregate(Vector3.Zero, (sum, item) => sum + item.Position) / run.Count;
-                var slots = new List<GeneratedCoverSlot>(run.Count);
-                for (int index = 0; index < run.Count; index++)
+                var validCandidates = new List<(CoverCandidate Candidate, int NavigationNode)>(run.Count);
+                foreach (CoverCandidate candidate in run)
                 {
-                    CoverCandidate candidate = run[index];
                     int nearestNode = FindNearestNavigationNode(candidate.Position, navigationNodes);
-                    if (nearestNode < 0) continue;
-                    slots.Add(new GeneratedCoverSlot(candidate.Position, candidate.Facing, candidate.IsStanding,
-                        index == 0, index == run.Count - 1, nearestNode));
+                    if (nearestNode >= 0)
+                        validCandidates.Add((candidate, nearestNode));
                 }
-                if (slots.Count > 0)
-                    results.Add(new GeneratedCoverLink(position, facing, slots));
+
+                foreach (List<(CoverCandidate Candidate, int NavigationNode)> validRun in
+                         SplitValidCoverRun(validCandidates))
+                {
+                    var slots = new List<GeneratedCoverSlot>(validRun.Count);
+                    for (int index = 0; index < validRun.Count; index++)
+                    {
+                        (CoverCandidate candidate, int nearestNode) = validRun[index];
+                        slots.Add(new GeneratedCoverSlot(candidate.Position, candidate.Facing,
+                            candidate.IsStanding, index == 0, index == validRun.Count - 1, nearestNode));
+                    }
+
+                    Vector3 position = slots.Aggregate(Vector3.Zero,
+                        (sum, item) => sum + item.Position) / slots.Count;
+                    Vector3 runFacing = Vector3.Normalize(slots.Aggregate(Vector3.Zero,
+                        (sum, item) => sum + item.Facing));
+                    results.Add(new GeneratedCoverLink(position, runFacing, slots));
+                }
             }
         }
         return results;
@@ -495,6 +650,101 @@ public sealed class NavigationGenerator
             run.Add(candidate);
         }
         if (run.Count > 0) yield return run;
+    }
+
+    private IEnumerable<List<(CoverCandidate Candidate, int NavigationNode)>> SplitValidCoverRun(
+        List<(CoverCandidate Candidate, int NavigationNode)> candidates)
+    {
+        var run = new List<(CoverCandidate Candidate, int NavigationNode)>();
+        foreach ((CoverCandidate candidate, int navigationNode) in candidates)
+        {
+            if (run.Count > 0 && Vector3.Distance(run[^1].Candidate.Position, candidate.Position) >
+                settings.CoverSlotInterval * 1.75f)
+            {
+                yield return run;
+                run = [];
+            }
+            run.Add((candidate, navigationNode));
+        }
+        if (run.Count > 0) yield return run;
+    }
+
+    private void AssignMantleTargets(List<GeneratedCoverLink> links)
+    {
+        if (links.Count < 2) return;
+        GeneratedCoverSlot[][] slots = links.Select(link => link.Slots.ToArray()).ToArray();
+        var possiblePairs = new List<(float Score, int LinkA, int SlotA, int LinkB, int SlotB)>();
+        float minimumDistance = settings.PawnRadius * 2f + 4f;
+        float maximumDistance = MathF.Max(192f, settings.CoverProbeDistance * 1.5f);
+        float maximumLateralOffset = MathF.Max(settings.PawnRadius * 2f,
+            settings.CoverSlotInterval * 0.55f);
+        float maximumVerticalOffset = MathF.Max(32f, settings.MaximumStepUp);
+        float vaultHeight = MathF.Min(PawnFullHeight - settings.PawnRadius, 145f);
+        float vaultRadius = MathF.Max(4f, settings.PawnRadius * 0.35f);
+
+        for (int linkA = 0; linkA < slots.Length; linkA++)
+        {
+            for (int slotA = 0; slotA < slots[linkA].Length; slotA++)
+            {
+                GeneratedCoverSlot source = slots[linkA][slotA];
+                if (source.IsStanding) continue;
+                for (int linkB = linkA + 1; linkB < slots.Length; linkB++)
+                {
+                    for (int slotB = 0; slotB < slots[linkB].Length; slotB++)
+                    {
+                        GeneratedCoverSlot target = slots[linkB][slotB];
+                        if (target.IsStanding || Vector3.Dot(source.Facing, target.Facing) > -0.85f)
+                            continue;
+
+                        Vector3 delta = target.Position - source.Position;
+                        float distance = delta.Length();
+                        if (distance < minimumDistance || distance > maximumDistance)
+                            continue;
+                        float sourceForward = Vector3.Dot(delta, source.Facing);
+                        float targetForward = Vector3.Dot(-delta, target.Facing);
+                        if (sourceForward <= 0f || targetForward <= 0f)
+                            continue;
+                        Vector3 lateral = delta - source.Facing * sourceForward;
+                        float lateralOffset = new Vector2(lateral.X, lateral.Y).Length();
+                        float verticalOffset = MathF.Abs(delta.Z);
+                        if (lateralOffset > maximumLateralOffset || verticalOffset > maximumVerticalOffset)
+                            continue;
+
+                        Vector3 vaultStart = source.Position + Vector3.UnitZ * vaultHeight;
+                        Vector3 vaultEnd = target.Position + Vector3.UnitZ * vaultHeight;
+                        if (collision.SphereCast(vaultStart, vaultEnd, vaultRadius, out _))
+                            continue;
+
+                        float score = distance + lateralOffset * 4f + verticalOffset * 3f +
+                                      MathF.Abs(sourceForward - targetForward);
+                        possiblePairs.Add((score, linkA, slotA, linkB, slotB));
+                    }
+                }
+            }
+        }
+
+        var assigned = new HashSet<(int Link, int Slot)>();
+        foreach ((float _, int linkA, int slotA, int linkB, int slotB) in
+                 possiblePairs.OrderBy(pair => pair.Score))
+        {
+            if (assigned.Contains((linkA, slotA)) || assigned.Contains((linkB, slotB)))
+                continue;
+            assigned.Add((linkA, slotA));
+            assigned.Add((linkB, slotB));
+            slots[linkA][slotA] = slots[linkA][slotA] with
+            {
+                MantleTargetLink = linkB,
+                MantleTargetSlot = slotB
+            };
+            slots[linkB][slotB] = slots[linkB][slotB] with
+            {
+                MantleTargetLink = linkA,
+                MantleTargetSlot = slotA
+            };
+        }
+
+        for (int linkIndex = 0; linkIndex < links.Count; linkIndex++)
+            links[linkIndex] = links[linkIndex] with { Slots = slots[linkIndex] };
     }
 
     private int FindNearestNavigationNode(Vector3 position, List<GeneratedNavigationNode> nodes)

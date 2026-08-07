@@ -115,7 +115,10 @@ namespace LegendaryExplorerCore.Pathing
                 props.AddOrReplaceProp(new IntProperty((int)distance, "Distance"));
                 props.AddOrReplaceProp(new IntProperty((int)radius, "CollisionRadius"));
                 props.AddOrReplaceProp(new IntProperty((int)height, "CollisionHeight"));
-                props.AddOrReplaceProp(new IntProperty(1, "reachFlags"));
+                if (reachSpecName == "ReachSpec")
+                {
+                    props.AddOrReplaceProp(new IntProperty(1, "reachFlags"));
+                }
 
                 reachSpec.WriteProperties(props);
 

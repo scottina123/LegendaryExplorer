@@ -16,6 +16,7 @@ public sealed class NavigationOverlay : UIElement
     private static readonly Vector4 CoverLinkColor = new(1f, 0.62f, 0.08f, 0.95f);
     private static readonly Vector4 StandingCoverColor = new(1f, 0.25f, 0.08f, 0.95f);
     private static readonly Vector4 MidCoverColor = new(1f, 0.9f, 0.1f, 0.95f);
+    private static readonly Vector4 MantleColor = new(0.95f, 0.25f, 1f, 0.95f);
 
     private readonly List<VisualNode> pathNodes = [];
     private readonly List<VisualEdge> pathEdges = [];
@@ -23,7 +24,8 @@ public sealed class NavigationOverlay : UIElement
 
     private readonly record struct VisualNode(Vector3 Position, float Radius);
     private readonly record struct VisualEdge(Vector3 Start, Vector3 End);
-    private readonly record struct VisualCoverSlot(Vector3 Position, Vector3 Facing, bool Standing);
+    private readonly record struct VisualCoverSlot(Vector3 Position, Vector3 Facing, bool Standing,
+        Vector3? MantleTarget);
     private sealed record VisualCoverRun(Vector3 LinkPosition, List<VisualCoverSlot> Slots);
 
     public bool ShowPaths { get; set; }
@@ -89,32 +91,51 @@ public sealed class NavigationOverlay : UIElement
             }
         }
 
-        foreach (int actorIndex in level.Actors)
+        List<ExportEntry> coverActors = level.Actors
+            .Where(package.IsUExport)
+            .Select(package.GetUExport)
+            .Where(actor => actor.ClassName == "CoverLink")
+            .ToList();
+        var coverSlotPositions = new Dictionary<(int Link, int Slot), Vector3>();
+        foreach (ExportEntry actor in coverActors)
         {
-            if (!package.IsUExport(actorIndex)) continue;
-            ExportEntry actor = package.GetUExport(actorIndex);
-            if (actor.ClassName != "CoverLink") continue;
             PropertyCollection properties = actor.GetProperties();
             Vector3 linkPosition = ReadLocation(properties);
             Rotator rotation = properties.GetProp<StructProperty>("Rotation") is { } rotationProperty
                 ? CommonStructs.GetRotator(rotationProperty)
                 : default;
             Matrix4x4 localToWorld = ActorUtils.ComposeLocalToWorld(linkPosition, rotation, Vector3.One);
+            if (properties.GetProp<ArrayProperty<StructProperty>>("Slots") is not { } slotArray) continue;
+            for (int slotIndex = 0; slotIndex < slotArray.Count; slotIndex++)
+                coverSlotPositions[(actor.UIndex, slotIndex)] = ReadSlotPosition(package,
+                    slotArray[slotIndex], localToWorld);
+        }
+
+        foreach (ExportEntry actor in coverActors)
+        {
+            PropertyCollection properties = actor.GetProperties();
+            Vector3 linkPosition = ReadLocation(properties);
+            Rotator rotation = properties.GetProp<StructProperty>("Rotation") is { } rotationProperty
+                ? CommonStructs.GetRotator(rotationProperty)
+                : default;
             var slots = new List<VisualCoverSlot>();
             if (properties.GetProp<ArrayProperty<StructProperty>>("Slots") is { } slotArray)
             {
-                foreach (StructProperty slot in slotArray)
+                for (int slotIndex = 0; slotIndex < slotArray.Count; slotIndex++)
                 {
-                    Vector3 position = slot.GetProp<ObjectProperty>("SlotMarker") is { Value: > 0 } markerProperty &&
-                                       package.IsUExport(markerProperty.Value)
-                        ? ReadLocation(package.GetUExport(markerProperty.Value).GetProperties())
-                        : Vector3.Transform(slot.GetProp<StructProperty>("LocationOffset") is { } offset
-                            ? CommonStructs.GetVector3(offset) : Vector3.Zero, localToWorld);
+                    StructProperty slot = slotArray[slotIndex];
+                    Vector3 position = coverSlotPositions[(actor.UIndex, slotIndex)];
                     Rotator relativeRotation = slot.GetProp<StructProperty>("RotationOffset") is { } relative
                         ? CommonStructs.GetRotator(relative) : default;
                     Vector3 facing = (rotation + relativeRotation).GetDirectionalVector();
                     bool standing = slot.GetProp<EnumProperty>("CoverType")?.Value.Name == "CT_Standing";
-                    slots.Add(new VisualCoverSlot(position, Vector3.Normalize(new Vector3(facing.X, facing.Y, 0f)), standing));
+                    StructProperty mantle = slot.GetProp<StructProperty>("MantleTarget");
+                    int targetLink = mantle?.GetProp<ObjectProperty>("Actor")?.Value ?? 0;
+                    int targetSlot = mantle?.GetProp<IntProperty>("SlotIdx")?.Value ?? -1;
+                    Vector3? mantleTarget = coverSlotPositions.TryGetValue((targetLink, targetSlot),
+                        out Vector3 targetPosition) ? targetPosition : null;
+                    slots.Add(new VisualCoverSlot(position,
+                        Vector3.Normalize(new Vector3(facing.X, facing.Y, 0f)), standing, mantleTarget));
                 }
             }
             coverRuns.Add(new VisualCoverRun(linkPosition, slots));
@@ -150,11 +171,15 @@ public sealed class NavigationOverlay : UIElement
                 for (int index = 0; index < run.Slots.Count; index++)
                 {
                     VisualCoverSlot slot = run.Slots[index];
-                    Vector4 color = slot.Standing ? StandingCoverColor : MidCoverColor;
+                    Vector4 color = slot.MantleTarget.HasValue ? MantleColor :
+                        slot.Standing ? StandingCoverColor : MidCoverColor;
                     float height = slot.Standing ? 130f : 70f;
                     context.Primitives.AddLine(slot.Position, slot.Position + Vector3.UnitZ * height, color, 0);
                     context.Primitives.AddLine(slot.Position + Vector3.UnitZ * 20f,
                         slot.Position + Vector3.UnitZ * 20f + slot.Facing * 55f, color, 0);
+                    if (slot.MantleTarget is { } mantleTarget)
+                        context.Primitives.AddLine(slot.Position + Vector3.UnitZ * 45f,
+                            mantleTarget + Vector3.UnitZ * 45f, MantleColor, 0);
                     if (index > 0)
                         context.Primitives.AddLine(run.Slots[index - 1].Position + Vector3.UnitZ * 12f,
                             slot.Position + Vector3.UnitZ * 12f, CoverLinkColor, 0);
@@ -183,5 +208,11 @@ public sealed class NavigationOverlay : UIElement
         properties.GetProp<StructProperty>("Location") is { } location
             ? CommonStructs.GetVector3(location)
             : Vector3.Zero;
-}
 
+    private static Vector3 ReadSlotPosition(IMEPackage package, StructProperty slot, Matrix4x4 localToWorld) =>
+        slot.GetProp<ObjectProperty>("SlotMarker") is { Value: > 0 } markerProperty &&
+        package.IsUExport(markerProperty.Value)
+            ? ReadLocation(package.GetUExport(markerProperty.Value).GetProperties())
+            : Vector3.Transform(slot.GetProp<StructProperty>("LocationOffset") is { } offset
+                ? CommonStructs.GetVector3(offset) : Vector3.Zero, localToWorld);
+}

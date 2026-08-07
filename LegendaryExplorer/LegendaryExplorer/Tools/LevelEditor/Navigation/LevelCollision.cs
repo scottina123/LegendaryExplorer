@@ -13,11 +13,18 @@ public enum LevelCollisionFlags
     None = 0,
     BlocksRay = 1,
     BlocksShape = 2,
-    Navigation = BlocksRay | BlocksShape
+    CoverProbe = 4,
+    Navigation = BlocksRay | BlocksShape,
+    All = Navigation | CoverProbe
 }
 
 public readonly record struct LevelCollisionHit(
     float Distance,
+    Vector3 Position,
+    Vector3 Normal,
+    ExportEntry Source);
+
+public readonly record struct LevelCoverSurfaceSeed(
     Vector3 Position,
     Vector3 Normal,
     ExportEntry Source);
@@ -131,10 +138,15 @@ public sealed class LevelCollisionScene
     private readonly List<LevelCollisionTriangle> triangles;
     private readonly int[] triangleIndices;
     private readonly List<BvhNode> nodes = [];
+    private readonly CollisionBounds navigationBounds;
 
     public int TriangleCount => triangles.Count;
-    public Vector3 Minimum => nodes.Count == 0 ? Vector3.Zero : nodes[0].Bounds.Minimum;
-    public Vector3 Maximum => nodes.Count == 0 ? Vector3.Zero : nodes[0].Bounds.Maximum;
+    public int NavigationTriangleCount { get; }
+    public int CoverTriangleCount { get; }
+    public int NavigationSourceCount { get; }
+    public int CoverSourceCount { get; }
+    public Vector3 Minimum => NavigationTriangleCount == 0 ? Vector3.Zero : navigationBounds.Minimum;
+    public Vector3 Maximum => NavigationTriangleCount == 0 ? Vector3.Zero : navigationBounds.Maximum;
 
     private readonly record struct BvhNode(CollisionBounds Bounds, int Left, int Right, int Start, int Count)
     {
@@ -144,6 +156,32 @@ public sealed class LevelCollisionScene
     internal LevelCollisionScene(List<LevelCollisionTriangle> sourceTriangles)
     {
         triangles = sourceTriangles;
+        CollisionBounds blockingBounds = CollisionBounds.Empty;
+        int navigationTriangleCount = 0;
+        int coverTriangleCount = 0;
+        HashSet<ExportEntry> navigationSources = [];
+        HashSet<ExportEntry> coverSources = [];
+        foreach (LevelCollisionTriangle triangle in triangles)
+        {
+            if ((triangle.Flags & LevelCollisionFlags.Navigation) != 0)
+            {
+                navigationTriangleCount++;
+                blockingBounds = blockingBounds.Include(triangle.Bounds);
+                if (triangle.Source is not null)
+                    navigationSources.Add(triangle.Source);
+            }
+            if ((triangle.Flags & LevelCollisionFlags.CoverProbe) != 0)
+            {
+                coverTriangleCount++;
+                if (triangle.Source is not null)
+                    coverSources.Add(triangle.Source);
+            }
+        }
+        NavigationTriangleCount = navigationTriangleCount;
+        CoverTriangleCount = coverTriangleCount;
+        NavigationSourceCount = navigationSources.Count;
+        CoverSourceCount = coverSources.Count;
+        navigationBounds = blockingBounds;
         triangleIndices = Enumerable.Range(0, triangles.Count).ToArray();
         if (triangles.Count > 0)
         {
@@ -180,7 +218,7 @@ public sealed class LevelCollisionScene
     /// <summary>Builds a collision scene from raw triangles for diagnostics and reusable geometry tools.</summary>
     public static LevelCollisionScene FromTriangles(
         IEnumerable<(Vector3 A, Vector3 B, Vector3 C)> sourceTriangles,
-        LevelCollisionFlags flags = LevelCollisionFlags.Navigation)
+        LevelCollisionFlags flags = LevelCollisionFlags.All)
     {
         ArgumentNullException.ThrowIfNull(sourceTriangles);
         var collisionTriangles = new List<LevelCollisionTriangle>();
@@ -190,6 +228,20 @@ public sealed class LevelCollisionScene
             {
                 collisionTriangles.Add(triangle);
             }
+        }
+        return new LevelCollisionScene(collisionTriangles);
+    }
+
+    /// <summary>Builds a diagnostic scene where each triangle can carry independent collision filtering.</summary>
+    public static LevelCollisionScene FromTriangles(
+        IEnumerable<(Vector3 A, Vector3 B, Vector3 C, LevelCollisionFlags Flags)> sourceTriangles)
+    {
+        ArgumentNullException.ThrowIfNull(sourceTriangles);
+        var collisionTriangles = new List<LevelCollisionTriangle>();
+        foreach ((Vector3 a, Vector3 b, Vector3 c, LevelCollisionFlags flags) in sourceTriangles)
+        {
+            if (LevelCollisionTriangle.TryCreate(a, b, c, flags, null, out LevelCollisionTriangle triangle))
+                collisionTriangles.Add(triangle);
         }
         return new LevelCollisionScene(collisionTriangles);
     }
@@ -337,6 +389,60 @@ public sealed class LevelCollisionScene
         }
         hit = default;
         return false;
+    }
+
+    /// <summary>
+    /// Samples the horizontal span of every near-vertical cover triangle. These object-space seeds let
+    /// cover generation test narrow and rotated mesh faces directly instead of depending on rays fired
+    /// from a world-aligned floor grid.
+    /// </summary>
+    public IReadOnlyList<LevelCoverSurfaceSeed> GetCoverSurfaceSeeds(float spacing, Vector3 center,
+        float generationRadius)
+    {
+        spacing = MathF.Max(8f, spacing);
+        float keySpacing = MathF.Max(4f, spacing * 0.5f);
+        float radiusSquared = generationRadius * generationRadius;
+        var occupied = new HashSet<(int X, int Y, int Z, int Direction)>();
+        var seeds = new List<LevelCoverSurfaceSeed>();
+        foreach (LevelCollisionTriangle triangle in triangles)
+        {
+            if ((triangle.Flags & LevelCollisionFlags.CoverProbe) == 0 ||
+                MathF.Abs(triangle.Normal.Z) > 0.35f)
+                continue;
+
+            Vector3 normal = new(triangle.Normal.X, triangle.Normal.Y, 0f);
+            if (normal.LengthSquared() < 0.0001f)
+                continue;
+            normal = Vector3.Normalize(normal);
+            if (normal.X < -0.0001f || MathF.Abs(normal.X) <= 0.0001f && normal.Y < 0f)
+                normal = -normal;
+            Vector3 tangent = Vector3.Normalize(Vector3.Cross(Vector3.UnitZ, normal));
+            float first = Vector3.Dot(triangle.A, tangent);
+            float second = Vector3.Dot(triangle.B, tangent);
+            float third = Vector3.Dot(triangle.C, tangent);
+            float minimum = MathF.Min(first, MathF.Min(second, third));
+            float maximum = MathF.Max(first, MathF.Max(second, third));
+            int sampleCount = Math.Max(1, (int)MathF.Ceiling((maximum - minimum) / spacing));
+            float centroidProjection = Vector3.Dot(triangle.Centroid, tangent);
+            int directionKey = (int)MathF.Round(MathF.Atan2(normal.Y, normal.X) * 8f / MathF.PI);
+            for (int sampleIndex = 0; sampleIndex <= sampleCount; sampleIndex++)
+            {
+                float projection = sampleCount == 0 ? centroidProjection :
+                    minimum + (maximum - minimum) * sampleIndex / sampleCount;
+                Vector3 position = triangle.Centroid + tangent * (projection - centroidProjection);
+                if (generationRadius > 0f &&
+                    Vector2.DistanceSquared(new Vector2(position.X, position.Y),
+                        new Vector2(center.X, center.Y)) > radiusSquared)
+                    continue;
+
+                var key = ((int)MathF.Round(position.X / keySpacing),
+                    (int)MathF.Round(position.Y / keySpacing),
+                    (int)MathF.Round(position.Z / MathF.Max(64f, spacing)), directionKey);
+                if (occupied.Add(key))
+                    seeds.Add(new LevelCoverSurfaceSeed(position, normal, triangle.Source));
+            }
+        }
+        return seeds;
     }
 
     private int BuildNode(int start, int count)

@@ -279,7 +279,7 @@
                                           ToolTip="Draw PathNodes and ReachSpec connections for all loaded levels."/>
                                 <CheckBox Content="Show cover" Margin="4,1,4,5"
                                           IsChecked="{Binding ShowCover}"
-                                          ToolTip="Draw CoverLinks, cover slots, and their facing directions for all loaded levels."/>
+                                          ToolTip="Draw CoverLinks, cover slots, and their facing directions for all loaded levels. Vaultable slots and mantle connections are magenta."/>
                             </StackPanel>
                         </xctk:DropDownButton.DropDownContent>
                     </xctk:DropDownButton>

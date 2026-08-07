@@ -729,7 +729,7 @@ public class StaticMeshComponentProxy : MeshComponentProxy
     internal void AppendNavigationCollision(List<LevelCollisionTriangle> output)
     {
         LevelCollisionFlags flags = NavigationCollisionGeometry.GetFlags(this);
-        NavigationCollisionGeometry.AppendStaticMesh(output, staticMesh, LocalToWorld, flags, Export);
+        NavigationCollisionGeometry.AppendStaticMesh(output, staticMesh, meshExport, LocalToWorld, flags, Export);
     }
 
     public StaticMeshComponentProxy(MeshRenderContext context, ExportEntry componentExport, ActorProxy parent) : base(context, componentExport, parent)
@@ -808,7 +808,7 @@ public class StaticMeshComponentProxy : MeshComponentProxy
         {
             if (!collisionGeometryLoaded)
             {
-                collisionGeometry = staticMesh?.GetCollisionMeshProperty(Export.FileRef);
+                collisionGeometry = staticMesh?.GetCollisionMeshProperty(meshExport?.FileRef ?? Export.FileRef);
                 collisionGeometryLoaded = true;
             }
             CollisionMesh ??= context.GetMeshFromAggGeom(collisionGeometry);
