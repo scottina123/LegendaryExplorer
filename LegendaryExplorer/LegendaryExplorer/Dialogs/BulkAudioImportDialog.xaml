@@ -58,7 +58,7 @@
                 <Label Grid.Row="6" Grid.Column="0" Content="Radio Effect:" VerticalAlignment="Center"/>
                 <CheckBox Grid.Row="6" Grid.Column="1" x:Name="RadioEffectCheckBox" IsChecked="False" VerticalAlignment="Center" Margin="5,4"
                           Checked="RadioEffectCheckBox_CheckedChanged" Unchecked="RadioEffectCheckBox_CheckedChanged"
-                          Content="Apply Dual_Filters_Radio_Comm effect" ToolTip="When checked, applies the Wwise Parametric EQ radio communication filter to the ActorMixer, simulating audio heard through a radio."/>
+                          Content="Apply BioWare radio communication effect" ToolTip="When checked, applies the exact BioWare FutzBox and Parametric EQ radio chain used in cit001_postbridge_lovei_b_dlg. LE3 only."/>
                 <Label Grid.Row="7" Grid.Column="0" Content="QEC Effect:" VerticalAlignment="Center"/>
                 <CheckBox Grid.Row="7" Grid.Column="1" x:Name="QecEffectCheckBox" IsChecked="False" VerticalAlignment="Center" Margin="5,4"
                           Checked="QecEffectCheckBox_CheckedChanged" Unchecked="QecEffectCheckBox_CheckedChanged"

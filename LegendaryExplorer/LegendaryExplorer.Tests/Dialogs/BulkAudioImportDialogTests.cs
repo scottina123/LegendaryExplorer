@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Xml.Linq;
+using BinarySerialization;
 using LegendaryExplorer.Dialogs;
 using ME3Tweaks.Wwiser;
 using ME3Tweaks.Wwiser.Model.Hierarchy;
@@ -18,6 +19,13 @@ public class BulkAudioImportDialogTests
     private const string ActorMixerWorkUnitId = "{22222222-2222-2222-2222-222222222222}";
     private const uint QecFutzBoxEffectId = 1827713496;
     private const uint QecFlangerEffectId = 1487904704;
+    private const uint BioWareRadioFutzBoxEffectId = 125287176;
+    private const uint BioWareRadioEqEffectId = 1177780410;
+    private const uint FactoryRadioEffectId = 2952825346;
+    private const string BioWareRadioFutzBoxHirc =
+        "EJ4AAAAIu3cHAxBuAIsAAAAAAAAAAADgEkYAAAAAAQAAAAAAlkMAAAAAAQQAAAAAAPBBAAAAAAAAAAAAAQAAAAAAekQAAAAAAAAAAAAAAPjBAGAuRQAAekQAAAAAAAAgwgAAIEEBEgAAAAAAyEIAAACgwQAAoMLNzMw9AAAgQQAAIEEACAAAAAQAAAAAAAAAAAAAAAAAoEAAAMhCAAAAAAAAAA==";
+    private const string BioWareRadioEqHirc =
+        "EL0AAAC6gDNGAwBpADgAAAAEAAAAAAAAAACA/EMAAIA/AQYAAAAAAAAAAMDNRAAAQEAABQAAAAAAwMEAQJxGAACAPwEAAAAAAQADAKhWFSkAAQE2GTELAgIAAAAAAGNk/74EAAAAAEAcRvXYb78EAAAAqFYVKQABDNVnOioAAgAAAAAAAGBqRgAAAAAAQBxGAIC7RAQAAACoVhUpAAECWsrmPgACAAAAAAAAAKBBBAAAAABAHEYAAPpEBAAAAAAAAAA=";
 
     [TestMethod]
     public void AppliesExactHackettQecEffectChainToLe3Bank()
@@ -72,6 +80,74 @@ public class BulkAudioImportDialogTests
         {
             File.Delete(testBankPath);
         }
+    }
+
+    [TestMethod]
+    public void AppliesExactBioWareRadioEffectToLe3Bank()
+    {
+        var sourceBankPath = FindWwiserTestBank("LE3_v134_1.bnk");
+        var testBankPath = Path.Combine(Path.GetTempPath(), $"LEX_Radio_Test_{Guid.NewGuid():N}.bnk");
+        File.Copy(sourceBankPath, testBankPath);
+
+        try
+        {
+            var method = typeof(BulkAudioImportDialog).GetMethod(
+                "ApplyBioWareRadioEffectToBank", BindingFlags.NonPublic | BindingFlags.Static);
+            Assert.IsNotNull(method);
+
+            method.Invoke(null, [testBankPath]);
+            method.Invoke(null, [testBankPath]);
+
+            using var stream = File.OpenRead(testBankPath);
+            var bank = WwiseBankParser.Deserialize(stream);
+            Assert.AreEqual(134u, bank.BKHD.BankGeneratorVersion);
+            Assert.IsNotNull(bank.HIRC);
+
+            var radioHircItems = bank.HIRC.Items
+                .Where(item => item.Item.Id is BioWareRadioFutzBoxEffectId or BioWareRadioEqEffectId)
+                .ToList();
+            Assert.HasCount(2, radioHircItems);
+            AssertExactShareSet(radioHircItems.Single(item => item.Item.Id == BioWareRadioFutzBoxEffectId),
+                0x006E1003u, BioWareRadioFutzBoxHirc, bank);
+            AssertExactShareSet(radioHircItems.Single(item => item.Item.Id == BioWareRadioEqEffectId),
+                0x00690003u, BioWareRadioEqHirc, bank);
+            Assert.IsFalse(bank.HIRC.Items.Any(item => item.Item.Id == FactoryRadioEffectId));
+
+            var actorMixers = bank.HIRC.Items
+                .Select(item => item.Item)
+                .OfType<ActorMixer>()
+                .ToList();
+            var actorMixerIds = actorMixers.Select(item => item.Id).ToHashSet();
+            var rootActorMixers = actorMixers
+                .Where(item => item.NodeBaseParameters.DirectParentId == 0 ||
+                               !actorMixerIds.Contains(item.NodeBaseParameters.DirectParentId))
+                .ToList();
+            Assert.IsNotEmpty(rootActorMixers);
+
+            foreach (var rootActorMixer in rootActorMixers)
+            {
+                CollectionAssert.AreEqual(
+                    new[] { BioWareRadioFutzBoxEffectId, BioWareRadioEqEffectId },
+                    rootActorMixer.NodeBaseParameters.FxParams.FxChunks.Select(item => item.Id).ToArray());
+                Assert.IsTrue(rootActorMixer.NodeBaseParameters.FxParams.IsOverrideParentFx);
+            }
+        }
+        finally
+        {
+            File.Delete(testBankPath);
+        }
+    }
+
+    private static void AssertExactShareSet(HircItemContainer hircItem, uint expectedPluginId,
+        string expectedHirc, ME3Tweaks.Wwiser.WwiseBank bank)
+    {
+        var shareSet = hircItem.Item as FxShareSet;
+        Assert.IsNotNull(shareSet);
+        Assert.AreEqual(expectedPluginId, shareSet.Plugin.PluginId);
+
+        using var serializedHirc = new MemoryStream();
+        new BinarySerializer().Serialize(serializedHirc, hircItem, BankSerializationContext.FromBank(bank));
+        CollectionAssert.AreEqual(Convert.FromBase64String(expectedHirc), serializedHirc.ToArray());
     }
 
     [TestMethod]

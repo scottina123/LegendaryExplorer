@@ -35,11 +35,17 @@ namespace LegendaryExplorer.Dialogs
     {
         private const uint QecFutzBoxEffectId = 1827713496;
         private const uint QecFlangerEffectId = 1487904704;
-        private const uint QecEffectBankVersion = 134;
+        private const uint BioWareRadioFutzBoxEffectId = 125287176;
+        private const uint BioWareRadioEqEffectId = 1177780410;
+        private const uint Le3EffectBankVersion = 134;
         private const string QecFutzBoxHirc =
             "EJ4AAADYsfBsAxBuAIsAAAAAAAAAAACgjEYAAAAAAAAAAAAAIEIAAAAAAQQAAAAAAPBBAAAAAAAAAAAAAQAAAAAAekQAAAAAAAAAAAAAAMDCAKCMRgAAIEIAAAAAAACgwQAAoEEBAwAAAAAAyEIAAAAgwgAAAAAAAIA/AAAgQQAAyEIAAAAAAAAAAAAAAAAAAAAAAAAAAEAAAMhCAAAAAAAAAA==";
         private const string QecFlangerHirc =
             "EE4AAADAn69YAwB9ADsAAAAAACBBAACAPwAAgD8AAAAAAABIQs3MzD0AAAAAAAAAAAAASEIAALRCAAAAAAAAAAAAAAAAAABIQgEBAAAAAAAAAAA=";
+        private const string BioWareRadioFutzBoxHirc =
+            "EJ4AAAAIu3cHAxBuAIsAAAAAAAAAAADgEkYAAAAAAQAAAAAAlkMAAAAAAQQAAAAAAPBBAAAAAAAAAAAAAQAAAAAAekQAAAAAAAAAAAAAAPjBAGAuRQAAekQAAAAAAAAgwgAAIEEBEgAAAAAAyEIAAACgwQAAoMLNzMw9AAAgQQAAIEEACAAAAAQAAAAAAAAAAAAAAAAAoEAAAMhCAAAAAAAAAA==";
+        private const string BioWareRadioEqHirc =
+            "EL0AAAC6gDNGAwBpADgAAAAEAAAAAAAAAACA/EMAAIA/AQYAAAAAAAAAAMDNRAAAQEAABQAAAAAAwMEAQJxGAACAPwEAAAAAAQADAKhWFSkAAQE2GTELAgIAAAAAAGNk/74EAAAAAEAcRvXYb78EAAAAqFYVKQABDNVnOioAAgAAAAAAAGBqRgAAAAAAQBxGAIC7RAQAAACoVhUpAAECWsrmPgACAAAAAAAAAKBBBAAAAABAHEYAAPpEBAAAAAAAAAA=";
 
         public ObservableCollection<AudioImportItem> WavFileItems { get; } = new();
         public IEnumerable<string> WavFiles => WavFileItems.Select(item => item.FilePath);
@@ -133,6 +139,8 @@ namespace LegendaryExplorer.Dialogs
 
             if (_package.Game != MEGame.LE3)
             {
+                RadioEffectCheckBox.IsEnabled = false;
+                RadioEffectCheckBox.ToolTip = "The BioWare radio effect is only available for LE3 banks.";
                 QecEffectCheckBox.IsEnabled = false;
                 QecEffectCheckBox.ToolTip = "The QEC effect is only available for LE3 banks.";
             }
@@ -214,7 +222,7 @@ namespace LegendaryExplorer.Dialogs
             if (RadioEffectCheckBox.IsChecked == true)
             {
                 QecEffectCheckBox.IsChecked = false;
-                VolumeTextBox.Text = "0";
+                VolumeTextBox.Text = "12";
             }
             else if (QecEffectCheckBox.IsChecked != true)
             {
@@ -446,19 +454,10 @@ namespace LegendaryExplorer.Dialogs
                     masterMixerDoc.Save(masterMixerPath);
                 }
 
-                // 3b. Always include the radio ShareSet so Wwise Editor can apply or remove it later
-                const string effectWuId = "{E8613F7D-BAD3-45CD-A3ED-505576F31277}";
-                string shareSetsDir = Path.Combine(projectDir, "ShareSets");
-                Directory.CreateDirectory(shareSetsDir);
-                string shareSetsPath = Path.Combine(shareSetsDir, "Default Work Unit.wwu");
-                var shareSetsXml = BuildShareSetsWorkUnitXml(effectWuId);
-                File.WriteAllText(shareSetsPath, shareSetsXml);
-
                 // 4. Build Actor-Mixer Hierarchy XML
                 var actorMixerId = $"{{{Guid.NewGuid()}}}";
                 var actorMixerXml = BuildActorMixerXml(actorMixerWuId, bankName, actorMixerId, wavFiles,
-                    volume, outputBusName, outputBusId, outputBusWuId, generateGenderedEvents, loopAudio,
-                    applyRadioEffect, effectWuId);
+                    volume, outputBusName, outputBusId, outputBusWuId, generateGenderedEvents, loopAudio);
                 File.WriteAllText(actorMixerPath, actorMixerXml);
 
                 // 5. Build Events XML
@@ -468,7 +467,7 @@ namespace LegendaryExplorer.Dialogs
 
                 // 6. Build SoundBanks XML
                 var soundBanksXml = BuildSoundBanksXml(soundBanksDoc.Root.Attribute("ID")?.Value,
-                    bankName, actorMixerWuId, eventsWuId, effectWuId);
+                    bankName, actorMixerWuId, eventsWuId);
                 File.WriteAllText(soundBanksPath, soundBanksXml);
 
                 Dispatcher.Invoke(() => StatusTextBlock.Text = "Running WwiseCLI to generate soundbank...");
@@ -520,7 +519,11 @@ namespace LegendaryExplorer.Dialogs
                     return $"Generated bank '{bankName}.bnk' not found in output. Available files: {availableFiles}";
                 }
 
-                if (applyQecEffect)
+                if (applyRadioEffect)
+                {
+                    ApplyBioWareRadioEffectToBank(bnkPath);
+                }
+                else if (applyQecEffect)
                 {
                     ApplyQecEffectToBank(bnkPath);
                 }
@@ -591,16 +594,37 @@ namespace LegendaryExplorer.Dialogs
         /// </summary>
         private static void ApplyQecEffectToBank(string bnkPath)
         {
+            ApplyExactEffectChainToBank(bnkPath, "Hackett QEC",
+                (QecFutzBoxEffectId, 0x006E1003u, QecFutzBoxHirc),
+                (QecFlangerEffectId, 0x007D0003u, QecFlangerHirc));
+        }
+
+        /// <summary>
+        /// Adds the FutzBox and Parametric EQ ShareSets used by the root ActorMixers in
+        /// cit001_postbridge_lovei_b_dlg and applies the complete chain to the generated
+        /// root ActorMixer. The exact version-134 HIRC data is injected so Wwise does not
+        /// substitute its factory Dual_Filters_Radio_Comm preset.
+        /// </summary>
+        private static void ApplyBioWareRadioEffectToBank(string bnkPath)
+        {
+            ApplyExactEffectChainToBank(bnkPath, "BioWare radio",
+                (BioWareRadioFutzBoxEffectId, 0x006E1003u, BioWareRadioFutzBoxHirc),
+                (BioWareRadioEqEffectId, 0x00690003u, BioWareRadioEqHirc));
+        }
+
+        private static void ApplyExactEffectChainToBank(string bnkPath, string effectName,
+            params (uint EffectId, uint PluginId, string SerializedHirc)[] effectChain)
+        {
             ME3Tweaks.Wwiser.WwiseBank bank;
             using (var input = new MemoryStream(File.ReadAllBytes(bnkPath), false))
             {
                 bank = WwiseBankParser.Deserialize(input);
             }
 
-            if (bank.BKHD.BankGeneratorVersion != QecEffectBankVersion)
+            if (bank.BKHD.BankGeneratorVersion != Le3EffectBankVersion)
             {
                 throw new InvalidOperationException(
-                    $"The Hackett QEC effect requires a version-{QecEffectBankVersion} LE3 Wwise bank, " +
+                    $"The {effectName} effect requires a version-{Le3EffectBankVersion} LE3 Wwise bank, " +
                     $"but WwiseCLI generated version {bank.BKHD.BankGeneratorVersion}.");
             }
 
@@ -611,11 +635,7 @@ namespace LegendaryExplorer.Dialogs
 
             var serializer = new BinarySerializer();
             var serializationContext = BankSerializationContext.FromBank(bank);
-            foreach (var (effectId, pluginId, serializedHirc) in new[]
-                     {
-                         (QecFutzBoxEffectId, 0x006E1003u, QecFutzBoxHirc),
-                         (QecFlangerEffectId, 0x007D0003u, QecFlangerHirc)
-                     })
+            foreach (var (effectId, pluginId, serializedHirc) in effectChain)
             {
                 var existingItem = bank.HIRC.Items.FirstOrDefault(item => item.Item.Id == effectId);
                 if (existingItem != null)
@@ -623,7 +643,7 @@ namespace LegendaryExplorer.Dialogs
                     if (existingItem.Item is not WwiserFxShareSet shareSet || shareSet.Plugin.PluginId != pluginId)
                     {
                         throw new InvalidOperationException(
-                            $"The generated bank already uses QEC ShareSet ID {effectId} for another object.");
+                            $"The generated bank already uses {effectName} ShareSet ID {effectId} for another object.");
                     }
                     continue;
                 }
@@ -651,18 +671,15 @@ namespace LegendaryExplorer.Dialogs
             {
                 var effects = actorMixer.NodeBaseParameters.FxParams;
                 effects.FxChunks.Clear();
-                effects.FxChunks.Add(new FxChunk
+                for (var effectIndex = 0; effectIndex < effectChain.Length; effectIndex++)
                 {
-                    FxIndex = 0,
-                    Id = QecFutzBoxEffectId,
-                    IsShareSet = true
-                });
-                effects.FxChunks.Add(new FxChunk
-                {
-                    FxIndex = 1,
-                    Id = QecFlangerEffectId,
-                    IsShareSet = true
-                });
+                    effects.FxChunks.Add(new FxChunk
+                    {
+                        FxIndex = checked((byte)effectIndex),
+                        Id = effectChain[effectIndex].EffectId,
+                        IsShareSet = true
+                    });
+                }
                 effects.BitsFxBypass = 0;
                 effects.NumFx = checked((byte)effects.FxChunks.Count);
                 effects.IsOverrideParentFx = true;
@@ -684,7 +701,7 @@ namespace LegendaryExplorer.Dialogs
         /// </summary>
         private static string BuildActorMixerXml(string workUnitId, string bankName, string actorMixerId,
             List<string> wavFiles, double volume, string outputBusName, string outputBusId, string outputBusWuId,
-            bool generateGenderedEvents, bool loopAudio, bool applyRadioEffect, string effectWuId)
+            bool generateGenderedEvents, bool loopAudio)
         {
             // Factory "Vorbis Quality High" conversion setting (from Factory Conversion Settings.wwu in template)
             const string vorbisHighId = "{53A9DE0F-3F4F-4B59-8614-3F9E3C7358FC}";
@@ -732,12 +749,6 @@ namespace LegendaryExplorer.Dialogs
             xml.AppendLine("\t\t\t\t\t\t<Reference Name=\"Conversion\">");
             xml.AppendLine($"\t\t\t\t\t\t\t<ObjectRef Name=\"Vorbis Quality High\" ID=\"{vorbisHighId}\" WorkUnitID=\"{vorbisHighWuId}\"/>");
             xml.AppendLine("\t\t\t\t\t\t</Reference>");
-            if (applyRadioEffect && effectWuId != null)
-            {
-                xml.AppendLine("\t\t\t\t\t\t<Reference Name=\"Effect0\" PluginName=\"Wwise Parametric EQ\" CompanyID=\"0\" PluginID=\"105\" PluginType=\"3\">");
-                xml.AppendLine($"\t\t\t\t\t\t\t<ObjectRef Name=\"Dual_Filters_Radio_Comm\" ID=\"{{69479ACD-2C87-4007-B83E-55210A3B36B7}}\" WorkUnitID=\"{effectWuId}\"/>");
-                xml.AppendLine("\t\t\t\t\t\t</Reference>");
-            }
             xml.AppendLine("\t\t\t\t\t\t<Reference Name=\"OutputBus\">");
             xml.AppendLine($"\t\t\t\t\t\t\t<ObjectRef Name=\"{outputBusName}\" ID=\"{outputBusId}\" WorkUnitID=\"{outputBusWuId}\"/>");
             xml.AppendLine("\t\t\t\t\t\t</Reference>");
@@ -1004,7 +1015,7 @@ namespace LegendaryExplorer.Dialogs
         /// Builds the SoundBanks XML with a single bank that includes both the Actor-Mixer and Events work units.
         /// </summary>
         private static string BuildSoundBanksXml(string workUnitId, string bankName,
-            string actorMixerWuId, string eventsWuId, string effectWuId)
+            string actorMixerWuId, string eventsWuId)
         {
             var soundBankId = $"{{{Guid.NewGuid()}}}";
 
@@ -1018,7 +1029,6 @@ namespace LegendaryExplorer.Dialogs
             xml.AppendLine("\t\t\t\t\t<ObjectInclusionList>");
             xml.AppendLine($"\t\t\t\t\t\t<ObjectRef Name=\"Default Work Unit\" ID=\"{actorMixerWuId}\" WorkUnitID=\"{actorMixerWuId}\" Filter=\"7\" Origin=\"Manual\"/>");
             xml.AppendLine($"\t\t\t\t\t\t<ObjectRef Name=\"Default Work Unit\" ID=\"{eventsWuId}\" WorkUnitID=\"{eventsWuId}\" Filter=\"7\" Origin=\"Manual\"/>");
-            xml.AppendLine($"\t\t\t\t\t\t<ObjectRef Name=\"Default Work Unit\" ID=\"{effectWuId}\" WorkUnitID=\"{effectWuId}\" Filter=\"7\" Origin=\"Manual\"/>");
             xml.AppendLine("\t\t\t\t\t</ObjectInclusionList>");
             xml.AppendLine("\t\t\t\t\t<ObjectExclusionList/>");
             xml.AppendLine("\t\t\t\t\t<GameSyncExclusionList/>");
@@ -1058,39 +1068,6 @@ namespace LegendaryExplorer.Dialogs
                 new XAttribute("Name", busName),
                 new XAttribute("ID", busId));
             childrenList.Add(busElement);
-        }
-
-        /// <summary>
-        /// Builds the ShareSets work unit XML containing the Dual_Filters_Radio_Comm Parametric EQ
-        /// effect. This ShareSet is referenced by the ActorMixer's Effect0 reference to apply the
-        /// radio communication filter to all sounds in the bank.
-        /// </summary>
-        private static string BuildShareSetsWorkUnitXml(string workUnitId)
-        {
-            const string effectId = "{69479ACD-2C87-4007-B83E-55210A3B36B7}";
-
-            var xml = new System.Text.StringBuilder();
-            xml.AppendLine("<?xml version=\"1.0\" encoding=\"utf-8\"?>");
-            xml.AppendLine($"<WwiseDocument Type=\"WorkUnit\" ID=\"{workUnitId}\" SchemaVersion=\"94\">");
-            xml.AppendLine("\t<ShareSets>");
-            xml.AppendLine($"\t\t<WorkUnit Name=\"Default Work Unit\" ID=\"{workUnitId}\" PersistMode=\"Standalone\">");
-            xml.AppendLine("\t\t\t<ChildrenList>");
-            xml.AppendLine($"\t\t\t\t<Effect Name=\"Dual_Filters_Radio_Comm\" ID=\"{effectId}\" PluginName=\"Wwise Parametric EQ\" CompanyID=\"0\" PluginID=\"105\" PluginType=\"3\">");
-            xml.AppendLine("\t\t\t\t\t<PropertyList>");
-            xml.AppendLine("\t\t\t\t\t\t<Property Name=\"Band1FilterType\" Type=\"int32\" Value=\"3\"/>");
-            xml.AppendLine("\t\t\t\t\t\t<Property Name=\"Band1Frequency\" Type=\"Real64\" Value=\"300\"/>");
-            xml.AppendLine("\t\t\t\t\t\t<Property Name=\"Band1QFactor\" Type=\"Real64\" Value=\"0.707\"/>");
-            xml.AppendLine("\t\t\t\t\t\t<Property Name=\"Band2FilterType\" Type=\"int32\" Value=\"4\"/>");
-            xml.AppendLine("\t\t\t\t\t\t<Property Name=\"Band2Frequency\" Type=\"Real64\" Value=\"3000\"/>");
-            xml.AppendLine("\t\t\t\t\t\t<Property Name=\"Band2QFactor\" Type=\"Real64\" Value=\"0.707\"/>");
-            xml.AppendLine("\t\t\t\t\t\t<Property Name=\"OutputLevel\" Type=\"Real64\" Value=\"12\"/>");
-            xml.AppendLine("\t\t\t\t\t</PropertyList>");
-            xml.AppendLine("\t\t\t\t</Effect>");
-            xml.AppendLine("\t\t\t</ChildrenList>");
-            xml.AppendLine("\t\t</WorkUnit>");
-            xml.AppendLine("\t</ShareSets>");
-            xml.AppendLine("</WwiseDocument>");
-            return xml.ToString();
         }
 
         /// <summary>
