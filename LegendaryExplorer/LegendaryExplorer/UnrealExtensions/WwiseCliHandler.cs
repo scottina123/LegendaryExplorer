@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Xml;
 using System.Xml.Linq;
+using LegendaryExplorer.Audio;
 using LegendaryExplorer.Dialogs;
 using LegendaryExplorer.GameInterop;
 using LegendaryExplorer.Misc;
@@ -110,16 +111,17 @@ namespace LegendaryExplorer.UnrealExtensions
         }
 
         /// <summary>
-        /// Converts a file or folder of wav files and converts them to Wwise encoded ogg for the specified game
+        /// Converts a WAV/MP3 file or folder of WAV/MP3 files to Wwise encoded audio for the specified game.
+        /// MP3 inputs are decoded to 16-bit PCM WAV before being passed to WwiseCLI.
         /// </summary>
         /// <param name="game">Game to convert for - Wwise path for game must be configured</param>
-        /// <param name="fileOrFolderPath">Path of file or folder to convert</param>
+        /// <param name="fileOrFolderPath">Path of a supported audio file or a folder containing supported audio files</param>
         /// <param name="conversionSettings">Settings to place into the templated project that will be used when CLI runs</param>
         /// <returns></returns>
         public static async Task<string> RunWwiseConversion(MEGame game, string fileOrFolderPath, WwiseConversionSettingsPackage conversionSettings)
         {
             /* The process for converting is going to be pretty in depth but will make converting files much easier and faster.
-                         * 1. User chooses a folder of .wav (or this method is passed a .wav and we will return that)
+                         * 1. User chooses a folder of .wav/.mp3 files (or this method is passed one file and we return that conversion)
                          * 2. Conversion takes place
                          * 
                          * Program steps when conversion starts:
@@ -144,25 +146,54 @@ namespace LegendaryExplorer.UnrealExtensions
                 archive.ExtractToDirectory(Path.GetTempPath());
             }
 
-            //Generate the external sources document
-            string[] filesToConvert = null;
-            string folderParent = null;
-            bool isSingleFile = false;
+            // Normalize every input into a private staging directory. WwiseCLI receives only
+            // 16-bit PCM WAV files regardless of whether the user selected WAV or MP3 input.
+            string[] inputFiles;
+            string outputParent;
+            bool isSingleFile = !Directory.Exists(fileOrFolderPath);
             if (Directory.Exists(fileOrFolderPath))
             {
-                //it's a directory
-                filesToConvert = Directory.GetFiles(fileOrFolderPath, "*.wav");
-                folderParent = fileOrFolderPath;
+                inputFiles = Directory.EnumerateFiles(fileOrFolderPath, "*", SearchOption.TopDirectoryOnly)
+                    .Where(AudioInputConverter.IsSupportedAudioFile)
+                    .ToArray();
+                outputParent = fileOrFolderPath;
             }
             else
             {
-                //it's a single file
-                isSingleFile = true;
-                filesToConvert = new[] { fileOrFolderPath };
-                folderParent = Directory.GetParent(fileOrFolderPath).FullName;
+                if (!AudioInputConverter.IsSupportedAudioFile(fileOrFolderPath))
+                {
+                    throw new NotSupportedException("Only WAV and MP3 files can be converted to Wwise audio.");
+                }
+
+                inputFiles = [fileOrFolderPath];
+                outputParent = Directory.GetParent(fileOrFolderPath)?.FullName ?? Path.GetTempPath();
             }
 
-            XElement externalSourcesList = new XElement("ExternalSourcesList", new XAttribute("SchemaVersion", 1.ToString()), new XAttribute("Root", folderParent));
+            if (inputFiles.Length == 0)
+            {
+                throw new InvalidOperationException("No WAV or MP3 files were found to convert.");
+            }
+
+            var duplicateOutputName = inputFiles
+                .GroupBy(Path.GetFileNameWithoutExtension, StringComparer.OrdinalIgnoreCase)
+                .FirstOrDefault(group => group.Count() > 1);
+            if (duplicateOutputName != null)
+            {
+                throw new InvalidOperationException(
+                    $"Multiple input files would produce the same output name '{duplicateOutputName.Key}'. Rename one of those files and try again.");
+            }
+
+            string stagedAudioDirectory = Path.Combine(templatefolder, "AudioInput");
+            Directory.CreateDirectory(stagedAudioDirectory);
+            string[] filesToConvert = inputFiles.Select(inputFile =>
+            {
+                var stagedWavePath = Path.Combine(stagedAudioDirectory,
+                    Path.GetFileNameWithoutExtension(inputFile) + ".wav");
+                AudioInputConverter.ConvertToPcmWave(inputFile, stagedWavePath);
+                return stagedWavePath;
+            }).ToArray();
+
+            XElement externalSourcesList = new XElement("ExternalSourcesList", new XAttribute("SchemaVersion", 1.ToString()), new XAttribute("Root", stagedAudioDirectory));
             foreach (string file in filesToConvert)
             {
                 XElement source = new XElement("Source", new XAttribute("Path", Path.GetFileName(file)), new XAttribute("Conversion", "Vorbis"));
@@ -216,7 +247,7 @@ namespace LegendaryExplorer.UnrealExtensions
 
             //Files generates
             string outputDirectory = Path.Combine(Path.GetTempPath(), "TemplateProject", "OutputFiles");
-            string copyToDirectory = Path.Combine(folderParent, "Converted");
+            string copyToDirectory = Path.Combine(outputParent, "Converted");
             Directory.CreateDirectory(copyToDirectory);
 
             var extension = game is MEGame.ME3 ? ".ogg" : ".wem";
@@ -233,7 +264,7 @@ namespace LegendaryExplorer.UnrealExtensions
 
             if (isSingleFile)
             {
-                return Path.Combine(copyToDirectory, Path.GetFileNameWithoutExtension(fileOrFolderPath) + extension);
+                return Path.Combine(copyToDirectory, Path.GetFileNameWithoutExtension(inputFiles[0]) + extension);
             }
 
             return copyToDirectory;

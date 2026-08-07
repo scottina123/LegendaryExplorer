@@ -856,11 +856,11 @@ namespace LegendaryExplorer.Tools.Soundplorer
                     }
                     if (fromWave)
                     {
-                        soundPanel.ReplaceAudioFromWwiseEncodedFile(forcedExport: clone);
+                        await soundPanel.ReplaceAudioFromWave(forcedExport: clone);
                     }
                     else
                     {
-                        await soundPanel.ReplaceAudioFromWave(forcedExport: clone);
+                        soundPanel.ReplaceAudioFromWwiseEncodedFile(forcedExport: clone);
                     }
                     LoadObjects(reloadList);
                 }
@@ -888,7 +888,7 @@ namespace LegendaryExplorer.Tools.Soundplorer
         }
 
         /// <summary>
-        /// Convert files to Wwise-encoded Oggs. Requires Wwise to be installed.
+        /// Convert WAV or MP3 files to Wwise-encoded audio. Requires Wwise to be installed.
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>
@@ -900,13 +900,15 @@ namespace LegendaryExplorer.Tools.Soundplorer
             var pathCorrect = WwiseCliHandler.CheckWwisePathForGame(Pcc?.Game ?? MEGame.ME3);
             if (!pathCorrect) return;
 
-            var dlg = new CommonOpenFileDialog("Select folder containing .wav files") { IsFolderPicker = true };
+            var dlg = new CommonOpenFileDialog("Select folder containing WAV or MP3 files") { IsFolderPicker = true };
             if (DirectoryMemory.ShowDialog(dlg, this) != CommonFileDialogResult.Ok) { return; }
 
-            string[] filesToConvert = Directory.GetFiles(dlg.FileName, "*.wav");
+            string[] filesToConvert = Directory.EnumerateFiles(dlg.FileName, "*", SearchOption.TopDirectoryOnly)
+                .Where(AudioInputConverter.IsSupportedAudioFile)
+                .ToArray();
             if (!filesToConvert.Any())
             {
-                MessageBox.Show("The selected folder does not contain any .wav files for converting.");
+                MessageBox.Show("The selected folder does not contain any WAV or MP3 files for converting.");
                 return;
             }
 
@@ -921,8 +923,16 @@ namespace LegendaryExplorer.Tools.Soundplorer
                 return; //abort. getpath is not silent so it will show dialogs before this is reached.
             }
             
-            string convertedFolder = await WwiseCliHandler.RunWwiseConversion(srod.ChosenSettings.TargetGame, dlg.FileName, srod.ChosenSettings);
-            MessageBox.Show("Done. Converted files have been placed into:\n" + convertedFolder);
+            try
+            {
+                string convertedFolder = await WwiseCliHandler.RunWwiseConversion(srod.ChosenSettings.TargetGame, dlg.FileName, srod.ChosenSettings);
+                MessageBox.Show("Done. Converted files have been placed into:\n" + convertedFolder);
+            }
+            catch (Exception exception)
+            {
+                MessageBox.Show($"Audio conversion failed:\n{exception.Message}", "Audio conversion failed",
+                    MessageBoxButton.OK, MessageBoxImage.Error);
+            }
         }
 
         private void SetWwisePaths_Clicked(object sender, RoutedEventArgs e)

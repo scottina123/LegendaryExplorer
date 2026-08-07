@@ -41,12 +41,12 @@
             </MenuItem>
             <MenuItem Header="Replace audio..." Visibility="{Binding Converter={StaticResource WwiseMenuItemVisibilityConverter},ConverterParameter='WwiseStream'}">
                 <MenuItem Name="ReplaceAudio_MenuItem" Click="ReplaceAudio_Clicked" Header="From Wwise encoded Ogg" ToolTip="Appends new audio data to an AFC and points this WwiseStream to that data" Visibility="{Binding Converter={StaticResource WwiseMenuItemVisibilityConverter},ConverterParameter='WwiseStream'}"/>
-                <MenuItem Name="ReplaceAudioFromWav_MenuItem" Click="ReplaceAudioFromWav_Clicked" Header="From PCM Wav" ToolTip="Appends new audio data to an AFC and points this WwiseStream to that data" Visibility="{Binding Converter={StaticResource WwiseMenuItemVisibilityConverter},ConverterParameter='WwiseStream'}"/>
+                <MenuItem Name="ReplaceAudioFromWav_MenuItem" Click="ReplaceAudioFromWav_Clicked" Header="From WAV or MP3" ToolTip="Converts the selected audio, appends it to an AFC, and points this WwiseStream to that data" Visibility="{Binding Converter={StaticResource WwiseMenuItemVisibilityConverter},ConverterParameter='WwiseStream'}"/>
 
             </MenuItem>
             <MenuItem Header="Clone and replace..." Visibility="{Binding Converter={StaticResource WwiseMenuItemVisibilityConverter},ConverterParameter='WwiseStream'}">
                 <MenuItem Name="CloneAndReplace_MenuItem" Click="CloneAndReplace_Clicked" Header="Clone and replace audio (from Wwise Ogg)" ToolTip="Create a new WwiseStream export and point it at new audio data" Visibility="{Binding Converter={StaticResource WwiseMenuItemVisibilityConverter},ConverterParameter='WwiseStream'}"/>
-                <MenuItem Name="CloneAndReplaceFromWav_MenuItem" Click="CloneAndReplaceFromWav_Clicked" Header="Clone and replace audio (from Wave PCM)" ToolTip="Create a new WwiseStream export and point it at new audio data" Visibility="{Binding Converter={StaticResource WwiseMenuItemVisibilityConverter},ConverterParameter='WwiseStream'}"/>
+                <MenuItem Name="CloneAndReplaceFromWav_MenuItem" Click="CloneAndReplaceFromWav_Clicked" Header="Clone and replace audio (from WAV or MP3)" ToolTip="Create a new WwiseStream export and point it at converted audio data" Visibility="{Binding Converter={StaticResource WwiseMenuItemVisibilityConverter},ConverterParameter='WwiseStream'}"/>
             </MenuItem>
         </ContextMenu>
         <Style x:Key="SoundExports_ListboxItemStyle" TargetType="{x:Type ListBoxItem}">
@@ -84,7 +84,7 @@
                     <MenuItem Header="Set Wwise executable paths" Click="SetWwisePaths_Clicked"/>
                     <MenuItem Header="Extract all audio from this file" Click="ExtractAllAudio_Clicked" IsEnabled="{Binding AudioFileLoaded, Converter={StaticResource NullEnabledConverter}}"/>
                     <MenuItem Header="Compact a DLC mod AFC" Click="CompactAFC_Clicked"/>
-                    <MenuItem Header="Convert Wave files to Wwise Ogg" Click="ConvertFolderToWwise_Clicked"/>
+                    <MenuItem Header="Convert WAV/MP3 files to Wwise audio" Click="ConvertFolderToWwise_Clicked"/>
                 </MenuItem>
                 <MenuItem Header="_Options" Padding="4">
                     <MenuItem Name="ReverseEndianDisplayOfIDs_MenuItem" Header="Reverse endianness of displayed ID's" Click="ReverseEndiannessOfIDs_Clicked" IsChecked="{Binding Path=(settings:Settings.Soundplorer_ReverseIDDisplayEndianness), Mode=TwoWay}"/>

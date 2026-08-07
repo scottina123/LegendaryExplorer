@@ -9,6 +9,7 @@ using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Xml.Linq;
+using LegendaryExplorer.Audio;
 using LegendaryExplorer.SharedUI;
 using LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator;
 using LegendaryExplorer.Tools.TlkManagerNS;
@@ -26,7 +27,19 @@ namespace LegendaryExplorer.Dialogs
 {
     public partial class BulkAudioImportDialog : Window
     {
-        public ObservableCollection<string> WavFiles { get; } = new();
+        public ObservableCollection<AudioImportItem> WavFileItems { get; } = new();
+        public IEnumerable<string> WavFiles => WavFileItems.Select(item => item.FilePath);
+
+        public sealed class AudioImportItem
+        {
+            public AudioImportItem(string filePath)
+            {
+                FilePath = filePath;
+            }
+
+            public string FilePath { get; }
+            public bool CreateStopEvent { get; set; }
+        }
 
         /// <summary>
         /// Known ME3/LE3 Wwise output buses. Master Audio Bus is always available in the template.
@@ -123,9 +136,11 @@ namespace LegendaryExplorer.Dialogs
 
             if (initialWavFiles != null)
             {
-                foreach (var file in initialWavFiles.Where(File.Exists).Distinct(StringComparer.OrdinalIgnoreCase))
+                foreach (var file in initialWavFiles
+                             .Where(file => File.Exists(file) && AudioInputConverter.IsSupportedAudioFile(file))
+                             .Distinct(StringComparer.OrdinalIgnoreCase))
                 {
-                    WavFiles.Add(file);
+                    WavFileItems.Add(new AudioImportItem(file));
                 }
             }
 
@@ -152,18 +167,18 @@ namespace LegendaryExplorer.Dialogs
         {
             var openFileDialog = new OpenFileDialog
             {
-                Filter = "WAV files (*.wav)|*.wav",
+                Filter = AudioInputConverter.OpenFileDialogFilter,
                 Multiselect = true,
-                Title = "Select WAV files to import"
+                Title = "Select WAV or MP3 files to import"
             };
 
             if (DirectoryMemory.ShowDialog(openFileDialog) == true)
             {
                 foreach (var file in openFileDialog.FileNames)
                 {
-                    if (!WavFiles.Contains(file))
+                    if (!WavFileItems.Any(item => item.FilePath.Equals(file, StringComparison.OrdinalIgnoreCase)))
                     {
-                        WavFiles.Add(file);
+                        WavFileItems.Add(new AudioImportItem(file));
                     }
                 }
             }
@@ -176,16 +191,16 @@ namespace LegendaryExplorer.Dialogs
 
         private void RemoveSelectedButton_Click(object sender, RoutedEventArgs e)
         {
-            var selectedItems = WavFilesListBox.SelectedItems.Cast<string>().ToList();
+            var selectedItems = WavFilesListBox.SelectedItems.Cast<AudioImportItem>().ToList();
             foreach (var item in selectedItems)
             {
-                WavFiles.Remove(item);
+                WavFileItems.Remove(item);
             }
         }
 
         private void ClearAllButton_Click(object sender, RoutedEventArgs e)
         {
-            WavFiles.Clear();
+            WavFileItems.Clear();
         }
 
         private void TopFolderTextBox_TextChanged(object sender, System.Windows.Controls.TextChangedEventArgs e)
@@ -212,9 +227,9 @@ namespace LegendaryExplorer.Dialogs
 
         private async void ImportButton_Click(object sender, RoutedEventArgs e)
         {
-            if (WavFiles.Count == 0)
+            if (WavFileItems.Count == 0)
             {
-                MessageBox.Show("No WAV files have been added.", "No files", MessageBoxButton.OK, MessageBoxImage.Warning);
+                MessageBox.Show("No WAV or MP3 files have been added.", "No files", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
 
@@ -249,6 +264,7 @@ namespace LegendaryExplorer.Dialogs
             var generateGenderedEvents = GenerateGenderedEventsCheckBox.IsChecked == true;
             var loopAudio = LoopAudioCheckBox.IsChecked == true;
             var applyRadioEffect = RadioEffectCheckBox.IsChecked == true;
+            var createSharedStopEvent = CreateSharedStopEventCheckBox.IsChecked == true;
             var createFaceFxAssets = _allowFaceFxAssetCreation && CreateFaceFXAssetsCheckBox.IsChecked == true;
             var topFolderName = TopFolderTextBox.Text.Trim();
             var femaleFaceFxAssetName = FemaleFaceFXAssetNameTextBox.Text.Trim();
@@ -283,7 +299,7 @@ namespace LegendaryExplorer.Dialogs
             try
             {
                 var result = await Task.Run(() => RunBulkAudioImport(bankName, isDialogue, volume, outputBusName,
-                    generateGenderedEvents, loopAudio, applyRadioEffect, createFaceFxAssets, topFolderName,
+                    generateGenderedEvents, loopAudio, applyRadioEffect, createSharedStopEvent, createFaceFxAssets, topFolderName,
                     femaleFaceFxAssetName, maleFaceFxAssetName));
                 if (result != null)
                 {
@@ -312,14 +328,21 @@ namespace LegendaryExplorer.Dialogs
         }
 
         private string RunBulkAudioImport(string bankName, bool isDialogue, double volume, string outputBusName,
-            bool generateGenderedEvents, bool loopAudio, bool applyRadioEffect, bool createFaceFxAssets,
+            bool generateGenderedEvents, bool loopAudio, bool applyRadioEffect, bool createSharedStopEvent, bool createFaceFxAssets,
             string topFolderName, string femaleFaceFxAssetName, string maleFaceFxAssetName)
         {
-            var wavFiles = Dispatcher.Invoke(() => WavFiles.ToList());
+            var audioImportItems = Dispatcher.Invoke(() => WavFileItems
+                .Select(item => new AudioImportItem(item.FilePath) { CreateStopEvent = item.CreateStopEvent })
+                .ToList());
 
-            // Sort WAV files by TLK number so exports are created in numerical order
-            wavFiles.Sort((a, b) => ExtractTlkNumber(Path.GetFileNameWithoutExtension(a))
-                .CompareTo(ExtractTlkNumber(Path.GetFileNameWithoutExtension(b))));
+            // Sort audio inputs by TLK number so exports are created in numerical order
+            audioImportItems.Sort((a, b) => ExtractTlkNumber(Path.GetFileNameWithoutExtension(a.FilePath))
+                .CompareTo(ExtractTlkNumber(Path.GetFileNameWithoutExtension(b.FilePath))));
+            var wavFiles = audioImportItems.Select(item => item.FilePath).ToList();
+            var perAudioStopEventFiles = audioImportItems
+                .Where(item => item.CreateStopEvent)
+                .Select(item => item.FilePath)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
             // 1. Extract template project
             string templateZip = WwiseCliHandler.GetWwiseTemplateProject(_package.Game);
@@ -330,12 +353,15 @@ namespace LegendaryExplorer.Dialogs
             {
                 ZipFile.ExtractToDirectory(templateZip, tempDir);
 
-                // 2. Copy WAV files into the project's Originals/SFX folder
+                // 2. Normalize inputs into the project's Originals/SFX folder.
+                // WwiseCLI only receives 16-bit PCM WAV, even when the user selected MP3 files.
                 string originalsDir = Path.Combine(projectDir, "Originals", "SFX");
                 Directory.CreateDirectory(originalsDir);
-                foreach (var wavPath in wavFiles)
+                foreach (var audioPath in wavFiles)
                 {
-                    File.Copy(wavPath, Path.Combine(originalsDir, Path.GetFileName(wavPath)), true);
+                    var projectWavePath = Path.Combine(originalsDir,
+                        Path.GetFileNameWithoutExtension(audioPath) + ".wav");
+                    AudioInputConverter.ConvertToPcmWave(audioPath, projectWavePath);
                 }
 
                 // 3. Read existing WorkUnit IDs from the template
@@ -384,7 +410,8 @@ namespace LegendaryExplorer.Dialogs
                 File.WriteAllText(actorMixerPath, actorMixerXml);
 
                 // 5. Build Events XML
-                var eventsXml = BuildEventsXml(eventsWuId, actorMixerWuId, wavFiles, generateGenderedEvents);
+                var eventsXml = BuildEventsXml(eventsWuId, actorMixerWuId, wavFiles, generateGenderedEvents,
+                    createSharedStopEvent, perAudioStopEventFiles);
                 File.WriteAllText(eventsPath, eventsXml);
 
                 // 6. Build SoundBanks XML
@@ -628,21 +655,26 @@ namespace LegendaryExplorer.Dialogs
         }
 
         /// <summary>
-        /// Builds the Events XML with Play events per Sound.
-        /// When generateGenderedEvents is true, two events are created per WAV file:
+        /// Builds the Events XML with Play events per Sound and optional Stop events.
+        /// When generateGenderedEvents is true, two events are created per audio input:
         /// {baseName}_m_Play targeting the {baseName}_m Sound, and
         /// {baseName}_f_Play targeting the {baseName}_f Sound.
         /// Each event must target its own Sound node — sharing a Sound between events
         /// breaks event completion tracking in the generated Wwise bank.
+        /// A per-audio Stop event targets every Sound generated from that input, while the shared
+        /// Stop event targets every Sound generated by the import.
         /// </summary>
         private static string BuildEventsXml(string workUnitId, string actorMixerWuId,
-            List<string> wavFiles, bool generateGenderedEvents)
+            List<string> wavFiles, bool generateGenderedEvents, bool createSharedStopEvent,
+            HashSet<string> perAudioStopEventFiles)
         {
             var sb = new System.Text.StringBuilder();
             var pairedGenderBases = generateGenderedEvents ? GetBasesWithBothGenderedInputs(wavFiles) : [];
+            var sharedStopTargets = new List<(string SoundName, string SoundId)>();
             foreach (var wavPath in wavFiles)
             {
                 var soundName = Path.GetFileNameWithoutExtension(wavPath);
+                var soundTargets = new List<(string SoundName, string SoundId)>();
 
                 if (generateGenderedEvents)
                 {
@@ -650,13 +682,27 @@ namespace LegendaryExplorer.Dialogs
                     {
                         var soundId = $"{{{GenerateDeterministicGuid(genderedSoundName)}}}";
                         AppendEventXml(sb, $"{genderedSoundName}_Play", genderedSoundName, soundId, actorMixerWuId);
+                        soundTargets.Add((genderedSoundName, soundId));
                     }
                 }
                 else
                 {
                     var soundId = $"{{{GenerateDeterministicGuid(soundName)}}}";
                     AppendEventXml(sb, $"{soundName}_Play", soundName, soundId, actorMixerWuId);
+                    soundTargets.Add((soundName, soundId));
                 }
+
+                if (perAudioStopEventFiles.Contains(wavPath))
+                {
+                    AppendStopEventXml(sb, $"{soundName}_Stop", soundTargets, actorMixerWuId);
+                }
+
+                sharedStopTargets.AddRange(soundTargets);
+            }
+
+            if (createSharedStopEvent)
+            {
+                AppendStopEventXml(sb, "Stop", sharedStopTargets, actorMixerWuId);
             }
 
             var xml = new System.Text.StringBuilder();
@@ -691,6 +737,40 @@ namespace LegendaryExplorer.Dialogs
             sb.AppendLine("\t\t\t\t\t\t\t\t</Reference>");
             sb.AppendLine("\t\t\t\t\t\t\t</ReferenceList>");
             sb.AppendLine("\t\t\t\t\t\t</Action>");
+            sb.AppendLine("\t\t\t\t\t</ChildrenList>");
+            sb.AppendLine("\t\t\t\t</Event>");
+        }
+
+        /// <summary>
+        /// Appends an Event containing Wwise Stop actions for all supplied Sound targets.
+        /// Wwise 2019.1 serializes a Stop action from ActionType value 2 in the work unit.
+        /// </summary>
+        private static void AppendStopEventXml(System.Text.StringBuilder sb, string eventName,
+            IReadOnlyList<(string SoundName, string SoundId)> soundTargets, string actorMixerWuId)
+        {
+            var eventId = $"{{{Guid.NewGuid()}}}";
+
+            sb.AppendLine($"\t\t\t\t<Event Name=\"{eventName}\" ID=\"{eventId}\">");
+            sb.AppendLine("\t\t\t\t\t<ChildrenList>");
+
+            for (int i = 0; i < soundTargets.Count; i++)
+            {
+                var (soundName, soundId) = soundTargets[i];
+                var actionId = $"{{{Guid.NewGuid()}}}";
+                var actionShortId = GenerateShortId($"{eventName}_{soundName}_{i}_StopAction");
+
+                sb.AppendLine($"\t\t\t\t\t\t<Action Name=\"\" ID=\"{actionId}\" ShortID=\"{actionShortId}\">");
+                sb.AppendLine("\t\t\t\t\t\t\t<PropertyList>");
+                sb.AppendLine("\t\t\t\t\t\t\t\t<Property Name=\"ActionType\" Type=\"int16\" Value=\"2\"/>");
+                sb.AppendLine("\t\t\t\t\t\t\t</PropertyList>");
+                sb.AppendLine("\t\t\t\t\t\t\t<ReferenceList>");
+                sb.AppendLine("\t\t\t\t\t\t\t\t<Reference Name=\"Target\">");
+                sb.AppendLine($"\t\t\t\t\t\t\t\t\t<ObjectRef Name=\"{soundName}\" ID=\"{soundId}\" WorkUnitID=\"{actorMixerWuId}\"/>");
+                sb.AppendLine("\t\t\t\t\t\t\t\t</Reference>");
+                sb.AppendLine("\t\t\t\t\t\t\t</ReferenceList>");
+                sb.AppendLine("\t\t\t\t\t\t</Action>");
+            }
+
             sb.AppendLine("\t\t\t\t\t</ChildrenList>");
             sb.AppendLine("\t\t\t\t</Event>");
         }
@@ -903,7 +983,7 @@ namespace LegendaryExplorer.Dialogs
             foreach (var wavPath in wavFiles)
             {
                 var soundName = Path.GetFileNameWithoutExtension(wavPath);
-                var duration = ReadWavDurationSeconds(wavPath);
+                var duration = ReadAudioDurationSeconds(wavPath);
 
                 if (generateGenderedEvents)
                 {
@@ -1207,58 +1287,14 @@ namespace LegendaryExplorer.Dialogs
         }
 
         /// <summary>
-        /// Reads the duration in seconds from a WAV file by parsing its RIFF header.
+        /// Reads the duration in seconds from a supported WAV or MP3 input file.
         /// Returns 0 if the file cannot be parsed.
         /// </summary>
-        private static float ReadWavDurationSeconds(string wavPath)
+        private static float ReadAudioDurationSeconds(string audioPath)
         {
             try
             {
-                using var fs = File.OpenRead(wavPath);
-                using var reader = new BinaryReader(fs);
-
-                // RIFF header: "RIFF" (4) + file size (4) + "WAVE" (4)
-                if (fs.Length < 12)
-                    return 0f;
-                reader.ReadBytes(4); // "RIFF"
-                reader.ReadInt32();  // file size
-                reader.ReadBytes(4); // "WAVE"
-
-                int byteRate = 0;
-
-                while (fs.Position + 8 <= fs.Length)
-                {
-                    var chunkId = new string(reader.ReadChars(4));
-                    var chunkSize = reader.ReadInt32();
-
-                    if (chunkId == "fmt ")
-                    {
-                        var startPos = fs.Position;
-                        reader.ReadInt16();  // audio format
-                        reader.ReadInt16();  // num channels
-                        reader.ReadInt32();  // sample rate
-                        byteRate = reader.ReadInt32();
-                        var bytesRead = (int)(fs.Position - startPos);
-                        if (chunkSize > bytesRead)
-                            reader.ReadBytes(chunkSize - bytesRead);
-                    }
-                    else if (chunkId == "data")
-                    {
-                        if (byteRate > 0)
-                            return (float)chunkSize / byteRate;
-                        return 0f;
-                    }
-                    else
-                    {
-                        if (fs.Position + chunkSize > fs.Length)
-                            return 0f;
-                        reader.ReadBytes(chunkSize);
-                    }
-
-                    // WAV chunks are word-aligned
-                    if (chunkSize % 2 != 0 && fs.Position < fs.Length)
-                        reader.ReadByte();
-                }
+                return AudioInputConverter.GetDurationSeconds(audioPath);
             }
             catch
             {

@@ -1428,8 +1428,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
             OpenFileDialog d = new OpenFileDialog
             {
-                Title = "Select new .wav file",
-                Filter = "Wave PCM|*.wav",
+                Title = "Select new WAV or MP3 file",
+                Filter = AudioInputConverter.OpenFileDialogFilter,
                 CustomPlaces = AppDirectories.GameCustomPlaces
             };
             bool? res = DirectoryMemory.ShowDialog(d);
@@ -1452,7 +1452,17 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             }*/
 
             var quality = 0.8f; // Changable with UI?
-            var wavData = File.ReadAllBytes(d.FileName);
+            byte[] wavData;
+            try
+            {
+                wavData = ReadAudioInputAsWaveBytes(d.FileName);
+            }
+            catch (Exception exception)
+            {
+                MessageBox.Show($"Audio conversion failed:\n{exception.Message}", "Audio conversion failed",
+                    MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
 
             if (wavData.Length < 0x2E)
             {
@@ -1509,6 +1519,25 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             CurrentLoadedExport.WriteBinary(bin);
         }
 
+        private static byte[] ReadAudioInputAsWaveBytes(string sourceFile)
+        {
+            if (Path.GetExtension(sourceFile).Equals(".wav", StringComparison.OrdinalIgnoreCase))
+            {
+                return File.ReadAllBytes(sourceFile);
+            }
+
+            var temporaryWave = Path.Combine(Path.GetTempPath(), $"LEX_AudioInput_{Guid.NewGuid():N}.wav");
+            try
+            {
+                AudioInputConverter.ConvertToPcmWave(sourceFile, temporaryWave);
+                return File.ReadAllBytes(temporaryWave);
+            }
+            finally
+            {
+                File.Delete(temporaryWave);
+            }
+        }
+
         private async void ReplaceEmbeddedWEMFromWave(string sourceFile = null, WwiseConversionSettingsPackage conversionSettings = null)
         {
             if (ExportInfoListBox.SelectedItem is EmbeddedWEMFile wemToReplace && (CurrentLoadedExport.FileRef.Game.IsGame3() || CurrentLoadedExport.FileRef.Game == MEGame.LE2))
@@ -1519,10 +1548,10 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     if (!correctPaths) return;
                     OpenFileDialog d = new OpenFileDialog
                     {
-                        Filter = "Wave PCM|*.wav",
+                        Filter = AudioInputConverter.OpenFileDialogFilter,
                         CustomPlaces = AppDirectories.GameCustomPlaces
                     };
-            bool? res = DirectoryMemory.ShowDialog(d);
+                    bool? res = DirectoryMemory.ShowDialog(d);
                     if (res.HasValue && res.Value)
                     {
                         sourceFile = d.FileName;
@@ -1546,8 +1575,16 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     }
                 }
 
-                //Convert and replace
-                ReplaceEmbeddedWEMFromWwiseEncodedFile(await WwiseCliHandler.RunWwiseConversion(Pcc.Game, sourceFile, conversionSettings), wemToReplace);
+                try
+                {
+                    var convertedFile = await WwiseCliHandler.RunWwiseConversion(Pcc.Game, sourceFile, conversionSettings);
+                    ReplaceEmbeddedWEMFromWwiseEncodedFile(convertedFile, wemToReplace);
+                }
+                catch (Exception exception)
+                {
+                    MessageBox.Show($"Audio conversion failed:\n{exception.Message}", "Audio conversion failed",
+                        MessageBoxButton.OK, MessageBoxImage.Error);
+                }
             }
         }
 
@@ -1619,10 +1656,10 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 var correctPaths = WwiseCliHandler.CheckWwisePathForGame(Pcc.Game);
                 OpenFileDialog d = new OpenFileDialog
                 {
-                    Filter = "Wave PCM|*.wav",
+                    Filter = AudioInputConverter.OpenFileDialogFilter,
                     CustomPlaces = AppDirectories.GameCustomPlaces
                 };
-            if (correctPaths && DirectoryMemory.ShowDialog(d) == true)
+                if (correctPaths && DirectoryMemory.ShowDialog(d) == true)
                 {
                     sourceFile = d.FileName;
                 }
@@ -1652,23 +1689,36 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 HostingControl.IsBusy = true;
             }
 
-            BulkSoundReplaceResult bulkReplaceResult = await Task.Run(async () =>
+            BulkSoundReplaceResult bulkReplaceResult;
+            try
             {
-                var conversion = await WwiseCliHandler.RunWwiseConversion(Pcc.Game, sourceFile, conversionSettings);
-                if (conversionSettings.BulkReplaceSameExportName)
+                bulkReplaceResult = await Task.Run(async () =>
                 {
-                    return BulkReplaceAudioFromWwiseEncodedFile(conversion, exportToReplace, conversionSettings.UpdateReferencedEvents, conversionSettings.DestinationAFCFile, conversionSettings.BulkReplaceFolder);
-                }
+                    var conversion = await WwiseCliHandler.RunWwiseConversion(Pcc.Game, sourceFile, conversionSettings);
+                    if (conversionSettings.BulkReplaceSameExportName)
+                    {
+                        return BulkReplaceAudioFromWwiseEncodedFile(conversion, exportToReplace, conversionSettings.UpdateReferencedEvents, conversionSettings.DestinationAFCFile, conversionSettings.BulkReplaceFolder);
+                    }
 
-                ReplaceAudioFromWwiseEncodedFile(conversion, exportToReplace, conversionSettings.UpdateReferencedEvents, conversionSettings.DestinationAFCFile);
-                return null;
-            });
+                    ReplaceAudioFromWwiseEncodedFile(conversion, exportToReplace, conversionSettings.UpdateReferencedEvents, conversionSettings.DestinationAFCFile);
+                    return null;
+                });
+            }
+            catch (Exception exception)
+            {
+                MessageBox.Show($"Audio conversion failed:\n{exception.Message}", "Audio conversion failed",
+                    MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
+            finally
+            {
+                if (HostingControl != null)
+                {
+                    HostingControl.IsBusy = false;
+                }
+            }
 
             UpdateAudioStream();
-            if (HostingControl != null)
-            {
-                HostingControl.IsBusy = false;
-            }
 
             if (bulkReplaceResult != null)
             {
