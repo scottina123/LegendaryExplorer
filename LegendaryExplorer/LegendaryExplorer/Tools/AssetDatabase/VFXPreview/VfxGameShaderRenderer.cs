@@ -12,6 +12,11 @@ using System.Numerics;
 
 namespace LegendaryExplorer.Tools.AssetDatabase.VFXPreview;
 
+public interface IVfxDepthStateProvider
+{
+    DepthStencilState GetVfxDepthState(bool depthTest, bool depthWrite);
+}
+
 /// <summary>
 /// Renders sprite emitters with UE3's native particle vertex factories. Each resource records the exact
 /// factory selected from the material shader map and supplies that factory's complete vertex and constant data.
@@ -655,7 +660,7 @@ public sealed class VfxGameShaderRenderer : IDisposable
             context,
             mesh);
         context.ImmediateContext.OutputMerger.SetDepthStencilState(
-            (context as VfxPreviewRenderContext)?.GetVfxDepthState(depthTest, depthWrite));
+            (context as IVfxDepthStateProvider)?.GetVfxDepthState(depthTest, depthWrite));
         effect.RenderObject(
             context.ImmediateContext,
             vertexConstants,

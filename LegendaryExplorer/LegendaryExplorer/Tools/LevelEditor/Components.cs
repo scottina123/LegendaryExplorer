@@ -1,4 +1,5 @@
 ﻿using LegendaryExplorer.Misc;
+using LegendaryExplorer.Tools.AssetDatabase.VFXPreview;
 using LegendaryExplorer.Tools.LevelEditor.Scene3D;
 using LegendaryExplorerCore.Helpers;
 using LegendaryExplorerCore.Packages;
@@ -159,6 +160,11 @@ public class PrimitiveComponentProxy : NotifyPropertyChangedBase, IDisposable
         {
             return new SkeletalMeshComponentProxy(context, componentExport, parent);
         }
+        if (GlobalUnrealObjectInfo.IsA(className, "ParticleSystemComponent", componentExport.Game)
+            && context is LevelEditorRenderContext levelContext)
+        {
+            return new ParticleSystemComponentProxy(levelContext, componentExport, parent);
+        }
 
         return new PrimitiveComponentProxy(context, componentExport, parent);
     }
@@ -269,6 +275,90 @@ public class PrimitiveComponentProxy : NotifyPropertyChangedBase, IDisposable
         GC.SuppressFinalize(this);
     }
     #endregion
+}
+
+public interface ILevelRenderResource
+{
+    bool RenderResourcesInitialized { get; }
+    void PrepareRenderResources();
+}
+
+public sealed class ParticleSystemComponentProxy : PrimitiveComponentProxy, ILevelRenderResource
+{
+    private readonly LevelEditorRenderContext renderContext;
+    private readonly IEntry particleSystemEntry;
+    private volatile bool renderResourcesInitialized;
+    private LevelVfxRenderer.Instance instance;
+
+    internal bool RenderResourcesInitialized => renderResourcesInitialized;
+    internal bool HasRenderableVfx => RenderResourcesInitialized && instance is not null;
+    bool ILevelRenderResource.RenderResourcesInitialized => RenderResourcesInitialized;
+
+    public ParticleSystemComponentProxy(LevelEditorRenderContext context, ExportEntry componentExport,
+        ActorProxy parent) : base(context, componentExport, parent)
+    {
+        renderContext = context;
+        particleSystemEntry = Properties.GetProp<ObjectProperty>("Template")?.ResolveToEntry(Export.FileRef);
+    }
+
+    internal void PrepareRenderResources()
+    {
+        if (RenderResourcesInitialized)
+        {
+            return;
+        }
+
+        instance = renderContext.VfxRenderer.CreateInstance(particleSystemEntry);
+        renderResourcesInitialized = true;
+    }
+
+    void ILevelRenderResource.PrepareRenderResources() => PrepareRenderResources();
+
+    public override void UpdateScene(MeshRenderContext context, float deltaTime)
+    {
+        if (renderContext.ShowEmitterVfx && RenderResourcesInitialized && instance is not null)
+        {
+            instance.Simulation.Tick(deltaTime);
+        }
+    }
+
+    public override void Render(MeshRenderContext context, RenderPass pass)
+    {
+        if (!IsVisible || !renderContext.ShowEmitterVfx || pass is not RenderPass.Hair
+            || !RenderResourcesInitialized || instance is null)
+        {
+            return;
+        }
+        renderContext.VfxRenderer.Render(instance, LocalToWorld);
+    }
+
+    public override BoxSphereBounds GetBounds()
+    {
+        if (RenderResourcesInitialized && instance?.System.Definition.FixedLocalBounds is { IsValid: true } localBounds)
+        {
+            VfxBounds worldBounds = VfxBoundsMath.Transform(localBounds, LocalToWorld);
+            Vector3 extent = (worldBounds.Maximum - worldBounds.Minimum) * 0.5f;
+            return new BoxSphereBounds
+            {
+                Origin = (worldBounds.Minimum + worldBounds.Maximum) * 0.5f,
+                BoxExtent = extent,
+                SphereRadius = extent.Length()
+            };
+        }
+
+        return new BoxSphereBounds
+        {
+            Origin = LocalToWorld.Translation,
+            BoxExtent = new Vector3(256f),
+            SphereRadius = 443.405f
+        };
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        instance = null;
+        base.Dispose(disposing);
+    }
 }
 
 public class PointLightComponentProxy : PrimitiveComponentProxy
@@ -418,7 +508,7 @@ public class DirectionalLightComponentProxy : PrimitiveComponentProxy
     }
 }
 
-public abstract class MeshComponentProxy : PrimitiveComponentProxy
+public abstract class MeshComponentProxy : PrimitiveComponentProxy, ILevelRenderResource
 {
     protected readonly MeshRenderContext RenderContext;
     public bool IsVolumetric;
@@ -469,6 +559,8 @@ public abstract class MeshComponentProxy : PrimitiveComponentProxy
     protected abstract bool EnsureRenderResourcesCore();
 
     internal void PrepareRenderResources() => EnsureRenderResources();
+    bool ILevelRenderResource.RenderResourcesInitialized => RenderResourcesInitialized;
+    void ILevelRenderResource.PrepareRenderResources() => PrepareRenderResources();
 
     protected bool UseGameShaderPreview(MeshRenderContext context) =>
         context is LevelEditorRenderContext { UseGameShaderMeshPreviews: true };

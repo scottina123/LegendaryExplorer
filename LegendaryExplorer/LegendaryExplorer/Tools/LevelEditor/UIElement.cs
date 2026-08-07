@@ -4,6 +4,7 @@ using LegendaryExplorerCore.Unreal.Collections;
 using System;
 using System.Numerics;
 using System.Collections.Generic;
+using System.Linq;
 using Rotator = LegendaryExplorerCore.Unreal.BinaryConverters.Rotator;
 
 namespace LegendaryExplorer.Tools.LevelEditor;
@@ -153,6 +154,102 @@ public sealed class LightIconOverlay : UIElement
     private static Vector3 GetBillboardPoint(Vector3 center, Vector3 right, Vector3 up, float rightOffset, float upOffset)
     {
         return center + (right * rightOffset) + (up * upOffset);
+    }
+}
+
+/// <summary>
+/// Lightweight, hit-testable emitter marker. It remains available when particle rendering is disabled so large
+/// levels can expose and select every VFX placement without allocating or simulating the effects.
+/// </summary>
+public sealed class EmitterIconOverlay : UIElement
+{
+    private const float IconOffset = 18f;
+    private const float OuterRadius = 12f;
+    private const float InnerRadius = 5f;
+    private const float MaximumDistance = 50000f;
+    private const int MaximumIcons = 500;
+    private static readonly Vector4 OutlineColor = new(0.03f, 0.02f, 0.06f, 0.95f);
+    private static readonly Vector4 IconColor = new(0.45f, 0.85f, 1f, 0.95f);
+    private static readonly Vector4 SelectedColor = new(1f, 0.55f, 0.15f, 1f);
+
+    public override void Draw(LevelEditorRenderContext context)
+    {
+        if (context.ShowEmitterVfx)
+        {
+            return;
+        }
+
+        Vector3 cameraPosition = context.Camera.Position;
+        float maximumDistanceSquared = MaximumDistance * MaximumDistance;
+        var candidates = new List<(EmitterActorProxy Actor, float DistanceSquared)>();
+        foreach (EmitterActorProxy actor in context.DrawList_3D.OfType<EmitterActorProxy>())
+        {
+            float distanceSquared = Vector3.DistanceSquared(actor.LocalToWorld.Translation, cameraPosition);
+            if (distanceSquared <= maximumDistanceSquared)
+            {
+                candidates.Add((actor, distanceSquared));
+            }
+        }
+
+        candidates.Sort((left, right) => left.DistanceSquared.CompareTo(right.DistanceSquared));
+        EmitterActorProxy selected = context.TransformWidget.Attach as EmitterActorProxy;
+        bool selectedDrawn = false;
+        int iconCount = Math.Min(MaximumIcons, candidates.Count);
+        for (int index = 0; index < iconCount; index++)
+        {
+            DrawEmitterIcon(context, candidates[index].Actor);
+            selectedDrawn |= ReferenceEquals(candidates[index].Actor, selected);
+        }
+        if (!selectedDrawn && selected is not null)
+        {
+            DrawEmitterIcon(context, selected);
+        }
+    }
+
+    private static void DrawEmitterIcon(LevelEditorRenderContext context, EmitterActorProxy actor)
+    {
+        Vector3 basePosition = actor.LocalToWorld.Translation;
+        Vector4 screenPosition = context.WorldToScreen(basePosition);
+        if (screenPosition.W <= 0f)
+        {
+            return;
+        }
+
+        float scale = context.Camera.IsOrthographic
+            ? context.Camera.OrthoWidth * 4f / context.Width
+            : screenPosition.W * (4f / context.Width / context.Camera.ProjectionMatrix[0, 0]);
+        Vector3 right = context.Camera.CameraRight * scale;
+        Vector3 up = context.Camera.CameraUp * scale;
+        Vector3 center = basePosition + up * IconOffset;
+        if (!context.WorldToPixel(center, out _))
+        {
+            return;
+        }
+
+        int hitId = actor.HitID;
+        Vector4 color = ReferenceEquals(actor, context.TransformWidget.Attach) ? SelectedColor : IconColor;
+        DrawStar(context, center, right, up, OuterRadius + 1.5f, OutlineColor, hitId);
+        DrawStar(context, center, right, up, OuterRadius, color, hitId);
+    }
+
+    private static void DrawStar(LevelEditorRenderContext context, Vector3 center, Vector3 right, Vector3 up,
+        float radius, Vector4 color, int hitId)
+    {
+        const int pointCount = 8;
+        var mesh = context.Primitives.BuildMesh(color, hitId, Matrix4x4.Identity);
+        mesh.AddVertex(center);
+        for (int index = 0; index <= pointCount; index++)
+        {
+            float angle = MathF.PI * 2f * index / pointCount;
+            float pointRadius = (index & 1) == 0 ? radius : InnerRadius;
+            Vector3 point = center + right * (MathF.Cos(angle) * pointRadius)
+                             + up * (MathF.Sin(angle) * pointRadius);
+            mesh.AddVertex(point);
+            if (index > 0)
+            {
+                mesh.AddTriangle(0, index, index + 1);
+            }
+        }
     }
 }
 

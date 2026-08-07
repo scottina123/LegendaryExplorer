@@ -404,7 +404,8 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy, ITr
         "PrefabInstance",
         "SFXDroppedGrenade",
         "SFXDroppedAmmo",
-        "SFXDroppedPickup"
+        "SFXDroppedPickup",
+        "Emitter"
     }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
 
     public static bool CanCreate(ExportEntry actorExport)
@@ -479,6 +480,10 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy, ITr
         if (GlobalUnrealObjectInfo.IsA(className, "SFXDroppedPickup", actorExport.Game))
         {
             return new SFXDroppedPickupProxy(context, actorExport);
+        }
+        if (GlobalUnrealObjectInfo.IsA(className, "Emitter", actorExport.Game))
+        {
+            return new EmitterActorProxy(context, actorExport);
         }
         return null;
         //return new ActorProxy(context, actorExport);
@@ -787,6 +792,28 @@ public class StaticMeshActorProxy : ActorProxy
     {
         AddComponent(context.RenderContext, ref StaticMeshComponent);
         IsVolumetricMesh = StaticMeshComponent.IsVolumetric;
+    }
+}
+
+public sealed class EmitterActorProxy : ActorProxy
+{
+    public ParticleSystemComponentProxy ParticleSystemComponent;
+
+    public EmitterActorProxy(IActorEditorContext context, ExportEntry actorExport) : base(context, actorExport)
+    {
+        AddComponent(context.RenderContext, ref ParticleSystemComponent);
+        if (ParticleSystemComponent is null)
+        {
+            ExportEntry componentExport = actorExport.GetChildren<ExportEntry>()
+                .FirstOrDefault(child => child.IsA("ParticleSystemComponent"));
+            if (componentExport is not null
+                && PrimitiveComponentProxy.Create(context.RenderContext, componentExport, this)
+                    is ParticleSystemComponentProxy component)
+            {
+                ParticleSystemComponent = component;
+                Components.Add(component);
+            }
+        }
     }
 }
 

@@ -265,10 +265,16 @@
                         <xctk:IntegerUpDown Width="60" Value="{Binding MaxLightIcons}" Minimum="0" Maximum="2000" ButtonSpinnerLocation="Left" VerticalContentAlignment="Center" ToolTip="Maximum number of light icons to display"/>
                     </StackPanel>
                     <Separator Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" />
-                    <xctk:DropDownButton Content="View options" MaxDropDownHeight="220" CloseOnFocusLoss="False"
+                    <xctk:DropDownButton Content="View options" MaxDropDownHeight="260" CloseOnFocusLoss="False"
                                          BorderBrush="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}">
                         <xctk:DropDownButton.DropDownContent>
-                            <scene3D:SceneControlOptionsControl/>
+                            <StackPanel Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}">
+                                <scene3D:SceneControlOptionsControl/>
+                                <Separator Margin="0,4,0,4"/>
+                                <CheckBox Content="Show emitter VFX" Margin="4,1,4,5"
+                                          IsChecked="{Binding ShowEmitterVfx}"
+                                          ToolTip="Render placed emitters with their in-game shaders. Turn this off to show lightweight emitter icons instead."/>
+                            </StackPanel>
                         </xctk:DropDownButton.DropDownContent>
                     </xctk:DropDownButton>
                     <Separator Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" />

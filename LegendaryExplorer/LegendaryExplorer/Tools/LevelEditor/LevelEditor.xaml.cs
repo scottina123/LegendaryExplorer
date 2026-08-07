@@ -270,6 +270,21 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         set => SetProperty(ref RenderContext.MaxLightIcons, value);
     }
 
+    private bool _showEmitterVfx = Settings.LevelEditor_ShowEmitterVfx;
+    public bool ShowEmitterVfx
+    {
+        get => _showEmitterVfx;
+        set
+        {
+            if (SetProperty(ref _showEmitterVfx, value))
+            {
+                Settings.LevelEditor_ShowEmitterVfx = value;
+                RenderContext.SetShowEmitterVfx(value);
+                SceneViewer?.MarkRenderDirty();
+            }
+        }
+    }
+
     private bool _showVolumes = Settings.LevelEditor_ShowVolumes;
     public bool ShowVolumes
     {
@@ -558,6 +573,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
     {
         RenderContext = new LevelEditorRenderContext();
         RenderContext.ShowLightIcons = _showLightIcons;
+        RenderContext.SetShowEmitterVfx(_showEmitterVfx);
         RenderContext.TransformWidget.OnDragComplete = OnWidgetDragComplete;
         _backgroundColor = GetThemeDefaultBackgroundColor();
         RenderContext.BackgroundColor = _backgroundColor;
@@ -594,6 +610,21 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
     {
         UpdateCameraPositionText();
         UpdateCameraRotationText();
+        if (RenderContext.ShowEmitterVfx)
+        {
+            RenderContext.QueueVisibleEmitterResources();
+            int visibleEmitterCount = 0;
+            foreach (EmitterActorProxy emitter in RenderContext.DrawList_3D.OfType<EmitterActorProxy>())
+            {
+                if (RenderContext.IsBoundsVisible(emitter.GetBounds()))
+                {
+                    emitter.UpdateScene(RenderContext, e);
+                    visibleEmitterCount += emitter.Components.OfType<ParticleSystemComponentProxy>()
+                        .Count(component => component.HasRenderableVfx);
+                }
+            }
+            RenderContext.SetVisibleEmitterInstanceCount(visibleEmitterCount);
+        }
     }
 
     private void RenderScene(object sender, EventArgs e)
@@ -2189,7 +2220,8 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
                 bool rebuildMeshActor = actor is not CollectionActorComponentProxy
                                         && updatedPropertiesExport is not null
                                         && (updatedPropertiesExport.IsA("StaticMeshComponent")
-                                            || updatedPropertiesExport.IsA("SkeletalMeshComponent"));
+                                            || updatedPropertiesExport.IsA("SkeletalMeshComponent")
+                                            || updatedPropertiesExport.IsA("ParticleSystemComponent"));
                 _isRefreshingActorFromPackageUpdate = true;
                 try
                 {

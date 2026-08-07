@@ -1,4 +1,5 @@
 ﻿using LegendaryExplorer.Tools.LevelEditor.Scene3D;
+using LegendaryExplorer.Tools.AssetDatabase.VFXPreview;
 using LegendaryExplorerCore.Gammtek.Extensions;
 using LegendaryExplorerCore.Helpers;
 using LegendaryExplorerCore.SharpDX;
@@ -20,7 +21,7 @@ using System.Windows.Input;
 
 namespace LegendaryExplorer.Tools.LevelEditor;
 
-public class LevelEditorRenderContext : MeshRenderContext
+public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvider
 {
     protected override bool SupportsConcurrentResourceCreation => true;
 
@@ -39,7 +40,10 @@ public class LevelEditorRenderContext : MeshRenderContext
     public List<ActorProxy> DrawList_3D = [];
     public List<UIElement> DrawList_UI = [];
     private readonly LightIconOverlay LightIcons = new();
+    private readonly EmitterIconOverlay EmitterIcons = new();
     private readonly Dictionary<ActorProxy, SceneLight> sceneLightCache = [];
+
+    internal LevelVfxRenderer VfxRenderer { get; }
 
     private USparseArray<IHitProxy> HitProxies = [];
 
@@ -47,14 +51,15 @@ public class LevelEditorRenderContext : MeshRenderContext
 
     private Texture2D _hitStagingTexture;
     private readonly object renderResourceQueueLock = new();
-    private readonly Queue<MeshComponentProxy> pendingRenderResources = new();
-    private readonly HashSet<MeshComponentProxy> pendingRenderResourceSet = [];
+    private readonly Queue<ILevelRenderResource> pendingRenderResources = new();
+    private readonly HashSet<ILevelRenderResource> pendingRenderResourceSet = [];
     private CancellationTokenSource renderResourceCancellation = new();
     private Task renderResourceWorker;
     private int renderResourceRedrawRequested;
     private ActorProxy prioritizedResourceActor;
     private long lastPointerActivityTimestamp;
     private long lastHoverHitTestTimestamp;
+    private int visibleEmitterInstanceCount;
 
     public bool ForceContinuousRendering { get; set; }
     public override bool RenderOnUnhandledMouseMove => false;
@@ -64,7 +69,13 @@ public class LevelEditorRenderContext : MeshRenderContext
     public bool ShouldRenderHitTestPass => !HasActiveInput && !TransformWidget.IsDragging;
 
     public override bool IsActivelyUpdating() => ForceContinuousRendering || base.IsActivelyUpdating()
-        || TransformWidget.IsDragging;
+        || TransformWidget.IsDragging || (ShowEmitterVfx && Volatile.Read(ref visibleEmitterInstanceCount) > 0);
+
+    internal bool UseVfxSceneDepthFallback { get; set; }
+    // Match the native VFX preview's far-depth fallback only while particles draw; other Level Editor materials
+    // retain their previous scene-depth behavior.
+    public override ShaderResourceView PreviewSceneDepthTextureView
+        => UseVfxSceneDepthFallback ? WhiteTexView : base.PreviewSceneDepthTextureView;
 
     /// <summary>
     /// Resource construction runs on a dedicated worker. The composition callback only consumes a redraw
@@ -101,12 +112,12 @@ public class LevelEditorRenderContext : MeshRenderContext
                     if (token.WaitHandle.WaitOne(20)) return;
                 }
 
-                MeshComponentProxy component = null;
+                ILevelRenderResource component = null;
                 lock (renderResourceQueueLock)
                 {
                     while (pendingRenderResources.Count > 0)
                     {
-                        MeshComponentProxy candidate = pendingRenderResources.Dequeue();
+                        ILevelRenderResource candidate = pendingRenderResources.Dequeue();
                         if (pendingRenderResourceSet.Remove(candidate))
                         {
                             component = candidate;
@@ -123,7 +134,8 @@ public class LevelEditorRenderContext : MeshRenderContext
                 {
                     ActorProxy priorityActor = prioritizedResourceActor;
                     if (priorityActor is not null
-                        && priorityActor.Components.OfType<MeshComponentProxy>()
+                        && priorityActor.Components.OfType<ILevelRenderResource>()
+                            .Where(IsRenderResourceEnabled)
                             .All(candidate => candidate.RenderResourcesInitialized))
                     {
                         prioritizedResourceActor = null;
@@ -175,6 +187,7 @@ public class LevelEditorRenderContext : MeshRenderContext
     public readonly BatchedPrimitives Primitives = new();
 
     public bool ShowLightIcons = true;
+    public bool ShowEmitterVfx { get; private set; }
     public bool ShowVolumes;
     public bool ShowVolumetrics;
 
@@ -259,7 +272,67 @@ public class LevelEditorRenderContext : MeshRenderContext
         BackgroundColor = System.Windows.Media.Color.FromRgb(0x99, 0x99, 0x99);
         Camera.FirstPerson = true;
         TransformWidget = new Widget();
+        VfxRenderer = new LevelVfxRenderer(this);
         IsReadOnly = readOnly;
+    }
+
+    public DepthStencilState GetVfxDepthState(bool depthTest, bool depthWrite)
+        => VfxRenderer.GetDepthState(depthTest, depthWrite);
+
+    internal void SetVisibleEmitterInstanceCount(int count)
+        => Interlocked.Exchange(ref visibleEmitterInstanceCount, Math.Max(0, count));
+
+    public void SetShowEmitterVfx(bool show)
+    {
+        if (ShowEmitterVfx == show)
+        {
+            return;
+        }
+
+        ShowEmitterVfx = show;
+        if (!show)
+        {
+            SetVisibleEmitterInstanceCount(0);
+        }
+        lock (renderResourceQueueLock)
+        {
+            if (show)
+            {
+                foreach (ActorProxy actor in DrawList_3D)
+                {
+                    QueueRenderResourcesLocked(actor);
+                }
+            }
+            else
+            {
+                foreach (ILevelRenderResource resource in pendingRenderResourceSet
+                             .OfType<ParticleSystemComponentProxy>().ToArray())
+                {
+                    pendingRenderResourceSet.Remove(resource);
+                }
+            }
+        }
+        Interlocked.Exchange(ref renderResourceRedrawRequested, 1);
+        if (show)
+        {
+            StartRenderResourceWorker();
+        }
+    }
+
+    internal void QueueVisibleEmitterResources()
+    {
+        if (!ShowEmitterVfx)
+        {
+            return;
+        }
+        lock (renderResourceQueueLock)
+        {
+            foreach (EmitterActorProxy emitter in DrawList_3D.OfType<EmitterActorProxy>())
+            {
+                QueueRenderResourcesLocked(emitter);
+            }
+        }
+        StartRenderResourceWorker();
     }
 
     const int HitTestSize = 3;
@@ -501,6 +574,10 @@ public class LevelEditorRenderContext : MeshRenderContext
         {
             DrawList_UI.Add(LightIcons);
         }
+        if (!DrawList_UI.Contains(EmitterIcons))
+        {
+            DrawList_UI.Add(EmitterIcons);
+        }
         EnableTransformWidget();
     }
 
@@ -508,12 +585,26 @@ public class LevelEditorRenderContext : MeshRenderContext
     {
         lock (renderResourceQueueLock)
         {
-            foreach (MeshComponentProxy component in actor.Components.OfType<MeshComponentProxy>())
+            QueueRenderResourcesLocked(actor);
+        }
+    }
+
+    private bool IsRenderResourceEnabled(ILevelRenderResource resource)
+        => resource is not ParticleSystemComponentProxy || ShowEmitterVfx;
+
+    private bool ShouldPrepareRenderResource(ILevelRenderResource resource)
+        => IsRenderResourceEnabled(resource)
+           && (resource is not ParticleSystemComponentProxy particle
+               || IsBoundsVisible(particle.Actor.GetBounds()));
+
+    private void QueueRenderResourcesLocked(ActorProxy actor)
+    {
+        foreach (ILevelRenderResource component in actor.Components.OfType<ILevelRenderResource>())
+        {
+            if (ShouldPrepareRenderResource(component) && !component.RenderResourcesInitialized
+                && pendingRenderResourceSet.Add(component))
             {
-                if (!component.RenderResourcesInitialized && pendingRenderResourceSet.Add(component))
-                {
-                    pendingRenderResources.Enqueue(component);
-                }
+                pendingRenderResources.Enqueue(component);
             }
         }
     }
@@ -522,7 +613,7 @@ public class LevelEditorRenderContext : MeshRenderContext
     {
         lock (renderResourceQueueLock)
         {
-            foreach (MeshComponentProxy component in actor.Components.OfType<MeshComponentProxy>())
+            foreach (ILevelRenderResource component in actor.Components.OfType<ILevelRenderResource>())
             {
                 pendingRenderResourceSet.Remove(component);
             }
@@ -548,29 +639,30 @@ public class LevelEditorRenderContext : MeshRenderContext
             return;
         }
 
-        List<MeshComponentProxy> priorityComponents = actor.Components.OfType<MeshComponentProxy>()
+        List<ILevelRenderResource> priorityComponents = actor.Components.OfType<ILevelRenderResource>()
+            .Where(IsRenderResourceEnabled)
             .Where(component => !component.RenderResourcesInitialized).ToList();
         lock (renderResourceQueueLock)
         {
             prioritizedResourceActor = actor;
-            foreach (MeshComponentProxy component in priorityComponents)
+            foreach (ILevelRenderResource component in priorityComponents)
             {
                 pendingRenderResourceSet.Add(component);
             }
 
             var prioritySet = priorityComponents.ToHashSet();
-            MeshComponentProxy[] remainder = pendingRenderResources
+            ILevelRenderResource[] remainder = pendingRenderResources
                 .Where(component => pendingRenderResourceSet.Contains(component) && !prioritySet.Contains(component))
                 .ToArray();
             pendingRenderResources.Clear();
-            foreach (MeshComponentProxy component in priorityComponents)
+            foreach (ILevelRenderResource component in priorityComponents)
             {
                 if (pendingRenderResourceSet.Contains(component))
                 {
                     pendingRenderResources.Enqueue(component);
                 }
             }
-            foreach (MeshComponentProxy component in remainder)
+            foreach (ILevelRenderResource component in remainder)
             {
                 pendingRenderResources.Enqueue(component);
             }
@@ -669,6 +761,8 @@ public class LevelEditorRenderContext : MeshRenderContext
             actor.PropertyChanged -= Actor_PropertyChanged;
         }
         DrawList_3D.DisposeAndClear();
+        VfxRenderer.Clear();
+        Interlocked.Exchange(ref visibleEmitterInstanceCount, 0);
         DrawList_UI.Clear();
         SceneLights.Clear();
         sceneLightCache.Clear();
@@ -704,6 +798,7 @@ public class LevelEditorRenderContext : MeshRenderContext
     public override void DisposeResources()
     {
         StopRenderResourceWorker();
+        VfxRenderer.Dispose();
         base.DisposeResources();
     }
 
@@ -727,6 +822,10 @@ public class LevelEditorRenderContext : MeshRenderContext
             actor.PropertyChanged += Actor_PropertyChanged;
             CacheSceneLight(actor);
             QueueRenderResources(actor);
+            if (!DrawList_UI.Contains(EmitterIcons))
+            {
+                DrawList_UI.Add(EmitterIcons);
+            }
             StartRenderResourceWorker();
         }
     }

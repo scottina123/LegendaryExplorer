@@ -15,7 +15,7 @@ using Color = System.Windows.Media.Color;
 
 namespace LegendaryExplorer.Tools.AssetDatabase.VFXPreview;
 
-public sealed class VfxPreviewRenderContext : MeshRenderContext
+public sealed class VfxPreviewRenderContext : MeshRenderContext, IVfxDepthStateProvider
 {
     /// <summary>
     /// Native soft-particle materials require scene depth even when there is no opaque preview scene behind them.
@@ -54,7 +54,7 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
     private readonly Dictionary<VfxBlendMode, BlendState> blendStates = [];
     private readonly Dictionary<(bool DepthTest, bool DepthWrite), DepthStencilState> depthStates = [];
 
-    internal DepthStencilState GetVfxDepthState(bool depthTest, bool depthWrite)
+    public DepthStencilState GetVfxDepthState(bool depthTest, bool depthWrite)
         => depthStates.GetValueOrDefault((depthTest, depthWrite));
     private readonly Dictionary<string, bool> luminanceOpacityCache = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<PreviewActorModelComponent, ActorMeshResources> actorModels = [];
