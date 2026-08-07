@@ -45,6 +45,10 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         public int Length { get; set; }
         public BinaryInterpreterWPF.NodeType Tag { get; set; }
+        /// <summary>
+        /// Indicates that this object reference is a material slot and can use the material picker.
+        /// </summary>
+        public bool IsMaterialReference { get; set; }
         public ArrayPropertyChildAddAlgorithm ArrayAddAlgorithm;
 
         private bool _isInlineEditing;

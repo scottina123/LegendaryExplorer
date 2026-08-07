@@ -759,6 +759,35 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             }
         }
 
+        private void InlineObjectDisplay_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            if (sender is not FrameworkElement { DataContext: BinInterpNode { IsMaterialReference: true } node }
+                || CurrentLoadedExport is null)
+            {
+                return;
+            }
+
+            e.Handled = true;
+            node.IsProgramaticallySelecting = false;
+            node.IsSelected = true;
+
+            int.TryParse(node.InlineObjectIndexValue, out int currentIndex);
+            IEntry selectedMaterial = EntrySelector.GetEntry<IEntry>(
+                Window.GetWindow(this),
+                CurrentLoadedExport.FileRef,
+                "Select a Material or MaterialInstanceConstant to apply.",
+                entry => entry.ClassName is "Material" or "MaterialInstanceConstant",
+                CurrentLoadedExport.FileRef.GetEntry(currentIndex));
+            if (selectedMaterial is null)
+            {
+                return;
+            }
+
+            node.InlineObjectIndexValue = selectedMaterial.UIndex.ToString();
+            node.InlineObjectDisplayValue = GetInlineObjectDisplayText(selectedMaterial.UIndex);
+            TryCommitInlineEditor(node);
+        }
+
         private void InlineEditor_KeyDown(object sender, KeyEventArgs e)
         {
             if (sender is not FrameworkElement element)

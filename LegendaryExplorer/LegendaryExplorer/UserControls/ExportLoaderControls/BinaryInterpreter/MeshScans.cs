@@ -110,7 +110,7 @@ public partial class BinaryInterpreterWPF
                     {
                         matOffsets.Add(bin.Position);
                         BinInterpNode node = new BinInterpNode(bin.Position, $"{j}");
-                        node.Items.Add(MakeEntryNode(bin, "Material"));
+                        node.Items.Add(MakeMaterialEntryNode(bin, "Material"));
                         node.Items.Add(MakeBoolIntNode(bin, "EnableCollision"));
                         node.Items.Add(MakeBoolIntNode(bin, "OldEnableCollision"));
                         node.Items.Add(MakeBoolIntNode(bin, "bEnableShadowCasting"));
@@ -291,7 +291,7 @@ public partial class BinaryInterpreterWPF
                 Items = ReadList(matOffsets.Count, i =>
                 {
                     bin.JumpTo(matOffsets[i]);
-                    var matNode = MakeEntryNode(bin, $"Material[{i}]");
+                    var matNode = MakeMaterialEntryNode(bin, $"Material[{i}]");
                     try
                     {
                         if (Pcc.GetEntry(bin.Skip(-4).ReadInt32()) is ExportEntry matExport)

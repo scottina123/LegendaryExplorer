@@ -622,7 +622,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                         {
                             MakeLightMapNode(bin),
                             MakeEntryNode(bin, "Component"),
-                            MakeEntryNode(bin, "Material"),
+                            MakeMaterialEntryNode(bin, "Material"),
                             new BinInterpNode(bin.Position, $"Nodes ({count = bin.ReadInt32()})")
                             {
                                 Items = ReadList(count, j => new BinInterpNode(bin.Position, $"{j}: {bin.ReadUInt16()}"))
@@ -971,7 +971,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                                 MakeInt32Node(bin, "PolyFlags"),
                                 MakeEntryNode(bin, "Actor"),
                                 new BinInterpNode(bin.Position, $"ItemName: {bin.ReadNameReference(Pcc)}"),
-                                MakeEntryNode(bin, "Material"),
+                                MakeMaterialEntryNode(bin, "Material"),
                                 MakeInt32Node(bin, "iLink"),
                                 MakeInt32Node(bin, "iBrushPoly"),
                                 MakeFloatNode(bin, "ShadowMapScale"),
@@ -1072,7 +1072,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     {
                         Items = new List<ITreeItem>
                         {
-                            MakeEntryNode(bin, "Material"),
+                            MakeMaterialEntryNode(bin, "Material"),
                             MakeInt32Node(bin, "PolyFlags"),
                             MakeInt32Node(bin, "pBase"),
                             MakeInt32Node(bin, "vNormal"),
@@ -4704,6 +4704,13 @@ private BinInterpNode MakeNameNode(EndianReader bin, string name, out NameRefere
     new BinInterpNode(bin.Position, $"{name}: {nameRef = bin.ReadNameReference(Pcc).Instanced}", NodeType.StructLeafName) { Length = 8 };
 
 private BinInterpNode MakeEntryNode(EndianReader bin, string name) => new BinInterpNode(bin.Position, $"{name}: {entryRefString(bin)}", NodeType.StructLeafObject) { Length = 4 };
+private BinInterpNode MakeMaterialEntryNode(EndianReader bin, string name)
+{
+    BinInterpNode node = MakeEntryNode(bin, name);
+    node.IsMaterialReference = true;
+    return node;
+}
+
 private BinInterpNode MakeEntryNode(EndianReader bin, string name, out int uIndex)
 {
     long binPosition = bin.Position;
@@ -4978,7 +4985,7 @@ private List<ITreeItem> StartSkeletalMeshScan(byte[] data, ref int binarystart)
         subnodes.Add(MakeBoxSphereBoundsNode(bin, "Bounds"));
         subnodes.Add(MakeArrayNode(bin, "Materials", i =>
         {
-            var matNode = MakeEntryNode(bin, $"{i}");
+            var matNode = MakeMaterialEntryNode(bin, $"{i}");
             try
             {
                 var value = bin.Skip(-4).ReadInt32();
