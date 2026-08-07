@@ -274,6 +274,60 @@
                                 <CheckBox Content="Show emitter VFX" Margin="4,1,4,5"
                                           IsChecked="{Binding ShowEmitterVfx}"
                                           ToolTip="Render placed emitters with their in-game shaders. Turn this off to show lightweight emitter icons instead."/>
+                                <CheckBox Content="Show pathing" Margin="4,1"
+                                          IsChecked="{Binding ShowPathing}"
+                                          ToolTip="Draw PathNodes and ReachSpec connections for all loaded levels."/>
+                                <CheckBox Content="Show cover" Margin="4,1,4,5"
+                                          IsChecked="{Binding ShowCover}"
+                                          ToolTip="Draw CoverLinks, cover slots, and their facing directions for all loaded levels."/>
+                            </StackPanel>
+                        </xctk:DropDownButton.DropDownContent>
+                    </xctk:DropDownButton>
+                    <xctk:DropDownButton Content="Navigation" MaxDropDownHeight="520" CloseOnFocusLoss="False"
+                                         BorderBrush="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}">
+                        <xctk:DropDownButton.DropDownContent>
+                            <StackPanel Width="285" Margin="6" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}">
+                                <TextBlock Text="Automatic pathing and cover" FontWeight="SemiBold" Margin="0,0,0,5"/>
+                                <TextBlock Text="Generation is centered on the camera. A radius of 0 scans all loaded collision. Results are appended to the active ME3/LE3 package after confirmation; existing navigation is preserved."
+                                           TextWrapping="Wrap" Margin="0,0,0,7"/>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="105"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                    </Grid.RowDefinitions>
+                                    <TextBlock Grid.Row="0" Text="Pawn radius" VerticalAlignment="Center"/>
+                                    <xctk:SingleUpDown Grid.Row="0" Grid.Column="1" Value="{Binding NavigationPawnRadius}" Minimum="1" Increment="1" FormatString="F0" Margin="2"/>
+                                    <TextBlock Grid.Row="1" Text="Pawn half-height (UE3)" VerticalAlignment="Center"/>
+                                    <xctk:SingleUpDown Grid.Row="1" Grid.Column="1" Value="{Binding NavigationPawnHeight}" Minimum="1" Increment="4" FormatString="F0" Margin="2"/>
+                                    <TextBlock Grid.Row="2" Text="Grid spacing" VerticalAlignment="Center"/>
+                                    <xctk:SingleUpDown Grid.Row="2" Grid.Column="1" Value="{Binding NavigationGridSpacing}" Minimum="16" Increment="16" FormatString="F0" Margin="2"/>
+                                    <TextBlock Grid.Row="3" Text="Connection distance" VerticalAlignment="Center"/>
+                                    <xctk:SingleUpDown Grid.Row="3" Grid.Column="1" Value="{Binding NavigationConnectionDistance}" Minimum="16" Increment="16" FormatString="F0" Margin="2"/>
+                                    <TextBlock Grid.Row="4" Text="Maximum slope (deg)" VerticalAlignment="Center"/>
+                                    <xctk:SingleUpDown Grid.Row="4" Grid.Column="1" Value="{Binding NavigationMaximumSlope}" Minimum="1" Maximum="89" Increment="1" FormatString="F0" Margin="2"/>
+                                    <TextBlock Grid.Row="5" Text="Maximum step up" VerticalAlignment="Center"/>
+                                    <xctk:SingleUpDown Grid.Row="5" Grid.Column="1" Value="{Binding NavigationMaximumStepUp}" Minimum="0" Increment="1" FormatString="F0" Margin="2"/>
+                                    <TextBlock Grid.Row="6" Text="Maximum step down" VerticalAlignment="Center"/>
+                                    <xctk:SingleUpDown Grid.Row="6" Grid.Column="1" Value="{Binding NavigationMaximumStepDown}" Minimum="0" Increment="1" FormatString="F0" Margin="2"/>
+                                    <TextBlock Grid.Row="7" Text="Maximum safe drop" VerticalAlignment="Center"/>
+                                    <xctk:SingleUpDown Grid.Row="7" Grid.Column="1" Value="{Binding NavigationMaximumDrop}" Minimum="0" Increment="4" FormatString="F0" Margin="2"/>
+                                    <TextBlock Grid.Row="8" Text="Generation radius" VerticalAlignment="Center"/>
+                                    <xctk:SingleUpDown Grid.Row="8" Grid.Column="1" Value="{Binding NavigationGenerationRadius}" Minimum="0" Increment="500" FormatString="F0" Margin="2"/>
+                                </Grid>
+                                <CheckBox Content="Generate cover links and slots" IsChecked="{Binding GenerateCover}" Margin="0,6,0,6"/>
+                                <Button Content="Generate navigation" Command="{Binding GenerateNavigationCommand}" Padding="8,4"
+                                        ToolTip="Build collision, detect walkable space and cover, then serialize PathNodes, ReachSpecs, CoverLinks, and CoverSlotMarkers."/>
                             </StackPanel>
                         </xctk:DropDownButton.DropDownContent>
                     </xctk:DropDownButton>

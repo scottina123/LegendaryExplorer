@@ -185,6 +185,7 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
     }
 
     public readonly BatchedPrimitives Primitives = new();
+    public readonly NavigationOverlay NavigationOverlay = new();
 
     public bool ShowLightIcons = true;
     public bool ShowEmitterVfx { get; private set; }
@@ -540,6 +541,9 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
 
     public void DrawUI()
     {
+        NavigationOverlay.Draw(this);
+        Primitives.Render(this, clearDepth: false);
+
         bool drawTransformWidgetLast = DrawList_UI.Contains(TransformWidget);
         foreach (UIElement uiElem in DrawList_UI)
         {

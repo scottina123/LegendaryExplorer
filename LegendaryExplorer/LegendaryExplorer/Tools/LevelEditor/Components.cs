@@ -726,6 +726,12 @@ public class StaticMeshComponentProxy : MeshComponentProxy
     private StructProperty collisionGeometry;
     private bool collisionGeometryLoaded;
 
+    internal void AppendNavigationCollision(List<LevelCollisionTriangle> output)
+    {
+        LevelCollisionFlags flags = NavigationCollisionGeometry.GetFlags(this);
+        NavigationCollisionGeometry.AppendStaticMesh(output, staticMesh, LocalToWorld, flags, Export);
+    }
+
     public StaticMeshComponentProxy(MeshRenderContext context, ExportEntry componentExport, ActorProxy parent) : base(context, componentExport, parent)
     {
         if (Properties.GetProp<ObjectProperty>("StaticMesh") is { Value: not 0 } meshProperty
@@ -1215,11 +1221,19 @@ public class SkeletalMeshComponentProxy : MeshComponentProxy
 public class BrushComponentProxy : PrimitiveComponentProxy
 {
     private readonly Mesh<WorldVertex> Brush;
+    private readonly StructProperty brushAggregateGeometry;
 
     public BrushComponentProxy(MeshRenderContext context, ExportEntry componentExport, ActorProxy parent) : base(context, componentExport, parent)
     {
-        Brush = context.GetMeshFromAggGeom(Properties.GetProp<StructProperty>("BrushAggGeom"));
+        brushAggregateGeometry = Properties.GetProp<StructProperty>("BrushAggGeom");
+        Brush = context.GetMeshFromAggGeom(brushAggregateGeometry);
         UpdateSelfLocalToWorld();
+    }
+
+    internal void AppendNavigationCollision(List<LevelCollisionTriangle> output)
+    {
+        LevelCollisionFlags flags = NavigationCollisionGeometry.GetFlags(this);
+        NavigationCollisionGeometry.AppendAggregateGeometry(output, brushAggregateGeometry, LocalToWorld, flags, Export);
     }
 
     public override void Render(MeshRenderContext context, RenderPass pass)

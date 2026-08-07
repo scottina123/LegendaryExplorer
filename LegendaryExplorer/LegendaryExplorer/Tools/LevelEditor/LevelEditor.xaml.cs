@@ -40,6 +40,7 @@ using System.Linq;
 using
 System.Numerics;
 using System.Text.RegularExpressions;
+using System.Threading;
 using
 System.Threading.Tasks;
 using System.Windows;
@@ -242,6 +243,55 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
             }
         }
     }
+
+    private bool _showPathing;
+    public bool ShowPathing
+    {
+        get => _showPathing;
+        set
+        {
+            if (SetProperty(ref _showPathing, value))
+            {
+                RenderContext.NavigationOverlay.ShowPaths = value;
+                SceneViewer?.MarkRenderDirty();
+            }
+        }
+    }
+
+    private bool _showCover;
+    public bool ShowCover
+    {
+        get => _showCover;
+        set
+        {
+            if (SetProperty(ref _showCover, value))
+            {
+                RenderContext.NavigationOverlay.ShowCover = value;
+                SceneViewer?.MarkRenderDirty();
+            }
+        }
+    }
+
+    private float _navigationPawnRadius = 34f;
+    public float NavigationPawnRadius { get => _navigationPawnRadius; set => SetProperty(ref _navigationPawnRadius, value); }
+    private float _navigationPawnHeight = 90f;
+    public float NavigationPawnHeight { get => _navigationPawnHeight; set => SetProperty(ref _navigationPawnHeight, value); }
+    private float _navigationGridSpacing = 256f;
+    public float NavigationGridSpacing { get => _navigationGridSpacing; set => SetProperty(ref _navigationGridSpacing, value); }
+    private float _navigationMaximumSlope = 45f;
+    public float NavigationMaximumSlope { get => _navigationMaximumSlope; set => SetProperty(ref _navigationMaximumSlope, value); }
+    private float _navigationMaximumStepUp = 35f;
+    public float NavigationMaximumStepUp { get => _navigationMaximumStepUp; set => SetProperty(ref _navigationMaximumStepUp, value); }
+    private float _navigationMaximumStepDown = 45f;
+    public float NavigationMaximumStepDown { get => _navigationMaximumStepDown; set => SetProperty(ref _navigationMaximumStepDown, value); }
+    private float _navigationMaximumDrop = 160f;
+    public float NavigationMaximumDrop { get => _navigationMaximumDrop; set => SetProperty(ref _navigationMaximumDrop, value); }
+    private float _navigationConnectionDistance = 400f;
+    public float NavigationConnectionDistance { get => _navigationConnectionDistance; set => SetProperty(ref _navigationConnectionDistance, value); }
+    private float _navigationGenerationRadius = 10000f;
+    public float NavigationGenerationRadius { get => _navigationGenerationRadius; set => SetProperty(ref _navigationGenerationRadius, value); }
+    private bool _generateCover = true;
+    public bool GenerateCover { get => _generateCover; set => SetProperty(ref _generateCover, value); }
 
     private bool _showLightIcons = Settings.LevelEditor_ShowLightIcons;
     public bool ShowLightIcons
@@ -1618,6 +1668,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         openFile.Actors.AddRange(sorted);
         Actors.AddRange(sorted);
         RenderContext.LoadActors(sorted);
+        RefreshNavigationOverlay();
 
         if (isFirstFile)
         {
@@ -1653,6 +1704,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         }
         SceneViewer.SetShouldRender(false);
         RenderContext.UnloadLevel();
+        RenderContext.NavigationOverlay.Refresh([]);
         Actors.Clear();
         foreach (var file in OpenFiles)
         {
@@ -1703,6 +1755,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
 
         file.Dispose();
         OpenFiles.Remove(file);
+        RefreshNavigationOverlay();
         ActiveFile = SelectedActor?.OwningFile ?? OpenFiles.FirstOrDefault();
         HasAnyFileOpen = OpenFiles.Count > 0;
         UpdateGlobalDirtyState();
@@ -1865,6 +1918,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
     public ICommand TrashActorCommand { get; set; }
     public ICommand SnapActorToCameraCommand { get; set; }
     public ICommand ToggleOrthoViewCommand { get; set; }
+    public ICommand GenerateNavigationCommand { get; set; }
     private void LoadCommands()
     {
         OpenFileCommand = new GenericCommand(OpenFile);
@@ -1910,12 +1964,97 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         SnapActorToCameraCommand = new GenericCommand(SnapActorToCamera,
             () => SelectedActor is not null && !SelectedActor.IsReadOnly);
         ToggleOrthoViewCommand = new GenericCommand(() => IsOrthographicView = !IsOrthographicView);
+        GenerateNavigationCommand = new GenericCommand(GenerateNavigation,
+            () => ActiveFile is { IsReadOnly: false } && Game.IsGame3() && !IsBusy);
     }
 
     private void SnapActorToCamera()
     {
         if (SelectedActor is null || SelectedActor.IsReadOnly) return;
         SelectedActor.Location = RenderContext.Camera.Position;
+        SceneViewer?.MarkRenderDirty();
+    }
+
+    private async void GenerateNavigation()
+    {
+        if (ActiveFile is not { IsReadOnly: false } activeFile)
+            return;
+        if (!Game.IsGame3())
+        {
+            MessageBox.Show(this, "Automatic cover serialization currently supports ME3 and LE3 levels.",
+                "Navigation Generator", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var settings = new NavigationGenerationSettings
+        {
+            PawnRadius = NavigationPawnRadius,
+            PawnHeight = NavigationPawnHeight,
+            GridSpacing = NavigationGridSpacing,
+            MaximumSlopeDegrees = NavigationMaximumSlope,
+            MaximumStepUp = NavigationMaximumStepUp,
+            MaximumStepDown = NavigationMaximumStepDown,
+            MaximumSafeDrop = NavigationMaximumDrop,
+            ConnectionDistance = NavigationConnectionDistance,
+            GenerationRadius = NavigationGenerationRadius,
+            GenerateCover = GenerateCover
+        };
+
+        try
+        {
+            settings.Validate();
+            IsBusy = true;
+            IsBusyTaskbar = true;
+            BusyText = "Building collision acceleration structure...";
+            ActorProxy[] collisionActors = Actors.ToArray();
+            Vector3 generationCenter = RenderContext.Camera.Position;
+            var progress = new Progress<string>(message => BusyText = message);
+            NavigationGenerationResult generated = await Task.Run(() =>
+            {
+                LevelCollisionScene collision = LevelCollisionScene.Build(collisionActors);
+                return new NavigationGenerator(collision, settings).Generate(generationCenter,
+                    CancellationToken.None, progress);
+            }).ConfigureAwait(true);
+
+            IsBusy = false;
+            IsBusyTaskbar = false;
+            string summary = $"Generated {generated.Nodes.Count:N0} path nodes, " +
+                             $"{generated.Edges.Count:N0} directed connections, " +
+                             $"{generated.CoverLinks.Count:N0} cover links, and " +
+                             $"{generated.CoverLinks.Sum(link => link.Slots.Count):N0} cover slots.\n\n" +
+                             $"Append these objects to {activeFile.FileName}? Existing navigation is preserved, " +
+                             "and the package is not saved to disk until you use Save.";
+            if (MessageBox.Show(this, summary, "Navigation Generator", MessageBoxButton.YesNo,
+                    MessageBoxImage.Question) != MessageBoxResult.Yes)
+                return;
+
+            IsBusy = true;
+            IsBusyTaskbar = true;
+            BusyText = "Serializing navigation and cover...";
+            NavigationSerializationResult serialized = NavigationSerializer.Write(activeFile, generated, settings);
+            RefreshNavigationOverlay();
+            ShowPathing = true;
+            ShowCover = GenerateCover;
+            TextBelowActors = $"Navigation generator: {serialized.PathNodeCount:N0} nodes, " +
+                              $"{serialized.ReachSpecCount:N0} ReachSpecs, " +
+                              $"{serialized.CoverLinkCount:N0} cover links / {serialized.CoverSlotCount:N0} slots.";
+            SceneViewer?.MarkRenderDirty();
+        }
+        catch (Exception exception)
+        {
+            MessageBox.Show(this, exception.Message, "Navigation Generator", MessageBoxButton.OK,
+                MessageBoxImage.Error);
+        }
+        finally
+        {
+            IsBusy = false;
+            IsBusyTaskbar = false;
+        }
+    }
+
+    private void RefreshNavigationOverlay()
+    {
+        RenderContext.NavigationOverlay.Refresh(OpenFiles);
         SceneViewer?.MarkRenderDirty();
     }
 
@@ -2419,6 +2558,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
             }
 
             file.IsDirty = false;
+            RefreshNavigationOverlay();
         }
 
     #endregion

@@ -49,8 +49,10 @@ namespace LegendaryExplorerCore.Pathing
 
         public static void CreateReachSpec(ExportEntry startNode, bool createTwoWay, ExportEntry destinationNode, string reachSpecClass, float radius, float height, Guid? destinationReference = null, Point3D destinationPosition = null, PackageCache cache = null)
         {
-            IMEPackage Pcc = startNode.FileRef;
-            ExportEntry reachSpec = ExportCreator.CreateExport(startNode.FileRef, reachSpecClass, reachSpecClass, startNode.FileRef.FindEntry("TheWorld.PersistentLevel"), cache: cache);
+            string reachSpecName = reachSpecClass[(reachSpecClass.LastIndexOf('.') + 1)..];
+            IEntry parent = startNode.Parent ?? startNode.FileRef.FindEntry("TheWorld.PersistentLevel");
+            ExportEntry reachSpec = ExportCreator.CreateExport(startNode.FileRef, reachSpecName, reachSpecName,
+                parent, cache: cache);
             var props = reachSpec.GetProperties();
             if (destinationNode == null && destinationPosition != null) //EXTERNAL
             {
@@ -96,10 +98,12 @@ namespace LegendaryExplorerCore.Pathing
                 //int outgoingSpec = pcc.ExportCount;
                 //int incomingSpec = pcc.ExportCount + 1;
 
-                if (reachSpecClass == "SlotToSlotReachSpec")
+                if (reachSpecName == "SlotToSlotReachSpec")
                 {
-                    // When creating two way for coverslots (since they will always be linked) the initial call is TwoWay (right) and the follow up call is not TwoWay (left)
-                    props.AddOrReplaceProp(new ByteProperty(createTwoWay ? (byte)2 : (byte)1, "SpecDirection"));
+                    // The initial link toward the next slot uses 2 and its generated return uses 1,
+                    // matching cooked ME3 cover runs.
+                    props.AddOrReplaceProp(new ByteProperty(createTwoWay ? (byte)2 : (byte)1,
+                        "SpecDirection"));
                 }
 
                 props.AddOrReplaceProp(CreateActorReference(Guid.Empty, destinationNode, "End"));
@@ -115,10 +119,18 @@ namespace LegendaryExplorerCore.Pathing
 
                 reachSpec.WriteProperties(props);
 
+                // ReachSpecs are discovered through the source node's PathList; merely creating the
+                // export leaves an invisible, unusable connection in the package.
+                var pathList = startNode.GetProperty<ArrayProperty<ObjectProperty>>("PathList")
+                               ?? new ArrayProperty<ObjectProperty>("PathList");
+                pathList.Add(new ObjectProperty(reachSpec));
+                startNode.WriteProperty(pathList);
+
                 if (createTwoWay)
                 {
                     // Generate return reachspec
-                    CreateReachSpec(destinationNode, false, startNode, reachSpecClass, radius, height, cache: cache);
+                    CreateReachSpec(destinationNode, false, startNode, reachSpecClass, radius, height,
+                        cache: cache);
                 }
 
 
