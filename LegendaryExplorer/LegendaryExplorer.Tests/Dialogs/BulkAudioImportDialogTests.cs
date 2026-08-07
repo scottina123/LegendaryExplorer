@@ -1,9 +1,12 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Xml.Linq;
 using LegendaryExplorer.Dialogs;
+using ME3Tweaks.Wwiser;
+using ME3Tweaks.Wwiser.Model.Hierarchy;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace LegendaryExplorer.Tests.Dialogs;
@@ -13,6 +16,63 @@ public class BulkAudioImportDialogTests
 {
     private const string EventsWorkUnitId = "{11111111-1111-1111-1111-111111111111}";
     private const string ActorMixerWorkUnitId = "{22222222-2222-2222-2222-222222222222}";
+    private const uint QecFutzBoxEffectId = 1827713496;
+    private const uint QecFlangerEffectId = 1487904704;
+
+    [TestMethod]
+    public void AppliesExactHackettQecEffectChainToLe3Bank()
+    {
+        var sourceBankPath = FindWwiserTestBank("LE3_v134_1.bnk");
+        var testBankPath = Path.Combine(Path.GetTempPath(), $"LEX_QEC_Test_{Guid.NewGuid():N}.bnk");
+        File.Copy(sourceBankPath, testBankPath);
+
+        try
+        {
+            var method = typeof(BulkAudioImportDialog).GetMethod(
+                "ApplyQecEffectToBank", BindingFlags.NonPublic | BindingFlags.Static);
+            Assert.IsNotNull(method);
+
+            method.Invoke(null, [testBankPath]);
+            method.Invoke(null, [testBankPath]);
+
+            using var stream = File.OpenRead(testBankPath);
+            var bank = WwiseBankParser.Deserialize(stream);
+            Assert.AreEqual(134u, bank.BKHD.BankGeneratorVersion);
+            Assert.IsNotNull(bank.HIRC);
+
+            var qecShareSets = bank.HIRC.Items
+                .Select(item => item.Item)
+                .OfType<FxShareSet>()
+                .Where(item => item.Id is QecFutzBoxEffectId or QecFlangerEffectId)
+                .ToList();
+            Assert.AreEqual(2, qecShareSets.Count);
+            Assert.AreEqual(0x006E1003u, qecShareSets.Single(item => item.Id == QecFutzBoxEffectId).Plugin.PluginId);
+            Assert.AreEqual(0x007D0003u, qecShareSets.Single(item => item.Id == QecFlangerEffectId).Plugin.PluginId);
+
+            var actorMixers = bank.HIRC.Items
+                .Select(item => item.Item)
+                .OfType<ActorMixer>()
+                .ToList();
+            var actorMixerIds = actorMixers.Select(item => item.Id).ToHashSet();
+            var rootActorMixers = actorMixers
+                .Where(item => item.NodeBaseParameters.DirectParentId == 0 ||
+                               !actorMixerIds.Contains(item.NodeBaseParameters.DirectParentId))
+                .ToList();
+            Assert.IsNotEmpty(rootActorMixers);
+
+            foreach (var rootActorMixer in rootActorMixers)
+            {
+                CollectionAssert.AreEqual(
+                    new[] { QecFutzBoxEffectId, QecFlangerEffectId },
+                    rootActorMixer.NodeBaseParameters.FxParams.FxChunks.Select(item => item.Id).ToArray());
+                Assert.IsTrue(rootActorMixer.NodeBaseParameters.FxParams.IsOverrideParentFx);
+            }
+        }
+        finally
+        {
+            File.Delete(testBankPath);
+        }
+    }
 
     [TestMethod]
     public void BuildsPerAudioAndSharedStopEvents()
@@ -109,4 +169,20 @@ public class BulkAudioImportDialogTests
         document.Descendants("Event").Single(element => GetName(element) == eventName);
 
     private static string GetName(XElement element) => element.Attribute("Name")?.Value;
+
+    private static string FindWwiserTestBank(string fileName)
+    {
+        for (var directory = new DirectoryInfo(AppContext.BaseDirectory); directory != null; directory = directory.Parent)
+        {
+            var candidate = Path.Combine(directory.FullName, "submodules", "Wwiser.NET",
+                "ME3Tweaks.Wwiser.Tests", "TestData", "WholeBanks", fileName);
+            if (File.Exists(candidate))
+            {
+                return candidate;
+            }
+        }
+
+        Assert.Fail($"Could not locate Wwiser test bank '{fileName}'.");
+        return null;
+    }
 }

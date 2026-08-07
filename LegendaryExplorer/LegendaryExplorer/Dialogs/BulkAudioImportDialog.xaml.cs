@@ -22,11 +22,25 @@ using LegendaryExplorerCore.Unreal.BinaryConverters;
 using Microsoft.Win32;
 using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
 using LegendaryExplorerCore.Helpers;
+using BinarySerialization;
+using ME3Tweaks.Wwiser;
+using ME3Tweaks.Wwiser.Model.ParameterNode;
+using WwiserActorMixer = ME3Tweaks.Wwiser.Model.Hierarchy.ActorMixer;
+using WwiserFxShareSet = ME3Tweaks.Wwiser.Model.Hierarchy.FxShareSet;
+using WwiserHircItemContainer = ME3Tweaks.Wwiser.Model.Hierarchy.HircItemContainer;
 
 namespace LegendaryExplorer.Dialogs
 {
     public partial class BulkAudioImportDialog : Window
     {
+        private const uint QecFutzBoxEffectId = 1827713496;
+        private const uint QecFlangerEffectId = 1487904704;
+        private const uint QecEffectBankVersion = 134;
+        private const string QecFutzBoxHirc =
+            "EJ4AAADYsfBsAxBuAIsAAAAAAAAAAACgjEYAAAAAAAAAAAAAIEIAAAAAAQQAAAAAAPBBAAAAAAAAAAAAAQAAAAAAekQAAAAAAAAAAAAAAMDCAKCMRgAAIEIAAAAAAACgwQAAoEEBAwAAAAAAyEIAAAAgwgAAAAAAAIA/AAAgQQAAyEIAAAAAAAAAAAAAAAAAAAAAAAAAAEAAAMhCAAAAAAAAAA==";
+        private const string QecFlangerHirc =
+            "EE4AAADAn69YAwB9ADsAAAAAACBBAACAPwAAgD8AAAAAAABIQs3MzD0AAAAAAAAAAAAASEIAALRCAAAAAAAAAAAAAAAAAABIQgEBAAAAAAAAAAA=";
+
         public ObservableCollection<AudioImportItem> WavFileItems { get; } = new();
         public IEnumerable<string> WavFiles => WavFileItems.Select(item => item.FilePath);
 
@@ -117,6 +131,12 @@ namespace LegendaryExplorer.Dialogs
             DataContext = this;
             CustomWindowChrome.ApplyCustomChrome(this);
 
+            if (_package.Game != MEGame.LE3)
+            {
+                QecEffectCheckBox.IsEnabled = false;
+                QecEffectCheckBox.ToolTip = "The QEC effect is only available for LE3 banks.";
+            }
+
             if (!_allowFaceFxAssetCreation)
             {
                 SetNamedElementVisibility("CreateFaceFXAssetsLabel", Visibility.Collapsed);
@@ -186,7 +206,38 @@ namespace LegendaryExplorer.Dialogs
 
         private void RadioEffectCheckBox_CheckedChanged(object sender, RoutedEventArgs e)
         {
-            VolumeTextBox.Text = RadioEffectCheckBox.IsChecked == true ? "0" : "-10";
+            if (QecEffectCheckBox == null || VolumeTextBox == null)
+            {
+                return;
+            }
+
+            if (RadioEffectCheckBox.IsChecked == true)
+            {
+                QecEffectCheckBox.IsChecked = false;
+                VolumeTextBox.Text = "0";
+            }
+            else if (QecEffectCheckBox.IsChecked != true)
+            {
+                VolumeTextBox.Text = "-10";
+            }
+        }
+
+        private void QecEffectCheckBox_CheckedChanged(object sender, RoutedEventArgs e)
+        {
+            if (RadioEffectCheckBox == null || VolumeTextBox == null)
+            {
+                return;
+            }
+
+            if (QecEffectCheckBox.IsChecked == true)
+            {
+                RadioEffectCheckBox.IsChecked = false;
+                VolumeTextBox.Text = "-10";
+            }
+            else if (RadioEffectCheckBox.IsChecked != true)
+            {
+                VolumeTextBox.Text = "-10";
+            }
         }
 
         private void RemoveSelectedButton_Click(object sender, RoutedEventArgs e)
@@ -264,6 +315,7 @@ namespace LegendaryExplorer.Dialogs
             var generateGenderedEvents = GenerateGenderedEventsCheckBox.IsChecked == true;
             var loopAudio = LoopAudioCheckBox.IsChecked == true;
             var applyRadioEffect = RadioEffectCheckBox.IsChecked == true;
+            var applyQecEffect = QecEffectCheckBox.IsChecked == true;
             var createSharedStopEvent = CreateSharedStopEventCheckBox.IsChecked == true;
             var createFaceFxAssets = _allowFaceFxAssetCreation && CreateFaceFXAssetsCheckBox.IsChecked == true;
             var topFolderName = TopFolderTextBox.Text.Trim();
@@ -299,7 +351,7 @@ namespace LegendaryExplorer.Dialogs
             try
             {
                 var result = await Task.Run(() => RunBulkAudioImport(bankName, isDialogue, volume, outputBusName,
-                    generateGenderedEvents, loopAudio, applyRadioEffect, createSharedStopEvent, createFaceFxAssets, topFolderName,
+                    generateGenderedEvents, loopAudio, applyRadioEffect, applyQecEffect, createSharedStopEvent, createFaceFxAssets, topFolderName,
                     femaleFaceFxAssetName, maleFaceFxAssetName));
                 if (result != null)
                 {
@@ -328,7 +380,7 @@ namespace LegendaryExplorer.Dialogs
         }
 
         private string RunBulkAudioImport(string bankName, bool isDialogue, double volume, string outputBusName,
-            bool generateGenderedEvents, bool loopAudio, bool applyRadioEffect, bool createSharedStopEvent, bool createFaceFxAssets,
+            bool generateGenderedEvents, bool loopAudio, bool applyRadioEffect, bool applyQecEffect, bool createSharedStopEvent, bool createFaceFxAssets,
             string topFolderName, string femaleFaceFxAssetName, string maleFaceFxAssetName)
         {
             var audioImportItems = Dispatcher.Invoke(() => WavFileItems
@@ -468,6 +520,11 @@ namespace LegendaryExplorer.Dialogs
                     return $"Generated bank '{bankName}.bnk' not found in output. Available files: {availableFiles}";
                 }
 
+                if (applyQecEffect)
+                {
+                    ApplyQecEffectToBank(bnkPath);
+                }
+
                 Dispatcher.Invoke(() => StatusTextBlock.Text = "Importing soundbank into package...");
 
                 var effectiveBankPackageName = _bankPackageName;
@@ -524,6 +581,97 @@ namespace LegendaryExplorer.Dialogs
                     // Best-effort cleanup
                 }
             }
+        }
+
+        /// <summary>
+        /// Adds the two ShareSets used by Admiral Hackett's QEC dialogue in
+        /// BioD_Nor_204CallHackett_LOC_INT and applies them to the generated root ActorMixer.
+        /// The McDSP FutzBox authoring plug-in is not available in Wwise 2019, so the exact
+        /// version-134 HIRC data is injected after WwiseCLI has generated the bank.
+        /// </summary>
+        private static void ApplyQecEffectToBank(string bnkPath)
+        {
+            ME3Tweaks.Wwiser.WwiseBank bank;
+            using (var input = new MemoryStream(File.ReadAllBytes(bnkPath), false))
+            {
+                bank = WwiseBankParser.Deserialize(input);
+            }
+
+            if (bank.BKHD.BankGeneratorVersion != QecEffectBankVersion)
+            {
+                throw new InvalidOperationException(
+                    $"The Hackett QEC effect requires a version-{QecEffectBankVersion} LE3 Wwise bank, " +
+                    $"but WwiseCLI generated version {bank.BKHD.BankGeneratorVersion}.");
+            }
+
+            if (bank.HIRC == null)
+            {
+                throw new InvalidOperationException("WwiseCLI generated a bank without an audio hierarchy.");
+            }
+
+            var serializer = new BinarySerializer();
+            var serializationContext = BankSerializationContext.FromBank(bank);
+            foreach (var (effectId, pluginId, serializedHirc) in new[]
+                     {
+                         (QecFutzBoxEffectId, 0x006E1003u, QecFutzBoxHirc),
+                         (QecFlangerEffectId, 0x007D0003u, QecFlangerHirc)
+                     })
+            {
+                var existingItem = bank.HIRC.Items.FirstOrDefault(item => item.Item.Id == effectId);
+                if (existingItem != null)
+                {
+                    if (existingItem.Item is not WwiserFxShareSet shareSet || shareSet.Plugin.PluginId != pluginId)
+                    {
+                        throw new InvalidOperationException(
+                            $"The generated bank already uses QEC ShareSet ID {effectId} for another object.");
+                    }
+                    continue;
+                }
+
+                var effect = serializer.Deserialize<WwiserHircItemContainer>(
+                    Convert.FromBase64String(serializedHirc), serializationContext);
+                bank.HIRC.Items.Add(effect);
+            }
+
+            var actorMixers = bank.HIRC.Items
+                .Select(item => item.Item)
+                .OfType<WwiserActorMixer>()
+                .ToList();
+            var actorMixerIds = actorMixers.Select(actorMixer => actorMixer.Id).ToHashSet();
+            var rootActorMixers = actorMixers
+                .Where(actorMixer => actorMixer.NodeBaseParameters.DirectParentId == 0 ||
+                                     !actorMixerIds.Contains(actorMixer.NodeBaseParameters.DirectParentId))
+                .ToList();
+            if (rootActorMixers.Count == 0)
+            {
+                throw new InvalidOperationException("WwiseCLI generated a bank without a root ActorMixer.");
+            }
+
+            foreach (var actorMixer in rootActorMixers)
+            {
+                var effects = actorMixer.NodeBaseParameters.FxParams;
+                effects.FxChunks.Clear();
+                effects.FxChunks.Add(new FxChunk
+                {
+                    FxIndex = 0,
+                    Id = QecFutzBoxEffectId,
+                    IsShareSet = true
+                });
+                effects.FxChunks.Add(new FxChunk
+                {
+                    FxIndex = 1,
+                    Id = QecFlangerEffectId,
+                    IsShareSet = true
+                });
+                effects.BitsFxBypass = 0;
+                effects.NumFx = checked((byte)effects.FxChunks.Count);
+                effects.IsOverrideParentFx = true;
+            }
+
+            bank.HIRC.ItemCount = checked((uint)bank.HIRC.Items.Count);
+            using var output = new MemoryStream();
+            WwiseBankParser.Serialize(bank, output);
+            File.WriteAllBytes(bnkPath, output.ToArray());
         }
 
         /// <summary>
