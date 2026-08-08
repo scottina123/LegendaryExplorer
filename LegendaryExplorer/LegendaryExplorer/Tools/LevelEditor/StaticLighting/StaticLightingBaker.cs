@@ -58,9 +58,20 @@ public sealed class StaticLightingBaker
         {
             cancellationToken.ThrowIfCancellationRequested();
             StaticLightingMeshTarget target = targets[index];
-            StaticLightingLight[] affectingLights = lights.Where(light =>
-                LightCanAffect(light, target.LightingChannelMask, target.Vertices)).ToArray();
+            TryCalculateBounds(target.Vertices, out Vector3 boundsMinimum, out Vector3 boundsMaximum);
+            var affectingLightList = new List<StaticLightingLight>();
+            var irrelevantLightList = new List<StaticLightingLight>();
+            foreach (StaticLightingLight light in lights)
+            {
+                (LightCanAffect(light, target.LightingChannelMask, target.Vertices.Count > 0,
+                    boundsMinimum, boundsMaximum) ? affectingLightList : irrelevantLightList).Add(light);
+            }
+            StaticLightingLight[] affectingLights = affectingLightList.ToArray();
             Guid[] lightGuids = affectingLights.Select(light => light.Guid).Distinct().ToArray();
+            var affectingLightGuids = lightGuids.ToHashSet();
+            Guid[] irrelevantLightGuids = irrelevantLightList.Select(light => light.Guid)
+                .Where(guid => !affectingLightGuids.Contains(guid))
+                .Distinct().ToArray();
 
             if (target.HasTextureCoordinates)
             {
@@ -69,6 +80,7 @@ public sealed class StaticLightingBaker
                 {
                     Target = target,
                     LightGuids = lightGuids,
+                    IrrelevantLightGuids = irrelevantLightGuids,
                     Texture = texture
                 };
                 Interlocked.Increment(ref textureMapped);
@@ -80,6 +92,7 @@ public sealed class StaticLightingBaker
                 {
                     Target = target,
                     LightGuids = lightGuids,
+                    IrrelevantLightGuids = irrelevantLightGuids,
                     Vertex = BakeVertices(target, affectingLights, cancellationToken)
                 };
                 Interlocked.Increment(ref vertexMapped);
@@ -110,7 +123,8 @@ public sealed class StaticLightingBaker
 
     public static (IReadOnlyList<StaticLightingMeshTarget> Targets, IReadOnlyList<StaticLightingLight> Lights,
         LevelCollisionScene Collision) BuildScene(IEnumerable<ActorProxy> actors,
-        IReadOnlySet<OpenLevelFile> targetFiles, LevelEditorRenderContext renderContext)
+        IReadOnlySet<OpenLevelFile> targetFiles, LevelEditorRenderContext renderContext,
+        IReadOnlySet<ExportEntry> exactTargetComponents = null)
     {
         ActorProxy[] actorArray = actors.ToArray();
         var targets = new List<StaticLightingMeshTarget>();
@@ -135,11 +149,20 @@ public sealed class StaticLightingBaker
                 IReadOnlyList<StaticLightingTriangle> triangles = BuildTriangles(lod, component.LocalToWorld,
                     GetLightMapCoordinateIndex(meshExport, lod), out StaticLightingVertex[] vertices,
                     out bool hasTextureCoordinates);
-                foreach (StaticLightingTriangle triangle in triangles)
-                    occluders.Add((triangle.A.Position, triangle.B.Position, triangle.C.Position));
+                if (triangles.Count == 0 || vertices.Length == 0)
+                    continue;
 
+                bool isStaticCandidate = IsStaticLightingCandidate(component);
+                if (isStaticCandidate)
+                {
+                    foreach (StaticLightingTriangle triangle in triangles)
+                        occluders.Add((triangle.A.Position, triangle.B.Position, triangle.C.Position));
+                }
+                bool canReceiveLighting = exactTargetComponents is null
+                    ? IsStaticLightingTarget(component)
+                    : isStaticCandidate && exactTargetComponents.Contains(component.Export);
                 if (component.Actor.OwningFile is not { } owningFile || !targetFiles.Contains(owningFile) ||
-                    !IsStaticLightingTarget(component))
+                    !canReceiveLighting)
                     continue;
 
                 targets.Add(new StaticLightingMeshTarget
@@ -418,15 +441,49 @@ public sealed class StaticLightingBaker
         return true;
     }
 
-    private static bool LightCanAffect(StaticLightingLight light, uint targetChannels,
-        IReadOnlyList<StaticLightingVertex> vertices)
+    private static bool LightCanAffect(StaticLightingLight light, uint targetChannels, bool hasBounds,
+        Vector3 minimum, Vector3 maximum)
     {
         if (!SceneLight.ChannelsOverlap(light.LightingChannelMask, targetChannels))
             return false;
         if (light.Type is StaticLightingLightType.Directional or StaticLightingLightType.Sky)
             return true;
-        float radiusSquared = light.Radius * light.Radius;
-        return vertices.Any(vertex => Vector3.DistanceSquared(vertex.Position, light.Position) < radiusSquared);
+        if (!hasBounds)
+            return false;
+        Vector3 closestPoint = Vector3.Clamp(light.Position, minimum, maximum);
+        if (Vector3.DistanceSquared(closestPoint, light.Position) >= light.Radius * light.Radius)
+            return false;
+        if (light.Type != StaticLightingLightType.Spot)
+            return true;
+
+        Vector3 center = (minimum + maximum) * 0.5f;
+        float boundsRadius = (maximum - center).Length();
+        Vector3 lightToCenter = center - light.Position;
+        float centerDistance = lightToCenter.Length();
+        if (centerDistance <= boundsRadius)
+            return true;
+        float angularRadius = MathF.Asin(Math.Clamp(boundsRadius / centerDistance, 0f, 1f));
+        float outerAngle = light.OuterConeAngleDegrees * MathF.PI / 180f;
+        float expandedAngle = MathF.Min(MathF.PI, outerAngle + angularRadius);
+        return Vector3.Dot(lightToCenter / centerDistance, SafeNormal(light.Direction, Vector3.UnitX)) >=
+               MathF.Cos(expandedAngle);
+    }
+
+    private static bool TryCalculateBounds(IReadOnlyList<StaticLightingVertex> vertices,
+        out Vector3 minimum, out Vector3 maximum)
+    {
+        if (vertices.Count == 0)
+        {
+            minimum = maximum = Vector3.Zero;
+            return false;
+        }
+        minimum = maximum = vertices[0].Position;
+        for (int index = 1; index < vertices.Count; index++)
+        {
+            minimum = Vector3.Min(minimum, vertices[index].Position);
+            maximum = Vector3.Max(maximum, vertices[index].Position);
+        }
+        return true;
     }
 
     public readonly record struct StaticLightingBakeTile(int MinimumX, int MinimumY, int MaximumX, int MaximumY);
@@ -598,14 +655,16 @@ public sealed class StaticLightingBaker
     private static readonly (int X, int Y)[] Neighbors = [(1, 0), (-1, 0), (0, 1), (0, -1)];
 
     private static bool IsStaticLightingTarget(StaticMeshComponentProxy component)
+        => IsStaticLightingCandidate(component);
+
+    public static bool IsStaticLightingCandidate(StaticMeshComponentProxy component)
     {
         string actorClass = component.Actor.Export.ClassName;
         if (actorClass.Contains("Dynamic", StringComparison.OrdinalIgnoreCase) ||
             actorClass.Contains("InterpActor", StringComparison.OrdinalIgnoreCase) ||
             actorClass.Contains("KActor", StringComparison.OrdinalIgnoreCase))
             return false;
-        return component.Properties.GetProp<BoolProperty>("bAcceptsLights")?.Value != false &&
-               component.Properties.GetProp<BoolProperty>("bUsePrecomputedShadows")?.Value != false;
+        return true;
     }
 
     private static bool TryGetMesh(StaticMeshComponentProxy component, LevelEditorRenderContext renderContext,

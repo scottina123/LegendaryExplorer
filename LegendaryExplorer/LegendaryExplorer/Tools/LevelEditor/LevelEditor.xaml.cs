@@ -3325,19 +3325,44 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         return createMenu;
     }
 
-    private async void GenerateStaticLighting()
+    private async void GenerateStaticLighting() => await GenerateStaticLightingCore(null, LightmassResolution);
+
+    private async Task GenerateStaticLightingForActor(ActorProxy actor, int textureResolution)
     {
-        OpenLevelFile[] targetFiles = OpenFiles.Where(file => file.IncludeInLightmass && !file.IsReadOnly).ToArray();
+        if (actor is null || actor.IsReadOnly || IsBusy)
+            return;
+
+        StaticMeshComponentProxy[] components = GetStaticLightingComponents(actor);
+        if (components.Length == 0)
+        {
+            MessageBox.Show(this, "The selected actor has no static-mesh components eligible for Lightmass.",
+                "Create Actor Lightmass", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        LightmassResolution = textureResolution;
+        await GenerateStaticLightingCore(actor, textureResolution);
+    }
+
+    private async Task GenerateStaticLightingCore(ActorProxy targetActor, int textureResolution)
+    {
+        bool isSingleActor = targetActor is not null;
+        OpenLevelFile[] targetFiles = isSingleActor
+            ? targetActor.OwningFile is { IsReadOnly: false } file ? [file] : []
+            : OpenFiles.Where(file => file.IncludeInLightmass && !file.IsReadOnly).ToArray();
         if (targetFiles.Length == 0)
         {
-            MessageBox.Show(this, "Select at least one writable loaded level to receive static lighting.",
-                "Create Lightmass", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show(this, isSingleActor
+                    ? "The selected actor's level is read-only."
+                    : "Select at least one writable loaded level to receive static lighting.",
+                isSingleActor ? "Create Actor Lightmass" : "Create Lightmass",
+                MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
 
         var settings = new StaticLightingGenerationSettings
         {
-            TextureResolution = LightmassResolution,
+            TextureResolution = textureResolution,
             AmbientIntensity = LightmassAmbientIntensity,
             ShadowBias = LightmassShadowBias,
             GenerateShadowMaps = LightmassGenerateShadowMaps,
@@ -3349,18 +3374,32 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         try
         {
             settings.Validate();
-            string targetList = string.Join("\n", targetFiles.Select(file => $"  • {file.FileName}"));
+            StaticMeshComponentProxy[] actorComponents = isSingleActor
+                ? GetStaticLightingComponents(targetActor)
+                : [];
+            IReadOnlySet<ExportEntry> exactTargetComponents = isSingleActor
+                ? actorComponents.Select(component => component.Export).ToHashSet()
+                : null;
+            string targetList = isSingleActor
+                ? $"  • {targetActor.Export.UIndex}: {targetActor.Export.ObjectName.Instanced} " +
+                  $"({actorComponents.Length:N0} static component{(actorComponents.Length == 1 ? "" : "s")})"
+                : string.Join("\n", targetFiles.Select(file => $"  • {file.FileName}"));
             string storageDescription = Game == MEGame.ME1
                 ? "ME1 light data will be stored in the selected packages (ME1 does not use TFC texture caches)."
                 : string.IsNullOrWhiteSpace(settings.TextureCacheName)
                     ? "Each target folder's existing TFC will be reused; if none exists, a dedicated Lightmass TFC will be created."
                     : $"Texture cache: {Path.GetFileNameWithoutExtension(settings.TextureCacheName)}.tfc";
-            string confirmation = $"Build static lighting for {targetFiles.Length:N0} loaded level(s)?\n\n{targetList}\n\n" +
+            string targetDescription = isSingleActor
+                ? "Build static lighting for this actor?"
+                : $"Build static lighting for {targetFiles.Length:N0} loaded level(s)?";
+            string confirmation = $"{targetDescription}\n\n{targetList}\n\n" +
                                   $"Lights and occluding static geometry are gathered from all {OpenFiles.Count:N0} loaded levels. " +
+                                  $"Existing lighting channels are preserved and strictly filter which lights may contribute. " +
                                   $"Texture lightmaps are {settings.TextureResolution}×{settings.TextureResolution}; meshes without a valid baked-UV channel use UE3 vertex lightmaps.\n\n" +
                                   $"Bake workers: {settings.EffectiveWorkerThreads:N0}; UV/spatial work tile: {settings.WorkTileSize}×{settings.WorkTileSize}.\n\n" +
                                   storageDescription + "\n\nThe packages remain unsaved until you use Save, but TFC data is appended during generation.";
-            if (MessageBox.Show(this, confirmation, "Create Lightmass", MessageBoxButton.YesNo,
+            string dialogTitle = isSingleActor ? "Create Actor Lightmass" : "Create Lightmass";
+            if (MessageBox.Show(this, confirmation, dialogTitle, MessageBoxButton.YesNo,
                     MessageBoxImage.Question) != MessageBoxResult.Yes)
                 return;
 
@@ -3372,7 +3411,8 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
             ActorProxy[] sceneActors = Actors.ToArray();
             StaticLightingBakeResult bake = await Task.Run(() =>
             {
-                var scene = StaticLightingBaker.BuildScene(sceneActors, targetSet, RenderContext);
+                var scene = StaticLightingBaker.BuildScene(sceneActors, targetSet, RenderContext,
+                    exactTargetComponents);
                 if (scene.Targets.Count == 0)
                     return new StaticLightingBakeResult
                     {
@@ -3388,19 +3428,29 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
 
             if (bake.Components.Count == 0)
             {
-                MessageBox.Show(this, "No writable static mesh components were found in the selected levels.",
-                    "Create Lightmass", MessageBoxButton.OK, MessageBoxImage.Information);
+                MessageBox.Show(this, isSingleActor
+                        ? "The selected actor has no renderable static mesh components to bake."
+                        : "No writable static mesh components were found in the selected levels.",
+                    dialogTitle, MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
             }
 
             BusyText = "Writing lightmaps, shadow maps, and texture-cache data...";
             await Dispatcher.Yield(DispatcherPriority.Background);
             StaticLightingWriteResult written = StaticLightingWriter.Write(bake, settings);
+            var writtenComponents = bake.Components.Select(component => component.Target.Component).ToHashSet();
+            foreach (PrimitiveComponentProxy component in Actors.SelectMany(actor => actor.Components))
+            {
+                if (writtenComponents.Contains(component.Export))
+                    component.RefreshFromExport();
+            }
+            SceneViewer?.MarkRenderDirty();
             string cacheSummary = written.TextureCachePaths.Count == 0
                 ? "Lighting data was stored in the level packages."
                 : "Texture cache output:\n" + string.Join("\n", written.TextureCachePaths.Select(path => $"  • {path}"));
             TextBelowActors = $"Lightmass: {written.ComponentCount:N0} static components, " +
                               $"{written.LightMapTextureCount:N0} lightmap textures, {written.ShadowMapCount:N0} shadow maps; " +
+                              $"{written.IrrelevantLightReferenceCount:N0} irrelevant-light references; " +
                               $"{bake.WorkUnitCount:N0} parallel work units on {bake.WorkerCount:N0} workers; " +
                               $"{bake.LightCount:N0} lights / {bake.SourceTriangleCount:N0} occluder triangles from all loaded levels.";
             MessageBox.Show(this,
@@ -3409,14 +3459,16 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
                 $"Vertex-lightmap fallback: {bake.VertexMappedComponentCount:N0} components\n" +
                 $"Lightmap textures: {written.LightMapTextureCount:N0}\n" +
                 $"Shadow maps: {written.ShadowMapCount:N0}\n" +
+                $"Irrelevant-light references: {written.IrrelevantLightReferenceCount:N0}\n" +
                 $"Parallel work units: {bake.WorkUnitCount:N0} on {bake.WorkerCount:N0} workers\n" +
                 $"Components replacing existing lighting: {written.ReplacedExistingComponentCount:N0}\n\n" +
                 $"{cacheSummary}\n\nUse Save All to write the modified level packages.",
-                "Create Lightmass", MessageBoxButton.OK, MessageBoxImage.Information);
+                dialogTitle, MessageBoxButton.OK, MessageBoxImage.Information);
         }
         catch (Exception exception)
         {
-            MessageBox.Show(this, exception.FlattenException(), "Create Lightmass", MessageBoxButton.OK,
+            MessageBox.Show(this, exception.FlattenException(),
+                isSingleActor ? "Create Actor Lightmass" : "Create Lightmass", MessageBoxButton.OK,
                 MessageBoxImage.Error);
         }
         finally
@@ -3952,6 +4004,29 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
             if (shadowMenu is not null)
             {
                 contextMenu.Items.Add(shadowMenu);
+            }
+
+            if (GetStaticLightingComponents(actor).Length > 0)
+            {
+                var generateLightmassMenu = new System.Windows.Controls.MenuItem
+                {
+                    Header = "Generate Lightmass",
+                    IsEnabled = !actor.IsReadOnly && !IsBusy
+                };
+                foreach (int resolution in LightmassResolutions)
+                {
+                    int selectedResolution = resolution;
+                    var resolutionItem = new System.Windows.Controls.MenuItem
+                    {
+                        Header = $"{resolution} × {resolution}",
+                        IsCheckable = true,
+                        IsChecked = LightmassResolution == resolution
+                    };
+                    resolutionItem.Click += async (_, _) =>
+                        await GenerateStaticLightingForActor(actor, selectedResolution);
+                    generateLightmassMenu.Items.Add(resolutionItem);
+                }
+                contextMenu.Items.Add(generateLightmassMenu);
             }
 
             var stripLightMapItem = new System.Windows.Controls.MenuItem
@@ -4693,6 +4768,11 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
     #endregion
 
     #region Static Mesh Replacement
+
+    private static StaticMeshComponentProxy[] GetStaticLightingComponents(ActorProxy actor) =>
+        actor.Components.OfType<StaticMeshComponentProxy>()
+            .Where(StaticLightingBaker.IsStaticLightingCandidate)
+            .ToArray();
 
     private static ExportEntry GetStaticMeshComponentExport(ActorProxy actor) =>
         actor switch

@@ -1,6 +1,7 @@
 using LegendaryExplorer.Tools.LevelEditor;
 using LegendaryExplorerCore;
 using LegendaryExplorerCore.Packages;
+using LegendaryExplorerCore.Unreal;
 using LegendaryExplorerCore.Unreal.BinaryConverters;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using System;
@@ -139,6 +140,65 @@ public class StaticLightingTests
     }
 
     [TestMethod]
+    public void Bake_UsesExistingLightingChannelsAndRecordsIrrelevantLights()
+    {
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("LightmassChannels.pcc", MEGame.LE3);
+        ExportEntry component = package.CreateExport("StaticMeshComponent_0", "StaticMeshComponent", null,
+            indexed: false);
+        component.WriteProperties([]);
+        const uint initializedAndStatic = 1u | (1u << 2);
+        const uint initializedAndDynamic = 1u | (1u << 3);
+        StaticLightingMeshTarget target = CreateQuadTarget(component, initializedAndStatic);
+        Guid affectingGuid = Guid.NewGuid();
+        Guid irrelevantGuid = Guid.NewGuid();
+        var affecting = new StaticLightingLight(affectingGuid, StaticLightingLightType.Directional,
+            Vector3.Zero, -Vector3.UnitZ, Vector3.One, 1f, float.MaxValue, 0f, 0f,
+            initializedAndStatic);
+        var channelMismatch = affecting with
+        {
+            Guid = irrelevantGuid,
+            LightingChannelMask = initializedAndDynamic
+        };
+
+        StaticLightingBakeResult result = new StaticLightingBaker([target], [affecting, channelMismatch],
+            LevelCollisionScene.FromTriangles(Array.Empty<(Vector3 A, Vector3 B, Vector3 C)>()),
+            new StaticLightingGenerationSettings
+            {
+                TextureResolution = 64,
+                WorkerThreads = 1,
+                GenerateShadowMaps = false
+            }).Bake();
+
+        CollectionAssert.AreEqual(new[] { affectingGuid }, result.Components[0].LightGuids);
+        CollectionAssert.AreEqual(new[] { irrelevantGuid }, result.Components[0].IrrelevantLightGuids);
+    }
+
+    [TestMethod]
+    public void Bake_UsesActorBoundsForLocalLightRelevance()
+    {
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("LightmassBounds.pcc", MEGame.LE3);
+        ExportEntry component = package.CreateExport("StaticMeshComponent_0", "StaticMeshComponent", null,
+            indexed: false);
+        component.WriteProperties([]);
+        StaticLightingMeshTarget target = CreateQuadTarget(component);
+        Guid lightGuid = Guid.NewGuid();
+        var light = new StaticLightingLight(lightGuid, StaticLightingLightType.Point,
+            new Vector3(50, 50, 10), Vector3.UnitZ, Vector3.One, 1f, 20f, 0f, 0f, 0);
+
+        StaticLightingBakeResult result = new StaticLightingBaker([target], [light],
+            LevelCollisionScene.FromTriangles(Array.Empty<(Vector3 A, Vector3 B, Vector3 C)>()),
+            new StaticLightingGenerationSettings
+            {
+                TextureResolution = 64,
+                WorkerThreads = 1,
+                GenerateShadowMaps = false
+            }).Bake();
+
+        CollectionAssert.AreEqual(new[] { lightGuid }, result.Components[0].LightGuids);
+        Assert.AreEqual(0, result.Components[0].IrrelevantLightGuids.Length);
+    }
+
+    [TestMethod]
     public void PointLight_UsesSurfaceFacingAndRadialAttenuation()
     {
         var light = new StaticLightingLight(Guid.NewGuid(), StaticLightingLightType.Point,
@@ -216,7 +276,28 @@ public class StaticLightingTests
         Assert.AreEqual(lightGuid, restoredShadow.LightGuid);
     }
 
-    private static StaticLightingMeshTarget CreateQuadTarget(ExportEntry component)
+    [TestMethod]
+    public void IrrelevantLightsProperty_RoundTripsGeneratedGuids()
+    {
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("IrrelevantLights.pcc", MEGame.LE3);
+        ExportEntry component = package.CreateExport("StaticMeshComponent_0", "StaticMeshComponent", null,
+            indexed: false);
+        component.WriteProperties([]);
+        Guid[] expected = [Guid.NewGuid(), Guid.NewGuid()];
+        var irrelevantLights = new ArrayProperty<StructProperty>(
+            expected.Select(guid => CommonStructs.GuidProp(guid)), "IrrelevantLights")
+        {
+            Reference = "Guid"
+        };
+
+        component.WriteProperty(irrelevantLights);
+
+        Guid[] restored = component.GetProperty<ArrayProperty<StructProperty>>("IrrelevantLights")
+            .Select(CommonStructs.GetGuid).ToArray();
+        CollectionAssert.AreEqual(expected, restored);
+    }
+
+    private static StaticLightingMeshTarget CreateQuadTarget(ExportEntry component, uint lightingChannelMask = 0)
     {
         var a = new StaticLightingVertex(new Vector3(0, 0, 0), Vector3.UnitZ, Vector3.UnitX,
             Vector3.UnitY, new Vector2(0, 0));
@@ -233,7 +314,7 @@ public class StaticLightingTests
             ComponentBinary = StaticMeshComponent.Create(),
             MeshLod = new StaticMeshRenderData(),
             LocalToWorld = Matrix4x4.Identity,
-            LightingChannelMask = 0,
+            LightingChannelMask = lightingChannelMask,
             Triangles = [new StaticLightingTriangle(a, b, c), new StaticLightingTriangle(a, c, d)],
             Vertices = [a, b, c, d],
             LightMapCoordinateIndex = 1,

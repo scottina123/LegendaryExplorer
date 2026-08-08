@@ -516,7 +516,18 @@ namespace LegendaryExplorerCore.Unreal.Classes
         /// <param name="forcedTFCPath"></param>
         /// <param name="isPackageStored"></param>
         /// <returns></returns>
-        public List<string> Replace(Image image, PropertyCollection props, string fileSourcePath = null, string forcedTFCName = null, string forcedTFCPath = null, bool isPackageStored = false, PixelFormat forcedNewFormat = PixelFormat.Unknown, bool forceMipping = false, Stream outDataOverride = null)
+        public List<string> Replace(Image image, PropertyCollection props, string fileSourcePath = null, string forcedTFCName = null, string forcedTFCPath = null, bool isPackageStored = false, PixelFormat forcedNewFormat = PixelFormat.Unknown, bool forceMipping = false, Stream outDataOverride = null) =>
+            Replace(image, props, null, fileSourcePath, forcedTFCName, forcedTFCPath, isPackageStored,
+                forcedNewFormat, forceMipping, outDataOverride);
+
+        /// <summary>
+        /// Replaces texture data while appending external mips through an already-open shared TFC stream.
+        /// </summary>
+        /// <param name="forcedTFCStream">Shared read/write stream; this method validates its GUID header and appends at its end.</param>
+        public List<string> Replace(Image image, PropertyCollection props, Stream forcedTFCStream,
+            string fileSourcePath = null, string forcedTFCName = null, string forcedTFCPath = null,
+            bool isPackageStored = false, PixelFormat forcedNewFormat = PixelFormat.Unknown,
+            bool forceMipping = false, Stream outDataOverride = null)
         {
             var messages = new List<string>();
             var textureCache = forcedTFCName ?? GetTopMip().TextureCacheName;
@@ -664,6 +675,16 @@ namespace LegendaryExplorerCore.Unreal.Classes
             //todo: check to make sure TFC will not be larger than 2GiB
 
             Guid tfcGuid = Guid.NewGuid(); //make new guid as storage
+            if (forcedTFCStream != null)
+            {
+                if (!forcedTFCStream.CanRead || !forcedTFCStream.CanWrite || !forcedTFCStream.CanSeek)
+                    throw new ArgumentException("The shared TFC stream must support reading, writing, and seeking.", nameof(forcedTFCStream));
+                if (forcedTFCStream.Length < 16)
+                    throw new InvalidDataException("The shared TFC stream has no valid GUID header.");
+                forcedTFCStream.Position = 0;
+                tfcGuid = forcedTFCStream.ReadGuid();
+                forcedTFCStream.Seek(0, SeekOrigin.End);
+            }
             bool locallyStored = mipmaps[0].storageType is StorageTypes.pccUnc or StorageTypes.pccZlib or StorageTypes.pccLZO or StorageTypes.pccOodle;
             for (int m = 0; m < image.mipMaps.Count; m++)
             {
@@ -716,6 +737,20 @@ namespace LegendaryExplorerCore.Unreal.Classes
                             //Check local dir
                             string tfcarchive = mipmap.TextureCacheName + ".tfc";
                             var localDirectoryTFCPath = forcedTFCPath ?? Path.Combine(Path.GetDirectoryName(mipmap.Export.FileRef.FilePath), tfcarchive);
+                            if (forcedTFCStream != null)
+                            {
+                                try
+                                {
+                                    forcedTFCStream.Seek(0, SeekOrigin.End);
+                                    mipmap.externalOffset = checked((int)forcedTFCStream.Position);
+                                    forcedTFCStream.Write(mipmap.Mip, 0, mipmap.compressedSize);
+                                }
+                                catch (Exception e)
+                                {
+                                    throw new Exception("Problem appending to shared TFC stream for " + tfcarchive + ": " + e.Message, e);
+                                }
+                                continue;
+                            }
                             if (File.Exists(localDirectoryTFCPath))
                             {
                                 try

@@ -7,7 +7,9 @@ using LegendaryExplorerCore.Memory;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.Unreal;
+using LegendaryExplorerCore.Unreal.BinaryConverters;
 using LegendaryExplorerCore.Unreal.Classes;
+using LegendaryExplorerCore.Textures;
 
 namespace LegendaryExplorerCore.Tests
 {
@@ -99,6 +101,55 @@ namespace LegendaryExplorerCore.Tests
             foreach (var t in pccTypes)
             {
                 Assert.IsTrue(extTypes.Contains(Texture2D.CalculateStorageType(t, MEGame.LE3, false)));
+            }
+        }
+
+        [TestMethod]
+        public void Replace_AppendsMultipleTexturesThroughSharedTfcStream()
+        {
+            GlobalTest.Init();
+            using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("SharedTfcStream.pcc", MEGame.ME3);
+            Guid cacheGuid = Guid.NewGuid();
+            using var cacheStream = new MemoryStream();
+            cacheStream.WriteGuid(cacheGuid);
+
+            ExportEntry first = CreateTexture("LightMap_0");
+            Replace(first);
+            long secondOffset = cacheStream.Length;
+            ExportEntry second = CreateTexture("LightMap_1");
+            Replace(second);
+
+            UTexture2D firstBinary = first.GetBinaryData<UTexture2D>();
+            UTexture2D secondBinary = second.GetBinaryData<UTexture2D>();
+            Assert.AreEqual(16, firstBinary.Mips[0].DataOffset);
+            Assert.AreEqual(checked((int)secondOffset), secondBinary.Mips[0].DataOffset);
+            Assert.IsTrue(cacheStream.Length > secondOffset);
+            Assert.AreEqual(cacheGuid, CommonStructs.GetGuid(first.GetProperty<StructProperty>("TFCFileGuid")));
+            Assert.AreEqual(cacheGuid, CommonStructs.GetGuid(second.GetProperty<StructProperty>("TFCFileGuid")));
+
+            ExportEntry CreateTexture(string name)
+            {
+                ExportEntry export = package.CreateExport(name, "Texture2D", null, indexed: false);
+                export.WriteProperties([
+                    new EnumProperty(Image.getEngineFormatType(PixelFormat.DXT1), "EPixelFormat", package.Game,
+                        "Format"),
+                    new IntProperty(64, "SizeX"),
+                    new IntProperty(64, "SizeY")
+                ]);
+                export.WriteBinary(new UTexture2D
+                {
+                    Mips = [new UTexture2D.Texture2DMipMap([], 64, 64)],
+                    TextureGuid = Guid.NewGuid()
+                });
+                return export;
+            }
+
+            void Replace(ExportEntry export)
+            {
+                var image = Image.LoadFromRaw(new byte[64 * 64 * 4], PixelFormat.ARGB, 64, 64);
+                new Texture2D(export).Replace(image, export.GetProperties(),
+                    forcedTFCName: "Textures_DLC_MOD_Shared", forcedNewFormat: PixelFormat.DXT1,
+                    forceMipping: true, forcedTFCStream: cacheStream);
             }
         }
 

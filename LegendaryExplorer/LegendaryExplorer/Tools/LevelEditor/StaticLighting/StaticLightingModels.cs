@@ -122,6 +122,7 @@ public sealed class StaticLightingComponentBake
 {
     public required StaticLightingMeshTarget Target { get; init; }
     public required Guid[] LightGuids { get; init; }
+    public required Guid[] IrrelevantLightGuids { get; init; }
     public StaticLightingTextureBake Texture { get; init; }
     public StaticLightingVertexBake Vertex { get; init; }
 }
@@ -142,6 +143,7 @@ public sealed class StaticLightingWriteResult
     public int ComponentCount { get; init; }
     public int LightMapTextureCount { get; init; }
     public int ShadowMapCount { get; init; }
+    public int IrrelevantLightReferenceCount { get; init; }
     public IReadOnlyList<string> TextureCachePaths { get; init; } = [];
     public int ReplacedExistingComponentCount { get; init; }
 }
