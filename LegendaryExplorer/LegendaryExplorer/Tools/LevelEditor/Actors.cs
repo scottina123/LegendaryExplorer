@@ -412,6 +412,8 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy, ITr
         "PointLight",
         "DirectionalLight",
         "SpotLight",
+        "SkyLight",
+        "SphericalHarmonicLight",
         "PrefabInstance",
         "SFXDroppedGrenade",
         "SFXDroppedAmmo",
@@ -469,6 +471,11 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy, ITr
         if (GlobalUnrealObjectInfo.IsA(className, "SpotLight", actorExport.Game))
         {
             return new SpotLightActorProxy(context, actorExport);
+        }
+        if (GlobalUnrealObjectInfo.IsA(className, "SkyLight", actorExport.Game) ||
+            GlobalUnrealObjectInfo.IsA(className, "SphericalHarmonicLight", actorExport.Game))
+        {
+            return new SkyLightActorProxy(context, actorExport);
         }
         if (GlobalUnrealObjectInfo.IsA(className, "DirectionalLight", actorExport.Game))
         {
@@ -1123,6 +1130,16 @@ public class BioPawnProxy : PawnProxy
         HeadMesh.ApplyMorph(morphHead, true);
         m_oHairMesh?.ApplyMorph(morphHead, false);
         return true;
+    }
+}
+
+public class SkyLightActorProxy : ActorProxy
+{
+    public PrimitiveComponentProxy LightComponent;
+
+    public SkyLightActorProxy(IActorEditorContext context, ExportEntry actorExport) : base(context, actorExport)
+    {
+        AddComponent(context.RenderContext, ref LightComponent);
     }
 }
 

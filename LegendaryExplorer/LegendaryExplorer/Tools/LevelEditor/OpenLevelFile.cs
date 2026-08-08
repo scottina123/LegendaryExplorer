@@ -50,6 +50,14 @@ public class OpenLevelFile : NotifyPropertyChangedBase, IPackageUser, IDisposabl
         set => SetProperty(ref isReadOnly, value);
     }
 
+    private bool includeInLightmass = true;
+    /// <summary>Whether this loaded level receives generated static lighting. All loaded levels still contribute lights and occluders.</summary>
+    public bool IncludeInLightmass
+    {
+        get => includeInLightmass;
+        set => SetProperty(ref includeInLightmass, value);
+    }
+
     public OpenLevelFile(LevelEditor owner, IMEPackage package, ExportEntry levelExport)
     {
         Owner = owner;

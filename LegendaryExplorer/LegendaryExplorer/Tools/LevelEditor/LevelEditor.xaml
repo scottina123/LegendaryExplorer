@@ -35,6 +35,7 @@
         <converters:EmbeddedFileToolTipConverter x:Key="EmbeddedFileToolTipConverter"/>
         <converters:GameTypeConverter x:Key="GameTypeConverter"/>
         <converters:GameToImageIconConverter x:Key="GameToImageIconConverter"/>
+        <converters:InverseBooleanConverter x:Key="InverseBooleanConverter"/>
         <sharedUi:BindingProxy x:Key="bindingProxy" Data="{Binding}"/>
         <converters:UnsavedChangesForegroundConverter x:Key="UnsavedChangesForegroundConverter"/>
         <TextDecorationCollection x:Key="XTextDeco">
@@ -303,6 +304,62 @@
                                           IsChecked="{Binding ShowCover}"
                                           ToolTip="Draw CoverLinks, cover slots, and their facing directions for all loaded levels. Vaultable slots and mantle connections are magenta."/>
                             </StackPanel>
+                        </xctk:DropDownButton.DropDownContent>
+                    </xctk:DropDownButton>
+                    <xctk:DropDownButton Content="Create Lightmass" MaxDropDownHeight="620" CloseOnFocusLoss="False"
+                                         BorderBrush="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}"
+                                         DropDownContentBackground="{DynamicResource {x:Static SystemColors.ControlBrushKey}}">
+                        <xctk:DropDownButton.DropDownContent>
+                            <Border Padding="6" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}">
+                                <StackPanel Width="330">
+                                    <TextBlock Text="Bake static lighting" FontWeight="SemiBold" Margin="0,0,0,5"/>
+                                    <TextBlock Text="Lights and occluding static meshes come from every loaded level. Select which writable levels receive generated lightmaps and shadow maps."
+                                               TextWrapping="Wrap" Margin="0,0,0,7"/>
+                                    <TextBlock Text="Target levels" FontWeight="SemiBold"/>
+                                    <Border BorderBrush="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}"
+                                            BorderThickness="1" Padding="4" Margin="0,3,0,7" MaxHeight="145">
+                                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                            <ItemsControl ItemsSource="{Binding OpenFiles}">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <CheckBox Content="{Binding FileName}" IsChecked="{Binding IncludeInLightmass}"
+                                                                  IsEnabled="{Binding IsReadOnly, Converter={StaticResource InverseBooleanConverter}}"
+                                                                  ToolTip="Read-only levels still contribute lights and occlusion, but cannot receive baked data."/>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </ScrollViewer>
+                                    </Border>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="125"/>
+                                        </Grid.ColumnDefinitions>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                        </Grid.RowDefinitions>
+                                        <TextBlock Grid.Row="0" Text="Lightmap resolution" VerticalAlignment="Center"/>
+                                        <ComboBox Grid.Row="0" Grid.Column="1" ItemsSource="{Binding LightmassResolutions}"
+                                                  SelectedItem="{Binding LightmassResolution}" Margin="2"/>
+                                        <TextBlock Grid.Row="1" Text="Ambient intensity" VerticalAlignment="Center"/>
+                                        <xctk:SingleUpDown Grid.Row="1" Grid.Column="1" Value="{Binding LightmassAmbientIntensity}"
+                                                           Minimum="0" Maximum="10" Increment="0.01" FormatString="F2" Margin="2"/>
+                                        <TextBlock Grid.Row="2" Text="Ray shadow bias" VerticalAlignment="Center"/>
+                                        <xctk:SingleUpDown Grid.Row="2" Grid.Column="1" Value="{Binding LightmassShadowBias}"
+                                                           Minimum="0.01" Maximum="100" Increment="0.25" FormatString="F2" Margin="2"/>
+                                        <TextBlock Grid.Row="3" Text="TFC name (blank = auto)" VerticalAlignment="Center"/>
+                                        <TextBox Grid.Row="3" Grid.Column="1" Text="{Binding LightmassTextureCacheName, UpdateSourceTrigger=PropertyChanged}"
+                                                 Margin="2" VerticalContentAlignment="Center"/>
+                                    </Grid>
+                                    <CheckBox Content="Generate shadow maps" IsChecked="{Binding LightmassGenerateShadowMaps}" Margin="0,6,0,6"/>
+                                    <TextBlock Text="Uses existing UE3 lightmap/shadowmap serialization. Existing TFC data is reused; a new TFC is created when needed."
+                                               TextWrapping="Wrap" Margin="0,0,0,7"/>
+                                    <Button Content="Create Lightmass" Command="{Binding GenerateStaticLightingCommand}" Padding="8,4"/>
+                                </StackPanel>
+                            </Border>
                         </xctk:DropDownButton.DropDownContent>
                     </xctk:DropDownButton>
                     <xctk:DropDownButton Content="Navigation" MaxDropDownHeight="520" CloseOnFocusLoss="False"

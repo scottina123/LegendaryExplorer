@@ -307,6 +307,18 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
     private bool _generateCover = true;
     public bool GenerateCover { get => _generateCover; set => SetProperty(ref _generateCover, value); }
 
+    private int _lightmassResolution = 64;
+    public int LightmassResolution { get => _lightmassResolution; set => SetProperty(ref _lightmassResolution, value); }
+    public IReadOnlyList<int> LightmassResolutions { get; } = [64, 128, 256, 512, 1024];
+    private float _lightmassAmbientIntensity = 0.03f;
+    public float LightmassAmbientIntensity { get => _lightmassAmbientIntensity; set => SetProperty(ref _lightmassAmbientIntensity, value); }
+    private float _lightmassShadowBias = 1f;
+    public float LightmassShadowBias { get => _lightmassShadowBias; set => SetProperty(ref _lightmassShadowBias, value); }
+    private bool _lightmassGenerateShadowMaps = true;
+    public bool LightmassGenerateShadowMaps { get => _lightmassGenerateShadowMaps; set => SetProperty(ref _lightmassGenerateShadowMaps, value); }
+    private string _lightmassTextureCacheName = "";
+    public string LightmassTextureCacheName { get => _lightmassTextureCacheName; set => SetProperty(ref _lightmassTextureCacheName, value); }
+
     private bool _showLightIcons = Settings.LevelEditor_ShowLightIcons;
     public bool ShowLightIcons
     {
@@ -1985,6 +1997,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
     public ICommand SnapActorToCameraCommand { get; set; }
     public ICommand ToggleOrthoViewCommand { get; set; }
     public ICommand GenerateNavigationCommand { get; set; }
+    public ICommand GenerateStaticLightingCommand { get; set; }
     private void LoadCommands()
     {
         OpenFileCommand = new GenericCommand(OpenFile);
@@ -2032,6 +2045,8 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         ToggleOrthoViewCommand = new GenericCommand(() => IsOrthographicView = !IsOrthographicView);
         GenerateNavigationCommand = new GenericCommand(GenerateNavigation,
             () => ActiveFile is { IsReadOnly: false } && Game.IsGame3() && !IsBusy);
+        GenerateStaticLightingCommand = new GenericCommand(GenerateStaticLighting,
+            () => OpenFiles.Any(file => file.IncludeInLightmass && !file.IsReadOnly) && !IsBusy);
     }
 
     private void SnapActorToCamera()
@@ -3303,6 +3318,100 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         createMenu.Items.Add(spotLightItem);
 
         return createMenu;
+    }
+
+    private async void GenerateStaticLighting()
+    {
+        OpenLevelFile[] targetFiles = OpenFiles.Where(file => file.IncludeInLightmass && !file.IsReadOnly).ToArray();
+        if (targetFiles.Length == 0)
+        {
+            MessageBox.Show(this, "Select at least one writable loaded level to receive static lighting.",
+                "Create Lightmass", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var settings = new StaticLightingGenerationSettings
+        {
+            TextureResolution = LightmassResolution,
+            AmbientIntensity = LightmassAmbientIntensity,
+            ShadowBias = LightmassShadowBias,
+            GenerateShadowMaps = LightmassGenerateShadowMaps,
+            TextureCacheName = LightmassTextureCacheName
+        };
+
+        try
+        {
+            settings.Validate();
+            string targetList = string.Join("\n", targetFiles.Select(file => $"  • {file.FileName}"));
+            string storageDescription = Game == MEGame.ME1
+                ? "ME1 light data will be stored in the selected packages (ME1 does not use TFC texture caches)."
+                : string.IsNullOrWhiteSpace(settings.TextureCacheName)
+                    ? "Each target folder's existing TFC will be reused; if none exists, a dedicated Lightmass TFC will be created."
+                    : $"Texture cache: {Path.GetFileNameWithoutExtension(settings.TextureCacheName)}.tfc";
+            string confirmation = $"Build static lighting for {targetFiles.Length:N0} loaded level(s)?\n\n{targetList}\n\n" +
+                                  $"Lights and occluding static geometry are gathered from all {OpenFiles.Count:N0} loaded levels. " +
+                                  $"Texture lightmaps are {settings.TextureResolution}×{settings.TextureResolution}; meshes without a valid baked-UV channel use UE3 vertex lightmaps.\n\n" +
+                                  storageDescription + "\n\nThe packages remain unsaved until you use Save, but TFC data is appended during generation.";
+            if (MessageBox.Show(this, confirmation, "Create Lightmass", MessageBoxButton.YesNo,
+                    MessageBoxImage.Question) != MessageBoxResult.Yes)
+                return;
+
+            IsBusy = true;
+            IsBusyTaskbar = true;
+            BusyText = "Collecting static meshes and lights from loaded levels...";
+            var progress = new Progress<string>(message => BusyText = message);
+            var targetSet = targetFiles.ToHashSet();
+            ActorProxy[] sceneActors = Actors.ToArray();
+            StaticLightingBakeResult bake = await Task.Run(() =>
+            {
+                var scene = StaticLightingBaker.BuildScene(sceneActors, targetSet, RenderContext);
+                if (scene.Targets.Count == 0)
+                    return new StaticLightingBakeResult
+                    {
+                        Components = [],
+                        SourceTriangleCount = scene.Collision.TriangleCount,
+                        LightCount = scene.Lights.Count,
+                        TextureMappedComponentCount = 0,
+                        VertexMappedComponentCount = 0
+                    };
+                return new StaticLightingBaker(scene.Targets, scene.Lights, scene.Collision, settings)
+                    .Bake(CancellationToken.None, progress);
+            }).ConfigureAwait(true);
+
+            if (bake.Components.Count == 0)
+            {
+                MessageBox.Show(this, "No writable static mesh components were found in the selected levels.",
+                    "Create Lightmass", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            BusyText = "Writing lightmaps, shadow maps, and texture-cache data...";
+            await Dispatcher.Yield(DispatcherPriority.Background);
+            StaticLightingWriteResult written = StaticLightingWriter.Write(bake, settings);
+            string cacheSummary = written.TextureCachePaths.Count == 0
+                ? "Lighting data was stored in the level packages."
+                : "Texture cache output:\n" + string.Join("\n", written.TextureCachePaths.Select(path => $"  • {path}"));
+            TextBelowActors = $"Lightmass: {written.ComponentCount:N0} static components, " +
+                              $"{written.LightMapTextureCount:N0} lightmap textures, {written.ShadowMapCount:N0} shadow maps; " +
+                              $"{bake.LightCount:N0} lights / {bake.SourceTriangleCount:N0} occluder triangles from all loaded levels.";
+            MessageBox.Show(this,
+                $"Generated static lighting for {written.ComponentCount:N0} components.\n\n" +
+                $"2D lightmaps: {bake.TextureMappedComponentCount:N0} components\n" +
+                $"Vertex-lightmap fallback: {bake.VertexMappedComponentCount:N0} components\n" +
+                $"Lightmap textures: {written.LightMapTextureCount:N0}\n" +
+                $"Shadow maps: {written.ShadowMapCount:N0}\n\n{cacheSummary}\n\nUse Save All to write the modified level packages.",
+                "Create Lightmass", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception exception)
+        {
+            MessageBox.Show(this, exception.FlattenException(), "Create Lightmass", MessageBoxButton.OK,
+                MessageBoxImage.Error);
+        }
+        finally
+        {
+            IsBusy = false;
+            IsBusyTaskbar = false;
+        }
     }
 
     private void CreatePointOfInterest(Vector3 location)
