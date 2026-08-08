@@ -42,6 +42,12 @@ namespace LegendaryExplorer.SharedUI.Controls
             searchBox.Clear();
         }
 
+        public void FocusSearchBox()
+        {
+            searchBox.Focus();
+            searchBox.SelectAll();
+        }
+
         private void clearSearchTextButton_Clicked(object sender, RoutedEventArgs e)
         {
             searchBox.Text = "";

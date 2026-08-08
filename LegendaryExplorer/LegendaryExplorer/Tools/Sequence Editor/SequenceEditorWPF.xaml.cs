@@ -2666,11 +2666,13 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             PositionFloatingToolboxWindow();
 
             floatingToolboxWindow.Activate();
+            floatingToolboxWindow.Dispatcher.BeginInvoke(DispatcherPriority.Input,
+                new Action(() => floatingToolboxSearchBox?.FocusSearchBox()));
         }
 
         private System.Windows.Point ConvertScreenPixelsToDips(System.Drawing.Point screenPoint)
         {
-            if (PresentationSource.FromVisual(this)?.CompositionTarget is { } compositionTarget)
+            if (PresentationSource.FromVisual(graphGrid)?.CompositionTarget is { } compositionTarget)
             {
                 return compositionTarget.TransformFromDevice.Transform(
                     new System.Windows.Point(screenPoint.X, screenPoint.Y));
@@ -2764,7 +2766,6 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             floatingToolboxWindow = new Window
             {
                 Title = "Sequence Toolbox",
-                Owner = this,
                 Width = 560,
                 Height = 520,
                 MinWidth = 480,
@@ -2773,6 +2774,10 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                 WindowStartupLocation = WindowStartupLocation.Manual,
                 Content = toolboxContent
             };
+            if (Window.GetWindow(graphGrid) is { } owner)
+            {
+                floatingToolboxWindow.Owner = owner;
+            }
             CustomWindowChrome.ApplyCustomChrome(floatingToolboxWindow);
             floatingToolboxWindow.Loaded += (_, _) => PositionFloatingToolboxWindow();
             floatingToolboxWindow.Closed += (_, _) =>
@@ -2801,6 +2806,14 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
         private void ToolboxSearchBox_TextChanged(SearchBox sender, string newText)
         {
             UpdateToolboxSearchResults(newText);
+        }
+
+        private void ToolboxMenuItem_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is MenuItem menuItem)
+            {
+                toolBoxExpander.IsExpanded = menuItem.IsChecked;
+            }
         }
 
         private void UpdateToolboxSearchResults(string searchText)
