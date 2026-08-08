@@ -253,6 +253,92 @@ public sealed class EmitterIconOverlay : UIElement
     }
 }
 
+/// <summary>
+/// Hit-testable viewport marker for otherwise componentless SFXPointOfInterest actors.
+/// </summary>
+public sealed class PointOfInterestIconOverlay : UIElement
+{
+    private const float IconOffset = 16f;
+    private const float OuterRadius = 11f;
+    private const float InnerRadius = 7f;
+    private const float MaximumDistance = 100000f;
+    private const int MaximumIcons = 1000;
+    private static readonly Vector4 OutlineColor = new(0.04f, 0.03f, 0.01f, 0.95f);
+    private static readonly Vector4 IconColor = new(1f, 0.65f, 0.12f, 0.95f);
+    private static readonly Vector4 SelectedColor = new(1f, 0.95f, 0.25f, 1f);
+
+    public override void Draw(LevelEditorRenderContext context)
+    {
+        if (!context.ShowPointsOfInterest)
+        {
+            return;
+        }
+
+        Vector3 cameraPosition = context.Camera.Position;
+        float maximumDistanceSquared = MaximumDistance * MaximumDistance;
+        List<(SFXPointOfInterestProxy Actor, float DistanceSquared)> candidates = context.DrawList_3D
+            .OfType<SFXPointOfInterestProxy>()
+            .Select(actor => (actor, Vector3.DistanceSquared(actor.LocalToWorld.Translation, cameraPosition)))
+            .Where(candidate => candidate.Item2 <= maximumDistanceSquared)
+            .OrderBy(candidate => candidate.Item2)
+            .Take(MaximumIcons)
+            .ToList();
+
+        SFXPointOfInterestProxy selected = context.TransformWidget.Attach as SFXPointOfInterestProxy;
+        bool selectedDrawn = false;
+        foreach ((SFXPointOfInterestProxy actor, _) in candidates)
+        {
+            DrawIcon(context, actor);
+            selectedDrawn |= ReferenceEquals(actor, selected);
+        }
+        if (!selectedDrawn && selected is not null)
+        {
+            DrawIcon(context, selected);
+        }
+    }
+
+    private static void DrawIcon(LevelEditorRenderContext context, SFXPointOfInterestProxy actor)
+    {
+        Vector3 basePosition = actor.LocalToWorld.Translation;
+        Vector4 screenPosition = context.WorldToScreen(basePosition);
+        if (screenPosition.W <= 0f)
+        {
+            return;
+        }
+
+        float scale = context.Camera.IsOrthographic
+            ? context.Camera.OrthoWidth * 4f / context.Width
+            : screenPosition.W * (4f / context.Width / context.Camera.ProjectionMatrix[0, 0]);
+        Vector3 right = context.Camera.CameraRight * scale;
+        Vector3 up = context.Camera.CameraUp * scale;
+        Vector3 center = basePosition + up * IconOffset;
+        if (!context.WorldToPixel(center, out _))
+        {
+            return;
+        }
+
+        int hitId = actor.HitID;
+        DrawDiamond(context, center, right, up, OuterRadius, OutlineColor, hitId);
+        DrawDiamond(context, center, right, up, InnerRadius,
+            ReferenceEquals(actor, context.TransformWidget.Attach) ? SelectedColor : IconColor, hitId);
+    }
+
+    private static void DrawDiamond(LevelEditorRenderContext context, Vector3 center, Vector3 right, Vector3 up,
+        float radius, Vector4 color, int hitId)
+    {
+        var mesh = context.Primitives.BuildMesh(color, hitId, Matrix4x4.Identity);
+        mesh.AddVertex(center);
+        mesh.AddVertex(center + up * radius);
+        mesh.AddVertex(center + right * radius);
+        mesh.AddVertex(center - up * radius);
+        mesh.AddVertex(center - right * radius);
+        mesh.AddTriangle(0, 1, 2);
+        mesh.AddTriangle(0, 2, 3);
+        mesh.AddTriangle(0, 3, 4);
+        mesh.AddTriangle(0, 4, 1);
+    }
+}
+
 [Flags]
 public enum EWidgetAxis
 {

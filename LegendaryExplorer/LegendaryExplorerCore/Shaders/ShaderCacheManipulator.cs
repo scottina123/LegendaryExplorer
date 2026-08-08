@@ -396,7 +396,7 @@ namespace LegendaryExplorerCore.Shaders
         {
             StaticParameterSet sps = material.ClassName switch
             {
-                "Material" => (StaticParameterSet)ObjectBinary.From<Material>(material).SM3MaterialResource.ID,
+                "Material" or "DecalMaterial" => (StaticParameterSet)ObjectBinary.From<Material>(material).SM3MaterialResource.ID,
                 _ => ObjectBinary.From<MaterialInstance>(material).SM3StaticParameterSet
             };
             ShaderCache seekFreeShaderCache;
@@ -529,7 +529,7 @@ namespace LegendaryExplorerCore.Shaders
         {
             StaticParameterSet sps = material.ClassName switch
             {
-                "Material" => (StaticParameterSet)ObjectBinary.From<Material>(material).SM3MaterialResource.ID,
+                "Material" or "DecalMaterial" => (StaticParameterSet)ObjectBinary.From<Material>(material).SM3MaterialResource.ID,
                 _ => ObjectBinary.From<MaterialInstance>(material).SM3StaticParameterSet
             };
             var shaders = new Shader[shaderTypes.Length];

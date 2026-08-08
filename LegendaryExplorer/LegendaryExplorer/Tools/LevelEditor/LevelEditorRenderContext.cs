@@ -41,6 +41,7 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
     public List<UIElement> DrawList_UI = [];
     private readonly LightIconOverlay LightIcons = new();
     private readonly EmitterIconOverlay EmitterIcons = new();
+    private readonly PointOfInterestIconOverlay PointOfInterestIcons = new();
     private readonly Dictionary<ActorProxy, SceneLight> sceneLightCache = [];
 
     internal LevelVfxRenderer VfxRenderer { get; }
@@ -189,6 +190,8 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
 
     public bool ShowLightIcons = true;
     public bool ShowEmitterVfx { get; private set; }
+    public bool ShowDecalActors = true;
+    public bool ShowPointsOfInterest = true;
     public bool ShowVolumes;
     public bool ShowVolumetrics;
 
@@ -582,6 +585,10 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
         {
             DrawList_UI.Add(EmitterIcons);
         }
+        if (!DrawList_UI.Contains(PointOfInterestIcons))
+        {
+            DrawList_UI.Add(PointOfInterestIcons);
+        }
         EnableTransformWidget();
     }
 
@@ -829,6 +836,10 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
             if (!DrawList_UI.Contains(EmitterIcons))
             {
                 DrawList_UI.Add(EmitterIcons);
+            }
+            if (!DrawList_UI.Contains(PointOfInterestIcons))
+            {
+                DrawList_UI.Add(PointOfInterestIcons);
             }
             StartRenderResourceWorker();
         }

@@ -349,6 +349,34 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         }
     }
 
+    private bool _showDecalActors = true;
+    public bool ShowDecalActors
+    {
+        get => _showDecalActors;
+        set
+        {
+            if (SetProperty(ref _showDecalActors, value))
+            {
+                RenderContext.ShowDecalActors = value;
+                SceneViewer?.MarkRenderDirty();
+            }
+        }
+    }
+
+    private bool _showPointsOfInterest = true;
+    public bool ShowPointsOfInterest
+    {
+        get => _showPointsOfInterest;
+        set
+        {
+            if (SetProperty(ref _showPointsOfInterest, value))
+            {
+                RenderContext.ShowPointsOfInterest = value;
+                SceneViewer?.MarkRenderDirty();
+            }
+        }
+    }
+
     private bool _showVolumes = Settings.LevelEditor_ShowVolumes;
     public bool ShowVolumes
     {
@@ -647,6 +675,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
 
         LoadCommands();
         InitializeComponent();
+        ApplyPointOfInterestToolTipTheme(Settings.Global_DarkMode_Enabled);
         LevelLiveMaterialEditor.CloseMaterialEditorRequested += LevelLiveMaterialEditor_CloseRequested;
         LevelLiveMaterialEditor.LiveMaterialPreviewChanged += LevelLiveMaterialEditor_PreviewChanged;
         LoadRecentSets();
@@ -659,6 +688,26 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
     private void OnThemeChanged(object sender, bool isDarkMode)
     {
         BackgroundColor = GetThemeDefaultBackgroundColor();
+        ApplyPointOfInterestToolTipTheme(isDarkMode);
+    }
+
+    private void ApplyPointOfInterestToolTipTheme(bool isDarkMode)
+    {
+        if (isDarkMode)
+        {
+            PointOfInterestToolTip.Background = new System.Windows.Media.SolidColorBrush(
+                System.Windows.Media.Color.FromRgb(0x25, 0x25, 0x26));
+            PointOfInterestToolTip.Foreground = new System.Windows.Media.SolidColorBrush(
+                System.Windows.Media.Color.FromRgb(0xE0, 0xE0, 0xE0));
+            PointOfInterestToolTip.BorderBrush = new System.Windows.Media.SolidColorBrush(
+                System.Windows.Media.Color.FromRgb(0x3F, 0x3F, 0x46));
+        }
+        else
+        {
+            PointOfInterestToolTip.Background = SystemColors.InfoBrush;
+            PointOfInterestToolTip.Foreground = SystemColors.InfoTextBrush;
+            PointOfInterestToolTip.BorderBrush = SystemColors.ActiveBorderBrush;
+        }
     }
 
     private string FileQueuedForLoad;
@@ -715,6 +764,8 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         for (int i = 0; i < RenderContext.DrawList_3D.Count; i++)
         {
             ActorProxy actor = RenderContext.DrawList_3D[i];
+            if (actor is DecalActorProxy && !ShowDecalActors) continue;
+            if (actor is SFXPointOfInterestProxy && !ShowPointsOfInterest) continue;
             if (actor.IsVolume && !ShowVolumes) continue;
             if (actor.IsVolumetricMesh && !ShowVolumetrics) continue;
             if (_zCutoffEnabled && actor.Location.Z >= _zCutoff) continue;
@@ -3096,6 +3147,20 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
     {
         PropertiesExportList.Clear();
         PropertiesExportList.Add(actor.Export);
+
+        if (actor is SFXPointOfInterestProxy
+            && actor.Export.GetProperty<ArrayProperty<ObjectProperty>>("Modules") is { } modules)
+        {
+            foreach (ObjectProperty moduleReference in modules)
+            {
+                if (actor.Export.FileRef.TryGetUExport(moduleReference.Value, out ExportEntry module)
+                    && module.ClassName == "SFXSimpleUseModule")
+                {
+                    PropertiesExportList.Add(module);
+                }
+            }
+        }
+
         foreach (var component in actor.Components)
         {
             if (component.Export.UIndex != selectedActor.Export.UIndex)
@@ -3221,6 +3286,14 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         emitterItem.Click += async (_, _) => await CreateEmitter(location);
         createMenu.Items.Add(emitterItem);
 
+        var pointOfInterestItem = new System.Windows.Controls.MenuItem
+        {
+            Header = "Point of Interest",
+            IsEnabled = Game.IsGame3()
+        };
+        pointOfInterestItem.Click += (_, _) => CreatePointOfInterest(location);
+        createMenu.Items.Add(pointOfInterestItem);
+
         var pointLightItem = new System.Windows.Controls.MenuItem { Header = "Point Light" };
         pointLightItem.Click += (_, _) => CreatePointLight(location);
         createMenu.Items.Add(pointLightItem);
@@ -3230,6 +3303,65 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         createMenu.Items.Add(spotLightItem);
 
         return createMenu;
+    }
+
+    private void CreatePointOfInterest(Vector3 location)
+    {
+        if (ActiveFile is not { IsReadOnly: false } activeFile || !activeFile.Package.Game.IsGame3())
+        {
+            return;
+        }
+
+        ExportEntry actorExport = null;
+        try
+        {
+            IMEPackage package = activeFile.Package;
+            actorExport = ExportCreator.CreateExport(package, "SFXPointOfInterest", "SFXPointOfInterest",
+                activeFile.LevelExport, createWithStack: true);
+            ExportEntry selectionModule = ExportCreator.CreateExport(package, "tempSelectionModule",
+                "SFXSimpleUseModule", actorExport, indexed: false);
+            selectionModule.ObjectFlags |= UnrealFlags.EObjectFlags.Transactional;
+            selectionModule.Archetype = PreviewLevelBuilder.GetImportArchetype(package, "SFXGame",
+                "Default__SFXPointOfInterest.tempSelectionModule");
+            selectionModule.WriteProperties([
+                new StringRefProperty(0, "m_srGameName"),
+                new BoolProperty(false, "m_bTargetable"),
+                new EnumProperty("ETargetTipText", package.Game, "m_TargetTipText")
+            ]);
+
+            var modules = new ArrayProperty<ObjectProperty>("Modules")
+            {
+                new ObjectProperty(selectionModule)
+            };
+            actorExport.WriteProperties([
+                modules,
+                CommonStructs.Vector3Prop(location, "location"),
+                new NameProperty("SFXPointOfInterest", "Tag")
+            ]);
+
+            ActorProxy actor = ActorProxy.Create(this, actorExport)
+                               ?? throw new InvalidOperationException(
+                                   "The level editor cannot render SFXPointOfInterest actors.");
+            actor.OwningFile = activeFile;
+
+            Level level = activeFile.LevelExport.GetBinaryData<Level>();
+            level.Actors.Add(actorExport.UIndex);
+            activeFile.LevelExport.WriteBinary(level);
+            AddActor(actor);
+            SelectActor(actor, false);
+            activeFile.IsDirty = true;
+            UndoHistory.Clear();
+            _preEditSnapshot = null;
+            SceneViewer?.MarkRenderDirty();
+        }
+        catch (Exception ex)
+        {
+            if (actorExport is not null && !actorExport.IsTrash())
+            {
+                EntryPruner.TrashEntryAndDescendants(actorExport);
+            }
+            MessageBox.Show(this, $"Failed to create SFXPointOfInterest:\n{ex.Message}", "Error");
+        }
     }
 
     private void CreatePointLight(Vector3 location)

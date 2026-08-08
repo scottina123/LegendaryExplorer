@@ -274,6 +274,28 @@
                                 <CheckBox Content="Show emitter VFX" Margin="4,1,4,5"
                                           IsChecked="{Binding ShowEmitterVfx}"
                                           ToolTip="Render placed emitters with their in-game shaders. Turn this off to show lightweight emitter icons instead."/>
+                                <CheckBox Content="Show decal actors" Margin="4,1"
+                                          IsChecked="{Binding ShowDecalActors}"
+                                          ToolTip="Render DecalActor receiver geometry with its in-game material shaders."/>
+                                <CheckBox Content="Show points of interest" Margin="4,1,4,5"
+                                          IsChecked="{Binding ShowPointsOfInterest}">
+                                    <CheckBox.ToolTip>
+                                        <ToolTip x:Name="PointOfInterestToolTip"
+                                                 Content="Show hit-testable markers for SFXPointOfInterest actors."
+                                                 Padding="5,3" OverridesDefaultStyle="True">
+                                            <ToolTip.Template>
+                                                <ControlTemplate TargetType="{x:Type ToolTip}">
+                                                    <Border Background="{TemplateBinding Background}"
+                                                            BorderBrush="{TemplateBinding BorderBrush}"
+                                                            BorderThickness="1"
+                                                            Padding="{TemplateBinding Padding}">
+                                                        <ContentPresenter/>
+                                                    </Border>
+                                                </ControlTemplate>
+                                            </ToolTip.Template>
+                                        </ToolTip>
+                                    </CheckBox.ToolTip>
+                                </CheckBox>
                                 <CheckBox Content="Show pathing" Margin="4,1"
                                           IsChecked="{Binding ShowPathing}"
                                           ToolTip="Draw PathNodes and ReachSpec connections for all loaded levels."/>

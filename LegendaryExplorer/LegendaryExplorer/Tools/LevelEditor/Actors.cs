@@ -362,7 +362,7 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy, ITr
         Properties = [];
     }
 
-    public void ResolveAttachment(IEnumerable<ActorProxy> actorProxies)
+    public virtual void ResolveAttachment(IEnumerable<ActorProxy> actorProxies)
     {
         if (Properties.TryResolveObjectProp(Pcc, "Base", out ExportEntry baseExport)
             && actorProxies.FirstOrDefault(ap => ap.Export == baseExport) is ActorProxy baseActor)
@@ -416,7 +416,9 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy, ITr
         "SFXDroppedGrenade",
         "SFXDroppedAmmo",
         "SFXDroppedPickup",
-        "Emitter"
+        "Emitter",
+        "DecalActor",
+        "SFXPointOfInterest"
     }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
 
     public static bool CanCreate(ExportEntry actorExport)
@@ -495,6 +497,14 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy, ITr
         if (GlobalUnrealObjectInfo.IsA(className, "Emitter", actorExport.Game))
         {
             return new EmitterActorProxy(context, actorExport);
+        }
+        if (GlobalUnrealObjectInfo.IsA(className, "DecalActor", actorExport.Game))
+        {
+            return new DecalActorProxy(context, actorExport);
+        }
+        if (GlobalUnrealObjectInfo.IsA(className, "SFXPointOfInterest", actorExport.Game))
+        {
+            return new SFXPointOfInterestProxy(context, actorExport);
         }
         return null;
         //return new ActorProxy(context, actorExport);
@@ -803,6 +813,29 @@ public class StaticMeshActorProxy : ActorProxy
     {
         AddComponent(context.RenderContext, ref StaticMeshComponent);
         IsVolumetricMesh = StaticMeshComponent.IsVolumetric;
+    }
+}
+
+public sealed class DecalActorProxy : ActorProxy
+{
+    public DecalComponentProxy Decal;
+
+    public DecalActorProxy(IActorEditorContext context, ExportEntry actorExport) : base(context, actorExport)
+    {
+        AddComponent(context.RenderContext, ref Decal);
+    }
+
+    public override void ResolveAttachment(IEnumerable<ActorProxy> actorProxies)
+    {
+        base.ResolveAttachment(actorProxies);
+        Decal?.ResolveReceivers(actorProxies);
+    }
+}
+
+public sealed class SFXPointOfInterestProxy : ActorProxy
+{
+    public SFXPointOfInterestProxy(IActorEditorContext context, ExportEntry actorExport) : base(context, actorExport)
+    {
     }
 }
 

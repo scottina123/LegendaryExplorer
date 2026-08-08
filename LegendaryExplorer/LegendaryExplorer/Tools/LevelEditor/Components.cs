@@ -1,6 +1,7 @@
 ﻿using LegendaryExplorer.Misc;
 using LegendaryExplorer.Tools.AssetDatabase.VFXPreview;
 using LegendaryExplorer.Tools.LevelEditor.Scene3D;
+using LegendaryExplorerCore.Gammtek;
 using LegendaryExplorerCore.Helpers;
 using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.Unreal;
@@ -165,6 +166,10 @@ public class PrimitiveComponentProxy : NotifyPropertyChangedBase, IDisposable
         {
             return new ParticleSystemComponentProxy(levelContext, componentExport, parent);
         }
+        if (className == "DecalComponent" && context is LevelEditorRenderContext decalContext)
+        {
+            return new DecalComponentProxy(decalContext, componentExport, parent);
+        }
 
         return new PrimitiveComponentProxy(context, componentExport, parent);
     }
@@ -281,6 +286,196 @@ public interface ILevelRenderResource
 {
     bool RenderResourcesInitialized { get; }
     void PrepareRenderResources();
+}
+
+public sealed class DecalComponentProxy : PrimitiveComponentProxy, ILevelRenderResource
+{
+    private readonly record struct Receiver(StaticReceiverData Data, PrimitiveComponentProxy Component);
+    private readonly record struct ReceiverPreview(ModelPreview<LEVertex> Preview, PrimitiveComponentProxy Component);
+
+    private readonly LevelEditorRenderContext renderContext;
+    private readonly DecalComponent decalComponent;
+    private readonly IEntry materialEntry;
+    private readonly Vector3 hitLocation;
+    private readonly Vector3 hitTangent;
+    private readonly Vector3 hitBinormal;
+    private readonly float width;
+    private readonly float height;
+    private readonly object renderResourceLock = new();
+    private List<Receiver> receivers = [];
+    private List<ReceiverPreview> receiverPreviews = [];
+    private volatile bool renderResourcesInitialized;
+
+    bool ILevelRenderResource.RenderResourcesInitialized => renderResourcesInitialized;
+
+    public DecalComponentProxy(LevelEditorRenderContext context, ExportEntry componentExport, ActorProxy parent)
+        : base(context, componentExport, parent)
+    {
+        renderContext = context;
+        decalComponent = componentExport.GetBinaryData<DecalComponent>();
+        materialEntry = Properties.GetProp<ObjectProperty>("DecalMaterial")?.ResolveToEntry(componentExport.FileRef);
+        hitLocation = ReadVector("HitLocation", parent.Location);
+        hitTangent = ReadVector("HitTangent", parent.LocalToWorld.GetAxis(0).Normal());
+        hitBinormal = ReadVector("HitBinormal", parent.LocalToWorld.GetAxis(1).Normal());
+        width = MathF.Max(Properties.GetProp<FloatProperty>("Width")?.Value ?? 1f, float.Epsilon);
+        height = MathF.Max(Properties.GetProp<FloatProperty>("Height")?.Value ?? 1f, float.Epsilon);
+    }
+
+    private Vector3 ReadVector(string propertyName, Vector3 fallback) =>
+        Properties.GetProp<StructProperty>(propertyName) is { } property
+            ? CommonStructs.GetVector3(property)
+            : fallback;
+
+    internal void ResolveReceivers(IEnumerable<ActorProxy> actors)
+    {
+        var componentsByIndex = actors
+            .SelectMany(actor => actor.Components)
+            .Where(component => ReferenceEquals(component.Export.FileRef, Export.FileRef))
+            .GroupBy(component => component.Export.UIndex)
+            .ToDictionary(group => group.Key, group => group.First());
+
+        receivers = (decalComponent.StaticReceivers ?? [])
+            .Where(receiver => receiver.Vertices is { Length: > 0 }
+                               && receiver.Indices is { Length: >= 3 }
+                               && componentsByIndex.ContainsKey(receiver.PrimitiveComponent))
+            .Select(receiver => new Receiver(receiver, componentsByIndex[receiver.PrimitiveComponent]))
+            .ToList();
+    }
+
+    void ILevelRenderResource.PrepareRenderResources()
+    {
+        lock (renderResourceLock)
+        {
+            if (renderResourcesInitialized)
+            {
+                return;
+            }
+
+            var prepared = new List<ReceiverPreview>(receivers.Count);
+            try
+            {
+                foreach (Receiver receiver in receivers)
+                {
+                    Matrix4x4 receiverToWorld = receiver.Component.LocalToWorld;
+                    var vertices = new List<LEVertex>(receiver.Data.Vertices.Length);
+                    foreach (DecalVertex vertex in receiver.Data.Vertices)
+                    {
+                        Vector3 worldPosition = Vector3.Transform(vertex.Position, receiverToWorld);
+                        Vector3 relativePosition = worldPosition - hitLocation;
+                        Fixed4<Vector4> uvs = default;
+                        uvs[0] = new Vector4(
+                            Vector3.Dot(relativePosition, hitTangent) / width + 0.5f,
+                            Vector3.Dot(relativePosition, hitBinormal) / height + 0.5f,
+                            0f,
+                            0f);
+                        vertices.Add((LEVertex)LEVertex.Create(Export.Game, vertex.Position,
+                            (Vector3)vertex.TangentX, (Vector4)vertex.TangentZ, uvs));
+                    }
+
+                    var triangles = new List<Triangle>(receiver.Data.Indices.Length / 3);
+                    for (int index = 0; index + 2 < receiver.Data.Indices.Length; index += 3)
+                    {
+                        triangles.Add(new Triangle(receiver.Data.Indices[index],
+                            receiver.Data.Indices[index + 1], receiver.Data.Indices[index + 2]));
+                    }
+
+                    var mesh = new Mesh<LEVertex>(renderContext.Device, triangles, vertices)
+                    {
+                        LocalToWorld = receiverToWorld
+                    };
+                    var preview = new ModelPreview<LEVertex>(renderContext, mesh);
+                    string materialName = null;
+                    if (materialEntry is not null && preview.AddMaterial(renderContext, materialEntry))
+                    {
+                        materialName = materialEntry.InstancedFullPath;
+                        preview.MaterialSlots.Add(materialEntry);
+                    }
+                    preview.LODs[0].Sections.Add(new ModelPreviewSection(materialName, 0, (uint)triangles.Count));
+                    preview.PrepareGraphicsResources(renderContext);
+                    prepared.Add(new ReceiverPreview(preview, receiver.Component));
+                }
+
+                receiverPreviews = prepared;
+                renderResourcesInitialized = true;
+            }
+            catch
+            {
+                foreach (ReceiverPreview receiverPreview in prepared)
+                {
+                    receiverPreview.Preview.Dispose();
+                }
+                throw;
+            }
+        }
+    }
+
+    public override void Render(MeshRenderContext context, RenderPass pass)
+    {
+        if (!IsVisible || !renderResourcesInitialized)
+        {
+            return;
+        }
+
+        foreach (ReceiverPreview receiverPreview in receiverPreviews)
+        {
+            ModelPreviewLOD<LEVertex> lod = receiverPreview.Preview.LODs[0];
+            lod.Mesh.LocalToWorld = receiverPreview.Component.LocalToWorld;
+            if (pass is RenderPass.HitTest)
+            {
+                context.RenderNativeMeshHitTest(lod.Mesh);
+                continue;
+            }
+
+            bool previousCameraRelative = context.UseCameraRelativeNativeRendering;
+            context.UseCameraRelativeNativeRendering = true;
+            try
+            {
+                receiverPreview.Preview.Render(pass, context, 0);
+            }
+            finally
+            {
+                context.UseCameraRelativeNativeRendering = previousCameraRelative;
+            }
+        }
+    }
+
+    public override BoxSphereBounds GetBounds()
+    {
+        if (renderResourcesInitialized && receiverPreviews.Count > 0)
+        {
+            ReceiverPreview first = receiverPreviews[0];
+            first.Preview.LODs[0].Mesh.LocalToWorld = first.Component.LocalToWorld;
+            BoxSphereBounds bounds = first.Preview.LODs[0].Mesh.TransformedBounds;
+            for (int index = 1; index < receiverPreviews.Count; index++)
+            {
+                ReceiverPreview receiverPreview = receiverPreviews[index];
+                receiverPreview.Preview.LODs[0].Mesh.LocalToWorld = receiverPreview.Component.LocalToWorld;
+                bounds = bounds.Union(receiverPreview.Preview.LODs[0].Mesh.TransformedBounds);
+            }
+            return bounds;
+        }
+
+        Vector3 extent = new(width * 0.5f, height * 0.5f, 1f);
+        return new BoxSphereBounds
+        {
+            Origin = hitLocation,
+            BoxExtent = extent,
+            SphereRadius = extent.Length()
+        };
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        lock (renderResourceLock)
+        {
+            foreach (ReceiverPreview receiverPreview in receiverPreviews)
+            {
+                receiverPreview.Preview.Dispose();
+            }
+            receiverPreviews.Clear();
+        }
+        base.Dispose(disposing);
+    }
 }
 
 public sealed class ParticleSystemComponentProxy : PrimitiveComponentProxy, ILevelRenderResource
