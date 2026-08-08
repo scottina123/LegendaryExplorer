@@ -40,7 +40,7 @@
     <xctk:BusyIndicator IsBusy="{Binding IsBusy}" BusyContent="{Binding BusyText}">
         <DockPanel>
             <ToolBar DockPanel.Dock="Top" ToolBarTray.IsLocked="True"
-                     Visibility="{Binding IsMaterialEditorOnly, Converter={StaticResource BoolToVisibilityConverter}, ConverterParameter=Not}">
+                     Visibility="{Binding ShowPreviewToolbar, Converter={StaticResource BoolToVisibilityConverter}}">
                 <CheckBox Content="Wireframe" IsChecked="{Binding ShowWireframe}" VerticalAlignment="Center" Margin="4,0"/>
                 <CheckBox Content="Collision" IsChecked="{Binding ShowCollision}" VerticalAlignment="Center" Margin="4,0"/>
                 <Button Content="Snap to actor" Click="SnapCameraToActor_Click" Padding="6,2" Margin="4,0"

@@ -193,6 +193,20 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         get => _isLevelMaterialEditorOpen;
         private set => SetProperty(ref _isLevelMaterialEditorOpen, value);
     }
+    private IMEPackage _levelMorphEditorActorPackage;
+    private int _levelMorphEditorActorUIndex;
+    private bool _isLevelMorphEditorOpen;
+    public bool IsLevelMorphEditorOpen
+    {
+        get => _isLevelMorphEditorOpen;
+        private set => SetProperty(ref _isLevelMorphEditorOpen, value);
+    }
+    private string _levelMorphEditorTitle = "Morph Editor";
+    public string LevelMorphEditorTitle
+    {
+        get => _levelMorphEditorTitle;
+        private set => SetProperty(ref _levelMorphEditorTitle, value);
+    }
     private char _actorLocationScrubAxis = 'X';
     private double _actorLocationScrubAccumulator;
     private double _actorLocationScrubPreviousHorizontalChange;
@@ -844,6 +858,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
                 UnloadPropertyTabs();
             }
             SynchronizeLevelLiveMaterialEditor(selectedActor);
+            SynchronizeLevelMorphEditor(selectedActor);
             UpdateActorRotationDialIndicator();
             UpdateLightValueDialIndicator();
         }
@@ -2783,6 +2798,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
             }
         }
 
+        CloseLevelMorphEditor();
         CloseAllFiles();
 
         RenderContext.UpdateScene -= UpdateScene;
@@ -2797,6 +2813,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         LevelLiveMaterialEditor.CloseMaterialEditorRequested -= LevelLiveMaterialEditor_CloseRequested;
         LevelLiveMaterialEditor.LiveMaterialPreviewChanged -= LevelLiveMaterialEditor_PreviewChanged;
         LevelLiveMaterialEditor.Dispose();
+        LevelMorphEditor.Dispose();
         SceneViewer.Dispose();
     }
 
@@ -3843,20 +3860,12 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
             return;
         }
 
-        var preview = new ActorPreviewControl
-        {
-            OpenMorphEditorOnLoad = true
-        };
-        var window = new ExportLoaderHostedWindow(preview, actor.Export)
-        {
-            Owner = this,
-            Title = $"Morph Editor - {actor.Export.UIndex}: {actor.Export.ObjectName.Instanced}"
-        };
-        window.Show();
+        OpenLevelMorphEditor(actor);
     }
 
     private void OpenLevelLiveMaterialEditor(ActorProxy actor)
     {
+        CloseLevelMorphEditor();
         _levelLiveMaterialActor = actor;
         _levelLiveMaterialActorPackage = actor.Export.FileRef;
         _levelLiveMaterialActorUIndex = actor.Export.UIndex;
@@ -3864,6 +3873,54 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         IsLevelMaterialEditorOpen = true;
         SceneViewer.MarkRenderDirty();
     }
+
+    private void OpenLevelMorphEditor(ActorProxy actor)
+    {
+        if (IsLevelMorphEditorOpen
+            && actor.Export.FileRef == _levelMorphEditorActorPackage
+            && actor.Export.UIndex == _levelMorphEditorActorUIndex)
+        {
+            return;
+        }
+
+        CloseLevelLiveMaterialEditor();
+        _levelMorphEditorActorPackage = actor.Export.FileRef;
+        _levelMorphEditorActorUIndex = actor.Export.UIndex;
+        LevelMorphEditorTitle = $"Morph Editor - {actor.Export.UIndex}: {actor.Export.ObjectName.Instanced}";
+        IsLevelMorphEditorOpen = true;
+        LevelMorphEditor.LoadExport(actor.Export);
+    }
+
+    private void CloseLevelMorphEditor()
+    {
+        if (IsLevelMorphEditorOpen || LevelMorphEditor.CurrentLoadedExport is not null)
+        {
+            LevelMorphEditor.UnloadExport();
+        }
+        IsLevelMorphEditorOpen = false;
+        _levelMorphEditorActorPackage = null;
+        _levelMorphEditorActorUIndex = 0;
+        LevelMorphEditorTitle = "Morph Editor";
+    }
+
+    private void SynchronizeLevelMorphEditor(ActorProxy actor)
+    {
+        if (!IsLevelMorphEditorOpen)
+        {
+            return;
+        }
+
+        if (actor is null
+            || actor.Export.FileRef != _levelMorphEditorActorPackage
+            || actor.Export.UIndex != _levelMorphEditorActorUIndex)
+        {
+            CloseLevelMorphEditor();
+            return;
+        }
+    }
+
+    private void CloseLevelMorphEditor_Click(object sender, RoutedEventArgs e) =>
+        CloseLevelMorphEditor();
 
     private void CloseLevelLiveMaterialEditor()
     {

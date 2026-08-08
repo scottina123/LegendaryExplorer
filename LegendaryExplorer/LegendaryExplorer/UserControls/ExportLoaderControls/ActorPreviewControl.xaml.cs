@@ -145,9 +145,29 @@ public partial class ActorPreviewControl : ExportLoaderControl, IActorEditorCont
             if (SetProperty(ref _isMaterialEditorOnly, value))
             {
                 OnPropertyChanged(nameof(ShowLiveMaterialEditor));
+                OnPropertyChanged(nameof(ShowPreviewToolbar));
             }
         }
     }
+
+    private bool _isMorphEditorOnly;
+    public bool IsMorphEditorOnly
+    {
+        get => _isMorphEditorOnly;
+        set
+        {
+            if (SetProperty(ref _isMorphEditorOnly, value))
+            {
+                OnPropertyChanged(nameof(ShowPreviewToolbar));
+                if (value)
+                {
+                    SceneViewer?.SetShouldRender(false);
+                }
+            }
+        }
+    }
+
+    public bool ShowPreviewToolbar => !IsMaterialEditorOnly && !IsMorphEditorOnly;
 
     /// <summary>
     /// Opens the integrated morph editor as soon as the actor and its MorphHead have loaded.
@@ -253,7 +273,8 @@ public partial class ActorPreviewControl : ExportLoaderControl, IActorEditorCont
     private void SceneViewer_Loaded(object sender, RoutedEventArgs e)
     {
         AttachHostingTabSelectionHandler();
-        bool shouldRender = _hostingTabItem is null || ReferenceEquals(_hostingTabControl?.SelectedItem, _hostingTabItem);
+        bool shouldRender = !IsMorphEditorOnly
+                            && (_hostingTabItem is null || ReferenceEquals(_hostingTabControl?.SelectedItem, _hostingTabItem));
         SceneViewer.SetShouldRender(shouldRender && !IsMorphEditing);
         if (shouldRender && IsMorphEditing)
         {
@@ -284,7 +305,7 @@ public partial class ActorPreviewControl : ExportLoaderControl, IActorEditorCont
     {
         if (sender is TabControl tabControl && ReferenceEquals(e.Source, tabControl) && _hostingTabItem is not null)
         {
-            bool shouldRender = ReferenceEquals(tabControl.SelectedItem, _hostingTabItem);
+            bool shouldRender = !IsMorphEditorOnly && ReferenceEquals(tabControl.SelectedItem, _hostingTabItem);
             SceneViewer?.SetShouldRender(shouldRender && !IsMorphEditing);
             if (IsMorphEditing)
             {
@@ -605,8 +626,11 @@ public partial class ActorPreviewControl : ExportLoaderControl, IActorEditorCont
         IsMorphEditing = false;
         if (SceneViewer is not null && IsLoaded)
         {
-            SceneViewer.SetShouldRender(true);
-            SceneViewer.MarkRenderDirty();
+            SceneViewer.SetShouldRender(!IsMorphEditorOnly);
+            if (!IsMorphEditorOnly)
+            {
+                SceneViewer.MarkRenderDirty();
+            }
         }
     }
 

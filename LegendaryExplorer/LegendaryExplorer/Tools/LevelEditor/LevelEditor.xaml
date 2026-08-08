@@ -284,13 +284,15 @@
                         </xctk:DropDownButton.DropDownContent>
                     </xctk:DropDownButton>
                     <xctk:DropDownButton Content="Navigation" MaxDropDownHeight="520" CloseOnFocusLoss="False"
-                                         BorderBrush="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}">
+                                         BorderBrush="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}"
+                                         DropDownContentBackground="{DynamicResource {x:Static SystemColors.ControlBrushKey}}">
                         <xctk:DropDownButton.DropDownContent>
-                            <StackPanel Width="285" Margin="6" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}">
-                                <TextBlock Text="Automatic pathing and cover" FontWeight="SemiBold" Margin="0,0,0,5"/>
-                                <TextBlock Text="Generation is centered on the camera. A radius of 0 scans all loaded collision. Results are appended to the active ME3/LE3 package after confirmation; existing navigation is preserved."
-                                           TextWrapping="Wrap" Margin="0,0,0,7"/>
-                                <Grid>
+                            <Border Padding="6" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}">
+                                <StackPanel Width="285">
+                                    <TextBlock Text="Automatic pathing and cover" FontWeight="SemiBold" Margin="0,0,0,5"/>
+                                    <TextBlock Text="Generation is centered on the camera. A radius of 0 scans all loaded collision. Results are appended to the active ME3/LE3 package after confirmation; existing navigation is preserved."
+                                               TextWrapping="Wrap" Margin="0,0,0,7"/>
+                                    <Grid>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*"/>
                                         <ColumnDefinition Width="105"/>
@@ -324,11 +326,12 @@
                                     <xctk:SingleUpDown Grid.Row="7" Grid.Column="1" Value="{Binding NavigationMaximumDrop}" Minimum="0" Increment="4" FormatString="F0" Margin="2"/>
                                     <TextBlock Grid.Row="8" Text="Generation radius" VerticalAlignment="Center"/>
                                     <xctk:SingleUpDown Grid.Row="8" Grid.Column="1" Value="{Binding NavigationGenerationRadius}" Minimum="0" Increment="500" FormatString="F0" Margin="2"/>
-                                </Grid>
-                                <CheckBox Content="Generate cover links and slots" IsChecked="{Binding GenerateCover}" Margin="0,6,0,6"/>
-                                <Button Content="Generate navigation" Command="{Binding GenerateNavigationCommand}" Padding="8,4"
-                                        ToolTip="Build collision, detect walkable space and cover, then serialize PathNodes, ReachSpecs, CoverLinks, and CoverSlotMarkers."/>
-                            </StackPanel>
+                                    </Grid>
+                                    <CheckBox Content="Generate cover links and slots" IsChecked="{Binding GenerateCover}" Margin="0,6,0,6"/>
+                                    <Button Content="Generate navigation" Command="{Binding GenerateNavigationCommand}" Padding="8,4"
+                                            ToolTip="Build collision, detect walkable space and cover, then serialize PathNodes, ReachSpecs, CoverLinks, and CoverSlotMarkers."/>
+                                </StackPanel>
+                            </Border>
                         </xctk:DropDownButton.DropDownContent>
                     </xctk:DropDownButton>
                     <Separator Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" />
@@ -849,6 +852,28 @@
                                                               Grid.RowSpan="4" Panel.ZIndex="10"
                                                               IsMaterialEditorOnly="True"
                                                               Visibility="{Binding IsLevelMaterialEditorOpen, RelativeSource={RelativeSource AncestorType={x:Type local:LevelEditor}}, Converter={StaticResource BoolToVisibilityConverter}}"/>
+
+                </Grid>
+
+                <Grid Grid.Column="2" Grid.ColumnSpan="3" Panel.ZIndex="11"
+                      Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"
+                      Visibility="{Binding IsLevelMorphEditorOpen, RelativeSource={RelativeSource AncestorType={x:Type local:LevelEditor}}, Converter={StaticResource BoolToVisibilityConverter}}">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    <Border Padding="6,4" BorderThickness="0,0,0,1"
+                            BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}">
+                        <DockPanel>
+                            <Button DockPanel.Dock="Right" Content="X" Width="24" Height="24" Padding="0"
+                                    Click="CloseLevelMorphEditor_Click" ToolTip="Close morph editor"/>
+                            <TextBlock Text="{Binding LevelMorphEditorTitle, RelativeSource={RelativeSource AncestorType={x:Type local:LevelEditor}}}"
+                                       FontWeight="SemiBold" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                        </DockPanel>
+                    </Border>
+                    <exportLoaderControls:ActorPreviewControl x:Name="LevelMorphEditor" Grid.Row="1"
+                                                              OpenMorphEditorOnLoad="True"
+                                                              IsMorphEditorOnly="True"/>
                 </Grid>
 
                 <StackPanel Grid.Column="0" Grid.ColumnSpan="5" Visibility="{Binding HasAnyFileOpen, Converter={StaticResource BoolToVisibilityConverter}, ConverterParameter='Not'}"
