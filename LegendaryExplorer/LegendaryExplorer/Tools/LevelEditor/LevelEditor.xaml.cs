@@ -2719,10 +2719,22 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
     private bool ActorFilter(object obj)
     {
         if (string.IsNullOrEmpty(_actorFilterText)) return true;
-        return obj is ActorProxy actor &&
-               (actor.Export.ObjectName.Instanced.Contains(_actorFilterText, StringComparison.OrdinalIgnoreCase)
-                || actor.Tag.Instanced.Contains(_actorFilterText, StringComparison.OrdinalIgnoreCase)
-                || actor.DisplaySubtitle?.Contains(_actorFilterText, StringComparison.OrdinalIgnoreCase) == true);
+        if (obj is not ActorProxy actor) return false;
+
+        // Allow searching by export index (UIndex), e.g. "1234" or "#1234"
+        ReadOnlySpan<char> numericFilter = _actorFilterText.AsSpan().Trim();
+        if (numericFilter.Length > 0 && numericFilter[0] is '#')
+        {
+            numericFilter = numericFilter[1..];
+        }
+        if (numericFilter.Length > 0 && int.TryParse(numericFilter, out int uIndex) && actor.Export.UIndex == uIndex)
+        {
+            return true;
+        }
+
+        return actor.Export.ObjectName.Instanced?.Contains(_actorFilterText, StringComparison.OrdinalIgnoreCase) == true
+               || actor.Tag.Instanced?.Contains(_actorFilterText, StringComparison.OrdinalIgnoreCase) == true
+               || actor.DisplaySubtitle?.Contains(_actorFilterText, StringComparison.OrdinalIgnoreCase) == true;
     }
 
     private void ActorFilter_TextBox_KeyUp(object sender, KeyEventArgs e)
