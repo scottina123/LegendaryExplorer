@@ -784,7 +784,7 @@ public static class ToolSet
         {
             name = "SFXGalaxy Editor (LE3)",
             type = typeof(SFXGalaxyEditorWindow),
-            icon = Application.Current.FindResource("iconPlaceholder") as ImageSource,
+            icon = Application.Current.FindResource("iconSFXGalaxyEditor") as ImageSource,
             open = () =>
             {
                 (new SFXGalaxyEditorWindow()).Show();

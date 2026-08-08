@@ -16,6 +16,7 @@
         DragOver="Window_DragOver"
         Drop="Window_Drop"
         AllowDrop="True"
+        Icon="pack://application:,,,/Tools/Icons/16x16/SFXGalaxyEditor_Icon_16.ico"
         Title="SFXGalaxy Editor (LE3)" Height="900" Width="1750" MinHeight="650" MinWidth="1050">
     <Window.Resources>
         <converters:NullVisibilityConverter x:Key="NullVisibilityConverter" />
