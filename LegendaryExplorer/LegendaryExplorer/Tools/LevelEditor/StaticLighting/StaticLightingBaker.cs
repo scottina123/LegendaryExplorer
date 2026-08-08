@@ -5,10 +5,12 @@ using LegendaryExplorerCore.Unreal;
 using LegendaryExplorerCore.Unreal.BinaryConverters;
 using LegendaryExplorerCore.Unreal.ObjectInfo;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using System.Threading;
+using System.Threading.Tasks;
 using Color = LegendaryExplorerCore.SharpDX.Color;
 
 namespace LegendaryExplorer.Tools.LevelEditor;
@@ -46,39 +48,47 @@ public sealed class StaticLightingBaker
     public StaticLightingBakeResult Bake(CancellationToken cancellationToken = default,
         IProgress<string> progress = null)
     {
-        var results = new List<StaticLightingComponentBake>(targets.Count);
+        var results = new StaticLightingComponentBake[targets.Count];
         int textureMapped = 0;
         int vertexMapped = 0;
-        for (int index = 0; index < targets.Count; index++)
+        int completed = 0;
+        int workUnitCount = 0;
+        var parallelOptions = CreateParallelOptions(cancellationToken);
+        Parallel.For(0, targets.Count, parallelOptions, index =>
         {
             cancellationToken.ThrowIfCancellationRequested();
             StaticLightingMeshTarget target = targets[index];
-            progress?.Report($"Baking static lighting {index + 1:N0}/{targets.Count:N0}: {target.Component.ObjectName.Instanced}");
             StaticLightingLight[] affectingLights = lights.Where(light =>
                 LightCanAffect(light, target.LightingChannelMask, target.Vertices)).ToArray();
             Guid[] lightGuids = affectingLights.Select(light => light.Guid).Distinct().ToArray();
 
             if (target.HasTextureCoordinates)
             {
-                results.Add(new StaticLightingComponentBake
+                StaticLightingTextureBake texture = BakeTexture(target, affectingLights, cancellationToken);
+                results[index] = new StaticLightingComponentBake
                 {
                     Target = target,
                     LightGuids = lightGuids,
-                    Texture = BakeTexture(target, affectingLights, cancellationToken)
-                });
-                textureMapped++;
+                    Texture = texture
+                };
+                Interlocked.Increment(ref textureMapped);
+                Interlocked.Add(ref workUnitCount, texture.WorkUnitCount);
             }
             else
             {
-                results.Add(new StaticLightingComponentBake
+                results[index] = new StaticLightingComponentBake
                 {
                     Target = target,
                     LightGuids = lightGuids,
                     Vertex = BakeVertices(target, affectingLights, cancellationToken)
-                });
-                vertexMapped++;
+                };
+                Interlocked.Increment(ref vertexMapped);
+                Interlocked.Add(ref workUnitCount, Math.Max(1, (target.Vertices.Count + 255) / 256));
             }
-        }
+            int completedCount = Interlocked.Increment(ref completed);
+            progress?.Report($"Baked static lighting {completedCount:N0}/{targets.Count:N0}: " +
+                             target.Component.ObjectName.Instanced);
+        });
 
         return new StaticLightingBakeResult
         {
@@ -86,9 +96,17 @@ public sealed class StaticLightingBaker
             SourceTriangleCount = collision.TriangleCount,
             LightCount = lights.Count,
             TextureMappedComponentCount = textureMapped,
-            VertexMappedComponentCount = vertexMapped
+            VertexMappedComponentCount = vertexMapped,
+            WorkUnitCount = workUnitCount,
+            WorkerCount = settings.EffectiveWorkerThreads
         };
     }
+
+    private ParallelOptions CreateParallelOptions(CancellationToken cancellationToken) => new()
+    {
+        CancellationToken = cancellationToken,
+        MaxDegreeOfParallelism = settings.EffectiveWorkerThreads
+    };
 
     public static (IReadOnlyList<StaticLightingMeshTarget> Targets, IReadOnlyList<StaticLightingLight> Lights,
         LevelCollisionScene Collision) BuildScene(IEnumerable<ActorProxy> actors,
@@ -156,26 +174,44 @@ public sealed class StaticLightingBaker
             ? affectingLights.Where(light => light.CastsShadow).ToArray()
             : [];
         var shadowVisibility = shadowLights.Select(_ => new byte[pixelCount]).ToArray();
+        int[] shadowIndices = CreateShadowIndices(affectingLights);
         Vector2 coordinateScale = new((resolution - 2f) / resolution);
         Vector2 coordinateBias = new(1f / resolution);
-
-        foreach (StaticLightingTriangle triangle in target.Triangles)
+        var samples = new StaticLightingSurfaceSample[pixelCount];
+        StaticLightingBakeTile[] tiles = CreateTextureWorkTiles(resolution, settings.WorkTileSize).ToArray();
+        List<int>[] triangleBuckets = BuildTileTriangleBuckets(target.Triangles, tiles, resolution,
+            coordinateScale, coordinateBias, settings.WorkTileSize);
+        int[] activeTiles = Enumerable.Range(0, tiles.Length)
+            .Where(index => triangleBuckets[index].Count > 0).ToArray();
+        Parallel.ForEach(activeTiles, CreateParallelOptions(cancellationToken), tileIndex =>
         {
             cancellationToken.ThrowIfCancellationRequested();
-            RasterizeTriangle(triangle, resolution, coordinateScale, coordinateBias,
+            StaticLightingBakeTile tile = tiles[tileIndex];
+            foreach (int triangleIndex in triangleBuckets[tileIndex])
+            {
+                StaticLightingTriangle triangle = target.Triangles[triangleIndex];
+                RasterizeTriangle(triangle, resolution, coordinateScale, coordinateBias, tile,
                 (pixelIndex, barycentric) =>
                 {
-                    StaticLightingSurfaceSample sample = Interpolate(triangle, barycentric);
-                    EvaluateLighting(sample, target.LightingChannelMask, affectingLights,
-                        coefficients, pixelIndex, shadowLights, shadowVisibility);
+                    samples[pixelIndex] = Interpolate(triangle, barycentric);
                     mapped[pixelIndex] = true;
                 });
-        }
+            }
+
+            for (int y = tile.MinimumY; y < tile.MaximumY; y++)
+            for (int x = tile.MinimumX; x < tile.MaximumX; x++)
+            {
+                int pixelIndex = y * resolution + x;
+                if (!mapped[pixelIndex]) continue;
+                EvaluateLighting(samples[pixelIndex], target.LightingChannelMask, affectingLights,
+                    coefficients, pixelIndex, shadowIndices, shadowVisibility);
+            }
+        });
 
         for (int coefficient = 0; coefficient < coefficients.Length; coefficient++)
-            Dilate(coefficients[coefficient], mapped, resolution, 4);
+            Dilate(coefficients[coefficient], mapped, resolution, 4, cancellationToken);
         foreach (byte[] visibility in shadowVisibility)
-            Dilate(visibility, mapped, resolution, 4);
+            Dilate(visibility, mapped, resolution, 4, cancellationToken);
 
         var images = new List<byte[]>(coefficients.Length);
         var scales = new List<Vector3>(coefficients.Length);
@@ -183,7 +219,7 @@ public sealed class StaticLightingBaker
         {
             Vector3 scale = CalculateScale(coefficient, mapped);
             scales.Add(scale);
-            images.Add(EncodeColorImage(coefficient, scale));
+            images.Add(EncodeColorImage(coefficient, scale, cancellationToken));
         }
 
         return new StaticLightingTextureBake
@@ -197,7 +233,8 @@ public sealed class StaticLightingBaker
                 Visibility = shadowVisibility[index]
             }).ToArray(),
             CoordinateScale = coordinateScale,
-            CoordinateBias = coordinateBias
+            CoordinateBias = coordinateBias,
+            WorkUnitCount = Math.Max(1, activeTiles.Length)
         };
     }
 
@@ -211,14 +248,19 @@ public sealed class StaticLightingBaker
             ? affectingLights.Where(light => light.CastsShadow).ToArray()
             : [];
         var shadowVisibility = shadowLights.Select(_ => new byte[target.Vertices.Count]).ToArray();
-        for (int vertexIndex = 0; vertexIndex < target.Vertices.Count; vertexIndex++)
+        int[] shadowIndices = CreateShadowIndices(affectingLights);
+        Parallel.ForEach(Partitioner.Create(0, target.Vertices.Count, 256),
+            CreateParallelOptions(cancellationToken), range =>
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            StaticLightingVertex vertex = target.Vertices[vertexIndex];
-            var sample = new StaticLightingSurfaceSample(vertex.Position, vertex.Normal, vertex.Tangent, vertex.Bitangent);
-            EvaluateLighting(sample, target.LightingChannelMask, affectingLights, coefficients, vertexIndex,
-                shadowLights, shadowVisibility);
-        }
+            for (int vertexIndex = range.Item1; vertexIndex < range.Item2; vertexIndex++)
+            {
+                StaticLightingVertex vertex = target.Vertices[vertexIndex];
+                var sample = new StaticLightingSurfaceSample(vertex.Position, vertex.Normal, vertex.Tangent,
+                    vertex.Bitangent);
+                EvaluateLighting(sample, target.LightingChannelMask, affectingLights, coefficients, vertexIndex,
+                    shadowIndices, shadowVisibility);
+            }
+        });
 
         var scales = coefficients.Select(coefficient => CalculateScale(coefficient, null)).ToArray();
         var directionalSamples = new QuantizedDirectionalLightSample[target.Vertices.Count];
@@ -255,14 +297,15 @@ public sealed class StaticLightingBaker
 
     private void EvaluateLighting(StaticLightingSurfaceSample sample, uint targetChannels,
         IReadOnlyList<StaticLightingLight> affectingLights, Vector3[][] coefficients, int sampleIndex,
-        IReadOnlyList<StaticLightingLight> shadowLights, IReadOnlyList<byte[]> shadowVisibility)
+        IReadOnlyList<int> shadowIndices, IReadOnlyList<byte[]> shadowVisibility)
     {
         Vector3 simple = new(settings.AmbientIntensity);
         int directionalCount = coefficients.Length - 1;
         Span<Vector3> directional = stackalloc Vector3[3];
 
-        foreach (StaticLightingLight light in affectingLights)
+        for (int lightIndex = 0; lightIndex < affectingLights.Count; lightIndex++)
         {
+            StaticLightingLight light = affectingLights[lightIndex];
             if (!SceneLight.ChannelsOverlap(light.LightingChannelMask, targetChannels))
                 continue;
             if (light.Type == StaticLightingLightType.Sky)
@@ -279,7 +322,7 @@ public sealed class StaticLightingBaker
                     ? 10_000_000f
                     : MathF.Max(settings.ShadowBias, Vector3.Distance(light.Position, sample.Position) - settings.ShadowBias),
                 out _);
-            int shadowIndex = IndexOfLight(shadowLights, light.Guid);
+            int shadowIndex = shadowIndices[lightIndex];
             if (shadowIndex >= 0)
                 shadowVisibility[shadowIndex][sampleIndex] = visible ? byte.MaxValue : byte.MinValue;
             if (!visible)
@@ -302,6 +345,22 @@ public sealed class StaticLightingBaker
         for (int index = 0; index < directionalCount; index++)
             coefficients[index][sampleIndex] = Vector3.Max(Vector3.Zero, directional[index]);
         coefficients[^1][sampleIndex] = Vector3.Max(Vector3.Zero, simple);
+    }
+
+    private int[] CreateShadowIndices(IReadOnlyList<StaticLightingLight> affectingLights)
+    {
+        var indices = new int[affectingLights.Count];
+        Array.Fill(indices, -1);
+        if (!settings.GenerateShadowMaps)
+            return indices;
+
+        int shadowIndex = 0;
+        for (int lightIndex = 0; lightIndex < affectingLights.Count; lightIndex++)
+        {
+            if (affectingLights[lightIndex].CastsShadow)
+                indices[lightIndex] = shadowIndex++;
+        }
+        return indices;
     }
 
     public static bool TryEvaluateLight(StaticLightingLight light, StaticLightingSurfaceSample sample,
@@ -370,25 +429,59 @@ public sealed class StaticLightingBaker
         return vertices.Any(vertex => Vector3.DistanceSquared(vertex.Position, light.Position) < radiusSquared);
     }
 
-    private static int IndexOfLight(IReadOnlyList<StaticLightingLight> source, Guid guid)
+    public readonly record struct StaticLightingBakeTile(int MinimumX, int MinimumY, int MaximumX, int MaximumY);
+
+    public static IReadOnlyList<StaticLightingBakeTile> CreateTextureWorkTiles(int resolution, int tileSize)
     {
-        for (int index = 0; index < source.Count; index++)
-            if (source[index].Guid == guid) return index;
-        return -1;
+        if (resolution <= 0) throw new ArgumentOutOfRangeException(nameof(resolution));
+        if (tileSize <= 0) throw new ArgumentOutOfRangeException(nameof(tileSize));
+        var tiles = new List<StaticLightingBakeTile>();
+        for (int y = 0; y < resolution; y += tileSize)
+        for (int x = 0; x < resolution; x += tileSize)
+            tiles.Add(new StaticLightingBakeTile(x, y, Math.Min(resolution, x + tileSize),
+                Math.Min(resolution, y + tileSize)));
+        return tiles;
+    }
+
+    private static List<int>[] BuildTileTriangleBuckets(IReadOnlyList<StaticLightingTriangle> triangles,
+        IReadOnlyList<StaticLightingBakeTile> tiles, int resolution, Vector2 coordinateScale,
+        Vector2 coordinateBias, int tileSize)
+    {
+        var buckets = Enumerable.Range(0, tiles.Count).Select(_ => new List<int>()).ToArray();
+        int tilesX = (resolution + tileSize - 1) / tileSize;
+        for (int triangleIndex = 0; triangleIndex < triangles.Count; triangleIndex++)
+        {
+            if (!TryGetRasterBounds(triangles[triangleIndex], resolution, coordinateScale, coordinateBias,
+                    out int minimumX, out int minimumY, out int maximumX, out int maximumY))
+                continue;
+            int minimumTileX = minimumX / tileSize;
+            int maximumTileX = maximumX / tileSize;
+            int minimumTileY = minimumY / tileSize;
+            int maximumTileY = maximumY / tileSize;
+            for (int tileY = minimumTileY; tileY <= maximumTileY; tileY++)
+            for (int tileX = minimumTileX; tileX <= maximumTileX; tileX++)
+                buckets[tileY * tilesX + tileX].Add(triangleIndex);
+        }
+        return buckets;
     }
 
     private static void RasterizeTriangle(StaticLightingTriangle triangle, int resolution,
-        Vector2 coordinateScale, Vector2 coordinateBias, Action<int, Vector3> writeSample)
+        Vector2 coordinateScale, Vector2 coordinateBias, StaticLightingBakeTile tile,
+        Action<int, Vector3> writeSample)
     {
         Vector2 a = triangle.A.LightMapCoordinate * coordinateScale + coordinateBias;
         Vector2 b = triangle.B.LightMapCoordinate * coordinateScale + coordinateBias;
         Vector2 c = triangle.C.LightMapCoordinate * coordinateScale + coordinateBias;
         float denominator = Cross(b - a, c - a);
         if (MathF.Abs(denominator) < 0.0000001f) return;
-        int minimumX = Math.Clamp((int)MathF.Floor(MathF.Min(a.X, MathF.Min(b.X, c.X)) * resolution), 0, resolution - 1);
-        int maximumX = Math.Clamp((int)MathF.Ceiling(MathF.Max(a.X, MathF.Max(b.X, c.X)) * resolution), 0, resolution - 1);
-        int minimumY = Math.Clamp((int)MathF.Floor(MathF.Min(a.Y, MathF.Min(b.Y, c.Y)) * resolution), 0, resolution - 1);
-        int maximumY = Math.Clamp((int)MathF.Ceiling(MathF.Max(a.Y, MathF.Max(b.Y, c.Y)) * resolution), 0, resolution - 1);
+        if (!TryGetRasterBounds(triangle, resolution, coordinateScale, coordinateBias,
+                out int minimumX, out int minimumY, out int maximumX, out int maximumY))
+            return;
+        minimumX = Math.Max(minimumX, tile.MinimumX);
+        maximumX = Math.Min(maximumX, tile.MaximumX - 1);
+        minimumY = Math.Max(minimumY, tile.MinimumY);
+        maximumY = Math.Min(maximumY, tile.MaximumY - 1);
+        if (minimumX > maximumX || minimumY > maximumY) return;
 
         for (int y = minimumY; y <= maximumY; y++)
         for (int x = minimumX; x <= maximumX; x++)
@@ -401,6 +494,24 @@ public sealed class StaticLightingBaker
             if (u >= edgeTolerance && v >= edgeTolerance && w >= edgeTolerance)
                 writeSample(y * resolution + x, new Vector3(u, v, w));
         }
+    }
+
+    private static bool TryGetRasterBounds(StaticLightingTriangle triangle, int resolution,
+        Vector2 coordinateScale, Vector2 coordinateBias, out int minimumX, out int minimumY,
+        out int maximumX, out int maximumY)
+    {
+        Vector2 a = triangle.A.LightMapCoordinate * coordinateScale + coordinateBias;
+        Vector2 b = triangle.B.LightMapCoordinate * coordinateScale + coordinateBias;
+        Vector2 c = triangle.C.LightMapCoordinate * coordinateScale + coordinateBias;
+        minimumX = Math.Clamp((int)MathF.Floor(MathF.Min(a.X, MathF.Min(b.X, c.X)) * resolution),
+            0, resolution - 1);
+        maximumX = Math.Clamp((int)MathF.Ceiling(MathF.Max(a.X, MathF.Max(b.X, c.X)) * resolution),
+            0, resolution - 1);
+        minimumY = Math.Clamp((int)MathF.Floor(MathF.Min(a.Y, MathF.Min(b.Y, c.Y)) * resolution),
+            0, resolution - 1);
+        maximumY = Math.Clamp((int)MathF.Ceiling(MathF.Max(a.Y, MathF.Max(b.Y, c.Y)) * resolution),
+            0, resolution - 1);
+        return maximumX >= minimumX && maximumY >= minimumY;
     }
 
     private static StaticLightingSurfaceSample Interpolate(StaticLightingTriangle triangle, Vector3 weights)
@@ -426,17 +537,23 @@ public sealed class StaticLightingBaker
         return maximum;
     }
 
-    private static byte[] EncodeColorImage(IReadOnlyList<Vector3> samples, Vector3 scale)
+    private byte[] EncodeColorImage(IReadOnlyList<Vector3> samples, Vector3 scale,
+        CancellationToken cancellationToken)
     {
         var bytes = new byte[samples.Count * 4];
-        for (int index = 0; index < samples.Count; index++)
+        Parallel.ForEach(Partitioner.Create(0, samples.Count, 4096),
+            CreateParallelOptions(cancellationToken), range =>
         {
-            Vector3 normalized = new(samples[index].X / scale.X, samples[index].Y / scale.Y, samples[index].Z / scale.Z);
-            bytes[index * 4] = ToByte(normalized.Z);
-            bytes[index * 4 + 1] = ToByte(normalized.Y);
-            bytes[index * 4 + 2] = ToByte(normalized.X);
-            bytes[index * 4 + 3] = byte.MaxValue;
-        }
+            for (int index = range.Item1; index < range.Item2; index++)
+            {
+                Vector3 normalized = new(samples[index].X / scale.X, samples[index].Y / scale.Y,
+                    samples[index].Z / scale.Z);
+                bytes[index * 4] = ToByte(normalized.Z);
+                bytes[index * 4 + 1] = ToByte(normalized.Y);
+                bytes[index * 4 + 2] = ToByte(normalized.X);
+                bytes[index * 4 + 3] = byte.MaxValue;
+            }
+        });
         return bytes;
     }
 
@@ -445,33 +562,36 @@ public sealed class StaticLightingBaker
 
     private static byte ToByte(float value) => (byte)Math.Clamp((int)MathF.Round(value * 255f), 0, 255);
 
-    private static void Dilate<T>(T[] values, bool[] mapped, int resolution, int iterations) where T : struct
+    private void Dilate<T>(T[] values, bool[] mapped, int resolution, int iterations,
+        CancellationToken cancellationToken) where T : struct
     {
         var occupied = (bool[])mapped.Clone();
         for (int iteration = 0; iteration < iterations; iteration++)
         {
             T[] source = (T[])values.Clone();
             bool[] sourceOccupied = (bool[])occupied.Clone();
-            bool changed = false;
-            for (int y = 0; y < resolution; y++)
-            for (int x = 0; x < resolution; x++)
+            int changed = 0;
+            Parallel.For(0, resolution, CreateParallelOptions(cancellationToken), y =>
             {
-                int index = y * resolution + x;
-                if (sourceOccupied[index]) continue;
-                foreach ((int offsetX, int offsetY) in Neighbors)
+                for (int x = 0; x < resolution; x++)
                 {
-                    int neighborX = x + offsetX;
-                    int neighborY = y + offsetY;
-                    if ((uint)neighborX >= resolution || (uint)neighborY >= resolution) continue;
-                    int neighbor = neighborY * resolution + neighborX;
-                    if (!sourceOccupied[neighbor]) continue;
-                    values[index] = source[neighbor];
-                    occupied[index] = true;
-                    changed = true;
-                    break;
+                    int index = y * resolution + x;
+                    if (sourceOccupied[index]) continue;
+                    foreach ((int offsetX, int offsetY) in Neighbors)
+                    {
+                        int neighborX = x + offsetX;
+                        int neighborY = y + offsetY;
+                        if ((uint)neighborX >= resolution || (uint)neighborY >= resolution) continue;
+                        int neighbor = neighborY * resolution + neighborX;
+                        if (!sourceOccupied[neighbor]) continue;
+                        values[index] = source[neighbor];
+                        occupied[index] = true;
+                        Interlocked.Exchange(ref changed, 1);
+                        break;
+                    }
                 }
-            }
-            if (!changed) break;
+            });
+            if (changed == 0) break;
         }
     }
 

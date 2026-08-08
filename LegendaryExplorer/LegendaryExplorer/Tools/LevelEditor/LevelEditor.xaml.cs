@@ -316,6 +316,11 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
     public float LightmassShadowBias { get => _lightmassShadowBias; set => SetProperty(ref _lightmassShadowBias, value); }
     private bool _lightmassGenerateShadowMaps = true;
     public bool LightmassGenerateShadowMaps { get => _lightmassGenerateShadowMaps; set => SetProperty(ref _lightmassGenerateShadowMaps, value); }
+    private int _lightmassWorkerThreads;
+    public int LightmassWorkerThreads { get => _lightmassWorkerThreads; set => SetProperty(ref _lightmassWorkerThreads, value); }
+    private int _lightmassWorkTileSize = 16;
+    public int LightmassWorkTileSize { get => _lightmassWorkTileSize; set => SetProperty(ref _lightmassWorkTileSize, value); }
+    public IReadOnlyList<int> LightmassWorkTileSizes { get; } = [8, 16, 32, 64, 128];
     private string _lightmassTextureCacheName = "";
     public string LightmassTextureCacheName { get => _lightmassTextureCacheName; set => SetProperty(ref _lightmassTextureCacheName, value); }
 
@@ -3336,6 +3341,8 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
             AmbientIntensity = LightmassAmbientIntensity,
             ShadowBias = LightmassShadowBias,
             GenerateShadowMaps = LightmassGenerateShadowMaps,
+            WorkerThreads = LightmassWorkerThreads,
+            WorkTileSize = LightmassWorkTileSize,
             TextureCacheName = LightmassTextureCacheName
         };
 
@@ -3351,6 +3358,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
             string confirmation = $"Build static lighting for {targetFiles.Length:N0} loaded level(s)?\n\n{targetList}\n\n" +
                                   $"Lights and occluding static geometry are gathered from all {OpenFiles.Count:N0} loaded levels. " +
                                   $"Texture lightmaps are {settings.TextureResolution}×{settings.TextureResolution}; meshes without a valid baked-UV channel use UE3 vertex lightmaps.\n\n" +
+                                  $"Bake workers: {settings.EffectiveWorkerThreads:N0}; UV/spatial work tile: {settings.WorkTileSize}×{settings.WorkTileSize}.\n\n" +
                                   storageDescription + "\n\nThe packages remain unsaved until you use Save, but TFC data is appended during generation.";
             if (MessageBox.Show(this, confirmation, "Create Lightmass", MessageBoxButton.YesNo,
                     MessageBoxImage.Question) != MessageBoxResult.Yes)
@@ -3393,13 +3401,17 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
                 : "Texture cache output:\n" + string.Join("\n", written.TextureCachePaths.Select(path => $"  • {path}"));
             TextBelowActors = $"Lightmass: {written.ComponentCount:N0} static components, " +
                               $"{written.LightMapTextureCount:N0} lightmap textures, {written.ShadowMapCount:N0} shadow maps; " +
+                              $"{bake.WorkUnitCount:N0} parallel work units on {bake.WorkerCount:N0} workers; " +
                               $"{bake.LightCount:N0} lights / {bake.SourceTriangleCount:N0} occluder triangles from all loaded levels.";
             MessageBox.Show(this,
                 $"Generated static lighting for {written.ComponentCount:N0} components.\n\n" +
                 $"2D lightmaps: {bake.TextureMappedComponentCount:N0} components\n" +
                 $"Vertex-lightmap fallback: {bake.VertexMappedComponentCount:N0} components\n" +
                 $"Lightmap textures: {written.LightMapTextureCount:N0}\n" +
-                $"Shadow maps: {written.ShadowMapCount:N0}\n\n{cacheSummary}\n\nUse Save All to write the modified level packages.",
+                $"Shadow maps: {written.ShadowMapCount:N0}\n" +
+                $"Parallel work units: {bake.WorkUnitCount:N0} on {bake.WorkerCount:N0} workers\n" +
+                $"Components replacing existing lighting: {written.ReplacedExistingComponentCount:N0}\n\n" +
+                $"{cacheSummary}\n\nUse Save All to write the modified level packages.",
                 "Create Lightmass", MessageBoxButton.OK, MessageBoxImage.Information);
         }
         catch (Exception exception)

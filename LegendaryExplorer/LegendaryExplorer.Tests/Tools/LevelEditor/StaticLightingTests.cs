@@ -4,6 +4,8 @@ using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.Unreal.BinaryConverters;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
 using System.Threading.Tasks;
 
@@ -38,6 +40,102 @@ public class StaticLightingTests
         catch (ArgumentOutOfRangeException)
         {
         }
+    }
+
+    [TestMethod]
+    public void Settings_ValidateParallelWorkControls()
+    {
+        new StaticLightingGenerationSettings { WorkerThreads = 0, WorkTileSize = 16 }.Validate();
+        new StaticLightingGenerationSettings { WorkerThreads = 4, WorkTileSize = 32 }.Validate();
+
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() =>
+            new StaticLightingGenerationSettings { WorkerThreads = -1 }.Validate());
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() =>
+            new StaticLightingGenerationSettings { WorkTileSize = 24 }.Validate());
+    }
+
+    [TestMethod]
+    public void TextureWorkTiles_CoverEveryTexelExactlyOnce()
+    {
+        IReadOnlyList<StaticLightingBaker.StaticLightingBakeTile> tiles =
+            StaticLightingBaker.CreateTextureWorkTiles(70, 16);
+        var coverage = new int[70 * 70];
+        foreach (StaticLightingBaker.StaticLightingBakeTile tile in tiles)
+        for (int y = tile.MinimumY; y < tile.MaximumY; y++)
+        for (int x = tile.MinimumX; x < tile.MaximumX; x++)
+            coverage[y * 70 + x]++;
+
+        Assert.AreEqual(25, tiles.Count);
+        Assert.IsTrue(coverage.All(value => value == 1));
+    }
+
+    [TestMethod]
+    public void ParallelTextureBake_MatchesSingleWorkerOutputAndCreatesManyWorkUnits()
+    {
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("ParallelLightmass.pcc", MEGame.LE3);
+        ExportEntry component = package.CreateExport("StaticMeshComponent_0", "StaticMeshComponent", null,
+            indexed: false);
+        component.WriteProperties([]);
+        StaticLightingMeshTarget target = CreateQuadTarget(component);
+        var light = new StaticLightingLight(Guid.NewGuid(), StaticLightingLightType.Directional,
+            Vector3.Zero, -Vector3.UnitZ, Vector3.One, 1f, float.MaxValue, 0f, 0f, 0);
+        LevelCollisionScene collision = LevelCollisionScene.FromTriangles(
+            Array.Empty<(Vector3 A, Vector3 B, Vector3 C)>());
+
+        StaticLightingBakeResult single = new StaticLightingBaker([target], [light], collision,
+            new StaticLightingGenerationSettings
+            {
+                TextureResolution = 64,
+                WorkTileSize = 16,
+                WorkerThreads = 1,
+                GenerateShadowMaps = false
+            }).Bake();
+        StaticLightingBakeResult parallel = new StaticLightingBaker([target], [light], collision,
+            new StaticLightingGenerationSettings
+            {
+                TextureResolution = 64,
+                WorkTileSize = 16,
+                WorkerThreads = 4,
+                GenerateShadowMaps = false
+            }).Bake();
+
+        Assert.IsTrue(parallel.WorkUnitCount >= 16);
+        Assert.AreEqual(4, parallel.WorkerCount);
+        CollectionAssert.AreEqual(single.Components[0].Texture.CoefficientImages[0].ToArray(),
+            parallel.Components[0].Texture.CoefficientImages[0].ToArray());
+        CollectionAssert.AreEqual(single.Components[0].Texture.CoefficientImages[^1].ToArray(),
+            parallel.Components[0].Texture.CoefficientImages[^1].ToArray());
+    }
+
+    [TestMethod]
+    public void ParallelTextureBake_PreservesLightsThatShareALightGuid()
+    {
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("DuplicateLightGuids.pcc", MEGame.LE3);
+        ExportEntry component = package.CreateExport("StaticMeshComponent_0", "StaticMeshComponent", null,
+            indexed: false);
+        component.WriteProperties([]);
+        StaticLightingMeshTarget target = CreateQuadTarget(component);
+        Guid sharedGuid = Guid.NewGuid();
+        var first = new StaticLightingLight(sharedGuid, StaticLightingLightType.Directional,
+            Vector3.Zero, -Vector3.UnitZ, Vector3.One, 1f, float.MaxValue, 0f, 0f, 0);
+        var second = first with { Intensity = 0.5f };
+        LevelCollisionScene collision = LevelCollisionScene.FromTriangles(
+            Array.Empty<(Vector3 A, Vector3 B, Vector3 C)>());
+
+        StaticLightingBakeResult result = new StaticLightingBaker([target], [first, second], collision,
+            new StaticLightingGenerationSettings
+            {
+                TextureResolution = 64,
+                WorkTileSize = 16,
+                WorkerThreads = 4,
+                GenerateShadowMaps = true
+            }).Bake();
+
+        StaticLightingTextureBake texture = result.Components[0].Texture;
+        Assert.AreEqual(2, texture.ShadowMaps.Count);
+        Assert.IsTrue(texture.ShadowMaps.All(shadow => shadow.LightGuid == sharedGuid));
+        Assert.IsTrue(texture.ShadowMaps.All(shadow => shadow.Visibility[32 * 64 + 32] == byte.MaxValue));
+        Assert.AreEqual(1, result.Components[0].LightGuids.Length);
     }
 
     [TestMethod]
@@ -116,5 +214,30 @@ public class StaticLightingTests
         ShadowMap1D restoredShadow = shadow.GetBinaryData<ShadowMap1D>();
         CollectionAssert.AreEqual(new[] { 0, -1, 0x7F7F7F7F }, restoredShadow.Samples);
         Assert.AreEqual(lightGuid, restoredShadow.LightGuid);
+    }
+
+    private static StaticLightingMeshTarget CreateQuadTarget(ExportEntry component)
+    {
+        var a = new StaticLightingVertex(new Vector3(0, 0, 0), Vector3.UnitZ, Vector3.UnitX,
+            Vector3.UnitY, new Vector2(0, 0));
+        var b = new StaticLightingVertex(new Vector3(100, 0, 0), Vector3.UnitZ, Vector3.UnitX,
+            Vector3.UnitY, new Vector2(1, 0));
+        var c = new StaticLightingVertex(new Vector3(100, 100, 0), Vector3.UnitZ, Vector3.UnitX,
+            Vector3.UnitY, new Vector2(1, 1));
+        var d = new StaticLightingVertex(new Vector3(0, 100, 0), Vector3.UnitZ, Vector3.UnitX,
+            Vector3.UnitY, new Vector2(0, 1));
+        return new StaticLightingMeshTarget
+        {
+            File = null!,
+            Component = component,
+            ComponentBinary = StaticMeshComponent.Create(),
+            MeshLod = new StaticMeshRenderData(),
+            LocalToWorld = Matrix4x4.Identity,
+            LightingChannelMask = 0,
+            Triangles = [new StaticLightingTriangle(a, b, c), new StaticLightingTriangle(a, c, d)],
+            Vertices = [a, b, c, d],
+            LightMapCoordinateIndex = 1,
+            HasTextureCoordinates = true
+        };
     }
 }

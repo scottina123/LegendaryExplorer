@@ -26,6 +26,7 @@ public static class StaticLightingWriter
         settings.Validate();
         int lightMapTextures = 0;
         int shadowMaps = 0;
+        int replacedExistingComponents = 0;
         var cachePaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         foreach (IGrouping<OpenLevelFile, StaticLightingComponentBake> fileGroup in
@@ -44,6 +45,8 @@ public static class StaticLightingWriter
             var streamingTextures = new List<(ExportEntry Texture, StaticLightingMeshTarget Target, int Resolution)>();
             foreach (StaticLightingComponentBake componentBake in fileGroup)
             {
+                if (HasExistingStaticLighting(componentBake.Target.ComponentBinary))
+                    replacedExistingComponents++;
                 if (componentBake.Texture is { } textureBake)
                 {
                     InstallTextureLightMap(componentBake, textureBake, cacheName, cachePath,
@@ -63,9 +66,16 @@ public static class StaticLightingWriter
             ComponentCount = bake.Components.Count,
             LightMapTextureCount = lightMapTextures,
             ShadowMapCount = shadowMaps,
-            TextureCachePaths = cachePaths.OrderBy(path => path, StringComparer.OrdinalIgnoreCase).ToArray()
+            TextureCachePaths = cachePaths.OrderBy(path => path, StringComparer.OrdinalIgnoreCase).ToArray(),
+            ReplacedExistingComponentCount = replacedExistingComponents
         };
     }
+
+    private static bool HasExistingStaticLighting(StaticMeshComponent component) =>
+        component.LODData is { Length: > 0 } &&
+        (component.LODData[0].LightMap is { LightMapType: not ELightMapType.LMT_None } ||
+         component.LODData[0].ShadowMaps is { Length: > 0 } ||
+         component.LODData[0].ShadowVertexBuffers is { Length: > 0 });
 
     public static string ResolveTextureCacheName(IMEPackage package, string requestedName)
     {
@@ -154,7 +164,8 @@ public static class StaticLightingWriter
             for (int index = 0; index < textureBake.ShadowMaps.Count; index++)
             {
                 StaticLightingShadowBake shadow = textureBake.ShadowMaps[index];
-                string name = $"LEX_Lightmass_SM_{target.Component.UIndex}_{shadow.LightGuid:N}";
+                string name = GetShadowMapName("LEX_Lightmass_SM", target.Component.UIndex,
+                    textureBake.ShadowMaps, index);
                 ExportEntry texture = CreateOrUpdateTexture(package, name, "ShadowMapTexture2D", target.Component,
                     textureBake.Resolution, shadow.Visibility, PixelFormat.G8, PixelFormat.G8,
                     "TEXTUREGROUP_Shadowmap", cacheName, cachePath, false, shadow.LightGuid);
@@ -197,7 +208,8 @@ public static class StaticLightingWriter
         for (int index = 0; index < vertexBake.ShadowMaps.Count; index++)
         {
             StaticLightingShadowBake shadow = vertexBake.ShadowMaps[index];
-            string name = $"LEX_Lightmass_SM1D_{target.Component.UIndex}_{shadow.LightGuid:N}";
+            string name = GetShadowMapName("LEX_Lightmass_SM1D", target.Component.UIndex,
+                vertexBake.ShadowMaps, index);
             string path = target.Component.InstancedFullPath + "." + name;
             ExportEntry export = target.Component.FileRef.FindExport(path, "ShadowMap1D");
             if (export is null)
@@ -216,6 +228,20 @@ public static class StaticLightingWriter
         }
         component.LODData[0].ShadowMaps = shadowReferences;
         target.Component.WriteBinary(component);
+    }
+
+    private static string GetShadowMapName(string prefix, int componentIndex,
+        IReadOnlyList<StaticLightingShadowBake> shadowMaps, int index)
+    {
+        Guid guid = shadowMaps[index].LightGuid;
+        int occurrence = 1;
+        for (int previous = 0; previous < index; previous++)
+        {
+            if (shadowMaps[previous].LightGuid == guid)
+                occurrence++;
+        }
+        string suffix = occurrence == 1 ? "" : $"_{occurrence}";
+        return $"{prefix}_{componentIndex}_{guid:N}{suffix}";
     }
 
     private static ExportEntry CreateOrUpdateTexture(IMEPackage package, string name, string className,

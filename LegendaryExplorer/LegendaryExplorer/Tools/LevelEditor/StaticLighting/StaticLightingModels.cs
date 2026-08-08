@@ -38,6 +38,12 @@ public sealed class StaticLightingGenerationSettings
     public float ShadowBias { get; set; } = 1f;
     public string TextureCacheName { get; set; } = "";
     public bool GenerateShadowMaps { get; set; } = true;
+    public int WorkerThreads { get; set; }
+    public int WorkTileSize { get; set; } = 16;
+
+    public int EffectiveWorkerThreads => WorkerThreads > 0
+        ? WorkerThreads
+        : Math.Max(1, Environment.ProcessorCount);
 
     public void Validate()
     {
@@ -48,6 +54,12 @@ public sealed class StaticLightingGenerationSettings
             throw new ArgumentOutOfRangeException(nameof(AmbientIntensity));
         if (!float.IsFinite(ShadowBias) || ShadowBias is < 0.01f or > 100f)
             throw new ArgumentOutOfRangeException(nameof(ShadowBias));
+        if (WorkerThreads is < 0 or > 256)
+            throw new ArgumentOutOfRangeException(nameof(WorkerThreads),
+                "Worker threads must be 0 (automatic) or from 1 through 256.");
+        if (WorkTileSize is < 8 or > 128 || !BitOperations.IsPow2((uint)WorkTileSize))
+            throw new ArgumentOutOfRangeException(nameof(WorkTileSize),
+                "Bake tile size must be a power of two from 8 through 128.");
         if (!string.IsNullOrWhiteSpace(TextureCacheName) &&
             TextureCacheName.IndexOfAny(System.IO.Path.GetInvalidFileNameChars()) >= 0)
             throw new ArgumentException("The texture-cache name contains invalid filename characters.",
@@ -89,6 +101,7 @@ public sealed class StaticLightingTextureBake
     public required IReadOnlyList<StaticLightingShadowBake> ShadowMaps { get; init; }
     public required Vector2 CoordinateScale { get; init; }
     public required Vector2 CoordinateBias { get; init; }
+    public int WorkUnitCount { get; init; }
 }
 
 public sealed class StaticLightingVertexBake
@@ -120,6 +133,8 @@ public sealed class StaticLightingBakeResult
     public required int LightCount { get; init; }
     public required int TextureMappedComponentCount { get; init; }
     public required int VertexMappedComponentCount { get; init; }
+    public int WorkUnitCount { get; init; }
+    public int WorkerCount { get; init; }
 }
 
 public sealed class StaticLightingWriteResult
@@ -128,4 +143,5 @@ public sealed class StaticLightingWriteResult
     public int LightMapTextureCount { get; init; }
     public int ShadowMapCount { get; init; }
     public IReadOnlyList<string> TextureCachePaths { get; init; } = [];
+    public int ReplacedExistingComponentCount { get; init; }
 }

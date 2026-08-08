@@ -340,6 +340,8 @@
                                             <RowDefinition Height="Auto"/>
                                             <RowDefinition Height="Auto"/>
                                             <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
                                         </Grid.RowDefinitions>
                                         <TextBlock Grid.Row="0" Text="Lightmap resolution" VerticalAlignment="Center"/>
                                         <ComboBox Grid.Row="0" Grid.Column="1" ItemsSource="{Binding LightmassResolutions}"
@@ -353,9 +355,15 @@
                                         <TextBlock Grid.Row="3" Text="TFC name (blank = auto)" VerticalAlignment="Center"/>
                                         <TextBox Grid.Row="3" Grid.Column="1" Text="{Binding LightmassTextureCacheName, UpdateSourceTrigger=PropertyChanged}"
                                                  Margin="2" VerticalContentAlignment="Center"/>
+                                        <TextBlock Grid.Row="4" Text="Worker threads (0 = auto)" VerticalAlignment="Center"/>
+                                        <xctk:IntegerUpDown Grid.Row="4" Grid.Column="1" Value="{Binding LightmassWorkerThreads}"
+                                                            Minimum="0" Maximum="256" Increment="1" Margin="2"/>
+                                        <TextBlock Grid.Row="5" Text="UV/spatial work tile" VerticalAlignment="Center"/>
+                                        <ComboBox Grid.Row="5" Grid.Column="1" ItemsSource="{Binding LightmassWorkTileSizes}"
+                                                  SelectedItem="{Binding LightmassWorkTileSize}" Margin="2"/>
                                     </Grid>
                                     <CheckBox Content="Generate shadow maps" IsChecked="{Binding LightmassGenerateShadowMaps}" Margin="0,6,0,6"/>
-                                    <TextBlock Text="Uses existing UE3 lightmap/shadowmap serialization. Existing TFC data is reused; a new TFC is created when needed."
+                                    <TextBlock Text="Complex mappings are divided into parallel UV/spatial work pages. Uses existing UE3 lightmap/shadowmap serialization. Existing outputs are replaced; TFC data is reused or created as needed."
                                                TextWrapping="Wrap" Margin="0,0,0,7"/>
                                     <Button Content="Create Lightmass" Command="{Binding GenerateStaticLightingCommand}" Padding="8,4"/>
                                 </StackPanel>
