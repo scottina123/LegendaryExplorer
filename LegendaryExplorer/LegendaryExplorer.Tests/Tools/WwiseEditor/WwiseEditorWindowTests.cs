@@ -241,7 +241,7 @@ public class WwiseEditorWindowTests
             actions.Select(action => action.TargetId).ToArray());
         Assert.IsTrue(actions.All(action => action.Type.Value == ActionTypeValue.Stop));
         Assert.IsTrue(actions.All(action => action.ActionParams is Active active &&
-            active.Params.CurveInterpolation == CurveInterpolation.Linear));
+            active.CurveInterpolation == CurveInterpolation.Linear));
     }
 
     private static ME3Tweaks.Wwiser.WwiseBank LoadTestBank()

@@ -927,19 +927,16 @@ namespace LegendaryExplorer.Tools.WwiseEditor
                     PropBundle = new InitialParamsV62(),
                     ActionParams = new Active
                     {
-                        Params = new ActiveParams
+                        CurveInterpolation = CurveInterpolation.Linear,
+                        SpecificParams = new WwiserPauseResume
                         {
-                            CurveInterpolation = CurveInterpolation.Linear,
-                            SpecificParams = new WwiserPauseResume
+                            Flags = new WwiserActiveFlags
                             {
-                                Flags = new WwiserActiveFlags
-                                {
-                                    ApplyToStateTransitions = true,
-                                    ApplyToDynamicSequence = true
-                                }
-                            },
-                            ExceptParams = new ExceptParams()
-                        }
+                                ApplyToStateTransitions = true,
+                                ApplyToDynamicSequence = true
+                            }
+                        },
+                        ExceptParams = new ExceptParams()
                     }
                 };
                 bank.HIRC.Items.Add(new WwiserHircItemContainer
