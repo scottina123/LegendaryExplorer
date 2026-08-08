@@ -29,9 +29,15 @@ namespace LegendaryExplorer.Misc
                 // UPDATE THIS FOR RELEASE
                 //version += " STABLERELEASE";
 #endif
-                return $"{version} {App.BuildDateTime.ToShortDateString()}";
+                return $"{version} {App.BuildDateTime.ToLocalTime().ToShortDateString()}";
             }
         }
+
+        /// <summary>
+        /// Displayed version and local build time for the main menu.
+        /// </summary>
+        public static string MainMenuDisplayedVersion =>
+            $"{DisplayedVersion}{Environment.NewLine}{App.BuildDateTime.ToLocalTime():h:mm tt}";
 
         /// <summary>
         /// Full displayed version in the UI for about page

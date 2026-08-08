@@ -66,19 +66,14 @@
                     </Button>
                 </DockPanel>
                 
-                <!-- Version -->
-                <DockPanel HorizontalAlignment="Right" VerticalAlignment="Bottom" Height="32">
-                            <TextBlock Text="{Binding Source={x:Static misc:AppVersion.DisplayedVersion}}" FontFamily="{StaticResource Exo-Regular}" FontSize="17" 
-                                   Foreground="{DynamicResource ForegroundBrush}" VerticalAlignment="Center" Margin="5,0"/>
-                </DockPanel>
-                
                 <DockPanel Margin="5,5,5,0" LastChildFill="True">
                     <!-- Logo -->
                     <Image DockPanel.Dock="Left" Source="{Binding LEXLogo}" Height="110"
                            RenderOptions.BitmapScalingMode="HighQuality" MouseDown="BackgroundMouseDown"/>
 
-                    <!-- Top bar settings buttons -->
-                    <StackPanel DockPanel.Dock="Right" VerticalAlignment="Center" Orientation="Horizontal">
+                    <!-- Top bar controls -->
+                    <StackPanel DockPanel.Dock="Right" VerticalAlignment="Center">
+                        <StackPanel HorizontalAlignment="Right" Orientation="Horizontal">
                             <StackPanel.Resources>
                                 <Style x:Key="TopBarButton" TargetType="{x:Type Button}"
                                        BasedOn="{StaticResource BorderlessButton}">
@@ -123,6 +118,12 @@
                                     ToolTip="About LegendaryExplorer">
                                 <Image Source="/Resources/Images/LEX_Toolbar_About.ico" />
                             </Button>
+                        </StackPanel>
+
+                        <TextBlock Text="{Binding Source={x:Static misc:AppVersion.MainMenuDisplayedVersion}}"
+                                   FontFamily="{StaticResource Exo-Regular}" FontSize="15" LineHeight="17"
+                                   Foreground="{DynamicResource ForegroundBrush}" HorizontalAlignment="Right"
+                                   TextAlignment="Right" Margin="5,-1,5,0"/>
                     </StackPanel>
 
                     <!-- Search box -->
