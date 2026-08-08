@@ -96,8 +96,30 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
             }
 
             CancellationToken token = renderResourceCancellation.Token;
-            renderResourceWorker = Task.Factory.StartNew(() => RunRenderResourceWorker(token), token,
-                TaskCreationOptions.LongRunning, TaskScheduler.Default);
+            // The worker touches the device from another thread, so D3D11 must serialize device access for as
+            // long as it lives. This is reference counted and released as soon as the worker exits, because the
+            // protection adds a lock to every D3D/D2D call and would otherwise slow rendering down permanently.
+            AcquireMultithreadProtection();
+            try
+            {
+                renderResourceWorker = Task.Factory.StartNew(() =>
+                {
+                    try
+                    {
+                        RunRenderResourceWorker(token);
+                    }
+                    finally
+                    {
+                        ReleaseMultithreadProtection();
+                    }
+                }, token, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+            }
+            catch
+            {
+                // The worker never started, so its reference will never be released by the task body.
+                ReleaseMultithreadProtection();
+                throw;
+            }
         }
     }
 
@@ -128,6 +150,8 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
                 }
 
                 if (component is null) break;
+                // Safe to run concurrently with rendering: D3D11 multithread protection is active for the
+                // lifetime of this worker (see StartRenderResourceWorker).
                 component.PrepareRenderResources();
 
                 bool priorityReady = false;
@@ -525,19 +549,23 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
 
         ImmediateContext.CopySubresourceRegion(HitBuffer, 0, new ResourceRegion(minX, minY, 0, maxX + 1, maxY + 1, 1), _hitStagingTexture, 0);
         var lockedData = ImmediateContext.MapSubresource(_hitStagingTexture, 0, MapMode.Read, SharpDX.Direct3D11.MapFlags.None);
-
-        for (int y = 0; y < sizeY; y++)
+        try
         {
-            var srcSpan = new Span<SharpDX.Color>((lockedData.DataPointer + y * lockedData.RowPitch).ToPointer(), sizeX);
-            var destSpan = data.AsSpan(sizeX * y, sizeX);
-            for (int x = 0; x < sizeX; x++)
+            for (int y = 0; y < sizeY; y++)
             {
-                var srcColor = srcSpan[x];
-                destSpan[x] = new(srcColor.B, srcColor.G, srcColor.R, (byte)0);
+                var srcSpan = new Span<SharpDX.Color>((lockedData.DataPointer + y * lockedData.RowPitch).ToPointer(), sizeX);
+                var destSpan = data.AsSpan(sizeX * y, sizeX);
+                for (int x = 0; x < sizeX; x++)
+                {
+                    var srcColor = srcSpan[x];
+                    destSpan[x] = new(srcColor.B, srcColor.G, srcColor.R, (byte)0);
+                }
             }
         }
-
-        ImmediateContext.UnmapSubresource(_hitStagingTexture, 0);
+        finally
+        {
+            ImmediateContext.UnmapSubresource(_hitStagingTexture, 0);
+        }
 
         return data;
     }

@@ -542,9 +542,101 @@ public class MeshRenderContext : RenderContext
         }
     }
 
+    private readonly object multithreadProtectionLock = new();
+    private int multithreadProtectionRefCount;
+    private bool multithreadProtectionEnabled;
+
+    /// <summary>
+    /// ID3D11Device is free-threaded for resource creation, but the immediate context is not. Contexts that
+    /// build render resources on a background worker (see <see cref="SupportsConcurrentResourceCreation"/>)
+    /// can therefore collide with the render/hit-test path on the UI thread, which faults inside the driver
+    /// and surfaces as an <see cref="System.Runtime.InteropServices.SEHException"/>. Direct2D is affected too,
+    /// because <see cref="RenderTarget2D"/> flushes through the same D3D11 device on EndDraw().
+    /// ID3D11Multithread protection makes D3D11 take its own critical section around every device and
+    /// immediate-context call, which covers all of those call sites at once.
+    /// <para>
+    /// That critical section is not free: it is taken on <em>every</em> D3D/D2D call, so leaving it on after
+    /// loading finishes permanently slows rendering down. It is therefore reference counted and released as
+    /// soon as the last background user is gone.
+    /// </para>
+    /// </summary>
+    protected void AcquireMultithreadProtection()
+    {
+        lock (multithreadProtectionLock)
+        {
+            multithreadProtectionRefCount++;
+            ApplyMultithreadProtection(true);
+        }
+    }
+
+    /// <summary>
+    /// Releases one reference taken by <see cref="AcquireMultithreadProtection"/>. Protection stays on until
+    /// every background user has released it, so a worker that is shutting down cannot unprotect the device
+    /// out from under a worker that has just started.
+    /// </summary>
+    protected void ReleaseMultithreadProtection()
+    {
+        lock (multithreadProtectionLock)
+        {
+            if (multithreadProtectionRefCount is 0)
+            {
+                return;
+            }
+            if (--multithreadProtectionRefCount is 0)
+            {
+                ApplyMultithreadProtection(false);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Re-applies the current protection state. Must be called after the device or immediate context is
+    /// (re)created, because a fresh context always starts out unprotected even if a worker is still running.
+    /// </summary>
+    private void RefreshMultithreadProtection()
+    {
+        lock (multithreadProtectionLock)
+        {
+            multithreadProtectionEnabled = false;
+            if (multithreadProtectionRefCount > 0)
+            {
+                ApplyMultithreadProtection(true);
+            }
+        }
+    }
+
+    private void ApplyMultithreadProtection(bool enabled)
+    {
+        if (enabled == multithreadProtectionEnabled || Device is null)
+        {
+            return;
+        }
+
+        try
+        {
+            using var multithread = ImmediateContext.QueryInterfaceOrNull<SharpDX.Direct3D11.Multithread>();
+            if (multithread is not null)
+            {
+                multithread.SetMultithreadProtected(enabled);
+                multithreadProtectionEnabled = enabled;
+            }
+            else if (enabled)
+            {
+                Debug.WriteLine("ID3D11Multithread is unavailable; concurrent render resource creation may be unsafe.");
+            }
+        }
+        catch (SharpDX.SharpDXException e)
+        {
+            Debug.WriteLine($"Failed to change D3D11 multithread protection: {e.Message}");
+        }
+    }
+
     public override void CreateResources()
     {
         base.CreateResources();
+
+        // A newly created device/context is unprotected, so restore protection if a worker is still active.
+        RefreshMultithreadProtection();
 
         // Build a custom rasterizer state that doesn't cull backfaces
         var frs = new RasterizerStateDescription
