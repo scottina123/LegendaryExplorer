@@ -1204,6 +1204,8 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         _isActorTransformScrubbing = false;
         _actorTransformScrubActor = null;
         _actorTransformScrubBefore = null;
+        RefreshSelectedPropertiesPreview();
+        UpdateActorRotationDialIndicator();
     }
 
     private void UpdateActorRotationDialIndicator()
@@ -2737,6 +2739,10 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         if (e.PropertyName is not (nameof(ActorProxy.Location) or nameof(ActorProxy.Rotation) or nameof(ActorProxy.DrawScale) or nameof(ActorProxy.DrawScale3D))) return;
 
         SceneViewer?.MarkRenderDirty();
+        if (_isActorTransformScrubbing)
+        {
+            return;
+        }
         RefreshSelectedPropertiesPreview();
         if (e.PropertyName == nameof(ActorProxy.Rotation))
         {

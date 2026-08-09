@@ -46,6 +46,8 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
     private readonly PointOfInterestIconOverlay PointOfInterestIcons = new();
     private readonly Dictionary<ActorProxy, SceneLight> sceneLightCache = [];
     private readonly ConcurrentDictionary<ActorProxy, BoxSphereBounds> actorBoundsCache = [];
+    private readonly ConcurrentDictionary<ActorProxy, byte> pendingActorVisualInvalidations = [];
+    private readonly ConcurrentDictionary<ActorProxy, byte> pendingSceneLightRefreshes = [];
 
     internal LevelVfxRenderer VfxRenderer { get; }
 
@@ -72,6 +74,9 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
     private MouseButtons pendingViewportClickButton;
     private int pendingViewportClickX;
     private int pendingViewportClickY;
+    private bool hasPendingWidgetDrag;
+    private int pendingWidgetDragX;
+    private int pendingWidgetDragY;
 
     internal int LightIconRevision => Volatile.Read(ref lightIconRevision);
     internal int EmitterIconRevision => Volatile.Read(ref emitterIconRevision);
@@ -86,6 +91,7 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
 
     public override bool IsActivelyUpdating() => ForceContinuousRendering || base.IsActivelyUpdating()
         || TransformWidget.IsDragging || hasPendingViewportClick
+        || !pendingActorVisualInvalidations.IsEmpty || !pendingSceneLightRefreshes.IsEmpty
         || (ShowEmitterVfx && Volatile.Read(ref visibleEmitterInstanceCount) > 0);
 
     internal bool UseVfxSceneDepthFallback { get; set; }
@@ -100,6 +106,50 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
     /// </summary>
     public override bool ProcessBackgroundWork() =>
         Interlocked.Exchange(ref renderResourceRedrawRequested, 0) != 0;
+
+    public override void Update(float timestep)
+    {
+        ApplyPendingWidgetDrag();
+        FlushPendingActorVisualInvalidations();
+        base.Update(timestep);
+    }
+
+    private void FlushPendingActorVisualInvalidations()
+    {
+        foreach (ActorProxy actor in pendingActorVisualInvalidations.Keys)
+        {
+            if (pendingActorVisualInvalidations.TryRemove(actor, out _))
+            {
+                InvalidateIconForActor(actor);
+            }
+        }
+        foreach (ActorProxy actor in pendingSceneLightRefreshes.Keys)
+        {
+            if (pendingSceneLightRefreshes.TryRemove(actor, out _))
+            {
+                RefreshCachedSceneLight(actor);
+            }
+        }
+    }
+
+    private void QueueWidgetDrag(int x, int y)
+    {
+        pendingWidgetDragX = x;
+        pendingWidgetDragY = y;
+        hasPendingWidgetDrag = true;
+    }
+
+    private void ApplyPendingWidgetDrag()
+    {
+        if (!hasPendingWidgetDrag || !TransformWidget.IsDragging)
+        {
+            hasPendingWidgetDrag = false;
+            return;
+        }
+
+        hasPendingWidgetDrag = false;
+        TransformWidget.Drag(this, pendingWidgetDragX, pendingWidgetDragY);
+    }
 
     /// <summary>
     /// Gives interactive work priority over bulk mesh and material preparation. Input from the whole editor
@@ -280,10 +330,10 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
         }
 
         actorBoundsCache.TryRemove(actor, out _);
-        InvalidateIconForActor(actor);
+        pendingActorVisualInvalidations.TryAdd(actor, 0);
         if (actor.HasLightSettings && CanAffectSceneLight(e.PropertyName))
         {
-            RefreshCachedSceneLight(actor);
+            pendingSceneLightRefreshes.TryAdd(actor, 0);
         }
     }
 
@@ -490,6 +540,8 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
     {
         if (TransformWidget.IsDragging)
         {
+            QueueWidgetDrag(x, y);
+            ApplyPendingWidgetDrag();
             TransformWidget.EndDrag();
             return true;
         }
@@ -531,6 +583,7 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
         if (button == MouseButtons.Left && TransformWidget.CurrentAxis is not EWidgetAxis.None
             && TransformWidget.Attach is not null)
         {
+            hasPendingWidgetDrag = false;
             TransformWidget.BeginDrag(x, y);
             return true;
         }
@@ -548,10 +601,11 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
             //failsafe if mouseup event was not captured
             if (Mouse.LeftButton is MouseButtonState.Released)
             {
+                ApplyPendingWidgetDrag();
                 TransformWidget.EndDrag();
                 return true;
             }
-            TransformWidget.Drag(this, x, y);
+            QueueWidgetDrag(x, y);
             return true;
         }
         if (base.MouseMove(x, y)) return true;
@@ -588,6 +642,19 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
     {
         NotifyUserActivity();
         return base.MouseScroll(delta);
+    }
+
+    public override bool LostMouseFocus()
+    {
+        bool handled = base.LostMouseFocus();
+        if (TransformWidget.IsDragging)
+        {
+            ApplyPendingWidgetDrag();
+            TransformWidget.EndDrag();
+            return true;
+        }
+        hasPendingWidgetDrag = false;
+        return handled;
     }
 
     public override bool KeyDown(Key key)
@@ -905,6 +972,8 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
         SceneLights.Clear();
         sceneLightCache.Clear();
         actorBoundsCache.Clear();
+        pendingActorVisualInvalidations.Clear();
+        pendingSceneLightRefreshes.Clear();
         hasPendingViewportClick = false;
         InvalidateAllIcons();
         TransformWidget.Attach = null;
@@ -951,6 +1020,8 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
             actor.PropertyChanged -= Actor_PropertyChanged;
             RemoveSceneLight(actor);
             actorBoundsCache.TryRemove(actor, out _);
+            pendingActorVisualInvalidations.TryRemove(actor, out _);
+            pendingSceneLightRefreshes.TryRemove(actor, out _);
             HitProxies.RemoveAt(actor.HitID);
             InvalidateIconForActor(actor);
         }
