@@ -998,6 +998,7 @@ namespace LegendaryExplorer.Tools.SequenceObjects
         {
             var button = PPath.CreateRectangle(0, 0, AddLinkButtonSize, AddLinkButtonSize, OutlinePen);
             button.Brush = TitleBoxBrush;
+            button.Tag = SequenceGraphEditor.NonDraggableNodeTag;
             button.SetOffset(x, y);
 
             var label = new SText("+", BoxTextColor, shadows: false)

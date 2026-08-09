@@ -257,6 +257,40 @@
             <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
             <Setter Property="VerticalContentAlignment" Value="Center"/>
         </Style>
+        <DataTemplate x:Key="LineUsageExpansionToggleContentTemplate">
+            <StackPanel Orientation="Horizontal">
+                <TextBlock VerticalAlignment="Center"
+                           Text="{Binding RemainingItems.Count, StringFormat=+{0}}"/>
+                <Path Width="5"
+                      Height="8"
+                      Margin="5,0,0,0"
+                      VerticalAlignment="Center"
+                      Data="M 0,0 L 4,4 L 0,8"
+                      Stretch="Fill"
+                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType={x:Type ToggleButton}}}"
+                      StrokeThickness="1.5"
+                      RenderTransformOrigin="0.5,0.5">
+                    <Path.Style>
+                        <Style TargetType="Path">
+                            <Setter Property="RenderTransform">
+                                <Setter.Value>
+                                    <RotateTransform Angle="0"/>
+                                </Setter.Value>
+                            </Setter>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding ExpansionState.IsExpanded}" Value="True">
+                                    <Setter Property="RenderTransform">
+                                        <Setter.Value>
+                                            <RotateTransform Angle="90"/>
+                                        </Setter.Value>
+                                    </Setter>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Path.Style>
+                </Path>
+            </StackPanel>
+        </DataTemplate>
         <DataTemplate x:Key="LineUsageFileEntriesTemplate">
             <ContentControl>
                 <ContentControl.Content>
@@ -267,43 +301,58 @@
                 </ContentControl.Content>
                 <ContentControl.ContentTemplate>
                     <DataTemplate>
-                        <StackPanel>
-                            <Border BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}" BorderThickness="0,0,0,1">
-                                <TextBox Style="{StaticResource LineUsageSelectableTextBoxStyle}" Text="{Binding FirstItem.FileName, TargetNullValue=''}" Tag="{Binding FirstItem}">
-                                    <TextBox.ContextMenu>
-                                        <ContextMenu>
-                                            <MenuItem Header="Copy File Name" Click="CopyLineUsageFileName_Click"/>
-                                            <MenuItem Header="Open in Package Editor" Click="OpenLineUsageInPackageEditor_Click"/>
-                                            <MenuItem Header="Open in Dialogue Editor" Click="OpenLineUsageInDialogueEditor_Click"/>
-                                            <MenuItem Header="Open in Windows Explorer" Click="OpenLineUsageInWindowsExplorer_Click"/>
-                                        </ContextMenu>
-                                    </TextBox.ContextMenu>
-                                </TextBox>
-                            </Border>
-                            <Expander Visibility="{Binding HasAdditionalItems, Converter={StaticResource BoolToVisibilityConverter}}">
-                                <Expander.Header>
-                                    <TextBlock Text="{Binding ExpandLabel}" Foreground="Gray" FontSize="10" Margin="4,2"/>
-                                </Expander.Header>
-                                <ItemsControl ItemsSource="{Binding RemainingItems}">
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate>
-                                            <Border BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}" BorderThickness="0,0,0,1">
-                                                <TextBox Style="{StaticResource LineUsageSelectableTextBoxStyle}" Text="{Binding FileName}" Tag="{Binding}">
-                                                    <TextBox.ContextMenu>
-                                                        <ContextMenu>
-                                                            <MenuItem Header="Copy File Name" Click="CopyLineUsageFileName_Click"/>
-                                                            <MenuItem Header="Open in Package Editor" Click="OpenLineUsageInPackageEditor_Click"/>
-                                                            <MenuItem Header="Open in Dialogue Editor" Click="OpenLineUsageInDialogueEditor_Click"/>
-                                                            <MenuItem Header="Open in Windows Explorer" Click="OpenLineUsageInWindowsExplorer_Click"/>
-                                                        </ContextMenu>
-                                                    </TextBox.ContextMenu>
-                                                </TextBox>
-                                            </Border>
-                                        </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
-                            </Expander>
-                        </StackPanel>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+                            <TextBox Style="{StaticResource LineUsageSelectableTextBoxStyle}" Text="{Binding FirstItem.FileName, TargetNullValue=''}" Tag="{Binding FirstItem}">
+                                <TextBox.ContextMenu>
+                                    <ContextMenu>
+                                        <MenuItem Header="Copy File Name" Click="CopyLineUsageFileName_Click"/>
+                                        <MenuItem Header="Open in Package Editor" Click="OpenLineUsageInPackageEditor_Click"/>
+                                        <MenuItem Header="Open in Dialogue Editor" Click="OpenLineUsageInDialogueEditor_Click"/>
+                                        <MenuItem Header="Open in Windows Explorer" Click="OpenLineUsageInWindowsExplorer_Click"/>
+                                    </ContextMenu>
+                                </TextBox.ContextMenu>
+                            </TextBox>
+                            <ToggleButton Grid.Column="1"
+                                          MinWidth="28"
+                                          Height="20"
+                                          Margin="2,0"
+                                          Padding="4,0"
+                                          VerticalAlignment="Center"
+                                          Content="{Binding}"
+                                          ContentTemplate="{StaticResource LineUsageExpansionToggleContentTemplate}"
+                                          IsChecked="{Binding ExpansionState.IsExpanded, Mode=TwoWay}"
+                                          ToolTip="{Binding ExpandLabel}"
+                                          Visibility="{Binding HasAdditionalItems, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                            <ItemsControl Grid.Row="1"
+                                          Grid.ColumnSpan="2"
+                                          ItemsSource="{Binding RemainingItems}"
+                                          Visibility="{Binding ExpansionState.IsExpanded, Converter={StaticResource BoolToVisibilityConverter}}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}" BorderThickness="0,1,0,0">
+                                            <TextBox Style="{StaticResource LineUsageSelectableTextBoxStyle}" Text="{Binding FileName}" Tag="{Binding}">
+                                                <TextBox.ContextMenu>
+                                                    <ContextMenu>
+                                                        <MenuItem Header="Copy File Name" Click="CopyLineUsageFileName_Click"/>
+                                                        <MenuItem Header="Open in Package Editor" Click="OpenLineUsageInPackageEditor_Click"/>
+                                                        <MenuItem Header="Open in Dialogue Editor" Click="OpenLineUsageInDialogueEditor_Click"/>
+                                                        <MenuItem Header="Open in Windows Explorer" Click="OpenLineUsageInWindowsExplorer_Click"/>
+                                                    </ContextMenu>
+                                                </TextBox.ContextMenu>
+                                            </TextBox>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </Grid>
                     </DataTemplate>
                 </ContentControl.ContentTemplate>
             </ContentControl>
@@ -318,39 +367,54 @@
                 </ContentControl.Content>
                 <ContentControl.ContentTemplate>
                     <DataTemplate>
-                        <StackPanel>
-                            <Border BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}" BorderThickness="0,0,0,1">
-                                <TextBox Style="{StaticResource LineUsageSelectableTextBoxStyle}" Text="{Binding FirstItem.Location, TargetNullValue=''}" Tag="{Binding FirstItem}">
-                                    <TextBox.ContextMenu>
-                                        <ContextMenu>
-                                            <MenuItem Header="Copy Name" Click="CopyLineUsageLocation_Click"/>
-                                            <MenuItem Header="Open in Windows Explorer" Click="OpenLineUsageInWindowsExplorer_Click"/>
-                                        </ContextMenu>
-                                    </TextBox.ContextMenu>
-                                </TextBox>
-                            </Border>
-                            <Expander Visibility="{Binding HasAdditionalItems, Converter={StaticResource BoolToVisibilityConverter}}">
-                                <Expander.Header>
-                                    <TextBlock Text="{Binding ExpandLabel}" Foreground="Gray" FontSize="10" Margin="4,2"/>
-                                </Expander.Header>
-                                <ItemsControl ItemsSource="{Binding RemainingItems}">
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate>
-                                            <Border BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}" BorderThickness="0,0,0,1">
-                                                <TextBox Style="{StaticResource LineUsageSelectableTextBoxStyle}" Text="{Binding Location}" Tag="{Binding}">
-                                                    <TextBox.ContextMenu>
-                                                        <ContextMenu>
-                                                            <MenuItem Header="Copy Name" Click="CopyLineUsageLocation_Click"/>
-                                                            <MenuItem Header="Open in Windows Explorer" Click="OpenLineUsageInWindowsExplorer_Click"/>
-                                                        </ContextMenu>
-                                                    </TextBox.ContextMenu>
-                                                </TextBox>
-                                            </Border>
-                                        </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
-                            </Expander>
-                        </StackPanel>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+                            <TextBox Style="{StaticResource LineUsageSelectableTextBoxStyle}" Text="{Binding FirstItem.Location, TargetNullValue=''}" Tag="{Binding FirstItem}">
+                                <TextBox.ContextMenu>
+                                    <ContextMenu>
+                                        <MenuItem Header="Copy Name" Click="CopyLineUsageLocation_Click"/>
+                                        <MenuItem Header="Open in Windows Explorer" Click="OpenLineUsageInWindowsExplorer_Click"/>
+                                    </ContextMenu>
+                                </TextBox.ContextMenu>
+                            </TextBox>
+                            <ToggleButton Grid.Column="1"
+                                          MinWidth="28"
+                                          Height="20"
+                                          Margin="2,0"
+                                          Padding="4,0"
+                                          VerticalAlignment="Center"
+                                          Content="{Binding}"
+                                          ContentTemplate="{StaticResource LineUsageExpansionToggleContentTemplate}"
+                                          IsChecked="{Binding ExpansionState.IsExpanded, Mode=TwoWay}"
+                                          ToolTip="{Binding ExpandLabel}"
+                                          Visibility="{Binding HasAdditionalItems, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                            <ItemsControl Grid.Row="1"
+                                          Grid.ColumnSpan="2"
+                                          ItemsSource="{Binding RemainingItems}"
+                                          Visibility="{Binding ExpansionState.IsExpanded, Converter={StaticResource BoolToVisibilityConverter}}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}" BorderThickness="0,1,0,0">
+                                            <TextBox Style="{StaticResource LineUsageSelectableTextBoxStyle}" Text="{Binding Location}" Tag="{Binding}">
+                                                <TextBox.ContextMenu>
+                                                    <ContextMenu>
+                                                        <MenuItem Header="Copy Name" Click="CopyLineUsageLocation_Click"/>
+                                                        <MenuItem Header="Open in Windows Explorer" Click="OpenLineUsageInWindowsExplorer_Click"/>
+                                                    </ContextMenu>
+                                                </TextBox.ContextMenu>
+                                            </TextBox>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </Grid>
                     </DataTemplate>
                 </ContentControl.ContentTemplate>
             </ContentControl>

@@ -8,6 +8,7 @@ using System.Globalization;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Threading.Tasks.Dataflow;
@@ -100,11 +101,33 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             public string Location { get; init; }
         }
 
+        public sealed class LineUsageExpansionState : INotifyPropertyChanged
+        {
+            private bool _isExpanded;
+
+            public bool IsExpanded
+            {
+                get => _isExpanded;
+                set
+                {
+                    if (_isExpanded != value)
+                    {
+                        _isExpanded = value;
+                        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsExpanded)));
+                    }
+                }
+            }
+
+            public event PropertyChangedEventHandler PropertyChanged;
+        }
+
         public sealed class ConvoLineUsageDisplayGroup
         {
             public ConvoLineUsageDisplayItem FirstItem { get; init; }
 
             public IReadOnlyList<ConvoLineUsageDisplayItem> RemainingItems { get; init; } = Array.Empty<ConvoLineUsageDisplayItem>();
+
+            public LineUsageExpansionState ExpansionState { get; init; } = new();
 
             public bool HasAdditionalItems => RemainingItems.Count > 0;
 
@@ -274,6 +297,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         public const string dbCurrentBuild = "17.0";
 
         private int previousView { get; set; }
+        private readonly ConditionalWeakTable<ConvoLine, LineUsageExpansionState> _lineUsageExpansionStates = new();
         private readonly bool _isMaterialSelectionMode;
         private readonly bool _selectMaterialInstancesOnly;
         private readonly string _initialMaterialSearchText;
@@ -553,6 +577,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         private const string FileLineSearchColumn = "File";
         private const string LocationLineSearchColumn = "Location";
         private const string AllTlkSourceFilterOption = "All TLKs";
+        private const string AllTlkStringsFilterOption = "All Strings";
 
         private const string AllActorTypeFilterOption = "All";
         private const string StuntActorFilterOption = "SFXStuntActor";
@@ -1532,7 +1557,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             _mergedTlkValues.Clear();
             RefreshTlkLookup();
 
-            TlkSourceFilters.ReplaceAll([AllTlkSourceFilterOption]);
+            TlkSourceFilters.ReplaceAll([AllTlkSourceFilterOption, AllTlkStringsFilterOption]);
             SelectedTlkSourceFilter = AllTlkSourceFilterOption;
 
             var gamePath = MEDirectories.GetDefaultGamePath(CurrentGame);
@@ -1567,7 +1592,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                 }
             }
 
-            TlkSourceFilters.ReplaceAll([AllTlkSourceFilterOption, .. _loadedTlkSources.Select(source => source.SourceName).Distinct(StringComparer.OrdinalIgnoreCase)]);
+            TlkSourceFilters.ReplaceAll([AllTlkSourceFilterOption, AllTlkStringsFilterOption, .. _loadedTlkSources.Select(source => source.SourceName).Distinct(StringComparer.OrdinalIgnoreCase)]);
             RefreshTlkDisplayRecords();
         }
 
@@ -1576,7 +1601,9 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             RefreshGestureTrackTlkStrings();
 
             Dictionary<int, string> sourceValues = null;
-            if (!string.Equals(SelectedTlkSourceFilter, AllTlkSourceFilterOption, StringComparison.OrdinalIgnoreCase))
+            bool showAllStrings = string.Equals(SelectedTlkSourceFilter, AllTlkStringsFilterOption, StringComparison.OrdinalIgnoreCase);
+            bool showMergedTlks = string.Equals(SelectedTlkSourceFilter, AllTlkSourceFilterOption, StringComparison.OrdinalIgnoreCase);
+            if (!showMergedTlks && !showAllStrings)
             {
                 sourceValues = _loadedTlkSources.FirstOrDefault(source => string.Equals(source.SourceName, SelectedTlkSourceFilter, StringComparison.OrdinalIgnoreCase)).Values;
             }
@@ -1593,6 +1620,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                     SourceName = sourceValues == null ? GetMergedTlkSourceName(key) : SelectedTlkSourceFilter,
                     Usages = _tlkUsageLookup.TryGetValue(key, out var tlkRecord) ? tlkRecord.Usages : []
                 })
+                .Where(record => !showMergedTlks || HasTlkData(record.ParsedValue))
                 .ToList();
 
             DisplayedTlkStrings.ReplaceAll(records);
@@ -1611,6 +1639,10 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                 SelectedTlkString = null;
             }
         }
+
+        private static bool HasTlkData(string value) =>
+            !string.IsNullOrWhiteSpace(value)
+            && !string.Equals(value, "No Data", StringComparison.OrdinalIgnoreCase);
 
         private void RefreshGestureTrackTlkStrings()
         {
@@ -1712,7 +1744,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             _loadedTlkSources.Clear();
             _mergedTlkValues.Clear();
             _tlkUsageLookup.Clear();
-            TlkSourceFilters.ReplaceAll([AllTlkSourceFilterOption]);
+            TlkSourceFilters.ReplaceAll([AllTlkSourceFilterOption, AllTlkStringsFilterOption]);
             DisplayedTlkStrings.ClearEx();
             SelectedTlkString = null;
             Filter();
@@ -5878,7 +5910,10 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             return new ConvoLineUsageDisplayGroup
             {
                 FirstItem = entries.FirstOrDefault(),
-                RemainingItems = entries.Count > 1 ? entries.Skip(1).ToList() : Array.Empty<ConvoLineUsageDisplayItem>()
+                RemainingItems = entries.Count > 1 ? entries.Skip(1).ToList() : Array.Empty<ConvoLineUsageDisplayItem>(),
+                ExpansionState = line is null
+                    ? new LineUsageExpansionState()
+                    : _lineUsageExpansionStates.GetValue(line, static _ => new LineUsageExpansionState())
             };
         }
 

@@ -153,6 +153,8 @@
            friendlyName="Enable Analytics"/>
   <setting name="Global_UseOwnerFriendlyNames" type="bool" defaultvalue="false" category="General"
            friendlyName="Use owner friendly names in Dialogue Editor, Package Editor, and Properties"/>
+  <setting name="Global_UseOrbitCameraControls" type="bool" defaultvalue="false" category="General"
+           friendlyName="Use standard orbit controls in Level Editor-based 3D viewers and VFX Preview"/>
   <setting name="Global_ME1Directory" type="string" defaultvalue="" settingsbridgename="ME1Directory" category="General" isDirectorySelect="true"
            friendlyName="Mass Effect 1 (Original Trilogy) Directory"/>
   <setting name="Global_ME2Directory" type="string" defaultvalue="" settingsbridgename="ME2Directory" category="General" isDirectorySelect="true"

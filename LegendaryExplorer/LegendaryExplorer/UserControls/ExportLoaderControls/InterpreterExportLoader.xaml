@@ -65,6 +65,7 @@
             </Style.Resources>
         </Style>
         <Style x:Key="InlineEditorTextBoxStyle" TargetType="{x:Type TextBox}">
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
             <Setter Property="ContextMenu">
                 <Setter.Value>
                     <ContextMenu Style="{StaticResource InlineEditorContextMenuStyle}">
@@ -161,7 +162,7 @@
             </ToolBar>
             <ToolBar x:Name="TopSelector_ToolBar" ToolBarTray.IsLocked="True" OverflowMode="Never" Band="2" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"
                      SharedUI:ToolBarBehavior.RemoveOverflowButtonWhiteBackground="True">
-                <TextBox Width="80" Name="Value_TextBox" VerticalAlignment="Center" ToolTip="Value for this property" KeyDown="ValueTextBox_KeyDown" TextChanged="Value_TextBox_TextChanged" 
+                <TextBox Width="80" Name="Value_TextBox" VerticalAlignment="Center" VerticalContentAlignment="Center" ToolTip="Value for this property" KeyDown="ValueTextBox_KeyDown" TextChanged="Value_TextBox_TextChanged"
                      IsEnabled="{Binding CurrentLoadedExport, Converter={StaticResource NullEnabledConverter}}" Margin="0" ToolBar.OverflowMode="Never"
                      Style="{DynamicResource {x:Static ToolBar.TextBoxStyleKey}}"/>
                 <Button Content="Find text..." ToolTip="Find this StringRef by its text in the loaded TLKs"
@@ -169,13 +170,13 @@
                         Visibility="{Binding IsStringRefSelected, Converter={StaticResource BoolToVisibilityConverter}}"
                         Style="{StaticResource {x:Type Button}}" ToolBar.OverflowMode="Never"/>
                 <TextBox Name="Value_ObjectDisplay_TextBox"
-                     MinWidth="320" VerticalAlignment="Center" ToolTip="Currently selected object reference. Double-click to pick a new one." 
+                     MinWidth="320" VerticalAlignment="Center" VerticalContentAlignment="Center" ToolTip="Currently selected object reference. Double-click to pick a new one."
                      MouseDoubleClick="Value_ObjectDisplay_TextBox_MouseDoubleClick"
                      IsReadOnly="True" ToolBar.OverflowMode="Never"
                      Style="{DynamicResource {x:Static ToolBar.TextBoxStyleKey}}"/>
                 <Button Name="Value_ObjectPick_Button" Content="Pick..." ToolTip="Pick an object reference by export/import number or name"
                         Click="Value_ObjectPick_Button_Click" VerticalAlignment="Stretch" Padding="10,0,10,0" Style="{StaticResource {x:Type Button}}" ToolBar.OverflowMode="Never" Margin="5,0,0,0"/>
-                <TextBox Width="60" x:Name="Value_ObjectIndex_TextBox" VerticalAlignment="Center" ToolTip="Entry UIndex for this object property" KeyDown="ValueTextBox_KeyDown" TextChanged="Value_ObjectIndex_TextBox_TextChanged"
+                <TextBox Width="60" x:Name="Value_ObjectIndex_TextBox" VerticalAlignment="Center" VerticalContentAlignment="Center" ToolTip="Entry UIndex for this object property" KeyDown="ValueTextBox_KeyDown" TextChanged="Value_ObjectIndex_TextBox_TextChanged"
                      IsEnabled="{Binding CurrentLoadedExport, Converter={StaticResource NullEnabledConverter}}" Margin="5,0,0,0" ToolBar.OverflowMode="Never"
                      Style="{DynamicResource {x:Static ToolBar.TextBoxStyleKey}}"/>
                 <ComboBox Name="Value_ComboBox" MinWidth="80" VerticalAlignment="Center" ToolTip="Value for this property" IsTextSearchEnabled="True" ToolBar.OverflowMode="Never"
@@ -201,7 +202,7 @@
                     </ComboBox.Resources>
                 </ComboBox>
                 <TextBlock Text="Index:" Name="NameIndexPrefix_TextBlock" VerticalAlignment="Center" Margin="5,0,2,0" ToolBar.OverflowMode="Never"/>
-                <TextBox Width="30" Name="NameIndex_TextBox" VerticalAlignment="Center" ToolTip="Value for this property" KeyDown="ValueTextBox_KeyDown" 
+                <TextBox Width="30" Name="NameIndex_TextBox" VerticalAlignment="Center" VerticalContentAlignment="Center" ToolTip="Value for this property" KeyDown="ValueTextBox_KeyDown"
                      IsEnabled="{Binding CurrentLoadedExport, Converter={StaticResource NullEnabledConverter}}" ToolBar.OverflowMode="Never"
                      Style="{DynamicResource {x:Static ToolBar.TextBoxStyleKey}}"/>
                 <Button Name="Set_Button" Content="Set" ToolTip="Sets the selected property to this value" Click="SetValue_Click" VerticalAlignment="Stretch" Padding="10,0,10,0" Style="{StaticResource {x:Type Button}}" ToolBar.OverflowMode="Never"/>

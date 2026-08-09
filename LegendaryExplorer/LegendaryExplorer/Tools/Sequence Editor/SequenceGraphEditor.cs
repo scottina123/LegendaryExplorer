@@ -17,6 +17,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
     public sealed class SequenceGraphEditor : PCanvas
     {
         internal sealed record SequenceObjectDragData(IReadOnlyList<ExportEntry> Exports);
+        internal static readonly object NonDraggableNodeTag = new();
 
         /// <summary>
         /// Required designer variable.
@@ -209,7 +210,9 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
         {
             public override bool DoesAcceptEvent(PInputEventArgs e)
             {
-                return e.IsMouseEvent && (e.Button != MouseButtons.None || e.IsMouseEnterOrMouseLeave);
+                return !ReferenceEquals(e.PickedNode?.Tag, NonDraggableNodeTag)
+                       && e.IsMouseEvent
+                       && (e.Button != MouseButtons.None || e.IsMouseEnterOrMouseLeave);
             }
 
             protected override void OnStartDrag(object sender, PInputEventArgs e)
