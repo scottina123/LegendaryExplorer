@@ -425,6 +425,8 @@ public class MeshRenderContext : RenderContext
             }
         }
 
+        ApplyPendingMouseInput();
+
         if (Camera.IsOrthographic)
         {
             float panSpeed = Camera.OrthoWidth * 0.5f;
@@ -1268,6 +1270,9 @@ public class MeshRenderContext : RenderContext
         if (PressedMouseButton is MouseButtons.None)
         {
             mouseDownPos = new System.Drawing.Point(x, y);
+            lastMouse = mouseDownPos;
+            pendingMouseDeltaX = 0;
+            pendingMouseDeltaY = 0;
             PressedMouseButton = button;
         }
         return false;
@@ -1275,6 +1280,8 @@ public class MeshRenderContext : RenderContext
 
     public override bool MouseUp(MouseButtons button, int x, int y)
     {
+        // A release can arrive before the composition callback consumes the final move event.
+        ApplyPendingMouseInput();
         PressedMouseButton = MouseButtons.None;
 
         //if it moved any significant amount, we count it as a drag
@@ -1282,12 +1289,38 @@ public class MeshRenderContext : RenderContext
     }
 
     private System.Drawing.Point lastMouse;
+    private int pendingMouseDeltaX;
+    private int pendingMouseDeltaY;
     private const float MouseInputReferenceFramesPerSecond = 60f;
     public override bool MouseMove(int x, int y)
     {
-        bool handled = false;
         int xDiff = (x - lastMouse.X);
         int yDiff = (y - lastMouse.Y);
+        lastMouse = new System.Drawing.Point(x, y);
+        if (PressedMouseButton is MouseButtons.None)
+        {
+            return false;
+        }
+
+        // WPF can deliver mouse moves substantially faster than the composition rate. Updating both camera
+        // matrices for every event can starve rendering on high-polling mice, so consume their summed delta
+        // once per render update just like time-based keyboard movement.
+        pendingMouseDeltaX += xDiff;
+        pendingMouseDeltaY += yDiff;
+        return true;
+    }
+
+    private void ApplyPendingMouseInput()
+    {
+        int xDiff = pendingMouseDeltaX;
+        int yDiff = pendingMouseDeltaY;
+        pendingMouseDeltaX = 0;
+        pendingMouseDeltaY = 0;
+        if ((xDiff == 0 && yDiff == 0) || PressedMouseButton is MouseButtons.None)
+        {
+            return;
+        }
+
         float mouseTranslationScale = CameraSpeed / MouseInputReferenceFramesPerSecond;
         if (Camera.IsOrthographic)
         {
@@ -1297,12 +1330,10 @@ public class MeshRenderContext : RenderContext
                 case MouseButtons.Middle:
                     float worldPerPixel = Camera.OrthoWidth / Width;
                     Camera.Position += new Vector3(-xDiff * worldPerPixel, yDiff * worldPerPixel, 0);
-                    handled = true;
                     break;
                 case MouseButtons.Right:
                     Camera.OrthoWidth *= MathF.Pow(1.01f, yDiff);
                     Camera.OrthoWidth = MathF.Max(Camera.OrthoWidth, 1f);
-                    handled = true;
                     break;
             }
         }
@@ -1314,17 +1345,14 @@ public class MeshRenderContext : RenderContext
                     var camFwd = (Camera.CameraForward with { Z = 0 }).Normal();
                     Camera.Position += camFwd * -yDiff * mouseTranslationScale;
                     Camera.Yaw += xDiff * 0.01f;
-                    handled = true;
                     break;
                 case MouseButtons.Middle:
                     Camera.Position += Camera.CameraRight * -xDiff * mouseTranslationScale;
                     Camera.Position += Camera.CameraUp * yDiff * mouseTranslationScale;
-                    handled = true;
                     break;
                 case MouseButtons.Right:
                     Camera.Yaw += xDiff * 0.01f;
                     Camera.Pitch = (Camera.Pitch - yDiff * 0.01f).Clamp(-MathF.PI / 2 + 0.01f, MathF.PI / 2 - 0.01f);
-                    handled = true;
                     break;
             }
         }
@@ -1336,24 +1364,19 @@ public class MeshRenderContext : RenderContext
                 case MouseButtons.Left:
                     Camera.Yaw += xDiff * 0.01f;
                     Camera.Pitch = (Camera.Pitch - yDiff * 0.01f).Clamp(-MathF.PI / 2 + 0.01f, MathF.PI / 2 - 0.01f);
-                    handled = true;
                     break;
                 //panning
                 case MouseButtons.Middle:
                     Camera.Position -= Camera.CameraRight * xDiff * Camera.FocusDepth * 0.004f;
                     Camera.Position += Camera.CameraUp * yDiff * Camera.FocusDepth * 0.004f;
-                    handled = true;
                     break;
                 //zooming
                 case MouseButtons.Right:
                     Camera.FocusDepth += yDiff * Camera.FocusDepth * 0.1f * 0.1f;
                     if (Camera.FocusDepth < 0.1) Camera.FocusDepth = 0.1f;
-                    handled = true;
                     break;
             }
         }
-        lastMouse = new System.Drawing.Point(x, y);
-        return handled;
     }
 
     public override bool MouseScroll(int delta)
@@ -1477,6 +1500,8 @@ public class MeshRenderContext : RenderContext
         bool handled = PressedMouseButton is not MouseButtons.None;
 
         PressedMouseButton = MouseButtons.None;
+        pendingMouseDeltaX = 0;
+        pendingMouseDeltaY = 0;
 
         return handled;
     }

@@ -61,6 +61,9 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
     private long lastUserActivityTimestamp;
     private long lastHoverHitTestTimestamp;
     private int visibleEmitterInstanceCount;
+    private int sceneOverlayRevision;
+
+    internal int SceneOverlayRevision => Volatile.Read(ref sceneOverlayRevision);
 
     public bool ForceContinuousRendering { get; set; }
     public override bool RenderOnUnhandledMouseMove => false;
@@ -244,6 +247,7 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
 
     private void Actor_PropertyChanged(object sender, PropertyChangedEventArgs e)
     {
+        Interlocked.Increment(ref sceneOverlayRevision);
         if (sender is ActorProxy actor && actor.HasLightSettings && CanAffectSceneLight(e.PropertyName))
         {
             RefreshCachedSceneLight(actor);
@@ -359,7 +363,13 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
             TransformWidget.EndDrag();
             return true;
         }
-        if (base.MouseUp(button, x, y))
+        bool wasNavigationDrag = base.MouseUp(button, x, y);
+        if (button == MouseButtons.Middle)
+        {
+            mouseDownHitProxy = null;
+            return wasNavigationDrag;
+        }
+        if (wasNavigationDrag)
         {
             mouseDownHitProxy = null;
             return true;
@@ -423,10 +433,22 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
                 TransformWidget.EndDrag();
             }
         }
+        // Middle mouse is navigation-only. Avoid synchronous GPU readback on both press and release.
+        if (button == MouseButtons.Middle)
+        {
+            return base.MouseDown(button, x, y);
+        }
         if (HitBufferView is not null)
         {
             IHitProxy selected = GetHitProxy(x, y);
             mouseDownHitProxy = selected;
+
+            // Right mouse uses the saved hit only if the gesture ends as a click. It must never begin a
+            // transform-widget drag or select a helper before camera rotation has had a chance to start.
+            if (button == MouseButtons.Right)
+            {
+                return base.MouseDown(button, x, y);
+            }
 
             TransformWidget.CurrentAxis = EWidgetAxis.None;
             switch (selected)
@@ -577,7 +599,17 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
 
             uiElem.Draw(this);
         }
-        Primitives.Render(this);
+        // Billboard icons contain coplanar outline/fill layers. Normal depth writes make the second layer
+        // contend with the first at equal depth, which appears as flicker while the camera moves.
+        ImmediateContext.OutputMerger.SetDepthStencilState(GetVfxDepthState(depthTest: false, depthWrite: false));
+        try
+        {
+            Primitives.Render(this);
+        }
+        finally
+        {
+            ImmediateContext.OutputMerger.SetDepthStencilState(null);
+        }
 
         if (drawTransformWidgetLast)
         {
@@ -609,6 +641,7 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
         {
             DrawList_UI.Add(PointOfInterestIcons);
         }
+        Interlocked.Increment(ref sceneOverlayRevision);
         EnableTransformWidget();
     }
 
@@ -799,6 +832,7 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
         DrawList_UI.Clear();
         SceneLights.Clear();
         sceneLightCache.Clear();
+        Interlocked.Increment(ref sceneOverlayRevision);
         TransformWidget.Attach = null;
     }
 
@@ -843,6 +877,7 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
             actor.PropertyChanged -= Actor_PropertyChanged;
             RemoveSceneLight(actor);
             HitProxies.RemoveAt(actor.HitID);
+            Interlocked.Increment(ref sceneOverlayRevision);
         }
     }
 
@@ -855,6 +890,7 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
             actor.PropertyChanged += Actor_PropertyChanged;
             CacheSceneLight(actor);
             QueueRenderResources(actor);
+            Interlocked.Increment(ref sceneOverlayRevision);
             if (!DrawList_UI.Contains(EmitterIcons))
             {
                 DrawList_UI.Add(EmitterIcons);

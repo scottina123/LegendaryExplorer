@@ -30,6 +30,10 @@ public sealed class LightIconOverlay : UIElement
     private static readonly Vector4 OutlineColor = new(0f, 0f, 0f, 1f);
     private static readonly Vector4 LightColor = new(1f, 0.92f, 0.35f, 0.95f);
     private static readonly Vector4 SelectedLightColor = new(1f, 1f, 0.2f, 1f);
+    private readonly List<(ActorProxy Actor, float DistanceSquared)> candidates = [];
+    private Vector3 candidateCameraPosition = new(float.NaN);
+    private float candidateRadius = float.NaN;
+    private int candidateSceneRevision = -1;
 
     public override void Draw(LevelEditorRenderContext context)
     {
@@ -38,29 +42,33 @@ public sealed class LightIconOverlay : UIElement
             return;
         }
 
-        // Build candidate list within radius and on-screen, then limit to nearest N.
         var camPos = context.Camera.Position;
         float radius = context.LightIconRadius;
         float radiusSq = radius <= 0f ? float.MaxValue : radius * radius;
-
-        var candidates = new List<(ActorProxy actor, float distSq)>();
-
-        foreach (ActorProxy actor in context.DrawList_3D)
+        int sceneRevision = context.SceneOverlayRevision;
+        if (candidateSceneRevision != sceneRevision || candidateCameraPosition != camPos || candidateRadius != radius)
         {
-            if (!actor.HasLightSettings) continue;
-            var pos = actor.LocalToWorld.Translation;
-            float d2 = Vector3.DistanceSquared(pos, camPos);
-            if (d2 > radiusSq) continue;
-            // quick on-screen test using the offset point
-            var screenTestPos = pos + context.Camera.CameraUp * IconOffset;
-            if (!context.WorldToPixel(screenTestPos, out _)) continue;
-            candidates.Add((actor, d2));
+            candidateSceneRevision = sceneRevision;
+            candidateCameraPosition = camPos;
+            candidateRadius = radius;
+            candidates.Clear();
+            foreach (ActorProxy actor in context.DrawList_3D)
+            {
+                if (!actor.HasLightSettings) continue;
+                float distanceSquared = Vector3.DistanceSquared(actor.LocalToWorld.Translation, camPos);
+                if (distanceSquared <= radiusSq)
+                {
+                    candidates.Add((actor, distanceSquared));
+                }
+            }
+            candidates.Sort(static (left, right) =>
+            {
+                int distanceComparison = left.DistanceSquared.CompareTo(right.DistanceSquared);
+                return distanceComparison != 0 ? distanceComparison : left.Actor.HitID.CompareTo(right.Actor.HitID);
+            });
         }
 
         if (candidates.Count == 0) return;
-
-        // sort by distance (ascending)
-        candidates.Sort((a, b) => a.distSq.CompareTo(b.distSq));
 
         int maxIcons = Math.Max(1, context.MaxLightIcons);
 
@@ -68,12 +76,15 @@ public sealed class LightIconOverlay : UIElement
         ActorProxy attached = context.TransformWidget.Attach as ActorProxy;
         bool attachedIncluded = false;
 
-        int take = Math.Min(maxIcons, candidates.Count);
-        for (int i = 0; i < take; i++)
+        int iconsDrawn = 0;
+        for (int i = 0; i < candidates.Count && iconsDrawn < maxIcons; i++)
         {
-            var actor = candidates[i].actor;
-            DrawLightIcon(context, actor);
-            if (actor == attached) attachedIncluded = true;
+            ActorProxy actor = candidates[i].Actor;
+            if (DrawLightIcon(context, actor))
+            {
+                iconsDrawn++;
+                if (ReferenceEquals(actor, attached)) attachedIncluded = true;
+            }
         }
 
         if (!attachedIncluded && attached is not null && attached.HasLightSettings)
@@ -83,7 +94,7 @@ public sealed class LightIconOverlay : UIElement
         }
     }
 
-    private static void DrawLightIcon(LevelEditorRenderContext context, ActorProxy actor)
+    private static bool DrawLightIcon(LevelEditorRenderContext context, ActorProxy actor)
     {
         // Compute a stable world-space offset so the icon stays a fixed
         // number of screen pixels above the light even as the camera moves.
@@ -94,7 +105,7 @@ public sealed class LightIconOverlay : UIElement
 
         Vector3 basePos = actor.LocalToWorld.Translation;
         Vector4 sp = context.WorldToScreen(basePos);
-        if (sp.W <= 0f) return;
+        if (sp.W <= 0f) return false;
 
         // initial scale estimate
         float scale = sp.W * (4f / context.Width / context.Camera.ProjectionMatrix[0, 0]);
@@ -104,13 +115,13 @@ public sealed class LightIconOverlay : UIElement
 
         // refine using center depth
         Vector4 centerSp = context.WorldToScreen(center);
-        if (centerSp.W <= 0f) return;
+        if (centerSp.W <= 0f) return false;
         scale = centerSp.W * (4f / context.Width / context.Camera.ProjectionMatrix[0, 0]);
         right = context.Camera.CameraRight * scale;
         up = context.Camera.CameraUp * scale;
         center = basePos + (up * IconOffset);
 
-        if (!context.WorldToPixel(center, out _)) return;
+        if (!context.WorldToPixel(center, out _)) return false;
 
         int hitId = actor.HitID;
         Vector4 fillColor = actor == context.TransformWidget.Attach ? SelectedLightColor : LightColor;
@@ -125,6 +136,7 @@ public sealed class LightIconOverlay : UIElement
             context.Primitives.AddLine(center + (direction * RayInnerRadius), center + (direction * RayOuterRadius), OutlineColor, hitId);
             context.Primitives.AddLine(center + (direction * (RayInnerRadius + 0.75f)), center + (direction * (RayOuterRadius - 0.5f)), fillColor, hitId);
         }
+        return true;
     }
 
     private static void DrawDisk(LevelEditorRenderContext context, Vector3 center, Vector3 right, Vector3 up, float radius, Vector4 color, int hitId)
@@ -171,6 +183,9 @@ public sealed class EmitterIconOverlay : UIElement
     private static readonly Vector4 OutlineColor = new(0.03f, 0.02f, 0.06f, 0.95f);
     private static readonly Vector4 IconColor = new(0.45f, 0.85f, 1f, 0.95f);
     private static readonly Vector4 SelectedColor = new(1f, 0.55f, 0.15f, 1f);
+    private readonly List<(EmitterActorProxy Actor, float DistanceSquared)> candidates = [];
+    private Vector3 candidateCameraPosition = new(float.NaN);
+    private int candidateSceneRevision = -1;
 
     public override void Draw(LevelEditorRenderContext context)
     {
@@ -180,25 +195,39 @@ public sealed class EmitterIconOverlay : UIElement
         }
 
         Vector3 cameraPosition = context.Camera.Position;
-        float maximumDistanceSquared = MaximumDistance * MaximumDistance;
-        var candidates = new List<(EmitterActorProxy Actor, float DistanceSquared)>();
-        foreach (EmitterActorProxy actor in context.DrawList_3D.OfType<EmitterActorProxy>())
+        int sceneRevision = context.SceneOverlayRevision;
+        if (candidateSceneRevision != sceneRevision || candidateCameraPosition != cameraPosition)
         {
-            float distanceSquared = Vector3.DistanceSquared(actor.LocalToWorld.Translation, cameraPosition);
-            if (distanceSquared <= maximumDistanceSquared)
+            candidateSceneRevision = sceneRevision;
+            candidateCameraPosition = cameraPosition;
+            candidates.Clear();
+            float maximumDistanceSquared = MaximumDistance * MaximumDistance;
+            foreach (EmitterActorProxy actor in context.DrawList_3D.OfType<EmitterActorProxy>())
             {
-                candidates.Add((actor, distanceSquared));
+                float distanceSquared = Vector3.DistanceSquared(actor.LocalToWorld.Translation, cameraPosition);
+                if (distanceSquared <= maximumDistanceSquared)
+                {
+                    candidates.Add((actor, distanceSquared));
+                }
             }
+            candidates.Sort(static (left, right) =>
+            {
+                int distanceComparison = left.DistanceSquared.CompareTo(right.DistanceSquared);
+                return distanceComparison != 0 ? distanceComparison : left.Actor.HitID.CompareTo(right.Actor.HitID);
+            });
         }
 
-        candidates.Sort((left, right) => left.DistanceSquared.CompareTo(right.DistanceSquared));
         EmitterActorProxy selected = context.TransformWidget.Attach as EmitterActorProxy;
         bool selectedDrawn = false;
-        int iconCount = Math.Min(MaximumIcons, candidates.Count);
-        for (int index = 0; index < iconCount; index++)
+        int iconsDrawn = 0;
+        for (int index = 0; index < candidates.Count && iconsDrawn < MaximumIcons; index++)
         {
-            DrawEmitterIcon(context, candidates[index].Actor);
-            selectedDrawn |= ReferenceEquals(candidates[index].Actor, selected);
+            EmitterActorProxy actor = candidates[index].Actor;
+            if (DrawEmitterIcon(context, actor))
+            {
+                iconsDrawn++;
+                selectedDrawn |= ReferenceEquals(actor, selected);
+            }
         }
         if (!selectedDrawn && selected is not null)
         {
@@ -206,13 +235,13 @@ public sealed class EmitterIconOverlay : UIElement
         }
     }
 
-    private static void DrawEmitterIcon(LevelEditorRenderContext context, EmitterActorProxy actor)
+    private static bool DrawEmitterIcon(LevelEditorRenderContext context, EmitterActorProxy actor)
     {
         Vector3 basePosition = actor.LocalToWorld.Translation;
         Vector4 screenPosition = context.WorldToScreen(basePosition);
         if (screenPosition.W <= 0f)
         {
-            return;
+            return false;
         }
 
         float scale = context.Camera.IsOrthographic
@@ -223,13 +252,14 @@ public sealed class EmitterIconOverlay : UIElement
         Vector3 center = basePosition + up * IconOffset;
         if (!context.WorldToPixel(center, out _))
         {
-            return;
+            return false;
         }
 
         int hitId = actor.HitID;
         Vector4 color = ReferenceEquals(actor, context.TransformWidget.Attach) ? SelectedColor : IconColor;
         DrawStar(context, center, right, up, OuterRadius + 1.5f, OutlineColor, hitId);
         DrawStar(context, center, right, up, OuterRadius, color, hitId);
+        return true;
     }
 
     private static void DrawStar(LevelEditorRenderContext context, Vector3 center, Vector3 right, Vector3 up,
@@ -266,6 +296,9 @@ public sealed class PointOfInterestIconOverlay : UIElement
     private static readonly Vector4 OutlineColor = new(0.04f, 0.03f, 0.01f, 0.95f);
     private static readonly Vector4 IconColor = new(1f, 0.65f, 0.12f, 0.95f);
     private static readonly Vector4 SelectedColor = new(1f, 0.95f, 0.25f, 1f);
+    private readonly List<(SFXPointOfInterestProxy Actor, float DistanceSquared)> candidates = [];
+    private Vector3 candidateCameraPosition = new(float.NaN);
+    private int candidateSceneRevision = -1;
 
     public override void Draw(LevelEditorRenderContext context)
     {
@@ -275,21 +308,39 @@ public sealed class PointOfInterestIconOverlay : UIElement
         }
 
         Vector3 cameraPosition = context.Camera.Position;
-        float maximumDistanceSquared = MaximumDistance * MaximumDistance;
-        List<(SFXPointOfInterestProxy Actor, float DistanceSquared)> candidates = context.DrawList_3D
-            .OfType<SFXPointOfInterestProxy>()
-            .Select(actor => (actor, Vector3.DistanceSquared(actor.LocalToWorld.Translation, cameraPosition)))
-            .Where(candidate => candidate.Item2 <= maximumDistanceSquared)
-            .OrderBy(candidate => candidate.Item2)
-            .Take(MaximumIcons)
-            .ToList();
+        int sceneRevision = context.SceneOverlayRevision;
+        if (candidateSceneRevision != sceneRevision || candidateCameraPosition != cameraPosition)
+        {
+            candidateSceneRevision = sceneRevision;
+            candidateCameraPosition = cameraPosition;
+            candidates.Clear();
+            float maximumDistanceSquared = MaximumDistance * MaximumDistance;
+            foreach (SFXPointOfInterestProxy actor in context.DrawList_3D.OfType<SFXPointOfInterestProxy>())
+            {
+                float distanceSquared = Vector3.DistanceSquared(actor.LocalToWorld.Translation, cameraPosition);
+                if (distanceSquared <= maximumDistanceSquared)
+                {
+                    candidates.Add((actor, distanceSquared));
+                }
+            }
+            candidates.Sort(static (left, right) =>
+            {
+                int distanceComparison = left.DistanceSquared.CompareTo(right.DistanceSquared);
+                return distanceComparison != 0 ? distanceComparison : left.Actor.HitID.CompareTo(right.Actor.HitID);
+            });
+        }
 
         SFXPointOfInterestProxy selected = context.TransformWidget.Attach as SFXPointOfInterestProxy;
         bool selectedDrawn = false;
-        foreach ((SFXPointOfInterestProxy actor, _) in candidates)
+        int iconsDrawn = 0;
+        for (int index = 0; index < candidates.Count && iconsDrawn < MaximumIcons; index++)
         {
-            DrawIcon(context, actor);
-            selectedDrawn |= ReferenceEquals(actor, selected);
+            SFXPointOfInterestProxy actor = candidates[index].Actor;
+            if (DrawIcon(context, actor))
+            {
+                iconsDrawn++;
+                selectedDrawn |= ReferenceEquals(actor, selected);
+            }
         }
         if (!selectedDrawn && selected is not null)
         {
@@ -297,13 +348,13 @@ public sealed class PointOfInterestIconOverlay : UIElement
         }
     }
 
-    private static void DrawIcon(LevelEditorRenderContext context, SFXPointOfInterestProxy actor)
+    private static bool DrawIcon(LevelEditorRenderContext context, SFXPointOfInterestProxy actor)
     {
         Vector3 basePosition = actor.LocalToWorld.Translation;
         Vector4 screenPosition = context.WorldToScreen(basePosition);
         if (screenPosition.W <= 0f)
         {
-            return;
+            return false;
         }
 
         float scale = context.Camera.IsOrthographic
@@ -314,13 +365,14 @@ public sealed class PointOfInterestIconOverlay : UIElement
         Vector3 center = basePosition + up * IconOffset;
         if (!context.WorldToPixel(center, out _))
         {
-            return;
+            return false;
         }
 
         int hitId = actor.HitID;
         DrawDiamond(context, center, right, up, OuterRadius, OutlineColor, hitId);
         DrawDiamond(context, center, right, up, InnerRadius,
             ReferenceEquals(actor, context.TransformWidget.Attach) ? SelectedColor : IconColor, hitId);
+        return true;
     }
 
     private static void DrawDiamond(LevelEditorRenderContext context, Vector3 center, Vector3 right, Vector3 up,
