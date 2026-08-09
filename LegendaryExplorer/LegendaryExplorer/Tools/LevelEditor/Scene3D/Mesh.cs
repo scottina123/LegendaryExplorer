@@ -96,27 +96,30 @@ public class Mesh<TVertex> : IDisposable where TVertex : IVertexBase
         indexBuffer = SharpDX.Direct3D11.Buffer.Create(device, BindFlags.IndexBuffer, Triangles.ToArray());
 
         int stride = TVertex.Stride;
+        int floatsPerVertex = stride / 4;
+        float[] vertexdata = new float[floatsPerVertex * Vertices.Count];
+        Span<float> vertexDataSpan = vertexdata.AsSpan();
+        for (int vertIdx = 0, floatIdx = 0; vertIdx < Vertices.Count; vertIdx++, floatIdx += floatsPerVertex)
+        {
+            Vertices[vertIdx].ToFloats(vertexDataSpan[floatIdx..]);
+        }
+
         if (!_isDynamic)
         {
-            int floatsPerVertex = stride / 4;
-            float[] vertexdata = new float[floatsPerVertex * Vertices.Count];
-            Span<float> vertexDataSpan = vertexdata.AsSpan();
-            for (int vertIdx = 0, floatIdx = 0; vertIdx < Vertices.Count; vertIdx++, floatIdx += floatsPerVertex)
-            {
-                Vertices[vertIdx].ToFloats(vertexDataSpan[floatIdx..]);
-            }
             vertexBuffer = SharpDX.Direct3D11.Buffer.Create(device, BindFlags.VertexBuffer, vertexdata);
         }
         else
         {
-            vertexBuffer = new SharpDX.Direct3D11.Buffer(device, new BufferDescription(
+            // Supply the initial contents to ID3D11Device::CreateBuffer. Resource preparation can run on the
+            // Level Editor's background worker, but the immediate context belongs exclusively to the render
+            // thread. Mapping it here used to race Direct2D's EndDraw and could fault inside the graphics driver.
+            vertexBuffer = SharpDX.Direct3D11.Buffer.Create(device, vertexdata, new BufferDescription(
                 stride * Vertices.Count,
                 ResourceUsage.Dynamic,
                 BindFlags.VertexBuffer,
                 CpuAccessFlags.Write,
                 ResourceOptionFlags.None,
                 stride));
-            UpdateVertices(device.ImmediateContext);
         }
     }
 

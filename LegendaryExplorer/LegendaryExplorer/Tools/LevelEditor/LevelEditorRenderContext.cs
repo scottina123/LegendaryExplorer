@@ -96,30 +96,8 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
             }
 
             CancellationToken token = renderResourceCancellation.Token;
-            // The worker touches the device from another thread, so D3D11 must serialize device access for as
-            // long as it lives. This is reference counted and released as soon as the worker exits, because the
-            // protection adds a lock to every D3D/D2D call and would otherwise slow rendering down permanently.
-            AcquireMultithreadProtection();
-            try
-            {
-                renderResourceWorker = Task.Factory.StartNew(() =>
-                {
-                    try
-                    {
-                        RunRenderResourceWorker(token);
-                    }
-                    finally
-                    {
-                        ReleaseMultithreadProtection();
-                    }
-                }, token, TaskCreationOptions.LongRunning, TaskScheduler.Default);
-            }
-            catch
-            {
-                // The worker never started, so its reference will never be released by the task body.
-                ReleaseMultithreadProtection();
-                throw;
-            }
+            renderResourceWorker = Task.Factory.StartNew(() => RunRenderResourceWorker(token), token,
+                TaskCreationOptions.LongRunning, TaskScheduler.Default);
         }
     }
 
@@ -150,8 +128,8 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
                 }
 
                 if (component is null) break;
-                // Safe to run concurrently with rendering: D3D11 multithread protection is active for the
-                // lifetime of this worker (see StartRenderResourceWorker).
+                // Resource preparation may create D3D11 device resources, but it must not use the immediate
+                // context. The render thread is the sole owner of that context.
                 component.PrepareRenderResources();
 
                 bool priorityReady = false;
