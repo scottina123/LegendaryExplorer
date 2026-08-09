@@ -425,7 +425,7 @@ public class MeshRenderContext : RenderContext
             }
         }
 
-        ApplyPendingMouseInput();
+        ApplyPendingMouseInput(timestep);
 
         if (Camera.IsOrthographic)
         {
@@ -1280,9 +1280,9 @@ public class MeshRenderContext : RenderContext
 
     public override bool MouseUp(MouseButtons button, int x, int y)
     {
-        // A release can arrive before the composition callback consumes the final move event.
-        ApplyPendingMouseInput();
         PressedMouseButton = MouseButtons.None;
+        pendingMouseDeltaX = 0;
+        pendingMouseDeltaY = 0;
 
         //if it moved any significant amount, we count it as a drag
         return Math.Abs(x - mouseDownPos.X) > 3 || Math.Abs(y - mouseDownPos.Y) > 3;
@@ -1302,15 +1302,22 @@ public class MeshRenderContext : RenderContext
             return false;
         }
 
-        // WPF can deliver mouse moves substantially faster than the composition rate. Updating both camera
-        // matrices for every event can starve rendering on high-polling mice, so consume their summed delta
-        // once per render update just like time-based keyboard movement.
-        pendingMouseDeltaX += xDiff;
-        pendingMouseDeltaY += yDiff;
+        // WPF can deliver mouse moves substantially faster than the composition rate. Keep only a bounded
+        // direction vector for the next update. A direction reversal replaces motion accumulated for the old
+        // direction instead of allowing a high-speed sweep to create a large camera jump.
+        pendingMouseDeltaX = AccumulateMouseDirection(pendingMouseDeltaX, xDiff);
+        pendingMouseDeltaY = AccumulateMouseDirection(pendingMouseDeltaY, yDiff);
         return true;
     }
 
-    private void ApplyPendingMouseInput()
+    private static int AccumulateMouseDirection(int pending, int delta)
+    {
+        if (delta == 0) return pending;
+        if (pending != 0 && Math.Sign(pending) != Math.Sign(delta)) return delta;
+        return Math.Clamp(pending + delta, -1_000, 1_000);
+    }
+
+    private void ApplyPendingMouseInput(float timestep)
     {
         int xDiff = pendingMouseDeltaX;
         int yDiff = pendingMouseDeltaY;
@@ -1321,18 +1328,22 @@ public class MeshRenderContext : RenderContext
             return;
         }
 
-        float mouseTranslationScale = CameraSpeed / MouseInputReferenceFramesPerSecond;
+        // Mouse distance selects direction only. Translation and rotation use the same time-based speeds as
+        // keyboard navigation, so mouse polling rate and physical movement speed cannot amplify a camera step.
+        Vector2 mouseDirection = Vector2.Normalize(new Vector2(xDiff, yDiff));
+        float translationStep = CameraSpeed * timestep;
+        float rotationStep = 1.5f * timestep;
         if (Camera.IsOrthographic)
         {
             switch (PressedMouseButton)
             {
                 case MouseButtons.Left:
                 case MouseButtons.Middle:
-                    float worldPerPixel = Camera.OrthoWidth / Width;
-                    Camera.Position += new Vector3(-xDiff * worldPerPixel, yDiff * worldPerPixel, 0);
+                    float panStep = Camera.OrthoWidth * 0.5f * timestep;
+                    Camera.Position += new Vector3(-mouseDirection.X, mouseDirection.Y, 0) * panStep;
                     break;
                 case MouseButtons.Right:
-                    Camera.OrthoWidth *= MathF.Pow(1.01f, yDiff);
+                    Camera.OrthoWidth *= 1f + mouseDirection.Y * timestep;
                     Camera.OrthoWidth = MathF.Max(Camera.OrthoWidth, 1f);
                     break;
             }
@@ -1343,16 +1354,17 @@ public class MeshRenderContext : RenderContext
             {
                 case MouseButtons.Left:
                     var camFwd = (Camera.CameraForward with { Z = 0 }).Normal();
-                    Camera.Position += camFwd * -yDiff * mouseTranslationScale;
-                    Camera.Yaw += xDiff * 0.01f;
+                    Camera.Position += camFwd * -mouseDirection.Y * translationStep;
+                    Camera.Yaw += mouseDirection.X * rotationStep;
                     break;
                 case MouseButtons.Middle:
-                    Camera.Position += Camera.CameraRight * -xDiff * mouseTranslationScale;
-                    Camera.Position += Camera.CameraUp * yDiff * mouseTranslationScale;
+                    Camera.Position += (Camera.CameraRight * -mouseDirection.X
+                                        + Camera.CameraUp * mouseDirection.Y) * translationStep;
                     break;
                 case MouseButtons.Right:
-                    Camera.Yaw += xDiff * 0.01f;
-                    Camera.Pitch = (Camera.Pitch - yDiff * 0.01f).Clamp(-MathF.PI / 2 + 0.01f, MathF.PI / 2 - 0.01f);
+                    Camera.Yaw += mouseDirection.X * rotationStep;
+                    Camera.Pitch = (Camera.Pitch - mouseDirection.Y * rotationStep)
+                        .Clamp(-MathF.PI / 2 + 0.01f, MathF.PI / 2 - 0.01f);
                     break;
             }
         }
@@ -1362,17 +1374,18 @@ public class MeshRenderContext : RenderContext
             {
                 //orbiting
                 case MouseButtons.Left:
-                    Camera.Yaw += xDiff * 0.01f;
-                    Camera.Pitch = (Camera.Pitch - yDiff * 0.01f).Clamp(-MathF.PI / 2 + 0.01f, MathF.PI / 2 - 0.01f);
+                    Camera.Yaw += mouseDirection.X * rotationStep;
+                    Camera.Pitch = (Camera.Pitch - mouseDirection.Y * rotationStep)
+                        .Clamp(-MathF.PI / 2 + 0.01f, MathF.PI / 2 - 0.01f);
                     break;
                 //panning
                 case MouseButtons.Middle:
-                    Camera.Position -= Camera.CameraRight * xDiff * Camera.FocusDepth * 0.004f;
-                    Camera.Position += Camera.CameraUp * yDiff * Camera.FocusDepth * 0.004f;
+                    Camera.Position += (Camera.CameraRight * -mouseDirection.X
+                                        + Camera.CameraUp * mouseDirection.Y) * translationStep;
                     break;
                 //zooming
                 case MouseButtons.Right:
-                    Camera.FocusDepth += yDiff * Camera.FocusDepth * 0.1f * 0.1f;
+                    Camera.FocusDepth += mouseDirection.Y * translationStep;
                     if (Camera.FocusDepth < 0.1) Camera.FocusDepth = 0.1f;
                     break;
             }
