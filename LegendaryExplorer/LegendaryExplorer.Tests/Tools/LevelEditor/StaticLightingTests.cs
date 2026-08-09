@@ -147,6 +147,8 @@ public class StaticLightingTests
     [TestMethod]
     public void BulkAutomaticResolution_UsesExactRequestedSize()
     {
+        Assert.AreEqual(2048, StaticLightingBaker.ResolveTextureResolution(
+            StaticLightingMappingMode.Automatic, false, 32, 2048));
         Assert.AreEqual(1024, StaticLightingBaker.ResolveTextureResolution(
             StaticLightingMappingMode.Automatic, false, 32, 1024));
         Assert.AreEqual(1024, StaticLightingBaker.ResolveTextureResolution(
@@ -164,9 +166,8 @@ public class StaticLightingTests
             StaticLightingMappingMode.Texture2D, false, 32, 1024));
         Assert.AreEqual(2048, StaticLightingBaker.ResolveTextureResolution(
             StaticLightingMappingMode.Texture2D, true, 32, 2048));
-        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() =>
-            StaticLightingBaker.ResolveTextureResolution(
-                StaticLightingMappingMode.Automatic, false, 32, 2048));
+        Assert.AreEqual(2048, StaticLightingBaker.ResolveTextureResolution(
+            StaticLightingMappingMode.Texture2D, false, 32, 2048));
     }
 
     [TestMethod]

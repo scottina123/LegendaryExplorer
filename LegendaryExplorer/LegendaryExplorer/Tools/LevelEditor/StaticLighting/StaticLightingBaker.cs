@@ -24,16 +24,16 @@ namespace LegendaryExplorer.Tools.LevelEditor;
 /// </summary>
 public sealed class StaticLightingBaker
 {
-    public const int MaximumLevelTextureResolution = 1024;
+    public const int MaximumLevelTextureResolution = 2048;
     public const int MaximumActorTextureResolution = 2048;
     public static bool IsNativeBackendAvailable => NativeStaticLightingContext.IsAvailable;
 
-    // Intersections closer to a chart endpoint than about two thousandths of a texel at the maximum
-    // actor resolution are half-precision UV T-junction noise, not usable overlap area.
-    private const float UvBoundaryDistanceTolerance =
-        1f / (MaximumLevelTextureResolution * MaximumLevelTextureResolution);
+    // Intersections closer to a chart endpoint than about two thousandths of a 2048 texel are
+    // half-precision UV T-junction noise, not usable overlap area. Keep this tolerance independent
+    // of the selectable global resolution so adding UI sizes cannot alter chart validation.
+    private const float UvBoundaryDistanceTolerance = 1f / (1024f * 1024f);
     // A 1024² native texture receiver can peak near 300 MB while managed/native sample and
-    // coefficient buffers overlap. Keep at most two such receivers live at once.
+    // coefficient buffers overlap. Permit two at 1024² and serialize 2048² receivers.
     private const long ConcurrentTexturePixelBudget = 2L * 1024 * 1024;
 
     private static readonly Vector3[] DirectionalBasis =

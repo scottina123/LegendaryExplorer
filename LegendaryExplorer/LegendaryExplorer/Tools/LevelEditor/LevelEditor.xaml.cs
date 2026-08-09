@@ -311,7 +311,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
 
     private int _lightmassResolution = 64;
     public int LightmassResolution { get => _lightmassResolution; set => SetProperty(ref _lightmassResolution, value); }
-    public IReadOnlyList<int> LightmassResolutions { get; } = [64, 128, 256, 512, 1024];
+    public IReadOnlyList<int> LightmassResolutions { get; } = [64, 128, 256, 512, 1024, 2048];
     private int _actorLightmassResolution = 64;
     private float _lightmassAmbientIntensity = 0.12f;
     public float LightmassAmbientIntensity { get => _lightmassAmbientIntensity; set => SetProperty(ref _lightmassAmbientIntensity, value); }
@@ -5013,8 +5013,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
             ToolTip = toolTip
         };
 
-        AddResolutionItem(StaticLightingBaker.MaximumActorTextureResolution);
-        foreach (int resolution in LightmassResolutions.Reverse())
+        foreach (int resolution in LightmassResolutions)
             AddResolutionItem(resolution);
         return mappingMenu;
 
