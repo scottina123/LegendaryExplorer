@@ -312,6 +312,8 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
     private int _lightmassResolution = 64;
     public int LightmassResolution { get => _lightmassResolution; set => SetProperty(ref _lightmassResolution, value); }
     public IReadOnlyList<int> LightmassResolutions { get; } = [64, 128, 256, 512, 1024];
+    private int _actorLightmassResolution = 64;
+    private static readonly int[] ActorLightmassResolutions = [2048, 1024, 512, 256, 128, 64];
     private float _lightmassAmbientIntensity = 0.12f;
     public float LightmassAmbientIntensity { get => _lightmassAmbientIntensity; set => SetProperty(ref _lightmassAmbientIntensity, value); }
     private float _lightmassShadowBias = 1f;
@@ -3394,7 +3396,8 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         return createMenu;
     }
 
-    private async void GenerateStaticLighting() => await GenerateStaticLightingCore(null, LightmassResolution,
+    private async void GenerateStaticLighting() => await GenerateStaticLightingCore(null,
+        Math.Min(LightmassResolution, StaticLightingBaker.MaximumLevelTextureResolution),
         StaticLightingMappingMode.Automatic);
 
     private async Task GenerateStaticLightingForActor(ActorProxy actor, int textureResolution,
@@ -3411,7 +3414,8 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
             return;
         }
 
-        LightmassResolution = textureResolution;
+        if (mappingMode != StaticLightingMappingMode.Vertex1D)
+            _actorLightmassResolution = textureResolution;
         await GenerateStaticLightingCore(actor, textureResolution, mappingMode);
     }
 
@@ -3538,8 +3542,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
                     component.RefreshFromExport();
             }
             SceneViewer?.MarkRenderDirty();
-            int mappingFallbackCount = bake.Components.Count(component =>
-                component.Vertex is not null && component.Diagnostics.Mapping.HasTextureMappingErrors);
+            int mappingFallbackCount = bake.UvFallbackComponentCount;
             string mappingFallbackWarning = mappingFallbackCount > 0
                 ? $"WARNING: {mappingFallbackCount:N0} component{(mappingFallbackCount == 1 ? " was" : "s were")} diverted to LightMap1D because no valid runtime lightmap UV was available.\n\n"
                 : "";
@@ -4143,7 +4146,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
                     "Uses LightMap2D for architectural, large, or broad low-poly receivers and LightMap1D for compact or dense receivers."));
                 generateLightmassMenu.Items.Add(BuildActorLightmassResolutionMenu(actor,
                     "LightMap2D (texture)", StaticLightingMappingMode.Texture2D,
-                    "Forces a texture mapping at the selected resolution and automatically repairs isolated collapsed UV triangles."));
+                    "Generates a texture mapping at the selected resolution, repairs isolated collapsed UV triangles, and falls back to LightMap1D when no valid runtime lightmap UV exists."));
                 var vertexLightmassItem = new System.Windows.Controls.MenuItem
                 {
                     Header = "LightMap1D (vertex)",
@@ -4908,14 +4911,14 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
             Header = header,
             ToolTip = toolTip
         };
-        foreach (int resolution in LightmassResolutions)
+        foreach (int resolution in ActorLightmassResolutions)
         {
             int selectedResolution = resolution;
             var resolutionItem = new System.Windows.Controls.MenuItem
             {
                 Header = $"{resolution} × {resolution}",
                 IsCheckable = true,
-                IsChecked = LightmassResolution == resolution
+                IsChecked = _actorLightmassResolution == resolution
             };
             resolutionItem.Click += async (_, _) => await GenerateStaticLightingForActor(actor,
                 selectedResolution, mappingMode);

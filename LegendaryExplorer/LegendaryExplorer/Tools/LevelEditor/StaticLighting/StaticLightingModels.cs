@@ -64,9 +64,11 @@ public sealed class StaticLightingGenerationSettings
     {
         if (!Enum.IsDefined(MappingMode))
             throw new ArgumentOutOfRangeException(nameof(MappingMode));
-        if (TextureResolution is < 64 or > 1024 || !BitOperations.IsPow2((uint)TextureResolution))
+        if (TextureResolution is < 64 or > StaticLightingBaker.MaximumActorTextureResolution ||
+            !BitOperations.IsPow2((uint)TextureResolution))
             throw new ArgumentOutOfRangeException(nameof(TextureResolution),
-                "Lightmap resolution must be a power of two from 64 through 1024.");
+                $"Lightmap resolution must be a power of two from 64 through " +
+                $"{StaticLightingBaker.MaximumActorTextureResolution}.");
         if (!float.IsFinite(AmbientIntensity) || AmbientIntensity < 0f)
             throw new ArgumentOutOfRangeException(nameof(AmbientIntensity));
         if (!float.IsFinite(ShadowBias) || ShadowBias is < 0.01f or > 100f)
@@ -282,6 +284,7 @@ public sealed class StaticLightingBakeResult
     public int EmissiveEmitterCount { get; init; }
     public required int TextureMappedComponentCount { get; init; }
     public required int VertexMappedComponentCount { get; init; }
+    public int UvFallbackComponentCount { get; init; }
     public int WorkUnitCount { get; init; }
     public int WorkerCount { get; init; }
     public long RaysCast { get; init; }

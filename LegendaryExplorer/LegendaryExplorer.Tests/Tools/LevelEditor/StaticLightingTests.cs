@@ -24,6 +24,7 @@ public class StaticLightingTests
     [DataRow(64)]
     [DataRow(128)]
     [DataRow(1024)]
+    [DataRow(2048)]
     public void Settings_AcceptSupportedPowerOfTwoResolutions(int resolution)
     {
         new StaticLightingGenerationSettings { TextureResolution = resolution }.Validate();
@@ -32,7 +33,7 @@ public class StaticLightingTests
     [DataTestMethod]
     [DataRow(32)]
     [DataRow(96)]
-    [DataRow(2048)]
+    [DataRow(4096)]
     public void Settings_RejectUnsupportedResolutions(int resolution)
     {
         try
@@ -161,6 +162,11 @@ public class StaticLightingTests
             StaticLightingMappingMode.Automatic, true, 32, 1024));
         Assert.AreEqual(1024, StaticLightingBaker.ResolveTextureResolution(
             StaticLightingMappingMode.Texture2D, false, 32, 1024));
+        Assert.AreEqual(2048, StaticLightingBaker.ResolveTextureResolution(
+            StaticLightingMappingMode.Texture2D, true, 32, 2048));
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() =>
+            StaticLightingBaker.ResolveTextureResolution(
+                StaticLightingMappingMode.Automatic, false, 32, 2048));
     }
 
     [TestMethod]
@@ -413,8 +419,8 @@ public class StaticLightingTests
 
         // BioA_CitHub_Temple export 2198 uses this half-precision UV T-junction. The right
         // triangle's middle vertex belongs on the left triangle's edge, but quantization places
-        // the intersection about 0.0000007 UV units from the endpoint. That is less than 0.001
-        // texel even at 1024 and must not be diagnosed as a chart overlap.
+        // the intersection about 0.0000007 UV units from the endpoint. That is less than 0.002
+        // texel even at 2048 and must not be diagnosed as a chart overlap.
         var junctionLeft = new StaticLightingTriangle(
             original.A with { LightMapCoordinate = new Vector2(0.502441406f, 0.158325195f) },
             original.B with { LightMapCoordinate = new Vector2(0.491455078f, 0.104980469f) },
@@ -721,6 +727,7 @@ public class StaticLightingTests
         Assert.IsNotNull(result.Components[0].Vertex);
         Assert.AreEqual(0, result.TextureMappedComponentCount);
         Assert.AreEqual(1, result.VertexMappedComponentCount);
+        Assert.AreEqual(1, result.UvFallbackComponentCount);
     }
 
     [DataTestMethod]

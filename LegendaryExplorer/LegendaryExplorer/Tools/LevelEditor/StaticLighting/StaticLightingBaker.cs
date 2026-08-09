@@ -23,9 +23,13 @@ namespace LegendaryExplorer.Tools.LevelEditor;
 /// </summary>
 public sealed class StaticLightingBaker
 {
-    // Intersections closer to a chart endpoint than one thousandth of a texel at the maximum
-    // supported resolution are half-precision UV T-junction noise, not usable overlap area.
-    private const float UvBoundaryDistanceTolerance = 1f / (1024f * 1024f);
+    public const int MaximumLevelTextureResolution = 1024;
+    public const int MaximumActorTextureResolution = 2048;
+
+    // Intersections closer to a chart endpoint than about two thousandths of a texel at the maximum
+    // actor resolution are half-precision UV T-junction noise, not usable overlap area.
+    private const float UvBoundaryDistanceTolerance =
+        1f / (MaximumLevelTextureResolution * MaximumLevelTextureResolution);
 
     private static readonly Vector3[] DirectionalBasis =
     [
@@ -208,6 +212,8 @@ public sealed class StaticLightingBaker
             EmissiveEmitterCount = emissiveEmitterIndex.Count,
             TextureMappedComponentCount = textureMapped,
             VertexMappedComponentCount = vertexMapped,
+            UvFallbackComponentCount = results.Count(result =>
+                result.Vertex is not null && result.Diagnostics.Mapping.HasTextureMappingErrors),
             WorkUnitCount = workUnitCount,
             WorkerCount = settings.EffectiveWorkerThreads,
             RaysCast = diagnostics.Sum(item => item.RaysCast),
@@ -266,6 +272,7 @@ public sealed class StaticLightingBaker
         StaticLightingMappingMode mappingMode = StaticLightingMappingMode.Automatic,
         int maximumTextureResolution = 64)
     {
+        ValidateRequestedTextureResolution(maximumTextureResolution, exactTargetComponents is not null);
         long extractionStart = Stopwatch.GetTimestamp();
         ActorProxy[] actorArray = actors.ToArray();
         long extractionTicks = Stopwatch.GetTimestamp() - extractionStart;
@@ -1600,13 +1607,22 @@ public sealed class StaticLightingBaker
     public static int ResolveTextureResolution(StaticLightingMappingMode mappingMode, bool exactTarget,
         int authoredResolution, int requestedMaximum)
     {
-        if (requestedMaximum is < 64 or > 1024 || !BitOperations.IsPow2((uint)requestedMaximum))
-            throw new ArgumentOutOfRangeException(nameof(requestedMaximum));
+        ValidateRequestedTextureResolution(requestedMaximum, exactTarget);
         if (exactTarget || mappingMode != StaticLightingMappingMode.Automatic || authoredResolution <= 0)
             return requestedMaximum;
-        uint authored = (uint)Math.Min(authoredResolution, 1024);
+        uint authored = (uint)Math.Min(authoredResolution, MaximumLevelTextureResolution);
         int roundedAuthored = (int)BitOperations.RoundUpToPowerOf2(authored);
         return Math.Min(requestedMaximum, Math.Max(64, roundedAuthored));
+    }
+
+    public static void ValidateRequestedTextureResolution(int requestedResolution, bool exactTarget)
+    {
+        int maximum = exactTarget ? MaximumActorTextureResolution : MaximumLevelTextureResolution;
+        if (requestedResolution is < 64 || requestedResolution > maximum ||
+            !BitOperations.IsPow2((uint)requestedResolution))
+            throw new ArgumentOutOfRangeException(nameof(requestedResolution),
+                $"Lightmap resolution must be a power of two from 64 through {maximum} " +
+                (exactTarget ? "for a single actor." : "for whole-level generation."));
     }
 
     private static bool IsArchitecturalReceiver(string meshPath)
