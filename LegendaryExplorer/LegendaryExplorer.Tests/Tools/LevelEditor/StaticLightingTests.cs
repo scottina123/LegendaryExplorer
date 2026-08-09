@@ -144,6 +144,26 @@ public class StaticLightingTests
     }
 
     [TestMethod]
+    public void BulkAutomaticResolution_UsesAuthoredDensityAndRequestedCeiling()
+    {
+        Assert.AreEqual(64, StaticLightingBaker.ResolveTextureResolution(
+            StaticLightingMappingMode.Automatic, false, 32, 1024));
+        Assert.AreEqual(128, StaticLightingBaker.ResolveTextureResolution(
+            StaticLightingMappingMode.Automatic, false, 96, 1024));
+        Assert.AreEqual(128, StaticLightingBaker.ResolveTextureResolution(
+            StaticLightingMappingMode.Automatic, false, 256, 128));
+    }
+
+    [TestMethod]
+    public void ExplicitOrSingleActorResolution_UsesExactRequestedSize()
+    {
+        Assert.AreEqual(1024, StaticLightingBaker.ResolveTextureResolution(
+            StaticLightingMappingMode.Automatic, true, 32, 1024));
+        Assert.AreEqual(1024, StaticLightingBaker.ResolveTextureResolution(
+            StaticLightingMappingMode.Texture2D, false, 32, 1024));
+    }
+
+    [TestMethod]
     public void Game3Bake_EncodesDirectionalBasisMaximaAndSimpleLightmap()
     {
         using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("DirectionalLightmass.pcc", MEGame.LE3);
@@ -358,9 +378,24 @@ public class StaticLightingTests
 
         bool hit = collision.RaycastFiltered(Vector3.Zero, Vector3.UnitZ, 10f,
             component, 7, 2f, out _, out int rejected);
+        bool occluded = collision.IsOccludedFiltered(Vector3.Zero, Vector3.UnitZ, 10f,
+            component, 7, 2f, out int anyHitRejected);
 
         Assert.IsFalse(hit);
+        Assert.IsFalse(occluded);
         Assert.AreEqual(1, rejected);
+        Assert.AreEqual(1, anyHitRejected);
+        Assert.IsGreaterThan(0, collision.BvhNodeCount);
+
+        LevelCollisionScene withBlocker = LevelCollisionScene.FromTriangles(new[]
+        {
+            (new Vector3(-10, -10, 0.5f), new Vector3(10, -10, 0.5f), new Vector3(0, 10, 0.5f), component, 7),
+            (new Vector3(-10, -10, 3f), new Vector3(10, -10, 3f), new Vector3(0, 10, 3f), component, 8)
+        });
+        Assert.IsTrue(withBlocker.RaycastFiltered(Vector3.Zero, Vector3.UnitZ, 10f,
+            component, 7, 2f, out _, out _));
+        Assert.IsTrue(withBlocker.IsOccludedFiltered(Vector3.Zero, Vector3.UnitZ, 10f,
+            component, 7, 2f, out _));
     }
 
     [TestMethod]

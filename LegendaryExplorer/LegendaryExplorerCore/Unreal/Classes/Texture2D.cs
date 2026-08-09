@@ -518,16 +518,17 @@ namespace LegendaryExplorerCore.Unreal.Classes
         /// <returns></returns>
         public List<string> Replace(Image image, PropertyCollection props, string fileSourcePath = null, string forcedTFCName = null, string forcedTFCPath = null, bool isPackageStored = false, PixelFormat forcedNewFormat = PixelFormat.Unknown, bool forceMipping = false, Stream outDataOverride = null) =>
             Replace(image, props, null, fileSourcePath, forcedTFCName, forcedTFCPath, isPackageStored,
-                forcedNewFormat, forceMipping, outDataOverride);
+                forcedNewFormat, forceMipping, outDataOverride, null);
 
         /// <summary>
         /// Replaces texture data while appending external mips through an already-open shared TFC stream.
         /// </summary>
         /// <param name="forcedTFCStream">Shared read/write stream; this method validates its GUID header and appends at its end.</param>
+        /// <param name="forcedTFCGuid">GUID already read from <paramref name="forcedTFCStream"/> by a trusted caller.</param>
         public List<string> Replace(Image image, PropertyCollection props, Stream forcedTFCStream,
             string fileSourcePath = null, string forcedTFCName = null, string forcedTFCPath = null,
             bool isPackageStored = false, PixelFormat forcedNewFormat = PixelFormat.Unknown,
-            bool forceMipping = false, Stream outDataOverride = null)
+            bool forceMipping = false, Stream outDataOverride = null, Guid? forcedTFCGuid = null)
         {
             var messages = new List<string>();
             var textureCache = forcedTFCName ?? GetTopMip().TextureCacheName;
@@ -681,9 +682,17 @@ namespace LegendaryExplorerCore.Unreal.Classes
                     throw new ArgumentException("The shared TFC stream must support reading, writing, and seeking.", nameof(forcedTFCStream));
                 if (forcedTFCStream.Length < 16)
                     throw new InvalidDataException("The shared TFC stream has no valid GUID header.");
-                forcedTFCStream.Position = 0;
-                tfcGuid = forcedTFCStream.ReadGuid();
-                forcedTFCStream.Seek(0, SeekOrigin.End);
+                if (forcedTFCGuid.HasValue)
+                {
+                    tfcGuid = forcedTFCGuid.Value;
+                }
+                else
+                {
+                    forcedTFCStream.Position = 0;
+                    tfcGuid = forcedTFCStream.ReadGuid();
+                }
+                if (forcedTFCStream.Position != forcedTFCStream.Length)
+                    forcedTFCStream.Seek(0, SeekOrigin.End);
             }
             bool locallyStored = mipmaps[0].storageType is StorageTypes.pccUnc or StorageTypes.pccZlib or StorageTypes.pccLZO or StorageTypes.pccOodle;
             for (int m = 0; m < image.mipMaps.Count; m++)
@@ -741,7 +750,8 @@ namespace LegendaryExplorerCore.Unreal.Classes
                             {
                                 try
                                 {
-                                    forcedTFCStream.Seek(0, SeekOrigin.End);
+                                    if (forcedTFCStream.Position != forcedTFCStream.Length)
+                                        forcedTFCStream.Seek(0, SeekOrigin.End);
                                     mipmap.externalOffset = checked((int)forcedTFCStream.Position);
                                     forcedTFCStream.Write(mipmap.Mip, 0, mipmap.compressedSize);
                                 }

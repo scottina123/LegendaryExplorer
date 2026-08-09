@@ -2,8 +2,10 @@ using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.Unreal;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 
 namespace LegendaryExplorer.Tools.LevelEditor;
 
@@ -34,14 +36,15 @@ internal readonly record struct LevelCollisionTriangle(
     Vector3 A,
     Vector3 B,
     Vector3 C,
+    Vector3 Edge1,
+    Vector3 Edge2,
+    Vector3 Centroid,
     Vector3 Normal,
     CollisionBounds Bounds,
     LevelCollisionFlags Flags,
     ExportEntry Source,
     int SourceTriangleIndex = -1)
 {
-    public Vector3 Centroid => (A + B + C) / 3f;
-
     public static bool TryCreate(Vector3 a, Vector3 b, Vector3 c, LevelCollisionFlags flags,
         ExportEntry source, out LevelCollisionTriangle triangle, int sourceTriangleIndex = -1)
     {
@@ -53,8 +56,35 @@ internal readonly record struct LevelCollisionTriangle(
             return false;
         }
 
-        triangle = new LevelCollisionTriangle(a, b, c, cross / MathF.Sqrt(lengthSquared),
+        triangle = new LevelCollisionTriangle(a, b, c, b - a, c - a, (a + b + c) / 3f,
+            cross / MathF.Sqrt(lengthSquared),
             CollisionBounds.FromTriangle(a, b, c), flags, source, sourceTriangleIndex);
+        return true;
+    }
+}
+
+internal readonly record struct CollisionRay(Vector3 Origin, Vector3 Direction, Vector3 InverseDirection,
+    int ParallelAxisMask)
+{
+    public static bool TryCreate(Vector3 origin, Vector3 direction, out CollisionRay ray)
+    {
+        float lengthSquared = direction.LengthSquared();
+        if (lengthSquared < 0.000001f || !float.IsFinite(lengthSquared))
+        {
+            ray = default;
+            return false;
+        }
+        if (MathF.Abs(lengthSquared - 1f) > 0.00001f)
+            direction /= MathF.Sqrt(lengthSquared);
+        int parallelMask = 0;
+        Vector3 inverse = default;
+        if (MathF.Abs(direction.X) < 0.000001f) parallelMask |= 1;
+        else inverse.X = 1f / direction.X;
+        if (MathF.Abs(direction.Y) < 0.000001f) parallelMask |= 2;
+        else inverse.Y = 1f / direction.Y;
+        if (MathF.Abs(direction.Z) < 0.000001f) parallelMask |= 4;
+        else inverse.Z = 1f / direction.Z;
+        ray = new CollisionRay(origin, direction, inverse, parallelMask);
         return true;
     }
 }
@@ -120,6 +150,36 @@ internal readonly record struct CollisionBounds(Vector3 Minimum, Vector3 Maximum
         return maximumT >= 0f;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public bool IntersectsRay(in CollisionRay ray, float maximumDistance)
+    {
+        float minimumT = 0f;
+        float maximumT = maximumDistance;
+        if (!IntersectRayAxis(ray.Origin.X, ray.InverseDirection.X, (ray.ParallelAxisMask & 1) != 0,
+                Minimum.X, Maximum.X, ref minimumT, ref maximumT) ||
+            !IntersectRayAxis(ray.Origin.Y, ray.InverseDirection.Y, (ray.ParallelAxisMask & 2) != 0,
+                Minimum.Y, Maximum.Y, ref minimumT, ref maximumT) ||
+            !IntersectRayAxis(ray.Origin.Z, ray.InverseDirection.Z, (ray.ParallelAxisMask & 4) != 0,
+                Minimum.Z, Maximum.Z, ref minimumT, ref maximumT))
+            return false;
+        return maximumT >= 0f;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool IntersectRayAxis(float origin, float inverseDirection, bool parallel,
+        float minimum, float maximum, ref float minimumT, ref float maximumT)
+    {
+        if (parallel)
+            return origin >= minimum && origin <= maximum;
+        float first = (minimum - origin) * inverseDirection;
+        float second = (maximum - origin) * inverseDirection;
+        if (first > second)
+            (first, second) = (second, first);
+        minimumT = MathF.Max(minimumT, first);
+        maximumT = MathF.Min(maximumT, second);
+        return minimumT <= maximumT;
+    }
+
     private static float Get(Vector3 vector, int axis) => axis switch
     {
         0 => vector.X,
@@ -147,6 +207,8 @@ public sealed class LevelCollisionScene
     public int CoverTriangleCount { get; }
     public int NavigationSourceCount { get; }
     public int CoverSourceCount { get; }
+    public int BvhNodeCount => nodes.Count;
+    public double BvhBuildMilliseconds { get; }
     public Vector3 Minimum => NavigationTriangleCount == 0 ? Vector3.Zero : navigationBounds.Minimum;
     public Vector3 Maximum => NavigationTriangleCount == 0 ? Vector3.Zero : navigationBounds.Maximum;
 
@@ -157,6 +219,7 @@ public sealed class LevelCollisionScene
 
     internal LevelCollisionScene(List<LevelCollisionTriangle> sourceTriangles)
     {
+        Stopwatch buildTimer = Stopwatch.StartNew();
         triangles = sourceTriangles;
         CollisionBounds blockingBounds = CollisionBounds.Empty;
         int navigationTriangleCount = 0;
@@ -189,6 +252,8 @@ public sealed class LevelCollisionScene
         {
             BuildNode(0, triangles.Count);
         }
+        buildTimer.Stop();
+        BvhBuildMilliseconds = buildTimer.Elapsed.TotalMilliseconds;
     }
 
     public static LevelCollisionScene Build(IEnumerable<ActorProxy> actors)
@@ -288,6 +353,58 @@ public sealed class LevelCollisionScene
         => RaycastCore(origin, direction, maximumDistance, out hit, requiredFlags,
             receiverSource, receiverTriangleIndex, MathF.Max(0f, selfIntersectionDistance),
             out rejectedSelfIntersections);
+
+    /// <summary>
+    /// Any-hit shadow query. Unlike <see cref="RaycastFiltered"/>, this returns as soon as a valid
+    /// blocker is found and avoids delegate allocation and closest-hit traversal work.
+    /// </summary>
+    public bool IsOccludedFiltered(Vector3 origin, Vector3 direction, float maximumDistance,
+        ExportEntry receiverSource, int receiverTriangleIndex, float selfIntersectionDistance,
+        out int rejectedSelfIntersections,
+        LevelCollisionFlags requiredFlags = LevelCollisionFlags.BlocksRay)
+    {
+        rejectedSelfIntersections = 0;
+        if (nodes.Count == 0 || maximumDistance <= 0f ||
+            !CollisionRay.TryCreate(origin, direction, out CollisionRay ray))
+            return false;
+        int rejected = 0;
+        bool occluded = IsOccludedNode(0, ray, maximumDistance, requiredFlags, receiverSource,
+            receiverTriangleIndex, MathF.Max(0f, selfIntersectionDistance), ref rejected);
+        rejectedSelfIntersections = rejected;
+        return occluded;
+    }
+
+    private bool IsOccludedNode(int nodeIndex, in CollisionRay ray, float maximumDistance,
+        LevelCollisionFlags requiredFlags, ExportEntry receiverSource, int receiverTriangleIndex,
+        float selfIntersectionDistance, ref int rejectedSelfIntersections)
+    {
+        BvhNode node = nodes[nodeIndex];
+        if (!node.Bounds.IntersectsRay(ray, maximumDistance))
+            return false;
+        if (!node.IsLeaf)
+            return IsOccludedNode(node.Left, ray, maximumDistance, requiredFlags, receiverSource,
+                       receiverTriangleIndex, selfIntersectionDistance, ref rejectedSelfIntersections) ||
+                   IsOccludedNode(node.Right, ray, maximumDistance, requiredFlags, receiverSource,
+                       receiverTriangleIndex, selfIntersectionDistance, ref rejectedSelfIntersections);
+
+        for (int index = node.Start; index < node.Start + node.Count; index++)
+        {
+            LevelCollisionTriangle triangle = triangles[triangleIndices[index]];
+            if ((triangle.Flags & requiredFlags) != requiredFlags ||
+                !RayIntersectsTriangle(ray.Origin, ray.Direction, triangle, out float distance) ||
+                distance > maximumDistance)
+                continue;
+            if (receiverSource is not null && ReferenceEquals(triangle.Source, receiverSource) &&
+                (triangle.SourceTriangleIndex == receiverTriangleIndex ||
+                 distance <= selfIntersectionDistance))
+            {
+                rejectedSelfIntersections++;
+                continue;
+            }
+            return true;
+        }
+        return false;
+    }
 
     private bool RaycastCore(Vector3 origin, Vector3 direction, float maximumDistance,
         out LevelCollisionHit hit, LevelCollisionFlags requiredFlags, ExportEntry receiverSource,
@@ -520,13 +637,53 @@ public sealed class LevelCollisionScene
 
         Vector3 size = centroidBounds.Size;
         int axis = size.X >= size.Y && size.X >= size.Z ? 0 : size.Y >= size.Z ? 1 : 2;
-        Array.Sort(triangleIndices, start, count, Comparer<int>.Create((left, right) =>
-            GetAxis(triangles[left].Centroid, axis).CompareTo(GetAxis(triangles[right].Centroid, axis))));
         int leftCount = count / 2;
+        SelectMedian(start, start + count - 1, start + leftCount, axis);
         int leftNode = BuildNode(start, leftCount);
         int rightNode = BuildNode(start + leftCount, count - leftCount);
         nodes[nodeIndex] = new BvhNode(bounds, leftNode, rightNode, 0, 0);
         return nodeIndex;
+    }
+
+    private void SelectMedian(int left, int right, int target, int axis)
+    {
+        while (left < right)
+        {
+            int middle = left + (right - left) / 2;
+            int pivot = MedianTriangleIndex(triangleIndices[left], triangleIndices[middle],
+                triangleIndices[right], axis);
+            int lower = left;
+            int upper = right;
+            while (lower <= upper)
+            {
+                while (CompareTriangleCentroids(triangleIndices[lower], pivot, axis) < 0) lower++;
+                while (CompareTriangleCentroids(triangleIndices[upper], pivot, axis) > 0) upper--;
+                if (lower > upper) break;
+                (triangleIndices[lower], triangleIndices[upper]) =
+                    (triangleIndices[upper], triangleIndices[lower]);
+                lower++;
+                upper--;
+            }
+            if (target <= upper) right = upper;
+            else if (target >= lower) left = lower;
+            else return;
+        }
+    }
+
+    private int MedianTriangleIndex(int first, int second, int third, int axis)
+    {
+        if (CompareTriangleCentroids(first, second, axis) > 0) (first, second) = (second, first);
+        if (CompareTriangleCentroids(second, third, axis) > 0) (second, third) = (third, second);
+        if (CompareTriangleCentroids(first, second, axis) > 0) (first, second) = (second, first);
+        return second;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private int CompareTriangleCentroids(int left, int right, int axis)
+    {
+        int comparison = GetAxis(triangles[left].Centroid, axis)
+            .CompareTo(GetAxis(triangles[right].Centroid, axis));
+        return comparison != 0 ? comparison : left.CompareTo(right);
     }
 
     private void VisitRay(int nodeIndex, Vector3 origin, Vector3 direction, float maximumDistance,
@@ -575,10 +732,8 @@ public sealed class LevelCollisionScene
     private static bool RayIntersectsTriangle(Vector3 origin, Vector3 direction,
         LevelCollisionTriangle triangle, out float distance)
     {
-        Vector3 edge1 = triangle.B - triangle.A;
-        Vector3 edge2 = triangle.C - triangle.A;
-        Vector3 cross = Vector3.Cross(direction, edge2);
-        float determinant = Vector3.Dot(edge1, cross);
+        Vector3 cross = Vector3.Cross(direction, triangle.Edge2);
+        float determinant = Vector3.Dot(triangle.Edge1, cross);
         if (MathF.Abs(determinant) < 0.000001f)
         {
             distance = 0f;
@@ -592,14 +747,14 @@ public sealed class LevelCollisionScene
             distance = 0f;
             return false;
         }
-        Vector3 secondCross = Vector3.Cross(originDelta, edge1);
+        Vector3 secondCross = Vector3.Cross(originDelta, triangle.Edge1);
         float v = Vector3.Dot(direction, secondCross) * inverse;
         if (v < 0f || u + v > 1f)
         {
             distance = 0f;
             return false;
         }
-        distance = Vector3.Dot(edge2, secondCross) * inverse;
+        distance = Vector3.Dot(triangle.Edge2, secondCross) * inverse;
         return distance >= 0f;
     }
 
@@ -665,8 +820,10 @@ public sealed class LevelCollisionScene
         float length = delta.Length();
         if (length > 0.000001f)
         {
-            var temporary = new LevelCollisionTriangle(a, b, c, Vector3.Zero,
-                CollisionBounds.FromTriangle(a, b, c), LevelCollisionFlags.Navigation, null);
+            Vector3 edge1 = b - a;
+            Vector3 edge2 = c - a;
+            var temporary = new LevelCollisionTriangle(a, b, c, edge1, edge2, (a + b + c) / 3f,
+                Vector3.Zero, CollisionBounds.FromTriangle(a, b, c), LevelCollisionFlags.Navigation, null);
             if (RayIntersectsTriangle(start, delta / length, temporary, out float distance) && distance <= length)
             {
                 return 0f;

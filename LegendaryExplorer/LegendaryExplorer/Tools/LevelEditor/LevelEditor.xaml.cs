@@ -3474,7 +3474,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
                 StaticLightingMappingMode.Vertex1D =>
                     "Mapping: force LightMap1D per-vertex lighting.",
                 _ =>
-                    $"Mapping: automatic detail-aware selection; texture receivers use {settings.TextureResolution}×{settings.TextureResolution} LightMap2D and compact/dense receivers use LightMap1D."
+                    $"Mapping: automatic detail-aware selection; LightMap2D receivers retain their authored per-object density up to a {settings.TextureResolution}×{settings.TextureResolution} ceiling, and compact/dense receivers use LightMap1D."
             };
             string confirmation = $"{targetDescription}\n\n{targetList}\n\n" +
                                   $"Lights and occluding static geometry are gathered from all {OpenFiles.Count:N0} loaded levels. " +
@@ -3499,7 +3499,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
             StaticLightingBakeResult bake = await Task.Run(() =>
             {
                 var scene = StaticLightingBaker.BuildScene(sceneActors, targetSet, RenderContext,
-                    exactTargetComponents, settings.MappingMode);
+                    exactTargetComponents, settings.MappingMode, settings.TextureResolution);
                 if (scene.Targets.Count == 0)
                     return new StaticLightingBakeResult
                     {
@@ -3507,9 +3507,11 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
                         SourceTriangleCount = scene.Collision.TriangleCount,
                         LightCount = scene.Lights.Count,
                         TextureMappedComponentCount = 0,
-                        VertexMappedComponentCount = 0
+                        VertexMappedComponentCount = 0,
+                        SceneDiagnostics = scene.Diagnostics
                     };
-                return new StaticLightingBaker(scene.Targets, scene.Lights, scene.Collision, settings)
+                return new StaticLightingBaker(scene.Targets, scene.Lights, scene.Collision, settings,
+                        scene.Diagnostics)
                     .Bake(CancellationToken.None, progress);
             }).ConfigureAwait(true);
 
@@ -3569,7 +3571,14 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
                 $"Rejected receiver self-intersections: {bake.RejectedSelfIntersections:N0}\n" +
                 $"Repaired degenerate UV triangles: {repairedUvTriangleCount:N0}\n" +
                 $"UV mapping fallbacks / conflicting texels: {mappingFallbackCount:N0} / {mappingConflictTexels:N0}\n" +
-                $"Bake time: {bake.BakeMilliseconds / 1000d:F2} seconds\n" +
+                $"Scene extraction / light gathering: {bake.SceneDiagnostics.SceneExtractionMilliseconds / 1000d:F2}s / {bake.SceneDiagnostics.LightGatheringMilliseconds / 1000d:F2}s\n" +
+                $"Mesh prep / receiver prep / BVH: {bake.SceneDiagnostics.MeshPreparationMilliseconds / 1000d:F2}s / {bake.SceneDiagnostics.ReceiverPreparationMilliseconds / 1000d:F2}s / {bake.SceneDiagnostics.BvhConstructionMilliseconds / 1000d:F2}s ({bake.SceneDiagnostics.BvhNodeCount:N0} nodes)\n" +
+                $"Worker time — light prep / 2D raster / 1D sampling: {bake.LightPreparationMilliseconds / 1000d:F2}s / {bake.TextureRasterizationMilliseconds / 1000d:F2}s / {bake.VertexSamplingMilliseconds / 1000d:F2}s\n" +
+                $"Worker time — direct lighting / visibility rays: {bake.DirectLightingMilliseconds / 1000d:F2}s / {bake.ShadowRayMilliseconds / 1000d:F2}s\n" +
+                $"Worker time — occupied texels / filtering / texture construction: {bake.OccupiedTexelDiscoveryMilliseconds / 1000d:F2}s / {bake.FilteringMilliseconds / 1000d:F2}s / {bake.TextureConstructionMilliseconds / 1000d:F2}s\n" +
+                $"Material/emissive evaluation, GI and denoising: not present in this direct-light baker\n" +
+                $"Bake wall time / total serialization: {bake.BakeMilliseconds / 1000d:F2}s / {written.SerializationMilliseconds / 1000d:F2}s\n" +
+                $"LightMap1D / LightMap2D serialization: {written.LightMap1DSerializationMilliseconds / 1000d:F2}s / {written.LightMap2DSerializationMilliseconds / 1000d:F2}s\n" +
                 $"Components replacing existing lighting: {written.ReplacedExistingComponentCount:N0}\n\n" +
                 $"{cacheSummary}\n\nUse Save All to write the modified level packages.",
                 dialogTitle, MessageBoxButton.OK, MessageBoxImage.Information);

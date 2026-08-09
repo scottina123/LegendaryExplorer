@@ -149,6 +149,10 @@ public sealed class StaticLightingMeshTarget
     public required IReadOnlyList<StaticLightingTriangle> Triangles { get; init; }
     public required IReadOnlyList<StaticLightingVertex> Vertices { get; init; }
     public int LightMapCoordinateIndex { get; init; }
+    /// <summary>The component or mesh resolution authored by BioWare, before the bulk-bake ceiling is applied.</summary>
+    public int AuthoredLightMapResolution { get; init; }
+    /// <summary>Actual standalone texture resolution selected for this receiver.</summary>
+    public int TextureResolution { get; init; }
     public bool HasTextureCoordinates { get; init; }
     /// <summary>
     /// True when the selected generation policy chose a texture mapping for this component. A valid
@@ -207,6 +211,25 @@ public sealed class StaticLightingComponentDiagnostics
     public double AverageDirectContribution { get; init; }
     public double AverageEnvironmentContribution { get; init; }
     public double BakeMilliseconds { get; init; }
+    public double LightPreparationMilliseconds { get; init; }
+    public double TextureRasterizationMilliseconds { get; init; }
+    public double DirectLightingMilliseconds { get; init; }
+    public double ShadowRayMilliseconds { get; init; }
+    public double VertexSamplingMilliseconds { get; init; }
+    public double FilteringMilliseconds { get; init; }
+    public double OccupiedTexelDiscoveryMilliseconds { get; init; }
+    public double TextureConstructionMilliseconds { get; init; }
+}
+
+public sealed class StaticLightingSceneDiagnostics
+{
+    public double SceneExtractionMilliseconds { get; init; }
+    public double LightGatheringMilliseconds { get; init; }
+    public double MeshPreparationMilliseconds { get; init; }
+    public double ReceiverPreparationMilliseconds { get; init; }
+    public double BvhConstructionMilliseconds { get; init; }
+    public int BvhNodeCount { get; init; }
+    public int UniquePreparedMeshCount { get; init; }
 }
 
 public sealed class StaticLightingBakeResult
@@ -227,6 +250,15 @@ public sealed class StaticLightingBakeResult
     public double AverageDirectContribution { get; init; }
     public double AverageEnvironmentContribution { get; init; }
     public double BakeMilliseconds { get; init; }
+    public StaticLightingSceneDiagnostics SceneDiagnostics { get; init; } = new();
+    public double LightPreparationMilliseconds { get; init; }
+    public double TextureRasterizationMilliseconds { get; init; }
+    public double DirectLightingMilliseconds { get; init; }
+    public double ShadowRayMilliseconds { get; init; }
+    public double VertexSamplingMilliseconds { get; init; }
+    public double FilteringMilliseconds { get; init; }
+    public double OccupiedTexelDiscoveryMilliseconds { get; init; }
+    public double TextureConstructionMilliseconds { get; init; }
 }
 
 public sealed class StaticLightingWriteResult
@@ -237,4 +269,7 @@ public sealed class StaticLightingWriteResult
     public int IrrelevantLightReferenceCount { get; init; }
     public IReadOnlyList<string> TextureCachePaths { get; init; } = [];
     public int ReplacedExistingComponentCount { get; init; }
+    public double SerializationMilliseconds { get; init; }
+    public double LightMap1DSerializationMilliseconds { get; init; }
+    public double LightMap2DSerializationMilliseconds { get; init; }
 }

@@ -7,6 +7,7 @@ using LegendaryExplorerCore.Unreal.Classes;
 using LegendaryExplorerCore.Unreal.Collections;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Numerics;
@@ -23,13 +24,16 @@ public static class StaticLightingWriter
     public static StaticLightingWriteResult Write(StaticLightingBakeResult bake,
         StaticLightingGenerationSettings settings)
     {
+        Stopwatch serializationTimer = Stopwatch.StartNew();
         settings.Validate();
         ValidateBakeAssociations(bake);
         int lightMapTextures = 0;
         int irrelevantLightReferences = 0;
         int replacedExistingComponents = 0;
+        long lightMap1DSerializationTicks = 0;
+        long lightMap2DSerializationTicks = 0;
         var cachePaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var cacheStreams = new Dictionary<string, FileStream>(StringComparer.OrdinalIgnoreCase);
+        var textureCaches = new Dictionary<string, (FileStream Stream, Guid Guid)>(StringComparer.OrdinalIgnoreCase);
 
         try
         {
@@ -41,16 +45,18 @@ public static class StaticLightingWriter
                 string cacheName = package.Game == MEGame.ME1 ? null : ResolveTextureCacheName(package, settings.TextureCacheName);
                 string cachePath = cacheName is null ? null : Path.Combine(Path.GetDirectoryName(package.FilePath)!, cacheName + ".tfc");
                 Stream cacheStream = null;
+                Guid? cacheGuid = null;
                 if (cachePath is not null && fileGroup.Any(component => component.Texture is not null))
                 {
                     EnsureLocalTextureCache(cachePath);
                     cachePaths.Add(cachePath);
-                    if (!cacheStreams.TryGetValue(cachePath, out FileStream fileStream))
+                    if (!textureCaches.TryGetValue(cachePath, out var cache))
                     {
-                        fileStream = OpenTextureCacheForAppend(cachePath);
-                        cacheStreams.Add(cachePath, fileStream);
+                        cache = OpenTextureCacheForAppend(cachePath);
+                        textureCaches.Add(cachePath, cache);
                     }
-                    cacheStream = fileStream;
+                    cacheStream = cache.Stream;
+                    cacheGuid = cache.Guid;
                 }
 
                 var streamingTextures = new List<(ExportEntry Texture, StaticLightingMeshTarget Target, int Resolution)>();
@@ -63,12 +69,16 @@ public static class StaticLightingWriter
                     irrelevantLightReferences += componentBake.IrrelevantLightGuids.Length;
                     if (componentBake.Texture is { } textureBake)
                     {
-                        InstallTextureLightMap(componentBake, textureBake, cacheName, cachePath, cacheStream,
+                        long lightMapStart = Stopwatch.GetTimestamp();
+                        InstallTextureLightMapWithCacheGuid(componentBake, textureBake, cacheName, cachePath, cacheStream, cacheGuid,
                             streamingTextures, ref lightMapTextures);
+                        lightMap2DSerializationTicks += Stopwatch.GetTimestamp() - lightMapStart;
                     }
                     else if (componentBake.Vertex is { } vertexBake)
                     {
+                        long lightMapStart = Stopwatch.GetTimestamp();
                         InstallVertexLightMap(componentBake, vertexBake);
+                        lightMap1DSerializationTicks += Stopwatch.GetTimestamp() - lightMapStart;
                     }
                     file.IsDirty = true;
                 }
@@ -77,9 +87,10 @@ public static class StaticLightingWriter
         }
         finally
         {
-            foreach (FileStream stream in cacheStreams.Values)
+            foreach ((FileStream stream, _) in textureCaches.Values)
                 stream.Dispose();
         }
+        serializationTimer.Stop();
 
         return new StaticLightingWriteResult
         {
@@ -88,9 +99,14 @@ public static class StaticLightingWriter
             ShadowMapCount = 0,
             IrrelevantLightReferenceCount = irrelevantLightReferences,
             TextureCachePaths = cachePaths.OrderBy(path => path, StringComparer.OrdinalIgnoreCase).ToArray(),
-            ReplacedExistingComponentCount = replacedExistingComponents
+            ReplacedExistingComponentCount = replacedExistingComponents,
+            SerializationMilliseconds = serializationTimer.Elapsed.TotalMilliseconds,
+            LightMap1DSerializationMilliseconds = TicksToMilliseconds(lightMap1DSerializationTicks),
+            LightMap2DSerializationMilliseconds = TicksToMilliseconds(lightMap2DSerializationTicks)
         };
     }
+
+    private static double TicksToMilliseconds(long ticks) => ticks * 1000d / Stopwatch.Frequency;
 
     private static bool HasExistingStaticLighting(StaticMeshComponent component) =>
         component.LODData is { Length: > 0 } &&
@@ -158,7 +174,7 @@ public static class StaticLightingWriter
         }
     }
 
-    private static FileStream OpenTextureCacheForAppend(string cachePath)
+    private static (FileStream Stream, Guid Guid) OpenTextureCacheForAppend(string cachePath)
     {
         var stream = new FileStream(cachePath, FileMode.Open, FileAccess.ReadWrite, FileShare.Read,
             1024 * 1024, FileOptions.SequentialScan);
@@ -167,8 +183,9 @@ public static class StaticLightingWriter
             stream.Dispose();
             throw new InvalidDataException($"Texture cache has no valid GUID header: {cachePath}");
         }
+        Guid guid = stream.ReadGuid();
         stream.Seek(0, SeekOrigin.End);
-        return stream;
+        return (stream, guid);
     }
 
     private static void ApplyStaticLightingProperties(ExportEntry component, IReadOnlyList<Guid> irrelevantLights)
@@ -194,6 +211,23 @@ public static class StaticLightingWriter
 
     private static void InstallTextureLightMap(StaticLightingComponentBake componentBake,
         StaticLightingTextureBake textureBake, string cacheName, string cachePath, Stream cacheStream,
+        List<(ExportEntry Texture, StaticLightingMeshTarget Target, int Resolution)> streamingTextures,
+        ref int lightMapTextureCount)
+    {
+        Guid? cacheGuid = null;
+        if (cacheStream is not null)
+        {
+            long originalPosition = cacheStream.Position;
+            cacheStream.Position = 0;
+            cacheGuid = cacheStream.ReadGuid();
+            cacheStream.Position = originalPosition;
+        }
+        InstallTextureLightMapWithCacheGuid(componentBake, textureBake, cacheName, cachePath, cacheStream,
+            cacheGuid, streamingTextures, ref lightMapTextureCount);
+    }
+
+    private static void InstallTextureLightMapWithCacheGuid(StaticLightingComponentBake componentBake,
+        StaticLightingTextureBake textureBake, string cacheName, string cachePath, Stream cacheStream, Guid? cacheGuid,
         List<(ExportEntry Texture, StaticLightingMeshTarget Target, int Resolution)> streamingTextures,
         ref int lightMapTextureCount)
     {
@@ -224,7 +258,7 @@ public static class StaticLightingWriter
                 // append than BC7 while also matching the format expected by the stock lightmap assets.
                 PixelFormat.DXT1,
                 simple ? "TEXTUREGROUP_Lightmap" : "TEXTUREGROUP_Lightmap",
-                cacheName, cachePath, cacheStream, simple, null);
+                cacheName, cachePath, cacheStream, cacheGuid, simple, null);
             streamingTextures.Add((textures[coefficient], target, textureBake.Resolution));
             lightMapTextureCount++;
         }
@@ -253,22 +287,6 @@ public static class StaticLightingWriter
         // would apply the same light visibility a second time even though bAcceptsLights is false.
         component.LODData[0].ShadowMaps = [];
         target.Component.WriteBinary(component);
-        VerifyInstalledTextureLightMap(target.Component, lightMap);
-    }
-
-    private static void VerifyInstalledTextureLightMap(ExportEntry componentExport, LightMap_2D expected)
-    {
-        StaticMeshComponent restored = componentExport.GetBinaryData<StaticMeshComponent>();
-        if (restored.LODData is not { Length: > 0 } ||
-            restored.LODData[0].LightMap is not LightMap_2D actual ||
-            actual.LightMapType != ELightMapType.LMT_2D ||
-            actual.Texture1 != expected.Texture1 || actual.Texture2 != expected.Texture2 ||
-            actual.Texture3 != expected.Texture3 || actual.Texture4 != expected.Texture4)
-        {
-            throw new InvalidDataException(
-                $"LightMap2D installation did not persist on {componentExport.InstancedFullPath}. " +
-                "The generated texture-cache data was not accepted as a 2D component mapping.");
-        }
     }
 
     private static void InstallVertexLightMap(StaticLightingComponentBake componentBake,
@@ -298,8 +316,8 @@ public static class StaticLightingWriter
 
     private static ExportEntry CreateOrUpdateTexture(IMEPackage package, string name, string className,
         IEntry parent, int resolution, byte[] sourceData, PixelFormat sourceFormat, PixelFormat destinationFormat,
-        NameReference textureGroup, string cacheName, string cachePath, Stream cacheStream, bool simpleLightMap,
-        Guid? textureGuid)
+        NameReference textureGroup, string cacheName, string cachePath, Stream cacheStream, Guid? cacheGuid,
+        bool simpleLightMap, Guid? textureGuid)
     {
         string path = parent is null ? name : parent.InstancedFullPath + "." + name;
         ExportEntry export = package.FindExport(path, className) ??
@@ -338,7 +356,7 @@ public static class StaticLightingWriter
         var texture = new Texture2D(export);
         texture.Replace(image, export.GetProperties(), forcedTFCName: cacheName, forcedTFCPath: cachePath,
             isPackageStored: package.Game == MEGame.ME1, forcedNewFormat: destinationFormat, forceMipping: true,
-            forcedTFCStream: cacheStream);
+            forcedTFCStream: cacheStream, forcedTFCGuid: cacheGuid);
         return export;
     }
 
