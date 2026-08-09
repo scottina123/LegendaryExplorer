@@ -313,7 +313,6 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
     public int LightmassResolution { get => _lightmassResolution; set => SetProperty(ref _lightmassResolution, value); }
     public IReadOnlyList<int> LightmassResolutions { get; } = [64, 128, 256, 512, 1024];
     private int _actorLightmassResolution = 64;
-    private static readonly int[] ActorLightmassResolutions = [2048, 1024, 512, 256, 128, 64];
     private float _lightmassAmbientIntensity = 0.12f;
     public float LightmassAmbientIntensity { get => _lightmassAmbientIntensity; set => SetProperty(ref _lightmassAmbientIntensity, value); }
     private float _lightmassShadowBias = 1f;
@@ -4911,7 +4910,13 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
             Header = header,
             ToolTip = toolTip
         };
-        foreach (int resolution in ActorLightmassResolutions)
+
+        AddResolutionItem(StaticLightingBaker.MaximumActorTextureResolution);
+        foreach (int resolution in LightmassResolutions.Reverse())
+            AddResolutionItem(resolution);
+        return mappingMenu;
+
+        void AddResolutionItem(int resolution)
         {
             int selectedResolution = resolution;
             var resolutionItem = new System.Windows.Controls.MenuItem
@@ -4924,7 +4929,6 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
                 selectedResolution, mappingMode);
             mappingMenu.Items.Add(resolutionItem);
         }
-        return mappingMenu;
     }
 
     private static ExportEntry GetStaticMeshComponentExport(ActorProxy actor) =>
