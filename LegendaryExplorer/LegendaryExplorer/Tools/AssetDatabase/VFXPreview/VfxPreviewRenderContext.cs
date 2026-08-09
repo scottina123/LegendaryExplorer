@@ -1,5 +1,6 @@
 using LegendaryExplorer.Tools.LevelEditor;
 using LegendaryExplorer.Tools.LevelEditor.Scene3D;
+using LegendaryExplorer.Misc.AppSettings;
 using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.Packages.CloningImportingAndRelinking;
 using LegendaryExplorerCore.Helpers;
@@ -152,7 +153,7 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext, IVfxDepthStateP
 
     public VfxPreviewRenderContext()
     {
-        Camera.FirstPerson = true;
+        Camera.FirstPerson = !Settings.Global_UseOrbitCameraControls;
         Camera.Yaw = MathF.PI;
         Camera.Pitch = -0.15f;
         Camera.FocusDepth = DefaultFocusDepth;
@@ -577,7 +578,7 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext, IVfxDepthStateP
 
     private void ResetPreviewCamera()
     {
-        Camera.FirstPerson = true;
+        Camera.FirstPerson = !Settings.Global_UseOrbitCameraControls;
         Camera.IsOrthographic = false;
         Camera.Position = Vector3.Zero;
         Camera.Roll = 0;

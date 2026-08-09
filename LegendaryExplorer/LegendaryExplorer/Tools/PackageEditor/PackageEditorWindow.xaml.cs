@@ -88,10 +88,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
 
         private const int SearchBatchSize = 512;
 
-        private static readonly TimeSpan SelectionPreviewDelay = TimeSpan.FromMilliseconds(100);
-
         private CancellationTokenSource _entrySearchCancellationTokenSource;
-        private readonly DispatcherTimer _selectionPreviewTimer;
 
         private TextBox _inlineObjectNameEditor;
         private IntegerUpDown _inlineObjectNameIndexEditor;
@@ -362,7 +359,6 @@ namespace LegendaryExplorer.Tools.PackageEditor
 
         private int QueuedGotoNumber;
         private bool IsLoadingFile;
-        private bool _pendingPreviewIsRefresh;
         private DispatcherOperation _pendingStringRefNavigationOperation;
         private CancellationTokenSource _stringRefSearchCancellationTokenSource;
         private ListDialog _stringRefSearchResultsDialog;
@@ -5734,11 +5730,6 @@ namespace LegendaryExplorer.Tools.PackageEditor
             LoadCommands();
 
             InitializeComponent();
-            _selectionPreviewTimer = new DispatcherTimer(DispatcherPriority.Background)
-            {
-                Interval = SelectionPreviewDelay
-            };
-            _selectionPreviewTimer.Tick += SelectionPreviewTimer_Tick;
             DataContext = this;
             ((FrameworkElement)Resources["EntryContextMenu"]).DataContext = this;
 
@@ -5891,7 +5882,6 @@ namespace LegendaryExplorer.Tools.PackageEditor
             CancelStringRefSearch();
             CancelPendingStringRefNavigation();
             CloseStringRefSearchResults();
-            CancelPendingPreview();
             ClearTreeMultiSelection();
             _treeSelectionAnchor = null;
             BusyText = $"Loading {loadingName}";
@@ -6704,33 +6694,11 @@ namespace LegendaryExplorer.Tools.PackageEditor
 
         private void ApplySelectionPreview()
         {
-            RequestPreview();
-        }
-
-        private void RequestPreview(bool isRefresh = false)
-        {
-            _pendingPreviewIsRefresh |= isRefresh;
-            _selectionPreviewTimer.Stop();
-            _selectionPreviewTimer.Start();
-        }
-
-        private void SelectionPreviewTimer_Tick(object sender, EventArgs e)
-        {
-            _selectionPreviewTimer.Stop();
-            bool refresh = _pendingPreviewIsRefresh;
-            _pendingPreviewIsRefresh = false;
-            Preview(refresh);
-        }
-
-        private void CancelPendingPreview()
-        {
-            _selectionPreviewTimer.Stop();
-            _pendingPreviewIsRefresh = false;
+            Preview();
         }
 
         private void ClearPreviewPane()
         {
-            CancelPendingPreview();
             foreach (ExportLoaderControl exportLoader in ExportLoaders.Keys)
             {
                 exportLoader.UnloadExport();
@@ -7897,7 +7865,6 @@ namespace LegendaryExplorer.Tools.PackageEditor
                 CancelStringRefSearch();
                 CancelPendingStringRefNavigation();
                 CloseStringRefSearchResults();
-                CancelPendingPreview();
                 SoundTab_Soundpanel.FreeAudioResources();
                 foreach (ExportLoaderControl el in ExportLoaders.Keys)
                 {

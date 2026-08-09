@@ -1450,9 +1450,17 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         else
         {
             float hyp = fullBounds.SphereRadius.Clamp(10, float.MaxValue) * 2;
-            (float sin, float cos) = MathF.SinCos(MathF.PI / 2.5f);
-            RenderContext.Camera.Position = new Vector3(origin.X, origin.Y + sin * hyp, origin.Z + cos * hyp);
-            RenderContext.Camera.OrientTowards(origin);
+            if (RenderContext.Camera.FirstPerson)
+            {
+                (float sin, float cos) = MathF.SinCos(MathF.PI / 2.5f);
+                RenderContext.Camera.Position = new Vector3(origin.X, origin.Y + sin * hyp, origin.Z + cos * hyp);
+                RenderContext.Camera.OrientTowards(origin);
+            }
+            else
+            {
+                RenderContext.Camera.Position = origin;
+                RenderContext.Camera.FocusDepth = hyp;
+            }
         }
         UpdateCameraPositionText();
         UpdateCameraRotationText();

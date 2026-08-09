@@ -1,5 +1,6 @@
 ﻿using LegendaryExplorer.Tools.LevelEditor.Scene3D;
 using LegendaryExplorer.Tools.AssetDatabase.VFXPreview;
+using LegendaryExplorer.Misc.AppSettings;
 using LegendaryExplorerCore.Gammtek.Extensions;
 using LegendaryExplorerCore.Helpers;
 using LegendaryExplorerCore.SharpDX;
@@ -393,7 +394,7 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
     public LevelEditorRenderContext(bool readOnly = false) : base()
     {
         BackgroundColor = System.Windows.Media.Color.FromRgb(0x99, 0x99, 0x99);
-        Camera.FirstPerson = true;
+        Camera.FirstPerson = !Settings.Global_UseOrbitCameraControls;
         TransformWidget = new Widget();
         VfxRenderer = new LevelVfxRenderer(this);
         IsReadOnly = readOnly;

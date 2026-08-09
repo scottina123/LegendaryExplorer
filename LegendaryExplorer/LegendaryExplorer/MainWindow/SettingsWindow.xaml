@@ -47,6 +47,11 @@
                                       IsChecked="{Binding Path=(settings:Settings.Global_UseOwnerFriendlyNames)}"/>
                             <TextBlock>Use owner friendly names in Dialogue Editor, Package Editor, and Properties</TextBlock>
                         </StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,5">
+                            <CheckBox x:Name="Global_UseOrbitCameraControls" Margin="5,0"
+                                      IsChecked="{Binding Path=(settings:Settings.Global_UseOrbitCameraControls)}"/>
+                            <TextBlock>Use standard orbit controls in Level Editor-based 3D viewers and VFX Preview</TextBlock>
+                        </StackPanel>
                         <TextBlock Margin="5,5,0,0">Mass Effect 1 (Original Trilogy) Directory:</TextBlock>
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,5" Tag="Global_ME1Directory">
                             <TextBox Width="450" x:Name="Global_ME1Directory" Margin="5,0,0,0" TextChanged="Setting_OnTextChanged"

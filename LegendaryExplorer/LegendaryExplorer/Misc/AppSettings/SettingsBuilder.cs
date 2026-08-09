@@ -432,6 +432,11 @@ namespace LegendaryExplorer.Misc.AppSettings
             get => _global_useownerfriendlynames;
             set => SetProperty(ref _global_useownerfriendlynames, value);
         }
+        private static bool _global_useorbitcameracontrols = false;
+        public static bool Global_UseOrbitCameraControls {
+            get => _global_useorbitcameracontrols;
+            set => SetProperty(ref _global_useorbitcameracontrols, value);
+        }
         private static string _global_me1directory = "";
         public static string Global_ME1Directory {
             get => _global_me1directory;
@@ -699,6 +704,7 @@ namespace LegendaryExplorer.Misc.AppSettings
             Global_Theme = ThemeManager.ParseThemeName(
                 TryGetSetting(settingsJson, "global_theme", "Light")).ToString();
             Global_UseOwnerFriendlyNames = TryGetSetting(settingsJson, "global_useownerfriendlynames", false);
+            Global_UseOrbitCameraControls = TryGetSetting(settingsJson, "global_useorbitcameracontrols", false);
             Global_ME1Directory = TryGetSetting(settingsJson, "global_me1directory", "");
             Global_ME2Directory = TryGetSetting(settingsJson, "global_me2directory", "");
             Global_ME3Directory = TryGetSetting(settingsJson, "global_me3directory", "");
@@ -818,6 +824,7 @@ namespace LegendaryExplorer.Misc.AppSettings
             settingsJson["global_analytics_enabled"] = Global_Analytics_Enabled.ToString();
             settingsJson["global_theme"] = Global_Theme.ToString();
             settingsJson["global_useownerfriendlynames"] = Global_UseOwnerFriendlyNames.ToString();
+            settingsJson["global_useorbitcameracontrols"] = Global_UseOrbitCameraControls.ToString();
             settingsJson["global_me1directory"] = Global_ME1Directory.ToString();
             settingsJson["global_me2directory"] = Global_ME2Directory.ToString();
             settingsJson["global_me3directory"] = Global_ME3Directory.ToString();
