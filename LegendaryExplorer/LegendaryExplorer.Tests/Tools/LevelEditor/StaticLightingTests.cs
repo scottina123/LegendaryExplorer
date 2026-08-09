@@ -478,6 +478,27 @@ public class StaticLightingTests
     }
 
     [TestMethod]
+    public void MissingLightMapCoordinateIndex_UsesUvZeroWithoutOverridingAuthoredIndex()
+    {
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("LightMapCoordinateIndex.pcc",
+            MEGame.LE3);
+        ExportEntry mesh = package.CreateExport("StaticMesh_0", "StaticMesh", null, indexed: false);
+        mesh.WriteProperties([]);
+        var lod = new StaticMeshRenderData
+        {
+            VertexBuffer = new StaticMeshVertexBuffer { NumTexCoords = 2 }
+        };
+        var method = typeof(StaticLightingBaker).GetMethod("GetLightMapCoordinateIndex",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+
+        Assert.IsNotNull(method);
+        Assert.AreEqual(0, (int)method.Invoke(null, [mesh, lod]));
+
+        mesh.WriteProperty(new IntProperty(1, "LightMapCoordinateIndex"));
+        Assert.AreEqual(1, (int)method.Invoke(null, [mesh, lod]));
+    }
+
+    [TestMethod]
     public void MappingMode_ForcedTextureBakeReportsVertexFallbackWithoutThrowing()
     {
         using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("ForcedTextureFallback.pcc", MEGame.LE3);

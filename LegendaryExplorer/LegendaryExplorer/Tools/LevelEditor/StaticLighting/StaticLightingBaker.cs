@@ -1553,7 +1553,9 @@ public sealed class StaticLightingBaker
 
     private static int GetLightMapCoordinateIndex(ExportEntry meshExport, StaticMeshRenderData lod)
     {
-        return Math.Max(0, meshExport.GetProperty<IntProperty>("LightMapCoordinateIndex")?.Value ?? 1);
+        // A missing property means the mesh has no separately authored lightmap channel. Use UV0 in
+        // that case instead of assuming UV1, which may contain overlapping texture coordinates.
+        return Math.Max(0, meshExport.GetProperty<IntProperty>("LightMapCoordinateIndex")?.Value ?? 0);
     }
 
     private static IReadOnlyList<StaticLightingTriangle> BuildTriangles(StaticMeshRenderData lod,
