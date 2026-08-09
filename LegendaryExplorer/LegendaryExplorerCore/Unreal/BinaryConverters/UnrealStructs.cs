@@ -329,7 +329,11 @@ namespace LegendaryExplorerCore.Unreal.BinaryConverters
             box.Add(other.Origin + other.BoxExtent);
 
             var result = new BoxSphereBounds(box);
-            result.SphereRadius = MathF.Min(result.SphereRadius, MathF.Max((Origin - result.Origin).Length() + SphereRadius, (other.Origin - result.Origin).Length()));
+            // Both input spheres must be included. Omitting the second radius made Union order-dependent and
+            // could collapse a multi-component actor's sphere to the size of its first (smaller) component.
+            float thisRadius = (Origin - result.Origin).Length() + MathF.Abs(SphereRadius);
+            float otherRadius = (other.Origin - result.Origin).Length() + MathF.Abs(other.SphereRadius);
+            result.SphereRadius = MathF.Min(result.SphereRadius, MathF.Max(thisRadius, otherRadius));
             return result;
         }
     }

@@ -45,7 +45,7 @@ public sealed class LightIconOverlay : UIElement
         var camPos = context.Camera.Position;
         float radius = context.LightIconRadius;
         float radiusSq = radius <= 0f ? float.MaxValue : radius * radius;
-        int sceneRevision = context.SceneOverlayRevision;
+        int sceneRevision = context.LightIconRevision;
         if (candidateSceneRevision != sceneRevision || candidateCameraPosition != camPos || candidateRadius != radius)
         {
             candidateSceneRevision = sceneRevision;
@@ -195,7 +195,7 @@ public sealed class EmitterIconOverlay : UIElement
         }
 
         Vector3 cameraPosition = context.Camera.Position;
-        int sceneRevision = context.SceneOverlayRevision;
+        int sceneRevision = context.EmitterIconRevision;
         if (candidateSceneRevision != sceneRevision || candidateCameraPosition != cameraPosition)
         {
             candidateSceneRevision = sceneRevision;
@@ -308,7 +308,7 @@ public sealed class PointOfInterestIconOverlay : UIElement
         }
 
         Vector3 cameraPosition = context.Camera.Position;
-        int sceneRevision = context.SceneOverlayRevision;
+        int sceneRevision = context.PointOfInterestIconRevision;
         if (candidateSceneRevision != sceneRevision || candidateCameraPosition != cameraPosition)
         {
             candidateSceneRevision = sceneRevision;

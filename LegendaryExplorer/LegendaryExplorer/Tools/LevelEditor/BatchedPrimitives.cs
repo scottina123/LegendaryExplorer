@@ -14,7 +14,6 @@ public class BatchedPrimitives
 {
     private readonly List<WorldVertex> LineVerts = [];
 
-    private readonly List<int> MeshStarts = [];
     private readonly List<WorldVertex> MeshVerts = [];
     private readonly List<int> MeshIndices = [];
 
@@ -60,31 +59,18 @@ public class BatchedPrimitives
             context.DefaultEffect.RenderPrimitives(context, SharpDX.Direct3D.PrimitiveTopology.LineList, 0, lineVertCount);
         }
 
-        if (MeshStarts.Count > 0)
+        // Every primitive already carries its color and hit-test ID per vertex, and every index is relative
+        // to the shared mesh vertex span. Submit the whole triangle list at once instead of issuing one draw
+        // call per icon layer. Large levels can otherwise spend thousands of draw calls on markers alone.
+        if (MeshIndices.Count > 0)
         {
-            int i = 0;
-            int indexStart;
-            int indexCount;
-            for (; i < MeshStarts.Count - 1; i++)
-            {
-                indexStart = MeshStarts[i];
-                indexCount = MeshStarts[i + 1] - indexStart;
-                if (indexCount <= 0) continue;
-                context.DefaultEffect.RenderPrimitives(context, SharpDX.Direct3D.PrimitiveTopology.TriangleList, indexStart, indexCount, lineVertCount);
-            }
-            indexStart = MeshStarts[i];
-            indexCount = MeshIndices.Count - indexStart;
-            if (indexCount > 0)
-            {
-                context.DefaultEffect.RenderPrimitives(context, SharpDX.Direct3D.PrimitiveTopology.TriangleList, indexStart, indexCount, lineVertCount);
-            }
+            context.DefaultEffect.RenderPrimitives(context, SharpDX.Direct3D.PrimitiveTopology.TriangleList,
+                0, MeshIndices.Count, lineVertCount);
         }
 
         LineVerts.Clear();
         MeshVerts.Clear();
         MeshIndices.Clear();
-        MeshStarts.Clear();
-
         context.RenderFlags &= ~RenderContext.ShaderFlags.PrimitiveRendering;
     }
 
@@ -102,7 +88,6 @@ public class BatchedPrimitives
             HitVec = GetHitVec(hitId);
             vertOffset = batchedPrimitives.MeshVerts.Count;
             LocalToWorld = localToWorld;
-            batcher.MeshStarts.Add(batchedPrimitives.MeshIndices.Count);
         }
 
         public void AddVertex(Vector3 point)

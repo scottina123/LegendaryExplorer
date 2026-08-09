@@ -1547,13 +1547,21 @@ public class MeshRenderContext : RenderContext
         /// </summary>
         public bool IsVisible(BoxSphereBounds bounds)
         {
-            float radius = MathF.Abs(bounds.SphereRadius);
-            if (!(radius > 0f) || !float.IsFinite(radius)
+            Vector3 extent = Vector3.Abs(bounds.BoxExtent);
+            float sphereRadius = MathF.Abs(bounds.SphereRadius);
+            float extentRadius = extent.Length();
+            if (!float.IsFinite(sphereRadius) || !float.IsFinite(extentRadius)
                 || !float.IsFinite(bounds.Origin.X) || !float.IsFinite(bounds.Origin.Y)
                 || !float.IsFinite(bounds.Origin.Z))
             {
                 return true;
             }
+
+            // Serialized and aggregated bounds come from several actor/component types. Use the larger of
+            // their sphere and enclosing-box radii so a stale or underestimated sphere cannot cull visible
+            // static/skeletal meshes, stunts, decals, emitters, lights, or POI helpers during camera motion.
+            float radius = MathF.Max(sphereRadius, extentRadius);
+            if (!(radius > 0f)) return true;
 
             Vector3 viewCenter = Vector3.Transform(bounds.Origin, viewMatrix);
             if (viewCenter.Z + radius < zNear || viewCenter.Z - radius > zFar)

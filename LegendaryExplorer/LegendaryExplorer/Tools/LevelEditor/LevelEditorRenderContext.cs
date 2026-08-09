@@ -61,9 +61,13 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
     private long lastUserActivityTimestamp;
     private long lastHoverHitTestTimestamp;
     private int visibleEmitterInstanceCount;
-    private int sceneOverlayRevision;
+    private int lightIconRevision;
+    private int emitterIconRevision;
+    private int pointOfInterestIconRevision;
 
-    internal int SceneOverlayRevision => Volatile.Read(ref sceneOverlayRevision);
+    internal int LightIconRevision => Volatile.Read(ref lightIconRevision);
+    internal int EmitterIconRevision => Volatile.Read(ref emitterIconRevision);
+    internal int PointOfInterestIconRevision => Volatile.Read(ref pointOfInterestIconRevision);
 
     public bool ForceContinuousRendering { get; set; }
     public override bool RenderOnUnhandledMouseMove => false;
@@ -247,11 +251,39 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
 
     private void Actor_PropertyChanged(object sender, PropertyChangedEventArgs e)
     {
-        Interlocked.Increment(ref sceneOverlayRevision);
-        if (sender is ActorProxy actor && actor.HasLightSettings && CanAffectSceneLight(e.PropertyName))
+        if (sender is not ActorProxy actor)
+        {
+            return;
+        }
+
+        InvalidateIconForActor(actor);
+        if (actor.HasLightSettings && CanAffectSceneLight(e.PropertyName))
         {
             RefreshCachedSceneLight(actor);
         }
+    }
+
+    private void InvalidateIconForActor(ActorProxy actor)
+    {
+        if (actor.HasLightSettings)
+        {
+            Interlocked.Increment(ref lightIconRevision);
+        }
+        if (actor is EmitterActorProxy)
+        {
+            Interlocked.Increment(ref emitterIconRevision);
+        }
+        if (actor is SFXPointOfInterestProxy)
+        {
+            Interlocked.Increment(ref pointOfInterestIconRevision);
+        }
+    }
+
+    private void InvalidateAllIcons()
+    {
+        Interlocked.Increment(ref lightIconRevision);
+        Interlocked.Increment(ref emitterIconRevision);
+        Interlocked.Increment(ref pointOfInterestIconRevision);
     }
 
     private void CacheSceneLight(ActorProxy actor)
@@ -621,12 +653,18 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
     public void LoadActors(IList<ActorProxy> actors)
     {
         DrawList_3D.AddRange(actors);
+        bool lightsChanged = false;
+        bool emittersChanged = false;
+        bool pointsOfInterestChanged = false;
         foreach (var actor in actors)
         {
             actor.HitID = HitProxies.Add(actor);
             actor.PropertyChanged += Actor_PropertyChanged;
             CacheSceneLight(actor);
             QueueRenderResources(actor);
+            lightsChanged |= actor.HasLightSettings;
+            emittersChanged |= actor is EmitterActorProxy;
+            pointsOfInterestChanged |= actor is SFXPointOfInterestProxy;
         }
         StartRenderResourceWorker();
         if (!DrawList_UI.Contains(LightIcons))
@@ -641,7 +679,9 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
         {
             DrawList_UI.Add(PointOfInterestIcons);
         }
-        Interlocked.Increment(ref sceneOverlayRevision);
+        if (lightsChanged) Interlocked.Increment(ref lightIconRevision);
+        if (emittersChanged) Interlocked.Increment(ref emitterIconRevision);
+        if (pointsOfInterestChanged) Interlocked.Increment(ref pointOfInterestIconRevision);
         EnableTransformWidget();
     }
 
@@ -832,7 +872,7 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
         DrawList_UI.Clear();
         SceneLights.Clear();
         sceneLightCache.Clear();
-        Interlocked.Increment(ref sceneOverlayRevision);
+        InvalidateAllIcons();
         TransformWidget.Attach = null;
     }
 
@@ -877,7 +917,7 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
             actor.PropertyChanged -= Actor_PropertyChanged;
             RemoveSceneLight(actor);
             HitProxies.RemoveAt(actor.HitID);
-            Interlocked.Increment(ref sceneOverlayRevision);
+            InvalidateIconForActor(actor);
         }
     }
 
@@ -890,7 +930,7 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
             actor.PropertyChanged += Actor_PropertyChanged;
             CacheSceneLight(actor);
             QueueRenderResources(actor);
-            Interlocked.Increment(ref sceneOverlayRevision);
+            InvalidateIconForActor(actor);
             if (!DrawList_UI.Contains(EmitterIcons))
             {
                 DrawList_UI.Add(EmitterIcons);
