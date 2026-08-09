@@ -41,65 +41,57 @@ public sealed class StaticLightingBaker
     private readonly LevelCollisionScene collision;
     private readonly StaticLightingGenerationSettings settings;
     private readonly StaticLightingSceneDiagnostics sceneDiagnostics;
+    private readonly StaticLightingAreaEmitterIndex emissiveEmitterIndex;
 
     public StaticLightingBaker(IReadOnlyList<StaticLightingMeshTarget> targets,
         IReadOnlyList<StaticLightingLight> lights, LevelCollisionScene collision,
-        StaticLightingGenerationSettings settings, StaticLightingSceneDiagnostics sceneDiagnostics = null)
+        StaticLightingGenerationSettings settings, StaticLightingSceneDiagnostics sceneDiagnostics = null,
+        StaticLightingAreaEmitterIndex emissiveEmitterIndex = null)
     {
         this.targets = targets;
         this.lights = lights;
         this.collision = collision;
         this.settings = settings;
         this.sceneDiagnostics = sceneDiagnostics ?? new StaticLightingSceneDiagnostics();
+        this.emissiveEmitterIndex = emissiveEmitterIndex ?? StaticLightingAreaEmitterIndex.Empty;
         settings.Validate();
-    }
-
-    public static string GetRequestedMappingValidationError(IReadOnlyList<StaticLightingMeshTarget> targets,
-        StaticLightingMappingMode mappingMode)
-    {
-        if (mappingMode != StaticLightingMappingMode.Texture2D)
-            return null;
-
-        StaticLightingMeshTarget[] invalidTargets = targets.Where(target => !target.UseTextureMapping).ToArray();
-        if (invalidTargets.Length == 0)
-            return null;
-
-        string details = string.Join(Environment.NewLine, invalidTargets.Take(8).Select(target =>
-            $"  {target.Component.InstancedFullPath}: UV{target.LightMapCoordinateIndex}; " +
-            $"invalid={target.MappingDiagnostics.InvalidUvVertexCount:N0}, " +
-            $"degenerate={target.MappingDiagnostics.DegenerateUvTriangleCount:N0}, " +
-            $"overlap pairs={target.MappingDiagnostics.OverlappingUvTrianglePairCount:N0}"));
-        if (invalidTargets.Length > 8)
-            details += Environment.NewLine + $"  ...and {invalidTargets.Length - 8:N0} more";
-        return
-            "LightMap2D was explicitly requested, but one or more selected components do not have a valid " +
-            "texture-lightmap mapping. No bake or TFC write was started. Choose LightMap1D/Automatic or repair " +
-            $"the selected lightmap UV channel.{Environment.NewLine}{details}";
     }
 
     public StaticLightingBakeResult Bake(CancellationToken cancellationToken = default,
         IProgress<string> progress = null)
     {
-        if (GetRequestedMappingValidationError(targets, settings.MappingMode) is { } mappingError)
-        {
-            return new StaticLightingBakeResult
-            {
-                Components = [],
-                SourceTriangleCount = collision.TriangleCount,
-                LightCount = lights.Count,
-                TextureMappedComponentCount = 0,
-                VertexMappedComponentCount = 0,
-                ValidationError = mappingError,
-                SceneDiagnostics = sceneDiagnostics
-            };
-        }
-
         ExportEntry duplicateTarget = targets.GroupBy(target => target.Component)
             .FirstOrDefault(group => group.Count() > 1)?.Key;
         if (duplicateTarget is not null)
             throw new InvalidOperationException($"Static-lighting target {duplicateTarget.InstancedFullPath} was collected more than once.");
 
         Stopwatch bakeTimer = Stopwatch.StartNew();
+        var targetBounds = new (Vector3 Minimum, Vector3 Maximum)[targets.Count];
+        for (int index = 0; index < targets.Count; index++)
+        {
+            TryCalculateBounds(targets[index].Vertices, out Vector3 minimum, out Vector3 maximum);
+            targetBounds[index] = (minimum, maximum);
+        }
+
+        long emissiveCullingStart = Stopwatch.GetTimestamp();
+        var affectingEmittersByTarget = new StaticLightingAreaEmitter[targets.Count][];
+        if (emissiveEmitterIndex.Count == 0)
+        {
+            Array.Fill(affectingEmittersByTarget, Array.Empty<StaticLightingAreaEmitter>());
+        }
+        else
+        {
+            for (int index = 0; index < targets.Count; index++)
+            {
+                StaticLightingMeshTarget target = targets[index];
+                (Vector3 minimum, Vector3 maximum) = targetBounds[index];
+                affectingEmittersByTarget[index] = emissiveEmitterIndex.Query(minimum, maximum,
+                    target.LightingChannelMask, target.Component);
+            }
+        }
+        double emissiveReceiverCullingMilliseconds =
+            TicksToMilliseconds(Stopwatch.GetTimestamp() - emissiveCullingStart);
+
         var results = new StaticLightingComponentBake[targets.Count];
         int textureMapped = 0;
         int vertexMapped = 0;
@@ -113,7 +105,8 @@ public sealed class StaticLightingBaker
         // lights as well as mapping size: visibility sampling, not rasterization, dominates the
         // expensive architectural receivers.
         int[] workOrder = Enumerable.Range(0, targets.Count)
-            .OrderByDescending(index => EstimateTargetWork(targets[index], lights))
+            .OrderByDescending(index => EstimateTargetWork(targets[index], targetBounds[index], lights,
+                affectingEmittersByTarget[index].Length))
             .ToArray();
         // Parallel.For range partitioning can assign broad, distant slices to workers and defeat
         // the LPT order above. Pull one receiver at a time from the ordered sequence so expensive
@@ -124,7 +117,7 @@ public sealed class StaticLightingBaker
             cancellationToken.ThrowIfCancellationRequested();
             StaticLightingMeshTarget target = targets[index];
             long lightPreparationStart = Stopwatch.GetTimestamp();
-            TryCalculateBounds(target.Vertices, out Vector3 boundsMinimum, out Vector3 boundsMaximum);
+            (Vector3 boundsMinimum, Vector3 boundsMaximum) = targetBounds[index];
             var affectingLightList = new List<StaticLightingLight>();
             var irrelevantLightList = new List<StaticLightingLight>();
             foreach (StaticLightingLight light in lights)
@@ -139,7 +132,9 @@ public sealed class StaticLightingBaker
                 .Where(guid => !affectingLightGuids.Contains(guid))
                 .Distinct().ToArray();
             var counters = new BakeCounters();
-            PreparedLighting preparedLighting = PrepareLighting(affectingLights);
+            StaticLightingAreaEmitter[] affectingEmitters = affectingEmittersByTarget[index];
+            PreparedLighting preparedLighting = PrepareLighting(affectingLights, affectingEmitters);
+            counters.AffectingEmissiveEmitters = affectingEmitters.Length;
             counters.LightPreparationTicks = Stopwatch.GetTimestamp() - lightPreparationStart;
             Stopwatch componentTimer = Stopwatch.StartNew();
 
@@ -194,7 +189,8 @@ public sealed class StaticLightingBaker
             progress?.Report($"Baked static lighting {completedCount:N0}/{targets.Count:N0}: " +
                              $"#{target.Component.UIndex:N0} {target.Component.Parent?.ObjectName.Instanced}." +
                              $"{target.Component.ObjectName.Instanced} ({mappingStatus}; " +
-                             $"{affectingLights.Length:N0} lights; {diagnostic.RaysCast:N0} rays; " +
+                             $"{affectingLights.Length:N0} lights / {affectingEmitters.Length:N0} emissive samples; " +
+                             $"{diagnostic.RaysCast:N0} rays; " +
                              $"visibility {diagnostic.AverageVisibility:P1}; " +
                              $"shadow {diagnostic.ShadowRayMilliseconds / 1000d:F2}s; " +
                              $"total {diagnostic.BakeMilliseconds / 1000d:F2}s)");
@@ -209,6 +205,7 @@ public sealed class StaticLightingBaker
             Components = results,
             SourceTriangleCount = collision.TriangleCount,
             LightCount = lights.Count,
+            EmissiveEmitterCount = emissiveEmitterIndex.Count,
             TextureMappedComponentCount = textureMapped,
             VertexMappedComponentCount = vertexMapped,
             WorkUnitCount = workUnitCount,
@@ -221,6 +218,9 @@ public sealed class StaticLightingBaker
                 diagnostics.Sum(item => item.AverageVisibility * item.VisibilitySampleCount) / visibilitySampleCount,
             AverageDirectContribution = diagnostics.Length == 0 ? 0d : diagnostics.Average(item => item.AverageDirectContribution),
             AverageEnvironmentContribution = diagnostics.Length == 0 ? 0d : diagnostics.Average(item => item.AverageEnvironmentContribution),
+            EmissiveSamplesEvaluated = diagnostics.Sum(item => item.EmissiveSamplesEvaluated),
+            EmissiveRaysCast = diagnostics.Sum(item => item.EmissiveRaysCast),
+            EmissiveReceiverCullingMilliseconds = emissiveReceiverCullingMilliseconds,
             BakeMilliseconds = bakeTimer.Elapsed.TotalMilliseconds,
             SceneDiagnostics = sceneDiagnostics,
             LightPreparationMilliseconds = diagnostics.Sum(item => item.LightPreparationMilliseconds),
@@ -242,24 +242,25 @@ public sealed class StaticLightingBaker
     };
 
     private static long EstimateTargetWork(StaticLightingMeshTarget target,
-        IReadOnlyList<StaticLightingLight> lights)
+        (Vector3 Minimum, Vector3 Maximum) bounds, IReadOnlyList<StaticLightingLight> lights,
+        int affectingEmissiveEmitterCount)
     {
-        TryCalculateBounds(target.Vertices, out Vector3 boundsMinimum, out Vector3 boundsMaximum);
         int affectingLightCount = 0;
         foreach (StaticLightingLight light in lights)
         {
             if (LightCanAffect(light, target.LightingChannelMask, target.Vertices.Count > 0,
-                    boundsMinimum, boundsMaximum))
+                    bounds.Minimum, bounds.Maximum))
                 affectingLightCount++;
         }
         long mappingWork = target.UseTextureMapping
             ? (long)Math.Max(1, target.TextureResolution) * Math.Max(1, target.TextureResolution)
             : Math.Max(1, target.Vertices.Count);
-        return mappingWork * Math.Max(1, affectingLightCount);
+        return mappingWork * Math.Max(1, affectingLightCount + affectingEmissiveEmitterCount);
     }
 
     public static (IReadOnlyList<StaticLightingMeshTarget> Targets, IReadOnlyList<StaticLightingLight> Lights,
-        LevelCollisionScene Collision, StaticLightingSceneDiagnostics Diagnostics) BuildScene(IEnumerable<ActorProxy> actors,
+        LevelCollisionScene Collision, StaticLightingAreaEmitterIndex EmissiveEmitters,
+        StaticLightingSceneDiagnostics Diagnostics) BuildScene(IEnumerable<ActorProxy> actors,
         IReadOnlySet<OpenLevelFile> targetFiles, LevelEditorRenderContext renderContext,
         IReadOnlySet<ExportEntry> exactTargetComponents = null,
         StaticLightingMappingMode mappingMode = StaticLightingMappingMode.Automatic,
@@ -279,7 +280,11 @@ public sealed class StaticLightingBaker
         var stockAtlasResolutions = new Dictionary<string, List<int>>(StringComparer.OrdinalIgnoreCase);
         var textureDimensions = new Dictionary<ExportEntry, (int Width, int Height)>();
         var materialCompatibilityCache = new Dictionary<ExportEntry, (bool Compatible, string MaterialPath)>();
+        Dictionary<ExportEntry, (bool Emissive, Vector3 Radiance)> emissiveMaterialCache = null;
         var excludedUnlitReceivers = new List<StaticLightingExcludedReceiver>();
+        var areaEmitters = new List<StaticLightingAreaEmitter>();
+        int emissiveSourceTriangleCount = 0;
+        long emissivePreprocessingTicks = 0;
 
         foreach (ActorProxy actor in actorArray)
         {
@@ -302,15 +307,11 @@ public sealed class StaticLightingBaker
                 }
 
                 StaticMeshRenderData lod = mesh.LODModels[0];
-                int lightMapCoordinateIndex = GetLightMapCoordinateIndex(meshExport, lod);
-                mappingDiagnosticsCache.TryGetValue((meshExport, lightMapCoordinateIndex),
-                    out StaticLightingMappingDiagnostics cachedMappingDiagnostics);
-                IReadOnlyList<StaticLightingTriangle> triangles = BuildTriangles(lod, component.LocalToWorld,
-                    lightMapCoordinateIndex, meshExport.InstancedFullPath, out StaticLightingVertex[] vertices,
-                    out bool hasTextureCoordinates, out StaticLightingMappingDiagnostics mappingDiagnostics,
-                    cachedMappingDiagnostics);
-                if (cachedMappingDiagnostics is null)
-                    mappingDiagnosticsCache.Add((meshExport, lightMapCoordinateIndex), mappingDiagnostics);
+                IReadOnlyList<StaticLightingTriangle> triangles = BuildTrianglesWithRuntimeLightMapCoordinate(
+                    meshExport, lod, component.LocalToWorld, mappingDiagnosticsCache,
+                    out int lightMapCoordinateIndex,
+                    out StaticLightingVertex[] vertices, out bool hasTextureCoordinates,
+                    out StaticLightingMappingDiagnostics mappingDiagnostics);
                 meshPreparationTicks += Stopwatch.GetTimestamp() - meshStart;
                 if (triangles.Count == 0 || vertices.Length == 0)
                     continue;
@@ -323,6 +324,15 @@ public sealed class StaticLightingBaker
                         occluders.Add((triangle.A.Position, triangle.B.Position, triangle.C.Position,
                             component.Export, triangle.SourceTriangleIndex));
                 }
+                if (StaticLightingEmissive.TryGetSettings(component.Properties,
+                        out StaticLightingEmissiveSettings emissiveSettings))
+                {
+                    long emissiveStart = Stopwatch.GetTimestamp();
+                    emissiveMaterialCache ??= new Dictionary<ExportEntry, (bool Emissive, Vector3 Radiance)>();
+                    emissiveSourceTriangleCount += CollectEmissiveAreaEmitters(component, meshExport, lod,
+                        triangles, renderContext, emissiveSettings, emissiveMaterialCache, areaEmitters);
+                    emissivePreprocessingTicks += Stopwatch.GetTimestamp() - emissiveStart;
+                }
                 bool canReceiveLighting = exactTargetComponents is null
                     ? IsStaticLightingTarget(component)
                     : isStaticCandidate && exactTargetComponents.Contains(component.Export);
@@ -331,11 +341,9 @@ public sealed class StaticLightingBaker
                     continue;
 
                 long receiverStart = Stopwatch.GetTimestamp();
-                // A component can still be a shadow caster without being a lightmap receiver. BioWare's
-                // base-game Armax signage (and other unlit/emissive meshes) follows exactly that policy:
-                // it has no LightMap mapping even though its material was compiled with static-lighting use.
-                // Forcing a mapping selects a cooked static-lighting draw policy the unlit material never
-                // uses in the shipped levels and can make the material fall back to checkerboard in game.
+                // A component whose resolved sections are all unlit can still cast shadows without being
+                // a receiver. Mixed meshes remain receivers: their lit sections use the component mapping
+                // while UE3's unlit sections ignore it.
                 if (!HasCompatibleReceiverMaterials(component, meshExport, lod, renderContext,
                         materialCompatibilityCache, out string incompatibleMaterialPath))
                 {
@@ -418,6 +426,9 @@ public sealed class StaticLightingBaker
         }
 
         LevelCollisionScene collision = LevelCollisionScene.FromTriangles(occluders);
+        StaticLightingAreaEmitterIndex emissiveEmitters = areaEmitters.Count == 0
+            ? StaticLightingAreaEmitterIndex.Empty
+            : new StaticLightingAreaEmitterIndex(areaEmitters);
         var diagnostics = new StaticLightingSceneDiagnostics
         {
             SceneExtractionMilliseconds = TicksToMilliseconds(extractionTicks),
@@ -426,10 +437,15 @@ public sealed class StaticLightingBaker
             ReceiverPreparationMilliseconds = TicksToMilliseconds(receiverPreparationTicks),
             BvhConstructionMilliseconds = collision.BvhBuildMilliseconds,
             BvhNodeCount = collision.BvhNodeCount,
-            UniquePreparedMeshCount = mappingDiagnosticsCache.Count,
+            UniquePreparedMeshCount = mappingDiagnosticsCache.Keys.Select(key => key.Mesh).Distinct().Count(),
+            EmissiveSourceTriangleCount = emissiveSourceTriangleCount,
+            AreaEmitterSampleCount = emissiveEmitters.Count,
+            AreaEmitterBvhNodeCount = emissiveEmitters.NodeCount,
+            EmissivePreprocessingMilliseconds = TicksToMilliseconds(emissivePreprocessingTicks) +
+                                               emissiveEmitters.BuildMilliseconds,
             ExcludedUnlitReceivers = excludedUnlitReceivers
         };
-        return (targets, lights, collision, diagnostics);
+        return (targets, lights, collision, emissiveEmitters, diagnostics);
     }
 
     private StaticLightingTextureBake BakeTexture(StaticLightingMeshTarget target,
@@ -705,6 +721,42 @@ public sealed class StaticLightingBaker
                 directional[basisIndex] += sampledDirectional[basisIndex] * inverseSampleCount;
         }
 
+        // Receiver-level BVH culling has already reduced this to a small bounded array. The hot loop
+        // performs only the exact geometric test and casts a ray when the contribution is visible.
+        foreach (StaticLightingAreaEmitter emitter in lighting.AreaEmitters)
+        {
+            counters.EmissiveSamplesEvaluated++;
+            if (!TryEvaluateAreaEmitter(emitter, sample, out Vector3 surfaceToEmitter,
+                    out Vector3 unshadowed, out Vector3 irradiance, out float emitterDistance))
+                continue;
+            counters.RaysCast++;
+            counters.EmissiveRaysCast++;
+            long shadowStart = Stopwatch.GetTimestamp();
+            bool occluded = collision.IsOccludedFilteredNormalized(origin, surfaceToEmitter,
+                MathF.Max(epsilon, emitterDistance - epsilon * 2f), sample.Source,
+                sample.SourceTriangleIndex, epsilon * 4f, out int rejectedSelfIntersections);
+            counters.ShadowRayTicks += Stopwatch.GetTimestamp() - shadowStart;
+            counters.RejectedSelfIntersections += rejectedSelfIntersections;
+            counters.VisibilitySampleCount++;
+            if (occluded)
+            {
+                counters.OccludedSamples++;
+                continue;
+            }
+            counters.VisibilityMicroSum += BakeCounters.MicroScale;
+            simple += irradiance;
+            totalDirect += irradiance;
+            Vector3 tangentDirection = SafeNormal(new Vector3(
+                Vector3.Dot(surfaceToEmitter, sample.Tangent),
+                Vector3.Dot(surfaceToEmitter, sample.Bitangent),
+                Vector3.Dot(surfaceToEmitter, sample.Normal)), Vector3.UnitZ);
+            for (int basisIndex = 0; basisIndex < directional.Length; basisIndex++)
+            {
+                directional[basisIndex] += unshadowed * MathF.Max(0f,
+                    Vector3.Dot(tangentDirection, DirectionalBasis[basisIndex]));
+            }
+        }
+
         counters.LitSampleCount++;
         counters.DirectContributionMicroSum += ToMicro(MaxComponent(totalDirect));
         counters.EnvironmentContributionMicroSum += ToMicro(MaxComponent(environment));
@@ -759,7 +811,8 @@ public sealed class StaticLightingBaker
         };
     }
 
-    private PreparedLighting PrepareLighting(IReadOnlyList<StaticLightingLight> affectingLights)
+    private PreparedLighting PrepareLighting(IReadOnlyList<StaticLightingLight> affectingLights,
+        StaticLightingAreaEmitter[] affectingEmitters)
     {
         Vector3 environment = new(settings.AmbientIntensity);
         var directLights = new List<PreparedLight>(affectingLights.Count);
@@ -813,7 +866,7 @@ public sealed class StaticLightingBaker
                 DirectionalSurfaceToLight = directionalSurfaceToLight
             });
         }
-        return new PreparedLighting(environment, directLights.ToArray());
+        return new PreparedLighting(environment, directLights.ToArray(), affectingEmitters);
     }
 
     private static Vector2[] CreateDiskSamples(Guid guid, int sampleCount)
@@ -868,6 +921,55 @@ public sealed class StaticLightingBaker
         }
         unshadowedRadiance = light.Radiance * attenuation;
         irradiance = unshadowedRadiance * normalDotLight;
+        return true;
+    }
+
+    public static bool TryEvaluateAreaEmitter(StaticLightingAreaEmitter emitter,
+        StaticLightingSurfaceSample sample, out Vector3 surfaceToEmitter,
+        out Vector3 unshadowedRadiance, out Vector3 irradiance, out float distance)
+    {
+        Vector3 delta = emitter.Position - sample.Position;
+        float distanceSquared = delta.LengthSquared();
+        float radiusSquared = emitter.InfluenceRadius * emitter.InfluenceRadius;
+        if (!float.IsFinite(distanceSquared) || distanceSquared <= 0.0001f || distanceSquared >= radiusSquared)
+        {
+            surfaceToEmitter = default;
+            unshadowedRadiance = default;
+            irradiance = default;
+            distance = 0f;
+            return false;
+        }
+
+        distance = MathF.Sqrt(distanceSquared);
+        surfaceToEmitter = delta / distance;
+        float receiverCosine = MathF.Max(0f, Vector3.Dot(sample.Normal, surfaceToEmitter));
+        float emitterCosine = Vector3.Dot(emitter.Normal, -surfaceToEmitter);
+        emitterCosine = emitter.TwoSided ? MathF.Abs(emitterCosine) : MathF.Max(0f, emitterCosine);
+        if (receiverCosine <= 0f || emitterCosine <= 0f)
+        {
+            unshadowedRadiance = default;
+            irradiance = default;
+            return false;
+        }
+
+        float normalizedDistance = distance / emitter.InfluenceRadius;
+        float falloffBase = MathF.Max(0f, 1f - normalizedDistance);
+        float falloff = emitter.FalloffExponent == 2f
+            ? falloffBase * falloffBase
+            : emitter.FalloffExponent == 1f
+                ? falloffBase
+                : MathF.Pow(falloffBase, emitter.FalloffExponent);
+        // The bounded solid-angle approximation converges to inverse-square behavior at distance
+        // without exploding when a receiver is close to a large representative sample.
+        float solidAngle = emitter.Area / (MathF.PI * distanceSquared + emitter.Area);
+        unshadowedRadiance = emitter.Radiance * (emitterCosine * solidAngle * falloff);
+        irradiance = unshadowedRadiance * receiverCosine;
+        if (MaxComponent(irradiance) < StaticLightingEmissive.MinimumContribution)
+        {
+            unshadowedRadiance = default;
+            irradiance = default;
+            return false;
+        }
         return true;
     }
 
@@ -1317,24 +1419,69 @@ public sealed class StaticLightingBaker
         return true;
     }
 
+    private static int CollectEmissiveAreaEmitters(StaticMeshComponentProxy component,
+        ExportEntry meshExport, StaticMeshRenderData lod, IReadOnlyList<StaticLightingTriangle> triangles,
+        LevelEditorRenderContext renderContext, StaticLightingEmissiveSettings settings,
+        Dictionary<ExportEntry, (bool Emissive, Vector3 Radiance)> materialCache,
+        List<StaticLightingAreaEmitter> output)
+    {
+        StaticMeshElement[] elements = lod.Elements ?? [];
+        var sectionRadiance = new Vector3?[elements.Length];
+        for (int sectionIndex = 0; sectionIndex < elements.Length; sectionIndex++)
+        {
+            ExportEntry material = ResolveSectionMaterial(component, meshExport, elements[sectionIndex],
+                sectionIndex, renderContext);
+            if (material is null) continue;
+            if (!materialCache.TryGetValue(material, out var emission))
+            {
+                bool emissive = StaticLightingEmissive.TryResolveMaterialRadiance(material, renderContext,
+                    out Vector3 radiance);
+                emission = (emissive, radiance);
+                materialCache.Add(material, emission);
+            }
+            if (emission.Emissive)
+                sectionRadiance[sectionIndex] = emission.Radiance;
+        }
+
+        if (sectionRadiance.All(value => !value.HasValue))
+            return 0;
+        var sectionTriangles = new List<StaticLightingTriangle>[elements.Length];
+        int sourceTriangleCount = 0;
+        foreach (StaticLightingTriangle triangle in triangles)
+        {
+            int sectionIndex = triangle.SectionIndex;
+            if ((uint)sectionIndex >= sectionRadiance.Length || !sectionRadiance[sectionIndex].HasValue)
+                continue;
+            (sectionTriangles[sectionIndex] ??= []).Add(triangle);
+            sourceTriangleCount++;
+        }
+        for (int sectionIndex = 0; sectionIndex < sectionTriangles.Length; sectionIndex++)
+        {
+            if (sectionTriangles[sectionIndex] is not { Count: > 0 } sourceTriangles ||
+                sectionRadiance[sectionIndex] is not { } radiance)
+                continue;
+            output.AddRange(StaticLightingEmissive.CreateAreaEmitterSamples(sourceTriangles, radiance,
+                settings, component.LightingChannelMask, component.Export));
+        }
+        return sourceTriangleCount;
+    }
+
     private static bool HasCompatibleReceiverMaterials(StaticMeshComponentProxy component,
         ExportEntry meshExport, StaticMeshRenderData lod, LevelEditorRenderContext renderContext,
         Dictionary<ExportEntry, (bool Compatible, string MaterialPath)> compatibilityCache,
         out string incompatibleMaterialPath)
     {
-        ArrayProperty<ObjectProperty> overrides =
-            component.Properties.GetProp<ArrayProperty<ObjectProperty>>("Materials");
         StaticMeshElement[] elements = lod.Elements ?? [];
+        bool hasResolvedMaterial = false;
+        bool hasCompatibleMaterial = false;
+        string firstIncompatibleMaterialPath = null;
         for (int slot = 0; slot < elements.Length; slot++)
         {
-            IEntry materialEntry = null;
-            if (overrides is not null && slot < overrides.Count && overrides[slot].Value != 0)
-                materialEntry = component.Export.FileRef.GetEntry(overrides[slot].Value);
-            if (materialEntry is null && elements[slot].Material != 0)
-                materialEntry = meshExport.FileRef.GetEntry(elements[slot].Material);
-            ExportEntry material = renderContext.ResolveExportCached(materialEntry);
+            ExportEntry material = ResolveSectionMaterial(component, meshExport, elements[slot], slot,
+                renderContext);
             if (material is null)
                 continue;
+            hasResolvedMaterial = true;
             if (!compatibilityCache.TryGetValue(material, out var compatibility))
             {
                 ExportEntry baseMaterial = ResolveBaseMaterial(material, renderContext);
@@ -1343,12 +1490,29 @@ public sealed class StaticLightingBaker
                 compatibilityCache.Add(material, compatibility);
             }
             if (compatibility.Compatible)
-                continue;
-            incompatibleMaterialPath = compatibility.MaterialPath;
-            return false;
+            {
+                hasCompatibleMaterial = true;
+                break;
+            }
+            firstIncompatibleMaterialPath ??= compatibility.MaterialPath;
         }
-        incompatibleMaterialPath = null;
-        return true;
+        bool canReceive = CanComponentReceiveStaticLighting(hasResolvedMaterial, hasCompatibleMaterial);
+        incompatibleMaterialPath = canReceive ? null : firstIncompatibleMaterialPath;
+        return canReceive;
+    }
+
+    private static ExportEntry ResolveSectionMaterial(StaticMeshComponentProxy component,
+        ExportEntry meshExport, StaticMeshElement element, int slot,
+        LevelEditorRenderContext renderContext)
+    {
+        IEntry materialEntry = null;
+        ArrayProperty<ObjectProperty> overrides =
+            component.Properties.GetProp<ArrayProperty<ObjectProperty>>("Materials");
+        if (overrides is not null && slot < overrides.Count && overrides[slot].Value != 0)
+            materialEntry = component.Export.FileRef.GetEntry(overrides[slot].Value);
+        if (materialEntry is null && element.Material != 0)
+            materialEntry = meshExport.FileRef.GetEntry(element.Material);
+        return renderContext.ResolveExportCached(materialEntry);
     }
 
     private static ExportEntry ResolveBaseMaterial(ExportEntry material,
@@ -1372,6 +1536,14 @@ public sealed class StaticLightingBaker
     /// </summary>
     public static bool CanMaterialReceiveStaticLighting(PropertyCollection baseMaterialProperties) =>
         baseMaterialProperties?.GetProp<EnumProperty>("LightingModel")?.Value.Name != "MLM_Unlit";
+
+    /// <summary>
+    /// Unresolved/no-material components retain the historical receiver behavior. Resolved components
+    /// are excluded only when every section is incompatible; one lit section is sufficient because
+    /// UE3 applies the component lightmap only in material draw policies that consume static lighting.
+    /// </summary>
+    public static bool CanComponentReceiveStaticLighting(bool hasResolvedMaterial,
+        bool hasCompatibleMaterial) => !hasResolvedMaterial || hasCompatibleMaterial;
 
     /// <summary>
     /// UE3 uses singular shadow flags on primitive components and plural variants on lights and a few
@@ -1551,11 +1723,37 @@ public sealed class StaticLightingBaker
         return mesh is not null;
     }
 
-    private static int GetLightMapCoordinateIndex(ExportEntry meshExport, StaticMeshRenderData lod)
+    private static int GetLightMapCoordinateIndex(ExportEntry meshExport, StaticMeshRenderData _)
     {
-        // A missing property means the mesh has no separately authored lightmap channel. Use UV0 in
-        // that case instead of assuming UV1, which may contain overlapping texture coordinates.
+        // UE3 samples texture lightmaps with the mesh's authored channel, defaulting to UV0 when the
+        // property is absent. Baking another available channel without changing the mesh would make
+        // the runtime read an unrelated atlas and produce large polygonal lighting artifacts.
         return Math.Max(0, meshExport.GetProperty<IntProperty>("LightMapCoordinateIndex")?.Value ?? 0);
+    }
+
+    private static IReadOnlyList<StaticLightingTriangle> BuildTrianglesWithRuntimeLightMapCoordinate(
+        ExportEntry meshExport, StaticMeshRenderData lod, Matrix4x4 localToWorld,
+        Dictionary<(ExportEntry Mesh, int CoordinateIndex), StaticLightingMappingDiagnostics> diagnosticsCache,
+        out int coordinateIndex, out StaticLightingVertex[] vertices, out bool hasTextureCoordinates,
+        out StaticLightingMappingDiagnostics diagnostics)
+    {
+        coordinateIndex = GetLightMapCoordinateIndex(meshExport, lod);
+        return BuildTrianglesForCoordinate(meshExport, lod, localToWorld, coordinateIndex,
+            diagnosticsCache, out vertices, out hasTextureCoordinates, out diagnostics);
+    }
+
+    private static IReadOnlyList<StaticLightingTriangle> BuildTrianglesForCoordinate(
+        ExportEntry meshExport, StaticMeshRenderData lod, Matrix4x4 localToWorld, int coordinateIndex,
+        Dictionary<(ExportEntry Mesh, int CoordinateIndex), StaticLightingMappingDiagnostics> diagnosticsCache,
+        out StaticLightingVertex[] vertices, out bool hasTextureCoordinates,
+        out StaticLightingMappingDiagnostics diagnostics)
+    {
+        diagnosticsCache.TryGetValue((meshExport, coordinateIndex), out StaticLightingMappingDiagnostics cached);
+        IReadOnlyList<StaticLightingTriangle> triangles = BuildTriangles(lod, localToWorld, coordinateIndex,
+            meshExport.InstancedFullPath, out vertices, out hasTextureCoordinates, out diagnostics, cached);
+        if (cached is null)
+            diagnosticsCache.Add((meshExport, coordinateIndex), diagnostics);
+        return triangles;
     }
 
     private static IReadOnlyList<StaticLightingTriangle> BuildTriangles(StaticMeshRenderData lod,
@@ -1861,7 +2059,8 @@ public sealed class StaticLightingBaker
 
     private static float Cross(Vector2 left, Vector2 right) => left.X * right.Y - left.Y * right.X;
 
-    private sealed record PreparedLighting(Vector3 Environment, PreparedLight[] DirectLights);
+    private sealed record PreparedLighting(Vector3 Environment, PreparedLight[] DirectLights,
+        StaticLightingAreaEmitter[] AreaEmitters);
 
     private sealed class PreparedLight
     {
@@ -1891,6 +2090,8 @@ public sealed class StaticLightingBaker
         public long LitSampleCount;
         public long DirectContributionMicroSum;
         public long EnvironmentContributionMicroSum;
+        public long EmissiveSamplesEvaluated;
+        public long EmissiveRaysCast;
         public long TextureRasterizationTicks;
         public long DirectLightingTicks;
         public long ShadowRayTicks;
@@ -1910,6 +2111,9 @@ public sealed class StaticLightingBaker
         public long LitSampleCount;
         public long DirectContributionMicroSum;
         public long EnvironmentContributionMicroSum;
+        public int AffectingEmissiveEmitters;
+        public long EmissiveSamplesEvaluated;
+        public long EmissiveRaysCast;
         public long LightPreparationTicks;
         public long TextureRasterizationTicks;
         public long DirectLightingTicks;
@@ -1930,6 +2134,8 @@ public sealed class StaticLightingBaker
             Interlocked.Add(ref LitSampleCount, values.LitSampleCount);
             Interlocked.Add(ref DirectContributionMicroSum, values.DirectContributionMicroSum);
             Interlocked.Add(ref EnvironmentContributionMicroSum, values.EnvironmentContributionMicroSum);
+            Interlocked.Add(ref EmissiveSamplesEvaluated, values.EmissiveSamplesEvaluated);
+            Interlocked.Add(ref EmissiveRaysCast, values.EmissiveRaysCast);
             Interlocked.Add(ref TextureRasterizationTicks, values.TextureRasterizationTicks);
             Interlocked.Add(ref DirectLightingTicks, values.DirectLightingTicks);
             Interlocked.Add(ref ShadowRayTicks, values.ShadowRayTicks);
@@ -1952,6 +2158,9 @@ public sealed class StaticLightingBaker
                 DirectContributionMicroSum / (double)(LitSampleCount * MicroScale),
             AverageEnvironmentContribution = LitSampleCount == 0 ? 0d :
                 EnvironmentContributionMicroSum / (double)(LitSampleCount * MicroScale),
+            AffectingEmissiveEmitterCount = AffectingEmissiveEmitters,
+            EmissiveSamplesEvaluated = EmissiveSamplesEvaluated,
+            EmissiveRaysCast = EmissiveRaysCast,
             BakeMilliseconds = bakeMilliseconds,
             LightPreparationMilliseconds = TicksToMilliseconds(LightPreparationTicks),
             TextureRasterizationMilliseconds = TicksToMilliseconds(TextureRasterizationTicks),

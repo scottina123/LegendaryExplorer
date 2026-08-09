@@ -3470,7 +3470,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
             string mappingDescription = settings.MappingMode switch
             {
                 StaticLightingMappingMode.Texture2D =>
-                    $"Mapping: require LightMap2D at {settings.TextureResolution}×{settings.TextureResolution}; isolated collapsed UV triangles are repaired automatically, while ambiguous invalid or overlapping mappings stop before any TFC data is written.",
+                    $"Mapping: prefer LightMap2D at {settings.TextureResolution}×{settings.TextureResolution}; isolated collapsed UV triangles are repaired automatically, and components without a runtime-compatible lightmap UV transparently use LightMap1D.",
                 StaticLightingMappingMode.Vertex1D =>
                     "Mapping: force LightMap1D per-vertex lighting.",
                 _ =>
@@ -3479,6 +3479,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
             string confirmation = $"{targetDescription}\n\n{targetList}\n\n" +
                                   $"Lights and occluding static geometry are gathered from all {OpenFiles.Count:N0} loaded levels. " +
                                   $"Existing lighting channels are preserved and strictly filter which lights may contribute. " +
+                                  $"Components authored for emissive static lighting are reduced to bounded area samples and spatially culled per receiver. " +
                                   mappingDescription + "\n\n" +
                                   $"Soft shadows: {settings.ShadowSampleCount:N0} deterministic samples, " +
                                   $"{settings.DefaultLightSourceRadius:F1} point/spot radius, " +
@@ -3506,21 +3507,15 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
                         Components = [],
                         SourceTriangleCount = scene.Collision.TriangleCount,
                         LightCount = scene.Lights.Count,
+                        EmissiveEmitterCount = scene.EmissiveEmitters.Count,
                         TextureMappedComponentCount = 0,
                         VertexMappedComponentCount = 0,
                         SceneDiagnostics = scene.Diagnostics
                     };
                 return new StaticLightingBaker(scene.Targets, scene.Lights, scene.Collision, settings,
-                        scene.Diagnostics)
+                        scene.Diagnostics, scene.EmissiveEmitters)
                     .Bake(CancellationToken.None, progress);
             }).ConfigureAwait(true);
-
-            if (!string.IsNullOrWhiteSpace(bake.ValidationError))
-            {
-                MessageBox.Show(this, bake.ValidationError, dialogTitle,
-                    MessageBoxButton.OK, MessageBoxImage.Warning);
-                return;
-            }
 
             if (bake.Components.Count == 0 && bake.SceneDiagnostics.ExcludedUnlitReceivers.Count == 0)
             {
@@ -3545,6 +3540,9 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
             SceneViewer?.MarkRenderDirty();
             int mappingFallbackCount = bake.Components.Count(component =>
                 component.Vertex is not null && component.Diagnostics.Mapping.HasTextureMappingErrors);
+            string mappingFallbackWarning = mappingFallbackCount > 0
+                ? $"WARNING: {mappingFallbackCount:N0} component{(mappingFallbackCount == 1 ? " was" : "s were")} diverted to LightMap1D because no valid runtime lightmap UV was available.\n\n"
+                : "";
             int mappingConflictTexels = bake.Components.Sum(component =>
                 component.Diagnostics.MappingConflictTexelCount);
             int repairedUvTriangleCount = bake.Components
@@ -3559,8 +3557,10 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
                               $"{written.IrrelevantLightReferenceCount:N0} irrelevant-light references; " +
                               $"{bake.WorkUnitCount:N0} parallel work units on {bake.WorkerCount:N0} workers; " +
                               $"{bake.RaysCast:N0} rays, {bake.AverageVisibility:P1} average visibility; " +
-                              $"{bake.LightCount:N0} lights / {bake.SourceTriangleCount:N0} occluder triangles from all loaded levels.";
+                              $"{bake.LightCount:N0} lights / {bake.EmissiveEmitterCount:N0} emissive area samples / " +
+                              $"{bake.SourceTriangleCount:N0} occluder triangles from all loaded levels.";
             MessageBox.Show(this,
+                mappingFallbackWarning +
                 $"Generated static lighting for {written.ComponentCount:N0} components.\n\n" +
                 $"Unlit-material receivers kept lightmap-free: {written.ExcludedUnlitReceiverCount:N0}\n" +
                 $"2D lightmaps: {bake.TextureMappedComponentCount:N0} components\n" +
@@ -3570,6 +3570,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
                 $"Irrelevant-light references: {written.IrrelevantLightReferenceCount:N0}\n" +
                 $"Parallel work units: {bake.WorkUnitCount:N0} on {bake.WorkerCount:N0} workers\n" +
                 $"Rays / occluded samples: {bake.RaysCast:N0} / {bake.OccludedSamples:N0}\n" +
+                $"Emissive area samples / evaluated / rays: {bake.EmissiveEmitterCount:N0} / {bake.EmissiveSamplesEvaluated:N0} / {bake.EmissiveRaysCast:N0}\n" +
                 $"Average direct visibility: {bake.AverageVisibility:P1}\n" +
                 $"Average direct / environment contribution: {bake.AverageDirectContribution:F3} / {bake.AverageEnvironmentContribution:F3}\n" +
                 $"Rejected receiver self-intersections: {bake.RejectedSelfIntersections:N0}\n" +
@@ -3577,10 +3578,12 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
                 $"UV mapping fallbacks / conflicting texels: {mappingFallbackCount:N0} / {mappingConflictTexels:N0}\n" +
                 $"Scene extraction / light gathering: {bake.SceneDiagnostics.SceneExtractionMilliseconds / 1000d:F2}s / {bake.SceneDiagnostics.LightGatheringMilliseconds / 1000d:F2}s\n" +
                 $"Mesh prep / receiver prep / BVH: {bake.SceneDiagnostics.MeshPreparationMilliseconds / 1000d:F2}s / {bake.SceneDiagnostics.ReceiverPreparationMilliseconds / 1000d:F2}s / {bake.SceneDiagnostics.BvhConstructionMilliseconds / 1000d:F2}s ({bake.SceneDiagnostics.BvhNodeCount:N0} nodes)\n" +
+                $"Emissive preprocessing / receiver culling: {bake.SceneDiagnostics.EmissivePreprocessingMilliseconds / 1000d:F2}s / {bake.EmissiveReceiverCullingMilliseconds / 1000d:F2}s " +
+                $"({bake.SceneDiagnostics.EmissiveSourceTriangleCount:N0} source triangles -> {bake.SceneDiagnostics.AreaEmitterSampleCount:N0} samples, {bake.SceneDiagnostics.AreaEmitterBvhNodeCount:N0} nodes)\n" +
                 $"Worker time — light prep / 2D raster / 1D sampling: {bake.LightPreparationMilliseconds / 1000d:F2}s / {bake.TextureRasterizationMilliseconds / 1000d:F2}s / {bake.VertexSamplingMilliseconds / 1000d:F2}s\n" +
                 $"Worker time — direct lighting / visibility rays: {bake.DirectLightingMilliseconds / 1000d:F2}s / {bake.ShadowRayMilliseconds / 1000d:F2}s\n" +
                 $"Worker time — occupied texels / filtering / texture construction: {bake.OccupiedTexelDiscoveryMilliseconds / 1000d:F2}s / {bake.FilteringMilliseconds / 1000d:F2}s / {bake.TextureConstructionMilliseconds / 1000d:F2}s\n" +
-                $"Material/emissive evaluation, GI and denoising: not present in this direct-light baker\n" +
+                $"Texture-resolved emissive detail, multi-bounce GI and denoising: not present in this direct-light baker\n" +
                 $"Bake wall time / total serialization: {bake.BakeMilliseconds / 1000d:F2}s / {written.SerializationMilliseconds / 1000d:F2}s\n" +
                 $"LightMap1D / LightMap2D serialization: {written.LightMap1DSerializationMilliseconds / 1000d:F2}s / {written.LightMap2DSerializationMilliseconds / 1000d:F2}s\n" +
                 $"Components replacing existing lighting: {written.ReplacedExistingComponentCount:N0}\n\n" +

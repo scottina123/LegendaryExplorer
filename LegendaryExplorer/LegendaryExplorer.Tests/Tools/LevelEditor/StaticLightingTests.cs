@@ -499,7 +499,192 @@ public class StaticLightingTests
     }
 
     [TestMethod]
-    public void MappingMode_ForcedTextureBakeReportsVertexFallbackWithoutThrowing()
+    public void MissingLightMapCoordinateIndex_UsesRuntimeDefaultUvZero()
+    {
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("ValidatedLightMapCoordinate.pcc",
+            MEGame.LE3);
+        ExportEntry mesh = package.CreateExport("StaticMesh_0", "StaticMesh", null, indexed: false);
+        mesh.WriteProperties([]);
+        var lod = new StaticMeshRenderData
+        {
+            NumVertices = 3,
+            PositionVertexBuffer = new PositionVertexBuffer
+            {
+                NumVertices = 3,
+                VertexData = [Vector3.Zero, Vector3.UnitX, Vector3.UnitY]
+            },
+            VertexBuffer = new StaticMeshVertexBuffer
+            {
+                NumVertices = 3,
+                NumTexCoords = 2,
+                bUseFullPrecisionUVs = true,
+                VertexData =
+                [
+                    new StaticMeshVertexBuffer.StaticMeshFullVertex
+                        { FullPrecisionUVs = [new Vector2(2, 2), new Vector2(0, 0)] },
+                    new StaticMeshVertexBuffer.StaticMeshFullVertex
+                        { FullPrecisionUVs = [new Vector2(3, 2), new Vector2(1, 0)] },
+                    new StaticMeshVertexBuffer.StaticMeshFullVertex
+                        { FullPrecisionUVs = [new Vector2(2, 3), new Vector2(0, 1)] }
+                ]
+            },
+            IndexBuffer = [0, 1, 2],
+            Elements = [new StaticMeshElement { FirstIndex = 0, NumTriangles = 1 }]
+        };
+        var diagnosticsCache = new Dictionary<(ExportEntry Mesh, int CoordinateIndex),
+            StaticLightingMappingDiagnostics>();
+        var selectMethod = typeof(StaticLightingBaker).GetMethod(
+            "BuildTrianglesWithRuntimeLightMapCoordinate",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+        object[] parameters =
+            [mesh, lod, Matrix4x4.Identity, diagnosticsCache, 0, null, false, null];
+
+        Assert.IsNotNull(selectMethod);
+        selectMethod.Invoke(null, parameters);
+
+        Assert.AreEqual(0, (int)parameters[4]);
+        Assert.IsFalse((bool)parameters[6]);
+        Assert.IsTrue(((StaticLightingMappingDiagnostics)parameters[7]).HasTextureMappingErrors);
+        Assert.IsTrue(diagnosticsCache[(mesh, 0)].HasTextureMappingErrors);
+        Assert.IsFalse(diagnosticsCache.ContainsKey((mesh, 1)));
+    }
+
+    [TestMethod]
+    public void EmissiveSettings_RequireExplicitOptInAndPreserveAuthoredControls()
+    {
+        Assert.IsFalse(StaticLightingEmissive.TryGetSettings([], out _));
+        PropertyCollection properties =
+        [
+            new StructProperty("LightmassPrimitiveSettings",
+            [
+                new BoolProperty(true, "bUseEmissiveForStaticLighting"),
+                new FloatProperty(2.5f, "EmissiveBoost"),
+                new FloatProperty(3f, "EmissiveLightFalloffExponent"),
+                new FloatProperty(750f, "EmissiveLightExplicitInfluenceRadius"),
+                new BoolProperty(true, "bUseTwoSidedLighting")
+            ], "LightmassSettings")
+        ];
+
+        Assert.IsTrue(StaticLightingEmissive.TryGetSettings(properties,
+            out StaticLightingEmissiveSettings settings));
+        Assert.AreEqual(2.5f, settings.Boost, 0.0001f);
+        Assert.AreEqual(3f, settings.FalloffExponent, 0.0001f);
+        Assert.AreEqual(750f, settings.ExplicitInfluenceRadius, 0.0001f);
+        Assert.IsTrue(settings.TwoSided);
+    }
+
+    [TestMethod]
+    public void EmissivePreprocessing_ReducesLargePanelsAndRejectsTinyDimGeometry()
+    {
+        IReadOnlyList<StaticLightingTriangle> panel = CreatePanelTriangles(32, 64f);
+        var settings = new StaticLightingEmissiveSettings(1f, 2f, 0f, false);
+
+        IReadOnlyList<StaticLightingAreaEmitter> samples = StaticLightingEmissive.CreateAreaEmitterSamples(
+            panel, new Vector3(4f, 2f, 1f), settings, 0);
+
+        Assert.IsGreaterThan(1, samples.Count);
+        Assert.IsLessThanOrEqualTo(StaticLightingEmissive.MaximumSamplesPerSection, samples.Count);
+        Assert.IsLessThan(panel.Count / 100, samples.Count);
+        Assert.AreEqual(2048f * 2048f, samples.Sum(sample => sample.Area), 1f);
+
+        var a = new StaticLightingVertex(Vector3.Zero, Vector3.UnitZ, Vector3.UnitX, Vector3.UnitY,
+            Vector2.Zero);
+        var b = a with { Position = new Vector3(0.1f, 0, 0) };
+        var c = a with { Position = new Vector3(0, 0.1f, 0) };
+        IReadOnlyList<StaticLightingAreaEmitter> ignored = StaticLightingEmissive.CreateAreaEmitterSamples(
+            [new StaticLightingTriangle(a, b, c)], new Vector3(0.1f), settings, 0);
+        Assert.IsEmpty(ignored);
+
+        var brightB = a with { Position = Vector3.UnitX };
+        var brightC = a with { Position = Vector3.UnitY };
+        IReadOnlyList<StaticLightingAreaEmitter> retained = StaticLightingEmissive.CreateAreaEmitterSamples(
+            [new StaticLightingTriangle(a, brightB, brightC)], new Vector3(0.1f),
+            settings with { Boost = 100f }, 0);
+        Assert.HasCount(1, retained);
+    }
+
+    [TestMethod]
+    public void EmissiveIndex_CullsByBoundsChannelsAndSourceAndCapsReceiverWork()
+    {
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("EmissiveIndex.pcc", MEGame.LE3);
+        ExportEntry source = package.CreateExport("StaticMeshComponent_0", "StaticMeshComponent", null,
+            indexed: false);
+        ExportEntry excluded = package.CreateExport("StaticMeshComponent_1", "StaticMeshComponent", null,
+            indexed: false);
+        const uint staticChannel = 1u | (1u << 2);
+        const uint dynamicChannel = 1u | (1u << 3);
+        StaticLightingAreaEmitter near = new(new Vector3(0, 0, 10), -Vector3.UnitZ, Vector3.One,
+            100f, 100f, 2f, staticChannel, false, source);
+        var index = new StaticLightingAreaEmitterIndex(
+        [
+            near,
+            near with { LightingChannelMask = dynamicChannel },
+            near with { Source = excluded },
+            near with { Position = new Vector3(1000, 0, 0), InfluenceRadius = 10f }
+        ]);
+
+        StaticLightingAreaEmitter[] selected = index.Query(new Vector3(-1), new Vector3(1),
+            staticChannel, excluded);
+        Assert.HasCount(1, selected);
+        Assert.AreSame(source, selected[0].Source);
+
+        var many = Enumerable.Range(1, 40).Select(intensity => near with
+        {
+            Position = new Vector3(intensity - 20f, 0, 10),
+            Radiance = new Vector3(intensity),
+            LightingChannelMask = 0,
+            Source = null
+        });
+        StaticLightingAreaEmitter[] capped = new StaticLightingAreaEmitterIndex(many)
+            .Query(new Vector3(-100), new Vector3(100), 0);
+        Assert.HasCount(StaticLightingAreaEmitterIndex.MaximumEmittersPerReceiver, capped);
+        Assert.IsGreaterThanOrEqualTo(17f, capped.Min(emitter => emitter.Radiance.X));
+    }
+
+    [TestMethod]
+    public void EmissiveAreaSamples_IlluminateReceiversAndRespectOcclusion()
+    {
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("EmissiveBake.pcc", MEGame.LE3);
+        ExportEntry receiver = package.CreateExport("StaticMeshComponent_0", "StaticMeshComponent", null,
+            indexed: false);
+        ExportEntry emitterSource = package.CreateExport("StaticMeshComponent_1", "StaticMeshComponent", null,
+            indexed: false);
+        ExportEntry blockerSource = package.CreateExport("StaticMeshComponent_2", "StaticMeshComponent", null,
+            indexed: false);
+        receiver.WriteProperties([]);
+        StaticLightingMeshTarget target = CreateQuadTarget(receiver, useTextureMapping: false);
+        var emitter = new StaticLightingAreaEmitter(new Vector3(50, 50, 100), -Vector3.UnitZ,
+            new Vector3(4f, 2f, 1f), 4_000f, 500f, 2f, 0, false, emitterSource);
+        var emitterIndex = new StaticLightingAreaEmitterIndex([emitter]);
+        var settings = new StaticLightingGenerationSettings
+        {
+            MappingMode = StaticLightingMappingMode.Vertex1D,
+            AmbientIntensity = 0f,
+            WorkerThreads = 1
+        };
+        StaticLightingBakeResult visible = new StaticLightingBaker([target], [],
+            LevelCollisionScene.FromTriangles(Array.Empty<(Vector3 A, Vector3 B, Vector3 C)>()),
+            settings, emissiveEmitterIndex: emitterIndex).Bake();
+        LevelCollisionScene blockedScene = LevelCollisionScene.FromTriangles(new[]
+        {
+            (new Vector3(-100, -100, 50), new Vector3(200, -100, 50), new Vector3(200, 200, 50),
+                blockerSource, 0),
+            (new Vector3(-100, -100, 50), new Vector3(200, 200, 50), new Vector3(-100, 200, 50),
+                blockerSource, 1)
+        });
+        StaticLightingBakeResult blocked = new StaticLightingBaker([target], [], blockedScene,
+            settings, emissiveEmitterIndex: emitterIndex).Bake();
+
+        Assert.AreEqual(1, visible.EmissiveEmitterCount);
+        Assert.IsGreaterThan(0L, visible.EmissiveSamplesEvaluated);
+        Assert.IsGreaterThanOrEqualTo(visible.EmissiveRaysCast, visible.EmissiveSamplesEvaluated);
+        Assert.IsGreaterThan(0d, visible.AverageDirectContribution);
+        Assert.AreEqual(0d, blocked.AverageDirectContribution, 0.000001d);
+        Assert.IsGreaterThan(0L, blocked.OccludedSamples);
+    }
+
+    [TestMethod]
+    public void MappingMode_ForcedTextureBakeFallsBackToVertexAndContinues()
     {
         using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("ForcedTextureFallback.pcc", MEGame.LE3);
         ExportEntry component = package.CreateExport("StaticMeshComponent_0", "StaticMeshComponent", null,
@@ -531,8 +716,11 @@ public class StaticLightingTests
             new StaticLightingGenerationSettings { MappingMode = StaticLightingMappingMode.Texture2D });
         StaticLightingBakeResult result = baker.Bake();
 
-        Assert.IsEmpty(result.Components);
-        StringAssert.Contains(result.ValidationError, "No bake or TFC write was started");
+        Assert.HasCount(1, result.Components);
+        Assert.IsNull(result.Components[0].Texture);
+        Assert.IsNotNull(result.Components[0].Vertex);
+        Assert.AreEqual(0, result.TextureMappedComponentCount);
+        Assert.AreEqual(1, result.VertexMappedComponentCount);
     }
 
     [DataTestMethod]
@@ -591,7 +779,6 @@ public class StaticLightingTests
                 AmbientIntensity = 0.25f
             }).Bake();
 
-        Assert.IsNull(result.ValidationError);
         Assert.AreEqual(1, result.TextureMappedComponentCount);
         Assert.IsNotNull(result.Components[0].Texture);
         Assert.IsTrue(result.Components[0].Diagnostics.MappedTexelCount >= (collapseToPoint ? 1 : 70));
@@ -677,7 +864,7 @@ public class StaticLightingTests
     }
 
     [TestMethod]
-    public void UnlitMaterial_IsNotAStaticLightingReceiverEvenWhenCompiledForStaticLighting()
+    public void UnlitAndMixedMaterials_UseComponentCompatibleReceiverPolicy()
     {
         var properties = new PropertyCollection
         {
@@ -689,6 +876,14 @@ public class StaticLightingTests
         properties.AddOrReplaceProp(new EnumProperty("MLM_Phong", "EMaterialLightingModel", MEGame.LE3,
             "LightingModel"));
         Assert.IsTrue(StaticLightingBaker.CanMaterialReceiveStaticLighting(properties));
+
+        Assert.IsFalse(StaticLightingBaker.CanComponentReceiveStaticLighting(
+            hasResolvedMaterial: true, hasCompatibleMaterial: false));
+        Assert.IsTrue(StaticLightingBaker.CanComponentReceiveStaticLighting(
+            hasResolvedMaterial: true, hasCompatibleMaterial: true),
+            "A mixed lit/unlit mesh must remain a receiver for its lit sections.");
+        Assert.IsTrue(StaticLightingBaker.CanComponentReceiveStaticLighting(
+            hasResolvedMaterial: false, hasCompatibleMaterial: false));
     }
 
     [TestMethod]
@@ -825,7 +1020,25 @@ public class StaticLightingTests
         Assert.IsTrue(component.GetProperty<BoolProperty>("bUsePrecomputedShadows").Value);
     }
 
-    private static StaticLightingMeshTarget CreateQuadTarget(ExportEntry component, uint lightingChannelMask = 0)
+    private static IReadOnlyList<StaticLightingTriangle> CreatePanelTriangles(int cells, float cellSize)
+    {
+        var triangles = new List<StaticLightingTriangle>(cells * cells * 2);
+        for (int y = 0; y < cells; y++)
+        for (int x = 0; x < cells; x++)
+        {
+            Vector3 origin = new(x * cellSize, y * cellSize, 0);
+            var a = new StaticLightingVertex(origin, Vector3.UnitZ, Vector3.UnitX, Vector3.UnitY, Vector2.Zero);
+            var b = a with { Position = origin + new Vector3(cellSize, 0, 0) };
+            var c = a with { Position = origin + new Vector3(cellSize, cellSize, 0) };
+            var d = a with { Position = origin + new Vector3(0, cellSize, 0) };
+            triangles.Add(new StaticLightingTriangle(a, b, c));
+            triangles.Add(new StaticLightingTriangle(a, c, d));
+        }
+        return triangles;
+    }
+
+    private static StaticLightingMeshTarget CreateQuadTarget(ExportEntry component, uint lightingChannelMask = 0,
+        bool useTextureMapping = true)
     {
         var a = new StaticLightingVertex(new Vector3(0, 0, 0), Vector3.UnitZ, Vector3.UnitX,
             Vector3.UnitY, new Vector2(0, 0));
@@ -847,7 +1060,7 @@ public class StaticLightingTests
             Vertices = [a, b, c, d],
             LightMapCoordinateIndex = 1,
             HasTextureCoordinates = true,
-            UseTextureMapping = true
+            UseTextureMapping = useTextureMapping
         };
     }
 }

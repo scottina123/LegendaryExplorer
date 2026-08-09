@@ -107,6 +107,27 @@ public readonly record struct StaticLightingTriangle(
     public int SourceTriangleIndex { get; init; } = -1;
 }
 
+/// <summary>
+/// Compact approximation of an emissive mesh region. Scene preprocessing reduces many source
+/// triangles to a bounded number of these samples before any receiver is baked.
+/// </summary>
+public readonly record struct StaticLightingAreaEmitter(
+    Vector3 Position,
+    Vector3 Normal,
+    Vector3 Radiance,
+    float Area,
+    float InfluenceRadius,
+    float FalloffExponent,
+    uint LightingChannelMask,
+    bool TwoSided,
+    ExportEntry Source = null);
+
+public readonly record struct StaticLightingEmissiveSettings(
+    float Boost,
+    float FalloffExponent,
+    float ExplicitInfluenceRadius,
+    bool TwoSided);
+
 public sealed class StaticLightingMappingDiagnostics
 {
     public string MeshPath { get; init; } = "";
@@ -212,6 +233,9 @@ public sealed class StaticLightingComponentDiagnostics
     public double AverageVisibility { get; init; }
     public double AverageDirectContribution { get; init; }
     public double AverageEnvironmentContribution { get; init; }
+    public int AffectingEmissiveEmitterCount { get; init; }
+    public long EmissiveSamplesEvaluated { get; init; }
+    public long EmissiveRaysCast { get; init; }
     public double BakeMilliseconds { get; init; }
     public double LightPreparationMilliseconds { get; init; }
     public double TextureRasterizationMilliseconds { get; init; }
@@ -232,6 +256,10 @@ public sealed class StaticLightingSceneDiagnostics
     public double BvhConstructionMilliseconds { get; init; }
     public int BvhNodeCount { get; init; }
     public int UniquePreparedMeshCount { get; init; }
+    public int EmissiveSourceTriangleCount { get; init; }
+    public int AreaEmitterSampleCount { get; init; }
+    public int AreaEmitterBvhNodeCount { get; init; }
+    public double EmissivePreprocessingMilliseconds { get; init; }
     /// <summary>
     /// Components kept out of the receiver set because an effective section material is unlit.
     /// They remain in collision and can still cast baked shadows onto other receivers.
@@ -249,9 +277,9 @@ public sealed class StaticLightingExcludedReceiver
 public sealed class StaticLightingBakeResult
 {
     public required IReadOnlyList<StaticLightingComponentBake> Components { get; init; }
-    public string ValidationError { get; init; }
     public required int SourceTriangleCount { get; init; }
     public required int LightCount { get; init; }
+    public int EmissiveEmitterCount { get; init; }
     public required int TextureMappedComponentCount { get; init; }
     public required int VertexMappedComponentCount { get; init; }
     public int WorkUnitCount { get; init; }
@@ -263,6 +291,9 @@ public sealed class StaticLightingBakeResult
     public double AverageVisibility { get; init; }
     public double AverageDirectContribution { get; init; }
     public double AverageEnvironmentContribution { get; init; }
+    public long EmissiveSamplesEvaluated { get; init; }
+    public long EmissiveRaysCast { get; init; }
+    public double EmissiveReceiverCullingMilliseconds { get; init; }
     public double BakeMilliseconds { get; init; }
     public StaticLightingSceneDiagnostics SceneDiagnostics { get; init; } = new();
     public double LightPreparationMilliseconds { get; init; }
