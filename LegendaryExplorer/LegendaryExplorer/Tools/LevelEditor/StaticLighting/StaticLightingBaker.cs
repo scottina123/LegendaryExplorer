@@ -23,6 +23,10 @@ namespace LegendaryExplorer.Tools.LevelEditor;
 /// </summary>
 public sealed class StaticLightingBaker
 {
+    // Intersections closer to a chart endpoint than one thousandth of a texel at the maximum
+    // supported resolution are half-precision UV T-junction noise, not usable overlap area.
+    private const float UvBoundaryDistanceTolerance = 1f / (1024f * 1024f);
+
     private static readonly Vector3[] DirectionalBasis =
     [
         Vector3.Normalize(new Vector3(MathF.Sqrt(2f / 3f), 0f, 1f / MathF.Sqrt(3f))),
@@ -46,9 +50,45 @@ public sealed class StaticLightingBaker
         settings.Validate();
     }
 
+    public static string GetRequestedMappingValidationError(IReadOnlyList<StaticLightingMeshTarget> targets,
+        StaticLightingMappingMode mappingMode)
+    {
+        if (mappingMode != StaticLightingMappingMode.Texture2D)
+            return null;
+
+        StaticLightingMeshTarget[] invalidTargets = targets.Where(target => !target.UseTextureMapping).ToArray();
+        if (invalidTargets.Length == 0)
+            return null;
+
+        string details = string.Join(Environment.NewLine, invalidTargets.Take(8).Select(target =>
+            $"  {target.Component.InstancedFullPath}: UV{target.LightMapCoordinateIndex}; " +
+            $"invalid={target.MappingDiagnostics.InvalidUvVertexCount:N0}, " +
+            $"degenerate={target.MappingDiagnostics.DegenerateUvTriangleCount:N0}, " +
+            $"overlap pairs={target.MappingDiagnostics.OverlappingUvTrianglePairCount:N0}"));
+        if (invalidTargets.Length > 8)
+            details += Environment.NewLine + $"  ...and {invalidTargets.Length - 8:N0} more";
+        return
+            "LightMap2D was explicitly requested, but one or more selected components do not have a valid " +
+            "texture-lightmap mapping. No bake or TFC write was started. Choose LightMap1D/Automatic or repair " +
+            $"the selected lightmap UV channel.{Environment.NewLine}{details}";
+    }
+
     public StaticLightingBakeResult Bake(CancellationToken cancellationToken = default,
         IProgress<string> progress = null)
     {
+        if (GetRequestedMappingValidationError(targets, settings.MappingMode) is { } mappingError)
+        {
+            return new StaticLightingBakeResult
+            {
+                Components = [],
+                SourceTriangleCount = collision.TriangleCount,
+                LightCount = lights.Count,
+                TextureMappedComponentCount = 0,
+                VertexMappedComponentCount = 0,
+                ValidationError = mappingError
+            };
+        }
+
         ExportEntry duplicateTarget = targets.GroupBy(target => target.Component)
             .FirstOrDefault(group => group.Count() > 1)?.Key;
         if (duplicateTarget is not null)
@@ -115,10 +155,14 @@ public sealed class StaticLightingBaker
             int completedCount = Interlocked.Increment(ref completed);
             StaticLightingComponentDiagnostics diagnostic = results[index].Diagnostics;
             string mappingStatus = target.UseTextureMapping
-                ? $"UV{target.LightMapCoordinateIndex}, {diagnostic.MappedTexelCount:N0} texels"
+                ? target.MappingDiagnostics.DegenerateUvTriangleCount > 0
+                    ? $"UV{target.LightMapCoordinateIndex}, repaired " +
+                      $"{target.MappingDiagnostics.DegenerateUvTriangleCount:N0} degenerate triangle(s), " +
+                      $"{diagnostic.MappedTexelCount:N0} texels"
+                    : $"UV{target.LightMapCoordinateIndex}, {diagnostic.MappedTexelCount:N0} texels"
                 : target.HasTextureCoordinates
-                    ? "authored vertex mapping"
-                : diagnostic.Mapping.HasTextureMappingErrors
+                    ? "vertex mapping"
+                    : diagnostic.Mapping.HasTextureMappingErrors
                     ? $"vertex fallback; UV errors: invalid={diagnostic.Mapping.InvalidUvVertexCount:N0}, " +
                       $"degenerate={diagnostic.Mapping.DegenerateUvTriangleCount:N0}, " +
                       $"overlap pairs={diagnostic.Mapping.OverlappingUvTrianglePairCount:N0}"
@@ -162,7 +206,8 @@ public sealed class StaticLightingBaker
     public static (IReadOnlyList<StaticLightingMeshTarget> Targets, IReadOnlyList<StaticLightingLight> Lights,
         LevelCollisionScene Collision) BuildScene(IEnumerable<ActorProxy> actors,
         IReadOnlySet<OpenLevelFile> targetFiles, LevelEditorRenderContext renderContext,
-        IReadOnlySet<ExportEntry> exactTargetComponents = null)
+        IReadOnlySet<ExportEntry> exactTargetComponents = null,
+        StaticLightingMappingMode mappingMode = StaticLightingMappingMode.Automatic)
     {
         ActorProxy[] actorArray = actors.ToArray();
         var targets = new List<StaticLightingMeshTarget>();
@@ -210,8 +255,11 @@ public sealed class StaticLightingBaker
                 ELightMapType existingMappingType = GetExistingMappingType(componentBinary);
                 bool generatedMapping = IsGeneratedTextureMapping(component.Export, componentBinary);
                 int effectiveLightMapResolution = GetEffectiveLightMapResolution(component, meshExport);
-                bool useTextureMapping = ShouldUseTextureMapping(hasTextureCoordinates,
-                    effectiveLightMapResolution, existingMappingType, generatedMapping);
+                CalculateReceiverMetrics(vertices, triangles, out float maximumWorldDimension,
+                    out float surfaceArea);
+                bool useTextureMapping = ShouldUseTextureMapping(mappingMode, hasTextureCoordinates,
+                    effectiveLightMapResolution, existingMappingType, generatedMapping,
+                    meshExport.InstancedFullPath, maximumWorldDimension, surfaceArea, triangles.Count);
                 targets.Add(new StaticLightingMeshTarget
                 {
                     File = owningFile,
@@ -714,6 +762,15 @@ public sealed class StaticLightingBaker
             if (!TryGetRasterBounds(triangles[triangleIndex], resolution, coordinateScale, coordinateBias,
                     out int minimumX, out int minimumY, out int maximumX, out int maximumY))
                 continue;
+            if (IsDegenerateUvTriangle(triangles[triangleIndex]))
+            {
+                // The repair rasterizer covers a one-texel strip around a collapsed UV line. Include
+                // neighbouring tiles so a repaired line that sits on a tile boundary is not clipped.
+                minimumX = Math.Max(0, minimumX - 1);
+                minimumY = Math.Max(0, minimumY - 1);
+                maximumX = Math.Min(resolution - 1, maximumX + 1);
+                maximumY = Math.Min(resolution - 1, maximumY + 1);
+            }
             int minimumTileX = minimumX / tileSize;
             int maximumTileX = maximumX / tileSize;
             int minimumTileY = minimumY / tileSize;
@@ -733,7 +790,11 @@ public sealed class StaticLightingBaker
         Vector2 b = triangle.B.LightMapCoordinate * coordinateScale + coordinateBias;
         Vector2 c = triangle.C.LightMapCoordinate * coordinateScale + coordinateBias;
         float denominator = Cross(b - a, c - a);
-        if (MathF.Abs(denominator) < 0.0000001f) return;
+        if (MathF.Abs(denominator) < 0.0000001f)
+        {
+            RasterizeDegenerateUvTriangle(a, b, c, resolution, tile, writeSample);
+            return;
+        }
         if (!TryGetRasterBounds(triangle, resolution, coordinateScale, coordinateBias,
                 out int minimumX, out int minimumY, out int maximumX, out int maximumY))
             return;
@@ -753,6 +814,51 @@ public sealed class StaticLightingBaker
             const float edgeTolerance = -0.0001f;
             if (u >= edgeTolerance && v >= edgeTolerance && w >= edgeTolerance)
                 writeSample(y * resolution + x, new Vector3(u, v, w));
+        }
+    }
+
+    private static void RasterizeDegenerateUvTriangle(Vector2 a, Vector2 b, Vector2 c, int resolution,
+        StaticLightingBakeTile tile, Action<int, Vector3> writeSample)
+    {
+        Vector2[] points = [a * resolution, b * resolution, c * resolution];
+        Vector3[] weights = [Vector3.UnitX, Vector3.UnitY, Vector3.UnitZ];
+        (int First, int Second)[] pairs = [(0, 1), (1, 2), (2, 0)];
+        (int First, int Second) longest = pairs.MaxBy(pair =>
+            Vector2.DistanceSquared(points[pair.First], points[pair.Second]));
+        Vector2 start = points[longest.First];
+        Vector2 end = points[longest.Second];
+        Vector2 direction = end - start;
+        float lengthSquared = direction.LengthSquared();
+
+        if (lengthSquared < 0.0001f)
+        {
+            Vector2 center = (points[0] + points[1] + points[2]) / 3f;
+            int x = Math.Clamp((int)MathF.Floor(center.X), 0, resolution - 1);
+            int y = Math.Clamp((int)MathF.Floor(center.Y), 0, resolution - 1);
+            if (x >= tile.MinimumX && x < tile.MaximumX && y >= tile.MinimumY && y < tile.MaximumY)
+                writeSample(y * resolution + x, new Vector3(1f / 3f));
+            return;
+        }
+
+        int minimumX = Math.Max(tile.MinimumX,
+            Math.Clamp((int)MathF.Floor(MathF.Min(start.X, end.X)) - 1, 0, resolution - 1));
+        int maximumX = Math.Min(tile.MaximumX - 1,
+            Math.Clamp((int)MathF.Ceiling(MathF.Max(start.X, end.X)) + 1, 0, resolution - 1));
+        int minimumY = Math.Max(tile.MinimumY,
+            Math.Clamp((int)MathF.Floor(MathF.Min(start.Y, end.Y)) - 1, 0, resolution - 1));
+        int maximumY = Math.Min(tile.MaximumY - 1,
+            Math.Clamp((int)MathF.Ceiling(MathF.Max(start.Y, end.Y)) + 1, 0, resolution - 1));
+        const float maximumDistanceSquared = 0.75f * 0.75f;
+        for (int y = minimumY; y <= maximumY; y++)
+        for (int x = minimumX; x <= maximumX; x++)
+        {
+            Vector2 pixelCenter = new(x + 0.5f, y + 0.5f);
+            float amount = Math.Clamp(Vector2.Dot(pixelCenter - start, direction) / lengthSquared, 0f, 1f);
+            Vector2 closest = start + direction * amount;
+            if (Vector2.DistanceSquared(pixelCenter, closest) > maximumDistanceSquared)
+                continue;
+            Vector3 barycentric = Vector3.Lerp(weights[longest.First], weights[longest.Second], amount);
+            writeSample(y * resolution + x, barycentric);
         }
     }
 
@@ -913,12 +1019,28 @@ public sealed class StaticLightingBaker
         properties.GetProp<BoolProperty>("bCastStaticShadow")?.Value != false &&
         properties.GetProp<BoolProperty>("CastStaticShadows")?.Value != false;
 
-    public static bool ShouldUseTextureMapping(bool hasValidTextureCoordinates,
-        int effectiveLightMapResolution, ELightMapType existingMappingType,
-        bool existingMappingWasGenerated)
+    public static bool ShouldUseTextureMapping(StaticLightingMappingMode mappingMode,
+        bool hasValidTextureCoordinates, int effectiveLightMapResolution,
+        ELightMapType existingMappingType, bool existingMappingWasGenerated,
+        string meshPath = "", float maximumWorldDimension = 0f, float surfaceArea = 0f,
+        int triangleCount = 0)
     {
+        if (mappingMode == StaticLightingMappingMode.Vertex1D)
+            return false;
         if (!hasValidTextureCoordinates)
             return false;
+        if (mappingMode == StaticLightingMappingMode.Texture2D)
+            return true;
+
+        if (effectiveLightMapResolution > 0)
+            return true;
+
+        if (IsArchitecturalReceiver(meshPath) || maximumWorldDimension >= 512f)
+            return true;
+
+        float averageTriangleArea = triangleCount > 0 ? surfaceArea / triangleCount : 0f;
+        if (maximumWorldDimension >= 128f && surfaceArea >= 16_384f && averageTriangleArea >= 1_024f)
+            return true;
 
         if (!existingMappingWasGenerated)
         {
@@ -928,7 +1050,37 @@ public sealed class StaticLightingBaker
                 return true;
         }
 
-        return effectiveLightMapResolution > 0;
+        return false;
+    }
+
+    private static bool IsArchitecturalReceiver(string meshPath)
+    {
+        if (string.IsNullOrWhiteSpace(meshPath))
+            return false;
+        string[] tokens = meshPath.Split(['.', '_', '-', ' ', '/', '\\'],
+            StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        string[] architecturalPrefixes =
+            ["floor", "wall", "ceiling", "roof", "ground", "terrain", "bsp", "architecture", "architectural"];
+        return tokens.Any(token => architecturalPrefixes.Any(prefix =>
+            token.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)));
+    }
+
+    private static void CalculateReceiverMetrics(IReadOnlyList<StaticLightingVertex> vertices,
+        IReadOnlyList<StaticLightingTriangle> triangles, out float maximumWorldDimension,
+        out float surfaceArea)
+    {
+        maximumWorldDimension = 0f;
+        if (TryCalculateBounds(vertices, out Vector3 minimum, out Vector3 maximum))
+        {
+            Vector3 size = maximum - minimum;
+            maximumWorldDimension = MathF.Max(size.X, MathF.Max(size.Y, size.Z));
+        }
+
+        double area = 0d;
+        foreach (StaticLightingTriangle triangle in triangles)
+            area += Vector3.Cross(triangle.B.Position - triangle.A.Position,
+                triangle.C.Position - triangle.A.Position).Length() * 0.5d;
+        surfaceArea = (float)Math.Min(float.MaxValue, area);
     }
 
     private static int GetEffectiveLightMapResolution(StaticMeshComponentProxy component,
@@ -1060,8 +1212,7 @@ public sealed class StaticLightingBaker
         int invalidUvVertices = coordinateChannelAvailable
             ? referencedVertices.Count(index => !validCoordinates[index])
             : 0;
-        int overlappingUvPairs = coordinateChannelAvailable && invalidUvVertices == 0 &&
-                                 degenerateUvTriangles == 0
+        int overlappingUvPairs = coordinateChannelAvailable && invalidUvVertices == 0
             ? CountOverlappingUvTrianglePairs(triangles)
             : 0;
         diagnostics = new StaticLightingMappingDiagnostics
@@ -1094,6 +1245,8 @@ public sealed class StaticLightingBaker
         for (int triangleIndex = 0; triangleIndex < triangles.Count; triangleIndex++)
         {
             StaticLightingTriangle triangle = triangles[triangleIndex];
+            if (IsDegenerateUvTriangle(triangle))
+                continue;
             float minimumX = MathF.Min(triangle.A.LightMapCoordinate.X,
                 MathF.Min(triangle.B.LightMapCoordinate.X, triangle.C.LightMapCoordinate.X));
             float maximumX = MathF.Max(triangle.A.LightMapCoordinate.X,
@@ -1126,6 +1279,10 @@ public sealed class StaticLightingBaker
         }
         return overlapCount;
     }
+
+    private static bool IsDegenerateUvTriangle(StaticLightingTriangle triangle) => MathF.Abs(Cross(
+        triangle.B.LightMapCoordinate - triangle.A.LightMapCoordinate,
+        triangle.C.LightMapCoordinate - triangle.A.LightMapCoordinate)) < 0.0000001f;
 
     private static bool UvTrianglesOverlapInterior(StaticLightingTriangle left, StaticLightingTriangle right)
     {
@@ -1171,9 +1328,13 @@ public sealed class StaticLightingBaker
         Vector2 delta = secondStart - firstStart;
         float firstT = Cross(delta, secondDirection) / denominator;
         float secondT = Cross(delta, firstDirection) / denominator;
-        const float tolerance = 0.00001f;
-        return firstT > tolerance && firstT < 1f - tolerance &&
-               secondT > tolerance && secondT < 1f - tolerance;
+        if (firstT <= 0f || firstT >= 1f || secondT <= 0f || secondT >= 1f)
+            return false;
+
+        float firstEndpointDistance = MathF.Min(firstT, 1f - firstT) * firstDirection.Length();
+        float secondEndpointDistance = MathF.Min(secondT, 1f - secondT) * secondDirection.Length();
+        return firstEndpointDistance > UvBoundaryDistanceTolerance &&
+               secondEndpointDistance > UvBoundaryDistanceTolerance;
     }
 
     private static bool TryCreateLight(ActorProxy actor, out StaticLightingLight light)

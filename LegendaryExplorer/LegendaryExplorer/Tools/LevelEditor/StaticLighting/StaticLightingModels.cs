@@ -15,6 +15,16 @@ public enum StaticLightingLightType
     Sky
 }
 
+public enum StaticLightingMappingMode
+{
+    /// <summary>Choose between texture and vertex mapping from receiver size, density and authored metadata.</summary>
+    Automatic,
+    /// <summary>Use a texture lightmap whenever the selected UV mapping passes validation.</summary>
+    Texture2D,
+    /// <summary>Use interpolated per-vertex lighting.</summary>
+    Vertex1D
+}
+
 public readonly record struct StaticLightingLight(
     Guid Guid,
     StaticLightingLightType Type,
@@ -35,6 +45,7 @@ public readonly record struct StaticLightingLight(
 public sealed class StaticLightingGenerationSettings
 {
     public int TextureResolution { get; set; } = 64;
+    public StaticLightingMappingMode MappingMode { get; set; } = StaticLightingMappingMode.Automatic;
     /// <summary>Unoccluded environment/indirect floor. It is never multiplied by direct-light visibility.</summary>
     public float AmbientIntensity { get; set; } = 0.12f;
     public float ShadowBias { get; set; } = 1f;
@@ -51,6 +62,8 @@ public sealed class StaticLightingGenerationSettings
 
     public void Validate()
     {
+        if (!Enum.IsDefined(MappingMode))
+            throw new ArgumentOutOfRangeException(nameof(MappingMode));
         if (TextureResolution is < 64 or > 1024 || !BitOperations.IsPow2((uint)TextureResolution))
             throw new ArgumentOutOfRangeException(nameof(TextureResolution),
                 "Lightmap resolution must be a power of two from 64 through 1024.");
@@ -114,10 +127,15 @@ public sealed class StaticLightingMappingDiagnostics
     public bool HasVertexLayoutMismatch =>
         DeclaredVertexCount != PositionVertexCount || PositionVertexCount != AttributeVertexCount;
 
+    /// <summary>
+    /// Degenerate UV triangles are repairable as constant/linear texel mappings and therefore do not
+    /// invalidate an otherwise usable lightmap channel.
+    /// </summary>
+    public bool HasRepairableTextureMappingIssues => DegenerateUvTriangleCount > 0;
+
     public bool HasTextureMappingErrors => HasVertexLayoutMismatch || SelectedCoordinateIndex < 0 ||
         SelectedCoordinateIndex >= TextureCoordinateCount || InvalidSectionRangeCount > 0 ||
-        InvalidIndexCount > 0 || InvalidUvVertexCount > 0 || DegenerateUvTriangleCount > 0 ||
-        OverlappingUvTrianglePairCount > 0;
+        InvalidIndexCount > 0 || InvalidUvVertexCount > 0 || OverlappingUvTrianglePairCount > 0;
 }
 
 public sealed class StaticLightingMeshTarget
@@ -133,9 +151,9 @@ public sealed class StaticLightingMeshTarget
     public int LightMapCoordinateIndex { get; init; }
     public bool HasTextureCoordinates { get; init; }
     /// <summary>
-    /// True when this component's authored UE3 mapping mode is texture based. A valid UV channel by
-    /// itself is not sufficient: many stock meshes deliberately use vertex lightmaps even though
-    /// they contain a second UV channel.
+    /// True when the selected generation policy chose a texture mapping for this component. A valid
+    /// UV channel by itself is not sufficient in automatic mode: many stock meshes deliberately use
+    /// vertex lightmaps even though they contain a second UV channel.
     /// </summary>
     public bool UseTextureMapping { get; init; }
     public StaticLightingMappingDiagnostics MappingDiagnostics { get; init; } = new();
@@ -194,6 +212,7 @@ public sealed class StaticLightingComponentDiagnostics
 public sealed class StaticLightingBakeResult
 {
     public required IReadOnlyList<StaticLightingComponentBake> Components { get; init; }
+    public string ValidationError { get; init; }
     public required int SourceTriangleCount { get; init; }
     public required int LightCount { get; init; }
     public required int TextureMappedComponentCount { get; init; }

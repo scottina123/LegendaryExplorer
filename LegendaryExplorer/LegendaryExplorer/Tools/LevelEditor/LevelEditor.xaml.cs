@@ -3394,9 +3394,11 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         return createMenu;
     }
 
-    private async void GenerateStaticLighting() => await GenerateStaticLightingCore(null, LightmassResolution);
+    private async void GenerateStaticLighting() => await GenerateStaticLightingCore(null, LightmassResolution,
+        StaticLightingMappingMode.Automatic);
 
-    private async Task GenerateStaticLightingForActor(ActorProxy actor, int textureResolution)
+    private async Task GenerateStaticLightingForActor(ActorProxy actor, int textureResolution,
+        StaticLightingMappingMode mappingMode)
     {
         if (actor is null || actor.IsReadOnly || IsBusy)
             return;
@@ -3410,10 +3412,11 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         }
 
         LightmassResolution = textureResolution;
-        await GenerateStaticLightingCore(actor, textureResolution);
+        await GenerateStaticLightingCore(actor, textureResolution, mappingMode);
     }
 
-    private async Task GenerateStaticLightingCore(ActorProxy targetActor, int textureResolution)
+    private async Task GenerateStaticLightingCore(ActorProxy targetActor, int textureResolution,
+        StaticLightingMappingMode mappingMode)
     {
         bool isSingleActor = targetActor is not null;
         OpenLevelFile[] targetFiles = isSingleActor
@@ -3432,6 +3435,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         var settings = new StaticLightingGenerationSettings
         {
             TextureResolution = textureResolution,
+            MappingMode = mappingMode,
             AmbientIntensity = LightmassAmbientIntensity,
             ShadowBias = LightmassShadowBias,
             ShadowSampleCount = LightmassShadowSamples,
@@ -3463,10 +3467,19 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
             string targetDescription = isSingleActor
                 ? "Build static lighting for this actor?"
                 : $"Build static lighting for {targetFiles.Length:N0} loaded level(s)?";
+            string mappingDescription = settings.MappingMode switch
+            {
+                StaticLightingMappingMode.Texture2D =>
+                    $"Mapping: require LightMap2D at {settings.TextureResolution}×{settings.TextureResolution}; isolated collapsed UV triangles are repaired automatically, while ambiguous invalid or overlapping mappings stop before any TFC data is written.",
+                StaticLightingMappingMode.Vertex1D =>
+                    "Mapping: force LightMap1D per-vertex lighting.",
+                _ =>
+                    $"Mapping: automatic detail-aware selection; texture receivers use {settings.TextureResolution}×{settings.TextureResolution} LightMap2D and compact/dense receivers use LightMap1D."
+            };
             string confirmation = $"{targetDescription}\n\n{targetList}\n\n" +
                                   $"Lights and occluding static geometry are gathered from all {OpenFiles.Count:N0} loaded levels. " +
                                   $"Existing lighting channels are preserved and strictly filter which lights may contribute. " +
-                                  $"Texture lightmaps are {settings.TextureResolution}×{settings.TextureResolution}; meshes authored for vertex lighting, or without a valid baked-UV channel, keep UE3 vertex lightmaps.\n\n" +
+                                  mappingDescription + "\n\n" +
                                   $"Soft shadows: {settings.ShadowSampleCount:N0} deterministic samples, " +
                                   $"{settings.DefaultLightSourceRadius:F1} point/spot radius, " +
                                   $"{settings.DirectionalSourceAngleDegrees:F1}° directional angle.\n" +
@@ -3486,7 +3499,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
             StaticLightingBakeResult bake = await Task.Run(() =>
             {
                 var scene = StaticLightingBaker.BuildScene(sceneActors, targetSet, RenderContext,
-                    exactTargetComponents);
+                    exactTargetComponents, settings.MappingMode);
                 if (scene.Targets.Count == 0)
                     return new StaticLightingBakeResult
                     {
@@ -3499,6 +3512,13 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
                 return new StaticLightingBaker(scene.Targets, scene.Lights, scene.Collision, settings)
                     .Bake(CancellationToken.None, progress);
             }).ConfigureAwait(true);
+
+            if (!string.IsNullOrWhiteSpace(bake.ValidationError))
+            {
+                MessageBox.Show(this, bake.ValidationError, dialogTitle,
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
 
             if (bake.Components.Count == 0)
             {
@@ -3523,6 +3543,9 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
                 component.Vertex is not null && component.Diagnostics.Mapping.HasTextureMappingErrors);
             int mappingConflictTexels = bake.Components.Sum(component =>
                 component.Diagnostics.MappingConflictTexelCount);
+            int repairedUvTriangleCount = bake.Components
+                .Where(component => component.Texture is not null)
+                .Sum(component => component.Diagnostics.Mapping.DegenerateUvTriangleCount);
             string cacheSummary = written.TextureCachePaths.Count == 0
                 ? "Lighting data was stored in the level packages."
                 : "Texture cache output:\n" + string.Join("\n", written.TextureCachePaths.Select(path => $"  • {path}"));
@@ -3544,6 +3567,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
                 $"Average direct visibility: {bake.AverageVisibility:P1}\n" +
                 $"Average direct / environment contribution: {bake.AverageDirectContribution:F3} / {bake.AverageEnvironmentContribution:F3}\n" +
                 $"Rejected receiver self-intersections: {bake.RejectedSelfIntersections:N0}\n" +
+                $"Repaired degenerate UV triangles: {repairedUvTriangleCount:N0}\n" +
                 $"UV mapping fallbacks / conflicting texels: {mappingFallbackCount:N0} / {mappingConflictTexels:N0}\n" +
                 $"Bake time: {bake.BakeMilliseconds / 1000d:F2} seconds\n" +
                 $"Components replacing existing lighting: {written.ReplacedExistingComponentCount:N0}\n\n" +
@@ -4098,19 +4122,20 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
                     Header = "Generate Lightmass",
                     IsEnabled = !actor.IsReadOnly && !IsBusy
                 };
-                foreach (int resolution in LightmassResolutions)
+                generateLightmassMenu.Items.Add(BuildActorLightmassResolutionMenu(actor,
+                    "Automatic (detail-aware)", StaticLightingMappingMode.Automatic,
+                    "Uses LightMap2D for architectural, large, or broad low-poly receivers and LightMap1D for compact or dense receivers."));
+                generateLightmassMenu.Items.Add(BuildActorLightmassResolutionMenu(actor,
+                    "LightMap2D (texture)", StaticLightingMappingMode.Texture2D,
+                    "Forces a texture mapping at the selected resolution and automatically repairs isolated collapsed UV triangles."));
+                var vertexLightmassItem = new System.Windows.Controls.MenuItem
                 {
-                    int selectedResolution = resolution;
-                    var resolutionItem = new System.Windows.Controls.MenuItem
-                    {
-                        Header = $"{resolution} × {resolution}",
-                        IsCheckable = true,
-                        IsChecked = LightmassResolution == resolution
-                    };
-                    resolutionItem.Click += async (_, _) =>
-                        await GenerateStaticLightingForActor(actor, selectedResolution);
-                    generateLightmassMenu.Items.Add(resolutionItem);
-                }
+                    Header = "LightMap1D (vertex)",
+                    ToolTip = "Forces interpolated per-vertex lighting; no lightmap texture is generated."
+                };
+                vertexLightmassItem.Click += async (_, _) => await GenerateStaticLightingForActor(actor,
+                    LightmassResolution, StaticLightingMappingMode.Vertex1D);
+                generateLightmassMenu.Items.Add(vertexLightmassItem);
                 contextMenu.Items.Add(generateLightmassMenu);
             }
 
@@ -4858,6 +4883,30 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         actor.Components.OfType<StaticMeshComponentProxy>()
             .Where(StaticLightingBaker.IsStaticLightingCandidate)
             .ToArray();
+
+    private System.Windows.Controls.MenuItem BuildActorLightmassResolutionMenu(ActorProxy actor,
+        string header, StaticLightingMappingMode mappingMode, string toolTip)
+    {
+        var mappingMenu = new System.Windows.Controls.MenuItem
+        {
+            Header = header,
+            ToolTip = toolTip
+        };
+        foreach (int resolution in LightmassResolutions)
+        {
+            int selectedResolution = resolution;
+            var resolutionItem = new System.Windows.Controls.MenuItem
+            {
+                Header = $"{resolution} × {resolution}",
+                IsCheckable = true,
+                IsChecked = LightmassResolution == resolution
+            };
+            resolutionItem.Click += async (_, _) => await GenerateStaticLightingForActor(actor,
+                selectedResolution, mappingMode);
+            mappingMenu.Items.Add(resolutionItem);
+        }
+        return mappingMenu;
+    }
 
     private static ExportEntry GetStaticMeshComponentExport(ActorProxy actor) =>
         actor switch

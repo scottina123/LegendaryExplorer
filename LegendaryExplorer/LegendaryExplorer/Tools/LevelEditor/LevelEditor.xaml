@@ -374,7 +374,7 @@
                                         <ComboBox Grid.Row="8" Grid.Column="1" ItemsSource="{Binding LightmassWorkTileSizes}"
                                                   SelectedItem="{Binding LightmassWorkTileSize}" Margin="2"/>
                                     </Grid>
-                                    <TextBlock Text="Direct lighting and ray-traced static shadows are baked into the lightmaps. Complex mappings are divided into parallel UV/spatial work pages. Existing outputs are replaced; TFC data is reused or created as needed."
+                                    <TextBlock Text="Bulk mapping is automatic: architectural, large, and broad low-poly receivers use LightMap2D; compact or dense receivers use LightMap1D. Direct lighting and ray-traced static shadows are baked into the selected mapping. Existing outputs are replaced; TFC data is reused or created as needed."
                                                TextWrapping="Wrap" Margin="0,0,0,7"/>
                                     <Button Content="Create Lightmass" Command="{Binding GenerateStaticLightingCommand}" Padding="8,4"/>
                                 </StackPanel>

@@ -1,11 +1,13 @@
 using LegendaryExplorer.Tools.LevelEditor;
 using LegendaryExplorerCore;
+using LegendaryExplorerCore.Helpers;
 using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.Unreal;
 using LegendaryExplorerCore.Unreal.BinaryConverters;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Numerics;
 using System.Threading.Tasks;
@@ -373,21 +375,226 @@ public class StaticLightingTests
             original.B with { Position = original.B.Position + Vector3.UnitZ * 10f },
             original.C with { Position = original.C.Position + Vector3.UnitZ * 10f });
         Assert.AreEqual(1, StaticLightingBaker.CountOverlappingUvTrianglePairs([original, overlapping]));
+
+        // BioA_CitHub_Temple export 2198 uses this half-precision UV T-junction. The right
+        // triangle's middle vertex belongs on the left triangle's edge, but quantization places
+        // the intersection about 0.0000007 UV units from the endpoint. That is less than 0.001
+        // texel even at 1024 and must not be diagnosed as a chart overlap.
+        var junctionLeft = new StaticLightingTriangle(
+            original.A with { LightMapCoordinate = new Vector2(0.502441406f, 0.158325195f) },
+            original.B with { LightMapCoordinate = new Vector2(0.491455078f, 0.104980469f) },
+            original.C with { LightMapCoordinate = new Vector2(0.512207031f, 0.0996704102f) });
+        var junctionRight = new StaticLightingTriangle(
+            original.A with { LightMapCoordinate = new Vector2(0.5f, 0.0868530273f) },
+            original.B with { LightMapCoordinate = new Vector2(0.501953125f, 0.102294922f) },
+            original.C with { LightMapCoordinate = new Vector2(0.491455078f, 0.104980469f) });
+        Assert.AreEqual(0,
+            StaticLightingBaker.CountOverlappingUvTrianglePairs([junctionLeft, junctionRight]));
     }
 
     [TestMethod]
     public void MappingMode_PreservesAuthoredVertexMapsAndRecoversGeneratedMappingsFromMeshResolution()
     {
-        Assert.IsFalse(StaticLightingBaker.ShouldUseTextureMapping(true, 0,
+        Assert.IsFalse(StaticLightingBaker.ShouldUseTextureMapping(StaticLightingMappingMode.Automatic, true, 0,
             ELightMapType.LMT_3, false), "Stock Bench02-style vertex mapping must be preserved.");
-        Assert.IsFalse(StaticLightingBaker.ShouldUseTextureMapping(true, 0,
+        Assert.IsFalse(StaticLightingBaker.ShouldUseTextureMapping(StaticLightingMappingMode.Automatic, true, 0,
             ELightMapType.LMT_2D, true), "A previous generated texture map must not hide a vertex-authored mesh.");
-        Assert.IsTrue(StaticLightingBaker.ShouldUseTextureMapping(true, 32,
+        Assert.IsTrue(StaticLightingBaker.ShouldUseTextureMapping(StaticLightingMappingMode.Automatic, true, 32,
             ELightMapType.LMT_2D, true), "A texture-authored mesh keeps using the selected texture size.");
-        Assert.IsTrue(StaticLightingBaker.ShouldUseTextureMapping(true, 0,
+        Assert.IsTrue(StaticLightingBaker.ShouldUseTextureMapping(StaticLightingMappingMode.Automatic, true, 0,
             ELightMapType.LMT_4, false), "Existing stock atlas texture mappings remain texture based.");
-        Assert.IsFalse(StaticLightingBaker.ShouldUseTextureMapping(false, 32,
+        Assert.IsFalse(StaticLightingBaker.ShouldUseTextureMapping(StaticLightingMappingMode.Automatic, false, 32,
             ELightMapType.LMT_2D, false), "Invalid UV mappings always require vertex fallback.");
+    }
+
+    [TestMethod]
+    public void MappingMode_AutomaticPromotesArchitecturalAndBroadLowPolyReceivers()
+    {
+        Assert.IsTrue(StaticLightingBaker.ShouldUseTextureMapping(StaticLightingMappingMode.Automatic,
+            true, 0, ELightMapType.LMT_1D, false, "BioA_FloorTile_01", 96f, 8_000f, 40));
+        Assert.IsTrue(StaticLightingBaker.ShouldUseTextureMapping(StaticLightingMappingMode.Automatic,
+            true, 0, ELightMapType.LMT_1D, false, "GenericLargeMesh", 600f, 100_000f, 2_000));
+        Assert.IsTrue(StaticLightingBaker.ShouldUseTextureMapping(StaticLightingMappingMode.Automatic,
+            true, 0, ELightMapType.LMT_1D, false, "GenericBroadQuad", 200f, 20_000f, 2));
+        Assert.IsFalse(StaticLightingBaker.ShouldUseTextureMapping(StaticLightingMappingMode.Automatic,
+            true, 0, ELightMapType.LMT_1D, false, "DenseSmallProp", 120f, 12_000f, 1_000));
+    }
+
+    [TestMethod]
+    public void MappingMode_SingleActorOverridesAutomaticPolicyButStillRequiresValidTextureUvs()
+    {
+        Assert.IsTrue(StaticLightingBaker.ShouldUseTextureMapping(StaticLightingMappingMode.Texture2D,
+            true, 0, ELightMapType.LMT_1D, false));
+        Assert.IsFalse(StaticLightingBaker.ShouldUseTextureMapping(StaticLightingMappingMode.Texture2D,
+            false, 64, ELightMapType.LMT_2D, false));
+        Assert.IsFalse(StaticLightingBaker.ShouldUseTextureMapping(StaticLightingMappingMode.Vertex1D,
+            true, 64, ELightMapType.LMT_2D, false));
+    }
+
+    [TestMethod]
+    public void MappingMode_ForcedTextureBakeReportsVertexFallbackWithoutThrowing()
+    {
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("ForcedTextureFallback.pcc", MEGame.LE3);
+        ExportEntry component = package.CreateExport("StaticMeshComponent_0", "StaticMeshComponent", null,
+            indexed: false);
+        component.WriteProperties([]);
+        StaticLightingMeshTarget original = CreateQuadTarget(component);
+        StaticLightingMeshTarget target = new()
+        {
+            File = original.File,
+            Component = original.Component,
+            ComponentBinary = original.ComponentBinary,
+            MeshLod = original.MeshLod,
+            LocalToWorld = original.LocalToWorld,
+            LightingChannelMask = original.LightingChannelMask,
+            Triangles = original.Triangles,
+            Vertices = original.Vertices,
+            LightMapCoordinateIndex = original.LightMapCoordinateIndex,
+            HasTextureCoordinates = false,
+            UseTextureMapping = false,
+            MappingDiagnostics = new StaticLightingMappingDiagnostics
+            {
+                SelectedCoordinateIndex = 1,
+                TextureCoordinateCount = 1,
+                InvalidUvVertexCount = 4
+            }
+        };
+
+        var baker = new StaticLightingBaker([target], [], LevelCollisionScene.FromTriangles([]),
+            new StaticLightingGenerationSettings { MappingMode = StaticLightingMappingMode.Texture2D });
+        StaticLightingBakeResult result = baker.Bake();
+
+        Assert.IsEmpty(result.Components);
+        StringAssert.Contains(result.ValidationError, "No bake or TFC write was started");
+    }
+
+    [DataTestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public void MappingMode_ForcedTextureBakeRepairsDegenerateUvTriangles(bool collapseToPoint)
+    {
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("RepairTextureMapping.pcc", MEGame.LE3);
+        ExportEntry component = package.CreateExport("StaticMeshComponent_0", "StaticMeshComponent", null,
+            indexed: false);
+        component.WriteProperties([]);
+        Vector2 firstUv = collapseToPoint ? new Vector2(0.5f) : new Vector2(0.2f, 0.5f);
+        Vector2 secondUv = new(0.5f, 0.5f);
+        Vector2 thirdUv = collapseToPoint ? new Vector2(0.5f) : new Vector2(0.8f, 0.5f);
+        var a = new StaticLightingVertex(Vector3.Zero, Vector3.UnitZ, Vector3.UnitX, Vector3.UnitY, firstUv);
+        var b = new StaticLightingVertex(new Vector3(100, 0, 0), Vector3.UnitZ, Vector3.UnitX,
+            Vector3.UnitY, secondUv);
+        var c = new StaticLightingVertex(new Vector3(0, 100, 0), Vector3.UnitZ, Vector3.UnitX,
+            Vector3.UnitY, thirdUv);
+        var mapping = new StaticLightingMappingDiagnostics
+        {
+            DeclaredVertexCount = 3,
+            PositionVertexCount = 3,
+            AttributeVertexCount = 3,
+            TextureCoordinateCount = 2,
+            SelectedCoordinateIndex = 1,
+            SectionCount = 1,
+            SourceIndexCount = 3,
+            TriangleCount = 1,
+            DegenerateUvTriangleCount = 1
+        };
+        var target = new StaticLightingMeshTarget
+        {
+            File = null!,
+            Component = component,
+            ComponentBinary = StaticMeshComponent.Create(),
+            MeshLod = new StaticMeshRenderData(),
+            LocalToWorld = Matrix4x4.Identity,
+            LightingChannelMask = 0,
+            Triangles = [new StaticLightingTriangle(a, b, c)],
+            Vertices = [a, b, c],
+            LightMapCoordinateIndex = 1,
+            HasTextureCoordinates = true,
+            UseTextureMapping = true,
+            MappingDiagnostics = mapping
+        };
+
+        StaticLightingBakeResult result = new StaticLightingBaker([target], [],
+            LevelCollisionScene.FromTriangles(Array.Empty<(Vector3 A, Vector3 B, Vector3 C)>()),
+            new StaticLightingGenerationSettings
+            {
+                MappingMode = StaticLightingMappingMode.Texture2D,
+                TextureResolution = 64,
+                WorkTileSize = 16,
+                WorkerThreads = 1,
+                AmbientIntensity = 0.25f
+            }).Bake();
+
+        Assert.IsNull(result.ValidationError);
+        Assert.AreEqual(1, result.TextureMappedComponentCount);
+        Assert.IsNotNull(result.Components[0].Texture);
+        Assert.IsTrue(result.Components[0].Diagnostics.MappedTexelCount >= (collapseToPoint ? 1 : 70));
+        Assert.IsTrue(mapping.HasRepairableTextureMappingIssues);
+        Assert.IsFalse(mapping.HasTextureMappingErrors);
+    }
+
+    [TestMethod]
+    public void TextureWriter_PersistsLightMap2DInsteadOfVertexMapping()
+    {
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("TextureWriter.pcc", MEGame.LE3);
+        ExportEntry component = package.CreateExport("StaticMeshComponent_0", "StaticMeshComponent", null,
+            indexed: false);
+        component.WriteProperties([]);
+        component.WriteBinary(StaticMeshComponent.Create());
+        StaticLightingMeshTarget target = CreateQuadTarget(component);
+        const int resolution = 64;
+        byte[][] coefficients = Enumerable.Range(0, 3)
+            .Select(index => Enumerable.Repeat((byte)(64 + index * 32), resolution * resolution * 4).ToArray())
+            .ToArray();
+        var textureBake = new StaticLightingTextureBake
+        {
+            Resolution = resolution,
+            CoefficientImages = coefficients,
+            ScaleVectors = [Vector3.One, Vector3.One, Vector3.One],
+            ShadowMaps = [],
+            CoordinateScale = new Vector2(0.96875f),
+            CoordinateBias = new Vector2(0.015625f)
+        };
+        var componentBake = new StaticLightingComponentBake
+        {
+            Target = target,
+            LightGuids = [],
+            IrrelevantLightGuids = [],
+            Texture = textureBake
+        };
+        string cachePath = Path.Combine(Path.GetTempPath(), $"LEX_TextureWriter_{Guid.NewGuid():N}.tfc");
+
+        try
+        {
+            using (var header = new FileStream(cachePath, FileMode.CreateNew, FileAccess.Write, FileShare.Read))
+                header.WriteGuid(Guid.NewGuid());
+            using var cache = new FileStream(cachePath, FileMode.Open, FileAccess.ReadWrite, FileShare.Read);
+            cache.Seek(0, SeekOrigin.End);
+            var streamingTextures = new List<(ExportEntry Texture, StaticLightingMeshTarget Target, int Resolution)>();
+            var installMethod = typeof(StaticLightingWriter).GetMethod("InstallTextureLightMap",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+            Assert.IsNotNull(installMethod);
+            object[] arguments =
+                [componentBake, textureBake, "LEX_TextureWriter", cachePath, cache, streamingTextures, 0];
+            installMethod.Invoke(null, arguments);
+            int textureCount = (int)arguments[6];
+
+            Assert.AreEqual(3, textureCount);
+            StaticMeshComponent installed = component.GetBinaryData<StaticMeshComponent>();
+            Assert.IsInstanceOfType<LightMap_2D>(installed.LODData[0].LightMap);
+            Assert.AreEqual(ELightMapType.LMT_2D, installed.LODData[0].LightMap.LightMapType);
+            using var saved = package.SaveToStream(false);
+            saved.Position = 0;
+            using IMEPackage reopened = MEPackageHandler.OpenMEPackageFromStream(saved, "TextureWriter.pcc");
+            LightMap reopenedMap = reopened.GetUExport(component.UIndex)
+                .GetBinaryData<StaticMeshComponent>().LODData[0].LightMap;
+            Assert.IsInstanceOfType<LightMap_2D>(reopenedMap);
+            Assert.AreEqual(ELightMapType.LMT_2D, reopenedMap.LightMapType);
+        }
+        finally
+        {
+            if (File.Exists(cachePath))
+                File.Delete(cachePath);
+        }
     }
 
     [TestMethod]

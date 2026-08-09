@@ -253,6 +253,22 @@ public static class StaticLightingWriter
         // would apply the same light visibility a second time even though bAcceptsLights is false.
         component.LODData[0].ShadowMaps = [];
         target.Component.WriteBinary(component);
+        VerifyInstalledTextureLightMap(target.Component, lightMap);
+    }
+
+    private static void VerifyInstalledTextureLightMap(ExportEntry componentExport, LightMap_2D expected)
+    {
+        StaticMeshComponent restored = componentExport.GetBinaryData<StaticMeshComponent>();
+        if (restored.LODData is not { Length: > 0 } ||
+            restored.LODData[0].LightMap is not LightMap_2D actual ||
+            actual.LightMapType != ELightMapType.LMT_2D ||
+            actual.Texture1 != expected.Texture1 || actual.Texture2 != expected.Texture2 ||
+            actual.Texture3 != expected.Texture3 || actual.Texture4 != expected.Texture4)
+        {
+            throw new InvalidDataException(
+                $"LightMap2D installation did not persist on {componentExport.InstancedFullPath}. " +
+                "The generated texture-cache data was not accepted as a 2D component mapping.");
+        }
     }
 
     private static void InstallVertexLightMap(StaticLightingComponentBake componentBake,
