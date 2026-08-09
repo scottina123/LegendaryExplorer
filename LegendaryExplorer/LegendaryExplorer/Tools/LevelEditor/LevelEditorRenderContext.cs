@@ -3,12 +3,14 @@ using LegendaryExplorer.Tools.AssetDatabase.VFXPreview;
 using LegendaryExplorerCore.Gammtek.Extensions;
 using LegendaryExplorerCore.Helpers;
 using LegendaryExplorerCore.SharpDX;
+using LegendaryExplorerCore.Unreal.BinaryConverters;
 using LegendaryExplorerCore.Unreal.Collections;
 using SharpDX.Direct3D11;
 using SharpDX.DXGI;
 using SharpDX.Mathematics.Interop;
 using System;
 using System.ComponentModel;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
@@ -43,6 +45,7 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
     private readonly EmitterIconOverlay EmitterIcons = new();
     private readonly PointOfInterestIconOverlay PointOfInterestIcons = new();
     private readonly Dictionary<ActorProxy, SceneLight> sceneLightCache = [];
+    private readonly ConcurrentDictionary<ActorProxy, BoxSphereBounds> actorBoundsCache = [];
 
     internal LevelVfxRenderer VfxRenderer { get; }
 
@@ -53,17 +56,22 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
     private Texture2D _hitStagingTexture;
     private readonly object renderResourceQueueLock = new();
     private readonly Queue<ILevelRenderResource> pendingRenderResources = new();
+    private readonly Queue<ILevelRenderResource> prioritizedRenderResources = new();
     private readonly HashSet<ILevelRenderResource> pendingRenderResourceSet = [];
     private CancellationTokenSource renderResourceCancellation = new();
     private Task renderResourceWorker;
     private int renderResourceRedrawRequested;
     private ActorProxy prioritizedResourceActor;
     private long lastUserActivityTimestamp;
-    private long lastHoverHitTestTimestamp;
+    private long lastHitTestReadbackTimestamp;
     private int visibleEmitterInstanceCount;
     private int lightIconRevision;
     private int emitterIconRevision;
     private int pointOfInterestIconRevision;
+    private bool hasPendingViewportClick;
+    private MouseButtons pendingViewportClickButton;
+    private int pendingViewportClickX;
+    private int pendingViewportClickY;
 
     internal int LightIconRevision => Volatile.Read(ref lightIconRevision);
     internal int EmitterIconRevision => Volatile.Read(ref emitterIconRevision);
@@ -77,7 +85,8 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
     public bool ShouldRenderHitTestPass => !HasActiveInput && !TransformWidget.IsDragging;
 
     public override bool IsActivelyUpdating() => ForceContinuousRendering || base.IsActivelyUpdating()
-        || TransformWidget.IsDragging || (ShowEmitterVfx && Volatile.Read(ref visibleEmitterInstanceCount) > 0);
+        || TransformWidget.IsDragging || hasPendingViewportClick
+        || (ShowEmitterVfx && Volatile.Read(ref visibleEmitterInstanceCount) > 0);
 
     internal bool UseVfxSceneDepthFallback { get; set; }
     // Match the native VFX preview's far-depth fallback only while particles draw; other Level Editor materials
@@ -130,8 +139,18 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
                 ILevelRenderResource component = null;
                 lock (renderResourceQueueLock)
                 {
+                    while (prioritizedRenderResources.Count > 0)
+                    {
+                        ILevelRenderResource candidate = prioritizedRenderResources.Dequeue();
+                        if (pendingRenderResourceSet.Remove(candidate))
+                        {
+                            component = candidate;
+                            break;
+                        }
+                    }
                     while (pendingRenderResources.Count > 0)
                     {
+                        if (component is not null) break;
                         ILevelRenderResource candidate = pendingRenderResources.Dequeue();
                         if (pendingRenderResourceSet.Remove(candidate))
                         {
@@ -145,6 +164,10 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
                 // Resource preparation may create D3D11 device resources, but it must not use the immediate
                 // context. The render thread is the sole owner of that context.
                 component.PrepareRenderResources();
+                if (component is PrimitiveComponentProxy primitiveComponent)
+                {
+                    actorBoundsCache.TryRemove(primitiveComponent.Actor, out _);
+                }
 
                 bool priorityReady = false;
                 lock (renderResourceQueueLock)
@@ -256,6 +279,7 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
             return;
         }
 
+        actorBoundsCache.TryRemove(actor, out _);
         InvalidateIconForActor(actor);
         if (actor.HasLightSettings && CanAffectSceneLight(e.PropertyName))
         {
@@ -331,6 +355,9 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
     internal void SetVisibleEmitterInstanceCount(int count)
         => Interlocked.Exchange(ref visibleEmitterInstanceCount, Math.Max(0, count));
 
+    internal BoxSphereBounds GetActorBounds(ActorProxy actor)
+        => actorBoundsCache.GetOrAdd(actor, static candidate => candidate.GetBounds());
+
     public void SetShowEmitterVfx(bool show)
     {
         if (ShowEmitterVfx == show)
@@ -384,70 +411,104 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
         StartRenderResourceWorker();
     }
 
+    public override void Render()
+    {
+        base.Render();
+        ProcessPendingViewportClick();
+    }
+
+    private void QueueViewportClick(MouseButtons button, int x, int y)
+    {
+        // Multiple clicks can arrive before composition renders the next hit-test frame. Keep the latest click;
+        // selection is state, not a command stream, so replaying every intermediate GPU readback only stalls FPS.
+        pendingViewportClickButton = button;
+        pendingViewportClickX = x;
+        pendingViewportClickY = y;
+        hasPendingViewportClick = true;
+    }
+
+    private void ProcessPendingViewportClick()
+    {
+        if (!hasPendingViewportClick)
+        {
+            return;
+        }
+        if (HitBufferView is null)
+        {
+            hasPendingViewportClick = false;
+            return;
+        }
+        if (HasActiveInput || TransformWidget.IsDragging
+            || SecondsSince(lastHitTestReadbackTimestamp) < 1.0 / 30.0)
+        {
+            return;
+        }
+
+        MouseButtons button = pendingViewportClickButton;
+        int x = pendingViewportClickX;
+        int y = pendingViewportClickY;
+        hasPendingViewportClick = false;
+        IHitProxy selected = GetHitProxy(x, y);
+
+        if (button == MouseButtons.Right)
+        {
+            if (selected is ActorProxy rightClickedActor)
+            {
+                RightClickActor?.Invoke(rightClickedActor);
+            }
+            else if (selected is not null)
+            {
+                RightClickHitProxy?.Invoke(selected);
+            }
+            else
+            {
+                RightClickViewport?.Invoke();
+            }
+            return;
+        }
+
+        TransformWidget.CurrentAxis = EWidgetAxis.None;
+        switch (selected)
+        {
+            case ActorProxy actor:
+                TransformWidget.Attach = actor;
+                SelectActor?.Invoke(actor);
+                break;
+            case AxisHitProxy axisProxy:
+                TransformWidget.CurrentAxis = axisProxy.Axis;
+                break;
+            case not null:
+                TransformWidget.Attach = null;
+                SelectHitProxy?.Invoke(selected);
+                break;
+        }
+    }
+
     const int HitTestSize = 3;
-    private IHitProxy mouseDownHitProxy;
 
     public override bool MouseUp(MouseButtons button, int x, int y)
     {
         if (TransformWidget.IsDragging)
         {
-            mouseDownHitProxy = null;
             TransformWidget.EndDrag();
             return true;
         }
         bool wasNavigationDrag = base.MouseUp(button, x, y);
         if (button == MouseButtons.Middle)
         {
-            mouseDownHitProxy = null;
             return wasNavigationDrag;
         }
         if (wasNavigationDrag)
         {
-            mouseDownHitProxy = null;
             return true;
         }
 
         if (HitBufferView is not null)
         {
-            // A mouse-down frame may omit the hit-test pass while navigation input is active. Preserve
-            // the hit captured at the start of the gesture instead of reading that intentionally-cleared
-            // buffer on mouse-up.
-            IHitProxy selected = mouseDownHitProxy ?? GetHitProxy(x, y);
-            mouseDownHitProxy = null;
-
-            if (button == MouseButtons.Right)
-            {
-                if (selected is ActorProxy rightClickedActor)
-                {
-                    RightClickActor?.Invoke(rightClickedActor);
-                }
-                else if (selected is not null)
-                {
-                    RightClickHitProxy?.Invoke(selected);
-                }
-                else
-                {
-                    RightClickViewport?.Invoke();
-                }
-            }
-            else
-            {
-                TransformWidget.CurrentAxis = EWidgetAxis.None;
-                switch (selected)
-                {
-                    case ActorProxy actor:
-                        TransformWidget.Attach = actor;
-                        SelectActor?.Invoke(actor);
-                        break;
-                    case AxisHitProxy axisProxy:
-                        TransformWidget.CurrentAxis = axisProxy.Axis;
-                        break;
-                    case not null:
-                        TransformWidget.Attach = null;
-                        SelectHitProxy?.Invoke(selected);
-                        break;
-                }
-            }
+            // Defer the readback until the next completed hit-test frame. Rapid clicks then collapse to one
+            // selection, and camera/actor drags do not perform a GPU readback at all.
+            QueueViewportClick(button, x, y);
+            return true;
         }
 
         return false;
@@ -456,7 +517,7 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
     public override bool MouseDown(MouseButtons button, int x, int y)
     {
         NotifyUserActivity();
-        mouseDownHitProxy = null;
+        hasPendingViewportClick = false;
         if (TransformWidget.IsDragging)
         {
             //failsafe if mouseup event was not captured
@@ -465,37 +526,13 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
                 TransformWidget.EndDrag();
             }
         }
-        // Middle mouse is navigation-only. Avoid synchronous GPU readback on both press and release.
-        if (button == MouseButtons.Middle)
+        // The hover hit-test already tracks the active widget axis. Begin that drag immediately, but defer all
+        // ordinary selection until mouse-up so camera and actor drag starts never block on GPU readback.
+        if (button == MouseButtons.Left && TransformWidget.CurrentAxis is not EWidgetAxis.None
+            && TransformWidget.Attach is not null)
         {
-            return base.MouseDown(button, x, y);
-        }
-        if (HitBufferView is not null)
-        {
-            IHitProxy selected = GetHitProxy(x, y);
-            mouseDownHitProxy = selected;
-
-            // Right mouse uses the saved hit only if the gesture ends as a click. It must never begin a
-            // transform-widget drag or select a helper before camera rotation has had a chance to start.
-            if (button == MouseButtons.Right)
-            {
-                return base.MouseDown(button, x, y);
-            }
-
-            TransformWidget.CurrentAxis = EWidgetAxis.None;
-            switch (selected)
-            {
-                case AxisHitProxy axisProxy:
-                    TransformWidget.CurrentAxis = axisProxy.Axis;
-                    TransformWidget.BeginDrag(x, y);
-                    return true;
-                case ActorProxy:
-                    return base.MouseDown(button, x, y);
-                case not null:
-                    base.MouseDown(button, x, y);
-                    SelectHitProxy?.Invoke(selected);
-                    return true;
-            }
+            TransformWidget.BeginDrag(x, y);
+            return true;
         }
         return base.MouseDown(button, x, y);
     }
@@ -528,9 +565,8 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
             && attachedActor.Components.OfType<MeshComponentProxy>()
                 .All(component => component.RenderResourcesInitialized)
             && HitBufferView is not null && dx * dx + dy * dy >= 9
-            && SecondsSince(lastHoverHitTestTimestamp) >= 1.0 / 30.0)
+            && SecondsSince(lastHitTestReadbackTimestamp) >= 1.0 / 30.0)
         {
-            lastHoverHitTestTimestamp = System.Diagnostics.Stopwatch.GetTimestamp();
             _lastHitTestX = x;
             _lastHitTestY = y;
             IHitProxy selected = GetHitProxy(x, y);
@@ -562,6 +598,7 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
 
     private IHitProxy GetHitProxy(int x, int y)
     {
+        lastHitTestReadbackTimestamp = System.Diagnostics.Stopwatch.GetTimestamp();
         int minX = Math.Max(x - HitTestSize, 0);
         int maxX = Math.Min(x + HitTestSize, Width - 1);
         int minY = Math.Max(y - HitTestSize, 0);
@@ -699,7 +736,7 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
     private bool ShouldPrepareRenderResource(ILevelRenderResource resource)
         => IsRenderResourceEnabled(resource)
            && (resource is not ParticleSystemComponentProxy particle
-               || IsBoundsVisible(particle.Actor.GetBounds()));
+               || IsBoundsVisible(GetActorBounds(particle.Actor)));
 
     private void QueueRenderResourcesLocked(ActorProxy actor)
     {
@@ -726,6 +763,7 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
             if (ReferenceEquals(prioritizedResourceActor, actor))
             {
                 prioritizedResourceActor = null;
+                prioritizedRenderResources.Clear();
             }
         }
     }
@@ -741,6 +779,7 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
             lock (renderResourceQueueLock)
             {
                 prioritizedResourceActor = null;
+                prioritizedRenderResources.Clear();
             }
             return;
         }
@@ -751,26 +790,18 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
         lock (renderResourceQueueLock)
         {
             prioritizedResourceActor = actor;
+            prioritizedRenderResources.Clear();
             foreach (ILevelRenderResource component in priorityComponents)
             {
-                pendingRenderResourceSet.Add(component);
-            }
-
-            var prioritySet = priorityComponents.ToHashSet();
-            ILevelRenderResource[] remainder = pendingRenderResources
-                .Where(component => pendingRenderResourceSet.Contains(component) && !prioritySet.Contains(component))
-                .ToArray();
-            pendingRenderResources.Clear();
-            foreach (ILevelRenderResource component in priorityComponents)
-            {
-                if (pendingRenderResourceSet.Contains(component))
+                if (pendingRenderResourceSet.Add(component))
                 {
+                    // Keep a normal-queue fallback in case another selection supersedes this priority list.
                     pendingRenderResources.Enqueue(component);
                 }
-            }
-            foreach (ILevelRenderResource component in remainder)
-            {
-                pendingRenderResources.Enqueue(component);
+                if (pendingRenderResourceSet.Contains(component))
+                {
+                    prioritizedRenderResources.Enqueue(component);
+                }
             }
         }
 
@@ -797,6 +828,7 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
             cancellation = renderResourceCancellation;
             cancellation.Cancel();
             pendingRenderResources.Clear();
+            prioritizedRenderResources.Clear();
             pendingRenderResourceSet.Clear();
             worker = renderResourceWorker;
         }
@@ -872,6 +904,8 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
         DrawList_UI.Clear();
         SceneLights.Clear();
         sceneLightCache.Clear();
+        actorBoundsCache.Clear();
+        hasPendingViewportClick = false;
         InvalidateAllIcons();
         TransformWidget.Attach = null;
     }
@@ -916,6 +950,7 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
             RemoveQueuedRenderResources(actor);
             actor.PropertyChanged -= Actor_PropertyChanged;
             RemoveSceneLight(actor);
+            actorBoundsCache.TryRemove(actor, out _);
             HitProxies.RemoveAt(actor.HitID);
             InvalidateIconForActor(actor);
         }
@@ -928,6 +963,7 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
             DrawList_3D.Add(actor);
             actor.HitID = HitProxies.Add(actor);
             actor.PropertyChanged += Actor_PropertyChanged;
+            actorBoundsCache.TryRemove(actor, out _);
             CacheSceneLight(actor);
             QueueRenderResources(actor);
             InvalidateIconForActor(actor);

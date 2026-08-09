@@ -437,6 +437,8 @@ internal class LEShaderPreviewMaterial : ModelPreviewMaterial<LEVertex>
 public class ModelPreview<TVertex> : IDisposable where TVertex : IVertexBase
 {
     private readonly Dictionary<string, ModelPreviewMaterial<TVertex>> materialEffectBaselines = [];
+    private readonly Dictionary<(int Lod, RenderPass Pass),
+        (ModelPreviewSection Section, ModelPreviewMaterial<TVertex> Material)[]> renderSectionsCache = [];
     /// <summary>
     /// Contains the geometry and section information for each level-of-detail in the model.
     /// </summary>
@@ -693,6 +695,7 @@ public class ModelPreview<TVertex> : IDisposable where TVertex : IVertexBase
                     leVertMats.Add(ifp, new LEShaderPreviewMaterial(renderContext, matExport));
                     break;
             }
+            renderSectionsCache.Clear();
         }
 
         return true;
@@ -716,6 +719,8 @@ public class ModelPreview<TVertex> : IDisposable where TVertex : IVertexBase
                 }
             }
         }
+
+        renderSectionsCache.Clear();
 
         return true;
     }
@@ -768,6 +773,10 @@ public class ModelPreview<TVertex> : IDisposable where TVertex : IVertexBase
             materialEffectBaselines[materialName] = (ModelPreviewMaterial<TVertex>)(object)material;
             gameShaderMaterials[materialName] = effectPreview;
         }
+        if (materialEffectBaselines.Count > 0)
+        {
+            renderSectionsCache.Clear();
+        }
         return materialEffectBaselines.Count;
     }
 
@@ -777,11 +786,16 @@ public class ModelPreview<TVertex> : IDisposable where TVertex : IVertexBase
     /// </summary>
     public void ClearNamedRvrMaterialEffect()
     {
+        bool changed = materialEffectBaselines.Count > 0;
         foreach ((string materialName, ModelPreviewMaterial<TVertex> material) in materialEffectBaselines)
         {
             Materials[materialName] = material;
         }
         materialEffectBaselines.Clear();
+        if (changed)
+        {
+            renderSectionsCache.Clear();
+        }
     }
     /// <summary>
     /// Renders the ModelPreview at the specified level of detail
@@ -792,6 +806,42 @@ public class ModelPreview<TVertex> : IDisposable where TVertex : IVertexBase
     public void Render(RenderPass renderPass, MeshRenderContext view, int lod)
     {
         if (lod >= LODs.Count) return;
+
+        if (renderPass is RenderPass.Base or RenderPass.Hair)
+        {
+            if (!renderSectionsCache.TryGetValue((lod, renderPass), out var renderSections))
+            {
+                var matchingSections = new List<(ModelPreviewSection, ModelPreviewMaterial<TVertex>)>();
+                foreach (ModelPreviewSection section in LODs[lod].Sections)
+                {
+                    if (section.MaterialName is not null
+                        && Materials.TryGetValue(section.MaterialName, out ModelPreviewMaterial<TVertex> material)
+                        && material.Pass == renderPass)
+                    {
+                        matchingSections.Add((section, material));
+                    }
+                }
+                renderSections = matchingSections.ToArray();
+                renderSectionsCache[(lod, renderPass)] = renderSections;
+            }
+
+            foreach ((ModelPreviewSection section, ModelPreviewMaterial<TVertex> material) in renderSections)
+            {
+                material.RenderSection(LODs[lod], section, view);
+            }
+
+            if (renderPass is RenderPass.Base && view.Wireframe && LODs[lod].Mesh is Mesh<WorldVertex> wireMesh)
+            {
+                foreach (ModelPreviewSection section in LODs[lod].Sections)
+                {
+                    if (section.MaterialName is null)
+                    {
+                        view.RenderMeshAsWireframe(wireMesh, section);
+                    }
+                }
+            }
+            return;
+        }
 
         foreach (ModelPreviewSection section in LODs[lod].Sections)
         {

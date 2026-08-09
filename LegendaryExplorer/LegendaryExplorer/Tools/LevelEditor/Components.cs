@@ -1081,6 +1081,7 @@ public class SkeletalMeshComponentProxy : MeshComponentProxy
     SkinnedMeshRenderer skinnedMeshRenderer;
     AnimSequencePlayer animPlayer;
     private readonly MeshRenderContext renderContext;
+    private readonly PrimitiveComponentProxy animationParentComponent;
     private SkeletalMesh skeletalMesh;
     private MEGame skeletalMeshGame;
     private bool useGameShader;
@@ -1101,6 +1102,7 @@ public class SkeletalMeshComponentProxy : MeshComponentProxy
             && Properties.GetProp<ObjectProperty>("ParentAnimComponent")?.ResolveToEntry(Export.FileRef) is ExportEntry parentAnimExport
             && parent.Components.FirstOrDefault(cmp => cmp.Export == parentAnimExport) is { } parentAnimComponent)
         {
+            animationParentComponent = parentAnimComponent;
             LocalToWorld = parentAnimComponent.LocalToWorld;
         }
         if (Properties.GetProp<ObjectProperty>("SkeletalMesh") is { Value: not 0 } meshProperty
@@ -1409,7 +1411,16 @@ public class SkeletalMeshComponentProxy : MeshComponentProxy
 
     public override void UpdateLocalToWorld()
     {
-        base.UpdateLocalToWorld();
+        // Head, hair, headgear, and accessory SMCs can inherit the body animation component transform.
+        // Reapplying their authored component transform when the actor moves detaches them from the body.
+        if (animationParentComponent is not null)
+        {
+            LocalToWorld = animationParentComponent.LocalToWorld;
+        }
+        else
+        {
+            base.UpdateLocalToWorld();
+        }
         UpdateSelfLocalToWorld();
     }
 
@@ -1449,7 +1460,7 @@ public class BrushComponentProxy : PrimitiveComponentProxy
 
     public override void Render(MeshRenderContext context, RenderPass pass)
     {
-        if (!IsVisible) return;
+        if (!IsVisible || pass is RenderPass.Hair) return;
         if (Brush is not null)
         {
             context.RenderMeshAsWireframe(Brush);

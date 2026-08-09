@@ -1570,24 +1570,50 @@ public class MeshRenderContext : RenderContext
                 return true;
             }
 
-            // Serialized and aggregated bounds come from several actor/component types. Use the larger of
-            // their sphere and enclosing-box radii so a stale or underestimated sphere cannot cull visible
-            // static/skeletal meshes, stunts, decals, emitters, lights, or POI helpers during camera motion.
-            float radius = MathF.Max(sphereRadius, extentRadius);
-            if (!(radius > 0f)) return true;
-
             Vector3 viewCenter = Vector3.Transform(bounds.Origin, viewMatrix);
-            if (viewCenter.Z + radius < zNear || viewCenter.Z - radius > zFar)
+            if (extentRadius > 0f)
             {
-                return false;
+                // Test the transformed world AABB rather than its much larger enclosing sphere. This remains
+                // conservative for valid actor bounds while rejecting far more offscreen objects in a zoomed-out
+                // level, particularly multi-component stunts and decal receiver aggregates.
+                Vector3 viewExtent = new(
+                    extent.X * MathF.Abs(viewMatrix.M11) + extent.Y * MathF.Abs(viewMatrix.M21)
+                                                         + extent.Z * MathF.Abs(viewMatrix.M31),
+                    extent.X * MathF.Abs(viewMatrix.M12) + extent.Y * MathF.Abs(viewMatrix.M22)
+                                                         + extent.Z * MathF.Abs(viewMatrix.M32),
+                    extent.X * MathF.Abs(viewMatrix.M13) + extent.Y * MathF.Abs(viewMatrix.M23)
+                                                         + extent.Z * MathF.Abs(viewMatrix.M33));
+                if (!float.IsFinite(viewExtent.X) || !float.IsFinite(viewExtent.Y)
+                                                   || !float.IsFinite(viewExtent.Z))
+                {
+                    return true;
+                }
+
+                if (viewCenter.Z + viewExtent.Z < zNear || viewCenter.Z - viewExtent.Z > zFar)
+                {
+                    return false;
+                }
+
+                if (isOrthographic)
+                {
+                    return MathF.Abs(viewCenter.X) <= halfWidth + viewExtent.X
+                           && MathF.Abs(viewCenter.Y) <= halfHeight + viewExtent.Y;
+                }
+
+                float xLimit = viewCenter.Z * tanX + viewExtent.X + viewExtent.Z * tanX;
+                float yLimit = viewCenter.Z * tanY + viewExtent.Y + viewExtent.Z * tanY;
+                return MathF.Abs(viewCenter.X) <= xLimit && MathF.Abs(viewCenter.Y) <= yLimit;
             }
 
+            // Componentless helpers have zero box extents; retain the sphere/always-visible fallback for them.
+            float radius = sphereRadius;
+            if (!(radius > 0f)) return true;
+            if (viewCenter.Z + radius < zNear || viewCenter.Z - radius > zFar) return false;
             if (isOrthographic)
             {
                 return MathF.Abs(viewCenter.X) <= halfWidth + radius
                        && MathF.Abs(viewCenter.Y) <= halfHeight + radius;
             }
-
             float depth = MathF.Max(viewCenter.Z, zNear);
             return MathF.Abs(viewCenter.X) <= depth * tanX + radius * xRadiusFactor
                    && MathF.Abs(viewCenter.Y) <= depth * tanY + radius * yRadiusFactor;

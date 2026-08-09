@@ -757,7 +757,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
             int visibleEmitterCount = 0;
             foreach (EmitterActorProxy emitter in RenderContext.DrawList_3D.OfType<EmitterActorProxy>())
             {
-                if (RenderContext.IsBoundsVisible(emitter.GetBounds()))
+                if (RenderContext.IsBoundsVisible(RenderContext.GetActorBounds(emitter)))
                 {
                     emitter.UpdateScene(RenderContext, e);
                     visibleEmitterCount += emitter.Components.OfType<ParticleSystemComponentProxy>()
@@ -803,7 +803,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
             if (_zCutoffEnabled && actor.Location.Z >= _zCutoff) continue;
             if (HasIncompleteCharacterResources(actor)) continue;
 
-            BoxSphereBounds bounds = actor.GetBounds();
+            BoxSphereBounds bounds = RenderContext.GetActorBounds(actor);
             if (!visibility.IsVisible(bounds)) continue;
 
             int hitID = actor.HitID;
