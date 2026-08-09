@@ -232,6 +232,18 @@ public sealed class StaticLightingSceneDiagnostics
     public double BvhConstructionMilliseconds { get; init; }
     public int BvhNodeCount { get; init; }
     public int UniquePreparedMeshCount { get; init; }
+    /// <summary>
+    /// Components kept out of the receiver set because an effective section material is unlit.
+    /// They remain in collision and can still cast baked shadows onto other receivers.
+    /// </summary>
+    public IReadOnlyList<StaticLightingExcludedReceiver> ExcludedUnlitReceivers { get; init; } = [];
+}
+
+public sealed class StaticLightingExcludedReceiver
+{
+    public required OpenLevelFile File { get; init; }
+    public required ExportEntry Component { get; init; }
+    public required string MaterialPath { get; init; }
 }
 
 public sealed class StaticLightingBakeResult
@@ -271,6 +283,7 @@ public sealed class StaticLightingWriteResult
     public int IrrelevantLightReferenceCount { get; init; }
     public IReadOnlyList<string> TextureCachePaths { get; init; } = [];
     public int ReplacedExistingComponentCount { get; init; }
+    public int ExcludedUnlitReceiverCount { get; init; }
     public double SerializationMilliseconds { get; init; }
     public double LightMap1DSerializationMilliseconds { get; init; }
     public double LightMap2DSerializationMilliseconds { get; init; }

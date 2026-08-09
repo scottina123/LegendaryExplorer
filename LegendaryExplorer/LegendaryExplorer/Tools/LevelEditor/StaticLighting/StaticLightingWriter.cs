@@ -30,13 +30,30 @@ public static class StaticLightingWriter
         int lightMapTextures = 0;
         int irrelevantLightReferences = 0;
         int replacedExistingComponents = 0;
+        int excludedUnlitReceiverCount = 0;
         long lightMap1DSerializationTicks = 0;
         long lightMap2DSerializationTicks = 0;
         var cachePaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var textureCaches = new Dictionary<string, (FileStream Stream, Guid Guid)>(StringComparer.OrdinalIgnoreCase);
+        var removedStreamingTextures = new Dictionary<OpenLevelFile, HashSet<int>>();
 
         try
         {
+            foreach (StaticLightingExcludedReceiver receiver in bake.SceneDiagnostics.ExcludedUnlitReceivers)
+            {
+                int[] generatedTextureReferences = ResetUnlitReceiver(receiver.Component);
+                if (generatedTextureReferences.Length > 0)
+                {
+                    if (!removedStreamingTextures.TryGetValue(receiver.File, out HashSet<int> references))
+                        removedStreamingTextures.Add(receiver.File, references = []);
+                    references.UnionWith(generatedTextureReferences);
+                }
+                receiver.File.IsDirty = true;
+                excludedUnlitReceiverCount++;
+            }
+            foreach ((OpenLevelFile file, HashSet<int> references) in removedStreamingTextures)
+                RemoveStreamingTextureInstances(file, references);
+
             foreach (IGrouping<OpenLevelFile, StaticLightingComponentBake> fileGroup in
                      bake.Components.GroupBy(component => component.Target.File))
             {
@@ -100,6 +117,7 @@ public static class StaticLightingWriter
             IrrelevantLightReferenceCount = irrelevantLightReferences,
             TextureCachePaths = cachePaths.OrderBy(path => path, StringComparer.OrdinalIgnoreCase).ToArray(),
             ReplacedExistingComponentCount = replacedExistingComponents,
+            ExcludedUnlitReceiverCount = excludedUnlitReceiverCount,
             SerializationMilliseconds = serializationTimer.Elapsed.TotalMilliseconds,
             LightMap1DSerializationMilliseconds = TicksToMilliseconds(lightMap1DSerializationTicks),
             LightMap2DSerializationMilliseconds = TicksToMilliseconds(lightMap2DSerializationTicks)
@@ -113,6 +131,54 @@ public static class StaticLightingWriter
         (component.LODData[0].LightMap is { LightMapType: not ELightMapType.LMT_None } ||
          component.LODData[0].ShadowMaps is { Length: > 0 } ||
          component.LODData[0].ShadowVertexBuffers is { Length: > 0 });
+
+    private static int[] ResetUnlitReceiver(ExportEntry componentExport)
+    {
+        StaticMeshComponent component = componentExport.GetBinaryData<StaticMeshComponent>();
+        int[] generatedTextureReferences = component.LODData is { Length: > 0 }
+            ? component.LODData[0].LightMap switch
+            {
+                LightMap_2D map => [map.Texture1, map.Texture2, map.Texture3],
+                LightMap_4or6 map => [map.Texture1, map.Texture2, map.Texture3],
+                _ => []
+            }
+            : [];
+        generatedTextureReferences = generatedTextureReferences.Where(index => index != 0 &&
+                componentExport.FileRef.GetEntry(index)?.ObjectName.Name.StartsWith("LEX_Lightmass_",
+                    StringComparison.Ordinal) == true)
+            .Distinct().ToArray();
+        if (component.LODData is { Length: > 0 })
+        {
+            component.LODData[0].LightMap = new LightMap { LightMapType = ELightMapType.LMT_None };
+            component.LODData[0].ShadowMaps = [];
+            component.LODData[0].ShadowVertexBuffers = [];
+            componentExport.WriteBinary(component);
+        }
+
+        PropertyCollection properties = componentExport.GetProperties();
+        properties.AddOrReplaceProp(new BoolProperty(false, "bAcceptsLights"));
+        properties.AddOrReplaceProp(new BoolProperty(false, "bAcceptsDynamicLights"));
+        properties.AddOrReplaceProp(new BoolProperty(false, "bForceDirectLightMap"));
+        properties.AddOrReplaceProp(new BoolProperty(false, "bUsePrecomputedShadows"));
+        if (componentExport.Game != MEGame.UDK)
+            properties.AddOrReplaceProp(new BoolProperty(false, "bBioForcePrecomputedShadows"));
+        properties.RemoveNamedProperty("IrrelevantLights");
+        componentExport.WriteProperties(properties);
+        return generatedTextureReferences;
+    }
+
+    private static void RemoveStreamingTextureInstances(OpenLevelFile file,
+        IReadOnlyCollection<int> textureReferences)
+    {
+        if (textureReferences.Count == 0)
+            return;
+        Level level = file.LevelExport.GetBinaryData<Level>();
+        if (level.TextureToInstancesMap is null)
+            return;
+        foreach (int textureReference in textureReferences)
+            level.TextureToInstancesMap.Remove(textureReference);
+        file.LevelExport.WriteBinary(level);
+    }
 
     public static string ResolveTextureCacheName(IMEPackage package, string requestedName)
     {

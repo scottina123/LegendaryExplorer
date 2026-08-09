@@ -278,6 +278,8 @@ public sealed class StaticLightingBaker
             StaticLightingMappingDiagnostics>();
         var stockAtlasResolutions = new Dictionary<string, List<int>>(StringComparer.OrdinalIgnoreCase);
         var textureDimensions = new Dictionary<ExportEntry, (int Width, int Height)>();
+        var materialCompatibilityCache = new Dictionary<ExportEntry, (bool Compatible, string MaterialPath)>();
+        var excludedUnlitReceivers = new List<StaticLightingExcludedReceiver>();
 
         foreach (ActorProxy actor in actorArray)
         {
@@ -329,6 +331,24 @@ public sealed class StaticLightingBaker
                     continue;
 
                 long receiverStart = Stopwatch.GetTimestamp();
+                // A component can still be a shadow caster without being a lightmap receiver. BioWare's
+                // base-game Armax signage (and other unlit/emissive meshes) follows exactly that policy:
+                // it has no LightMap mapping even though its material was compiled with static-lighting use.
+                // Forcing a mapping selects a cooked static-lighting draw policy the unlit material never
+                // uses in the shipped levels and can make the material fall back to checkerboard in game.
+                if (!HasCompatibleReceiverMaterials(component, meshExport, lod, renderContext,
+                        materialCompatibilityCache, out string incompatibleMaterialPath))
+                {
+                    excludedUnlitReceivers.Add(new StaticLightingExcludedReceiver
+                    {
+                        File = owningFile,
+                        Component = component.Export,
+                        MaterialPath = incompatibleMaterialPath
+                    });
+                    receiverPreparationTicks += Stopwatch.GetTimestamp() - receiverStart;
+                    continue;
+                }
+
                 StaticMeshComponent componentBinary = component.Export.GetBinaryData<StaticMeshComponent>();
                 ELightMapType existingMappingType = GetExistingMappingType(componentBinary);
                 bool generatedMapping = IsGeneratedTextureMapping(component.Export, componentBinary);
@@ -406,7 +426,8 @@ public sealed class StaticLightingBaker
             ReceiverPreparationMilliseconds = TicksToMilliseconds(receiverPreparationTicks),
             BvhConstructionMilliseconds = collision.BvhBuildMilliseconds,
             BvhNodeCount = collision.BvhNodeCount,
-            UniquePreparedMeshCount = mappingDiagnosticsCache.Count
+            UniquePreparedMeshCount = mappingDiagnosticsCache.Count,
+            ExcludedUnlitReceivers = excludedUnlitReceivers
         };
         return (targets, lights, collision, diagnostics);
     }
@@ -1295,6 +1316,62 @@ public sealed class StaticLightingBaker
             return false;
         return true;
     }
+
+    private static bool HasCompatibleReceiverMaterials(StaticMeshComponentProxy component,
+        ExportEntry meshExport, StaticMeshRenderData lod, LevelEditorRenderContext renderContext,
+        Dictionary<ExportEntry, (bool Compatible, string MaterialPath)> compatibilityCache,
+        out string incompatibleMaterialPath)
+    {
+        ArrayProperty<ObjectProperty> overrides =
+            component.Properties.GetProp<ArrayProperty<ObjectProperty>>("Materials");
+        StaticMeshElement[] elements = lod.Elements ?? [];
+        for (int slot = 0; slot < elements.Length; slot++)
+        {
+            IEntry materialEntry = null;
+            if (overrides is not null && slot < overrides.Count && overrides[slot].Value != 0)
+                materialEntry = component.Export.FileRef.GetEntry(overrides[slot].Value);
+            if (materialEntry is null && elements[slot].Material != 0)
+                materialEntry = meshExport.FileRef.GetEntry(elements[slot].Material);
+            ExportEntry material = renderContext.ResolveExportCached(materialEntry);
+            if (material is null)
+                continue;
+            if (!compatibilityCache.TryGetValue(material, out var compatibility))
+            {
+                ExportEntry baseMaterial = ResolveBaseMaterial(material, renderContext);
+                compatibility = (CanMaterialReceiveStaticLighting(baseMaterial?.GetProperties()),
+                    baseMaterial?.InstancedFullPath ?? material.InstancedFullPath);
+                compatibilityCache.Add(material, compatibility);
+            }
+            if (compatibility.Compatible)
+                continue;
+            incompatibleMaterialPath = compatibility.MaterialPath;
+            return false;
+        }
+        incompatibleMaterialPath = null;
+        return true;
+    }
+
+    private static ExportEntry ResolveBaseMaterial(ExportEntry material,
+        LevelEditorRenderContext renderContext)
+    {
+        var visited = new HashSet<ExportEntry>();
+        ExportEntry current = material;
+        while (current is not null &&
+               current.ClassName.Contains("MaterialInstance", StringComparison.Ordinal) &&
+               visited.Add(current))
+        {
+            ObjectProperty parent = current.GetProperty<ObjectProperty>("Parent");
+            current = parent is null ? null : renderContext.ResolveExportCached(current.FileRef, parent.Value);
+        }
+        return current;
+    }
+
+    /// <summary>
+    /// Unlit materials do not consume direct, indirect, or vertex lighting. Installing a component
+    /// lightmap for them is both redundant and incompatible with how the shipped ME3 levels use them.
+    /// </summary>
+    public static bool CanMaterialReceiveStaticLighting(PropertyCollection baseMaterialProperties) =>
+        baseMaterialProperties?.GetProp<EnumProperty>("LightingModel")?.Value.Name != "MLM_Unlit";
 
     /// <summary>
     /// UE3 uses singular shadow flags on primitive components and plural variants on lights and a few

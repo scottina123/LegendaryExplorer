@@ -3522,7 +3522,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
                 return;
             }
 
-            if (bake.Components.Count == 0)
+            if (bake.Components.Count == 0 && bake.SceneDiagnostics.ExcludedUnlitReceivers.Count == 0)
             {
                 MessageBox.Show(this, isSingleActor
                         ? "The selected actor has no renderable static mesh components to bake."
@@ -3534,7 +3534,9 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
             BusyText = "Writing lightmaps, shadow maps, and texture-cache data...";
             await Dispatcher.Yield(DispatcherPriority.Background);
             StaticLightingWriteResult written = StaticLightingWriter.Write(bake, settings);
-            var writtenComponents = bake.Components.Select(component => component.Target.Component).ToHashSet();
+            var writtenComponents = bake.Components.Select(component => component.Target.Component)
+                .Concat(bake.SceneDiagnostics.ExcludedUnlitReceivers.Select(receiver => receiver.Component))
+                .ToHashSet();
             foreach (PrimitiveComponentProxy component in Actors.SelectMany(actor => actor.Components))
             {
                 if (writtenComponents.Contains(component.Export))
@@ -3552,6 +3554,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
                 ? "Lighting data was stored in the level packages."
                 : "Texture cache output:\n" + string.Join("\n", written.TextureCachePaths.Select(path => $"  • {path}"));
             TextBelowActors = $"Lightmass: {written.ComponentCount:N0} static components, " +
+                              $"{written.ExcludedUnlitReceiverCount:N0} unlit receivers protected, " +
                               $"{written.LightMapTextureCount:N0} lightmap textures, {written.ShadowMapCount:N0} shadow maps; " +
                               $"{written.IrrelevantLightReferenceCount:N0} irrelevant-light references; " +
                               $"{bake.WorkUnitCount:N0} parallel work units on {bake.WorkerCount:N0} workers; " +
@@ -3559,6 +3562,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
                               $"{bake.LightCount:N0} lights / {bake.SourceTriangleCount:N0} occluder triangles from all loaded levels.";
             MessageBox.Show(this,
                 $"Generated static lighting for {written.ComponentCount:N0} components.\n\n" +
+                $"Unlit-material receivers kept lightmap-free: {written.ExcludedUnlitReceiverCount:N0}\n" +
                 $"2D lightmaps: {bake.TextureMappedComponentCount:N0} components\n" +
                 $"Vertex-lightmap fallback: {bake.VertexMappedComponentCount:N0} components\n" +
                 $"Lightmap textures: {written.LightMapTextureCount:N0}\n" +

@@ -650,6 +650,69 @@ public class StaticLightingTests
     }
 
     [TestMethod]
+    public void UnlitMaterial_IsNotAStaticLightingReceiverEvenWhenCompiledForStaticLighting()
+    {
+        var properties = new PropertyCollection
+        {
+            new EnumProperty("MLM_Unlit", "EMaterialLightingModel", MEGame.LE3, "LightingModel"),
+            new BoolProperty(true, "bUsedWithStaticLighting")
+        };
+
+        Assert.IsFalse(StaticLightingBaker.CanMaterialReceiveStaticLighting(properties));
+        properties.AddOrReplaceProp(new EnumProperty("MLM_Phong", "EMaterialLightingModel", MEGame.LE3,
+            "LightingModel"));
+        Assert.IsTrue(StaticLightingBaker.CanMaterialReceiveStaticLighting(properties));
+    }
+
+    [TestMethod]
+    public void ResetUnlitReceiver_RemovesGeneratedMappingAndForcedLightingPolicy()
+    {
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("UnlitReceiver.pcc", MEGame.LE3);
+        ExportEntry component = package.CreateExport("StaticMeshComponent_0", "StaticMeshComponent", null,
+            indexed: false);
+        component.WriteProperties([
+            new BoolProperty(false, "bAcceptsLights"),
+            new BoolProperty(true, "bForceDirectLightMap"),
+            new BoolProperty(true, "bUsePrecomputedShadows"),
+            new ArrayProperty<StructProperty>([CommonStructs.GuidProp(Guid.NewGuid())], "IrrelevantLights")
+            {
+                Reference = "Guid"
+            }
+        ]);
+        component.WriteBinary(new StaticMeshComponent
+        {
+            LODData =
+            [
+                new StaticMeshComponentLODInfo
+                {
+                    LightMap = new LightMap_1D
+                    {
+                        LightMapType = ELightMapType.LMT_1D,
+                        LightGuids = [],
+                        DirectionalSamples = [],
+                        SimpleSamples = []
+                    },
+                    ShadowMaps = [7],
+                    ShadowVertexBuffers = [8]
+                }
+            ]
+        });
+
+        var resetMethod = typeof(StaticLightingWriter).GetMethod("ResetUnlitReceiver",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+        Assert.IsNotNull(resetMethod);
+        resetMethod.Invoke(null, [component]);
+
+        StaticMeshComponent reset = component.GetBinaryData<StaticMeshComponent>();
+        Assert.AreEqual(ELightMapType.LMT_None, reset.LODData[0].LightMap.LightMapType);
+        Assert.IsEmpty(reset.LODData[0].ShadowMaps);
+        Assert.IsEmpty(reset.LODData[0].ShadowVertexBuffers);
+        Assert.IsFalse(component.GetProperty<BoolProperty>("bForceDirectLightMap").Value);
+        Assert.IsFalse(component.GetProperty<BoolProperty>("bUsePrecomputedShadows").Value);
+        Assert.IsNull(component.GetProperty<ArrayProperty<StructProperty>>("IrrelevantLights"));
+    }
+
+    [TestMethod]
     public void ExistingObjectBinarySerializer_RoundTripsGeneratedLightAndShadowMaps()
     {
         using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("StaticLightingSerialization.pcc", MEGame.LE3);
