@@ -41,7 +41,8 @@ public static class StaticLightingWriter
         {
             foreach (StaticLightingExcludedReceiver receiver in bake.SceneDiagnostics.ExcludedUnlitReceivers)
             {
-                int[] generatedTextureReferences = ResetUnlitReceiver(receiver.Component);
+                int[] generatedTextureReferences = ResetExcludedReceiver(receiver.Component,
+                    receiver.AcceptsDynamicLighting);
                 if (generatedTextureReferences.Length > 0)
                 {
                     if (!removedStreamingTextures.TryGetValue(receiver.File, out HashSet<int> references))
@@ -132,7 +133,7 @@ public static class StaticLightingWriter
          component.LODData[0].ShadowMaps is { Length: > 0 } ||
          component.LODData[0].ShadowVertexBuffers is { Length: > 0 });
 
-    private static int[] ResetUnlitReceiver(ExportEntry componentExport)
+    private static int[] ResetExcludedReceiver(ExportEntry componentExport, bool acceptsDynamicLighting)
     {
         StaticMeshComponent component = componentExport.GetBinaryData<StaticMeshComponent>();
         int[] generatedTextureReferences = component.LODData is { Length: > 0 }
@@ -156,10 +157,11 @@ public static class StaticLightingWriter
         }
 
         PropertyCollection properties = componentExport.GetProperties();
-        properties.AddOrReplaceProp(new BoolProperty(false, "bAcceptsLights"));
-        properties.AddOrReplaceProp(new BoolProperty(false, "bAcceptsDynamicLights"));
+        properties.AddOrReplaceProp(new BoolProperty(acceptsDynamicLighting, "bAcceptsLights"));
+        properties.AddOrReplaceProp(new BoolProperty(acceptsDynamicLighting, "bAcceptsDynamicLights"));
         properties.AddOrReplaceProp(new BoolProperty(false, "bForceDirectLightMap"));
         properties.AddOrReplaceProp(new BoolProperty(false, "bUsePrecomputedShadows"));
+        properties.AddOrReplaceProp(new BoolProperty(acceptsDynamicLighting, "bCastDynamicShadow"));
         if (componentExport.Game != MEGame.UDK)
             properties.AddOrReplaceProp(new BoolProperty(false, "bBioForcePrecomputedShadows"));
         properties.RemoveNamedProperty("IrrelevantLights");

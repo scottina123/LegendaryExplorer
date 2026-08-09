@@ -1,6 +1,7 @@
 using LegendaryExplorer.Tools.LevelEditor.Scene3D;
 using LegendaryExplorerCore.Helpers;
 using LegendaryExplorerCore.Packages;
+using LegendaryExplorerCore.Shaders;
 using LegendaryExplorerCore.Unreal;
 using LegendaryExplorerCore.Unreal.BinaryConverters;
 using LegendaryExplorerCore.Unreal.ObjectInfo;
@@ -400,7 +401,8 @@ public sealed class StaticLightingBaker
             StaticLightingMappingDiagnostics>();
         var stockAtlasResolutions = new Dictionary<string, List<int>>(StringComparer.OrdinalIgnoreCase);
         var textureDimensions = new Dictionary<ExportEntry, (int Width, int Height)>();
-        var materialCompatibilityCache = new Dictionary<ExportEntry, (bool Compatible, string MaterialPath)>();
+        var materialCompatibilityCache = new Dictionary<ExportEntry,
+            (bool Lit, bool VertexCompatible, bool TextureCompatible, string MaterialPath)>();
         Dictionary<ExportEntry, (bool Emissive, Vector3 Radiance)> emissiveMaterialCache = null;
         var excludedUnlitReceivers = new List<StaticLightingExcludedReceiver>();
         var areaEmitters = new List<StaticLightingAreaEmitter>();
@@ -472,22 +474,6 @@ public sealed class StaticLightingBaker
                     continue;
 
                 long receiverStart = Stopwatch.GetTimestamp();
-                // A component whose resolved sections are all unlit can still cast shadows without being
-                // a receiver. Mixed meshes remain receivers: their lit sections use the component mapping
-                // while UE3's unlit sections ignore it.
-                if (!HasCompatibleReceiverMaterials(component, meshExport, lod, renderContext,
-                        materialCompatibilityCache, out string incompatibleMaterialPath))
-                {
-                    excludedUnlitReceivers.Add(new StaticLightingExcludedReceiver
-                    {
-                        File = owningFile,
-                        Component = component.Export,
-                        MaterialPath = incompatibleMaterialPath
-                    });
-                    receiverPreparationTicks += Stopwatch.GetTimestamp() - receiverStart;
-                    continue;
-                }
-
                 StaticMeshComponent componentBinary = component.Export.GetBinaryData<StaticMeshComponent>();
                 ELightMapType existingMappingType = GetExistingMappingType(componentBinary);
                 bool generatedMapping = IsGeneratedTextureMapping(component.Export, componentBinary);
@@ -508,6 +494,20 @@ public sealed class StaticLightingBaker
                 bool useTextureMapping = ShouldUseTextureMapping(mappingMode, hasTextureCoordinates,
                     effectiveLightMapResolution, existingMappingType, generatedMapping,
                     meshExport.InstancedFullPath, maximumWorldDimension, surfaceArea, triangles.Count);
+                if (!HasCompatibleReceiverMaterials(component, meshExport, lod, useTextureMapping,
+                        renderContext, materialCompatibilityCache, out string incompatibleMaterialPath,
+                        out bool acceptsDynamicLighting))
+                {
+                    excludedUnlitReceivers.Add(new StaticLightingExcludedReceiver
+                    {
+                        File = owningFile,
+                        Component = component.Export,
+                        MaterialPath = incompatibleMaterialPath,
+                        AcceptsDynamicLighting = acceptsDynamicLighting
+                    });
+                    receiverPreparationTicks += Stopwatch.GetTimestamp() - receiverStart;
+                    continue;
+                }
                 int textureResolution = useTextureMapping
                     ? ResolveTextureResolution(mappingMode, exactTargetComponents is not null,
                         effectiveLightMapResolution, maximumTextureResolution)
@@ -654,7 +654,8 @@ public sealed class StaticLightingBaker
         var occluders = new List<(Vector3 A, Vector3 B, Vector3 C, ExportEntry Source, int SourceTriangleIndex)>();
         var stockAtlasResolutions = new Dictionary<string, List<int>>(StringComparer.OrdinalIgnoreCase);
         var textureDimensions = new Dictionary<ExportEntry, (int Width, int Height)>();
-        var materialCompatibilityCache = new Dictionary<ExportEntry, (bool Compatible, string MaterialPath)>();
+        var materialCompatibilityCache = new Dictionary<ExportEntry,
+            (bool Lit, bool VertexCompatible, bool TextureCompatible, string MaterialPath)>();
         Dictionary<ExportEntry, (bool Emissive, Vector3 Radiance)> emissiveMaterialCache = null;
         var excludedUnlitReceivers = new List<StaticLightingExcludedReceiver>();
         var areaEmitters = new List<StaticLightingAreaEmitter>();
@@ -698,19 +699,6 @@ public sealed class StaticLightingBaker
                 continue;
 
             long receiverStart = Stopwatch.GetTimestamp();
-            if (!HasCompatibleReceiverMaterials(component, input.MeshExport, input.Lod, renderContext,
-                    materialCompatibilityCache, out string incompatibleMaterialPath))
-            {
-                excludedUnlitReceivers.Add(new StaticLightingExcludedReceiver
-                {
-                    File = owningFile,
-                    Component = component.Export,
-                    MaterialPath = incompatibleMaterialPath
-                });
-                receiverPreparationTicks += Stopwatch.GetTimestamp() - receiverStart;
-                continue;
-            }
-
             StaticMeshComponent componentBinary = component.Export.GetBinaryData<StaticMeshComponent>();
             ELightMapType existingMappingType = GetExistingMappingType(componentBinary);
             bool generatedMapping = IsGeneratedTextureMapping(component.Export, componentBinary);
@@ -731,6 +719,20 @@ public sealed class StaticLightingBaker
                 effectiveLightMapResolution, existingMappingType, generatedMapping,
                 input.MeshExport.InstancedFullPath, scanned.MaximumWorldDimension, scanned.SurfaceArea,
                 triangles.Count);
+            if (!HasCompatibleReceiverMaterials(component, input.MeshExport, input.Lod,
+                    useTextureMapping, renderContext, materialCompatibilityCache,
+                    out string incompatibleMaterialPath, out bool acceptsDynamicLighting))
+            {
+                excludedUnlitReceivers.Add(new StaticLightingExcludedReceiver
+                {
+                    File = owningFile,
+                    Component = component.Export,
+                    MaterialPath = incompatibleMaterialPath,
+                    AcceptsDynamicLighting = acceptsDynamicLighting
+                });
+                receiverPreparationTicks += Stopwatch.GetTimestamp() - receiverStart;
+                continue;
+            }
             int textureResolution = useTextureMapping
                 ? ResolveTextureResolution(mappingMode, exactTargetComponents is not null,
                     effectiveLightMapResolution, requestedTextureResolution)
@@ -1907,13 +1909,16 @@ public sealed class StaticLightingBaker
     }
 
     private static bool HasCompatibleReceiverMaterials(StaticMeshComponentProxy component,
-        ExportEntry meshExport, StaticMeshRenderData lod, LevelEditorRenderContext renderContext,
-        Dictionary<ExportEntry, (bool Compatible, string MaterialPath)> compatibilityCache,
-        out string incompatibleMaterialPath)
+        ExportEntry meshExport, StaticMeshRenderData lod, bool useTextureMapping,
+        LevelEditorRenderContext renderContext,
+        Dictionary<ExportEntry, (bool Lit, bool VertexCompatible, bool TextureCompatible,
+            string MaterialPath)> compatibilityCache,
+        out string incompatibleMaterialPath, out bool acceptsDynamicLighting)
     {
         StaticMeshElement[] elements = lod.Elements ?? [];
         bool hasResolvedMaterial = false;
-        bool hasCompatibleMaterial = false;
+        bool hasLitMaterial = false;
+        bool allLitMaterialsCompatible = true;
         string firstIncompatibleMaterialPath = null;
         for (int slot = 0; slot < elements.Length; slot++)
         {
@@ -1925,18 +1930,40 @@ public sealed class StaticLightingBaker
             if (!compatibilityCache.TryGetValue(material, out var compatibility))
             {
                 ExportEntry baseMaterial = ResolveBaseMaterial(material, renderContext);
-                compatibility = (CanMaterialReceiveStaticLighting(baseMaterial?.GetProperties()),
+                PropertyCollection baseProperties = baseMaterial?.GetProperties();
+                bool lit = baseProperties?.GetProp<EnumProperty>("LightingModel")?.Value.Name !=
+                           "MLM_Unlit";
+                bool vertexCompatible = false;
+                bool textureCompatible = false;
+                if (lit && CanMaterialReceiveStaticLighting(baseProperties))
+                {
+                    ExportEntry compiledMaterial = ResolveCompiledMaterial(material, renderContext);
+                    MaterialShaderMap shaderMap = ResolveMaterialShaderMap(compiledMaterial);
+                    vertexCompatible = HasStaticLightingShaderPolicy(shaderMap, useTextureMapping: false);
+                    textureCompatible = HasStaticLightingShaderPolicy(shaderMap, useTextureMapping: true);
+                }
+                compatibility = (lit, vertexCompatible, textureCompatible,
                     baseMaterial?.InstancedFullPath ?? material.InstancedFullPath);
                 compatibilityCache.Add(material, compatibility);
             }
-            if (compatibility.Compatible)
+            if (!compatibility.Lit)
             {
-                hasCompatibleMaterial = true;
-                break;
+                firstIncompatibleMaterialPath ??= compatibility.MaterialPath;
+                continue;
             }
-            firstIncompatibleMaterialPath ??= compatibility.MaterialPath;
+            hasLitMaterial = true;
+            bool compatible = useTextureMapping
+                ? compatibility.TextureCompatible
+                : compatibility.VertexCompatible;
+            if (!compatible)
+            {
+                allLitMaterialsCompatible = false;
+                firstIncompatibleMaterialPath ??= compatibility.MaterialPath;
+            }
         }
-        bool canReceive = CanComponentReceiveStaticLighting(hasResolvedMaterial, hasCompatibleMaterial);
+        bool canReceive = CanComponentReceiveStaticLighting(hasResolvedMaterial, hasLitMaterial,
+            allLitMaterialsCompatible);
+        acceptsDynamicLighting = hasLitMaterial;
         incompatibleMaterialPath = canReceive ? null : firstIncompatibleMaterialPath;
         return canReceive;
     }
@@ -1960,14 +1987,71 @@ public sealed class StaticLightingBaker
     {
         var visited = new HashSet<ExportEntry>();
         ExportEntry current = material;
-        while (current is not null &&
-               current.ClassName.Contains("MaterialInstance", StringComparison.Ordinal) &&
-               visited.Add(current))
+        while (current is not null && visited.Add(current))
         {
-            ObjectProperty parent = current.GetProperty<ObjectProperty>("Parent");
+            ObjectProperty parent = GetMaterialParent(current);
+            if (parent is null)
+                break;
             current = parent is null ? null : renderContext.ResolveExportCached(current.FileRef, parent.Value);
         }
         return current;
+    }
+
+    private static ExportEntry ResolveCompiledMaterial(ExportEntry material,
+        LevelEditorRenderContext renderContext)
+    {
+        var visited = new HashSet<ExportEntry>();
+        ExportEntry current = material;
+        while (current is not null && visited.Add(current))
+        {
+            if (current.ClassName is "Material" or "DecalMaterial" ||
+                current.ClassName.Contains("MaterialInstance", StringComparison.Ordinal) &&
+                current.GetProperty<BoolProperty>("bHasStaticPermutationResource")?.Value == true)
+                return current;
+            ObjectProperty parent = GetMaterialParent(current);
+            current = parent is null ? null : renderContext.ResolveExportCached(current.FileRef, parent.Value);
+        }
+        return null;
+    }
+
+    private static ObjectProperty GetMaterialParent(ExportEntry material) => material.ClassName switch
+    {
+        "RvrEffectsMaterialUser" => material.GetProperty<ObjectProperty>("m_pBaseMaterial"),
+        _ when material.ClassName.Contains("MaterialInstance", StringComparison.Ordinal) =>
+            material.GetProperty<ObjectProperty>("Parent"),
+        _ => null
+    };
+
+    private static MaterialShaderMap ResolveMaterialShaderMap(ExportEntry material)
+    {
+        if (material is null)
+            return null;
+        try
+        {
+            return ShaderCacheManipulator.GetMaterialShaderMapAndShadersForVertexFactory(material,
+                "FLocalVertexFactory").Item1;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    public static bool HasStaticLightingShaderPolicy(MaterialShaderMap shaderMap,
+        bool useTextureMapping)
+    {
+        MeshShaderMap localVertexFactory = shaderMap?.MeshShaderMaps?.FirstOrDefault(map =>
+            map.VertexFactoryType.Name == "FLocalVertexFactory");
+        if (localVertexFactory is null)
+            return false;
+        string policy = useTextureMapping
+            ? "FDirectionalLightMapTexturePolicy"
+            : "FDirectionalVertexLightMapPolicy";
+        bool hasVertexShader = localVertexFactory.Shaders.Any(pair =>
+            pair.Key.Name == $"TBasePassVertexShader{policy}FNoDensityPolicy");
+        bool hasPixelShader = localVertexFactory.Shaders.Any(pair =>
+            pair.Key.Name.StartsWith($"TBasePassPixelShader{policy}", StringComparison.Ordinal));
+        return hasVertexShader && hasPixelShader;
     }
 
     /// <summary>
@@ -1975,15 +2059,17 @@ public sealed class StaticLightingBaker
     /// lightmap for them is both redundant and incompatible with how the shipped ME3 levels use them.
     /// </summary>
     public static bool CanMaterialReceiveStaticLighting(PropertyCollection baseMaterialProperties) =>
-        baseMaterialProperties?.GetProp<EnumProperty>("LightingModel")?.Value.Name != "MLM_Unlit";
+        baseMaterialProperties?.GetProp<EnumProperty>("LightingModel")?.Value.Name != "MLM_Unlit" &&
+        baseMaterialProperties?.GetProp<BoolProperty>("bUsedWithStaticLighting")?.Value != false;
 
     /// <summary>
-    /// Unresolved/no-material components retain the historical receiver behavior. Resolved components
-    /// are excluded only when every section is incompatible; one lit section is sufficient because
-    /// UE3 applies the component lightmap only in material draw policies that consume static lighting.
+    /// Unresolved/no-material components retain the historical receiver behavior. A resolved component
+    /// needs at least one lit section, and every lit section must contain the selected static-lighting
+    /// shader policy because the lightmap is installed at component scope.
     /// </summary>
     public static bool CanComponentReceiveStaticLighting(bool hasResolvedMaterial,
-        bool hasCompatibleMaterial) => !hasResolvedMaterial || hasCompatibleMaterial;
+        bool hasLitMaterial, bool allLitMaterialsCompatible) =>
+        !hasResolvedMaterial || hasLitMaterial && allLitMaterialsCompatible;
 
     /// <summary>
     /// UE3 uses singular shadow flags on primitive components and plural variants on lights and a few

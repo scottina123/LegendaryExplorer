@@ -3646,7 +3646,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
                 ? "Lighting data was stored in the level packages."
                 : "Texture cache output:\n" + string.Join("\n", written.TextureCachePaths.Select(path => $"  • {path}"));
             TextBelowActors = $"Lightmass: {written.ComponentCount:N0} static components, " +
-                              $"{written.ExcludedUnlitReceiverCount:N0} unlit receivers protected, " +
+                              $"{written.ExcludedUnlitReceiverCount:N0} incompatible receivers protected, " +
                               $"{written.LightMapTextureCount:N0} lightmap textures, {written.ShadowMapCount:N0} shadow maps; " +
                               $"{written.IrrelevantLightReferenceCount:N0} irrelevant-light references; " +
                               $"{bake.WorkUnitCount:N0} parallel work units on {bake.WorkerCount:N0} workers; " +
@@ -3657,7 +3657,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
             MessageBox.Show(this,
                 mappingFallbackWarning +
                 $"Generated static lighting for {written.ComponentCount:N0} components.\n\n" +
-                $"Unlit-material receivers kept lightmap-free: {written.ExcludedUnlitReceiverCount:N0}\n" +
+                $"Unlit/unsupported-material receivers kept lightmap-free: {written.ExcludedUnlitReceiverCount:N0}\n" +
                 $"2D lightmaps: {bake.TextureMappedComponentCount:N0} components\n" +
                 $"Vertex-lightmap fallback: {bake.VertexMappedComponentCount:N0} components\n" +
                 $"Lightmap textures: {written.LightMapTextureCount:N0}\n" +

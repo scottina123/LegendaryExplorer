@@ -331,8 +331,9 @@ public sealed class StaticLightingSceneDiagnostics
     public double NativeLightScanMilliseconds { get; init; }
     public double NativeTotalSceneScanMilliseconds { get; init; }
     /// <summary>
-    /// Components kept out of the receiver set because an effective section material is unlit.
-    /// They remain in collision and can still cast baked shadows onto other receivers.
+    /// Components kept out of the receiver set because an effective section material is unlit or
+    /// lacks the compiled shader policy required by the selected lightmap type. They remain in
+    /// collision and can still cast baked shadows onto other receivers.
     /// </summary>
     public IReadOnlyList<StaticLightingExcludedReceiver> ExcludedUnlitReceivers { get; init; } = [];
 }
@@ -342,6 +343,11 @@ public sealed class StaticLightingExcludedReceiver
     public required OpenLevelFile File { get; init; }
     public required ExportEntry Component { get; init; }
     public required string MaterialPath { get; init; }
+    /// <summary>
+    /// True for lit materials which cannot consume the selected static-lighting mapping. Their
+    /// component is restored to dynamic lighting after any stale generated mapping is removed.
+    /// </summary>
+    public bool AcceptsDynamicLighting { get; init; }
 }
 
 public sealed class StaticLightingBakeResult

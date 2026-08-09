@@ -4,6 +4,7 @@ using LegendaryExplorerCore.Helpers;
 using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.Unreal;
 using LegendaryExplorerCore.Unreal.BinaryConverters;
+using LegendaryExplorerCore.Unreal.Collections;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using System;
 using System.Collections.Generic;
@@ -1140,18 +1141,51 @@ public class StaticLightingTests
         properties.AddOrReplaceProp(new EnumProperty("MLM_Phong", "EMaterialLightingModel", MEGame.LE3,
             "LightingModel"));
         Assert.IsTrue(StaticLightingBaker.CanMaterialReceiveStaticLighting(properties));
+        properties.AddOrReplaceProp(new BoolProperty(false, "bUsedWithStaticLighting"));
+        Assert.IsFalse(StaticLightingBaker.CanMaterialReceiveStaticLighting(properties));
 
         Assert.IsFalse(StaticLightingBaker.CanComponentReceiveStaticLighting(
-            hasResolvedMaterial: true, hasCompatibleMaterial: false));
+            hasResolvedMaterial: true, hasLitMaterial: false, allLitMaterialsCompatible: true));
         Assert.IsTrue(StaticLightingBaker.CanComponentReceiveStaticLighting(
-            hasResolvedMaterial: true, hasCompatibleMaterial: true),
+            hasResolvedMaterial: true, hasLitMaterial: true, allLitMaterialsCompatible: true),
             "A mixed lit/unlit mesh must remain a receiver for its lit sections.");
+        Assert.IsFalse(StaticLightingBaker.CanComponentReceiveStaticLighting(
+            hasResolvedMaterial: true, hasLitMaterial: true, allLitMaterialsCompatible: false),
+            "One unsupported lit section makes a component-scoped mapping unsafe.");
         Assert.IsTrue(StaticLightingBaker.CanComponentReceiveStaticLighting(
-            hasResolvedMaterial: false, hasCompatibleMaterial: false));
+            hasResolvedMaterial: false, hasLitMaterial: false, allLitMaterialsCompatible: false));
     }
 
     [TestMethod]
-    public void ResetUnlitReceiver_RemovesGeneratedMappingAndForcedLightingPolicy()
+    public void StaticLightingShaderPolicy_RequiresMatchingVertexAndPixelShaders()
+    {
+        var shaders = new UMultiMap<NameReference, ShaderReference>();
+        var shaderMap = new MaterialShaderMap
+        {
+            MeshShaderMaps =
+            [
+                new MeshShaderMap
+                {
+                    VertexFactoryType = "FLocalVertexFactory",
+                    Shaders = shaders
+                }
+            ]
+        };
+
+        shaders.Add("TBasePassVertexShaderFDirectionalVertexLightMapPolicyFNoDensityPolicy",
+            new ShaderReference());
+        Assert.IsFalse(StaticLightingBaker.HasStaticLightingShaderPolicy(shaderMap,
+            useTextureMapping: false));
+        shaders.Add("TBasePassPixelShaderFDirectionalVertexLightMapPolicyNoSkyLight",
+            new ShaderReference());
+        Assert.IsTrue(StaticLightingBaker.HasStaticLightingShaderPolicy(shaderMap,
+            useTextureMapping: false));
+        Assert.IsFalse(StaticLightingBaker.HasStaticLightingShaderPolicy(shaderMap,
+            useTextureMapping: true));
+    }
+
+    [TestMethod]
+    public void ResetExcludedReceiver_RemovesGeneratedMappingAndRestoresSelectedLightingPolicy()
     {
         using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("UnlitReceiver.pcc", MEGame.LE3);
         ExportEntry component = package.CreateExport("StaticMeshComponent_0", "StaticMeshComponent", null,
@@ -1184,10 +1218,10 @@ public class StaticLightingTests
             ]
         });
 
-        var resetMethod = typeof(StaticLightingWriter).GetMethod("ResetUnlitReceiver",
+        var resetMethod = typeof(StaticLightingWriter).GetMethod("ResetExcludedReceiver",
             System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
         Assert.IsNotNull(resetMethod);
-        resetMethod.Invoke(null, [component]);
+        resetMethod.Invoke(null, [component, false]);
 
         StaticMeshComponent reset = component.GetBinaryData<StaticMeshComponent>();
         Assert.AreEqual(ELightMapType.LMT_None, reset.LODData[0].LightMap.LightMapType);
@@ -1196,6 +1230,11 @@ public class StaticLightingTests
         Assert.IsFalse(component.GetProperty<BoolProperty>("bForceDirectLightMap").Value);
         Assert.IsFalse(component.GetProperty<BoolProperty>("bUsePrecomputedShadows").Value);
         Assert.IsNull(component.GetProperty<ArrayProperty<StructProperty>>("IrrelevantLights"));
+
+        resetMethod.Invoke(null, [component, true]);
+        Assert.IsTrue(component.GetProperty<BoolProperty>("bAcceptsLights").Value);
+        Assert.IsTrue(component.GetProperty<BoolProperty>("bAcceptsDynamicLights").Value);
+        Assert.IsTrue(component.GetProperty<BoolProperty>("bCastDynamicShadow").Value);
     }
 
     [TestMethod]
