@@ -88,16 +88,14 @@ public class StaticLightingTests
             {
                 TextureResolution = 64,
                 WorkTileSize = 16,
-                WorkerThreads = 1,
-                GenerateShadowMaps = false
+                WorkerThreads = 1
             }).Bake();
         StaticLightingBakeResult parallel = new StaticLightingBaker([target], [light], collision,
             new StaticLightingGenerationSettings
             {
                 TextureResolution = 64,
                 WorkTileSize = 16,
-                WorkerThreads = 4,
-                GenerateShadowMaps = false
+                WorkerThreads = 4
             }).Bake();
 
         Assert.IsTrue(parallel.WorkUnitCount >= 16);
@@ -109,7 +107,7 @@ public class StaticLightingTests
     }
 
     [TestMethod]
-    public void ParallelTextureBake_PreservesLightsThatShareALightGuid()
+    public void ParallelTextureBake_BakesLightsThatShareAGuidWithoutRuntimeShadowMaps()
     {
         using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("DuplicateLightGuids.pcc", MEGame.LE3);
         ExportEntry component = package.CreateExport("StaticMeshComponent_0", "StaticMeshComponent", null,
@@ -128,15 +126,52 @@ public class StaticLightingTests
             {
                 TextureResolution = 64,
                 WorkTileSize = 16,
-                WorkerThreads = 4,
-                GenerateShadowMaps = true
+                WorkerThreads = 4
             }).Bake();
 
         StaticLightingTextureBake texture = result.Components[0].Texture;
-        Assert.AreEqual(2, texture.ShadowMaps.Count);
-        Assert.IsTrue(texture.ShadowMaps.All(shadow => shadow.LightGuid == sharedGuid));
-        Assert.IsTrue(texture.ShadowMaps.All(shadow => shadow.Visibility[32 * 64 + 32] == byte.MaxValue));
+        Assert.AreEqual(0, texture.ShadowMaps.Count);
+        Assert.AreEqual(1.53f, texture.ScaleVectors[2].X, 0.0001f);
         Assert.AreEqual(1, result.Components[0].LightGuids.Length);
+    }
+
+    [TestMethod]
+    public void Game3Bake_EncodesDirectionalBasisMaximaAndSimpleLightmap()
+    {
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("DirectionalLightmass.pcc", MEGame.LE3);
+        ExportEntry component = package.CreateExport("StaticMeshComponent_0", "StaticMeshComponent", null,
+            indexed: false);
+        component.WriteProperties([]);
+        StaticLightingMeshTarget target = CreateQuadTarget(component);
+
+        StaticLightingBakeResult result = new StaticLightingBaker([target], [],
+            LevelCollisionScene.FromTriangles(Array.Empty<(Vector3 A, Vector3 B, Vector3 C)>()),
+            new StaticLightingGenerationSettings
+            {
+                TextureResolution = 64,
+                WorkerThreads = 1,
+                AmbientIntensity = 0.25f
+            }).Bake();
+
+        StaticLightingTextureBake texture = result.Components[0].Texture;
+        Assert.AreEqual(3, texture.CoefficientImages.Count);
+        Assert.AreEqual(Vector3.One, texture.ScaleVectors[0]);
+        Assert.AreEqual(new Vector3(0.25f), texture.ScaleVectors[1]);
+        Assert.AreEqual(0.25f, texture.ScaleVectors[2].Z, 0.0001f);
+
+        int center = (32 * 64 + 32) * 4;
+        byte[] normalizedColor = texture.CoefficientImages[0];
+        byte[] directionalMaxima = texture.CoefficientImages[1];
+        byte[] simple = texture.CoefficientImages[2];
+        Assert.AreEqual(byte.MaxValue, normalizedColor[center]);
+        Assert.AreEqual(byte.MaxValue, normalizedColor[center + 1]);
+        Assert.AreEqual(byte.MaxValue, normalizedColor[center + 2]);
+        Assert.AreEqual(byte.MaxValue, directionalMaxima[center]);
+        Assert.AreEqual(byte.MaxValue, directionalMaxima[center + 1]);
+        Assert.AreEqual(byte.MaxValue, directionalMaxima[center + 2]);
+        Assert.AreEqual(byte.MaxValue, simple[center]);
+        Assert.AreEqual(byte.MaxValue, simple[center + 1]);
+        Assert.AreEqual(byte.MaxValue, simple[center + 2]);
     }
 
     [TestMethod]
@@ -165,8 +200,7 @@ public class StaticLightingTests
             new StaticLightingGenerationSettings
             {
                 TextureResolution = 64,
-                WorkerThreads = 1,
-                GenerateShadowMaps = false
+                WorkerThreads = 1
             }).Bake();
 
         CollectionAssert.AreEqual(new[] { affectingGuid }, result.Components[0].LightGuids);
@@ -190,8 +224,7 @@ public class StaticLightingTests
             new StaticLightingGenerationSettings
             {
                 TextureResolution = 64,
-                WorkerThreads = 1,
-                GenerateShadowMaps = false
+                WorkerThreads = 1
             }).Bake();
 
         CollectionAssert.AreEqual(new[] { lightGuid }, result.Components[0].LightGuids);
@@ -295,6 +328,25 @@ public class StaticLightingTests
         Guid[] restored = component.GetProperty<ArrayProperty<StructProperty>>("IrrelevantLights")
             .Select(CommonStructs.GetGuid).ToArray();
         CollectionAssert.AreEqual(expected, restored);
+    }
+
+    [TestMethod]
+    public void StaticLightingProperties_DisableRuntimeLightAcceptance()
+    {
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("StaticLightingProperties.pcc", MEGame.LE3);
+        ExportEntry component = package.CreateExport("StaticMeshComponent_0", "StaticMeshComponent", null,
+            indexed: false);
+        component.WriteProperties([]);
+        var method = typeof(StaticLightingWriter).GetMethod("ApplyStaticLightingProperties",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+
+        Assert.IsNotNull(method);
+        method.Invoke(null, [component, Array.Empty<Guid>()]);
+
+        Assert.IsFalse(component.GetProperty<BoolProperty>("bAcceptsLights").Value);
+        Assert.IsFalse(component.GetProperty<BoolProperty>("bAcceptsDynamicLights").Value);
+        Assert.IsTrue(component.GetProperty<BoolProperty>("bForceDirectLightMap").Value);
+        Assert.IsTrue(component.GetProperty<BoolProperty>("bUsePrecomputedShadows").Value);
     }
 
     private static StaticLightingMeshTarget CreateQuadTarget(ExportEntry component, uint lightingChannelMask = 0)

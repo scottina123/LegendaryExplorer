@@ -314,8 +314,6 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
     public float LightmassAmbientIntensity { get => _lightmassAmbientIntensity; set => SetProperty(ref _lightmassAmbientIntensity, value); }
     private float _lightmassShadowBias = 1f;
     public float LightmassShadowBias { get => _lightmassShadowBias; set => SetProperty(ref _lightmassShadowBias, value); }
-    private bool _lightmassGenerateShadowMaps = true;
-    public bool LightmassGenerateShadowMaps { get => _lightmassGenerateShadowMaps; set => SetProperty(ref _lightmassGenerateShadowMaps, value); }
     private int _lightmassWorkerThreads;
     public int LightmassWorkerThreads { get => _lightmassWorkerThreads; set => SetProperty(ref _lightmassWorkerThreads, value); }
     private int _lightmassWorkTileSize = 16;
@@ -2449,11 +2447,14 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
             && updatedExports.Contains(_selectedPropertiesExportUIndex))
         {
             ExportEntry updatedPropertiesExport = file.Package.GetEntry(_selectedPropertiesExportUIndex) as ExportEntry;
+            bool propertyEditorWrite = LevelEditorInterpreter.ConsumePendingPropertyWrite(
+                updatedPropertiesExport, out bool requiresActorRebuild);
             if (file.Actors.FirstOrDefault(actor => actor.TestUIndexes(updatedExports)) is { } actor)
             {
                 int actorUIndex = actor.Export.UIndex;
                 bool rebuildMeshActor = actor is not CollectionActorComponentProxy
                                         && updatedPropertiesExport is not null
+                                        && (!propertyEditorWrite || requiresActorRebuild)
                                         && (updatedPropertiesExport.IsA("StaticMeshComponent")
                                             || updatedPropertiesExport.IsA("SkeletalMeshComponent")
                                             || updatedPropertiesExport.IsA("ParticleSystemComponent"));
@@ -2486,10 +2487,13 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
 
             if (updatedPropertiesExport is not null)
             {
-                _selectedPropertiesExport = updatedPropertiesExport;
-                OnPropertyChanged(nameof(SelectedPropertiesExport));
-                LevelEditorInterpreter.LoadExport(updatedPropertiesExport);
-                LevelEditorMetadata.LoadExport(updatedPropertiesExport);
+                if (!propertyEditorWrite)
+                {
+                    _selectedPropertiesExport = updatedPropertiesExport;
+                    OnPropertyChanged(nameof(SelectedPropertiesExport));
+                    LevelEditorInterpreter.LoadExport(updatedPropertiesExport);
+                    LevelEditorMetadata.LoadExport(updatedPropertiesExport);
+                }
             }
 
             SceneViewer?.MarkRenderDirty();
@@ -2505,8 +2509,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         {
             bool updated = false;
             int reselectUIndex = 0;
-            (Vector3, float, float) savedCamPOV = default;
-            Vector3 savedActorPos = default;
+            (Vector3 Position, float Pitch, float Yaw, float Roll) savedCamPOV = default;
             HashSet<int> collectionActorsToUpdate = [];
             for (int i = file.Actors.Count - 1; i >= 0; i--)
             {
@@ -2517,8 +2520,8 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
                     if (alteredActor == SelectedActor)
                     {
                         reselectUIndex = alteredActor.Export.UIndex;
-                        savedCamPOV = (RenderContext.Camera.Position, RenderContext.Camera.Pitch, RenderContext.Camera.Yaw);
-                        savedActorPos = SelectedActor.Location;
+                        savedCamPOV = (RenderContext.Camera.Position, RenderContext.Camera.Pitch,
+                            RenderContext.Camera.Yaw, RenderContext.Camera.Roll);
                     }
                     if (alteredActor is CollectionActorComponentProxy cacp)
                     {
@@ -2592,11 +2595,13 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
             }
             else if (reselectUIndex is not 0)
             {
-                SelectedActor = Actors.FirstOrDefault(a => a.Export.UIndex == reselectUIndex && a.Export.FileRef == file.Package);
-                if (SelectedActor is not null)
+                ActorProxy reselect = Actors.FirstOrDefault(a =>
+                    a.Export.UIndex == reselectUIndex && a.Export.FileRef == file.Package);
+                if (reselect is not null)
                 {
-                    (RenderContext.Camera.Position, RenderContext.Camera.Pitch, RenderContext.Camera.Yaw)
-                    = (savedCamPOV.Item1 + SelectedActor.Location - savedActorPos, savedCamPOV.Item2, savedCamPOV.Item3);
+                    SelectActor(reselect, false);
+                    (RenderContext.Camera.Position, RenderContext.Camera.Pitch,
+                        RenderContext.Camera.Yaw, RenderContext.Camera.Roll) = savedCamPOV;
                 }
             }
         }
@@ -2605,13 +2610,12 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
     private void ReloadFile(OpenLevelFile file)
     {
         // Remove all actors for this file, then re-load
-        (Vector3, float, float) savedCamPOV = default;
-        Vector3 savedActorPos = default;
+        (Vector3 Position, float Pitch, float Yaw, float Roll) savedCamPOV = default;
         int reselectUIndex = 0;
         if (SelectedActor is not null && file.Actors.Contains(SelectedActor))
         {
-            savedCamPOV = (RenderContext.Camera.Position, RenderContext.Camera.Pitch, RenderContext.Camera.Yaw);
-            savedActorPos = SelectedActor.Location;
+            savedCamPOV = (RenderContext.Camera.Position, RenderContext.Camera.Pitch,
+                RenderContext.Camera.Yaw, RenderContext.Camera.Roll);
             reselectUIndex = SelectedActor.Export.UIndex;
             SelectedActor = null;
         }
@@ -2647,9 +2651,9 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
                 var reselect = Actors.FirstOrDefault(a => a.Export.UIndex == reselectUIndex && a.Export.FileRef == file.Package);
                 if (reselect is not null)
                 {
-                    SelectedActor = reselect;
-                    (RenderContext.Camera.Position, RenderContext.Camera.Pitch, RenderContext.Camera.Yaw)
-                    = (savedCamPOV.Item1 + reselect.Location - savedActorPos, savedCamPOV.Item2, savedCamPOV.Item3);
+                    SelectActor(reselect, false);
+                    (RenderContext.Camera.Position, RenderContext.Camera.Pitch,
+                        RenderContext.Camera.Yaw, RenderContext.Camera.Roll) = savedCamPOV;
                 }
             }
 
@@ -3377,7 +3381,6 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
             TextureResolution = textureResolution,
             AmbientIntensity = LightmassAmbientIntensity,
             ShadowBias = LightmassShadowBias,
-            GenerateShadowMaps = LightmassGenerateShadowMaps,
             WorkerThreads = LightmassWorkerThreads,
             WorkTileSize = LightmassWorkTileSize,
             TextureCacheName = LightmassTextureCacheName
@@ -4895,6 +4898,8 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
     private void RefreshActorInViewport(ActorProxy oldActor)
     {
         bool wasSelected = SelectedActor == oldActor;
+        var savedCamera = (RenderContext.Camera.Position, RenderContext.Camera.Pitch,
+            RenderContext.Camera.Yaw, RenderContext.Camera.Roll);
         var owningFile = oldActor.OwningFile;
         ExportEntry actorExport = oldActor.Export;
 
@@ -4917,7 +4922,9 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
 
             if (wasSelected)
             {
-                SelectedActor = newActor;
+                SelectActor(newActor, false);
+                (RenderContext.Camera.Position, RenderContext.Camera.Pitch,
+                    RenderContext.Camera.Yaw, RenderContext.Camera.Roll) = savedCamera;
             }
         }
     }

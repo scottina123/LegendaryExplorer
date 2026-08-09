@@ -189,15 +189,11 @@ public sealed class StaticLightingBaker
     {
         int resolution = settings.TextureResolution;
         int pixelCount = resolution * resolution;
-        int directionalCount = target.Component.Game < MEGame.ME3 ? 3 : 2;
-        var coefficients = Enumerable.Range(0, directionalCount + 1)
+        bool useCompressedDirectionalLightMap = UsesCompressedDirectionalLightMap(target.Component.Game);
+        int coefficientCount = useCompressedDirectionalLightMap ? 3 : 4;
+        var coefficients = Enumerable.Range(0, coefficientCount)
             .Select(_ => new Vector3[pixelCount]).ToArray();
         var mapped = new bool[pixelCount];
-        StaticLightingLight[] shadowLights = settings.GenerateShadowMaps
-            ? affectingLights.Where(light => light.CastsShadow).ToArray()
-            : [];
-        var shadowVisibility = shadowLights.Select(_ => new byte[pixelCount]).ToArray();
-        int[] shadowIndices = CreateShadowIndices(affectingLights);
         Vector2 coordinateScale = new((resolution - 2f) / resolution);
         Vector2 coordinateBias = new(1f / resolution);
         var samples = new StaticLightingSurfaceSample[pixelCount];
@@ -227,15 +223,12 @@ public sealed class StaticLightingBaker
                 int pixelIndex = y * resolution + x;
                 if (!mapped[pixelIndex]) continue;
                 EvaluateLighting(samples[pixelIndex], target.LightingChannelMask, affectingLights,
-                    coefficients, pixelIndex, shadowIndices, shadowVisibility);
+                    coefficients, pixelIndex, useCompressedDirectionalLightMap);
             }
         });
 
         for (int coefficient = 0; coefficient < coefficients.Length; coefficient++)
             Dilate(coefficients[coefficient], mapped, resolution, 4, cancellationToken);
-        foreach (byte[] visibility in shadowVisibility)
-            Dilate(visibility, mapped, resolution, 4, cancellationToken);
-
         var images = new List<byte[]>(coefficients.Length);
         var scales = new List<Vector3>(coefficients.Length);
         foreach (Vector3[] coefficient in coefficients)
@@ -250,11 +243,9 @@ public sealed class StaticLightingBaker
             Resolution = resolution,
             CoefficientImages = images,
             ScaleVectors = scales,
-            ShadowMaps = shadowLights.Select((light, index) => new StaticLightingShadowBake
-            {
-                LightGuid = light.Guid,
-                Visibility = shadowVisibility[index]
-            }).ToArray(),
+            // Direct-light visibility is already ray traced into the lightmap coefficients. Emitting
+            // another runtime shadow map for those same lights double-applies their baked shadows.
+            ShadowMaps = [],
             CoordinateScale = coordinateScale,
             CoordinateBias = coordinateBias,
             WorkUnitCount = Math.Max(1, activeTiles.Length)
@@ -264,14 +255,10 @@ public sealed class StaticLightingBaker
     private StaticLightingVertexBake BakeVertices(StaticLightingMeshTarget target,
         IReadOnlyList<StaticLightingLight> affectingLights, CancellationToken cancellationToken)
     {
-        int directionalCount = target.Component.Game < MEGame.ME3 ? 3 : 2;
-        var coefficients = Enumerable.Range(0, directionalCount + 1)
+        bool useCompressedDirectionalLightMap = UsesCompressedDirectionalLightMap(target.Component.Game);
+        int coefficientCount = useCompressedDirectionalLightMap ? 3 : 4;
+        var coefficients = Enumerable.Range(0, coefficientCount)
             .Select(_ => new Vector3[target.Vertices.Count]).ToArray();
-        StaticLightingLight[] shadowLights = settings.GenerateShadowMaps
-            ? affectingLights.Where(light => light.CastsShadow).ToArray()
-            : [];
-        var shadowVisibility = shadowLights.Select(_ => new byte[target.Vertices.Count]).ToArray();
-        int[] shadowIndices = CreateShadowIndices(affectingLights);
         Parallel.ForEach(Partitioner.Create(0, target.Vertices.Count, 256),
             CreateParallelOptions(cancellationToken), range =>
         {
@@ -281,7 +268,7 @@ public sealed class StaticLightingBaker
                 var sample = new StaticLightingSurfaceSample(vertex.Position, vertex.Normal, vertex.Tangent,
                     vertex.Bitangent);
                 EvaluateLighting(sample, target.LightingChannelMask, affectingLights, coefficients, vertexIndex,
-                    shadowIndices, shadowVisibility);
+                    useCompressedDirectionalLightMap);
             }
         });
 
@@ -290,14 +277,23 @@ public sealed class StaticLightingBaker
         var simpleSamples = new QuantizedSimpleLightSample[target.Vertices.Count];
         for (int index = 0; index < target.Vertices.Count; index++)
         {
-            directionalSamples[index] = new QuantizedDirectionalLightSample
+            if (useCompressedDirectionalLightMap)
             {
-                Coefficient1 = ToColor(coefficients[0][index], scales[0]),
-                Coefficient2 = ToColor(coefficients[target.Component.Game < MEGame.ME3 ? 1 : 0][index],
-                    scales[target.Component.Game < MEGame.ME3 ? 1 : 0]),
-                Coefficient3 = ToColor(coefficients[target.Component.Game < MEGame.ME3 ? 2 : 1][index],
-                    scales[target.Component.Game < MEGame.ME3 ? 2 : 1])
-            };
+                directionalSamples[index] = new QuantizedDirectionalLightSample
+                {
+                    Coefficient2 = ToColor(coefficients[0][index], scales[0]),
+                    Coefficient3 = ToColor(coefficients[1][index], scales[1])
+                };
+            }
+            else
+            {
+                directionalSamples[index] = new QuantizedDirectionalLightSample
+                {
+                    Coefficient1 = ToColor(coefficients[0][index], scales[0]),
+                    Coefficient2 = ToColor(coefficients[1][index], scales[1]),
+                    Coefficient3 = ToColor(coefficients[2][index], scales[2])
+                };
+            }
             int simpleIndex = coefficients.Length - 1;
             simpleSamples[index] = new QuantizedSimpleLightSample
             {
@@ -310,20 +306,16 @@ public sealed class StaticLightingBaker
             DirectionalSamples = directionalSamples,
             SimpleSamples = simpleSamples,
             ScaleVectors = scales,
-            ShadowMaps = shadowLights.Select((light, index) => new StaticLightingShadowBake
-            {
-                LightGuid = light.Guid,
-                Visibility = shadowVisibility[index]
-            }).ToArray()
+            ShadowMaps = []
         };
     }
 
     private void EvaluateLighting(StaticLightingSurfaceSample sample, uint targetChannels,
         IReadOnlyList<StaticLightingLight> affectingLights, Vector3[][] coefficients, int sampleIndex,
-        IReadOnlyList<int> shadowIndices, IReadOnlyList<byte[]> shadowVisibility)
+        bool useCompressedDirectionalLightMap)
     {
         Vector3 simple = new(settings.AmbientIntensity);
-        int directionalCount = coefficients.Length - 1;
+        float isotropicMaximum = MaxComponent(simple);
         Span<Vector3> directional = stackalloc Vector3[3];
 
         for (int lightIndex = 0; lightIndex < affectingLights.Count; lightIndex++)
@@ -333,21 +325,22 @@ public sealed class StaticLightingBaker
                 continue;
             if (light.Type == StaticLightingLightType.Sky)
             {
-                simple += light.Color * light.Intensity;
+                Vector3 skyContribution = light.Color * light.Intensity;
+                simple += skyContribution;
+                isotropicMaximum += MaxComponent(skyContribution);
                 continue;
             }
 
             if (!TryEvaluateLight(light, sample, out Vector3 surfaceToLight, out Vector3 unshadowed,
                     out Vector3 irradiance))
                 continue;
-            bool visible = !collision.Raycast(sample.Position + sample.Normal * settings.ShadowBias,
-                surfaceToLight, light.Type == StaticLightingLightType.Directional
-                    ? 10_000_000f
-                    : MathF.Max(settings.ShadowBias, Vector3.Distance(light.Position, sample.Position) - settings.ShadowBias),
-                out _);
-            int shadowIndex = shadowIndices[lightIndex];
-            if (shadowIndex >= 0)
-                shadowVisibility[shadowIndex][sampleIndex] = visible ? byte.MaxValue : byte.MinValue;
+            bool visible = !light.CastsShadow ||
+                           !collision.Raycast(sample.Position + sample.Normal * settings.ShadowBias,
+                               surfaceToLight, light.Type == StaticLightingLightType.Directional
+                                   ? 10_000_000f
+                                   : MathF.Max(settings.ShadowBias,
+                                       Vector3.Distance(light.Position, sample.Position) - settings.ShadowBias),
+                               out _);
             if (!visible)
                 continue;
 
@@ -357,34 +350,52 @@ public sealed class StaticLightingBaker
                 Vector3.Dot(surfaceToLight, sample.Bitangent),
                 Vector3.Dot(surfaceToLight, sample.Normal));
             tangentDirection = SafeNormal(tangentDirection, Vector3.UnitZ);
-            for (int basisIndex = 0; basisIndex < directionalCount; basisIndex++)
+            for (int basisIndex = 0; basisIndex < directional.Length; basisIndex++)
             {
-                int sourceBasis = directionalCount == 2 ? basisIndex + 1 : basisIndex;
                 directional[basisIndex] += unshadowed * MathF.Max(0f,
-                    Vector3.Dot(tangentDirection, DirectionalBasis[sourceBasis]));
+                    Vector3.Dot(tangentDirection, DirectionalBasis[basisIndex]));
             }
         }
 
-        for (int index = 0; index < directionalCount; index++)
+        if (useCompressedDirectionalLightMap)
+        {
+            float maximumColor = MaxComponent(simple);
+            if (maximumColor > 0.000001f)
+            {
+                coefficients[0][sampleIndex] = simple / maximumColor;
+                Vector3 directionalMaximums = new(
+                    MaxComponent(directional[0]) + isotropicMaximum,
+                    MaxComponent(directional[1]) + isotropicMaximum,
+                    MaxComponent(directional[2]) + isotropicMaximum);
+
+                // LE3's directional texture is not a signed vector. Its RGB channels are the maximum
+                // light intensities along UE3's three lightmap bases. The game weights those channels
+                // by the squared normal response; a flat tangent-space normal gives each channel 1/3.
+                // Normalize that reconstruction to the simple irradiance maximum so the directional
+                // policy cannot turn a correctly lit surface black.
+                float flatNormalResponse = (directionalMaximums.X + directionalMaximums.Y +
+                                            directionalMaximums.Z) / 3f;
+                coefficients[1][sampleIndex] = flatNormalResponse > 0.000001f
+                    ? directionalMaximums * (maximumColor / flatNormalResponse)
+                    : new Vector3(maximumColor);
+            }
+            else
+            {
+                coefficients[0][sampleIndex] = Vector3.Zero;
+                coefficients[1][sampleIndex] = Vector3.Zero;
+            }
+            coefficients[2][sampleIndex] = Vector3.Max(Vector3.Zero, simple);
+            return;
+        }
+
+        for (int index = 0; index < directional.Length; index++)
             coefficients[index][sampleIndex] = Vector3.Max(Vector3.Zero, directional[index]);
         coefficients[^1][sampleIndex] = Vector3.Max(Vector3.Zero, simple);
     }
 
-    private int[] CreateShadowIndices(IReadOnlyList<StaticLightingLight> affectingLights)
-    {
-        var indices = new int[affectingLights.Count];
-        Array.Fill(indices, -1);
-        if (!settings.GenerateShadowMaps)
-            return indices;
+    private static bool UsesCompressedDirectionalLightMap(MEGame game) => game >= MEGame.ME3;
 
-        int shadowIndex = 0;
-        for (int lightIndex = 0; lightIndex < affectingLights.Count; lightIndex++)
-        {
-            if (affectingLights[lightIndex].CastsShadow)
-                indices[lightIndex] = shadowIndex++;
-        }
-        return indices;
-    }
+    private static float MaxComponent(Vector3 value) => MathF.Max(value.X, MathF.Max(value.Y, value.Z));
 
     public static bool TryEvaluateLight(StaticLightingLight light, StaticLightingSurfaceSample sample,
         out Vector3 surfaceToLight, out Vector3 unshadowedRadiance, out Vector3 irradiance)

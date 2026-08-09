@@ -25,7 +25,6 @@ public static class StaticLightingWriter
     {
         settings.Validate();
         int lightMapTextures = 0;
-        int shadowMaps = 0;
         int irrelevantLightReferences = 0;
         int replacedExistingComponents = 0;
         var cachePaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -64,11 +63,11 @@ public static class StaticLightingWriter
                     if (componentBake.Texture is { } textureBake)
                     {
                         InstallTextureLightMap(componentBake, textureBake, cacheName, cachePath, cacheStream,
-                            streamingTextures, ref lightMapTextures, ref shadowMaps);
+                            streamingTextures, ref lightMapTextures);
                     }
                     else if (componentBake.Vertex is { } vertexBake)
                     {
-                        InstallVertexLightMap(componentBake, vertexBake, ref shadowMaps);
+                        InstallVertexLightMap(componentBake, vertexBake);
                     }
                     file.IsDirty = true;
                 }
@@ -85,7 +84,7 @@ public static class StaticLightingWriter
         {
             ComponentCount = bake.Components.Count,
             LightMapTextureCount = lightMapTextures,
-            ShadowMapCount = shadowMaps,
+            ShadowMapCount = 0,
             IrrelevantLightReferenceCount = irrelevantLightReferences,
             TextureCachePaths = cachePaths.OrderBy(path => path, StringComparer.OrdinalIgnoreCase).ToArray(),
             ReplacedExistingComponentCount = replacedExistingComponents
@@ -148,7 +147,7 @@ public static class StaticLightingWriter
     private static void ApplyStaticLightingProperties(ExportEntry component, IReadOnlyList<Guid> irrelevantLights)
     {
         PropertyCollection properties = component.GetProperties();
-        properties.AddOrReplaceProp(new BoolProperty(true, "bAcceptsLights"));
+        properties.AddOrReplaceProp(new BoolProperty(false, "bAcceptsLights"));
         properties.AddOrReplaceProp(new BoolProperty(false, "bAcceptsDynamicLights"));
         properties.AddOrReplaceProp(new BoolProperty(true, "bForceDirectLightMap"));
         properties.AddOrReplaceProp(new BoolProperty(true, "bUsePrecomputedShadows"));
@@ -169,7 +168,7 @@ public static class StaticLightingWriter
     private static void InstallTextureLightMap(StaticLightingComponentBake componentBake,
         StaticLightingTextureBake textureBake, string cacheName, string cachePath, Stream cacheStream,
         List<(ExportEntry Texture, StaticLightingMeshTarget Target, int Resolution)> streamingTextures,
-        ref int lightMapTextureCount, ref int shadowMapCount)
+        ref int lightMapTextureCount)
     {
         StaticLightingMeshTarget target = componentBake.Target;
         IMEPackage package = target.Component.FileRef;
@@ -183,10 +182,20 @@ public static class StaticLightingWriter
         for (int coefficient = 0; coefficient < expectedCoefficientCount; coefficient++)
         {
             bool simple = coefficient == expectedCoefficientCount - 1;
-            string name = $"LEX_Lightmass_LM_{target.Component.UIndex}_{coefficient}";
+            string coefficientName = isGame3
+                ? coefficient switch
+                {
+                    0 => "NormalizedAverageColor",
+                    1 => "DirectionalMaxComponent",
+                    _ => "SimpleLightmap"
+                }
+                : $"Coefficient{coefficient + 1}";
+            string name = $"LEX_Lightmass_{coefficientName}_{target.Component.UIndex}";
             textures[coefficient] = CreateOrUpdateTexture(package, name, "LightMapTexture2D", null,
                 textureBake.Resolution, textureBake.CoefficientImages[coefficient], PixelFormat.ARGB,
-                package.Game.IsLEGame() ? PixelFormat.BC7 : PixelFormat.DXT1,
+                // LE3's base-game static lightmaps use DXT1. It is substantially faster to encode and
+                // append than BC7 while also matching the format expected by the stock lightmap assets.
+                PixelFormat.DXT1,
                 simple ? "TEXTUREGROUP_Lightmap" : "TEXTUREGROUP_Lightmap",
                 cacheName, cachePath, cacheStream, simple, null);
             streamingTextures.Add((textures[coefficient], target, textureBake.Resolution));
@@ -213,33 +222,14 @@ public static class StaticLightingWriter
         EnsureLodData(component);
         component.LODData[0].LightMap = lightMap;
         component.LODData[0].ShadowVertexBuffers = [];
-        if (textureBake.ShadowMaps.Count > 0)
-        {
-            var shadows = new int[textureBake.ShadowMaps.Count];
-            for (int index = 0; index < textureBake.ShadowMaps.Count; index++)
-            {
-                StaticLightingShadowBake shadow = textureBake.ShadowMaps[index];
-                string name = GetShadowMapName("LEX_Lightmass_SM", target.Component.UIndex,
-                    textureBake.ShadowMaps, index);
-                ExportEntry texture = CreateOrUpdateTexture(package, name, "ShadowMapTexture2D", target.Component,
-                    textureBake.Resolution, shadow.Visibility, PixelFormat.G8, PixelFormat.G8,
-                    "TEXTUREGROUP_Shadowmap", cacheName, cachePath, cacheStream, false, shadow.LightGuid);
-
-                shadows[index] = texture.UIndex;
-                streamingTextures.Add((texture, target, textureBake.Resolution));
-                shadowMapCount++;
-            }
-            component.LODData[0].ShadowMaps = shadows;
-        }
-        else
-        {
-            component.LODData[0].ShadowMaps = [];
-        }
+        // Direct shadows are already baked into the coefficient textures. Runtime shadow references
+        // would apply the same light visibility a second time even though bAcceptsLights is false.
+        component.LODData[0].ShadowMaps = [];
         target.Component.WriteBinary(component);
     }
 
     private static void InstallVertexLightMap(StaticLightingComponentBake componentBake,
-        StaticLightingVertexBake vertexBake, ref int shadowMapCount)
+        StaticLightingVertexBake vertexBake)
     {
         StaticLightingMeshTarget target = componentBake.Target;
         StaticMeshComponent component = target.Component.GetBinaryData<StaticMeshComponent>();
@@ -259,45 +249,8 @@ public static class StaticLightingWriter
             SimpleSamples = vertexBake.SimpleSamples
         };
         component.LODData[0].ShadowVertexBuffers = [];
-
-        var shadowReferences = new int[vertexBake.ShadowMaps.Count];
-        for (int index = 0; index < vertexBake.ShadowMaps.Count; index++)
-        {
-            StaticLightingShadowBake shadow = vertexBake.ShadowMaps[index];
-            string name = GetShadowMapName("LEX_Lightmass_SM1D", target.Component.UIndex,
-                vertexBake.ShadowMaps, index);
-            string path = target.Component.InstancedFullPath + "." + name;
-            ExportEntry export = target.Component.FileRef.FindExport(path, "ShadowMap1D");
-            if (export is null)
-            {
-                export = target.Component.FileRef.CreateExport(name, "ShadowMap1D", target.Component,
-                    indexed: false);
-                export.WriteProperties([]);
-            }
-            export.WriteBinary(new ShadowMap1D
-            {
-                LightGuid = shadow.LightGuid,
-                Samples = shadow.Visibility.Select(PackVisibility).ToArray()
-            });
-            shadowReferences[index] = export.UIndex;
-            shadowMapCount++;
-        }
-        component.LODData[0].ShadowMaps = shadowReferences;
+        component.LODData[0].ShadowMaps = [];
         target.Component.WriteBinary(component);
-    }
-
-    private static string GetShadowMapName(string prefix, int componentIndex,
-        IReadOnlyList<StaticLightingShadowBake> shadowMaps, int index)
-    {
-        Guid guid = shadowMaps[index].LightGuid;
-        int occurrence = 1;
-        for (int previous = 0; previous < index; previous++)
-        {
-            if (shadowMaps[previous].LightGuid == guid)
-                occurrence++;
-        }
-        string suffix = occurrence == 1 ? "" : $"_{occurrence}";
-        return $"{prefix}_{componentIndex}_{guid:N}{suffix}";
     }
 
     private static ExportEntry CreateOrUpdateTexture(IMEPackage package, string name, string className,
@@ -398,8 +351,6 @@ public static class StaticLightingWriter
             }
         ];
     }
-
-    private static int PackVisibility(byte value) => value | value << 8 | value << 16 | value << 24;
 
     private static string SanitizeName(string value)
     {

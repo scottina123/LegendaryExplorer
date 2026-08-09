@@ -362,8 +362,7 @@
                                         <ComboBox Grid.Row="5" Grid.Column="1" ItemsSource="{Binding LightmassWorkTileSizes}"
                                                   SelectedItem="{Binding LightmassWorkTileSize}" Margin="2"/>
                                     </Grid>
-                                    <CheckBox Content="Generate shadow maps" IsChecked="{Binding LightmassGenerateShadowMaps}" Margin="0,6,0,6"/>
-                                    <TextBlock Text="Complex mappings are divided into parallel UV/spatial work pages. Uses existing UE3 lightmap/shadowmap serialization. Existing outputs are replaced; TFC data is reused or created as needed."
+                                    <TextBlock Text="Direct lighting and ray-traced static shadows are baked into the lightmaps. Complex mappings are divided into parallel UV/spatial work pages. Existing outputs are replaced; TFC data is reused or created as needed."
                                                TextWrapping="Wrap" Margin="0,0,0,7"/>
                                     <Button Content="Create Lightmass" Command="{Binding GenerateStaticLightingCommand}" Padding="8,4"/>
                                 </StackPanel>
@@ -570,7 +569,8 @@
                     </ComboBox>
                     <TabControl Grid.Row="1" x:Name="PropertiesTabControl">
                         <TabItem Header="Properties">
-                            <exportLoaderControls:InterpreterExportLoader x:Name="LevelEditorInterpreter" HideHexBox="True"/>
+                            <exportLoaderControls:InterpreterExportLoader x:Name="LevelEditorInterpreter" HideHexBox="True"
+                                                                          ReloadPropertyDataAfterWrite="False"/>
                         </TabItem>
                         <TabItem Header="Metadata">
                             <exportLoaderControls:EntryMetadataExportLoader x:Name="LevelEditorMetadata"/>

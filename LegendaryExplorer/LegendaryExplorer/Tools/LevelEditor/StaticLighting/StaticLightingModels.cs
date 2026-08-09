@@ -37,7 +37,6 @@ public sealed class StaticLightingGenerationSettings
     public float AmbientIntensity { get; set; } = 0.03f;
     public float ShadowBias { get; set; } = 1f;
     public string TextureCacheName { get; set; } = "";
-    public bool GenerateShadowMaps { get; set; } = true;
     public int WorkerThreads { get; set; }
     public int WorkTileSize { get; set; } = 16;
 

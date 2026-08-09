@@ -135,6 +135,12 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         public bool ShowPropOffsets => !HideHexBox && AdvancedView;
 
+        /// <summary>
+        /// Controls whether an inline property write reparses the entire property tree. Hosts which already keep
+        /// their scene model synchronized can disable this to preserve array expansion, selection, and scroll state.
+        /// </summary>
+        public bool ReloadPropertyDataAfterWrite { get; set; } = true;
+
         public bool UseAssetDatabaseOwnerFriendlyNames { get; set; } = true;
 
         private bool _hasUnsavedChanges;
@@ -169,6 +175,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         private int PendingAddedArrayElementIndex = -1;
         private bool SyncingObjectPropertyEditor;
         private int pendingPropertyWriteExportUIndex;
+        private bool pendingPropertyWriteRequiresActorRebuild;
         private long propertyTreeInputVersion;
         private DispatcherOperation pendingPropertyDataReload;
         private DispatcherOperation pendingPropertyTreeSelectionRestore;
@@ -2904,12 +2911,20 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         public bool ConsumePendingPropertyWrite(ExportEntry export)
         {
+            return ConsumePendingPropertyWrite(export, out _);
+        }
+
+        public bool ConsumePendingPropertyWrite(ExportEntry export, out bool requiresActorRebuild)
+        {
+            requiresActorRebuild = false;
             if (export is null || pendingPropertyWriteExportUIndex != export.UIndex || CurrentLoadedExport?.FileRef != export.FileRef)
             {
                 return false;
             }
 
             pendingPropertyWriteExportUIndex = 0;
+            requiresActorRebuild = pendingPropertyWriteRequiresActorRebuild;
+            pendingPropertyWriteRequiresActorRebuild = false;
             return true;
         }
 
@@ -2921,7 +2936,9 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             }
 
             pendingPropertyWriteExportUIndex = CurrentLoadedExport.UIndex;
-            if (reloadPropertyData)
+            pendingPropertyWriteRequiresActorRebuild = SelectedItem?.AssetReferenceClass is
+                "StaticMesh" or "SkeletalMesh" or "ParticleSystem";
+            if (reloadPropertyData && ReloadPropertyDataAfterWrite)
             {
                 QueuePropertyDataReload(CurrentLoadedExport);
             }
