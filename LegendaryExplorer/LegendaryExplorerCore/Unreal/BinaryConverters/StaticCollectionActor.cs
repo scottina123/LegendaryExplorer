@@ -10,9 +10,9 @@ namespace LegendaryExplorerCore.Unreal.BinaryConverters
 {
     public abstract class StaticCollectionActor : ObjectBinary
     {
-        public List<UIndex> Components;
+        public List<UIndex> Components = [];
 
-        public List<Matrix4x4> LocalToWorldTransforms;
+        public List<Matrix4x4> LocalToWorldTransforms = [];
 
         public abstract string ComponentPropName { get; }
 
