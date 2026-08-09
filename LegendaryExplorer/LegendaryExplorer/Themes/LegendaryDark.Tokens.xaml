@@ -1,0 +1,165 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- Traditional Legendary Explorer dark palette. These values intentionally retain
+         the established grey theme while sharing the modernized control templates. -->
+    <Color x:Key="AppBackgroundColor">#FF1E1E1E</Color>
+    <Color x:Key="CanvasBackgroundColor">#FF1E1E1E</Color>
+    <Color x:Key="RecessedBackgroundColor">#FF1B1B1C</Color>
+    <Color x:Key="FieldBackgroundColor">#FF1E1E1E</Color>
+    <Color x:Key="ToolbarBackgroundColor">#FF2D2D30</Color>
+    <Color x:Key="StatusBarBackgroundColor">#FF252526</Color>
+    <Color x:Key="PanelColor">#FF2D2D30</Color>
+    <Color x:Key="PanelRaisedColor">#FF3E3E42</Color>
+    <Color x:Key="HoverBackgroundColor">#FF3E3E42</Color>
+    <Color x:Key="PressedBackgroundColor">#FF1B1B1C</Color>
+    <Color x:Key="SelectedBackgroundColor">#FF264F78</Color>
+    <Color x:Key="PopupBorderColor">#FF555555</Color>
+    <Color x:Key="StructuralBorderColor">#FF3F3F46</Color>
+    <Color x:Key="TextColor">#FFE0E0E0</Color>
+    <Color x:Key="MutedTextColor">#FFB0B0B0</Color>
+    <Color x:Key="DisabledTextColor">#FF6D6D6D</Color>
+    <Color x:Key="AccentColor">#FF007ACC</Color>
+    <Color x:Key="AccentDimColor">#FF264F78</Color>
+    <Color x:Key="SpatialSelectionColor">#FF007ACC</Color>
+    <Color x:Key="DangerColor">#FFE05A67</Color>
+    <Color x:Key="WarningColor">#FFD7A84A</Color>
+    <Color x:Key="SuccessColor">#FF57B878</Color>
+    <!-- Provenance is categorical rather than structural, so its established swatches
+         remain stable between dark themes. Defining them here keeps the palette contract complete. -->
+    <Color x:Key="ProvenanceBaseGameColor">#FF59C8F0</Color>
+    <Color x:Key="ProvenanceRedColor">#FFFF5F6D</Color>
+    <Color x:Key="ProvenancePinkColor">#FFFF93C8</Color>
+    <Color x:Key="ProvenancePurpleColor">#FFA884F3</Color>
+    <Color x:Key="ProvenanceCyanColor">#FF43DDE5</Color>
+    <Color x:Key="ProvenanceYellowColor">#FFF4D35E</Color>
+    <Color x:Key="ProvenanceGreenColor">#FF65D487</Color>
+    <Color x:Key="ProvenanceWhiteColor">#FFF2F6FA</Color>
+    <Color x:Key="ProvenanceMagentaColor">#FFEE4DDB</Color>
+
+    <SolidColorBrush x:Key="AppBackgroundBrush" Color="{StaticResource AppBackgroundColor}"/>
+    <SolidColorBrush x:Key="CanvasBackgroundBrush" Color="{StaticResource CanvasBackgroundColor}"/>
+    <SolidColorBrush x:Key="RecessedBackgroundBrush" Color="{StaticResource RecessedBackgroundColor}"/>
+    <SolidColorBrush x:Key="FieldBackgroundBrush" Color="{StaticResource FieldBackgroundColor}"/>
+    <SolidColorBrush x:Key="ToolbarBackgroundBrush" Color="{StaticResource ToolbarBackgroundColor}"/>
+    <SolidColorBrush x:Key="StatusBarBackgroundBrush" Color="{StaticResource StatusBarBackgroundColor}"/>
+    <SolidColorBrush x:Key="PanelBrush" Color="{StaticResource PanelColor}"/>
+    <SolidColorBrush x:Key="PanelRaisedBrush" Color="{StaticResource PanelRaisedColor}"/>
+    <SolidColorBrush x:Key="HoverBackgroundBrush" Color="{StaticResource HoverBackgroundColor}"/>
+    <SolidColorBrush x:Key="PressedBackgroundBrush" Color="{StaticResource PressedBackgroundColor}"/>
+    <SolidColorBrush x:Key="SelectedBackgroundBrush" Color="{StaticResource SelectedBackgroundColor}"/>
+    <SolidColorBrush x:Key="PopupBorderBrush" Color="{StaticResource PopupBorderColor}"/>
+    <SolidColorBrush x:Key="BorderBrush" Color="{StaticResource StructuralBorderColor}"/>
+    <SolidColorBrush x:Key="TextBrush" Color="{StaticResource TextColor}"/>
+    <SolidColorBrush x:Key="MutedTextBrush" Color="{StaticResource MutedTextColor}"/>
+    <SolidColorBrush x:Key="DisabledTextBrush" Color="{StaticResource DisabledTextColor}"/>
+    <SolidColorBrush x:Key="AccentBrush" Color="{StaticResource AccentColor}"/>
+    <SolidColorBrush x:Key="AccentDimBrush" Color="{StaticResource AccentDimColor}"/>
+    <SolidColorBrush x:Key="SpatialSelectionBrush" Color="{StaticResource SpatialSelectionColor}"/>
+    <SolidColorBrush x:Key="DangerBrush" Color="{StaticResource DangerColor}"/>
+    <SolidColorBrush x:Key="WarningBrush" Color="{StaticResource WarningColor}"/>
+    <SolidColorBrush x:Key="SuccessBrush" Color="{StaticResource SuccessColor}"/>
+    <SolidColorBrush x:Key="DangerSurfaceBrush" Color="#FF3A2528"/>
+    <SolidColorBrush x:Key="DangerBorderBrush" Color="#FF714047"/>
+    <SolidColorBrush x:Key="WarningSurfaceBrush" Color="#FF393229"/>
+    <SolidColorBrush x:Key="WarningBorderBrush" Color="#FF6B5835"/>
+    <SolidColorBrush x:Key="SuccessSurfaceBrush" Color="#FF26372D"/>
+    <SolidColorBrush x:Key="SuccessBorderBrush" Color="#FF41634D"/>
+    <SolidColorBrush x:Key="ToolBoxAccentBrush" Color="#FF303234"/>
+    <SolidColorBrush x:Key="ProvenanceBaseGameBrush" Color="{StaticResource ProvenanceBaseGameColor}"/>
+    <SolidColorBrush x:Key="ProvenanceRedBrush" Color="{StaticResource ProvenanceRedColor}"/>
+    <SolidColorBrush x:Key="ProvenancePinkBrush" Color="{StaticResource ProvenancePinkColor}"/>
+    <SolidColorBrush x:Key="ProvenancePurpleBrush" Color="{StaticResource ProvenancePurpleColor}"/>
+    <SolidColorBrush x:Key="ProvenanceCyanBrush" Color="{StaticResource ProvenanceCyanColor}"/>
+    <SolidColorBrush x:Key="ProvenanceYellowBrush" Color="{StaticResource ProvenanceYellowColor}"/>
+    <SolidColorBrush x:Key="ProvenanceGreenBrush" Color="{StaticResource ProvenanceGreenColor}"/>
+    <SolidColorBrush x:Key="ProvenanceWhiteBrush" Color="{StaticResource ProvenanceWhiteColor}"/>
+    <SolidColorBrush x:Key="ProvenanceMagentaBrush" Color="{StaticResource ProvenanceMagentaColor}"/>
+
+    <!-- Preserve the original interpreter category palette and muscle-memory mapping. -->
+    <SolidColorBrush x:Key="PropertyObjectSurfaceBrush" Color="#44FFFEC4"/>
+    <SolidColorBrush x:Key="PropertyObjectTextBrush" Color="#FFB0AF7A"/>
+    <SolidColorBrush x:Key="PropertyFloatSurfaceBrush" Color="#2200FFAA"/>
+    <SolidColorBrush x:Key="PropertyFloatTextBrush" Color="#FF66B3A3"/>
+    <SolidColorBrush x:Key="PropertyIntSurfaceBrush" Color="#44FFEAE2"/>
+    <SolidColorBrush x:Key="PropertyIntTextBrush" Color="#FFB0948A"/>
+    <SolidColorBrush x:Key="PropertyStringSurfaceBrush" Color="#3332AAF4"/>
+    <SolidColorBrush x:Key="PropertyStringTextBrush" Color="#FF6699CC"/>
+    <SolidColorBrush x:Key="PropertyArraySurfaceBrush" Color="#44FFE2BA"/>
+    <SolidColorBrush x:Key="PropertyArrayTextBrush" Color="#FF9085A0"/>
+    <SolidColorBrush x:Key="PropertyBoolSurfaceBrush" Color="#44ECFFE2"/>
+    <SolidColorBrush x:Key="PropertyBoolTextBrush" Color="#FF8FAA82"/>
+    <SolidColorBrush x:Key="PropertyStructSurfaceBrush" Color="#44F4BEEA"/>
+    <SolidColorBrush x:Key="PropertyStructTextBrush" Color="#FFA88AA0"/>
+    <SolidColorBrush x:Key="PropertyByteSurfaceBrush" Color="#44AFAEAF"/>
+    <SolidColorBrush x:Key="PropertyByteTextBrush" Color="#FF9A9999"/>
+    <SolidColorBrush x:Key="PropertyEnumSurfaceBrush" Color="#33A972FF"/>
+    <SolidColorBrush x:Key="PropertyEnumTextBrush" Color="#FF9A7DCC"/>
+    <SolidColorBrush x:Key="PropertyNameSurfaceBrush" Color="#44E2EDFF"/>
+    <SolidColorBrush x:Key="PropertyNameTextBrush" Color="#FF8FA3BB"/>
+    <SolidColorBrush x:Key="PropertyNoneSurfaceBrush" Color="#44FFB759"/>
+    <SolidColorBrush x:Key="PropertyNoneTextBrush" Color="#FFB08A5A"/>
+    <SolidColorBrush x:Key="PropertyUnknownSurfaceBrush" Color="Red"/>
+    <SolidColorBrush x:Key="PropertyUnknownTextBrush" Color="White"/>
+    <SolidColorBrush x:Key="PropertySelectionBrush" Color="#FF004080"/>
+
+    <!-- Compatibility aliases and WPF system-key bridge. -->
+    <Color x:Key="DarkBackground">#FF1E1E1E</Color>
+    <Color x:Key="DarkBackgroundAlt">#FF252526</Color>
+    <Color x:Key="DarkControl">#FF2D2D30</Color>
+    <Color x:Key="DarkControlLight">#FF3E3E42</Color>
+    <Color x:Key="DarkControlDark">#FF1B1B1C</Color>
+    <Color x:Key="DarkText">#FFE0E0E0</Color>
+    <Color x:Key="DarkTextSecondary">#FFB0B0B0</Color>
+    <Color x:Key="DarkTextDisabled">#FF6D6D6D</Color>
+    <Color x:Key="DarkHighlight">#FF007ACC</Color>
+    <Color x:Key="DarkHighlightText">#FFFFFFFF</Color>
+    <Color x:Key="DarkBorder">#FF3F3F46</Color>
+    <Color x:Key="DarkBorderLight">#FF555555</Color>
+    <Color x:Key="DarkSelection">#FF264F78</Color>
+    <Color x:Key="DarkSelectionInactive">#FF3D3D40</Color>
+
+    <Color x:Key="{x:Static SystemColors.WindowColorKey}">#FF1E1E1E</Color>
+    <Color x:Key="{x:Static SystemColors.ControlColorKey}">#FF2D2D30</Color>
+    <Color x:Key="{x:Static SystemColors.ControlLightColorKey}">#FF3E3E42</Color>
+    <Color x:Key="{x:Static SystemColors.ControlDarkColorKey}">#FF1B1B1C</Color>
+    <Color x:Key="{x:Static SystemColors.ActiveBorderColorKey}">#FF3F3F46</Color>
+    <Color x:Key="{x:Static SystemColors.WindowTextColorKey}">#FFE0E0E0</Color>
+    <Color x:Key="{x:Static SystemColors.ControlTextColorKey}">#FFE0E0E0</Color>
+    <Color x:Key="{x:Static SystemColors.GrayTextColorKey}">#FF6D6D6D</Color>
+    <Color x:Key="{x:Static SystemColors.HighlightColorKey}">#FF007ACC</Color>
+    <Color x:Key="{x:Static SystemColors.HighlightTextColorKey}">#FFFFFFFF</Color>
+
+    <SolidColorBrush x:Key="{x:Static SystemColors.WindowBrushKey}" Color="{StaticResource AppBackgroundColor}"/>
+    <SolidColorBrush x:Key="{x:Static SystemColors.ControlBrushKey}" Color="{StaticResource PanelColor}"/>
+    <SolidColorBrush x:Key="{x:Static SystemColors.ControlLightBrushKey}" Color="{StaticResource HoverBackgroundColor}"/>
+    <SolidColorBrush x:Key="{x:Static SystemColors.ControlLightLightBrushKey}" Color="{StaticResource HoverBackgroundColor}"/>
+    <SolidColorBrush x:Key="{x:Static SystemColors.ControlDarkBrushKey}" Color="{StaticResource PressedBackgroundColor}"/>
+    <SolidColorBrush x:Key="{x:Static SystemColors.ControlDarkDarkBrushKey}" Color="{StaticResource RecessedBackgroundColor}"/>
+    <SolidColorBrush x:Key="{x:Static SystemColors.MenuBrushKey}" Color="{StaticResource PanelColor}"/>
+    <SolidColorBrush x:Key="{x:Static SystemColors.MenuBarBrushKey}" Color="{StaticResource ToolbarBackgroundColor}"/>
+    <SolidColorBrush x:Key="{x:Static SystemColors.MenuHighlightBrushKey}" Color="{StaticResource AccentDimColor}"/>
+    <SolidColorBrush x:Key="{x:Static SystemColors.WindowTextBrushKey}" Color="{StaticResource TextColor}"/>
+    <SolidColorBrush x:Key="{x:Static SystemColors.ControlTextBrushKey}" Color="{StaticResource TextColor}"/>
+    <SolidColorBrush x:Key="{x:Static SystemColors.MenuTextBrushKey}" Color="{StaticResource TextColor}"/>
+    <SolidColorBrush x:Key="{x:Static SystemColors.InfoTextBrushKey}" Color="{StaticResource TextColor}"/>
+    <SolidColorBrush x:Key="{x:Static SystemColors.GrayTextBrushKey}" Color="{StaticResource DisabledTextColor}"/>
+    <SolidColorBrush x:Key="{x:Static SystemColors.HighlightBrushKey}" Color="{StaticResource AccentColor}"/>
+    <SolidColorBrush x:Key="{x:Static SystemColors.HighlightTextBrushKey}" Color="{StaticResource TextColor}"/>
+    <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightBrushKey}" Color="{StaticResource DarkSelectionInactive}"/>
+    <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightTextBrushKey}" Color="{StaticResource TextColor}"/>
+    <SolidColorBrush x:Key="{x:Static SystemColors.HotTrackBrushKey}" Color="#FF3794FF"/>
+    <SolidColorBrush x:Key="{x:Static SystemColors.ActiveBorderBrushKey}" Color="{StaticResource StructuralBorderColor}"/>
+    <SolidColorBrush x:Key="{x:Static SystemColors.InactiveBorderBrushKey}" Color="{StaticResource StructuralBorderColor}"/>
+    <SolidColorBrush x:Key="{x:Static SystemColors.InfoBrushKey}" Color="{StaticResource PanelRaisedColor}"/>
+    <SolidColorBrush x:Key="{x:Static SystemColors.ScrollBarBrushKey}" Color="{StaticResource PanelColor}"/>
+
+    <SolidColorBrush x:Key="MenuPopupBackgroundBrush" Color="{StaticResource PanelColor}"/>
+    <SolidColorBrush x:Key="MenuPopupBorderBrush" Color="{StaticResource StructuralBorderColor}"/>
+
+    <Thickness x:Key="AudemusControlPadding">8,4</Thickness>
+    <Thickness x:Key="AudemusCompactPadding">6,2</Thickness>
+    <Thickness x:Key="AudemusPanelPadding">8</Thickness>
+    <CornerRadius x:Key="AudemusControlRadius">3</CornerRadius>
+    <CornerRadius x:Key="AudemusCompactRadius">2</CornerRadius>
+</ResourceDictionary>

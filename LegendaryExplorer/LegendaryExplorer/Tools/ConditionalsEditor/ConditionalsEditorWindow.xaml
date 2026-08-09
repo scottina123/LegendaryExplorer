@@ -233,7 +233,7 @@
                         <sharedUi:WindowsFormsHostEx Grid.Row="1" x:Name="hexbox_Host" HorizontalAlignment="Stretch"
                                                       VerticalAlignment="Stretch">
                             <forms:HexBox MinBytesPerLine="4" MaxBytesPerLine="16" ColumnInfoVisible="True"
-                                           LineInfoVisible="True" Font="Courier New,10" BoldFont="Consolas,10"
+                                           LineInfoVisible="True"
                                            StringViewVisible="True" VScrollBarVisible="True" />
                         </sharedUi:WindowsFormsHostEx>
                     </Grid>

@@ -688,7 +688,7 @@ namespace LegendaryExplorer.DialogueEditor
         private int _WaterfallSpace = 40;
         public int WaterfallSpace { get => _WaterfallSpace; set => SetProperty(ref _WaterfallSpace, value); }
 
-        private Color _graphBackgroundColor = Color.FromArgb(64, 64, 64);
+        private Color _graphBackgroundColor = Color.FromArgb(30, 30, 30);
         public Color GraphBackgroundColor
         {
             get => _graphBackgroundColor;
@@ -953,10 +953,17 @@ namespace LegendaryExplorer.DialogueEditor
             if (hasSavedOptions) //Handle options
             {
                 var options = JsonConvert.DeserializeObject<Dictionary<string, object>>(File.ReadAllText(OptionsPath));
-                if (options.TryGetValue("LastThemeDarkMode", out var lastThemeValue)
-                    && bool.TryParse(lastThemeValue?.ToString(), out var lastThemeDarkMode))
+                if (options.TryGetValue("LastTheme", out var lastThemeValue))
                 {
-                    themeChangedWhileEditorClosed = lastThemeDarkMode != Settings.Global_DarkMode_Enabled;
+                    themeChangedWhileEditorClosed = !string.Equals(
+                        lastThemeValue?.ToString(), Settings.Global_Theme, StringComparison.OrdinalIgnoreCase);
+                }
+                else if (options.TryGetValue("LastThemeDarkMode", out var legacyThemeValue)
+                         && bool.TryParse(legacyThemeValue?.ToString(), out var lastThemeDarkMode))
+                {
+                    string migratedTheme = lastThemeDarkMode ? AppTheme.Dark.ToString() : AppTheme.Light.ToString();
+                    themeChangedWhileEditorClosed = !string.Equals(
+                        migratedTheme, Settings.Global_Theme, StringComparison.OrdinalIgnoreCase);
                 }
                 if (options.ContainsKey("LineTextSize"))
                 {
@@ -1048,6 +1055,12 @@ namespace LegendaryExplorer.DialogueEditor
                     if (options.ContainsKey("GraphBackgroundColor"))
                     {
                         var c = ColorTranslator.FromHtml((string)options["GraphBackgroundColor"]);
+                        // Migrate only known historic defaults. Deliberately chosen custom
+                        // viewport colours continue to round-trip through the options file.
+                        if (ThemeManager.IsModernDark && IsLegacyGraphBackground(c))
+                        {
+                            c = ThemeManager.DarkCanvasDrawingColor;
+                        }
                         GraphBackgroundColor = c;
                         ClrPcker_GraphBackground.SelectedColor = c.ToWPFColor();
                     }
@@ -1275,9 +1288,13 @@ namespace LegendaryExplorer.DialogueEditor
                 DObj.entryPenColor = Color.FromArgb(80, 80, 80);  // Dark grey
                 DObj.replyColor = Color.FromArgb(85, 107, 47);  // Dark olive green
                 DObj.replyPenColor = Color.FromArgb(80, 80, 80);  // Dark grey
-                GraphBackgroundColor = Color.FromArgb(30, 30, 30);  // Dark background
-                BoxColor = Color.FromArgb(45, 45, 48);  // VS dark box color
-                DObj.boxTextColor = Color.FromArgb(220, 220, 220);  // Light text
+                GraphBackgroundColor = ThemeManager.DarkCanvasDrawingColor;
+                BoxColor = ThemeManager.IsModernDark
+                    ? Color.FromArgb(22, 36, 51)
+                    : Color.FromArgb(45, 45, 48);
+                DObj.boxTextColor = ThemeManager.IsModernDark
+                    ? Color.FromArgb(232, 240, 245)
+                    : Color.FromArgb(220, 220, 220);
             }
             else
             {
@@ -1300,6 +1317,11 @@ namespace LegendaryExplorer.DialogueEditor
                 DObj.boxTextColor = Color.White;
             }
         }
+
+        private static bool IsLegacyGraphBackground(Color color) =>
+            color == Color.FromArgb(64, 64, 64)
+            || color == Color.FromArgb(115, 115, 115)
+            || color == Color.FromArgb(30, 30, 30);
 
         /// <summary>
         /// Handles theme changes from the ThemeManager.
@@ -1423,6 +1445,7 @@ namespace LegendaryExplorer.DialogueEditor
                     {"RowSpace", RowSpace},
                     {"ColumnSpace", ColumnSpace},
                     {"WaterfallSpace", WaterfallSpace},
+                    {"LastTheme", Settings.Global_Theme},
                     {"LastThemeDarkMode", Settings.Global_DarkMode_Enabled},
                 };
                 await Task.Run(() =>
@@ -8981,10 +9004,10 @@ namespace LegendaryExplorer.DialogueEditor
             inlineLineStrRefEditor.SetBounds(bounds.X, bounds.Y, bounds.Width, bounds.Height);
 
             float viewScale = graphEditor.Camera.ViewScale;
-            float fontSize = Math.Max(12f * viewScale, 1f);
-            if (inlineLineStrRefEditor.Font.SizeInPoints != fontSize)
+            float fontSize = Math.Max(AppTypography.GraphFontSize * viewScale, 1f);
+            if (inlineLineStrRefEditor.Font.Size != fontSize || inlineLineStrRefEditor.Font.Unit != System.Drawing.GraphicsUnit.Pixel)
             {
-                inlineLineStrRefEditor.Font = new System.Drawing.Font("Arial", fontSize, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point);
+                inlineLineStrRefEditor.Font = AppTypography.CreateGraphDrawingFont(fontSize);
             }
         }
 
@@ -9173,10 +9196,10 @@ namespace LegendaryExplorer.DialogueEditor
             inlinePlotFieldEditor.SetBounds(bounds.X, bounds.Y, bounds.Width, bounds.Height);
 
             float viewScale = graphEditor.Camera.ViewScale;
-            float fontSize = Math.Max(12f * viewScale, 1f);
-            if (inlinePlotFieldEditor.Font.SizeInPoints != fontSize)
+            float fontSize = Math.Max(AppTypography.GraphFontSize * viewScale, 1f);
+            if (inlinePlotFieldEditor.Font.Size != fontSize || inlinePlotFieldEditor.Font.Unit != System.Drawing.GraphicsUnit.Pixel)
             {
-                inlinePlotFieldEditor.Font = new System.Drawing.Font("Arial", fontSize, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point);
+                inlinePlotFieldEditor.Font = AppTypography.CreateGraphDrawingFont(fontSize);
             }
         }
 

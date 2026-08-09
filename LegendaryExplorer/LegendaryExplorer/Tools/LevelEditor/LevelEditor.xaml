@@ -129,7 +129,7 @@
                                      GotFocus="CoordinateEditor_GotFocus"
                                      IsEnabled="{Binding HasAnyFileOpen}"
                                      VerticalContentAlignment="Center"
-                                     FontFamily="Consolas"
+                                     FontFamily="{DynamicResource AudemusDataFont}" FontSize="{DynamicResource AudemusDataFontSize}"
                                      ToolTip="Camera X position"/>
                             <StackPanel Margin="2,0,0,0">
                                 <Button Width="16" Height="11" Padding="0" FontSize="8" Content="▲"
@@ -150,7 +150,7 @@
                                      GotFocus="CoordinateEditor_GotFocus"
                                      IsEnabled="{Binding HasAnyFileOpen}"
                                      VerticalContentAlignment="Center"
-                                     FontFamily="Consolas"
+                                     FontFamily="{DynamicResource AudemusDataFont}" FontSize="{DynamicResource AudemusDataFontSize}"
                                      ToolTip="Camera Y position"/>
                             <StackPanel Margin="2,0,0,0">
                                 <Button Width="16" Height="11" Padding="0" FontSize="8" Content="▲"
@@ -171,7 +171,7 @@
                                      GotFocus="CoordinateEditor_GotFocus"
                                      IsEnabled="{Binding HasAnyFileOpen}"
                                      VerticalContentAlignment="Center"
-                                     FontFamily="Consolas"
+                                     FontFamily="{DynamicResource AudemusDataFont}" FontSize="{DynamicResource AudemusDataFontSize}"
                                      ToolTip="Camera Z position"/>
                             <StackPanel Margin="2,0,0,0">
                                 <Button Width="16" Height="11" Padding="0" FontSize="8" Content="▲"
@@ -200,7 +200,7 @@
                                      GotFocus="CoordinateEditor_GotFocus"
                                      IsEnabled="{Binding HasAnyFileOpen}"
                                      VerticalContentAlignment="Center"
-                                     FontFamily="Consolas"
+                                     FontFamily="{DynamicResource AudemusDataFont}" FontSize="{DynamicResource AudemusDataFontSize}"
                                      ToolTip="Camera X rotation (Roll, degrees)"/>
                             <StackPanel Margin="2,0,0,0">
                                 <Button Width="16" Height="11" Padding="0" FontSize="8" Content="▲"
@@ -221,7 +221,7 @@
                                      GotFocus="CoordinateEditor_GotFocus"
                                      IsEnabled="{Binding HasAnyFileOpen}"
                                      VerticalContentAlignment="Center"
-                                     FontFamily="Consolas"
+                                     FontFamily="{DynamicResource AudemusDataFont}" FontSize="{DynamicResource AudemusDataFontSize}"
                                      ToolTip="Camera Y rotation (Pitch, degrees)"/>
                             <StackPanel Margin="2,0,0,0">
                                 <Button Width="16" Height="11" Padding="0" FontSize="8" Content="▲"
@@ -242,7 +242,7 @@
                                      GotFocus="CoordinateEditor_GotFocus"
                                      IsEnabled="{Binding HasAnyFileOpen}"
                                      VerticalContentAlignment="Center"
-                                     FontFamily="Consolas"
+                                     FontFamily="{DynamicResource AudemusDataFont}" FontSize="{DynamicResource AudemusDataFontSize}"
                                      ToolTip="Camera Z rotation (Yaw, degrees)"/>
                             <StackPanel Margin="2,0,0,0">
                                 <Button Width="16" Height="11" Padding="0" FontSize="8" Content="▲"
@@ -567,7 +567,7 @@
                               ToolTip="Select the actor or one of its components to inspect">
                         <ComboBox.ItemTemplate>
                             <DataTemplate>
-                                <TextBlock FontFamily="Consolas" FontSize="11">
+                                <TextBlock FontFamily="{DynamicResource AudemusDataFont}" FontSize="11">
                                     <TextBlock.Text>
                                         <MultiBinding StringFormat="{}{0}: {1} ({2})">
                                             <Binding Path="UIndex"/>
@@ -638,14 +638,14 @@
                             </Grid>
 
                             <StackPanel HorizontalAlignment="Left">
-                                <Button Content="[ Z ↑ ]" Width="72" Margin="0,0,0,4" FontFamily="Consolas"
+                                <Button Content="[ Z ↑ ]" Width="72" Margin="0,0,0,4" FontFamily="{DynamicResource AudemusDataFont}" FontSize="{DynamicResource AudemusDataFontSize}"
                                         Tag="1" Click="CameraMoveZButton_Click" ToolTip="Move up"/>
                                 <Border Width="72" Padding="6,2" BorderThickness="1" HorizontalAlignment="Left"
                                         BorderBrush="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}"
                                         Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}">
-                                    <TextBlock Text="[ 0 ]" HorizontalAlignment="Center" FontFamily="Consolas"/>
+                                    <TextBlock Text="[ 0 ]" HorizontalAlignment="Center" FontFamily="{DynamicResource AudemusDataFont}" FontSize="{DynamicResource AudemusDataFontSize}"/>
                                 </Border>
-                                <Button Content="[ Z ↓ ]" Width="72" Margin="0,4,0,0" FontFamily="Consolas"
+                                <Button Content="[ Z ↓ ]" Width="72" Margin="0,4,0,0" FontFamily="{DynamicResource AudemusDataFont}" FontSize="{DynamicResource AudemusDataFontSize}"
                                         Tag="-1" Click="CameraMoveZButton_Click" ToolTip="Move down"/>
                             </StackPanel>
                         </StackPanel>

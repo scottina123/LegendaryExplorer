@@ -162,7 +162,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         }
 
         private static readonly Color LightThemeDefaultBackgroundColor = Color.FromRgb(128, 128, 128);
-        private static readonly Color DarkThemeDefaultBackgroundColor = Color.FromRgb(30, 30, 30);
+        private static Color DarkThemeDefaultBackgroundColor => ThemeManager.DarkCanvasMediaColor;
 
         private Color _backgroundColor = LightThemeDefaultBackgroundColor;
         public Color BackgroundColor
@@ -189,7 +189,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         private static bool IsThemeDefaultBackgroundColor(Color color)
         {
-            return color == LightThemeDefaultBackgroundColor || color == DarkThemeDefaultBackgroundColor;
+            return color == LightThemeDefaultBackgroundColor || ThemeManager.IsDarkCanvasColor(color);
         }
         #endregion
 

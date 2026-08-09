@@ -3527,11 +3527,19 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             if (isDarkMode)
             {
                 // Dark theme - Visual Studio dark mode inspired colors
-                _graphEditorBackColor = Color.FromArgb(30, 30, 30);
-                _boxFillColor = Color.FromArgb(45, 45, 48);
-                _titleBoxColor = Color.FromArgb(37, 37, 38);
-                _commentTextColor = Color.FromArgb(87, 166, 74);
-                _boxTextColor = Color.FromArgb(220, 220, 220);
+                _graphEditorBackColor = ThemeManager.DarkCanvasDrawingColor;
+                _boxFillColor = ThemeManager.IsModernDark
+                    ? Color.FromArgb(22, 36, 51)
+                    : Color.FromArgb(45, 45, 48);
+                _titleBoxColor = ThemeManager.IsModernDark
+                    ? Color.FromArgb(16, 26, 37)
+                    : Color.FromArgb(37, 37, 38);
+                _commentTextColor = ThemeManager.IsModernDark
+                    ? Color.FromArgb(130, 180, 255)
+                    : Color.FromArgb(87, 166, 74);
+                _boxTextColor = ThemeManager.IsModernDark
+                    ? Color.FromArgb(232, 240, 245)
+                    : Color.FromArgb(220, 220, 220);
                 _connectionColor = Color.White;  // White connection lines for dark mode
                 _varLinkColor = Color.White;  // White var link lines for dark mode
             }

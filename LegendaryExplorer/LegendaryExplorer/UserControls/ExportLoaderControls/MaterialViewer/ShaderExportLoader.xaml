@@ -53,7 +53,7 @@
                         <RowDefinition Height="*"/>
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
-                    <TreeView x:Name="MeshShaderMaps_TreeView" Grid.Row="0" Grid.Column="0" FontFamily="Consolas"
+                    <TreeView x:Name="MeshShaderMaps_TreeView" Grid.Row="0" Grid.Column="0" FontFamily="{DynamicResource AudemusDataFont}" FontSize="{DynamicResource AudemusDataFontSize}"
                               SelectedItemChanged="MeshShaderMaps_TreeView_OnSelectedItemChanged"
                               VirtualizingStackPanel.IsVirtualizing="True" VirtualizingStackPanel.VirtualizationMode="Recycling"
                               ItemsSource="{Binding MeshShaderMaps}" FocusManager.IsFocusScope="True">
@@ -101,7 +101,7 @@
                     <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Stretch" />
                     <materialViewer:HlslTextEditor x:Name="shaderTextEditor" Grid.Column="2" Document="{Binding Document}"
                                            Background="#1F1F1F" Foreground="#CCCCCC" LineNumbersForeground ="#6E7681"
-                                           FontFamily="Consolas"/>
+                                           FontFamily="{DynamicResource AudemusDataFont}" FontSize="{DynamicResource AudemusDataFontSize}"/>
                     <DockPanel Grid.Column="2" Grid.Row="1">
                         <Button Content="Compile shader" Command="{Binding CompileShaderCommand}"/>
                     </DockPanel>

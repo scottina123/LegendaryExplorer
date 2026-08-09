@@ -210,7 +210,8 @@
                     </StackPanel>
                     <TabItem.Resources>
                         <Style x:Key="cmdStyle" TargetType="{x:Type Run}">
-                            <Setter Property="FontFamily" Value="Lucida Console"/>
+                            <Setter Property="FontFamily" Value="{DynamicResource AudemusDataFont}"/>
+                            <Setter Property="FontSize" Value="{DynamicResource AudemusDataFontSize}"/>
                             <Setter Property="Background" Value="#33000000"/>
                         </Style>
                     </TabItem.Resources>

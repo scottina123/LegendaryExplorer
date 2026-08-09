@@ -5,10 +5,8 @@ using System.Drawing;
 using System.Drawing.Text;
 using System.Linq;
 using System.Windows.Forms;
-using System.Runtime.InteropServices;
-using LegendaryExplorer.Libraries;
 using LegendaryExplorer.Misc.AppSettings;
-using LegendaryExplorer.Resources;
+using LegendaryExplorer.SharedUI;
 using LegendaryExplorer.Tools.Sequence_Editor;
 using LegendaryExplorer.Tools.TlkManagerNS;
 using LegendaryExplorerCore.Gammtek.Extensions;
@@ -2253,42 +2251,26 @@ namespace LegendaryExplorer.Tools.SequenceObjects
         private readonly Brush black = new SolidBrush(Color.Black);
 
         private readonly bool ShadowRendering;
-        //Making Fontcollection a local variable causes the font to be unloaded
-        // ReSharper disable once PrivateFieldCanBeConvertedToLocalVariable
-        private static readonly PrivateFontCollection Fontcollection;
-        private static readonly Font KismetFont;
-        private static readonly float KismetFontSizeInPoints;
+        private static readonly Font GraphFont = AppTypography.CreateGraphDrawingFont();
+        private static readonly float GraphFontSizeInPoints = GraphFont.SizeInPoints;
 
         public SText(string s, bool shadows = true, float scale = 1, float x = 0, float y = 0)
-            : base(s, new SolidBrush(Color.FromArgb(255, 255, 255)), KismetFont, KismetFontSizeInPoints, x, y)
+            : base(s, new SolidBrush(Color.FromArgb(255, 255, 255)), GraphFont, GraphFontSizeInPoints, x, y)
         {
             GlobalScale = scale;
             ShadowRendering = shadows;
         }
 
         public SText(string s, Color c, bool shadows = true, float scale = 1, float x = 0, float y = 0)
-            : base(s, new SolidBrush(c), KismetFont, KismetFontSizeInPoints, x, y)
+            : base(s, new SolidBrush(c), GraphFont, GraphFontSizeInPoints, x, y)
         {
             GlobalScale = scale;
             ShadowRendering = shadows;
         }
 
-        static SText()
-        {
-            Fontcollection = new PrivateFontCollection();
-            byte[] fontData = EmbeddedResources.KismetFont;
-            IntPtr fontPtr = Marshal.AllocCoTaskMem(fontData.Length);
-            Marshal.Copy(fontData, 0, fontPtr, fontData.Length);
-            Fontcollection.AddMemoryFont(fontPtr, fontData.Length);
-            WindowsAPI.AddFontMemResourceEx(fontPtr, (uint)fontData.Length, 0, 0);
-            Marshal.FreeCoTaskMem(fontPtr);
-            KismetFont = new Font(Fontcollection.Families[0], 6, GraphicsUnit.Pixel);
-            KismetFontSizeInPoints = KismetFont.SizeInPoints;
-        }
-
         protected override void Paint(PPaintContext paintContext)
         {
-            paintContext.Graphics.TextRenderingHint = TextRenderingHint.SingleBitPerPixel;
+            paintContext.Graphics.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
             //paints dropshadow
             if (ShadowRendering && paintContext.Scale >= 1 && Text != null && TextBrush != null && Font != null)
             {

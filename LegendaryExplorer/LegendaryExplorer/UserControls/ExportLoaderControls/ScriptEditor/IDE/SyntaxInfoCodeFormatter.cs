@@ -147,7 +147,9 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls.ScriptEditor.IDE
             [ST.Struct] = Color.FromRgb(0x86, 0xC6, 0x91),
         }.ToFrozenDictionary();
 
-        internal static readonly Color DefaultBackground = Color.FromRgb(0x1E, 0x1E, 0x1E);
+        internal static Color DefaultBackground => LegendaryExplorer.Misc.ThemeManager.IsModernDark
+            ? Color.FromRgb(0x05, 0x08, 0x0D)
+            : Color.FromRgb(0x1E, 0x1E, 0x1E);
 
         public static SyntaxInfo None { get; } = new();
 

@@ -105,7 +105,7 @@
         </Style>
     </UserControl.Resources>
     <Canvas>
-        <Canvas x:Name="graph" Background="#FF1E1E1E" PreviewMouseDown="graph_MouseDown" PreviewMouseUp="graph_MouseUp" PreviewMouseMove="graph_MouseMove"
+        <Canvas x:Name="graph" Background="{DynamicResource CanvasBackgroundBrush}" PreviewMouseDown="graph_MouseDown" PreviewMouseUp="graph_MouseUp" PreviewMouseMove="graph_MouseMove"
                 Width="{Binding Path=ActualWidth, RelativeSource={RelativeSource AncestorType=Canvas}}"
                 Height="{Binding Path=ActualHeight, RelativeSource={RelativeSource AncestorType=Canvas}}">
         </Canvas>

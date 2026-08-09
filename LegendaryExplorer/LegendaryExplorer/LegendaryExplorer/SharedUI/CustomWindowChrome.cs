@@ -55,6 +55,16 @@ namespace LegendaryExplorer.SharedUI
         // DWMWA_BORDER_COLOR - Windows 11 only
         private const int DWMWA_BORDER_COLOR = 34;
 
+        // DWMWA_TEXT_COLOR - Windows 11 only
+        private const int DWMWA_TEXT_COLOR = 36;
+
+        private const int DwmColorDefault = unchecked((int)0xFFFFFFFF);
+        private const int ModernDarkCaptionColor = 0x0021170D; // #0D1721 as COLORREF (BBGGRR)
+        private const int ModernDarkCaptionTextColor = 0x00F5F0E8; // #E8F0F5
+        private const int ModernDarkWindowBorderColor = 0x00493A2A; // #2A3A49
+        private const int ModernDarkClientBackgroundColor = 0x0018100A; // #0A1018
+        private const int TraditionalDarkClientBackgroundColor = 0x001E1E1E; // #1E1E1E
+
         // DWMWA_CLOAK - hides window at compositor level (Windows 8+)
         private const int DWMWA_CLOAK = 13;
 
@@ -317,7 +327,9 @@ namespace LegendaryExplorer.SharedUI
             if (HwndSource.FromHwnd(hwnd) is { CompositionTarget: not null } hwndSource)
             {
                 hwndSource.CompositionTarget.BackgroundColor = isDarkMode
-                    ? Color.FromRgb(0x1E, 0x1E, 0x1E)
+                    ? ThemeManager.IsModernDark
+                        ? Color.FromRgb(0x0A, 0x10, 0x18)
+                        : Color.FromRgb(0x1E, 0x1E, 0x1E)
                     : Colors.White;
             }
         }
@@ -356,7 +368,10 @@ namespace LegendaryExplorer.SharedUI
                     if (GetClientRect(h, &rc) != 0)
                     {
                         // COLORREF is 0x00BBGGRR — dark background #1E1E1E
-                        IntPtr brush = CreateSolidBrush(0x001E1E1E);
+                        int backgroundColor = ThemeManager.IsModernDark
+                            ? ModernDarkClientBackgroundColor
+                            : TraditionalDarkClientBackgroundColor;
+                        IntPtr brush = CreateSolidBrush(backgroundColor);
                         _ = FillRect(wParam, &rc, brush);
                         _ = DeleteObject(brush);
                     }
@@ -411,6 +426,16 @@ namespace LegendaryExplorer.SharedUI
             {
                 DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE_BEFORE_20H1, &useDarkMode, sizeof(int));
             }
+
+            // Keep native Windows chrome while matching the application structure.
+            // Unsupported colour attributes are harmlessly ignored on Windows 10.
+            bool useModernColors = isDarkMode && ThemeManager.IsModernDark;
+            int captionColor = useModernColors ? ModernDarkCaptionColor : DwmColorDefault;
+            int captionTextColor = useModernColors ? ModernDarkCaptionTextColor : DwmColorDefault;
+            int borderColor = useModernColors ? ModernDarkWindowBorderColor : DwmColorDefault;
+            DwmSetWindowAttribute(hwnd, DWMWA_CAPTION_COLOR, &captionColor, sizeof(int));
+            DwmSetWindowAttribute(hwnd, DWMWA_TEXT_COLOR, &captionTextColor, sizeof(int));
+            DwmSetWindowAttribute(hwnd, DWMWA_BORDER_COLOR, &borderColor, sizeof(int));
         }
     }
 

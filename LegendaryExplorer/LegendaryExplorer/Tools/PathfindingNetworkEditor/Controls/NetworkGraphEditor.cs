@@ -83,7 +83,7 @@ public class NetworkGraphEditor : Border
     public NetworkGraphEditor()
     {
         ClipToBounds = true;
-        Background = new SolidColorBrush(Color.FromRgb(30, 30, 30));
+        Background = new SolidColorBrush(LegendaryExplorer.Misc.ThemeManager.DarkCanvasMediaColor);
 
         _canvasTransform = new MatrixTransform(Matrix.Identity);
 

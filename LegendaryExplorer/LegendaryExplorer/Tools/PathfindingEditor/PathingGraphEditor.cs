@@ -5,6 +5,7 @@ using System.Drawing;
 using System.Windows.Forms;
 using System.Reflection;
 using System.Collections.Generic;
+using LegendaryExplorer.SharedUI;
 using Piccolo;
 using Piccolo.Event;
 
@@ -248,7 +249,7 @@ namespace LegendaryExplorer.Tools.PathfindingEditor
             else
             {
                 const string msg = "Updating, please wait............"; //without multithread this does nothing.
-                e.Graphics.DrawString(msg.Substring(0, updatingCount + 21), SystemFonts.DefaultFont, Brushes.Black, Width - Width / 2, Height - Height / 2);
+                e.Graphics.DrawString(msg.Substring(0, updatingCount + 21), AppTypography.InterfaceDrawingFont, Brushes.Black, Width - Width / 2, Height - Height / 2);
                 updatingCount++;
                 if (updatingCount + 21 > msg.Length)
                 {

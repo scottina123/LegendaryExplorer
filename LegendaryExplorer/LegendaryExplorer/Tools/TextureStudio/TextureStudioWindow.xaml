@@ -72,7 +72,7 @@
             <StatusBar DockPanel.Dock="Bottom">
                 <StatusBarItem Padding="2" VerticalContentAlignment="Center" Visibility="{Binding CurrentStudioGame, Converter={StaticResource GameToVisibilityConverter}, ConverterParameter='Not_Unknown'}">
                     <Border BorderBrush="Gray" BorderThickness="2,2,2,2" CornerRadius="3,3,3,3" VerticalAlignment="Center">
-                        <TextBlock Text="{Binding CurrentStudioGame}" FontSize="11" Foreground="White" Padding="4,3,4,3" FontFamily="Consolas" VerticalAlignment="Center"/>
+                        <TextBlock Text="{Binding CurrentStudioGame}" FontSize="11" Foreground="White" Padding="4,3,4,3" FontFamily="{DynamicResource AudemusDataFont}" VerticalAlignment="Center"/>
                     </Border>
                 </StatusBarItem>
                 <StatusBarItem>
@@ -113,7 +113,7 @@
                           Visibility="{Binding SelectedFolder, Converter={StaticResource NullVisibilityConverter}}"
                           Grid.Column="0" 
                           Grid.Row="1"
-                          FontFamily="Consolas"
+                          FontFamily="{DynamicResource AudemusDataFont}" FontSize="{DynamicResource AudemusDataFontSize}"
                           SelectedItemChanged="SelectedTreeNodeChanged"
                           ItemsSource="{Binding AllRootTreeViewNodes}" 
                           FocusManager.IsFocusScope="True" 

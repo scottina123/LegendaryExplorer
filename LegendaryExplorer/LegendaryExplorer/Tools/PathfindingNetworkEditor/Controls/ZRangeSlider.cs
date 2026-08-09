@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
+using LegendaryExplorer.SharedUI;
 
 namespace LegendaryExplorer.Tools.PathfindingNetworkEditor.Controls;
 
@@ -71,7 +72,7 @@ public class ZRangeSlider : FrameworkElement
     private static readonly Pen   CamOutlinePen    = Freeze(new Pen(new SolidColorBrush(Color.FromArgb(150, 0, 0, 0)), 3.0));
     private static readonly SolidColorBrush ThumbLabelBrush    = Freeze(new SolidColorBrush(Colors.Black));
     private static readonly SolidColorBrush ExtremeLabelBrush  = Freeze(new SolidColorBrush(Color.FromRgb(160, 160, 160)));
-    private static readonly Typeface LabelFace = new("Segoe UI");
+    private static readonly Typeface LabelFace = AppTypography.GraphTypeface;
 
     // -----------------------------------------------------------------------
     //  Drag state

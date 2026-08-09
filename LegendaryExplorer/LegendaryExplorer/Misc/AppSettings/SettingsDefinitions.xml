@@ -151,6 +151,8 @@
   <setting name="Global_PropertyParsing_ParseUnknownArrayTypeAsObject" type="bool" defaultvalue="false" settingsbridgename="ParseUnknownArrayTypesAsObject"/>
   <setting name="Global_Analytics_Enabled" type="bool" defaultvalue="true" category="General"
            friendlyName="Enable Analytics"/>
+  <setting name="Global_Theme" type="string" defaultvalue="Light" category="General"
+           friendlyName="Application theme"/>
   <setting name="Global_UseOwnerFriendlyNames" type="bool" defaultvalue="false" category="General"
            friendlyName="Use owner friendly names in Dialogue Editor, Package Editor, and Properties"/>
   <setting name="Global_ME1Directory" type="string" defaultvalue="" settingsbridgename="ME1Directory" category="General" isDirectorySelect="true"

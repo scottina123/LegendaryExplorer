@@ -15,7 +15,7 @@
         <converters:TimeToPositionConverter x:Key="TimeToPositionConverter"/>
         <converters:NullOrEmptyStringVisibilityConverter x:Key="NullOrEmptyStringVisibilityConverter"/>
         <BooleanToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
-        <SolidColorBrush x:Key="KeyBrush" Color="#FF640000"/>
+        <SolidColorBrush x:Key="KeyBrush" Color="#FFCC281C"/>
         <Color x:Key="SelectedBackgroundColor">#FF264F78</Color>
         <Color x:Key="SelectedUnfocusedColor">#FF3D3D40</Color>
         <SolidColorBrush x:Key="GlyphBrush" Color="{DynamicResource {x:Static SystemColors.WindowTextColorKey}}"/>
@@ -267,7 +267,7 @@
             <TextBlock x:Name="txtStrRef" Text="{Binding LineStrRef}" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}" Margin="7,3"
                        Visibility="{Binding LineStrRef, Converter={StaticResource NullOrEmptyStringVisibilityConverter}}"/>
         </StackPanel>
-        <Grid Background="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}">
+        <Grid Background="{DynamicResource CanvasBackgroundBrush}">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="200" />
                 <ColumnDefinition />
@@ -276,7 +276,7 @@
                 <RowDefinition />
                 <RowDefinition Height="50" />
             </Grid.RowDefinitions>
-            <Canvas Grid.Column="0" Grid.Row="0" Background="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}" />
+            <Canvas Grid.Column="0" Grid.Row="0" Background="{DynamicResource CanvasBackgroundBrush}" />
             <!-- Playhead overlay: spans both rows of Column 1, sits above track content -->
             <Canvas x:Name="PlayheadCanvas" Grid.Column="1" Grid.Row="0" Grid.RowSpan="2"
                     IsHitTestVisible="False" Panel.ZIndex="10">
@@ -285,7 +285,7 @@
                       Stroke="Red" StrokeThickness="1.5"
                       Visibility="Collapsed" />
             </Canvas>
-            <Canvas Grid.Column="1" Grid.Row="1" Background="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}" Name="Guide" Cursor="ScrollWE"
+            <Canvas Grid.Column="1" Grid.Row="1" Background="{DynamicResource CanvasBackgroundBrush}" Name="Guide" Cursor="ScrollWE"
                     ForceCursor="True"
                     PreviewMouseDown="Guide_OnPreviewMouseDown" PreviewMouseUp="Guide_OnPreviewMouseUp"
                     PreviewMouseMove="Guide_OnPreviewMouseMove" MouseLeave="Guide_OnMouseLeave">
@@ -302,7 +302,7 @@
                     </Style>
                 </Canvas.Resources>
             </Canvas>
-            <Canvas Grid.Column="0" Grid.Row="1" Background="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}" />
+            <Canvas Grid.Column="0" Grid.Row="1" Background="{DynamicResource CanvasBackgroundBrush}" />
             <TreeView Grid.Column="0" Grid.ColumnSpan="2" Grid.Row="0" ItemsSource="{Binding InterpGroups}"
                       Background="{x:Null}" SelectedItemChanged="TreeView_SelectedItemChanged" Name="MatineeTree">
                 <TreeView.Resources>

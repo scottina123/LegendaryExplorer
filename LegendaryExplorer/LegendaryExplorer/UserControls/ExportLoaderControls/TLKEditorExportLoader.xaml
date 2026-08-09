@@ -257,7 +257,7 @@
         </Border>
         <Popup Name="popupDlg" Placement="Center" VerticalOffset="15" Width="640" Height="800" Margin="0,12,0,0" Closed="Evt_CloseXML" StaysOpen="false">
             <Border BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}" BorderThickness="2" Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}" >
-                <TextBox Name="popoutXmlBox" Text="No xml loaded" Margin="15,0,15,0" VerticalAlignment = "Center" FontFamily = "Courier New" FontSize = "14" Focusable = "True" ScrollViewer.CanContentScroll = "True" ScrollViewer.VerticalScrollBarVisibility = "Visible" IsReadOnly = "True" TextWrapping = "Wrap" LostFocus="CloseViewAsXml"/>
+                <TextBox Name="popoutXmlBox" Text="No xml loaded" Margin="15,0,15,0" VerticalAlignment = "Center" FontFamily="{DynamicResource AudemusDataFont}" FontSize="14" Focusable = "True" ScrollViewer.CanContentScroll = "True" ScrollViewer.VerticalScrollBarVisibility = "Visible" IsReadOnly = "True" TextWrapping = "Wrap" LostFocus="CloseViewAsXml"/>
             </Border>
         </Popup>
         <DataGrid Name="DisplayedString_ListBox"

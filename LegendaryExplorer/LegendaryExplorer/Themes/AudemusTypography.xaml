@@ -1,0 +1,19 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:system="clr-namespace:System;assembly=System.Runtime">
+    <!-- Typography is deliberately theme-independent. Colour themes consume these
+         semantic resources without redefining them. -->
+    <FontFamily x:Key="AudemusUiFont">Segoe UI</FontFamily>
+    <FontFamily x:Key="AudemusDataFont">Lucida Console</FontFamily>
+    <FontFamily x:Key="AudemusGraphFont">Segoe UI Variable Text, Segoe UI</FontFamily>
+
+    <system:Double x:Key="AudemusUiFontSize">12</system:Double>
+    <!-- Lucida Console renders materially smaller than the fonts it replaces at
+         the same WPF size. 12 preserves the established tool density and legibility. -->
+    <system:Double x:Key="AudemusDataFontSize">12</system:Double>
+    <system:Double x:Key="AudemusGraphFontSize">14</system:Double>
+
+    <!-- Compatibility aliases retained for existing workstation styles. -->
+    <system:Double x:Key="AudemusBodyFontSize">12</system:Double>
+    <system:Double x:Key="AudemusMetadataFontSize">10</system:Double>
+</ResourceDictionary>

@@ -261,7 +261,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             }
         }
 
-        private static readonly System.Windows.Media.Color DarkThemeDefaultBackgroundColor = System.Windows.Media.Color.FromRgb(30, 30, 30);
+        private static System.Windows.Media.Color DarkThemeDefaultBackgroundColor => ThemeManager.DarkCanvasMediaColor;
         private static readonly System.Windows.Media.Color LightThemeDefaultBackgroundColor = System.Windows.Media.Color.FromRgb(128, 128, 128);
 
         /// <summary>
@@ -277,7 +277,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         private static bool IsThemeDefaultBackgroundColor(System.Windows.Media.Color color)
         {
-            return color == DarkThemeDefaultBackgroundColor || color == LightThemeDefaultBackgroundColor;
+            return ThemeManager.IsDarkCanvasColor(color) || color == LightThemeDefaultBackgroundColor;
         }
         #endregion
 

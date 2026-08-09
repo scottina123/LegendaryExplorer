@@ -18,6 +18,16 @@ namespace LegendaryExplorer.Misc.AppSettings
     {
         // This file contains the main interaction code and is NOT pregenerated
 
+        /// <summary>
+        /// Compatibility view retained for renderers and older integrations that only
+        /// need to distinguish light from dark. Setting it selects traditional Dark.
+        /// </summary>
+        public static bool Global_DarkMode_Enabled
+        {
+            get => ThemeManager.IsDarkThemeName(Global_Theme);
+            set => Global_Theme = value ? AppTheme.Dark.ToString() : AppTheme.Light.ToString();
+        }
+
         #region Static Property Changed
 
         private static bool Loaded = false;
@@ -48,10 +58,11 @@ namespace LegendaryExplorer.Misc.AppSettings
                     AppCenter.SetEnabledAsync(Global_Analytics_Enabled);
                 }
                 
-                if (propertyName == nameof(Global_DarkMode_Enabled))
+                if (propertyName == nameof(Global_Theme))
                 {
                     // Apply theme immediately when setting changes
-                    ThemeManager.ApplyTheme(Global_DarkMode_Enabled);
+                    ThemeManager.ApplyTheme();
+                    StaticPropertyChanged?.Invoke(null, new PropertyChangedEventArgs(nameof(Global_DarkMode_Enabled)));
                 }
             }
             return true;

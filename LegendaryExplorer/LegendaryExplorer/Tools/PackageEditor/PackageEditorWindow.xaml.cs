@@ -8335,7 +8335,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
         {
             if (File.Exists(AppDirectories.HexConverterPath))
             {
-                Process.Start(AppDirectories.HexConverterPath);
+                Process.Start(AppDirectories.HexConverterPath, $"--theme {Settings.Global_Theme}");
             }
             else
             {

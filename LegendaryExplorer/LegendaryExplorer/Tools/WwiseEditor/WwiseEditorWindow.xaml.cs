@@ -266,11 +266,19 @@ namespace LegendaryExplorer.Tools.WwiseEditor
             if (isDarkMode)
             {
                 // Dark theme - matching Sequence Editor dark mode colors
-                _graphEditorBackColor = Color.FromArgb(30, 30, 30);
-                _boxFillColor = Color.FromArgb(45, 45, 48);
-                _titleBoxColor = Color.FromArgb(37, 37, 38);
-                _commentTextColor = Color.FromArgb(87, 166, 74);
-                _boxTextColor = Color.FromArgb(220, 220, 220);
+                _graphEditorBackColor = ThemeManager.DarkCanvasDrawingColor;
+                _boxFillColor = ThemeManager.IsModernDark
+                    ? Color.FromArgb(22, 36, 51)
+                    : Color.FromArgb(45, 45, 48);
+                _titleBoxColor = ThemeManager.IsModernDark
+                    ? Color.FromArgb(16, 26, 37)
+                    : Color.FromArgb(37, 37, 38);
+                _commentTextColor = ThemeManager.IsModernDark
+                    ? Color.FromArgb(71, 180, 213)
+                    : Color.FromArgb(87, 166, 74);
+                _boxTextColor = ThemeManager.IsModernDark
+                    ? Color.FromArgb(232, 240, 245)
+                    : Color.FromArgb(220, 220, 220);
                 _boxOutlineColor = Color.FromArgb(35, 34, 34);
                 _connectionColor = Color.White;
             }

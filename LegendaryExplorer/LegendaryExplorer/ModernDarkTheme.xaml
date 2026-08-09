@@ -1,0 +1,9 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <!-- Modern Dark reuses the reviewed dark control templates and replaces only
+         their semantic palette. This keeps both dark modes structurally identical. -->
+    <ResourceDictionary.MergedDictionaries>
+        <ResourceDictionary Source="/LegendaryExplorer;component/DarkTheme.xaml"/>
+        <ResourceDictionary Source="/LegendaryExplorer;component/Themes/AudemusDark.Tokens.xaml"/>
+    </ResourceDictionary.MergedDictionaries>
+</ResourceDictionary>

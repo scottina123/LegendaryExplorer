@@ -33,7 +33,7 @@
                     <DataTemplate>
                         <CheckBox IsChecked="{Binding IsChecked}">
                             <TextBlock>
-                                <Run FontStyle="Italic" Text="{Binding FileName, Mode=OneWay}" FontFamily="Segoe UI Light"/>: <Run Text="{Binding Conversation, Mode=OneWay}"/>
+                                <Run FontStyle="Italic" Text="{Binding FileName, Mode=OneWay}" FontFamily="{DynamicResource AudemusUiFont}"/>: <Run Text="{Binding Conversation, Mode=OneWay}"/>
                             </TextBlock>
                         </CheckBox>
                     </DataTemplate>

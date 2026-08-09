@@ -25,6 +25,7 @@
         xmlns:global="clr-namespace:LegendaryExplorer"
         Icon="pack://application:,,,/Tools/Icons/16x16/PackageEditor_Icon_16.ico"
         Title="Package Editor" Height="720" Width="1100"
+        Style="{DynamicResource AudemusToolWindowStyle}"
         DragOver="Window_DragOver"
         Drop="Window_Drop"
         AllowDrop="True"
@@ -225,7 +226,7 @@
     </Window.InputBindings>
     <xctk:BusyIndicator IsBusy="{Binding Path=IsBusy}" BusyContent="{Binding BusyText}">
         <DockPanel>
-            <Menu DockPanel.Dock="Top">
+            <Menu DockPanel.Dock="Top" Style="{DynamicResource AudemusMenuBandStyle}">
                 <MenuItem Header="File" Padding="4" >
                     <MenuItem Header="Open" Command="{Binding OpenFileCommand}" InputGestureText="Ctrl+O" ToolTip="Open a package file"/>
                     <MenuItem Header="Create new">
@@ -382,14 +383,14 @@
                 <packageEditorControls:ExperimentsMenuControl x:Name="ExperimentsMenu"  Visibility="{Binding ShowExperiments, RelativeSource={RelativeSource FindAncestor, AncestorType=packageEditor:PackageEditorWindow},Converter={StaticResource BoolToVisibilityConverter}}"/>
                 <MenuItem Header="Last Export" Padding="4" Command="{Binding GoToLastExportCommand}" ToolTip="Select the last export in the tree view"/>
             </Menu>
-            <StatusBar Height="23" DockPanel.Dock="Bottom">
+            <StatusBar Height="23" DockPanel.Dock="Bottom" Style="{DynamicResource AudemusStatusBarStyle}">
                 <sharedToolControls:StatusBarGameIDIndicator GameType="{Binding Pcc.Game}" Margin="0,-4"/>
                 <StatusBarItem>
                     <TextBlock x:Name="StatusBar_LeftMostText" Text="Select package file to load"/>
                 </StatusBarItem>
                 <StatusBarItem HorizontalAlignment="Right">
                     <StackPanel Orientation="Horizontal">
-                        <TextBlock Name="StatusBar_RightSide_LastSaved" Text="{Binding Pcc.LastSaved, StringFormat='Last saved at {0}'}" Foreground="Gray"/>
+                        <TextBlock Name="StatusBar_RightSide_LastSaved" Text="{Binding Pcc.LastSaved, StringFormat='Last saved at {0}'}" Foreground="{DynamicResource MutedTextBrush}"/>
                     </StackPanel>
                 </StatusBarItem>
             </StatusBar>
@@ -403,7 +404,7 @@
                     <ColumnDefinition Width="5" />
                     <ColumnDefinition Width="6*" />
                 </Grid.ColumnDefinitions>
-                <ToolBar ToolBarTray.IsLocked="True" Grid.Row="0" Grid.ColumnSpan="3" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}">
+                <ToolBar ToolBarTray.IsLocked="True" Grid.Row="0" Grid.ColumnSpan="3" Style="{DynamicResource AudemusToolBarStyle}">
                     <Button Padding="7,0" VerticalAlignment="Stretch" ToolTip="Navigate to previous (historically) selected entry.  You can also press the back button on your mouse or right click to view the list" Command="{Binding NavigateBackCommand}" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}">
                         <Button.ContextMenu>
                             <ContextMenu ItemsSource="{Binding BackwardsEntries}">
@@ -488,7 +489,7 @@
                                 </Grid.ColumnDefinitions>
                                 <TextBlock Grid.Column="0" Grid.Row="0" Grid.RowSpan="2" Text="{Binding Path=UIndex, Mode=OneTime}" Foreground="{DynamicResource ExportIndexBrush}" VerticalAlignment="Center"/>
                                 <TextBlock Grid.Column="1" Grid.Row="0" Grid.ColumnSpan="2" Text="{Binding InstancedFullPath}" Margin="5,0,0,0" Foreground="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}"/>
-                                <TextBlock Grid.Column="1" Grid.Row="1" Foreground="{DynamicResource ClassNameBrush}" Margin="5,0,0,0" FontWeight="Bold" FontFamily="Consolas">
+                                <TextBlock Grid.Column="1" Grid.Row="1" Foreground="{DynamicResource ClassNameBrush}" Margin="5,0,0,0" FontWeight="Bold" FontFamily="{DynamicResource AudemusDataFont}" FontSize="{DynamicResource AudemusDataFontSize}">
                                     <TextBlock.Text>
                                         <MultiBinding StringFormat="{}{0}{1}">
                                             <Binding Path="ClassName" />
@@ -506,7 +507,7 @@
                     </ListBox.ItemsPanel>
 
                 </controls:ListBoxScroll>
-                <TreeView x:Name="LeftSide_TreeView" Grid.Column="0" Grid.Row="1" FontFamily="Consolas" Visibility="Collapsed" dd:DragDrop.IsDragSource="True" dd:DragDrop.IsDropTarget="True" dd:DragDrop.DropHandler="{Binding}" ItemsSource="{Binding AllTreeViewNodesX}" FocusManager.IsFocusScope="True" VirtualizingStackPanel.IsVirtualizing="True" VirtualizingStackPanel.VirtualizationMode="Standard" Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}">
+                <TreeView x:Name="LeftSide_TreeView" Grid.Column="0" Grid.Row="1" FontFamily="{DynamicResource AudemusDataFont}" FontSize="{DynamicResource AudemusDataFontSize}" Visibility="Collapsed" dd:DragDrop.IsDragSource="True" dd:DragDrop.IsDropTarget="True" dd:DragDrop.DropHandler="{Binding}" ItemsSource="{Binding AllTreeViewNodesX}" FocusManager.IsFocusScope="True" VirtualizingStackPanel.IsVirtualizing="True" VirtualizingStackPanel.VirtualizationMode="Standard" Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}">
                     <TreeView.Resources>
                         <HierarchicalDataTemplate DataType="{x:Type SharedUI:TreeViewEntry}" ItemsSource="{Binding Sublinks}">
                             <controls:TreeViewEntryContainer ContextMenu="{StaticResource EntryContextMenu}" Background="Transparent" Padding="{Binding Path=(SharedUI:TouchComfySettings.TreeViewMargin)}" PreviewMouseLeftButtonDown="TreeEntryContainer_PreviewMouseLeftButtonDown" PreviewMouseRightButtonDown="TreeEntryContainer_PreviewMouseRightButtonDown">

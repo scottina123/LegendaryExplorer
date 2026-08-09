@@ -111,7 +111,7 @@
                         <ListBox.ItemTemplate>
                             <DataTemplate>
                                 <TextBlock Margin="4,2"
-                                           FontFamily="Consolas"
+                                           FontFamily="{DynamicResource AudemusDataFont}" FontSize="{DynamicResource AudemusDataFontSize}"
                                            xml:space="preserve"
                                            Text="{Binding Converter={StaticResource IndentedPathDisplayConverter}}" />
                             </DataTemplate>
@@ -180,7 +180,7 @@
                         </StackPanel>
                     </Border>
                     <avalonedit:TextEditor x:Name="TextEditor"
-                                            FontFamily="Consolas" FontSize="13"
+                                            FontFamily="{DynamicResource AudemusDataFont}" FontSize="13"
                                             ShowLineNumbers="True"
                                             WordWrap="False"
                                             ContextMenu="{StaticResource EditorContextMenu}" />

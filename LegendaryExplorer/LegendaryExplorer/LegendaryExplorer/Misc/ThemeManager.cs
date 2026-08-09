@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using Be.Windows.Forms;
 using LegendaryExplorer.Misc.AppSettings;
+using LegendaryExplorer.SharedUI;
 using LegendaryExplorer.DialogueEditor;
 using LegendaryExplorer.Tools.SequenceObjects;
 using LegendaryExplorer.Tools.WwiseEditor;
@@ -12,14 +13,22 @@ using Color = System.Drawing.Color;
 
 namespace LegendaryExplorer.Misc
 {
+    public enum AppTheme
+    {
+        Light,
+        Dark,
+        ModernDark
+    }
+
     /// <summary>
-    /// Manages application theme switching between light and dark modes.
+    /// Manages application theme switching without coupling custom renderers to WPF resources.
     /// </summary>
     public static class ThemeManager
     {
         private const string DarkThemeUri = "/LegendaryExplorer;component/DarkTheme.xaml";
+        private const string ModernDarkThemeUri = "/LegendaryExplorer;component/ModernDarkTheme.xaml";
         private const string LightThemeUri = "/LegendaryExplorer;component/LightTheme.xaml";
-        private static ResourceDictionary _darkThemeDictionary;
+        private static readonly Dictionary<AppTheme, ResourceDictionary> ThemeDictionaries = new();
         private static bool _isApplyingTheme;
         
         // Track registered HexBox controls for theme updates
@@ -30,12 +39,32 @@ namespace LegendaryExplorer.Misc
         /// </summary>
         public static event EventHandler<bool> ThemeChanged;
 
+        public static AppTheme CurrentTheme => ParseThemeName(Settings.Global_Theme);
+        public static bool IsDarkTheme => CurrentTheme != AppTheme.Light;
+        public static bool IsModernDark => CurrentTheme == AppTheme.ModernDark;
+        public static Color DarkCanvasDrawingColor => IsModernDark
+            ? Color.FromArgb(5, 8, 13)
+            : Color.FromArgb(30, 30, 30);
+        public static System.Windows.Media.Color DarkCanvasMediaColor => IsModernDark
+            ? System.Windows.Media.Color.FromRgb(5, 8, 13)
+            : System.Windows.Media.Color.FromRgb(30, 30, 30);
+        public static bool IsDarkCanvasColor(System.Windows.Media.Color color) =>
+            color == System.Windows.Media.Color.FromRgb(5, 8, 13)
+            || color == System.Windows.Media.Color.FromRgb(30, 30, 30);
+
+        public static bool IsDarkThemeName(string themeName) => ParseThemeName(themeName) != AppTheme.Light;
+
+        public static AppTheme ParseThemeName(string themeName) =>
+            Enum.TryParse(themeName, true, out AppTheme theme) && Enum.IsDefined(theme)
+                ? theme
+                : AppTheme.Light;
+
         /// <summary>
         /// Applies the current theme based on settings.
         /// </summary>
         public static void ApplyTheme()
         {
-            ApplyTheme(Settings.Global_DarkMode_Enabled);
+            ApplyTheme(CurrentTheme);
         }
 
         /// <summary>
@@ -44,6 +73,14 @@ namespace LegendaryExplorer.Misc
         /// <param name="isDarkMode">True for dark mode, false for light mode.</param>
         public static void ApplyTheme(bool isDarkMode)
         {
+            ApplyTheme(isDarkMode ? AppTheme.Dark : AppTheme.Light);
+        }
+
+        /// <summary>
+        /// Applies the specified application theme.
+        /// </summary>
+        public static void ApplyTheme(AppTheme theme)
+        {
             if (Application.Current == null || _isApplyingTheme)
                 return;
 
@@ -51,80 +88,51 @@ namespace LegendaryExplorer.Misc
             try
             {
                 var mergedDictionaries = Application.Current.Resources.MergedDictionaries;
+                string targetThemeUri = GetThemeUri(theme);
+                string targetThemeFile = GetThemeFileName(targetThemeUri);
+                ResourceDictionary targetDictionary = mergedDictionaries.FirstOrDefault(rd =>
+                    IsThemeDictionary(rd, targetThemeFile));
 
-                if (isDarkMode)
+                if (targetDictionary == null)
                 {
-                    // Load dark theme dictionary if not already loaded
-                    if (_darkThemeDictionary == null)
+                    if (!ThemeDictionaries.TryGetValue(theme, out targetDictionary))
                     {
-                        _darkThemeDictionary = new ResourceDictionary
+                        targetDictionary = new ResourceDictionary
                         {
-                            Source = new Uri(DarkThemeUri, UriKind.Relative)
+                            Source = new Uri(targetThemeUri, UriKind.Relative)
                         };
+                        ThemeDictionaries[theme] = targetDictionary;
                     }
 
-                    // Check if already applied by reference or by source URI
-                    bool darkThemeAlreadyApplied = mergedDictionaries.Contains(_darkThemeDictionary) ||
-                        mergedDictionaries.Any(rd => rd.Source?.OriginalString?.EndsWith("DarkTheme.xaml", StringComparison.OrdinalIgnoreCase) == true);
-
-                    if (!darkThemeAlreadyApplied)
-                    {
-                        // Add dark theme BEFORE removing light theme to avoid an intermediate
-                        // "no theme" state. Removing first causes all controls to re-template
-                        // to defaults, and the subsequent Add re-templates again on controls
-                        // in an inconsistent state, triggering an internal WPF NullReferenceException.
-                        if (!mergedDictionaries.Contains(_darkThemeDictionary))
-                        {
-                            mergedDictionaries.Add(_darkThemeDictionary);
-                        }
-
-                        // Now safely remove light theme — controls already have dark styles
-                        var lightTheme = mergedDictionaries.FirstOrDefault(rd => 
-                            rd.Source?.OriginalString?.EndsWith("LightTheme.xaml", StringComparison.OrdinalIgnoreCase) == true);
-                        if (lightTheme != null)
-                        {
-                            mergedDictionaries.Remove(lightTheme);
-                        }
-                    }
-                    
-                    // Also set the static HexBox colors so new instances get dark colors
-                    HexBox.SetColors(Color.FromArgb(0x1E, 0x1E, 0x1E), Color.FromArgb(0xE0, 0xE0, 0xE0));
+                    // Add before removing the previous theme. An intermediate resource gap
+                    // can make live WPF controls re-template against incomplete resources.
+                    mergedDictionaries.Add(targetDictionary);
                 }
-                else
+
+                foreach (ResourceDictionary oldTheme in mergedDictionaries
+                             .Where(rd => rd != targetDictionary && IsThemeDictionary(rd))
+                             .ToList())
                 {
-                    // Add light theme BEFORE removing dark theme to avoid an intermediate
-                    // "no theme" state that triggers internal WPF NullReferenceException.
-                    bool lightThemePresent = mergedDictionaries.Any(rd => 
-                        rd.Source?.OriginalString?.EndsWith("LightTheme.xaml", StringComparison.OrdinalIgnoreCase) == true);
-                    if (!lightThemePresent)
-                    {
-                        mergedDictionaries.Insert(0, new ResourceDictionary
-                        {
-                            Source = new Uri(LightThemeUri, UriKind.Relative)
-                        });
-                    }
-
-                    // Now safely remove dark theme — controls already have light styles
-                    var darkTheme = mergedDictionaries.FirstOrDefault(rd => 
-                        rd.Source?.OriginalString?.EndsWith("DarkTheme.xaml", StringComparison.OrdinalIgnoreCase) == true);
-                    if (darkTheme != null)
-                    {
-                        mergedDictionaries.Remove(darkTheme);
-                        _darkThemeDictionary = null; // Clear cache so a fresh instance is created next time
-                    }
-
-                    // Reset static HexBox colors to light theme
-                    HexBox.SetColors(Color.White, Color.Black);
+                    mergedDictionaries.Remove(oldTheme);
                 }
 
-                // Update graph editor static colors (SObj)
-                ApplyGraphEditorTheme(isDarkMode);
+                Color hexBackground = theme switch
+                {
+                    AppTheme.ModernDark => Color.FromArgb(0x08, 0x0D, 0x13),
+                    AppTheme.Dark => Color.FromArgb(0x1E, 0x1E, 0x1E),
+                    _ => Color.White
+                };
+                Color hexForeground = theme switch
+                {
+                    AppTheme.ModernDark => Color.FromArgb(0xE8, 0xF0, 0xF5),
+                    AppTheme.Dark => Color.FromArgb(0xE0, 0xE0, 0xE0),
+                    _ => Color.Black
+                };
+                HexBox.SetColors(hexBackground, hexForeground);
 
-                // Update all registered HexBox controls
-                UpdateAllHexBoxThemes(isDarkMode);
-                
-                // Fire the ThemeChanged event to notify subscribers
-                ThemeChanged?.Invoke(null, isDarkMode);
+                ApplyGraphEditorTheme(theme);
+                UpdateAllHexBoxThemes(theme);
+                ThemeChanged?.Invoke(null, theme != AppTheme.Light);
             }
             finally
             {
@@ -132,29 +140,82 @@ namespace LegendaryExplorer.Misc
             }
         }
 
+        private static string GetThemeUri(AppTheme theme) => theme switch
+        {
+            AppTheme.Dark => DarkThemeUri,
+            AppTheme.ModernDark => ModernDarkThemeUri,
+            _ => LightThemeUri
+        };
+
+        private static string GetThemeFileName(string uri) => uri[(uri.LastIndexOf('/') + 1)..];
+
+        private static bool IsThemeDictionary(ResourceDictionary dictionary, string fileName = null)
+        {
+            string source = dictionary.Source?.OriginalString;
+            if (string.IsNullOrEmpty(source)) return false;
+
+            string sourceFile = GetThemeFileName(source);
+            return fileName != null
+                ? string.Equals(sourceFile, fileName, StringComparison.OrdinalIgnoreCase)
+                : string.Equals(sourceFile, "LightTheme.xaml", StringComparison.OrdinalIgnoreCase)
+                  || string.Equals(sourceFile, "DarkTheme.xaml", StringComparison.OrdinalIgnoreCase)
+                  || string.Equals(sourceFile, "ModernDarkTheme.xaml", StringComparison.OrdinalIgnoreCase);
+        }
+
         /// <summary>
         /// Applies theme colors to the static graph editor properties used by SObj and other graph objects.
         /// This ensures correct colors even when graph editors aren't open.
         /// </summary>
-        /// <param name="isDarkMode">Whether dark mode is enabled.</param>
-        private static void ApplyGraphEditorTheme(bool isDarkMode)
+        /// <param name="theme">The active application theme.</param>
+        private static void ApplyGraphEditorTheme(AppTheme theme)
         {
-            if (isDarkMode)
+            if (theme == AppTheme.ModernDark)
             {
                 // Dark theme - Visual Studio dark mode inspired colors
+                SObj.NodeBrushColor = Color.FromArgb(22, 36, 51);
+                SObj.TitleBoxBrushColor = Color.FromArgb(16, 26, 37);
+                SObj.CommentTextColor = Color.FromArgb(71, 180, 213);
+                SObj.BoxTextColor = Color.FromArgb(232, 240, 245);
+
+                // Wwise Graph Editor dark theme
+                WwiseHircObjNode.NodeBrushColor = Color.FromArgb(22, 36, 51);
+                WwiseHircObjNode.TitleBoxBrushColor = Color.FromArgb(16, 26, 37);
+                WwiseHircObjNode.CommentTextColor = Color.FromArgb(71, 180, 213);
+                WwiseHircObjNode.BoxTextColor = Color.FromArgb(232, 240, 245);
+                WwiseHircObjNode.ConnectionColor = Color.White;
+
+                // Dialogue Editor dark theme
+                DBox.lineColor = Color.FromArgb(130, 180, 255);
+                DObj.linkTextColor = Color.White;
+                DObj.paraintColor = Color.FromArgb(100, 149, 237);
+                DObj.renintColor = Color.FromArgb(255, 99, 71);
+                DObj.agreeColor = Color.FromArgb(135, 206, 250);
+                DObj.disagreeColor = Color.FromArgb(255, 160, 122);
+                DObj.friendlyColor = Color.FromArgb(100, 149, 237);
+                DObj.hostileColor = Color.FromArgb(205, 92, 92);
+                DObj.connectionColor = Color.White;
+                DObj.entryColor = Color.FromArgb(218, 165, 32);
+                DObj.entryPenColor = Color.FromArgb(220, 220, 220);
+                DObj.replyColor = Color.FromArgb(95, 158, 160);
+                DObj.replyPenColor = Color.FromArgb(220, 220, 220);
+                DObj.graphBackgroundColor = Color.FromArgb(5, 8, 13);
+                DObj.boxColor = Color.FromArgb(22, 36, 51);
+                DObj.boxTextColor = Color.FromArgb(232, 240, 245);
+            }
+            else if (theme == AppTheme.Dark)
+            {
+                // Traditional Legendary Explorer dark palette.
                 SObj.NodeBrushColor = Color.FromArgb(45, 45, 48);
                 SObj.TitleBoxBrushColor = Color.FromArgb(37, 37, 38);
                 SObj.CommentTextColor = Color.FromArgb(87, 166, 74);
                 SObj.BoxTextColor = Color.FromArgb(220, 220, 220);
 
-                // Wwise Graph Editor dark theme
                 WwiseHircObjNode.NodeBrushColor = Color.FromArgb(45, 45, 48);
                 WwiseHircObjNode.TitleBoxBrushColor = Color.FromArgb(37, 37, 38);
                 WwiseHircObjNode.CommentTextColor = Color.FromArgb(87, 166, 74);
                 WwiseHircObjNode.BoxTextColor = Color.FromArgb(220, 220, 220);
                 WwiseHircObjNode.ConnectionColor = Color.White;
 
-                // Dialogue Editor dark theme
                 DBox.lineColor = Color.FromArgb(130, 180, 255);
                 DObj.linkTextColor = Color.White;
                 DObj.paraintColor = Color.FromArgb(100, 149, 237);
@@ -229,16 +290,16 @@ namespace LegendaryExplorer.Misc
             _registeredHexBoxes.Add(new WeakReference<HexBox>(hexBox));
             
             // Apply theme immediately
-            ApplyHexBoxTheme(hexBox, Settings.Global_DarkMode_Enabled);
+            ApplyHexBoxTheme(hexBox, CurrentTheme);
             
             // Hook into HandleCreated to reapply after control is fully initialized
-            hexBox.HandleCreated += (s, e) => ApplyHexBoxTheme(hexBox, Settings.Global_DarkMode_Enabled);
+            hexBox.HandleCreated += (s, e) => ApplyHexBoxTheme(hexBox, CurrentTheme);
             
             // Hook into VisibleChanged for when the control becomes visible
             hexBox.VisibleChanged += (s, e) => 
             { 
                 if (hexBox.Visible) 
-                    ApplyHexBoxTheme(hexBox, Settings.Global_DarkMode_Enabled); 
+                    ApplyHexBoxTheme(hexBox, CurrentTheme);
             };
             
             // Schedule another apply after delays to ensure rendering is complete
@@ -247,7 +308,7 @@ namespace LegendaryExplorer.Misc
                 try
                 {
                     if (!hexBox.IsDisposed)
-                        ApplyHexBoxTheme(hexBox, Settings.Global_DarkMode_Enabled);
+                        ApplyHexBoxTheme(hexBox, CurrentTheme);
                 }
                 catch { }
             });
@@ -257,7 +318,7 @@ namespace LegendaryExplorer.Misc
                 try
                 {
                     if (!hexBox.IsDisposed)
-                        ApplyHexBoxTheme(hexBox, Settings.Global_DarkMode_Enabled);
+                        ApplyHexBoxTheme(hexBox, CurrentTheme);
                 }
                 catch { }
             });
@@ -270,7 +331,19 @@ namespace LegendaryExplorer.Misc
         /// <param name="isDarkMode">Whether dark mode is enabled.</param>
         public static void ApplyHexBoxTheme(HexBox hexBox, bool isDarkMode)
         {
+            ApplyHexBoxTheme(hexBox, isDarkMode ? AppTheme.Dark : AppTheme.Light);
+        }
+
+        public static void ApplyHexBoxTheme(HexBox hexBox, AppTheme theme)
+        {
             if (hexBox == null || hexBox.IsDisposed) return;
+
+            bool isDarkMode = theme != AppTheme.Light;
+
+            // HexBox is WinForms-hosted and cannot consume WPF font resources directly.
+            // Apply the shared cross-framework typography contract here instead.
+            hexBox.Font = AppTypography.DataDrawingFont;
+            hexBox.BoldFont = AppTypography.DataDrawingFontBold;
             
             // Apply dark mode to the scrollbar
             hexBox.ScrollBarDarkMode = isDarkMode;
@@ -278,20 +351,49 @@ namespace LegendaryExplorer.Misc
             // Apply dark mode to the context menu
             hexBox.ContextMenuDarkMode = isDarkMode;
 
-            if (isDarkMode)
+            if (theme == AppTheme.ModernDark)
             {
+                ApplyHexBoxScrollBarMetrics(hexBox, 12);
+                hexBox.VScrollBar.TrackColor = Color.FromArgb(0x08, 0x0D, 0x13);
+                hexBox.VScrollBar.ThumbColor = Color.FromArgb(0x2A, 0x3A, 0x49);
+                hexBox.VScrollBar.ThumbHoverColor = Color.FromArgb(0x49, 0x64, 0x77);
+                hexBox.VScrollBar.ThumbDraggingColor = Color.FromArgb(0x47, 0xB4, 0xD5);
+                hexBox.VScrollBar.ArrowColor = Color.FromArgb(0x8F, 0xA2, 0xB2);
+                hexBox.VScrollBar.BorderColor = Color.FromArgb(0x2A, 0x3A, 0x49);
+
                 // Dark theme colors - set all color properties explicitly
-                hexBox.BackColor = Color.FromArgb(0x1E, 0x1E, 0x1E);           // DarkBackground #FF1E1E1E
-                hexBox.ForeColor = Color.FromArgb(0xE0, 0xE0, 0xE0);           // DarkText #FFE0E0E0
+                hexBox.BackColor = Color.FromArgb(0x08, 0x0D, 0x13);           // RecessedBackground #080D13
+                hexBox.ForeColor = Color.FromArgb(0xE8, 0xF0, 0xF5);           // Text #E8F0F5
                 hexBox.InfoForeColor = Color.FromArgb(0xB0, 0xB0, 0xB0);       // DarkTextSecondary #FFB0B0B0
                 hexBox.SelectionBackColor = Color.FromArgb(0x00, 0x7A, 0xCC); // DarkHighlight #FF007ACC
                 hexBox.SelectionForeColor = Color.White;                       // DarkHighlightText
                 hexBox.HighlightBackColor = Color.FromArgb(0x26, 0x4F, 0x78); // DarkSelection #FF264F78
                 hexBox.HighlightForeColor = Color.FromArgb(0xFF, 0xFF, 0xE0); // Light yellow for visibility
-                hexBox.BackColorDisabled = Color.FromArgb(0x2D, 0x2D, 0x30);  // DarkControl #FF2D2D30
+                hexBox.BackColorDisabled = Color.FromArgb(0x10, 0x1A, 0x25);  // Panel #101A25
+            }
+            else if (theme == AppTheme.Dark)
+            {
+                ApplyHexBoxScrollBarMetrics(hexBox, System.Windows.Forms.SystemInformation.VerticalScrollBarWidth);
+                hexBox.VScrollBar.TrackColor = Color.FromArgb(0x3E, 0x3E, 0x42);
+                hexBox.VScrollBar.ThumbColor = Color.FromArgb(0x68, 0x68, 0x6B);
+                hexBox.VScrollBar.ThumbHoverColor = Color.FromArgb(0x9E, 0x9E, 0x9E);
+                hexBox.VScrollBar.ThumbDraggingColor = Color.FromArgb(0x9E, 0x9E, 0x9E);
+                hexBox.VScrollBar.ArrowColor = Color.FromArgb(0x99, 0x99, 0x99);
+                hexBox.VScrollBar.BorderColor = Color.FromArgb(0x3F, 0x3F, 0x46);
+
+                hexBox.BackColor = Color.FromArgb(0x1E, 0x1E, 0x1E);
+                hexBox.ForeColor = Color.FromArgb(0xE0, 0xE0, 0xE0);
+                hexBox.InfoForeColor = Color.FromArgb(0xB0, 0xB0, 0xB0);
+                hexBox.SelectionBackColor = Color.FromArgb(0x00, 0x7A, 0xCC);
+                hexBox.SelectionForeColor = Color.White;
+                hexBox.HighlightBackColor = Color.FromArgb(0x26, 0x4F, 0x78);
+                hexBox.HighlightForeColor = Color.FromArgb(0xFF, 0xFF, 0xE0);
+                hexBox.BackColorDisabled = Color.FromArgb(0x2D, 0x2D, 0x30);
             }
             else
             {
+                ApplyHexBoxScrollBarMetrics(hexBox, System.Windows.Forms.SystemInformation.VerticalScrollBarWidth);
+
                 // Light theme colors (defaults)
                 hexBox.BackColor = Color.White;
                 hexBox.ForeColor = Color.Black;
@@ -320,6 +422,16 @@ namespace LegendaryExplorer.Misc
                 // Control might be disposed
             }
         }
+
+        private static void ApplyHexBoxScrollBarMetrics(HexBox hexBox, int width)
+        {
+            if (hexBox.VScrollBar.Width == width) return;
+
+            bool wasVisible = hexBox.VScrollBarVisible;
+            if (wasVisible) hexBox.VScrollBarVisible = false;
+            hexBox.VScrollBar.Width = width;
+            if (wasVisible) hexBox.VScrollBarVisible = true;
+        }
         
         /// <summary>
         /// Performs the actual refresh operations on the HexBox control
@@ -346,7 +458,7 @@ namespace LegendaryExplorer.Misc
         /// <summary>
         /// Updates all registered HexBox controls with the current theme.
         /// </summary>
-        private static void UpdateAllHexBoxThemes(bool isDarkMode)
+        private static void UpdateAllHexBoxThemes(AppTheme theme)
         {
             // Clean up dead references as we iterate
             _registeredHexBoxes.RemoveAll(wr => !wr.TryGetTarget(out _));
@@ -355,7 +467,7 @@ namespace LegendaryExplorer.Misc
             {
                 if (weakRef.TryGetTarget(out var hexBox))
                 {
-                    ApplyHexBoxTheme(hexBox, isDarkMode);
+                    ApplyHexBoxTheme(hexBox, theme);
                 }
             }
         }

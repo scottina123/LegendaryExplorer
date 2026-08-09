@@ -6,6 +6,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using LegendaryExplorer.Tools.PathfindingNetworkEditor.Models;
 using LegendaryExplorer.Tools.PathfindingNetworkEditor.Nodes;
+using LegendaryExplorer.SharedUI;
 
 namespace LegendaryExplorer.Tools.PathfindingNetworkEditor.Controls;
 
@@ -16,7 +17,7 @@ namespace LegendaryExplorer.Tools.PathfindingNetworkEditor.Controls;
 public class NodeControl : FrameworkElement
 {
     private readonly GraphNode _node;
-    private static readonly Typeface DefaultTypeface = new("Segoe UI");
+    private static readonly Typeface DefaultTypeface = AppTypography.GraphTypeface;
 
     /// <summary>
     /// When true, node labels are drawn. Managed by <see cref="NetworkGraphEditor"/>.
@@ -506,7 +507,7 @@ public class NodeControl : FrameworkElement
                 CultureInfo.CurrentCulture,
                 FlowDirection.LeftToRight,
                 DefaultTypeface,
-                11,
+                AppTypography.GraphFontSize,
                 textBrush,
                 dpi.PixelsPerDip)
             {

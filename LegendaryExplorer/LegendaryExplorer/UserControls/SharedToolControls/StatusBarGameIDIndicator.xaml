@@ -10,7 +10,7 @@
     <Grid>
         <StatusBarItem VerticalContentAlignment="Center" Visibility="Visible" Margin="0,0,0,0">
             <Border BorderBrush="Gray" BorderThickness="2,2,2,2" CornerRadius="3,3,3,3" VerticalAlignment="Center">
-                <TextBlock FontSize="11" Text="{Binding GameType, RelativeSource={RelativeSource FindAncestor, AncestorType={x:Type sharedUi:StatusBarGameIDIndicator}}}"  Foreground="White" Padding="4,3,4,3" FontFamily="Consolas" VerticalAlignment="Center">
+                <TextBlock FontSize="11" Text="{Binding GameType, RelativeSource={RelativeSource FindAncestor, AncestorType={x:Type sharedUi:StatusBarGameIDIndicator}}}"  Foreground="White" Padding="4,3,4,3" FontFamily="{DynamicResource AudemusDataFont}" VerticalAlignment="Center">
                     <TextBlock.Style>
                         <Style TargetType="TextBlock">
                             <Setter Property="Background" Value="Red"/>

@@ -70,7 +70,11 @@ namespace LegendaryExplorer.Misc.AppSettings
 #>        private static <#= setting.Item2 #> _<#= setting.Item1.ToLower() #> = <#= setting.Item3 #>;
         public static <#= setting.Item2 #> <#= setting.Item1 #> {
             get => _<#= setting.Item1.ToLower() #>;
+<#      if (setting.Item1 == "Global_Theme") {#>
+            set => SetProperty(ref _global_theme, ThemeManager.ParseThemeName(value).ToString());
+<#      } else {#>
             set => SetProperty(ref _<#= setting.Item1.ToLower() #>, value);
+<#      }#>
         }
 <# } #>
 
@@ -139,8 +143,21 @@ namespace LegendaryExplorer.Misc.AppSettings
             //if the settings file has been corrupted somehow, the JSON deserializer will return null.
             settingsJson ??= new();
 
+            // Global_Theme replaces the original dark-mode Boolean. Preserve existing
+            // installations by mapping that value to the traditional Dark theme once.
+            if (!settingsJson.ContainsKey("global_theme"))
+            {
+                bool legacyDarkMode = TryGetSetting(settingsJson, "global_darkmode_enabled", false);
+                settingsJson["global_theme"] = legacyDarkMode ? "Dark" : "Light";
+            }
+
 <#          foreach (var setting in settings){#>
+<#              if (setting.Item1 == "Global_Theme") {#>
+            Global_Theme = ThemeManager.ParseThemeName(
+                TryGetSetting(settingsJson, "global_theme", "Light")).ToString();
+<#              } else {#>
             <#=setting.Item1#> = TryGetSetting(settingsJson, "<#=setting.Item1.ToLower()#>", <#= setting.Item3 #>);
+<#              }#>
 <#          }#>
 
             // Settings Bridge Init
@@ -166,6 +183,10 @@ namespace LegendaryExplorer.Misc.AppSettings
                     settingsJson["<#=setting.Item1.ToLower()#>"] = <#=setting.Item1#>.ToString();
 <#              } #>
 <#          }#>
+
+            // Retain the old key for downgrade compatibility. New versions read
+            // Global_Theme; older versions still receive a meaningful dark-mode value.
+            settingsJson["global_darkmode_enabled"] = Global_DarkMode_Enabled.ToString();
 
             var settingsText = JsonConvert.SerializeObject(settingsJson, Formatting.Indented);
             try

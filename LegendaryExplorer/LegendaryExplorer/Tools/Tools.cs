@@ -6,6 +6,7 @@ using System.Linq;
 using System.Windows;
 using System.Windows.Media;
 using LegendaryExplorer.Misc;
+using LegendaryExplorer.Misc.AppSettings;
 using LegendaryExplorer.SharedUI.Controls;
 using LegendaryExplorer.Tools.PackageEditor;
 using LegendaryExplorer.Tools.Sequence_Editor;
@@ -449,7 +450,7 @@ public static class ToolSet
             {
                 if (File.Exists(AppDirectories.HexConverterPath))
                 {
-                    Process.Start(AppDirectories.HexConverterPath);
+                    Process.Start(AppDirectories.HexConverterPath, $"--theme {Settings.Global_Theme}");
                 }
                 else
                 {
