@@ -1400,18 +1400,23 @@ public sealed class StaticLightingBaker
             existingMappingType is ELightMapType.LMT_2D or ELightMapType.LMT_4 or ELightMapType.LMT_6)
             return true;
 
-        float averageTriangleArea = triangleCount > 0 ? surfaceArea / triangleCount : 0f;
         if (IsArchitecturalReceiver(meshPath))
             return true;
-        if (maximumWorldDimension >= 512f && (triangleCount <= 256 || averageTriangleArea >= 1_024f))
-            return true;
 
-        if (maximumWorldDimension >= 128f && surfaceArea >= 16_384f && averageTriangleArea >= 1_024f)
-            return true;
-
+        // An authored vertex mapping is stronger evidence than the receiver's world-space size. In
+        // particular, BioWare uses LightMap1D for TableLab03 and other large, vertex-dense props. The
+        // old average-triangle-area test promoted those props to LightMap2D, exposing UV chart islands
+        // as large rectangular lighting blocks in game.
         if (!existingMappingWasGenerated &&
             existingMappingType is ELightMapType.LMT_1D or ELightMapType.LMT_3 or ELightMapType.LMT_5)
             return false;
+
+        bool isBroadLowPolyReceiver = triangleCount is > 0 and <= 256;
+        if (maximumWorldDimension >= 512f && isBroadLowPolyReceiver)
+            return true;
+
+        if (maximumWorldDimension >= 128f && surfaceArea >= 16_384f && isBroadLowPolyReceiver)
+            return true;
 
         return false;
     }
