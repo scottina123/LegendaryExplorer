@@ -22,7 +22,8 @@ public readonly record struct LevelCollisionHit(
     float Distance,
     Vector3 Position,
     Vector3 Normal,
-    ExportEntry Source);
+    ExportEntry Source,
+    int SourceTriangleIndex = -1);
 
 public readonly record struct LevelCoverSurfaceSeed(
     Vector3 Position,
@@ -36,12 +37,13 @@ internal readonly record struct LevelCollisionTriangle(
     Vector3 Normal,
     CollisionBounds Bounds,
     LevelCollisionFlags Flags,
-    ExportEntry Source)
+    ExportEntry Source,
+    int SourceTriangleIndex = -1)
 {
     public Vector3 Centroid => (A + B + C) / 3f;
 
     public static bool TryCreate(Vector3 a, Vector3 b, Vector3 c, LevelCollisionFlags flags,
-        ExportEntry source, out LevelCollisionTriangle triangle)
+        ExportEntry source, out LevelCollisionTriangle triangle, int sourceTriangleIndex = -1)
     {
         Vector3 cross = Vector3.Cross(b - a, c - a);
         float lengthSquared = cross.LengthSquared();
@@ -52,7 +54,7 @@ internal readonly record struct LevelCollisionTriangle(
         }
 
         triangle = new LevelCollisionTriangle(a, b, c, cross / MathF.Sqrt(lengthSquared),
-            CollisionBounds.FromTriangle(a, b, c), flags, source);
+            CollisionBounds.FromTriangle(a, b, c), flags, source, sourceTriangleIndex);
         return true;
     }
 }
@@ -246,14 +248,53 @@ public sealed class LevelCollisionScene
         return new LevelCollisionScene(collisionTriangles);
     }
 
+    /// <summary>
+    /// Builds a ray scene whose triangles retain their component and source-triangle identity. Static
+    /// lighting uses this to reject only receiver self-intersections without disabling legitimate
+    /// shadows cast by another part of the same mesh component.
+    /// </summary>
+    public static LevelCollisionScene FromTriangles(
+        IEnumerable<(Vector3 A, Vector3 B, Vector3 C, ExportEntry Source, int SourceTriangleIndex)> sourceTriangles,
+        LevelCollisionFlags flags = LevelCollisionFlags.All)
+    {
+        ArgumentNullException.ThrowIfNull(sourceTriangles);
+        var collisionTriangles = new List<LevelCollisionTriangle>();
+        foreach ((Vector3 a, Vector3 b, Vector3 c, ExportEntry source, int sourceTriangleIndex) in sourceTriangles)
+        {
+            if (LevelCollisionTriangle.TryCreate(a, b, c, flags, source, out LevelCollisionTriangle triangle,
+                    sourceTriangleIndex))
+                collisionTriangles.Add(triangle);
+        }
+        return new LevelCollisionScene(collisionTriangles);
+    }
+
     private static bool IsBlockingBrush(ActorProxy actor) =>
         actor.Export.ClassName.Contains("BlockingVolume", StringComparison.OrdinalIgnoreCase) ||
         !actor.IsVolume;
 
     public bool Raycast(Vector3 origin, Vector3 direction, float maximumDistance,
         out LevelCollisionHit hit, LevelCollisionFlags requiredFlags = LevelCollisionFlags.BlocksRay)
+        => RaycastCore(origin, direction, maximumDistance, out hit, requiredFlags,
+            null, -1, 0f, out _);
+
+    /// <summary>
+    /// Raycasts while rejecting the originating receiver triangle and near-zero hits from the same
+    /// component. Farther triangles on that component still cast shadows.
+    /// </summary>
+    public bool RaycastFiltered(Vector3 origin, Vector3 direction, float maximumDistance,
+        ExportEntry receiverSource, int receiverTriangleIndex, float selfIntersectionDistance,
+        out LevelCollisionHit hit, out int rejectedSelfIntersections,
+        LevelCollisionFlags requiredFlags = LevelCollisionFlags.BlocksRay)
+        => RaycastCore(origin, direction, maximumDistance, out hit, requiredFlags,
+            receiverSource, receiverTriangleIndex, MathF.Max(0f, selfIntersectionDistance),
+            out rejectedSelfIntersections);
+
+    private bool RaycastCore(Vector3 origin, Vector3 direction, float maximumDistance,
+        out LevelCollisionHit hit, LevelCollisionFlags requiredFlags, ExportEntry receiverSource,
+        int receiverTriangleIndex, float selfIntersectionDistance, out int rejectedSelfIntersections)
     {
         hit = default;
+        rejectedSelfIntersections = 0;
         if (nodes.Count == 0 || maximumDistance <= 0f || direction.LengthSquared() < 0.000001f)
         {
             return false;
@@ -262,6 +303,7 @@ public sealed class LevelCollisionScene
         direction = Vector3.Normalize(direction);
         float closest = maximumDistance;
         bool found = false;
+        int selfRejected = 0;
         LevelCollisionHit closestHit = default;
         VisitRay(0, origin, direction, maximumDistance, triangleIndex =>
         {
@@ -272,12 +314,22 @@ public sealed class LevelCollisionScene
                 return;
             }
 
+            if (receiverSource is not null && ReferenceEquals(triangle.Source, receiverSource) &&
+                (triangle.SourceTriangleIndex == receiverTriangleIndex ||
+                 distance <= selfIntersectionDistance))
+            {
+                selfRejected++;
+                return;
+            }
+
             closest = distance;
             Vector3 normal = Vector3.Dot(triangle.Normal, direction) > 0f ? -triangle.Normal : triangle.Normal;
-            closestHit = new LevelCollisionHit(distance, origin + direction * distance, normal, triangle.Source);
+            closestHit = new LevelCollisionHit(distance, origin + direction * distance, normal, triangle.Source,
+                triangle.SourceTriangleIndex);
             found = true;
         });
         hit = closestHit;
+        rejectedSelfIntersections = selfRejected;
         return found;
     }
 
@@ -302,7 +354,8 @@ public sealed class LevelCollisionScene
             }
 
             Vector3 normal = Vector3.Dot(triangle.Normal, direction) > 0f ? -triangle.Normal : triangle.Normal;
-            hits.Add(new LevelCollisionHit(distance, origin + direction * distance, normal, triangle.Source));
+            hits.Add(new LevelCollisionHit(distance, origin + direction * distance, normal, triangle.Source,
+                triangle.SourceTriangleIndex));
         });
         hits.Sort((left, right) => left.Distance.CompareTo(right.Distance));
         return hits;

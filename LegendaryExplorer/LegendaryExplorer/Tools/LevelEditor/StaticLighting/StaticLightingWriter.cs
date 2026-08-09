@@ -24,6 +24,7 @@ public static class StaticLightingWriter
         StaticLightingGenerationSettings settings)
     {
         settings.Validate();
+        ValidateBakeAssociations(bake);
         int lightMapTextures = 0;
         int irrelevantLightReferences = 0;
         int replacedExistingComponents = 0;
@@ -129,6 +130,32 @@ public static class StaticLightingWriter
         // This is the same existing TFC header layout and StreamIO helper used by Texture2D.Replace.
         using var stream = new FileStream(cachePath, FileMode.CreateNew, FileAccess.Write, FileShare.Read);
         stream.WriteGuid(Guid.NewGuid());
+    }
+
+    private static void ValidateBakeAssociations(StaticLightingBakeResult bake)
+    {
+        ExportEntry duplicateComponent = bake.Components.GroupBy(component => component.Target.Component)
+            .FirstOrDefault(group => group.Count() > 1)?.Key;
+        if (duplicateComponent is not null)
+            throw new InvalidDataException($"Multiple generated mappings target {duplicateComponent.InstancedFullPath}.");
+
+        foreach (StaticLightingComponentBake componentBake in bake.Components)
+        {
+            StaticLightingMeshTarget target = componentBake.Target;
+            if (componentBake.Texture is not { } texture)
+                continue;
+            if (!target.UseTextureMapping || !target.HasTextureCoordinates || target.MappingDiagnostics.HasTextureMappingErrors)
+                throw new InvalidDataException($"Invalid 2D mapping reached the writer for {target.Component.InstancedFullPath}.");
+            int expectedBytes = checked(texture.Resolution * texture.Resolution * 4);
+            if (texture.CoefficientImages.Any(image => image is null || image.Length != expectedBytes))
+                throw new InvalidDataException($"Generated texture dimensions do not match metadata for {target.Component.InstancedFullPath}.");
+            if (!float.IsFinite(texture.CoordinateScale.X) || !float.IsFinite(texture.CoordinateScale.Y) ||
+                !float.IsFinite(texture.CoordinateBias.X) || !float.IsFinite(texture.CoordinateBias.Y) ||
+                texture.CoordinateScale.X <= 0f || texture.CoordinateScale.Y <= 0f ||
+                texture.CoordinateScale.X + texture.CoordinateBias.X > 1.0001f ||
+                texture.CoordinateScale.Y + texture.CoordinateBias.Y > 1.0001f)
+                throw new InvalidDataException($"Generated coordinate transform is invalid for {target.Component.InstancedFullPath}.");
+        }
     }
 
     private static FileStream OpenTextureCacheForAppend(string cachePath)

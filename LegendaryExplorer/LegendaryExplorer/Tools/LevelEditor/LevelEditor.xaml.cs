@@ -312,10 +312,16 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
     private int _lightmassResolution = 64;
     public int LightmassResolution { get => _lightmassResolution; set => SetProperty(ref _lightmassResolution, value); }
     public IReadOnlyList<int> LightmassResolutions { get; } = [64, 128, 256, 512, 1024];
-    private float _lightmassAmbientIntensity = 0.03f;
+    private float _lightmassAmbientIntensity = 0.12f;
     public float LightmassAmbientIntensity { get => _lightmassAmbientIntensity; set => SetProperty(ref _lightmassAmbientIntensity, value); }
     private float _lightmassShadowBias = 1f;
     public float LightmassShadowBias { get => _lightmassShadowBias; set => SetProperty(ref _lightmassShadowBias, value); }
+    private int _lightmassShadowSamples = 8;
+    public int LightmassShadowSamples { get => _lightmassShadowSamples; set => SetProperty(ref _lightmassShadowSamples, value); }
+    private float _lightmassSourceRadius = 16f;
+    public float LightmassSourceRadius { get => _lightmassSourceRadius; set => SetProperty(ref _lightmassSourceRadius, value); }
+    private float _lightmassDirectionalSourceAngle = 0.5f;
+    public float LightmassDirectionalSourceAngle { get => _lightmassDirectionalSourceAngle; set => SetProperty(ref _lightmassDirectionalSourceAngle, value); }
     private int _lightmassWorkerThreads;
     public int LightmassWorkerThreads { get => _lightmassWorkerThreads; set => SetProperty(ref _lightmassWorkerThreads, value); }
     private int _lightmassWorkTileSize = 16;
@@ -3428,6 +3434,9 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
             TextureResolution = textureResolution,
             AmbientIntensity = LightmassAmbientIntensity,
             ShadowBias = LightmassShadowBias,
+            ShadowSampleCount = LightmassShadowSamples,
+            DefaultLightSourceRadius = LightmassSourceRadius,
+            DirectionalSourceAngleDegrees = LightmassDirectionalSourceAngle,
             WorkerThreads = LightmassWorkerThreads,
             WorkTileSize = LightmassWorkTileSize,
             TextureCacheName = LightmassTextureCacheName
@@ -3457,7 +3466,10 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
             string confirmation = $"{targetDescription}\n\n{targetList}\n\n" +
                                   $"Lights and occluding static geometry are gathered from all {OpenFiles.Count:N0} loaded levels. " +
                                   $"Existing lighting channels are preserved and strictly filter which lights may contribute. " +
-                                  $"Texture lightmaps are {settings.TextureResolution}×{settings.TextureResolution}; meshes without a valid baked-UV channel use UE3 vertex lightmaps.\n\n" +
+                                  $"Texture lightmaps are {settings.TextureResolution}×{settings.TextureResolution}; meshes authored for vertex lighting, or without a valid baked-UV channel, keep UE3 vertex lightmaps.\n\n" +
+                                  $"Soft shadows: {settings.ShadowSampleCount:N0} deterministic samples, " +
+                                  $"{settings.DefaultLightSourceRadius:F1} point/spot radius, " +
+                                  $"{settings.DirectionalSourceAngleDegrees:F1}° directional angle.\n" +
                                   $"Bake workers: {settings.EffectiveWorkerThreads:N0}; UV/spatial work tile: {settings.WorkTileSize}×{settings.WorkTileSize}.\n\n" +
                                   storageDescription + "\n\nThe packages remain unsaved until you use Save, but TFC data is appended during generation.";
             string dialogTitle = isSingleActor ? "Create Actor Lightmass" : "Create Lightmass";
@@ -3507,6 +3519,10 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
                     component.RefreshFromExport();
             }
             SceneViewer?.MarkRenderDirty();
+            int mappingFallbackCount = bake.Components.Count(component =>
+                component.Vertex is not null && component.Diagnostics.Mapping.HasTextureMappingErrors);
+            int mappingConflictTexels = bake.Components.Sum(component =>
+                component.Diagnostics.MappingConflictTexelCount);
             string cacheSummary = written.TextureCachePaths.Count == 0
                 ? "Lighting data was stored in the level packages."
                 : "Texture cache output:\n" + string.Join("\n", written.TextureCachePaths.Select(path => $"  • {path}"));
@@ -3514,6 +3530,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
                               $"{written.LightMapTextureCount:N0} lightmap textures, {written.ShadowMapCount:N0} shadow maps; " +
                               $"{written.IrrelevantLightReferenceCount:N0} irrelevant-light references; " +
                               $"{bake.WorkUnitCount:N0} parallel work units on {bake.WorkerCount:N0} workers; " +
+                              $"{bake.RaysCast:N0} rays, {bake.AverageVisibility:P1} average visibility; " +
                               $"{bake.LightCount:N0} lights / {bake.SourceTriangleCount:N0} occluder triangles from all loaded levels.";
             MessageBox.Show(this,
                 $"Generated static lighting for {written.ComponentCount:N0} components.\n\n" +
@@ -3523,6 +3540,12 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
                 $"Shadow maps: {written.ShadowMapCount:N0}\n" +
                 $"Irrelevant-light references: {written.IrrelevantLightReferenceCount:N0}\n" +
                 $"Parallel work units: {bake.WorkUnitCount:N0} on {bake.WorkerCount:N0} workers\n" +
+                $"Rays / occluded samples: {bake.RaysCast:N0} / {bake.OccludedSamples:N0}\n" +
+                $"Average direct visibility: {bake.AverageVisibility:P1}\n" +
+                $"Average direct / environment contribution: {bake.AverageDirectContribution:F3} / {bake.AverageEnvironmentContribution:F3}\n" +
+                $"Rejected receiver self-intersections: {bake.RejectedSelfIntersections:N0}\n" +
+                $"UV mapping fallbacks / conflicting texels: {mappingFallbackCount:N0} / {mappingConflictTexels:N0}\n" +
+                $"Bake time: {bake.BakeMilliseconds / 1000d:F2} seconds\n" +
                 $"Components replacing existing lighting: {written.ReplacedExistingComponentCount:N0}\n\n" +
                 $"{cacheSummary}\n\nUse Save All to write the modified level packages.",
                 dialogTitle, MessageBoxButton.OK, MessageBoxImage.Information);

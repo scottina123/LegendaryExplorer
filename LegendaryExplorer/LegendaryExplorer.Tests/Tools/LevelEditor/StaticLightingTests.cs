@@ -53,6 +53,12 @@ public class StaticLightingTests
             new StaticLightingGenerationSettings { WorkerThreads = -1 }.Validate());
         Assert.ThrowsExactly<ArgumentOutOfRangeException>(() =>
             new StaticLightingGenerationSettings { WorkTileSize = 24 }.Validate());
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() =>
+            new StaticLightingGenerationSettings { ShadowSampleCount = 0 }.Validate());
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() =>
+            new StaticLightingGenerationSettings { DefaultLightSourceRadius = -1f }.Validate());
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() =>
+            new StaticLightingGenerationSettings { DirectionalSourceAngleDegrees = 11f }.Validate());
     }
 
     [TestMethod]
@@ -131,7 +137,7 @@ public class StaticLightingTests
 
         StaticLightingTextureBake texture = result.Components[0].Texture;
         Assert.AreEqual(0, texture.ShadowMaps.Count);
-        Assert.AreEqual(1.53f, texture.ScaleVectors[2].X, 0.0001f);
+        Assert.AreEqual(1.62f, texture.ScaleVectors[2].X, 0.0001f);
         Assert.AreEqual(1, result.Components[0].LightGuids.Length);
     }
 
@@ -264,6 +270,139 @@ public class StaticLightingTests
     }
 
     [TestMethod]
+    public void OccludedDirectLight_PreservesEnvironmentAndDuplicateOccludersDoNotStackDarkness()
+    {
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("SeparatedLightmassTerms.pcc", MEGame.LE3);
+        ExportEntry component = package.CreateExport("StaticMeshComponent_0", "StaticMeshComponent", null,
+            indexed: false);
+        component.WriteProperties([]);
+        StaticLightingMeshTarget target = CreateQuadTarget(component);
+        var light = new StaticLightingLight(Guid.NewGuid(), StaticLightingLightType.Directional,
+            Vector3.Zero, -Vector3.UnitZ, Vector3.One, 1f, float.MaxValue, 0f, 0f, 0);
+        var first = (new Vector3(-10, -10, 10), new Vector3(110, -10, 10), new Vector3(110, 110, 10));
+        var second = (new Vector3(-10, -10, 10), new Vector3(110, 110, 10), new Vector3(-10, 110, 10));
+        var settings = new StaticLightingGenerationSettings
+        {
+            TextureResolution = 64,
+            WorkerThreads = 1,
+            AmbientIntensity = 0.2f,
+            ShadowSampleCount = 1,
+            DirectionalSourceAngleDegrees = 0f
+        };
+
+        StaticLightingBakeResult oneLayer = new StaticLightingBaker([target], [light],
+            LevelCollisionScene.FromTriangles(new[] { first, second }), settings).Bake();
+        StaticLightingBakeResult duplicateLayer = new StaticLightingBaker([target], [light],
+            LevelCollisionScene.FromTriangles(new[] { first, second, first, second }), settings).Bake();
+
+        Assert.AreEqual(0.2f, oneLayer.Components[0].Texture.ScaleVectors[2].X, 0.0001f);
+        Assert.AreEqual(oneLayer.Components[0].Texture.ScaleVectors[2].X,
+            duplicateLayer.Components[0].Texture.ScaleVectors[2].X, 0.0001f);
+        CollectionAssert.AreEqual(oneLayer.Components[0].Texture.CoefficientImages[2].ToArray(),
+            duplicateLayer.Components[0].Texture.CoefficientImages[2].ToArray());
+        Assert.AreEqual(0d, oneLayer.AverageVisibility, 0.0001d);
+        Assert.AreEqual(0.2d, oneLayer.AverageEnvironmentContribution, 0.0001d);
+    }
+
+    [TestMethod]
+    public void AreaShadowSampling_IsDeterministicAndProducesPartialVisibilityAtLowResolution()
+    {
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("SoftLightmass.pcc", MEGame.LE3);
+        ExportEntry component = package.CreateExport("StaticMeshComponent_0", "StaticMeshComponent", null,
+            indexed: false);
+        component.WriteProperties([]);
+        StaticLightingMeshTarget target = CreateQuadTarget(component);
+        var light = new StaticLightingLight(Guid.Parse("ed833201-3301-4ed8-a38f-66f92ad70e2a"),
+            StaticLightingLightType.Point, new Vector3(50, 50, 100), -Vector3.UnitZ,
+            Vector3.One, 1f, 250f, 0f, 0f, 0, true, 35f);
+        var blocker = new[]
+        {
+            (new Vector3(45, -20, 50), new Vector3(55, -20, 50), new Vector3(55, 120, 50)),
+            (new Vector3(45, -20, 50), new Vector3(55, 120, 50), new Vector3(45, 120, 50))
+        };
+        var settings = new StaticLightingGenerationSettings
+        {
+            TextureResolution = 64,
+            WorkerThreads = 4,
+            AmbientIntensity = 0.12f,
+            ShadowSampleCount = 16,
+            DefaultLightSourceRadius = 0f
+        };
+
+        StaticLightingBakeResult first = new StaticLightingBaker([target], [light],
+            LevelCollisionScene.FromTriangles(blocker), settings).Bake();
+        StaticLightingBakeResult second = new StaticLightingBaker([target], [light],
+            LevelCollisionScene.FromTriangles(blocker), settings).Bake();
+
+        Assert.IsGreaterThan(0d, first.AverageVisibility);
+        Assert.IsLessThan(1d, first.AverageVisibility);
+        Assert.IsGreaterThan(0L, first.OccludedSamples);
+        CollectionAssert.AreEqual(first.Components[0].Texture.CoefficientImages[2].ToArray(),
+            second.Components[0].Texture.CoefficientImages[2].ToArray());
+        Assert.AreEqual(first.AverageVisibility, second.AverageVisibility, 0.000001d);
+    }
+
+    [TestMethod]
+    public void CollisionRaycast_RejectsReceiverSelfIntersectionButRetainsSourceIdentity()
+    {
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("SelfIntersection.pcc", MEGame.LE3);
+        ExportEntry component = package.CreateExport("StaticMeshComponent_0", "StaticMeshComponent", null,
+            indexed: false);
+        component.WriteProperties([]);
+        LevelCollisionScene collision = LevelCollisionScene.FromTriangles(new[]
+        {
+            (new Vector3(-10, -10, 0.5f), new Vector3(10, -10, 0.5f), new Vector3(0, 10, 0.5f), component, 7)
+        });
+
+        bool hit = collision.RaycastFiltered(Vector3.Zero, Vector3.UnitZ, 10f,
+            component, 7, 2f, out _, out int rejected);
+
+        Assert.IsFalse(hit);
+        Assert.AreEqual(1, rejected);
+    }
+
+    [TestMethod]
+    public void UvOverlapDiagnostics_AllowSharedEdgesAndRejectSharedChartInteriors()
+    {
+        StaticLightingMeshTarget quad = CreateQuadTarget(null!);
+        Assert.AreEqual(0, StaticLightingBaker.CountOverlappingUvTrianglePairs(quad.Triangles));
+
+        StaticLightingTriangle original = quad.Triangles[0];
+        StaticLightingTriangle overlapping = new(
+            original.A with { Position = original.A.Position + Vector3.UnitZ * 10f },
+            original.B with { Position = original.B.Position + Vector3.UnitZ * 10f },
+            original.C with { Position = original.C.Position + Vector3.UnitZ * 10f });
+        Assert.AreEqual(1, StaticLightingBaker.CountOverlappingUvTrianglePairs([original, overlapping]));
+    }
+
+    [TestMethod]
+    public void MappingMode_PreservesAuthoredVertexMapsAndRecoversGeneratedMappingsFromMeshResolution()
+    {
+        Assert.IsFalse(StaticLightingBaker.ShouldUseTextureMapping(true, 0,
+            ELightMapType.LMT_3, false), "Stock Bench02-style vertex mapping must be preserved.");
+        Assert.IsFalse(StaticLightingBaker.ShouldUseTextureMapping(true, 0,
+            ELightMapType.LMT_2D, true), "A previous generated texture map must not hide a vertex-authored mesh.");
+        Assert.IsTrue(StaticLightingBaker.ShouldUseTextureMapping(true, 32,
+            ELightMapType.LMT_2D, true), "A texture-authored mesh keeps using the selected texture size.");
+        Assert.IsTrue(StaticLightingBaker.ShouldUseTextureMapping(true, 0,
+            ELightMapType.LMT_4, false), "Existing stock atlas texture mappings remain texture based.");
+        Assert.IsFalse(StaticLightingBaker.ShouldUseTextureMapping(false, 32,
+            ELightMapType.LMT_2D, false), "Invalid UV mappings always require vertex fallback.");
+    }
+
+    [TestMethod]
+    public void ShadowCasterFlags_IncludeDefaultObjectsAndHonorEveryExplicitStaticShadowOptOut()
+    {
+        Assert.IsTrue(StaticLightingBaker.CastsStaticShadow([]));
+        Assert.IsFalse(StaticLightingBaker.CastsStaticShadow(
+            [new BoolProperty(false, "CastShadow")]));
+        Assert.IsFalse(StaticLightingBaker.CastsStaticShadow(
+            [new BoolProperty(false, "bCastStaticShadow")]));
+        Assert.IsFalse(StaticLightingBaker.CastsStaticShadow(
+            [new BoolProperty(false, "CastStaticShadows")]));
+    }
+
+    [TestMethod]
     public void ExistingObjectBinarySerializer_RoundTripsGeneratedLightAndShadowMaps()
     {
         using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("StaticLightingSerialization.pcc", MEGame.LE3);
@@ -370,7 +509,8 @@ public class StaticLightingTests
             Triangles = [new StaticLightingTriangle(a, b, c), new StaticLightingTriangle(a, c, d)],
             Vertices = [a, b, c, d],
             LightMapCoordinateIndex = 1,
-            HasTextureCoordinates = true
+            HasTextureCoordinates = true,
+            UseTextureMapping = true
         };
     }
 }

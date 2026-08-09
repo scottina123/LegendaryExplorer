@@ -26,7 +26,8 @@ public readonly record struct StaticLightingLight(
     float InnerConeAngleDegrees,
     float OuterConeAngleDegrees,
     uint LightingChannelMask,
-    bool CastsStaticShadow = true)
+    bool CastsStaticShadow = true,
+    float SourceRadius = 0f)
 {
     public bool CastsShadow => Type != StaticLightingLightType.Sky && CastsStaticShadow;
 }
@@ -34,8 +35,12 @@ public readonly record struct StaticLightingLight(
 public sealed class StaticLightingGenerationSettings
 {
     public int TextureResolution { get; set; } = 64;
-    public float AmbientIntensity { get; set; } = 0.03f;
+    /// <summary>Unoccluded environment/indirect floor. It is never multiplied by direct-light visibility.</summary>
+    public float AmbientIntensity { get; set; } = 0.12f;
     public float ShadowBias { get; set; } = 1f;
+    public int ShadowSampleCount { get; set; } = 8;
+    public float DefaultLightSourceRadius { get; set; } = 16f;
+    public float DirectionalSourceAngleDegrees { get; set; } = 0.5f;
     public string TextureCacheName { get; set; } = "";
     public int WorkerThreads { get; set; }
     public int WorkTileSize { get; set; } = 16;
@@ -53,6 +58,13 @@ public sealed class StaticLightingGenerationSettings
             throw new ArgumentOutOfRangeException(nameof(AmbientIntensity));
         if (!float.IsFinite(ShadowBias) || ShadowBias is < 0.01f or > 100f)
             throw new ArgumentOutOfRangeException(nameof(ShadowBias));
+        if (ShadowSampleCount is < 1 or > 64)
+            throw new ArgumentOutOfRangeException(nameof(ShadowSampleCount),
+                "Shadow samples must be from 1 through 64.");
+        if (!float.IsFinite(DefaultLightSourceRadius) || DefaultLightSourceRadius is < 0f or > 10000f)
+            throw new ArgumentOutOfRangeException(nameof(DefaultLightSourceRadius));
+        if (!float.IsFinite(DirectionalSourceAngleDegrees) || DirectionalSourceAngleDegrees is < 0f or > 10f)
+            throw new ArgumentOutOfRangeException(nameof(DirectionalSourceAngleDegrees));
         if (WorkerThreads is < 0 or > 256)
             throw new ArgumentOutOfRangeException(nameof(WorkerThreads),
                 "Worker threads must be 0 (automatic) or from 1 through 256.");
@@ -76,7 +88,37 @@ public readonly record struct StaticLightingVertex(
 public readonly record struct StaticLightingTriangle(
     StaticLightingVertex A,
     StaticLightingVertex B,
-    StaticLightingVertex C);
+    StaticLightingVertex C)
+{
+    public int SectionIndex { get; init; } = -1;
+    public int SourceTriangleIndex { get; init; } = -1;
+}
+
+public sealed class StaticLightingMappingDiagnostics
+{
+    public string MeshPath { get; init; } = "";
+    public int DeclaredVertexCount { get; init; }
+    public int PositionVertexCount { get; init; }
+    public int AttributeVertexCount { get; init; }
+    public int TextureCoordinateCount { get; init; }
+    public int SelectedCoordinateIndex { get; init; }
+    public int SectionCount { get; init; }
+    public int SourceIndexCount { get; init; }
+    public int TriangleCount { get; init; }
+    public int InvalidSectionRangeCount { get; init; }
+    public int InvalidIndexCount { get; init; }
+    public int InvalidUvVertexCount { get; init; }
+    public int DegenerateUvTriangleCount { get; init; }
+    public int OverlappingUvTrianglePairCount { get; init; }
+
+    public bool HasVertexLayoutMismatch =>
+        DeclaredVertexCount != PositionVertexCount || PositionVertexCount != AttributeVertexCount;
+
+    public bool HasTextureMappingErrors => HasVertexLayoutMismatch || SelectedCoordinateIndex < 0 ||
+        SelectedCoordinateIndex >= TextureCoordinateCount || InvalidSectionRangeCount > 0 ||
+        InvalidIndexCount > 0 || InvalidUvVertexCount > 0 || DegenerateUvTriangleCount > 0 ||
+        OverlappingUvTrianglePairCount > 0;
+}
 
 public sealed class StaticLightingMeshTarget
 {
@@ -90,6 +132,13 @@ public sealed class StaticLightingMeshTarget
     public required IReadOnlyList<StaticLightingVertex> Vertices { get; init; }
     public int LightMapCoordinateIndex { get; init; }
     public bool HasTextureCoordinates { get; init; }
+    /// <summary>
+    /// True when this component's authored UE3 mapping mode is texture based. A valid UV channel by
+    /// itself is not sufficient: many stock meshes deliberately use vertex lightmaps even though
+    /// they contain a second UV channel.
+    /// </summary>
+    public bool UseTextureMapping { get; init; }
+    public StaticLightingMappingDiagnostics MappingDiagnostics { get; init; } = new();
 }
 
 public sealed class StaticLightingTextureBake
@@ -124,6 +173,22 @@ public sealed class StaticLightingComponentBake
     public required Guid[] IrrelevantLightGuids { get; init; }
     public StaticLightingTextureBake Texture { get; init; }
     public StaticLightingVertexBake Vertex { get; init; }
+    public StaticLightingComponentDiagnostics Diagnostics { get; init; } = new();
+}
+
+public sealed class StaticLightingComponentDiagnostics
+{
+    public StaticLightingMappingDiagnostics Mapping { get; init; } = new();
+    public int MappedTexelCount { get; init; }
+    public int MappingConflictTexelCount { get; init; }
+    public long RaysCast { get; init; }
+    public long OccludedSamples { get; init; }
+    public long RejectedSelfIntersections { get; init; }
+    public long VisibilitySampleCount { get; init; }
+    public double AverageVisibility { get; init; }
+    public double AverageDirectContribution { get; init; }
+    public double AverageEnvironmentContribution { get; init; }
+    public double BakeMilliseconds { get; init; }
 }
 
 public sealed class StaticLightingBakeResult
@@ -135,6 +200,14 @@ public sealed class StaticLightingBakeResult
     public required int VertexMappedComponentCount { get; init; }
     public int WorkUnitCount { get; init; }
     public int WorkerCount { get; init; }
+    public long RaysCast { get; init; }
+    public long OccludedSamples { get; init; }
+    public long RejectedSelfIntersections { get; init; }
+    public long VisibilitySampleCount { get; init; }
+    public double AverageVisibility { get; init; }
+    public double AverageDirectContribution { get; init; }
+    public double AverageEnvironmentContribution { get; init; }
+    public double BakeMilliseconds { get; init; }
 }
 
 public sealed class StaticLightingWriteResult

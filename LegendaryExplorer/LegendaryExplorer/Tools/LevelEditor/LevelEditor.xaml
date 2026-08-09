@@ -342,24 +342,36 @@
                                             <RowDefinition Height="Auto"/>
                                             <RowDefinition Height="Auto"/>
                                             <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
                                         </Grid.RowDefinitions>
                                         <TextBlock Grid.Row="0" Text="Lightmap resolution" VerticalAlignment="Center"/>
                                         <ComboBox Grid.Row="0" Grid.Column="1" ItemsSource="{Binding LightmassResolutions}"
                                                   SelectedItem="{Binding LightmassResolution}" Margin="2"/>
-                                        <TextBlock Grid.Row="1" Text="Ambient intensity" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Row="1" Text="Indirect/environment floor" VerticalAlignment="Center"/>
                                         <xctk:SingleUpDown Grid.Row="1" Grid.Column="1" Value="{Binding LightmassAmbientIntensity}"
                                                            Minimum="0" Maximum="10" Increment="0.01" FormatString="F2" Margin="2"/>
                                         <TextBlock Grid.Row="2" Text="Ray shadow bias" VerticalAlignment="Center"/>
                                         <xctk:SingleUpDown Grid.Row="2" Grid.Column="1" Value="{Binding LightmassShadowBias}"
                                                            Minimum="0.01" Maximum="100" Increment="0.25" FormatString="F2" Margin="2"/>
-                                        <TextBlock Grid.Row="3" Text="TFC name (blank = auto)" VerticalAlignment="Center"/>
-                                        <TextBox Grid.Row="3" Grid.Column="1" Text="{Binding LightmassTextureCacheName, UpdateSourceTrigger=PropertyChanged}"
+                                        <TextBlock Grid.Row="3" Text="Soft-shadow samples" VerticalAlignment="Center"/>
+                                        <xctk:IntegerUpDown Grid.Row="3" Grid.Column="1" Value="{Binding LightmassShadowSamples}"
+                                                            Minimum="1" Maximum="64" Increment="1" Margin="2"/>
+                                        <TextBlock Grid.Row="4" Text="Point/spot source radius" VerticalAlignment="Center"/>
+                                        <xctk:SingleUpDown Grid.Row="4" Grid.Column="1" Value="{Binding LightmassSourceRadius}"
+                                                           Minimum="0" Maximum="10000" Increment="1" FormatString="F1" Margin="2"/>
+                                        <TextBlock Grid.Row="5" Text="Directional source angle" VerticalAlignment="Center"/>
+                                        <xctk:SingleUpDown Grid.Row="5" Grid.Column="1" Value="{Binding LightmassDirectionalSourceAngle}"
+                                                           Minimum="0" Maximum="10" Increment="0.1" FormatString="F1" Margin="2"/>
+                                        <TextBlock Grid.Row="6" Text="TFC name (blank = auto)" VerticalAlignment="Center"/>
+                                        <TextBox Grid.Row="6" Grid.Column="1" Text="{Binding LightmassTextureCacheName, UpdateSourceTrigger=PropertyChanged}"
                                                  Margin="2" VerticalContentAlignment="Center"/>
-                                        <TextBlock Grid.Row="4" Text="Worker threads (0 = auto)" VerticalAlignment="Center"/>
-                                        <xctk:IntegerUpDown Grid.Row="4" Grid.Column="1" Value="{Binding LightmassWorkerThreads}"
+                                        <TextBlock Grid.Row="7" Text="Worker threads (0 = auto)" VerticalAlignment="Center"/>
+                                        <xctk:IntegerUpDown Grid.Row="7" Grid.Column="1" Value="{Binding LightmassWorkerThreads}"
                                                             Minimum="0" Maximum="256" Increment="1" Margin="2"/>
-                                        <TextBlock Grid.Row="5" Text="UV/spatial work tile" VerticalAlignment="Center"/>
-                                        <ComboBox Grid.Row="5" Grid.Column="1" ItemsSource="{Binding LightmassWorkTileSizes}"
+                                        <TextBlock Grid.Row="8" Text="UV/spatial work tile" VerticalAlignment="Center"/>
+                                        <ComboBox Grid.Row="8" Grid.Column="1" ItemsSource="{Binding LightmassWorkTileSizes}"
                                                   SelectedItem="{Binding LightmassWorkTileSize}" Margin="2"/>
                                     </Grid>
                                     <TextBlock Text="Direct lighting and ray-traced static shadows are baked into the lightmaps. Complex mappings are divided into parallel UV/spatial work pages. Existing outputs are replaced; TFC data is reused or created as needed."
