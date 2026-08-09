@@ -328,8 +328,19 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
     private int _lightmassWorkTileSize = 16;
     public int LightmassWorkTileSize { get => _lightmassWorkTileSize; set => SetProperty(ref _lightmassWorkTileSize, value); }
     public IReadOnlyList<int> LightmassWorkTileSizes { get; } = [8, 16, 32, 64, 128];
+    private StaticLightingBakeBackend _lightmassBackend = StaticLightingBaker.IsNativeBackendAvailable
+        ? StaticLightingBakeBackend.NativeCpp
+        : StaticLightingBakeBackend.CSharp;
+    public StaticLightingBakeBackend LightmassBackend { get => _lightmassBackend; set => SetProperty(ref _lightmassBackend, value); }
+    public IReadOnlyList<LightmassBackendChoice> LightmassBackends { get; } =
+    [
+        new(StaticLightingBakeBackend.NativeCpp, "Native C++"),
+        new(StaticLightingBakeBackend.CSharp, "C#")
+    ];
     private string _lightmassTextureCacheName = "";
     public string LightmassTextureCacheName { get => _lightmassTextureCacheName; set => SetProperty(ref _lightmassTextureCacheName, value); }
+
+    public sealed record LightmassBackendChoice(StaticLightingBakeBackend Backend, string DisplayName);
 
     private bool _showLightIcons = Settings.LevelEditor_ShowLightIcons;
     public bool ShowLightIcons
@@ -3179,6 +3190,65 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         set => SetProperty(ref _busyText, value);
     }
 
+    private bool _busyProgressIsIndeterminate = true;
+    public bool BusyProgressIsIndeterminate
+    {
+        get => _busyProgressIsIndeterminate;
+        set => SetProperty(ref _busyProgressIsIndeterminate, value);
+    }
+
+    private double _busyProgressMaximum = 1d;
+    public double BusyProgressMaximum
+    {
+        get => _busyProgressMaximum;
+        set => SetProperty(ref _busyProgressMaximum, Math.Max(1d, value));
+    }
+
+    private double _busyProgressValue;
+    public double BusyProgressValue
+    {
+        get => _busyProgressValue;
+        set => SetProperty(ref _busyProgressValue, Math.Clamp(value, 0d, BusyProgressMaximum));
+    }
+
+    private void UpdateStaticLightingScanProgress(StaticLightingBuildProgress progress)
+    {
+        BusyText = progress.DisplayText;
+        BusyProgressIsIndeterminate = !progress.IsDeterminate;
+        BusyProgressMaximum = Math.Max(1, progress.Total);
+        BusyProgressValue = progress.IsDeterminate ? progress.Current : 0;
+    }
+
+    private sealed class LatestUiProgress<T>(Dispatcher dispatcher, Action<T> update) : IProgress<T>
+    {
+        private readonly object gate = new();
+        private T latest;
+        private bool scheduled;
+
+        public void Report(T value)
+        {
+            lock (gate)
+            {
+                latest = value;
+                if (scheduled)
+                    return;
+                scheduled = true;
+            }
+            dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(DeliverLatest));
+        }
+
+        private void DeliverLatest()
+        {
+            T value;
+            lock (gate)
+            {
+                value = latest;
+                scheduled = false;
+            }
+            update(value);
+        }
+    }
+
     public virtual void SetBusy(string text = null)
     {
         BusyText = text;
@@ -3454,7 +3524,8 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
             DirectionalSourceAngleDegrees = LightmassDirectionalSourceAngle,
             WorkerThreads = LightmassWorkerThreads,
             WorkTileSize = LightmassWorkTileSize,
-            TextureCacheName = LightmassTextureCacheName
+            TextureCacheName = LightmassTextureCacheName,
+            Backend = LightmassBackend
         };
 
         try
@@ -3485,7 +3556,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
                 StaticLightingMappingMode.Vertex1D =>
                     "Mapping: force LightMap1D per-vertex lighting.",
                 _ =>
-                    $"Mapping: automatic detail-aware selection; LightMap2D receivers retain their authored per-object density up to a {settings.TextureResolution}×{settings.TextureResolution} ceiling, and compact/dense receivers use LightMap1D."
+                    $"Mapping: automatic detail-aware selection; every LightMap2D receiver uses exactly {settings.TextureResolution}×{settings.TextureResolution}, and compact/dense receivers use LightMap1D."
             };
             string confirmation = $"{targetDescription}\n\n{targetList}\n\n" +
                                   $"Lights and occluding static geometry are gathered from all {OpenFiles.Count:N0} loaded levels. " +
@@ -3496,6 +3567,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
                                   $"{settings.DefaultLightSourceRadius:F1} point/spot radius, " +
                                   $"{settings.DirectionalSourceAngleDegrees:F1}° directional angle.\n" +
                                   $"Bake workers: {settings.EffectiveWorkerThreads:N0}; UV/spatial work tile: {settings.WorkTileSize}×{settings.WorkTileSize}.\n\n" +
+                                  $"Bake backend: {(settings.Backend == StaticLightingBakeBackend.NativeCpp ? "Native C++" : "C#")}.\n\n" +
                                   storageDescription + "\n\nThe packages remain unsaved until you use Save, but TFC data is appended during generation.";
             string dialogTitle = isSingleActor ? "Create Actor Lightmass" : "Create Lightmass";
             if (MessageBox.Show(this, confirmation, dialogTitle, MessageBoxButton.YesNo,
@@ -3505,13 +3577,23 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
             IsBusy = true;
             IsBusyTaskbar = true;
             BusyText = "Collecting static meshes and lights from loaded levels...";
-            var progress = new Progress<string>(message => BusyText = message);
+            BusyProgressIsIndeterminate = true;
+            BusyProgressMaximum = 1;
+            BusyProgressValue = 0;
+            IProgress<StaticLightingBuildProgress> scanProgress =
+                new LatestUiProgress<StaticLightingBuildProgress>(Dispatcher, UpdateStaticLightingScanProgress);
+            IProgress<string> progress = new LatestUiProgress<string>(Dispatcher, message =>
+            {
+                BusyText = message;
+                BusyProgressIsIndeterminate = true;
+            });
             var targetSet = targetFiles.ToHashSet();
             ActorProxy[] sceneActors = Actors.ToArray();
             StaticLightingBakeResult bake = await Task.Run(() =>
             {
                 var scene = StaticLightingBaker.BuildScene(sceneActors, targetSet, RenderContext,
-                    exactTargetComponents, settings.MappingMode, settings.TextureResolution);
+                    exactTargetComponents, settings.MappingMode, settings.TextureResolution,
+                    settings.Backend, settings.EffectiveWorkerThreads, scanProgress);
                 if (scene.Targets.Count == 0)
                     return new StaticLightingBakeResult
                     {
@@ -3521,11 +3603,12 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
                         EmissiveEmitterCount = scene.EmissiveEmitters.Count,
                         TextureMappedComponentCount = 0,
                         VertexMappedComponentCount = 0,
+                        Backend = settings.Backend,
                         SceneDiagnostics = scene.Diagnostics
                     };
                 return new StaticLightingBaker(scene.Targets, scene.Lights, scene.Collision, settings,
                         scene.Diagnostics, scene.EmissiveEmitters)
-                    .Bake(CancellationToken.None, progress);
+                    .Bake(CancellationToken.None, progress, scanProgress);
             }).ConfigureAwait(true);
 
             if (bake.Components.Count == 0 && bake.SceneDiagnostics.ExcludedUnlitReceivers.Count == 0)
@@ -3538,6 +3621,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
             }
 
             BusyText = "Writing lightmaps, shadow maps, and texture-cache data...";
+            BusyProgressIsIndeterminate = true;
             await Dispatcher.Yield(DispatcherPriority.Background);
             StaticLightingWriteResult written = StaticLightingWriter.Write(bake, settings);
             var writtenComponents = bake.Components.Select(component => component.Target.Component)
@@ -3568,7 +3652,8 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
                               $"{bake.WorkUnitCount:N0} parallel work units on {bake.WorkerCount:N0} workers; " +
                               $"{bake.RaysCast:N0} rays, {bake.AverageVisibility:P1} average visibility; " +
                               $"{bake.LightCount:N0} lights / {bake.EmissiveEmitterCount:N0} emissive area samples / " +
-                              $"{bake.SourceTriangleCount:N0} occluder triangles from all loaded levels.";
+                              $"{bake.SourceTriangleCount:N0} occluder triangles from all loaded levels; " +
+                              $"{(bake.Backend == StaticLightingBakeBackend.NativeCpp ? "Native C++" : "C#")} backend.";
             MessageBox.Show(this,
                 mappingFallbackWarning +
                 $"Generated static lighting for {written.ComponentCount:N0} components.\n\n" +
@@ -3579,6 +3664,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
                 $"Shadow maps: {written.ShadowMapCount:N0}\n" +
                 $"Irrelevant-light references: {written.IrrelevantLightReferenceCount:N0}\n" +
                 $"Parallel work units: {bake.WorkUnitCount:N0} on {bake.WorkerCount:N0} workers\n" +
+                $"Bake backend: {(bake.Backend == StaticLightingBakeBackend.NativeCpp ? "Native C++" : "C#")}\n" +
                 $"Rays / occluded samples: {bake.RaysCast:N0} / {bake.OccludedSamples:N0}\n" +
                 $"Emissive area samples / evaluated / rays: {bake.EmissiveEmitterCount:N0} / {bake.EmissiveSamplesEvaluated:N0} / {bake.EmissiveRaysCast:N0}\n" +
                 $"Average direct visibility: {bake.AverageVisibility:P1}\n" +
@@ -3593,6 +3679,14 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
                 $"Worker time — light prep / 2D raster / 1D sampling: {bake.LightPreparationMilliseconds / 1000d:F2}s / {bake.TextureRasterizationMilliseconds / 1000d:F2}s / {bake.VertexSamplingMilliseconds / 1000d:F2}s\n" +
                 $"Worker time — direct lighting / visibility rays: {bake.DirectLightingMilliseconds / 1000d:F2}s / {bake.ShadowRayMilliseconds / 1000d:F2}s\n" +
                 $"Worker time — occupied texels / filtering / texture construction: {bake.OccupiedTexelDiscoveryMilliseconds / 1000d:F2}s / {bake.FilteringMilliseconds / 1000d:F2}s / {bake.TextureConstructionMilliseconds / 1000d:F2}s\n" +
+                (bake.Backend == StaticLightingBakeBackend.NativeCpp
+                    ? $"Native topology / instances / light scan: {bake.SceneDiagnostics.NativeTopologyScanMilliseconds / 1000d:F2}s / {bake.SceneDiagnostics.NativeInstanceScanMilliseconds / 1000d:F2}s / {bake.SceneDiagnostics.NativeLightScanMilliseconds / 1000d:F2}s\n" +
+                      $"Native BVH / compute: {bake.NativeBvhConstructionMilliseconds / 1000d:F2}s ({bake.NativeBvhNodeCount:N0} nodes) / {bake.NativeComputeMilliseconds / 1000d:F2}s\n" +
+                      $"Native 1D / 2D / shadow traversal: {bake.NativeBake1DMilliseconds / 1000d:F2}s / {bake.NativeBake2DMilliseconds / 1000d:F2}s / {bake.NativeShadowTraversalMilliseconds / 1000d:F2}s\n" +
+                      $"Native samples / occupied texels / relevant lights: {bake.NativeSamplesProcessed:N0} / {bake.NativeOccupiedTexels:N0} / {bake.NativeRelevantLights:N0}\n" +
+                      $"Native BVH visits / triangle tests / any-hit early-outs: {bake.NativeBvhNodesVisited:N0} / {bake.NativeRayTriangleTests:N0} / {bake.NativeAnyHitEarlyOuts:N0}\n" +
+                      $"Native throughput: {bake.NativeSamplesPerSecond:N0} samples/s, {bake.NativeRaysPerSecond:N0} rays/s\n"
+                    : "") +
                 $"Texture-resolved emissive detail, multi-bounce GI and denoising: not present in this direct-light baker\n" +
                 $"Bake wall time / total serialization: {bake.BakeMilliseconds / 1000d:F2}s / {written.SerializationMilliseconds / 1000d:F2}s\n" +
                 $"LightMap1D / LightMap2D serialization: {written.LightMap1DSerializationMilliseconds / 1000d:F2}s / {written.LightMap2DSerializationMilliseconds / 1000d:F2}s\n" +

@@ -3,6 +3,7 @@ using LegendaryExplorerCore.Unreal;
 using LegendaryExplorerCore.Unreal.BinaryConverters;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
 
 namespace LegendaryExplorer.Tools.LevelEditor;
@@ -23,6 +24,42 @@ public enum StaticLightingMappingMode
     Texture2D,
     /// <summary>Use interpolated per-vertex lighting.</summary>
     Vertex1D
+}
+
+public enum StaticLightingBakeBackend
+{
+    CSharp,
+    NativeCpp
+}
+
+public readonly record struct StaticLightingBuildProgress(
+    string Mode,
+    string Phase,
+    int Current,
+    int Total,
+    int ExportUIndex,
+    string PackageFileName,
+    string ItemPath = "")
+{
+    public int Remaining => Math.Max(0, Total - Current);
+    public bool IsDeterminate => Total > 0;
+
+    public string DisplayText
+    {
+        get
+        {
+            string count = IsDeterminate
+                ? $"{Math.Clamp(Current, 0, Total):N0}/{Total:N0} ({Remaining:N0} left)"
+                : "working";
+            string export = ExportUIndex > 0 ? $"Export UIndex {ExportUIndex:N0}" : "";
+            string package = string.IsNullOrWhiteSpace(PackageFileName) ? "" : PackageFileName;
+            string item = string.IsNullOrWhiteSpace(ItemPath) ? "" : ItemPath;
+            string details = string.Join(" - ", new[] { export, package, item }
+                .Where(value => !string.IsNullOrWhiteSpace(value)));
+            string heading = $"Lightmass scan [{Mode}] - {Phase}: {count}";
+            return details.Length == 0 ? heading : $"{heading}\n{details}";
+        }
+    }
 }
 
 public readonly record struct StaticLightingLight(
@@ -55,6 +92,8 @@ public sealed class StaticLightingGenerationSettings
     public string TextureCacheName { get; set; } = "";
     public int WorkerThreads { get; set; }
     public int WorkTileSize { get; set; } = 16;
+    /// <summary>The compute backend only; extraction, Unreal serialization, and package writes remain managed.</summary>
+    public StaticLightingBakeBackend Backend { get; set; } = StaticLightingBakeBackend.CSharp;
 
     public int EffectiveWorkerThreads => WorkerThreads > 0
         ? WorkerThreads
@@ -64,6 +103,8 @@ public sealed class StaticLightingGenerationSettings
     {
         if (!Enum.IsDefined(MappingMode))
             throw new ArgumentOutOfRangeException(nameof(MappingMode));
+        if (!Enum.IsDefined(Backend))
+            throw new ArgumentOutOfRangeException(nameof(Backend));
         if (TextureResolution is < 64 or > StaticLightingBaker.MaximumActorTextureResolution ||
             !BitOperations.IsPow2((uint)TextureResolution))
             throw new ArgumentOutOfRangeException(nameof(TextureResolution),
@@ -186,6 +227,11 @@ public sealed class StaticLightingMeshTarget
     /// </summary>
     public bool UseTextureMapping { get; init; }
     public StaticLightingMappingDiagnostics MappingDiagnostics { get; init; } = new();
+    /// <summary>
+    /// Indices selected by the batched native scene scan. Null means the managed backend must perform
+    /// the legacy per-target light scan.
+    /// </summary>
+    public int[] AffectingLightIndices { get; init; }
 }
 
 public sealed class StaticLightingTextureBake
@@ -247,10 +293,28 @@ public sealed class StaticLightingComponentDiagnostics
     public double FilteringMilliseconds { get; init; }
     public double OccupiedTexelDiscoveryMilliseconds { get; init; }
     public double TextureConstructionMilliseconds { get; init; }
+    public StaticLightingNativeDiagnostics Native { get; init; }
+}
+
+public sealed class StaticLightingNativeDiagnostics
+{
+    public long SamplesProcessed { get; init; }
+    public long OccupiedTexels { get; init; }
+    public long RelevantLights { get; init; }
+    public long RayTriangleTests { get; init; }
+    public long BvhNodesVisited { get; init; }
+    public long AnyHitEarlyOuts { get; init; }
+    public double ShadowTraversalMilliseconds { get; init; }
+    public double Bake1DMilliseconds { get; init; }
+    public double Bake2DMilliseconds { get; init; }
+    public double TotalComputeMilliseconds { get; init; }
+    public double SamplesPerSecond { get; init; }
+    public double RaysPerSecond { get; init; }
 }
 
 public sealed class StaticLightingSceneDiagnostics
 {
+    public string ProgressMode { get; init; } = "";
     public double SceneExtractionMilliseconds { get; init; }
     public double LightGatheringMilliseconds { get; init; }
     public double MeshPreparationMilliseconds { get; init; }
@@ -262,6 +326,10 @@ public sealed class StaticLightingSceneDiagnostics
     public int AreaEmitterSampleCount { get; init; }
     public int AreaEmitterBvhNodeCount { get; init; }
     public double EmissivePreprocessingMilliseconds { get; init; }
+    public double NativeTopologyScanMilliseconds { get; init; }
+    public double NativeInstanceScanMilliseconds { get; init; }
+    public double NativeLightScanMilliseconds { get; init; }
+    public double NativeTotalSceneScanMilliseconds { get; init; }
     /// <summary>
     /// Components kept out of the receiver set because an effective section material is unlit.
     /// They remain in collision and can still cast baked shadows onto other receivers.
@@ -307,6 +375,21 @@ public sealed class StaticLightingBakeResult
     public double FilteringMilliseconds { get; init; }
     public double OccupiedTexelDiscoveryMilliseconds { get; init; }
     public double TextureConstructionMilliseconds { get; init; }
+    public StaticLightingBakeBackend Backend { get; init; }
+    public double NativeBvhConstructionMilliseconds { get; init; }
+    public int NativeBvhNodeCount { get; init; }
+    public long NativeRayTriangleTests { get; init; }
+    public long NativeBvhNodesVisited { get; init; }
+    public long NativeAnyHitEarlyOuts { get; init; }
+    public long NativeSamplesProcessed { get; init; }
+    public long NativeOccupiedTexels { get; init; }
+    public long NativeRelevantLights { get; init; }
+    public double NativeShadowTraversalMilliseconds { get; init; }
+    public double NativeBake1DMilliseconds { get; init; }
+    public double NativeBake2DMilliseconds { get; init; }
+    public double NativeComputeMilliseconds { get; init; }
+    public double NativeSamplesPerSecond { get; init; }
+    public double NativeRaysPerSecond { get; init; }
 }
 
 public sealed class StaticLightingWriteResult

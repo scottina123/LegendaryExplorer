@@ -145,11 +145,11 @@ public class StaticLightingTests
     }
 
     [TestMethod]
-    public void BulkAutomaticResolution_UsesAuthoredDensityAndRequestedCeiling()
+    public void BulkAutomaticResolution_UsesExactRequestedSize()
     {
-        Assert.AreEqual(64, StaticLightingBaker.ResolveTextureResolution(
+        Assert.AreEqual(1024, StaticLightingBaker.ResolveTextureResolution(
             StaticLightingMappingMode.Automatic, false, 32, 1024));
-        Assert.AreEqual(128, StaticLightingBaker.ResolveTextureResolution(
+        Assert.AreEqual(1024, StaticLightingBaker.ResolveTextureResolution(
             StaticLightingMappingMode.Automatic, false, 96, 1024));
         Assert.AreEqual(128, StaticLightingBaker.ResolveTextureResolution(
             StaticLightingMappingMode.Automatic, false, 256, 128));
@@ -368,6 +368,262 @@ public class StaticLightingTests
         CollectionAssert.AreEqual(first.Components[0].Texture.CoefficientImages[2].ToArray(),
             second.Components[0].Texture.CoefficientImages[2].ToArray());
         Assert.AreEqual(first.AverageVisibility, second.AverageVisibility, 0.000001d);
+    }
+
+    [TestMethod]
+    public void NativeBackend_MatchesManagedTextureAndVertexOutputs()
+    {
+        if (!StaticLightingBaker.IsNativeBackendAvailable)
+            Assert.Inconclusive("Build LightmassNative before running native-backend parity tests.");
+
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("NativeParity.pcc", MEGame.LE3);
+        ExportEntry textureComponent = package.CreateExport("StaticMeshComponent_Texture", "StaticMeshComponent",
+            null, indexed: false);
+        ExportEntry vertexComponent = package.CreateExport("StaticMeshComponent_Vertex", "StaticMeshComponent",
+            null, indexed: false);
+        textureComponent.WriteProperties([]);
+        vertexComponent.WriteProperties([]);
+        StaticLightingMeshTarget textureTarget = CreateQuadTarget(textureComponent);
+        StaticLightingMeshTarget vertexTarget = CreateQuadTarget(vertexComponent, useTextureMapping: false);
+        var light = new StaticLightingLight(Guid.Parse("ed833201-3301-4ed8-a38f-66f92ad70e2a"),
+            StaticLightingLightType.Point, new Vector3(50, 50, 100), -Vector3.UnitZ,
+            Vector3.One, 1f, 250f, 0f, 0f, 0, true, 35f);
+        var blocker = Enumerable.Range(0, 16).SelectMany(index =>
+        {
+            float offset = index * 200f;
+            return new[]
+            {
+                (new Vector3(45 + offset, -20, 50), new Vector3(55 + offset, -20, 50),
+                    new Vector3(55 + offset, 120, 50)),
+                (new Vector3(45 + offset, -20, 50), new Vector3(55 + offset, 120, 50),
+                    new Vector3(45 + offset, 120, 50))
+            };
+        }).ToArray();
+        LevelCollisionScene collision = LevelCollisionScene.FromTriangles(blocker);
+
+        StaticLightingGenerationSettings CreateSettings(StaticLightingBakeBackend backend) => new()
+        {
+            Backend = backend,
+            TextureResolution = 64,
+            WorkerThreads = 2,
+            AmbientIntensity = 0.12f,
+            ShadowSampleCount = 16,
+            DefaultLightSourceRadius = 0f
+        };
+
+        StaticLightingBakeResult managed = new StaticLightingBaker([textureTarget, vertexTarget], [light],
+            collision, CreateSettings(StaticLightingBakeBackend.CSharp)).Bake();
+        var nativeProgress = new CollectingProgress<StaticLightingBuildProgress>();
+        StaticLightingBakeResult native = new StaticLightingBaker([textureTarget, vertexTarget], [light],
+            collision, CreateSettings(StaticLightingBakeBackend.NativeCpp))
+            .Bake(detailedProgress: nativeProgress);
+
+        Assert.AreEqual(StaticLightingBakeBackend.NativeCpp, native.Backend);
+        Assert.IsGreaterThan(0, native.NativeBvhNodeCount);
+        Assert.IsGreaterThan(0L, native.NativeRayTriangleTests);
+        Assert.IsGreaterThan(0d, native.NativeSamplesPerSecond);
+        StaticLightingBuildProgress completedTexture = nativeProgress.Snapshot().Last(update =>
+            update.Phase.StartsWith("Baking native texture samples", StringComparison.Ordinal));
+        Assert.AreEqual(completedTexture.Total, completedTexture.Current);
+        StringAssert.Contains(completedTexture.DisplayText, "NativeParity.pcc");
+        Assert.AreEqual(managed.OccludedSamples, native.OccludedSamples);
+        Assert.AreEqual(managed.AverageVisibility, native.AverageVisibility, 0.000001d);
+        for (int coefficient = 0; coefficient < managed.Components[0].Texture.CoefficientImages.Count;
+             coefficient++)
+        {
+            byte[] expected = managed.Components[0].Texture.CoefficientImages[coefficient];
+            byte[] actual = native.Components[0].Texture.CoefficientImages[coefficient];
+            Assert.AreEqual(expected.Length, actual.Length);
+            int maximumDifference = expected.Zip(actual, (left, right) => Math.Abs(left - right)).Max();
+            Assert.IsLessThanOrEqualTo(1, maximumDifference,
+                $"Texture coefficient {coefficient} diverged from the managed backend.");
+        }
+        for (int index = 0; index < managed.Components[1].Vertex.DirectionalSamples.Length; index++)
+        {
+            QuantizedDirectionalLightSample expected = managed.Components[1].Vertex.DirectionalSamples[index];
+            QuantizedDirectionalLightSample actual = native.Components[1].Vertex.DirectionalSamples[index];
+            Assert.AreEqual(expected.Coefficient2, actual.Coefficient2);
+            Assert.AreEqual(expected.Coefficient3, actual.Coefficient3);
+            Assert.AreEqual(managed.Components[1].Vertex.SimpleSamples[index].Coefficient,
+                native.Components[1].Vertex.SimpleSamples[index].Coefficient);
+        }
+    }
+
+    [TestMethod]
+    public void HighResolutionScheduler_CapsLiveReceiverBuffersAndRebalancesWorkers()
+    {
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("BakeConcurrency.pcc", MEGame.LE3);
+        ExportEntry component = package.CreateExport("StaticMeshComponent_0", "StaticMeshComponent", null,
+            indexed: false);
+        component.WriteProperties([]);
+        StaticLightingMeshTarget target = CreateQuadTarget(component);
+        StaticLightingMeshTarget[] targets = Enumerable.Repeat(target, 16).ToArray();
+
+        target.TextureResolution = 1024;
+        Assert.AreEqual((2, 8), StaticLightingBaker.CalculateBakeConcurrency(targets, 16));
+        target.TextureResolution = 2048;
+        Assert.AreEqual((1, 16), StaticLightingBaker.CalculateBakeConcurrency(targets, 16));
+        target.TextureResolution = 512;
+        Assert.AreEqual((8, 2), StaticLightingBaker.CalculateBakeConcurrency(targets, 16));
+    }
+
+    [TestMethod]
+    public void NativeBvhBuild_LargeSceneReportsDeterminateProgress()
+    {
+        if (!StaticLightingBaker.IsNativeBackendAvailable)
+            Assert.Inconclusive("Build LightmassNative before running native-backend tests.");
+
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("NativeBvhProgress.pcc", MEGame.LE3);
+        ExportEntry component = package.CreateExport("StaticMeshComponent_Bvh", "StaticMeshComponent", null,
+            indexed: false);
+        component.WriteProperties([]);
+        const int side = 256;
+        var source = new List<(Vector3 A, Vector3 B, Vector3 C, ExportEntry Source,
+            int SourceTriangleIndex)>(side * side);
+        for (int y = 0; y < side; y++)
+        for (int x = 0; x < side; x++)
+            source.Add((new Vector3(x, y, 0), new Vector3(x + 0.75f, y, 0),
+                new Vector3(x, y + 0.75f, 0), component, source.Count));
+
+        LevelCollisionScene collision = LevelCollisionScene.FromTriangles(source, buildBvh: false);
+        var progress = new CollectingProgress<StaticLightingBuildProgress>();
+        using var context = new NativeStaticLightingContext(collision, 1f, progress,
+            "Global/bulk | Native C++ | Automatic | 1,024px");
+
+        Assert.AreEqual(side * side, collision.TriangleCount);
+        Assert.IsGreaterThan(1, context.BvhNodeCount);
+        StaticLightingBuildProgress[] updates = progress.Snapshot();
+        StaticLightingBuildProgress completed = updates.Last(update =>
+            update.Phase == "Building native occluder BVH");
+        Assert.AreEqual(source.Count, completed.Current);
+        Assert.AreEqual(source.Count, completed.Total);
+        StringAssert.Contains(completed.DisplayText, $"Export UIndex {component.UIndex:N0}");
+        StringAssert.Contains(completed.DisplayText, "NativeBvhProgress.pcc");
+        Console.WriteLine($"Native BVH: {source.Count:N0} triangles, {context.BvhNodeCount:N0} nodes, " +
+                          $"{context.BvhBuildMilliseconds:F1} ms.");
+    }
+
+    [TestMethod]
+    public void NativeSceneScan_DeduplicatesMeshesTransformsInstancesAndCullsLights()
+    {
+        if (!StaticLightingBaker.IsNativeBackendAvailable)
+            Assert.Inconclusive("Build LightmassNative before running native scene-scan tests.");
+
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("NativeSceneScan.pcc", MEGame.LE3);
+        ExportEntry mesh = package.CreateExport("StaticMesh_0", "StaticMesh", null, indexed: false);
+        mesh.WriteProperties([]);
+        var lod = new StaticMeshRenderData
+        {
+            NumVertices = 3,
+            PositionVertexBuffer = new PositionVertexBuffer
+            {
+                NumVertices = 3,
+                VertexData = [Vector3.Zero, Vector3.UnitX, Vector3.UnitY]
+            },
+            VertexBuffer = new StaticMeshVertexBuffer
+            {
+                NumVertices = 3,
+                NumTexCoords = 1,
+                bUseFullPrecisionUVs = true,
+                VertexData =
+                [
+                    new StaticMeshVertexBuffer.StaticMeshFullVertex { FullPrecisionUVs = [Vector2.Zero] },
+                    new StaticMeshVertexBuffer.StaticMeshFullVertex { FullPrecisionUVs = [Vector2.UnitX] },
+                    new StaticMeshVertexBuffer.StaticMeshFullVertex { FullPrecisionUVs = [Vector2.UnitY] }
+                ]
+            },
+            IndexBuffer = [0, 1, 2],
+            Elements = [new StaticMeshElement { FirstIndex = 0, NumTriangles = 1 }]
+        };
+        const uint staticChannel = 1u | (1u << 2);
+        NativeStaticLightingMeshInstance[] instances =
+        [
+            new(null!, mesh, lod, 0, Matrix4x4.Identity, staticChannel),
+            new(null!, mesh, lod, 0, Matrix4x4.CreateTranslation(10, 0, 0), staticChannel)
+        ];
+        StaticLightingLight[] lights =
+        [
+            new(Guid.NewGuid(), StaticLightingLightType.Directional, Vector3.Zero, -Vector3.UnitZ,
+                Vector3.One, 1f, float.MaxValue, 0, 0, staticChannel),
+            new(Guid.NewGuid(), StaticLightingLightType.Point, new Vector3(0.25f, 0.25f, 1), Vector3.UnitZ,
+                Vector3.One, 1f, 2f, 0, 0, staticChannel),
+            new(Guid.NewGuid(), StaticLightingLightType.Directional, Vector3.Zero, -Vector3.UnitZ,
+                Vector3.One, 1f, float.MaxValue, 0, 0, 1u | (1u << 3))
+        ];
+
+        var progress = new CollectingProgress<StaticLightingBuildProgress>();
+        NativeStaticLightingSceneScan scan = NativeStaticLightingSceneScanner.Scan(instances, lights, 2,
+            progress, "Global/bulk | Native C++ | Automatic | 1,024px");
+
+        Assert.AreEqual(1, scan.UniqueMeshCount);
+        Assert.HasCount(2, scan.Instances);
+        Assert.HasCount(1, scan.Instances[0].Triangles);
+        Assert.HasCount(1, scan.Instances[1].Triangles);
+        Assert.IsTrue(scan.Instances[0].HasTextureCoordinates);
+        Assert.AreEqual(0.5f, scan.Instances[0].SurfaceArea, 0.0001f);
+        Assert.AreEqual(new Vector3(10, 0, 0), scan.Instances[1].BoundsMinimum);
+        Assert.AreEqual(new Vector3(11, 1, 0), scan.Instances[1].BoundsMaximum);
+        CollectionAssert.AreEqual(new[] { 0, 1 }, scan.Instances[0].RelevantLightIndices);
+        CollectionAssert.AreEqual(new[] { 0 }, scan.Instances[1].RelevantLightIndices);
+        Assert.IsGreaterThanOrEqualTo(0d, scan.Diagnostics.TotalScanMilliseconds);
+        StaticLightingBuildProgress[] updates = progress.Snapshot();
+        Assert.IsTrue(updates.Any(update => update.Phase == "Scanning native mesh topology and UVs"));
+        Assert.IsTrue(updates.Any(update => update.Phase == "Transforming native mesh instances"));
+        Assert.IsTrue(updates.Any(update => update.Phase == "Scanning native light relevance"));
+        StaticLightingBuildProgress itemUpdate = updates.First(update => update.ExportUIndex == mesh.UIndex);
+        StringAssert.Contains(itemUpdate.DisplayText, "Global/bulk | Native C++ | Automatic | 1,024px");
+        StringAssert.Contains(itemUpdate.DisplayText, $"Export UIndex {mesh.UIndex:N0}");
+        StringAssert.Contains(itemUpdate.DisplayText, "NativeSceneScan.pcc");
+        StringAssert.Contains(itemUpdate.DisplayText, "left");
+    }
+
+    [TestMethod]
+    [TestCategory("Performance")]
+    public void NativeBackend_Benchmark1024Texture()
+    {
+        if (!string.Equals(Environment.GetEnvironmentVariable("LEX_RUN_LIGHTMASS_BENCHMARK"), "1",
+                StringComparison.Ordinal))
+            Assert.Inconclusive("Set LEX_RUN_LIGHTMASS_BENCHMARK=1 to run the 1024x1024 native benchmark.");
+        if (!StaticLightingBaker.IsNativeBackendAvailable)
+            Assert.Inconclusive("Build LightmassNative before running the native benchmark.");
+
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("NativeBenchmark.pcc", MEGame.LE3);
+        ExportEntry component = package.CreateExport("StaticMeshComponent_0", "StaticMeshComponent", null,
+            indexed: false);
+        component.WriteProperties([]);
+        StaticLightingMeshTarget target = CreateQuadTarget(component);
+        var light = new StaticLightingLight(Guid.Parse("ed833201-3301-4ed8-a38f-66f92ad70e2a"),
+            StaticLightingLightType.Point, new Vector3(50, 50, 100), -Vector3.UnitZ,
+            Vector3.One, 1f, 250f, 0f, 0f, 0, true, 35f);
+        var blocker = new[]
+        {
+            (new Vector3(45, -20, 50), new Vector3(55, -20, 50), new Vector3(55, 120, 50)),
+            (new Vector3(45, -20, 50), new Vector3(55, 120, 50), new Vector3(45, 120, 50))
+        };
+        var settings = new StaticLightingGenerationSettings
+        {
+            Backend = StaticLightingBakeBackend.NativeCpp,
+            TextureResolution = 1024,
+            WorkerThreads = 0,
+            WorkTileSize = 32,
+            AmbientIntensity = 0.12f,
+            ShadowSampleCount = 16,
+            DefaultLightSourceRadius = 0f
+        };
+
+        StaticLightingBakeResult result = new StaticLightingBaker([target], [light],
+            LevelCollisionScene.FromTriangles(blocker), settings).Bake();
+
+        Assert.AreEqual(1024, result.Components[0].Texture.Resolution);
+        Assert.IsGreaterThan(1_000_000L, result.NativeSamplesProcessed);
+        Assert.IsGreaterThan(0L, result.NativeRayTriangleTests);
+        Assert.IsGreaterThan(0d, result.NativeSamplesPerSecond);
+        Console.WriteLine($"1024x1024 native Lightmass: wall={result.BakeMilliseconds:F1} ms, " +
+                          $"compute={result.NativeComputeMilliseconds:F1} ms, " +
+                          $"samples={result.NativeSamplesProcessed:N0}, rays={result.RaysCast:N0}, " +
+                          $"samples/s={result.NativeSamplesPerSecond:N0}, rays/s={result.NativeRaysPerSecond:N0}, " +
+                          $"triangle tests={result.NativeRayTriangleTests:N0}, " +
+                          $"early-outs={result.NativeAnyHitEarlyOuts:N0}.");
     }
 
     [TestMethod]
@@ -1069,5 +1325,23 @@ public class StaticLightingTests
             HasTextureCoordinates = true,
             UseTextureMapping = useTextureMapping
         };
+    }
+
+    private sealed class CollectingProgress<T> : IProgress<T>
+    {
+        private readonly object gate = new();
+        private readonly List<T> values = [];
+
+        public void Report(T value)
+        {
+            lock (gate)
+                values.Add(value);
+        }
+
+        public T[] Snapshot()
+        {
+            lock (gate)
+                return values.ToArray();
+        }
     }
 }

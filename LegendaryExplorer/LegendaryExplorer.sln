@@ -6,6 +6,7 @@ MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "LegendaryExplorer", "LegendaryExplorer\LegendaryExplorer.csproj", "{90722DA5-6E21-4FA5-B625-B832686A10D3}"
 	ProjectSection(ProjectDependencies) = postProject
 		{371B9FA9-4C90-4AC6-A123-ACED756D6C77} = {371B9FA9-4C90-4AC6-A123-ACED756D6C77}
+		{AADE8984-C94D-4BD7-9657-48F467388ADC} = {AADE8984-C94D-4BD7-9657-48F467388ADC}
 	EndProjectSection
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "LegendaryExplorerCore", "LegendaryExplorerCore\LegendaryExplorerCore.csproj", "{259B8658-3EA1-4C9B-BF6E-EF315768BD3E}"
@@ -24,6 +25,8 @@ EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "LegendaryExplorerCore.Tests", "LegendaryExplorerCore.Tests\LegendaryExplorerCore.Tests.csproj", "{06E31FB6-17D2-477D-81D1-5EB4A908E88B}"
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "TexConverter", "TexConverter\TexConverter.vcxproj", "{371B9FA9-4C90-4AC6-A123-ACED756D6C77}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "LightmassNative", "LightmassNative\LightmassNative.vcxproj", "{AADE8984-C94D-4BD7-9657-48F467388ADC}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{BCA80F3B-DA9E-40BA-8B3A-0535483C8311}"
 	ProjectSection(SolutionItems) = preProject
@@ -119,6 +122,13 @@ Global
 		{371B9FA9-4C90-4AC6-A123-ACED756D6C77}.WinAzureRelease|x64.ActiveCfg = WinAzureRelease|x64
 		{371B9FA9-4C90-4AC6-A123-ACED756D6C77}.WinAzureRelease|x64.Build.0 = WinAzureRelease|x64
 		{371B9FA9-4C90-4AC6-A123-ACED756D6C77}.WinAzureTest|x64.ActiveCfg = WinDebug|x64
+		{AADE8984-C94D-4BD7-9657-48F467388ADC}.Debug|x64.ActiveCfg = WinDebug|x64
+		{AADE8984-C94D-4BD7-9657-48F467388ADC}.Debug|x64.Build.0 = WinDebug|x64
+		{AADE8984-C94D-4BD7-9657-48F467388ADC}.Release|x64.ActiveCfg = WinRelease|x64
+		{AADE8984-C94D-4BD7-9657-48F467388ADC}.Release|x64.Build.0 = WinRelease|x64
+		{AADE8984-C94D-4BD7-9657-48F467388ADC}.WinAzureRelease|x64.ActiveCfg = WinAzureRelease|x64
+		{AADE8984-C94D-4BD7-9657-48F467388ADC}.WinAzureRelease|x64.Build.0 = WinAzureRelease|x64
+		{AADE8984-C94D-4BD7-9657-48F467388ADC}.WinAzureTest|x64.ActiveCfg = WinDebug|x64
 		{BE144A0B-A717-4E0C-8D5D-D596B1D5BB71}.Debug|x64.ActiveCfg = Debug|x64
 		{BE144A0B-A717-4E0C-8D5D-D596B1D5BB71}.Debug|x64.Build.0 = Debug|x64
 		{BE144A0B-A717-4E0C-8D5D-D596B1D5BB71}.Release|x64.ActiveCfg = Release|x64

@@ -62,6 +62,27 @@ internal readonly record struct LevelCollisionTriangle(
             CollisionBounds.FromTriangle(a, b, c), flags, source, sourceTriangleIndex);
         return true;
     }
+
+    /// <summary>
+    /// Creates the compact triangle representation needed only for transfer to LightmassNative.
+    /// The managed BVH-only centroid, normal, and bounds are deliberately skipped.
+    /// </summary>
+    public static bool TryCreateNativeStaticLighting(Vector3 a, Vector3 b, Vector3 c,
+        ExportEntry source, out LevelCollisionTriangle triangle, int sourceTriangleIndex = -1)
+    {
+        Vector3 edge1 = b - a;
+        Vector3 edge2 = c - a;
+        float lengthSquared = Vector3.Cross(edge1, edge2).LengthSquared();
+        if (lengthSquared < 0.0001f || !float.IsFinite(lengthSquared))
+        {
+            triangle = default;
+            return false;
+        }
+
+        triangle = new LevelCollisionTriangle(a, b, c, edge1, edge2, default, default,
+            default, LevelCollisionFlags.BlocksRay, source, sourceTriangleIndex);
+        return true;
+    }
 }
 
 internal readonly record struct CollisionRay(Vector3 Origin, Vector3 Direction, Vector3 InverseDirection,
@@ -225,6 +246,11 @@ public sealed class LevelCollisionScene
     public double BvhBuildMilliseconds { get; }
     public Vector3 Minimum => NavigationTriangleCount == 0 ? Vector3.Zero : navigationBounds.Minimum;
     public Vector3 Maximum => NavigationTriangleCount == 0 ? Vector3.Zero : navigationBounds.Maximum;
+    /// <summary>
+    /// Immutable scene geometry exposed only inside the Level Editor assembly so a coarse-grained
+    /// native compute context can be created without teaching native code how to parse packages.
+    /// </summary>
+    internal IReadOnlyList<LevelCollisionTriangle> StaticLightingTriangles => triangles;
 
     private readonly record struct BvhNode(CollisionBounds Bounds, int Left, int Right, int Start, int Count,
         int SplitAxis)
@@ -238,10 +264,20 @@ public sealed class LevelCollisionScene
         public int Count;
     }
 
-    internal LevelCollisionScene(List<LevelCollisionTriangle> sourceTriangles)
+    internal LevelCollisionScene(List<LevelCollisionTriangle> sourceTriangles, bool buildBvh = true)
     {
         Stopwatch buildTimer = Stopwatch.StartNew();
         triangles = sourceTriangles;
+        if (!buildBvh)
+        {
+            // Native Lightmass consumes only A/edges/source identity. Avoid an otherwise redundant
+            // managed metadata pass and a triangle-index allocation for the native-only handoff.
+            navigationBounds = CollisionBounds.Empty;
+            triangleIndices = [];
+            buildTimer.Stop();
+            BvhBuildMilliseconds = buildTimer.Elapsed.TotalMilliseconds;
+            return;
+        }
         CollisionBounds blockingBounds = CollisionBounds.Empty;
         int navigationTriangleCount = 0;
         int coverTriangleCount = 0;
@@ -269,7 +305,7 @@ public sealed class LevelCollisionScene
         CoverSourceCount = coverSources.Count;
         navigationBounds = blockingBounds;
         triangleIndices = Enumerable.Range(0, triangles.Count).ToArray();
-        if (triangles.Count > 0)
+        if (buildBvh && triangles.Count > 0)
         {
             BuildNode(0, triangles.Count);
         }
@@ -341,17 +377,30 @@ public sealed class LevelCollisionScene
     /// </summary>
     public static LevelCollisionScene FromTriangles(
         IEnumerable<(Vector3 A, Vector3 B, Vector3 C, ExportEntry Source, int SourceTriangleIndex)> sourceTriangles,
-        LevelCollisionFlags flags = LevelCollisionFlags.All)
+        LevelCollisionFlags flags = LevelCollisionFlags.All, bool buildBvh = true,
+        Action<int, int, ExportEntry> progress = null)
     {
         ArgumentNullException.ThrowIfNull(sourceTriangles);
-        var collisionTriangles = new List<LevelCollisionTriangle>();
+        int total = sourceTriangles.TryGetNonEnumeratedCount(out int count) ? count : 0;
+        var collisionTriangles = total > 0
+            ? new List<LevelCollisionTriangle>(total)
+            : new List<LevelCollisionTriangle>();
+        int completed = 0;
+        int progressStride = Math.Max(1, (total + 199) / 200);
         foreach ((Vector3 a, Vector3 b, Vector3 c, ExportEntry source, int sourceTriangleIndex) in sourceTriangles)
         {
-            if (LevelCollisionTriangle.TryCreate(a, b, c, flags, source, out LevelCollisionTriangle triangle,
-                    sourceTriangleIndex))
+            bool created = buildBvh
+                ? LevelCollisionTriangle.TryCreate(a, b, c, flags, source,
+                    out LevelCollisionTriangle triangle, sourceTriangleIndex)
+                : LevelCollisionTriangle.TryCreateNativeStaticLighting(a, b, c, source,
+                    out triangle, sourceTriangleIndex);
+            if (created)
                 collisionTriangles.Add(triangle);
+            completed++;
+            if (progress is not null && (completed == total || completed % progressStride == 0))
+                progress(completed, total, source);
         }
-        return new LevelCollisionScene(collisionTriangles);
+        return new LevelCollisionScene(collisionTriangles, buildBvh);
     }
 
     private static bool IsBlockingBrush(ActorProxy actor) =>

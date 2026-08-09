@@ -33,4 +33,10 @@
       <ProjectReference Include="..\LegendaryExplorer\LegendaryExplorer.csproj" />
     </ItemGroup>
 
+    <Target Name="CopyLightmassNative" AfterTargets="Build"
+            Condition="Exists('..\LightmassNative\bin\x64\$(Configuration)\LightmassNative.dll')">
+      <Copy SourceFiles="..\LightmassNative\bin\x64\$(Configuration)\LightmassNative.dll"
+            DestinationFiles="$(TargetDir)LightmassNative.dll" SkipUnchangedFiles="true" />
+    </Target>
+
 </Project>

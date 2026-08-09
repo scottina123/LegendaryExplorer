@@ -115,6 +115,11 @@
 		<ProjectReference Include="..\Xceed.Wpf.Toolkit\DotNetProjects.Wpf.Extended.Toolkit.csproj" />
 		<ProjectReference Include="..\..\SharedProjects\Piccolo\Piccolo.csproj" />
 	</ItemGroup>
+	<Target Name="CopyLightmassNative" AfterTargets="Build" Condition="Exists('..\LightmassNative\bin\x64\$(Configuration)\LightmassNative.dll')">
+		<Copy SourceFiles="..\LightmassNative\bin\x64\$(Configuration)\LightmassNative.dll" DestinationFiles="$(TargetDir)LightmassNative.dll" SkipUnchangedFiles="true" />
+
+	</Target>
+
 
 	<ItemGroup>
 		<PackageReference Include="AvalonEdit" Version="6.3.0.90" />
@@ -576,6 +581,7 @@
 	  <Folder Include="LegendaryExplorer\Tools\AssetDatabase\" />
 	  <Folder Include="LegendaryExplorer\Tools\Dialogue Editor\DialogueEditorExperiments\" />
 	  <Folder Include="UserControls\SharedToolControls\InterpTrackMove3D\" />
+	  <InternalsVisibleTo Include="LegendaryExplorer.Tests" />
 	</ItemGroup>
 
 	<PropertyGroup>

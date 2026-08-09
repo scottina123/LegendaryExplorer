@@ -73,6 +73,16 @@
         <KeyBinding Key="NumPad5" Command="{Binding ToggleOrthoViewCommand}"/>
     </Window.InputBindings>
     <xctk:BusyIndicator IsBusy="{Binding Path=IsBusy}" BusyContent="{Binding BusyText}">
+        <xctk:BusyIndicator.ProgressBarStyle>
+            <Style TargetType="ProgressBar" BasedOn="{StaticResource {x:Type ProgressBar}}">
+                <Setter Property="IsIndeterminate" Value="{Binding BusyProgressIsIndeterminate}"/>
+                <Setter Property="Minimum" Value="0"/>
+                <Setter Property="Maximum" Value="{Binding BusyProgressMaximum}"/>
+                <Setter Property="Value" Value="{Binding BusyProgressValue}"/>
+                <Setter Property="Height" Value="15"/>
+                <Setter Property="Margin" Value="8,0,8,8"/>
+            </Style>
+        </xctk:BusyIndicator.ProgressBarStyle>
         <DockPanel>
             <Menu DockPanel.Dock="Top">
                 <MenuItem Header="File" Padding="4" >
@@ -345,6 +355,7 @@
                                             <RowDefinition Height="Auto"/>
                                             <RowDefinition Height="Auto"/>
                                             <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
                                         </Grid.RowDefinitions>
                                         <TextBlock Grid.Row="0" Text="Lightmap resolution" VerticalAlignment="Center"/>
                                         <ComboBox Grid.Row="0" Grid.Column="1" ItemsSource="{Binding LightmassResolutions}"
@@ -373,8 +384,12 @@
                                         <TextBlock Grid.Row="8" Text="UV/spatial work tile" VerticalAlignment="Center"/>
                                         <ComboBox Grid.Row="8" Grid.Column="1" ItemsSource="{Binding LightmassWorkTileSizes}"
                                                   SelectedItem="{Binding LightmassWorkTileSize}" Margin="2"/>
+                                        <TextBlock Grid.Row="9" Text="Bake backend" VerticalAlignment="Center"/>
+                                        <ComboBox Grid.Row="9" Grid.Column="1" ItemsSource="{Binding LightmassBackends}"
+                                                  DisplayMemberPath="DisplayName" SelectedValuePath="Backend"
+                                                  SelectedValue="{Binding LightmassBackend}" Margin="2"/>
                                     </Grid>
-                                    <TextBlock Text="Bulk mapping is automatic: architectural, large, and broad low-poly receivers use LightMap2D; compact or dense receivers use LightMap1D. Direct lighting and ray-traced static shadows are baked into the selected mapping. Existing outputs are replaced; TFC data is reused or created as needed."
+                                    <TextBlock Text="Bulk mapping is automatic: architectural, large, and broad low-poly receivers use LightMap2D at exactly the selected resolution; compact or dense receivers use LightMap1D. Direct lighting and ray-traced static shadows are baked into the selected mapping. Existing outputs are replaced; TFC data is reused or created as needed."
                                                TextWrapping="Wrap" Margin="0,0,0,7"/>
                                     <Button Content="Create Lightmass" Command="{Binding GenerateStaticLightingCommand}" Padding="8,4"/>
                                 </StackPanel>
