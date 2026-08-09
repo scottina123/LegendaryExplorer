@@ -341,9 +341,9 @@ namespace LegendaryExplorer.Misc
             bool isDarkMode = theme != AppTheme.Light;
 
             // HexBox is WinForms-hosted and cannot consume WPF font resources directly.
-            // Apply the shared cross-framework typography contract here instead.
-            hexBox.Font = AppTypography.DataDrawingFont;
-            hexBox.BoldFont = AppTypography.DataDrawingFontBold;
+            // Preserve its established point-sized metrics independently of WPF typography.
+            hexBox.Font = AppTypography.HexDrawingFont;
+            hexBox.BoldFont = AppTypography.HexDrawingFontBold;
             
             // Apply dark mode to the scrollbar
             hexBox.ScrollBarDarkMode = isDarkMode;

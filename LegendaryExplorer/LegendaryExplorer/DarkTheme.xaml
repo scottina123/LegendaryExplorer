@@ -1876,9 +1876,9 @@ xmlns:controls="clr-namespace:LegendaryExplorer.SharedUI.Controls">
     <ControlTemplate x:Key="VerticalScrollBar" TargetType="{x:Type ScrollBar}">
         <Grid>
             <Grid.RowDefinitions>
-                <RowDefinition Height="0"/>
+                <RowDefinition MaxHeight="17"/>
                 <RowDefinition Height="0.00001*"/>
-                <RowDefinition Height="0"/>
+                <RowDefinition MaxHeight="17"/>
             </Grid.RowDefinitions>
             <Border Grid.RowSpan="3"
                     Background="{DynamicResource RecessedBackgroundBrush}"/>
@@ -1915,9 +1915,9 @@ xmlns:controls="clr-namespace:LegendaryExplorer.SharedUI.Controls">
     <ControlTemplate x:Key="HorizontalScrollBar" TargetType="{x:Type ScrollBar}">
         <Grid>
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="0"/>
+                <ColumnDefinition MaxWidth="17"/>
                 <ColumnDefinition Width="0.00001*"/>
-                <ColumnDefinition Width="0"/>
+                <ColumnDefinition MaxWidth="17"/>
             </Grid.ColumnDefinitions>
             <Border Grid.ColumnSpan="3"
                     Background="{DynamicResource RecessedBackgroundBrush}"/>

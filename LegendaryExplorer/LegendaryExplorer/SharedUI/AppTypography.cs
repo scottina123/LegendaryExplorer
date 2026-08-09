@@ -15,6 +15,9 @@ public static class AppTypography
     public const float InterfaceFontSize = 12f;
     public const string DataFontFamilyName = "Lucida Console";
     public const float DataFontSize = 12f;
+    public const string HexFontFamilyName = "Courier New";
+    public const string HexBoldFontFamilyName = "Consolas";
+    public const float HexFontSize = 10f;
     public const string GraphFontFamilyName = "Segoe UI Variable Text";
     public const float GraphFontSize = 14f;
 
@@ -44,6 +47,22 @@ public static class AppTypography
         DataFontSize,
         System.Drawing.FontStyle.Bold,
         GraphicsUnit.Pixel);
+
+    // HexBox historically uses point-sized WinForms fonts. Keeping these metrics
+    // separate avoids treating WPF device-independent pixels as GDI points.
+    public static readonly Font HexDrawingFont = CreateDrawingFont(
+        HexFontFamilyName,
+        DataFontFamilyName,
+        HexFontSize,
+        System.Drawing.FontStyle.Regular,
+        GraphicsUnit.Point);
+
+    public static readonly Font HexDrawingFontBold = CreateDrawingFont(
+        HexBoldFontFamilyName,
+        DataFontFamilyName,
+        HexFontSize,
+        System.Drawing.FontStyle.Regular,
+        GraphicsUnit.Point);
 
     public static Font CreateGraphDrawingFont(float size = GraphFontSize, GraphicsUnit unit = GraphicsUnit.Pixel) =>
         CreateDrawingFont(GraphFontFamilyName, InterfaceFontFamilyName, size, System.Drawing.FontStyle.Regular, unit);
