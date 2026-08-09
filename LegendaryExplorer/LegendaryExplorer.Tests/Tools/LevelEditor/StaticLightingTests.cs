@@ -434,8 +434,11 @@ public class StaticLightingTests
             ELightMapType.LMT_3, false), "Stock Bench02-style vertex mapping must be preserved.");
         Assert.IsFalse(StaticLightingBaker.ShouldUseTextureMapping(StaticLightingMappingMode.Automatic, true, 0,
             ELightMapType.LMT_2D, true), "A previous generated texture map must not hide a vertex-authored mesh.");
+        Assert.IsFalse(StaticLightingBaker.ShouldUseTextureMapping(StaticLightingMappingMode.Automatic, true, 32,
+            ELightMapType.LMT_2D, true), "A previous generated map must not promote a dense small prop forever.");
         Assert.IsTrue(StaticLightingBaker.ShouldUseTextureMapping(StaticLightingMappingMode.Automatic, true, 32,
-            ELightMapType.LMT_2D, true), "A texture-authored mesh keeps using the selected texture size.");
+            ELightMapType.LMT_2D, true, "GenericLargeMesh", 600f, 100_000f, 64),
+            "A broad receiver remains texture mapped after replacing a generated map.");
         Assert.IsTrue(StaticLightingBaker.ShouldUseTextureMapping(StaticLightingMappingMode.Automatic, true, 0,
             ELightMapType.LMT_4, false), "Existing stock atlas texture mappings remain texture based.");
         Assert.IsFalse(StaticLightingBaker.ShouldUseTextureMapping(StaticLightingMappingMode.Automatic, false, 32,
@@ -447,8 +450,10 @@ public class StaticLightingTests
     {
         Assert.IsTrue(StaticLightingBaker.ShouldUseTextureMapping(StaticLightingMappingMode.Automatic,
             true, 0, ELightMapType.LMT_1D, false, "BioA_FloorTile_01", 96f, 8_000f, 40));
+        Assert.IsFalse(StaticLightingBaker.ShouldUseTextureMapping(StaticLightingMappingMode.Automatic,
+            true, 0, ELightMapType.LMT_1D, false, "GenericLargeDenseMesh", 600f, 100_000f, 2_000));
         Assert.IsTrue(StaticLightingBaker.ShouldUseTextureMapping(StaticLightingMappingMode.Automatic,
-            true, 0, ELightMapType.LMT_1D, false, "GenericLargeMesh", 600f, 100_000f, 2_000));
+            true, 0, ELightMapType.LMT_1D, false, "GenericLargeLowPoly", 600f, 100_000f, 64));
         Assert.IsTrue(StaticLightingBaker.ShouldUseTextureMapping(StaticLightingMappingMode.Automatic,
             true, 0, ELightMapType.LMT_1D, false, "GenericBroadQuad", 200f, 20_000f, 2));
         Assert.IsFalse(StaticLightingBaker.ShouldUseTextureMapping(StaticLightingMappingMode.Automatic,

@@ -109,13 +109,18 @@ public sealed class StaticLightingBaker
         int componentWorkerCount = Math.Max(1, settings.EffectiveWorkerThreads / outerWorkerCount);
         var parallelOptions = CreateParallelOptions(cancellationToken, outerWorkerCount);
         // Longest-processing-time ordering prevents a few large texture receivers from becoming
-        // serial stragglers after all small vertex/texture mappings have completed.
+        // serial stragglers after all small vertex/texture mappings have completed. Account for
+        // lights as well as mapping size: visibility sampling, not rasterization, dominates the
+        // expensive architectural receivers.
         int[] workOrder = Enumerable.Range(0, targets.Count)
-            .OrderByDescending(index => EstimateTargetWork(targets[index]))
+            .OrderByDescending(index => EstimateTargetWork(targets[index], lights))
             .ToArray();
-        Parallel.For(0, workOrder.Length, parallelOptions, workIndex =>
+        // Parallel.For range partitioning can assign broad, distant slices to workers and defeat
+        // the LPT order above. Pull one receiver at a time from the ordered sequence so expensive
+        // mappings really start first and cannot become the end-of-bake tail.
+        Parallel.ForEach(Partitioner.Create(workOrder, EnumerablePartitionerOptions.NoBuffering),
+            parallelOptions, index =>
         {
-            int index = workOrder[workIndex];
             cancellationToken.ThrowIfCancellationRequested();
             StaticLightingMeshTarget target = targets[index];
             long lightPreparationStart = Stopwatch.GetTimestamp();
@@ -187,9 +192,12 @@ public sealed class StaticLightingBaker
                       $"overlap pairs={diagnostic.Mapping.OverlappingUvTrianglePairCount:N0}"
                     : "vertex mapping";
             progress?.Report($"Baked static lighting {completedCount:N0}/{targets.Count:N0}: " +
+                             $"#{target.Component.UIndex:N0} {target.Component.Parent?.ObjectName.Instanced}." +
                              $"{target.Component.ObjectName.Instanced} ({mappingStatus}; " +
                              $"{affectingLights.Length:N0} lights; {diagnostic.RaysCast:N0} rays; " +
-                             $"visibility {diagnostic.AverageVisibility:P1}; {diagnostic.BakeMilliseconds / 1000d:F2}s)");
+                             $"visibility {diagnostic.AverageVisibility:P1}; " +
+                             $"shadow {diagnostic.ShadowRayMilliseconds / 1000d:F2}s; " +
+                             $"total {diagnostic.BakeMilliseconds / 1000d:F2}s)");
         });
 
         bakeTimer.Stop();
@@ -233,9 +241,22 @@ public sealed class StaticLightingBaker
         MaxDegreeOfParallelism = workerCount
     };
 
-    private static long EstimateTargetWork(StaticLightingMeshTarget target) => target.UseTextureMapping
-        ? (long)Math.Max(1, target.TextureResolution) * Math.Max(1, target.TextureResolution)
-        : Math.Max(1, target.Vertices.Count);
+    private static long EstimateTargetWork(StaticLightingMeshTarget target,
+        IReadOnlyList<StaticLightingLight> lights)
+    {
+        TryCalculateBounds(target.Vertices, out Vector3 boundsMinimum, out Vector3 boundsMaximum);
+        int affectingLightCount = 0;
+        foreach (StaticLightingLight light in lights)
+        {
+            if (LightCanAffect(light, target.LightingChannelMask, target.Vertices.Count > 0,
+                    boundsMinimum, boundsMaximum))
+                affectingLightCount++;
+        }
+        long mappingWork = target.UseTextureMapping
+            ? (long)Math.Max(1, target.TextureResolution) * Math.Max(1, target.TextureResolution)
+            : Math.Max(1, target.Vertices.Count);
+        return mappingWork * Math.Max(1, affectingLightCount);
+    }
 
     public static (IReadOnlyList<StaticLightingMeshTarget> Targets, IReadOnlyList<StaticLightingLight> Lights,
         LevelCollisionScene Collision, StaticLightingSceneDiagnostics Diagnostics) BuildScene(IEnumerable<ActorProxy> actors,
@@ -255,6 +276,8 @@ public sealed class StaticLightingBaker
         var lights = new List<StaticLightingLight>();
         var mappingDiagnosticsCache = new Dictionary<(ExportEntry Mesh, int CoordinateIndex),
             StaticLightingMappingDiagnostics>();
+        var stockAtlasResolutions = new Dictionary<string, List<int>>(StringComparer.OrdinalIgnoreCase);
+        var textureDimensions = new Dictionary<ExportEntry, (int Width, int Height)>();
 
         foreach (ActorProxy actor in actorArray)
         {
@@ -309,7 +332,18 @@ public sealed class StaticLightingBaker
                 StaticMeshComponent componentBinary = component.Export.GetBinaryData<StaticMeshComponent>();
                 ELightMapType existingMappingType = GetExistingMappingType(componentBinary);
                 bool generatedMapping = IsGeneratedTextureMapping(component.Export, componentBinary);
+                bool hasResolutionOverride =
+                    component.Properties.GetProp<BoolProperty>("bOverrideLightMapRes")?.Value == true;
                 int effectiveLightMapResolution = GetEffectiveLightMapResolution(component, meshExport);
+                int stockAtlasResolution = generatedMapping ? 0 :
+                    GetExistingTextureMappingResolution(component.Export, componentBinary, textureDimensions);
+                if (stockAtlasResolution > 0)
+                {
+                    if (!stockAtlasResolutions.TryGetValue(meshExport.InstancedFullPath, out List<int> resolutions))
+                        stockAtlasResolutions.Add(meshExport.InstancedFullPath, resolutions = []);
+                    resolutions.Add(stockAtlasResolution);
+                    effectiveLightMapResolution = stockAtlasResolution;
+                }
                 CalculateReceiverMetrics(vertices, triangles, out float maximumWorldDimension,
                     out float surfaceArea);
                 bool useTextureMapping = ShouldUseTextureMapping(mappingMode, hasTextureCoordinates,
@@ -331,6 +365,8 @@ public sealed class StaticLightingBaker
                     Vertices = vertices,
                     LightMapCoordinateIndex = lightMapCoordinateIndex,
                     AuthoredLightMapResolution = effectiveLightMapResolution,
+                    StockAtlasLightMapResolution = stockAtlasResolution,
+                    HasExplicitLightMapResolutionOverride = hasResolutionOverride,
                     TextureResolution = textureResolution,
                     HasTextureCoordinates = hasTextureCoordinates,
                     UseTextureMapping = useTextureMapping,
@@ -338,6 +374,27 @@ public sealed class StaticLightingBaker
                 });
                 receiverPreparationTicks += Stopwatch.GetTimestamp() - receiverStart;
             }
+        }
+
+        // Some cooked instances have no mapping while another instance of the same mesh retains the
+        // stock atlas allocation. Use that real allocation instead of unreliable mesh properties such
+        // as WB_Plane_02's declared 2048 resolution for an authored 14x14 mapping.
+        var representativeAtlasResolutions = stockAtlasResolutions.ToDictionary(pair => pair.Key, pair =>
+        {
+            pair.Value.Sort();
+            return pair.Value[pair.Value.Count / 2];
+        }, StringComparer.OrdinalIgnoreCase);
+        foreach (StaticLightingMeshTarget target in targets)
+        {
+            int stockAtlasResolution = target.StockAtlasLightMapResolution;
+            if (stockAtlasResolution <= 0 && !target.HasExplicitLightMapResolutionOverride &&
+                !representativeAtlasResolutions.TryGetValue(target.MappingDiagnostics.MeshPath,
+                    out stockAtlasResolution)) continue;
+            if (stockAtlasResolution <= 0) continue;
+            target.AuthoredLightMapResolution = stockAtlasResolution;
+            if (target.UseTextureMapping)
+                target.TextureResolution = ResolveTextureResolution(mappingMode,
+                    exactTargetComponents is not null, stockAtlasResolution, maximumTextureResolution);
         }
 
         LevelCollisionScene collision = LevelCollisionScene.FromTriangles(occluders);
@@ -587,7 +644,7 @@ public sealed class StaticLightingBaker
                         : MathF.Max(epsilon, lightDistance - epsilon * 2f);
                     counters.RaysCast++;
                     long shadowStart = Stopwatch.GetTimestamp();
-                    bool occluded = collision.IsOccludedFiltered(origin, surfaceToLight, maximumDistance,
+                    bool occluded = collision.IsOccludedFilteredNormalized(origin, surfaceToLight, maximumDistance,
                         sample.Source, sample.SourceTriangleIndex, epsilon * 4f,
                         out int rejectedSelfIntersections);
                     counters.ShadowRayTicks += Stopwatch.GetTimestamp() - shadowStart;
@@ -1262,23 +1319,22 @@ public sealed class StaticLightingBaker
         if (mappingMode == StaticLightingMappingMode.Texture2D)
             return true;
 
-        if (effectiveLightMapResolution > 0)
-            return true;
-
-        if (IsArchitecturalReceiver(meshPath) || maximumWorldDimension >= 512f)
+        if (!existingMappingWasGenerated &&
+            existingMappingType is ELightMapType.LMT_2D or ELightMapType.LMT_4 or ELightMapType.LMT_6)
             return true;
 
         float averageTriangleArea = triangleCount > 0 ? surfaceArea / triangleCount : 0f;
+        if (IsArchitecturalReceiver(meshPath))
+            return true;
+        if (maximumWorldDimension >= 512f && (triangleCount <= 256 || averageTriangleArea >= 1_024f))
+            return true;
+
         if (maximumWorldDimension >= 128f && surfaceArea >= 16_384f && averageTriangleArea >= 1_024f)
             return true;
 
-        if (!existingMappingWasGenerated)
-        {
-            if (existingMappingType is ELightMapType.LMT_1D or ELightMapType.LMT_3 or ELightMapType.LMT_5)
-                return false;
-            if (existingMappingType is ELightMapType.LMT_2D or ELightMapType.LMT_4 or ELightMapType.LMT_6)
-                return true;
-        }
+        if (!existingMappingWasGenerated &&
+            existingMappingType is ELightMapType.LMT_1D or ELightMapType.LMT_3 or ELightMapType.LMT_5)
+            return false;
 
         return false;
     }
@@ -1342,6 +1398,48 @@ public sealed class StaticLightingBaker
         component.LODData is { Length: > 0 } && component.LODData[0].LightMap is { } lightMap
             ? lightMap.LightMapType
             : ELightMapType.LMT_None;
+
+    private static int GetExistingTextureMappingResolution(ExportEntry component,
+        StaticMeshComponent binary, Dictionary<ExportEntry, (int Width, int Height)> textureDimensions)
+    {
+        (int[] Textures, Vector2 Scale) mapping = binary.LODData is { Length: > 0 }
+            ? binary.LODData[0].LightMap switch
+            {
+                LightMap_2D map => ([map.Texture1, map.Texture2, map.Texture3], map.CoordinateScale),
+                LightMap_4or6 map => ([map.Texture1, map.Texture2, map.Texture3], map.CoordinateScale),
+                _ => ([], Vector2.Zero)
+            }
+            : ([], Vector2.Zero);
+        if (mapping.Textures.Length == 0 || !float.IsFinite(mapping.Scale.X) ||
+            !float.IsFinite(mapping.Scale.Y) || mapping.Scale.X <= 0f || mapping.Scale.Y <= 0f)
+            return 0;
+        int allocatedDimension = 0;
+        foreach (int textureIndex in mapping.Textures)
+        {
+            if (!component.FileRef.TryGetUExport(textureIndex, out ExportEntry textureExport))
+                continue;
+            if (!textureDimensions.TryGetValue(textureExport, out (int Width, int Height) dimensions))
+            {
+                try
+                {
+                    UTexture2D.Texture2DMipMap topMip =
+                        textureExport.GetBinaryData<UTexture2D>().Mips?.FirstOrDefault();
+                    dimensions = topMip is null ? default : (topMip.SizeX, topMip.SizeY);
+                }
+                catch
+                {
+                    dimensions = default;
+                }
+                textureDimensions.Add(textureExport, dimensions);
+            }
+            if (dimensions.Width <= 0 || dimensions.Height <= 0) continue;
+            allocatedDimension = Math.Max(allocatedDimension, Math.Max(
+                (int)MathF.Ceiling(mapping.Scale.X * dimensions.Width),
+                (int)MathF.Ceiling(mapping.Scale.Y * dimensions.Height)));
+        }
+        if (allocatedDimension <= 0) return 0;
+        return (int)BitOperations.RoundUpToPowerOf2((uint)Math.Min(allocatedDimension, 2048));
+    }
 
     private static bool IsGeneratedTextureMapping(ExportEntry component, StaticMeshComponent binary)
     {

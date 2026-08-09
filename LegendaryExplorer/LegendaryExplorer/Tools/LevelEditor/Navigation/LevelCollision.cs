@@ -6,6 +6,7 @@ using System.Diagnostics;
 using System.Linq;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 
 namespace LegendaryExplorer.Tools.LevelEditor;
 
@@ -76,6 +77,18 @@ internal readonly record struct CollisionRay(Vector3 Origin, Vector3 Direction, 
         }
         if (MathF.Abs(lengthSquared - 1f) > 0.00001f)
             direction /= MathF.Sqrt(lengthSquared);
+        return TryCreateNormalized(origin, direction, out ray);
+    }
+
+    /// <summary>Creates a ray whose direction has already been normalized by the caller.</summary>
+    public static bool TryCreateNormalized(Vector3 origin, Vector3 direction, out CollisionRay ray)
+    {
+        if (!float.IsFinite(direction.X) || !float.IsFinite(direction.Y) || !float.IsFinite(direction.Z) ||
+            MathF.Abs(direction.X) + MathF.Abs(direction.Y) + MathF.Abs(direction.Z) < 0.000001f)
+        {
+            ray = default;
+            return false;
+        }
         int parallelMask = 0;
         Vector3 inverse = default;
         if (MathF.Abs(direction.X) < 0.000001f) parallelMask |= 1;
@@ -160,9 +173,9 @@ internal readonly record struct CollisionBounds(Vector3 Minimum, Vector3 Maximum
             !IntersectRayAxis(ray.Origin.Y, ray.InverseDirection.Y, (ray.ParallelAxisMask & 2) != 0,
                 Minimum.Y, Maximum.Y, ref minimumT, ref maximumT) ||
             !IntersectRayAxis(ray.Origin.Z, ray.InverseDirection.Z, (ray.ParallelAxisMask & 4) != 0,
-                Minimum.Z, Maximum.Z, ref minimumT, ref maximumT))
+                Minimum.Z, Maximum.Z, ref minimumT, ref maximumT) || maximumT < 0f)
             return false;
-        return maximumT >= 0f;
+        return true;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -195,6 +208,7 @@ internal readonly record struct CollisionBounds(Vector3 Minimum, Vector3 Maximum
 public sealed class LevelCollisionScene
 {
     private const int LeafTriangleCount = 8;
+    private const int BvhBuildBinCount = 12;
     private const float ContactSkin = 0.75f;
 
     private readonly List<LevelCollisionTriangle> triangles;
@@ -212,9 +226,16 @@ public sealed class LevelCollisionScene
     public Vector3 Minimum => NavigationTriangleCount == 0 ? Vector3.Zero : navigationBounds.Minimum;
     public Vector3 Maximum => NavigationTriangleCount == 0 ? Vector3.Zero : navigationBounds.Maximum;
 
-    private readonly record struct BvhNode(CollisionBounds Bounds, int Left, int Right, int Start, int Count)
+    private readonly record struct BvhNode(CollisionBounds Bounds, int Left, int Right, int Start, int Count,
+        int SplitAxis)
     {
         public bool IsLeaf => Count > 0;
+    }
+
+    private struct BvhBuildBin
+    {
+        public CollisionBounds Bounds;
+        public int Count;
     }
 
     internal LevelCollisionScene(List<LevelCollisionTriangle> sourceTriangles)
@@ -362,16 +383,83 @@ public sealed class LevelCollisionScene
         ExportEntry receiverSource, int receiverTriangleIndex, float selfIntersectionDistance,
         out int rejectedSelfIntersections,
         LevelCollisionFlags requiredFlags = LevelCollisionFlags.BlocksRay)
+        => IsOccludedFilteredCore(origin, direction, maximumDistance, receiverSource,
+            receiverTriangleIndex, selfIntersectionDistance, out rejectedSelfIntersections,
+            requiredFlags, false);
+
+    /// <summary>
+    /// Lighting-only fast path. Prepared light directions are already normalized, so avoid
+    /// redundantly measuring and normalizing each of the millions of shadow rays in a level bake.
+    /// </summary>
+    internal bool IsOccludedFilteredNormalized(Vector3 origin, Vector3 direction, float maximumDistance,
+        ExportEntry receiverSource, int receiverTriangleIndex, float selfIntersectionDistance,
+        out int rejectedSelfIntersections,
+        LevelCollisionFlags requiredFlags = LevelCollisionFlags.BlocksRay)
+        => IsOccludedFilteredCore(origin, direction, maximumDistance, receiverSource,
+            receiverTriangleIndex, selfIntersectionDistance, out rejectedSelfIntersections,
+            requiredFlags, true);
+
+    private bool IsOccludedFilteredCore(Vector3 origin, Vector3 direction, float maximumDistance,
+        ExportEntry receiverSource, int receiverTriangleIndex, float selfIntersectionDistance,
+        out int rejectedSelfIntersections, LevelCollisionFlags requiredFlags, bool directionIsNormalized)
     {
         rejectedSelfIntersections = 0;
         if (nodes.Count == 0 || maximumDistance <= 0f ||
-            !CollisionRay.TryCreate(origin, direction, out CollisionRay ray))
+            !(directionIsNormalized
+                ? CollisionRay.TryCreateNormalized(origin, direction, out CollisionRay ray)
+                : CollisionRay.TryCreate(origin, direction, out ray)))
             return false;
         int rejected = 0;
-        bool occluded = IsOccludedNode(0, ray, maximumDistance, requiredFlags, receiverSource,
+        bool occluded = IsOccludedIterative(ray, maximumDistance, requiredFlags, receiverSource,
             receiverTriangleIndex, MathF.Max(0f, selfIntersectionDistance), ref rejected);
         rejectedSelfIntersections = rejected;
         return occluded;
+    }
+
+    private bool IsOccludedIterative(in CollisionRay ray, float maximumDistance,
+        LevelCollisionFlags requiredFlags, ExportEntry receiverSource, int receiverTriangleIndex,
+        float selfIntersectionDistance, ref int rejectedSelfIntersections)
+    {
+        // Recursive traversal cannot be inlined and used to make every BVH level a method call.
+        // A 64-entry pending-node stack covers practical SAH tree depths; the recursive path below
+        // remains as a correctness fallback for an unusually deep or pathological scene.
+        Span<int> pendingNodes = stackalloc int[64];
+        int pendingCount = 0;
+        int nodeIndex = 0;
+        ReadOnlySpan<BvhNode> bvhNodes = CollectionsMarshal.AsSpan(nodes);
+        while (true)
+        {
+            ref readonly BvhNode node = ref bvhNodes[nodeIndex];
+            if (node.Bounds.IntersectsRay(ray, maximumDistance))
+            {
+                if (node.IsLeaf)
+                {
+                    if (IsOccludedLeaf(node, ray, maximumDistance, requiredFlags, receiverSource,
+                            receiverTriangleIndex, selfIntersectionDistance, ref rejectedSelfIntersections))
+                        return true;
+                }
+                else
+                {
+                    int first = GetAxis(ray.Direction, node.SplitAxis) < 0f ? node.Right : node.Left;
+                    int second = first == node.Left ? node.Right : node.Left;
+                    if (pendingCount < pendingNodes.Length)
+                    {
+                        pendingNodes[pendingCount++] = second;
+                        nodeIndex = first;
+                        continue;
+                    }
+                    if (IsOccludedNode(first, ray, maximumDistance, requiredFlags, receiverSource,
+                            receiverTriangleIndex, selfIntersectionDistance, ref rejectedSelfIntersections) ||
+                        IsOccludedNode(second, ray, maximumDistance, requiredFlags, receiverSource,
+                            receiverTriangleIndex, selfIntersectionDistance, ref rejectedSelfIntersections))
+                        return true;
+                }
+            }
+
+            if (pendingCount == 0)
+                return false;
+            nodeIndex = pendingNodes[--pendingCount];
+        }
     }
 
     private bool IsOccludedNode(int nodeIndex, in CollisionRay ray, float maximumDistance,
@@ -382,14 +470,32 @@ public sealed class LevelCollisionScene
         if (!node.Bounds.IntersectsRay(ray, maximumDistance))
             return false;
         if (!node.IsLeaf)
-            return IsOccludedNode(node.Left, ray, maximumDistance, requiredFlags, receiverSource,
+        {
+            // Construction places lower centroids in the left child. Directional ordering
+            // reaches the likely blocker first without paying for two extra child AABB tests here.
+            int first = GetAxis(ray.Direction, node.SplitAxis) < 0f ? node.Right : node.Left;
+            int second = first == node.Left ? node.Right : node.Left;
+            return IsOccludedNode(first, ray, maximumDistance, requiredFlags, receiverSource,
                        receiverTriangleIndex, selfIntersectionDistance, ref rejectedSelfIntersections) ||
-                   IsOccludedNode(node.Right, ray, maximumDistance, requiredFlags, receiverSource,
+                   IsOccludedNode(second, ray, maximumDistance, requiredFlags, receiverSource,
                        receiverTriangleIndex, selfIntersectionDistance, ref rejectedSelfIntersections);
+        }
 
+        return IsOccludedLeaf(node, ray, maximumDistance, requiredFlags, receiverSource,
+            receiverTriangleIndex, selfIntersectionDistance, ref rejectedSelfIntersections);
+    }
+
+    private bool IsOccludedLeaf(in BvhNode node, in CollisionRay ray, float maximumDistance,
+        LevelCollisionFlags requiredFlags, ExportEntry receiverSource, int receiverTriangleIndex,
+        float selfIntersectionDistance, ref int rejectedSelfIntersections)
+    {
         for (int index = node.Start; index < node.Start + node.Count; index++)
         {
-            LevelCollisionTriangle triangle = triangles[triangleIndices[index]];
+            // This is the hottest loop in a full lighting bake. The triangle record contains many
+            // vectors plus source metadata, so copying it for every leaf candidate is needlessly
+            // expensive on miss-heavy shadow rays.
+            ref readonly LevelCollisionTriangle triangle =
+                ref CollectionsMarshal.AsSpan(triangles)[triangleIndices[index]];
             if ((triangle.Flags & requiredFlags) != requiredFlags ||
                 !RayIntersectsTriangle(ray.Origin, ray.Direction, triangle, out float distance) ||
                 distance > maximumDistance)
@@ -631,18 +737,139 @@ public sealed class LevelCollisionScene
         nodes.Add(default);
         if (count <= LeafTriangleCount)
         {
-            nodes[nodeIndex] = new BvhNode(bounds, -1, -1, start, count);
+            nodes[nodeIndex] = new BvhNode(bounds, -1, -1, start, count, -1);
             return nodeIndex;
         }
 
         Vector3 size = centroidBounds.Size;
         int axis = size.X >= size.Y && size.X >= size.Z ? 0 : size.Y >= size.Z ? 1 : 2;
-        int leftCount = count / 2;
-        SelectMedian(start, start + count - 1, start + leftCount, axis);
+        int leftCount;
+        if (!TryPartitionBySurfaceArea(start, count, centroidBounds, out axis, out leftCount))
+        {
+            leftCount = count / 2;
+            SelectMedian(start, start + count - 1, start + leftCount, axis);
+        }
         int leftNode = BuildNode(start, leftCount);
         int rightNode = BuildNode(start + leftCount, count - leftCount);
-        nodes[nodeIndex] = new BvhNode(bounds, leftNode, rightNode, 0, 0);
+        nodes[nodeIndex] = new BvhNode(bounds, leftNode, rightNode, 0, 0, axis);
         return nodeIndex;
+    }
+
+    /// <summary>
+    /// Binned surface-area splitting costs slightly more while constructing the tree, but produces
+    /// substantially less child overlap than a longest-axis median split in mixed architectural
+    /// scenes. Shadow rays which miss all geometry benefit most because they otherwise have to walk
+    /// every overlapping branch before proving that no blocker exists.
+    /// </summary>
+    private bool TryPartitionBySurfaceArea(int start, int count, CollisionBounds centroidBounds,
+        out int splitAxis, out int leftCount)
+    {
+        splitAxis = -1;
+        leftCount = 0;
+        int bestSplitBin = -1;
+        float bestCost = float.PositiveInfinity;
+        Vector3 centroidSize = centroidBounds.Size;
+
+        Span<BvhBuildBin> bins = stackalloc BvhBuildBin[BvhBuildBinCount];
+        Span<CollisionBounds> prefixBounds = stackalloc CollisionBounds[BvhBuildBinCount];
+        Span<CollisionBounds> suffixBounds = stackalloc CollisionBounds[BvhBuildBinCount];
+        Span<int> prefixCounts = stackalloc int[BvhBuildBinCount];
+        Span<int> suffixCounts = stackalloc int[BvhBuildBinCount];
+        for (int candidateAxis = 0; candidateAxis < 3; candidateAxis++)
+        {
+            float extent = GetAxis(centroidSize, candidateAxis);
+            if (!(extent > 0.000001f) || !float.IsFinite(extent))
+                continue;
+
+            for (int binIndex = 0; binIndex < BvhBuildBinCount; binIndex++)
+            {
+                bins[binIndex].Bounds = CollisionBounds.Empty;
+                bins[binIndex].Count = 0;
+            }
+            float minimum = GetAxis(centroidBounds.Minimum, candidateAxis);
+            float scale = BvhBuildBinCount / extent;
+            for (int index = start; index < start + count; index++)
+            {
+                LevelCollisionTriangle triangle = triangles[triangleIndices[index]];
+                int binIndex = Math.Clamp((int)((GetAxis(triangle.Centroid, candidateAxis) - minimum) * scale),
+                    0, BvhBuildBinCount - 1);
+                ref BvhBuildBin bin = ref bins[binIndex];
+                bin.Bounds = bin.Count == 0 ? triangle.Bounds : bin.Bounds.Include(triangle.Bounds);
+                bin.Count++;
+            }
+
+            CollisionBounds runningBounds = CollisionBounds.Empty;
+            int runningCount = 0;
+            for (int binIndex = 0; binIndex < BvhBuildBinCount; binIndex++)
+            {
+                if (bins[binIndex].Count > 0)
+                    runningBounds = runningCount == 0 ? bins[binIndex].Bounds : runningBounds.Include(bins[binIndex].Bounds);
+                runningCount += bins[binIndex].Count;
+                prefixBounds[binIndex] = runningBounds;
+                prefixCounts[binIndex] = runningCount;
+            }
+            runningBounds = CollisionBounds.Empty;
+            runningCount = 0;
+            for (int binIndex = BvhBuildBinCount - 1; binIndex >= 0; binIndex--)
+            {
+                if (bins[binIndex].Count > 0)
+                    runningBounds = runningCount == 0 ? bins[binIndex].Bounds : runningBounds.Include(bins[binIndex].Bounds);
+                runningCount += bins[binIndex].Count;
+                suffixBounds[binIndex] = runningBounds;
+                suffixCounts[binIndex] = runningCount;
+            }
+
+            for (int binIndex = 0; binIndex < BvhBuildBinCount - 1; binIndex++)
+            {
+                int candidateLeftCount = prefixCounts[binIndex];
+                int candidateRightCount = suffixCounts[binIndex + 1];
+                if (candidateLeftCount == 0 || candidateRightCount == 0)
+                    continue;
+                float cost = SurfaceArea(prefixBounds[binIndex]) * candidateLeftCount +
+                             SurfaceArea(suffixBounds[binIndex + 1]) * candidateRightCount;
+                if (cost < bestCost)
+                {
+                    bestCost = cost;
+                    splitAxis = candidateAxis;
+                    bestSplitBin = binIndex;
+                }
+            }
+        }
+
+        if (splitAxis < 0)
+            return false;
+
+        float splitMinimum = GetAxis(centroidBounds.Minimum, splitAxis);
+        float splitExtent = GetAxis(centroidSize, splitAxis);
+        float splitScale = BvhBuildBinCount / splitExtent;
+        int lower = start;
+        int upper = start + count - 1;
+        while (lower <= upper)
+        {
+            while (lower <= upper && GetBuildBin(triangleIndices[lower], splitAxis, splitMinimum, splitScale) <= bestSplitBin)
+                lower++;
+            while (lower <= upper && GetBuildBin(triangleIndices[upper], splitAxis, splitMinimum, splitScale) > bestSplitBin)
+                upper--;
+            if (lower > upper)
+                break;
+            (triangleIndices[lower], triangleIndices[upper]) = (triangleIndices[upper], triangleIndices[lower]);
+            lower++;
+            upper--;
+        }
+        leftCount = lower - start;
+        return leftCount > 0 && leftCount < count;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private int GetBuildBin(int triangleIndex, int axis, float minimum, float scale) =>
+        Math.Clamp((int)((GetAxis(triangles[triangleIndex].Centroid, axis) - minimum) * scale),
+            0, BvhBuildBinCount - 1);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static float SurfaceArea(CollisionBounds bounds)
+    {
+        Vector3 size = Vector3.Max(Vector3.Zero, bounds.Size);
+        return 2f * (size.X * size.Y + size.X * size.Z + size.Y * size.Z);
     }
 
     private void SelectMedian(int left, int right, int target, int axis)
@@ -730,7 +957,7 @@ public sealed class LevelCollisionScene
     }
 
     private static bool RayIntersectsTriangle(Vector3 origin, Vector3 direction,
-        LevelCollisionTriangle triangle, out float distance)
+        in LevelCollisionTriangle triangle, out float distance)
     {
         Vector3 cross = Vector3.Cross(direction, triangle.Edge2);
         float determinant = Vector3.Dot(triangle.Edge1, cross);

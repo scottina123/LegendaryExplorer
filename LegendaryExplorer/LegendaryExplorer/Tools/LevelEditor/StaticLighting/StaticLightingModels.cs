@@ -150,9 +150,11 @@ public sealed class StaticLightingMeshTarget
     public required IReadOnlyList<StaticLightingVertex> Vertices { get; init; }
     public int LightMapCoordinateIndex { get; init; }
     /// <summary>The component or mesh resolution authored by BioWare, before the bulk-bake ceiling is applied.</summary>
-    public int AuthoredLightMapResolution { get; init; }
+    public int AuthoredLightMapResolution { get; set; }
+    public int StockAtlasLightMapResolution { get; init; }
+    public bool HasExplicitLightMapResolutionOverride { get; init; }
     /// <summary>Actual standalone texture resolution selected for this receiver.</summary>
-    public int TextureResolution { get; init; }
+    public int TextureResolution { get; set; }
     public bool HasTextureCoordinates { get; init; }
     /// <summary>
     /// True when the selected generation policy chose a texture mapping for this component. A valid
