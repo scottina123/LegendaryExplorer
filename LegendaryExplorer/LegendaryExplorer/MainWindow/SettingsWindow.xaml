@@ -32,10 +32,15 @@
                                       IsChecked="{Binding Path=(settings:Settings.Global_Analytics_Enabled)}"/>
                             <TextBlock>Enable Analytics</TextBlock>
                         </StackPanel>
-                        <StackPanel Orientation="Horizontal" Margin="0,5">
-                            <CheckBox x:Name="Global_DarkMode_Enabled" Margin="5,0"
-                                      IsChecked="{Binding Path=(settings:Settings.Global_DarkMode_Enabled)}"/>
-                            <TextBlock>Toggle Dark Mode</TextBlock>
+                        <StackPanel Orientation="Horizontal" Margin="5,5">
+                            <TextBlock VerticalAlignment="Center" Margin="0,0,8,0">Application theme:</TextBlock>
+                            <ComboBox Width="150"
+                                      SelectedValuePath="Tag"
+                                      SelectedValue="{Binding Path=(settings:Settings.Global_Theme)}">
+                                <ComboBoxItem Content="Light Mode" Tag="Light"/>
+                                <ComboBoxItem Content="Dark Mode" Tag="Dark"/>
+                                <ComboBoxItem Content="Modern Dark" Tag="ModernDark"/>
+                            </ComboBox>
                         </StackPanel>
                         <StackPanel Orientation="Horizontal" Margin="0,5">
                             <CheckBox x:Name="Global_UseOwnerFriendlyNames" Margin="5,0"

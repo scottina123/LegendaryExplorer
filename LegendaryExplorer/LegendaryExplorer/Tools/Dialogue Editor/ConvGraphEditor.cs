@@ -5,6 +5,7 @@ using System.Drawing;
 using System.Threading;
 using System.Windows.Forms;
 using LegendaryExplorer.Misc.AppSettings;
+using LegendaryExplorer.SharedUI;
 using LegendaryExplorerCore.Dialogue;
 using Piccolo;
 using Piccolo.Event;
@@ -145,7 +146,7 @@ namespace LegendaryExplorer.DialogueEditor
             e.Graphics.DrawRectangle(borderPen, 0, 0, e.Bounds.Width - 1, e.Bounds.Height - 1);
 
             Rectangle textBounds = Rectangle.Inflate(e.Bounds, -4, -2);
-            TextRenderer.DrawText(e.Graphics, e.ToolTipText, e.Font ?? SystemFonts.DefaultFont, textBounds, fore,
+            TextRenderer.DrawText(e.Graphics, e.ToolTipText, e.Font ?? AppTypography.InterfaceDrawingFont, textBounds, fore,
                 TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix);
         }
 
@@ -350,7 +351,7 @@ namespace LegendaryExplorer.DialogueEditor
             else
             {
                 const string msg = "Updating, please wait............";
-                e.Graphics.DrawString(msg.Substring(0, updatingCount + 21), SystemFonts.DefaultFont, Brushes.Black, Width - Width / 2, Height - Height / 2);
+                e.Graphics.DrawString(msg.Substring(0, updatingCount + 21), AppTypography.InterfaceDrawingFont, Brushes.Black, Width - Width / 2, Height - Height / 2);
                 updatingCount++;
                 if (updatingCount + 21 > msg.Length)
                 {

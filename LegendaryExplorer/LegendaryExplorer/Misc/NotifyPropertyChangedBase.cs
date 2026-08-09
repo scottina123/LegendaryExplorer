@@ -43,6 +43,11 @@ namespace LegendaryExplorer.Misc
     {
         public NotifyPropertyChangedWindowBase()
         {
+            // Establish the application typography contract at the window boundary so
+            // ordinary controls inherit it without overriding intentional local fonts.
+            SetResourceReference(FontFamilyProperty, "AudemusUiFont");
+            SetResourceReference(FontSizeProperty, "AudemusUiFontSize");
+
             // Bind Background to the themed window brush to prevent white flash
             // before content loads. If a derived window sets Background in XAML,
             // InitializeComponent will override this with the XAML value.

@@ -24,7 +24,8 @@
         Icon="pack://application:,,,/Tools/Icons/16x16/SequenceEditor_Icon_16.ico"
         Loaded="SequenceEditorWPF_Loaded"
         Closing="SequenceEditorWPF_Closing"
-        Title="Sequence Editor" Height="750" Width="1300" MinWidth="900" MinHeight="200">
+        Title="Sequence Editor" Height="750" Width="1300" MinWidth="900" MinHeight="200"
+        Style="{DynamicResource AudemusToolWindowStyle}">
     <Window.Resources>
         <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
         <converters:NullEnabledConverter x:Key="NullEnabledConverter"/>
@@ -180,7 +181,7 @@
     <!-- This windows has a BusyIndicator, it's just tucked at the bottom, inside the Grid. It needs to be that way to not cause problems with the Piccolo control -->
     <Grid>
         <DockPanel>
-            <Menu DockPanel.Dock="Top">
+            <Menu DockPanel.Dock="Top" Style="{DynamicResource AudemusMenuBandStyle}">
                 <MenuItem Header="File" Padding="4">
                     <MenuItem Header="_Open" Command="{Binding OpenCommand}" InputGestureText="Ctrl+O"
                                 ToolTip="Open a package file" />
@@ -344,7 +345,7 @@
                 <MenuItem Header="Open linked" Padding="4" Command="{Binding OpenHighestMountedLinkedFileCommand}" ToolTip="Open the highest mounted linked LOC_INT file when viewing a base package, or the highest mounted base package when viewing a LOC file." />
                 <MenuItem Header="Refresh" Padding="4" Command="{Binding AutoLayoutCommand}" ToolTip="Re-run auto layout for the current sequence." />
             </Menu>
-            <StatusBar Height="23" DockPanel.Dock="Bottom">
+            <StatusBar Height="23" DockPanel.Dock="Bottom" Style="{DynamicResource AudemusStatusBarStyle}">
                 <sharedToolControls:StatusBarGameIDIndicator
                     Visibility="{Binding Pcc, Converter={StaticResource NullVisibilityConverter}}"
                     GameType="{Binding Pcc, Converter={StaticResource GameTypeConverter}}" Margin="0,-4" />
@@ -355,7 +356,7 @@
                     <StackPanel Orientation="Horizontal">
                         <TextBlock Name="StatusBar_RightSide_LastSaved"
                                     Text="{Binding Pcc.LastSaved, StringFormat='Last saved at {0}'}"
-                                    Foreground="Gray" />
+                                    Foreground="{DynamicResource MutedTextBrush}" />
                     </StackPanel>
                 </StatusBarItem>
             </StatusBar>
@@ -501,7 +502,7 @@
                         </TextBlock>
                     </StackPanel>
                     <sharedToolControls:RecentsControl x:Name="RecentsController" Grid.Column="3" Visibility="{Binding Pcc, RelativeSource={RelativeSource FindAncestor, AncestorType={x:Type bases:WPFBase}},Converter={StaticResource NullVisibilityConverter}, ConverterParameter='Reversed'}"/>
-                    <TreeView x:Name="Sequences_TreeView" Grid.Row="0" Grid.Column="0" FontFamily="Consolas"
+                    <TreeView x:Name="Sequences_TreeView" Grid.Row="0" Grid.Column="0" FontFamily="{DynamicResource AudemusDataFont}" FontSize="{DynamicResource AudemusDataFontSize}"
                                 Visibility="{Binding Pcc, Converter={StaticResource NullVisibilityConverter}}"
                                 ItemsSource="{Binding TreeViewRootNodes}" 
                                 FocusManager.IsFocusScope="True"
@@ -607,7 +608,7 @@
                                     <ColumnDefinition Width="5" />
                                     <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
-                                <TreeView x:Name="InterpDataTreeView" Grid.Column="0" FontFamily="Consolas"
+                                <TreeView x:Name="InterpDataTreeView" Grid.Column="0" FontFamily="{DynamicResource AudemusDataFont}" FontSize="{DynamicResource AudemusDataFontSize}"
                                           ItemsSource="{Binding InterpDataTreeNodes}"
                                           SelectedItemChanged="InterpDataTreeView_SelectedItemChanged"
                                           PreviewMouseRightButtonDown="InterpDataTreeView_PreviewMouseRightButtonDown"

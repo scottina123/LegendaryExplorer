@@ -422,15 +422,15 @@ namespace LegendaryExplorer.Misc.AppSettings
             get => _global_analytics_enabled;
             set => SetProperty(ref _global_analytics_enabled, value);
         }
+        private static string _global_theme = "Light";
+        public static string Global_Theme {
+            get => _global_theme;
+            set => SetProperty(ref _global_theme, ThemeManager.ParseThemeName(value).ToString());
+        }
         private static bool _global_useownerfriendlynames = false;
         public static bool Global_UseOwnerFriendlyNames {
             get => _global_useownerfriendlynames;
             set => SetProperty(ref _global_useownerfriendlynames, value);
-        }
-        private static bool _global_darkmode_enabled = false;
-        public static bool Global_DarkMode_Enabled {
-            get => _global_darkmode_enabled;
-            set => SetProperty(ref _global_darkmode_enabled, value);
         }
         private static string _global_me1directory = "";
         public static string Global_ME1Directory {
@@ -609,6 +609,14 @@ namespace LegendaryExplorer.Misc.AppSettings
             //if the settings file has been corrupted somehow, the JSON deserializer will return null.
             settingsJson ??= new();
 
+            // Global_Theme replaces the original dark-mode Boolean. Preserve existing
+            // installations by mapping that value to the traditional Dark theme once.
+            if (!settingsJson.ContainsKey("global_theme"))
+            {
+                bool legacyDarkMode = TryGetSetting(settingsJson, "global_darkmode_enabled", false);
+                settingsJson["global_theme"] = legacyDarkMode ? "Dark" : "Light";
+            }
+
             MainWindow_DisableTransparencyAndAnimations = TryGetSetting(settingsJson, "mainwindow_disabletransparencyandanimations", false);
             MainWindow_Favorites = TryGetSetting(settingsJson, "mainwindow_favorites", "");
             MainWindow_CompletedInitialSetup = TryGetSetting(settingsJson, "mainwindow_completedinitialsetup", false);
@@ -688,7 +696,9 @@ namespace LegendaryExplorer.Misc.AppSettings
             TFCCompactor_LastStagingPath = TryGetSetting(settingsJson, "tfccompactor_laststagingpath", "");
             Global_PropertyParsing_ParseUnknownArrayTypeAsObject = TryGetSetting(settingsJson, "global_propertyparsing_parseunknownarraytypeasobject", false);
             Global_Analytics_Enabled = TryGetSetting(settingsJson, "global_analytics_enabled", true);
-            Global_DarkMode_Enabled = TryGetSetting(settingsJson, "global_darkmode_enabled", false);
+            Global_Theme = ThemeManager.ParseThemeName(
+                TryGetSetting(settingsJson, "global_theme", "Light")).ToString();
+            Global_UseOwnerFriendlyNames = TryGetSetting(settingsJson, "global_useownerfriendlynames", false);
             Global_ME1Directory = TryGetSetting(settingsJson, "global_me1directory", "");
             Global_ME2Directory = TryGetSetting(settingsJson, "global_me2directory", "");
             Global_ME3Directory = TryGetSetting(settingsJson, "global_me3directory", "");
@@ -806,7 +816,8 @@ namespace LegendaryExplorer.Misc.AppSettings
             settingsJson["tfccompactor_laststagingpath"] = TFCCompactor_LastStagingPath.ToString();
             settingsJson["global_propertyparsing_parseunknownarraytypeasobject"] = Global_PropertyParsing_ParseUnknownArrayTypeAsObject.ToString();
             settingsJson["global_analytics_enabled"] = Global_Analytics_Enabled.ToString();
-            settingsJson["global_darkmode_enabled"] = Global_DarkMode_Enabled.ToString();
+            settingsJson["global_theme"] = Global_Theme.ToString();
+            settingsJson["global_useownerfriendlynames"] = Global_UseOwnerFriendlyNames.ToString();
             settingsJson["global_me1directory"] = Global_ME1Directory.ToString();
             settingsJson["global_me2directory"] = Global_ME2Directory.ToString();
             settingsJson["global_me3directory"] = Global_ME3Directory.ToString();
@@ -821,6 +832,10 @@ namespace LegendaryExplorer.Misc.AppSettings
             settingsJson["scriptide_savedthemes"] = ScriptIDE_SavedThemes;
             settingsJson["tlkeditor_opentabs"] = TLKEditor_OpenTabs;
             settingsJson["tlkeditor_selectedtab"] = TLKEditor_SelectedTab.ToString();
+
+            // Retain the old key for downgrade compatibility. New versions read
+            // Global_Theme; older versions still receive a meaningful dark-mode value.
+            settingsJson["global_darkmode_enabled"] = Global_DarkMode_Enabled.ToString();
             settingsJson["dialogueeditor_rememberbulkcloneinterpreplacements"] = DialogueEditor_RememberBulkCloneInterpReplacements.ToString();
             settingsJson["dialogueeditor_bulkcloneinterpreplacements"] = DialogueEditor_BulkCloneInterpReplacements;
             settingsJson["dialogueeditor_rememberbulkinterpreplacements"] = DialogueEditor_RememberBulkInterpReplacements.ToString();

@@ -16,6 +16,7 @@ using System.Drawing.Text;
 using System.Globalization;
 using System.Linq;
 using System.Windows.Forms;
+using LegendaryExplorer.SharedUI;
 using static LegendaryExplorer.Tools.TlkManagerNS.TLKManagerWPF;
 using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
 
@@ -77,7 +78,7 @@ namespace LegendaryExplorer.DialogueEditor
         public static Color titleColor = Color.FromArgb(255, 255, 128);
         public static Color titleBoxColor = Color.FromArgb(112, 112, 112);
         public static Color backgroundColor = Color.FromArgb(128, 128, 128);
-        public static Color graphBackgroundColor = Color.FromArgb(64, 64, 64);
+        public static Color graphBackgroundColor = Color.FromArgb(30, 30, 30);
         public static Color boxColor = Color.FromArgb(140, 140, 140);
         public static Color boxTextColor = Color.White;
         public static Color linkTextColor = Color.Black;  // Color for link paraphrase text
@@ -2388,28 +2389,28 @@ namespace LegendaryExplorer.DialogueEditor
     }
     public class DText : PText
     {
+        private static readonly Font GraphFont = AppTypography.CreateGraphDrawingFont();
+        private static readonly float GraphFontSizeInPoints = GraphFont.SizeInPoints;
         private readonly Brush black = new SolidBrush(Color.Black);
         public bool shadowRendering { get; set; }
 
         public DText(string s, bool shadows = true, float scale = 1)
-            : base(s)
+            : base(s, new SolidBrush(DObj.boxTextColor), GraphFont, GraphFontSizeInPoints, 0, 0)
         {
-            base.TextBrush = new SolidBrush(DObj.boxTextColor);
             base.GlobalScale = scale;
             shadowRendering = shadows;
         }
 
         public DText(string s, Color c, bool shadows = true, float scale = 1)
-            : base(s)
+            : base(s, new SolidBrush(c), GraphFont, GraphFontSizeInPoints, 0, 0)
         {
-            base.TextBrush = new SolidBrush(c);
             base.GlobalScale = scale;
             shadowRendering = shadows;
         }
 
         protected override void Paint(PPaintContext paintContext)
         {
-            paintContext.Graphics.TextRenderingHint = TextRenderingHint.SingleBitPerPixel;
+            paintContext.Graphics.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
             //paints dropshadow
             if (shadowRendering && paintContext.Scale >= 1 && base.Text != null && base.TextBrush != null && base.Font != null)
             {

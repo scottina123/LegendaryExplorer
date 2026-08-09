@@ -119,7 +119,7 @@
                         <sharedUi:WindowsFormsHostEx x:Name="BinaryInterpreter_Hexbox_Host" 
                                                      HorizontalAlignment="Stretch">
                             <hb1:HexBox MinBytesPerLine="4" MaxBytesPerLine="16" ColumnInfoVisible="True"
-                                        LineInfoVisible="True" Font="Courier New,10" BoldFont="Consolas,10"
+                                        LineInfoVisible="True"
                                         StringViewVisible="True" SelectionLengthChanged="hb1_SelectionChanged"
                                         SelectionStartChanged="hb1_SelectionChanged" VScrollBarVisible="True">
                             </hb1:HexBox>
@@ -134,7 +134,7 @@
                       BorderBrush="Transparent"
                       Panel.ZIndex="60"/>
                     <TreeView Name="BinaryInterpreter_TreeView" Grid.Row="1" Grid.Column="2" Width="Auto" 
-                              FontFamily="Consolas" SelectedItemChanged="BinaryInterpreter_TreeViewSelectedItemChanged" 
+                              FontFamily="{DynamicResource AudemusDataFont}" FontSize="{DynamicResource AudemusDataFontSize}" SelectedItemChanged="BinaryInterpreter_TreeViewSelectedItemChanged"
                               PreviewMouseRightButtonDown="BinaryInterpreter_TreeView_PreviewMouseRightButtonDown" 
                               VirtualizingPanel.VirtualizationMode="Recycling" VirtualizingPanel.IsVirtualizing="True" ItemsSource="{Binding TreeViewItems}">
                         <TreeView.Resources>

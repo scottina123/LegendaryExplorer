@@ -29,7 +29,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls;
 public partial class ActorPreviewControl : ExportLoaderControl, IActorEditorContext
 {
     private static readonly Color LightThemeDefaultBackgroundColor = Color.FromRgb(153, 153, 153);
-    private static readonly Color DarkThemeDefaultBackgroundColor = Color.FromRgb(30, 30, 30);
+    private static Color DarkThemeDefaultBackgroundColor => ThemeManager.DarkCanvasMediaColor;
 
     public LevelEditorRenderContext RenderContext { get; } = new()
     {
@@ -238,7 +238,7 @@ public partial class ActorPreviewControl : ExportLoaderControl, IActorEditorCont
 
     private static bool IsThemeDefaultBackgroundColor(Color color)
     {
-        return color == LightThemeDefaultBackgroundColor || color == DarkThemeDefaultBackgroundColor;
+        return color == LightThemeDefaultBackgroundColor || ThemeManager.IsDarkCanvasColor(color);
     }
 
     public ActorPreviewControl() : base("Actor Preview")

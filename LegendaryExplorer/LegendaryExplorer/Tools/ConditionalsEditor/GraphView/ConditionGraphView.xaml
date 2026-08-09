@@ -213,7 +213,7 @@
         <DataTemplate DataType="{x:Type local:LiteralExpressionViewModel}">
             <TextBox Style="{StaticResource SmallTextBox}" MinWidth="40"
                      Text="{Binding Value, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                     FontFamily="Consolas"/>
+                     FontFamily="{DynamicResource AudemusDataFont}" FontSize="{DynamicResource AudemusDataFontSize}"/>
         </DataTemplate>
 
         <!-- Arithmetic expression (group-like: + or * with nested operands) -->
@@ -290,7 +290,7 @@
                     <TextBox Text="{Binding RawExpression, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                              VerticalAlignment="Center" Margin="2,1" Padding="4,2"
                              MinWidth="200"
-                             FontFamily="Consolas"
+                             FontFamily="{DynamicResource AudemusDataFont}" FontSize="{DynamicResource AudemusDataFontSize}"
                              AcceptsReturn="False"
                              ToolTip="Complex expression — edit directly or switch to text view"/>
                     <Button Style="{StaticResource DeleteButton}" Command="{Binding DeleteCommand}"/>

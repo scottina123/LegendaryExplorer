@@ -20,6 +20,7 @@
         AllowDrop="True"
         Icon="pack://application:,,,/Tools/Icons/16x16/AssetDatabase_Icon_16.ico"
         Title="Asset Database" Height="700" Width="1200"
+        Style="{DynamicResource AudemusToolWindowStyle}"
         DataContext="{Binding RelativeSource={RelativeSource Self}}">
     <Window.Resources>
         <assetDatabase:FileIndexToNameConverter x:Key="FileIndexToNameConverter"/>
@@ -38,7 +39,7 @@
                     <ColumnDefinition Width="70"/>
                     <ColumnDefinition Width="1*"/>
                 </Grid.ColumnDefinitions>
-                <TextBlock FontSize="10" Text="{Binding Type, Mode=OneTime}" VerticalAlignment="Center" Foreground="Gray"/>
+                <TextBlock FontSize="10" Text="{Binding Type, Mode=OneTime}" VerticalAlignment="Center" Foreground="{DynamicResource MutedTextBrush}"/>
                 <TextBlock Grid.Column="1"  Text="{Binding Property, Mode=OneTime}" />
             </Grid>
         </DataTemplate>
@@ -47,57 +48,6 @@
                 <componentModel:SortDescription PropertyName="Property" Direction="Ascending"/>
             </CollectionViewSource.SortDescriptions>
         </CollectionViewSource>
-        <Style x:Key="FileLVHeader" TargetType="{x:Type GridViewColumnHeader}">
-            <!-- Ensure column headers follow dark theme even when this keyed style is applied -->
-            <Setter Property="OverridesDefaultStyle" Value="True"/>
-            <Setter Property="SnapsToDevicePixels" Value="True"/>
-            <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"/>
-            <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
-            <Setter Property="BorderBrush" Value="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"/>
-            <Setter Property="BorderThickness" Value="0,0,1,1"/>
-            <Setter Property="Padding" Value="4,2"/>
-            <Setter Property="HorizontalContentAlignment" Value="Left" />
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="{x:Type GridViewColumnHeader}">
-                        <Grid>
-                            <Border x:Name="HeaderBorder"
-                                    Background="{TemplateBinding Background}"
-                                    BorderBrush="{TemplateBinding BorderBrush}"
-                                    BorderThickness="{TemplateBinding BorderThickness}"
-                                    Padding="{TemplateBinding Padding}">
-                                <ContentPresenter x:Name="HeaderContent"
-                                                  HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
-                                                  VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
-                                                  RecognizesAccessKey="True"
-                                                  SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}"/>
-                            </Border>
-                            <Thumb x:Name="PART_HeaderGripper"
-                                   HorizontalAlignment="Right"
-                                   Margin="0,0,-9,0"
-                                   Width="18"
-                                   Background="Transparent">
-                                <Thumb.Template>
-                                    <ControlTemplate TargetType="{x:Type Thumb}">
-                                        <Border Background="Transparent" Padding="{TemplateBinding Padding}">
-                                            <Rectangle Width="1" HorizontalAlignment="Center" Fill="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"/>
-                                        </Border>
-                                    </ControlTemplate>
-                                </Thumb.Template>
-                            </Thumb>
-                        </Grid>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="HeaderBorder" Property="Background" Value="{DynamicResource {x:Static SystemColors.ControlLightBrushKey}}"/>
-                            </Trigger>
-                            <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="HeaderBorder" Property="Background" Value="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
         <DataTemplate x:Key="HeaderTemplateArrowUp">
             <DockPanel LastChildFill="True" Width="{Binding ActualWidth, RelativeSource={RelativeSource FindAncestor, AncestorType={x:Type GridViewColumnHeader}}}">
                 <Path x:Name="arrowUp" StrokeThickness="1" Fill="Gray" Data="M 5,10 L 15,10 L 10,5 L 5,10" DockPanel.Dock="Right" Width="20" HorizontalAlignment="Right" Margin="5,0,5,0" SnapsToDevicePixels="True"/>
@@ -440,7 +390,7 @@
     <xctk:BusyIndicator x:Name="dbBusyIndicator" IsBusy="{Binding IsBusy, FallbackValue=False}" Style="{StaticResource AssetDatabaseBusyIndicatorStyle}">
         <DockPanel>
             <DockPanel DockPanel.Dock="Top">
-                <Menu Name="TopDock">
+                <Menu Name="TopDock" Style="{DynamicResource AudemusMenuBandStyle}">
                     <MenuItem Header="Database" Padding="4" >
                         <MenuItem Header="Generate New Database" Command="{Binding GenerateDBCommand}" InputGestureText="Ctrl+G" ToolTip="Scan Game Properties"/>
                         <MenuItem Header="Generate Databases for All Games" Command="{Binding GenerateAllDBCommand}" ToolTip="Scan and save databases for all supported games."/>
@@ -565,13 +515,13 @@
                     </MenuItem>
                 </Menu>
             </DockPanel>
-            <StatusBar Height="23" DockPanel.Dock="Bottom" >
+            <StatusBar Height="23" DockPanel.Dock="Bottom" Style="{DynamicResource AudemusStatusBarStyle}">
                 <sharedToolControls:StatusBarGameIDIndicator GameType="{Binding CurrentGame}" VerticalContentAlignment="Center" Visibility="Visible" Margin="3,-4,3,-4" DockPanel.Dock="Left" />
                 <StatusBarItem>
                     <TextBlock x:Name="StatusBar_LeftMostText" Text="{Binding CurrentOverallOperationText}"/>
                 </StatusBarItem>
                 <StatusBarItem HorizontalContentAlignment="Right" HorizontalAlignment="Right">
-                    <TextBlock x:Name="StatusBar_RightMostText" Margin="2,0,2,0" Foreground="Gray">
+                    <TextBlock x:Name="StatusBar_RightMostText" Margin="2,0,2,0" Foreground="{DynamicResource MutedTextBrush}">
                                 <Run Text="v"/><Run Text="{x:Static assetDatabase:AssetDatabaseWindow.dbCurrentBuild}"/>
                     </TextBlock>
                 </StatusBarItem>
@@ -739,7 +689,7 @@
                                                            Style="{StaticResource NoFocusBorderListViewStyle}"
                                                            ItemContainerStyle="{DynamicResource {x:Static GridView.GridViewItemContainerStyleKey}}">
                                     <ListView.View>
-                                        <GridView ColumnHeaderContainerStyle="{StaticResource FileLVHeader}">
+                                        <GridView ColumnHeaderContainerStyle="{DynamicResource AudemusGridViewColumnHeaderStyle}">
                                             <GridViewColumn DisplayMemberBinding="{Binding FileName}" Width="260" Header="File"/>
                                             <GridViewColumn DisplayMemberBinding="{Binding Directory}" Width="360" Header="Source (Basegame, DLC or Mod directory)" />
                                             <GridViewColumn DisplayMemberBinding="{Binding Mount}" Width="360" Header="Mount"/>
@@ -1468,7 +1418,7 @@
                                       Style="{StaticResource NoFocusBorderListViewStyle}"
                                       ItemContainerStyle="{DynamicResource {x:Static GridView.GridViewItemContainerStyleKey}}">
                                 <ListView.View>
-                                    <GridView ColumnHeaderContainerStyle="{StaticResource FileLVHeader}">
+                                    <GridView ColumnHeaderContainerStyle="{DynamicResource AudemusGridViewColumnHeaderStyle}">
                                         <GridViewColumn Width="220" Header="Speaker">
                                             <GridViewColumn.CellTemplate>
                                                 <DataTemplate>
@@ -1771,7 +1721,7 @@
                                       Style="{StaticResource NoFocusBorderListViewStyle}"
                                       ItemContainerStyle="{DynamicResource {x:Static GridView.GridViewItemContainerStyleKey}}">
                                 <ListView.View>
-                                    <GridView ColumnHeaderContainerStyle="{StaticResource FileLVHeader}">
+                                    <GridView ColumnHeaderContainerStyle="{DynamicResource AudemusGridViewColumnHeaderStyle}">
                                         <GridViewColumn DisplayMemberBinding="{Binding StringID}" Width="120" Header="TLK String Ref"/>
                                         <GridViewColumn DisplayMemberBinding="{Binding DisplayValue}" Width="420" Header="Line"/>
                                         <GridViewColumn DisplayMemberBinding="{Binding SourceName}" Width="220" Header="Source"/>

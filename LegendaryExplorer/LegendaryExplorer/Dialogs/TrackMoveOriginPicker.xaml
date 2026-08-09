@@ -54,8 +54,8 @@
                                 <TextBlock FontWeight="SemiBold">
                                     <Run Text="Key "/><Run Text="{Binding KeyNumber, Mode=OneWay}"/><Run Text=" — "/><Run Text="{Binding TimeDisplay, Mode=OneWay}"/>
                                 </TextBlock>
-                                <TextBlock Grid.Row="1" Text="{Binding LocationDisplay, Mode=OneWay}" FontFamily="Consolas" FontSize="11"/>
-                                <TextBlock Grid.Row="2" Text="{Binding RotationDisplay, Mode=OneWay}" FontFamily="Consolas" FontSize="11"/>
+                                <TextBlock Grid.Row="1" Text="{Binding LocationDisplay, Mode=OneWay}" FontFamily="{DynamicResource AudemusDataFont}" FontSize="11"/>
+                                <TextBlock Grid.Row="2" Text="{Binding RotationDisplay, Mode=OneWay}" FontFamily="{DynamicResource AudemusDataFont}" FontSize="11"/>
                             </Grid>
                         </DataTemplate>
                     </ListBox.ItemTemplate>

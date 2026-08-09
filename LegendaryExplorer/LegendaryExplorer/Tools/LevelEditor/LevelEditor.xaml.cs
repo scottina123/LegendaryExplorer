@@ -568,7 +568,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
     public static System.Windows.Media.Color GetThemeDefaultBackgroundColor()
     {
         return Settings.Global_DarkMode_Enabled
-            ? System.Windows.Media.Color.FromRgb(30, 30, 30)
+            ? ThemeManager.DarkCanvasMediaColor
             : System.Windows.Media.Color.FromRgb(128, 128, 128);
     }
 

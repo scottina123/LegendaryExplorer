@@ -70,7 +70,7 @@
                                                                    Document="{Binding LeftDocument}"
                                                                    Background="#1F1F1F" Foreground="#CCCCCC" 
                                                                    LineNumbersForeground="#6E7681"
-                                                                   FontFamily="Consolas"/>
+                                                                   FontFamily="{DynamicResource AudemusDataFont}" FontSize="{DynamicResource AudemusDataFontSize}"/>
                             </TabItem>
                             <TabItem Header="Bytecode">
                                 <DockPanel>
@@ -78,7 +78,7 @@
                                                Foreground="{Binding LeftBytecodeMatchBrush}"/>
                                     <sharedUi:WindowsFormsHostEx x:Name="LeftHexBoxHost">
                                         <hb1:HexBox MinBytesPerLine="4" MaxBytesPerLine="16" ColumnInfoVisible="True" LineInfoVisible="True"
-                                                    Font="Courier New,10" StringViewVisible="True" VScrollBarVisible="True" ReadOnly="True"/>
+                                                    StringViewVisible="True" VScrollBarVisible="True" ReadOnly="True"/>
                                     </sharedUi:WindowsFormsHostEx>
                                 </DockPanel>
                             </TabItem>
@@ -86,7 +86,7 @@
                         <GridSplitter Grid.Row="1" Height="5" HorizontalAlignment="Stretch"/>
                         <DockPanel Grid.Row="2">
                             <TextBlock DockPanel.Dock="Top" Text="Parameter Bindings" FontWeight="Bold" Margin="4,2"/>
-                            <TreeView ItemsSource="{Binding LeftParameterNodes}" FontFamily="Consolas" FontSize="11">
+                            <TreeView ItemsSource="{Binding LeftParameterNodes}" FontFamily="{DynamicResource AudemusDataFont}" FontSize="11">
                                 <TreeView.Resources>
                                     <HierarchicalDataTemplate DataType="{x:Type exportLoaderControls:BinInterpNode}"
                                                               ItemsSource="{Binding Items}">
@@ -128,7 +128,7 @@
                                                                    Document="{Binding RightDocument}"
                                                                    Background="#1F1F1F" Foreground="#CCCCCC" 
                                                                    LineNumbersForeground="#6E7681"
-                                                                   FontFamily="Consolas"/>
+                                                                   FontFamily="{DynamicResource AudemusDataFont}" FontSize="{DynamicResource AudemusDataFontSize}"/>
                             </TabItem>
                             <TabItem Header="Bytecode">
                                 <DockPanel>
@@ -136,7 +136,7 @@
                                                Foreground="{Binding RightBytecodeMatchBrush}"/>
                                     <sharedUi:WindowsFormsHostEx x:Name="RightHexBoxHost">
                                         <hb1:HexBox MinBytesPerLine="4" MaxBytesPerLine="16" ColumnInfoVisible="True" LineInfoVisible="True"
-                                                    Font="Courier New,10" StringViewVisible="True" VScrollBarVisible="True" ReadOnly="True"/>
+                                                    StringViewVisible="True" VScrollBarVisible="True" ReadOnly="True"/>
                                     </sharedUi:WindowsFormsHostEx>
                                 </DockPanel>
                             </TabItem>
@@ -144,7 +144,7 @@
                         <GridSplitter Grid.Row="1" Height="5" HorizontalAlignment="Stretch"/>
                         <DockPanel Grid.Row="2">
                             <TextBlock DockPanel.Dock="Top" Text="Parameter Bindings" FontWeight="Bold" Margin="4,2"/>
-                            <TreeView ItemsSource="{Binding RightParameterNodes}" FontFamily="Consolas" FontSize="11">
+                            <TreeView ItemsSource="{Binding RightParameterNodes}" FontFamily="{DynamicResource AudemusDataFont}" FontSize="11">
                                 <TreeView.Resources>
                                     <HierarchicalDataTemplate DataType="{x:Type exportLoaderControls:BinInterpNode}"
                                                               ItemsSource="{Binding Items}">

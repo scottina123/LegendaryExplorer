@@ -711,6 +711,8 @@ public partial class ShaderComparisonWindow : NotifyPropertyChangedWindowBase
         _rightBinInterp = new BinaryInterpreterWPF();
         _leftHexBox = (HexBox)LeftHexBoxHost.Child;
         _rightHexBox = (HexBox)RightHexBoxHost.Child;
+        ThemeManager.RegisterHexBox(_leftHexBox);
+        ThemeManager.RegisterHexBox(_rightHexBox);
 
         LeftShaderTextEditor.TextArea.TextView.LineTransformers.Add(_leftLineDiffColorizer);
         RightShaderTextEditor.TextArea.TextView.LineTransformers.Add(_rightLineDiffColorizer);

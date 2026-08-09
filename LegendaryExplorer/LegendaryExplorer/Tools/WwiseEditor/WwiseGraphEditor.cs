@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Drawing;
 using System.Windows.Forms;
+using LegendaryExplorer.SharedUI;
 using LegendaryExplorer.Tools.Sequence_Editor;
 using LegendaryExplorer.Tools.WwiseEditor;
 using Piccolo;
@@ -290,7 +291,7 @@ namespace LegendaryExplorer.Tools.WwiseEditor
             {
                 const string msg = "Updating, please wait............";
                 using var textBrush = new SolidBrush(WwiseHircObjNode.BoxTextColor);
-                e.Graphics.DrawString(msg.Substring(0, updatingCount + 21), SystemFonts.DefaultFont, textBrush, Width - Width / 2, Height - Height / 2);
+                e.Graphics.DrawString(msg.Substring(0, updatingCount + 21), AppTypography.InterfaceDrawingFont, textBrush, Width - Width / 2, Height - Height / 2);
                 updatingCount++;
                 if (updatingCount + 21 > msg.Length)
                 {

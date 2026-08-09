@@ -226,7 +226,7 @@
                 <SharedUI:WindowsFormsHostEx Grid.Row="0" x:Name="Interpreter_Hexbox_Host" HorizontalAlignment="Stretch"
                                   VerticalAlignment="Stretch">
                     <hb1:HexBox MinBytesPerLine="4" MaxBytesPerLine="16" ColumnInfoVisible="True"
-                                LineInfoVisible="True" Font="Courier New,10" BoldFont="Consolas,10"
+                                LineInfoVisible="True"
                                 StringViewVisible="True" VScrollBarVisible="True" />
                 </SharedUI:WindowsFormsHostEx>
                 <Image Grid.Column="0" Visibility="Collapsed" Name="hexboxImageSub" Stretch="None" />
@@ -240,7 +240,7 @@
                       BorderBrush="Transparent"
                       Panel.ZIndex="60"/>
             <controls:StretchingTreeView x:Name="Interpreter_TreeView" Grid.Row="0" Grid.Column="2" Width="Auto" 
-                                         FontFamily="Consolas" SelectedItemChanged="Interpreter_TreeViewSelectedItemChanged" 
+                                         FontFamily="{DynamicResource AudemusDataFont}" FontSize="{DynamicResource AudemusDataFontSize}" SelectedItemChanged="Interpreter_TreeViewSelectedItemChanged"
                                          ItemsSource="{Binding PropertyNodes, Mode=OneTime}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" 
                                          VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling"
                                          BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}">
@@ -249,7 +249,8 @@
                 </b:Interaction.Behaviors>
                 <controls:StretchingTreeView.Resources>
                     <HierarchicalDataTemplate DataType="{x:Type global:UPropertyTreeViewEntry}" ItemsSource="{Binding ChildrenProperties, Mode=OneTime}">
-                        <Border x:Name="PropertyItem_Container" Margin="1" Padding="{Binding Path=(SharedUI:TouchComfySettings.InterpreterWPFNodeMargin)}">
+                        <Border x:Name="PropertyItem_Container" Margin="1" Padding="{Binding Path=(SharedUI:TouchComfySettings.InterpreterWPFNodeMargin)}"
+                                CornerRadius="2" SnapsToDevicePixels="True">
                             <Grid HorizontalAlignment="Stretch">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*"/>
@@ -516,118 +517,118 @@
                                     <Condition Binding="{Binding RawPropertyType}" Value="ObjectProperty" />
                                     <Condition Binding="{Binding Path=(appsettings:Settings.Interpreter_Colorize)}" Value="True" />
                                 </MultiDataTrigger.Conditions>
-                                <Setter TargetName="PropertyItem_DisplayType" Property="Foreground" Value="#b0af7a"/>
-                                <Setter TargetName="PropertyItem_Container" Property="Background" Value="#44fffec4"/>
+                                <Setter TargetName="PropertyItem_DisplayType" Property="Foreground" Value="{DynamicResource PropertyObjectTextBrush}"/>
+                                <Setter TargetName="PropertyItem_Container" Property="Background" Value="{DynamicResource PropertyObjectSurfaceBrush}"/>
                             </MultiDataTrigger>
                             <MultiDataTrigger>
                                 <MultiDataTrigger.Conditions>
                                     <Condition Binding="{Binding RawPropertyType}" Value="FloatProperty" />
                                     <Condition Binding="{Binding Path=(appsettings:Settings.Interpreter_Colorize)}" Value="True" />
                                 </MultiDataTrigger.Conditions>
-                                <Setter TargetName="PropertyItem_DisplayType" Property="Foreground" Value="#66b3a3"/>
-                                <Setter TargetName="PropertyItem_Container" Property="Background" Value="#2200ffaa"/>
+                                <Setter TargetName="PropertyItem_DisplayType" Property="Foreground" Value="{DynamicResource PropertyFloatTextBrush}"/>
+                                <Setter TargetName="PropertyItem_Container" Property="Background" Value="{DynamicResource PropertyFloatSurfaceBrush}"/>
                             </MultiDataTrigger>
                             <MultiDataTrigger>
                                 <MultiDataTrigger.Conditions>
                                     <Condition Binding="{Binding RawPropertyType}" Value="IntProperty" />
                                     <Condition Binding="{Binding Path=(appsettings:Settings.Interpreter_Colorize)}" Value="True" />
                                 </MultiDataTrigger.Conditions>
-                                <Setter TargetName="PropertyItem_DisplayType" Property="Foreground" Value="#b0948a"/>
-                                <Setter TargetName="PropertyItem_Container" Property="Background" Value="#44ffeae2"/>
+                                <Setter TargetName="PropertyItem_DisplayType" Property="Foreground" Value="{DynamicResource PropertyIntTextBrush}"/>
+                                <Setter TargetName="PropertyItem_Container" Property="Background" Value="{DynamicResource PropertyIntSurfaceBrush}"/>
                             </MultiDataTrigger>
                             <MultiDataTrigger>
                                 <MultiDataTrigger.Conditions>
                                     <Condition Binding="{Binding RawPropertyType}" Value="StrProperty" />
                                     <Condition Binding="{Binding Path=(appsettings:Settings.Interpreter_Colorize)}" Value="True" />
                                 </MultiDataTrigger.Conditions>
-                                <Setter TargetName="PropertyItem_DisplayType" Property="Foreground" Value="#6699cc"/>
-                                <Setter TargetName="PropertyItem_Container" Property="Background" Value="#3332aaf4"/>
+                                <Setter TargetName="PropertyItem_DisplayType" Property="Foreground" Value="{DynamicResource PropertyStringTextBrush}"/>
+                                <Setter TargetName="PropertyItem_Container" Property="Background" Value="{DynamicResource PropertyStringSurfaceBrush}"/>
                             </MultiDataTrigger>
                             <MultiDataTrigger>
                                 <MultiDataTrigger.Conditions>
                                     <Condition Binding="{Binding RawPropertyType}" Value="ArrayProperty" />
                                     <Condition Binding="{Binding Path=(appsettings:Settings.Interpreter_Colorize)}" Value="True" />
                                 </MultiDataTrigger.Conditions>
-                                <Setter TargetName="PropertyItem_DisplayType" Property="Foreground" Value="#9085a0"/>
-                                <Setter TargetName="PropertyItem_Container" Property="Background" Value="#44ffe2ba"/>
+                                <Setter TargetName="PropertyItem_DisplayType" Property="Foreground" Value="{DynamicResource PropertyArrayTextBrush}"/>
+                                <Setter TargetName="PropertyItem_Container" Property="Background" Value="{DynamicResource PropertyArraySurfaceBrush}"/>
                             </MultiDataTrigger>
                             <MultiDataTrigger>
                                 <MultiDataTrigger.Conditions>
                                     <Condition Binding="{Binding RawPropertyType}" Value="BoolProperty" />
                                     <Condition Binding="{Binding Path=(appsettings:Settings.Interpreter_Colorize)}" Value="True" />
                                 </MultiDataTrigger.Conditions>
-                                <Setter TargetName="PropertyItem_DisplayType" Property="Foreground" Value="#8faa82"/>
-                                <Setter TargetName="PropertyItem_Container" Property="Background" Value="#44ecffe2"/>
+                                <Setter TargetName="PropertyItem_DisplayType" Property="Foreground" Value="{DynamicResource PropertyBoolTextBrush}"/>
+                                <Setter TargetName="PropertyItem_Container" Property="Background" Value="{DynamicResource PropertyBoolSurfaceBrush}"/>
                             </MultiDataTrigger>
                             <MultiDataTrigger>
                                 <MultiDataTrigger.Conditions>
                                     <Condition Binding="{Binding RawPropertyType}" Value="StructProperty" />
                                     <Condition Binding="{Binding Path=(appsettings:Settings.Interpreter_Colorize)}" Value="True" />
                                 </MultiDataTrigger.Conditions>
-                                <Setter TargetName="PropertyItem_DisplayType" Property="Foreground" Value="#a88aa0"/>
-                                <Setter TargetName="PropertyItem_Container" Property="Background" Value="#44f4beea"/>
+                                <Setter TargetName="PropertyItem_DisplayType" Property="Foreground" Value="{DynamicResource PropertyStructTextBrush}"/>
+                                <Setter TargetName="PropertyItem_Container" Property="Background" Value="{DynamicResource PropertyStructSurfaceBrush}"/>
                             </MultiDataTrigger>
                             <MultiDataTrigger>
                                 <MultiDataTrigger.Conditions>
                                     <Condition Binding="{Binding RawPropertyType}" Value="ByteProperty" />
                                     <Condition Binding="{Binding Path=(appsettings:Settings.Interpreter_Colorize)}" Value="True" />
                                 </MultiDataTrigger.Conditions>
-                                <Setter TargetName="PropertyItem_DisplayType" Property="Foreground" Value="#9a9999"/>
-                                <Setter TargetName="PropertyItem_Container" Property="Background" Value="#44afaeaf"/>
+                                <Setter TargetName="PropertyItem_DisplayType" Property="Foreground" Value="{DynamicResource PropertyByteTextBrush}"/>
+                                <Setter TargetName="PropertyItem_Container" Property="Background" Value="{DynamicResource PropertyByteSurfaceBrush}"/>
                             </MultiDataTrigger>
                             <MultiDataTrigger>
                                 <MultiDataTrigger.Conditions>
                                     <Condition Binding="{Binding RawPropertyType}" Value="EnumProperty" />
                                     <Condition Binding="{Binding Path=(appsettings:Settings.Interpreter_Colorize)}" Value="True" />
                                 </MultiDataTrigger.Conditions>
-                                <Setter TargetName="PropertyItem_DisplayType" Property="Foreground" Value="#9a7dcc"/>
-                                <Setter TargetName="PropertyItem_Container" Property="Background" Value="#33A972ff"/>
+                                <Setter TargetName="PropertyItem_DisplayType" Property="Foreground" Value="{DynamicResource PropertyEnumTextBrush}"/>
+                                <Setter TargetName="PropertyItem_Container" Property="Background" Value="{DynamicResource PropertyEnumSurfaceBrush}"/>
                             </MultiDataTrigger>
                             <MultiDataTrigger>
                                 <MultiDataTrigger.Conditions>
                                     <Condition Binding="{Binding RawPropertyType}" Value="BioMask4Property" />
                                     <Condition Binding="{Binding Path=(appsettings:Settings.Interpreter_Colorize)}" Value="True" />
                                 </MultiDataTrigger.Conditions>
-                                <Setter TargetName="PropertyItem_DisplayType" Property="Foreground" Value="#9a9999"/>
-                                <Setter TargetName="PropertyItem_Container" Property="Background" Value="#44afaeaf"/>
+                                <Setter TargetName="PropertyItem_DisplayType" Property="Foreground" Value="{DynamicResource PropertyByteTextBrush}"/>
+                                <Setter TargetName="PropertyItem_Container" Property="Background" Value="{DynamicResource PropertyByteSurfaceBrush}"/>
                             </MultiDataTrigger>
                             <MultiDataTrigger>
                                 <MultiDataTrigger.Conditions>
                                     <Condition Binding="{Binding RawPropertyType}" Value="NameProperty" />
                                     <Condition Binding="{Binding Path=(appsettings:Settings.Interpreter_Colorize)}" Value="True" />
                                 </MultiDataTrigger.Conditions>
-                                <Setter TargetName="PropertyItem_DisplayType" Property="Foreground" Value="#8fa3bb"/>
-                                <Setter TargetName="PropertyItem_Container" Property="Background" Value="#44e2edff"/>
+                                <Setter TargetName="PropertyItem_DisplayType" Property="Foreground" Value="{DynamicResource PropertyNameTextBrush}"/>
+                                <Setter TargetName="PropertyItem_Container" Property="Background" Value="{DynamicResource PropertyNameSurfaceBrush}"/>
                             </MultiDataTrigger>
                             <MultiDataTrigger>
                                 <MultiDataTrigger.Conditions>
                                     <Condition Binding="{Binding RawPropertyType}" Value="Unknown" />
                                     <Condition Binding="{Binding Path=(appsettings:Settings.Interpreter_Colorize)}" Value="True" />
                                 </MultiDataTrigger.Conditions>
-                                <Setter TargetName="PropertyItem_DisplayType" Property="Foreground" Value="White"/>
-                                <Setter TargetName="PropertyItem_EditableValue" Property="Foreground" Value="White"/>
-                                <Setter TargetName="PropertyItem_ParsedValue" Property="Foreground" Value="White"/>
-                                <Setter TargetName="PropertyItem_Container" Property="Background" Value="Red"/>
+                                <Setter TargetName="PropertyItem_DisplayType" Property="Foreground" Value="{DynamicResource PropertyUnknownTextBrush}"/>
+                                <Setter TargetName="PropertyItem_EditableValue" Property="Foreground" Value="{DynamicResource PropertyUnknownTextBrush}"/>
+                                <Setter TargetName="PropertyItem_ParsedValue" Property="Foreground" Value="{DynamicResource PropertyUnknownTextBrush}"/>
+                                <Setter TargetName="PropertyItem_Container" Property="Background" Value="{DynamicResource PropertyUnknownSurfaceBrush}"/>
                             </MultiDataTrigger>
                             <MultiDataTrigger>
                                 <MultiDataTrigger.Conditions>
                                     <Condition Binding="{Binding RawPropertyType}" Value="None" />
                                     <Condition Binding="{Binding Path=(appsettings:Settings.Interpreter_Colorize)}" Value="True" />
                                 </MultiDataTrigger.Conditions>
-                                <Setter TargetName="PropertyItem_DisplayType" Property="Foreground" Value="#b08a5a"/>
-                                <Setter TargetName="PropertyItem_Container" Property="Background" Value="#44ffb759"/>
+                                <Setter TargetName="PropertyItem_DisplayType" Property="Foreground" Value="{DynamicResource PropertyNoneTextBrush}"/>
+                                <Setter TargetName="PropertyItem_Container" Property="Background" Value="{DynamicResource PropertyNoneSurfaceBrush}"/>
                             </MultiDataTrigger>
                             <DataTrigger Binding="{Binding IsEditorSelected}" Value="True">
-                                <Setter TargetName="PropertyItem_PrimarySelectionBorder" Property="Background" Value="#004080"/>
-                                <Setter TargetName="PropertyItem_DisplayType" Property="Background" Value="#004080"/>
+                                <Setter TargetName="PropertyItem_PrimarySelectionBorder" Property="Background" Value="{DynamicResource PropertySelectionBrush}"/>
+                                <Setter TargetName="PropertyItem_DisplayType" Property="Background" Value="{DynamicResource PropertySelectionBrush}"/>
                             </DataTrigger>
                             <DataTrigger Binding="{Binding IsLinkedEditorSelected}" Value="True">
-                                <Setter TargetName="PropertyItem_LinkedSelectionBorder" Property="Background" Value="#004080"/>
-                                <Setter TargetName="PropertyItem_LinkedDisplayType" Property="Background" Value="#004080"/>
+                                <Setter TargetName="PropertyItem_LinkedSelectionBorder" Property="Background" Value="{DynamicResource PropertySelectionBrush}"/>
+                                <Setter TargetName="PropertyItem_LinkedDisplayType" Property="Background" Value="{DynamicResource PropertySelectionBrush}"/>
                             </DataTrigger>
                             <DataTrigger Binding="{Binding IsSecondLinkedEditorSelected}" Value="True">
-                                <Setter TargetName="PropertyItem_SecondLinkedSelectionBorder" Property="Background" Value="#004080"/>
-                                <Setter TargetName="PropertyItem_SecondLinkedDisplayType" Property="Background" Value="#004080"/>
+                                <Setter TargetName="PropertyItem_SecondLinkedSelectionBorder" Property="Background" Value="{DynamicResource PropertySelectionBrush}"/>
+                                <Setter TargetName="PropertyItem_SecondLinkedDisplayType" Property="Background" Value="{DynamicResource PropertySelectionBrush}"/>
                             </DataTrigger>
                             <DataTrigger Binding="{Binding ShowNumericInlineEditor}" Value="True">
                                 <Setter TargetName="PropertyItem_PrimaryOverlay" Property="IsHitTestVisible" Value="False"/>

@@ -44,6 +44,35 @@
     <!-- Menu popup brushes for light mode (system default colors) -->
     <SolidColorBrush x:Key="MenuPopupBackgroundBrush" Color="{x:Static SystemColors.MenuColor}"/>
     <SolidColorBrush x:Key="MenuPopupBorderBrush" Color="{x:Static SystemColors.ActiveBorderColor}"/>
+    <SolidColorBrush x:Key="CanvasBackgroundBrush" Color="{x:Static SystemColors.ControlDarkColor}"/>
+
+    <!-- Interpreter property categories retain their established light-theme palette.
+         The dark theme replaces these semantic resources with dark workstation shades. -->
+    <SolidColorBrush x:Key="PropertyObjectSurfaceBrush" Color="#44FFFEC4"/>
+    <SolidColorBrush x:Key="PropertyObjectTextBrush" Color="#FFB0AF7A"/>
+    <SolidColorBrush x:Key="PropertyFloatSurfaceBrush" Color="#2200FFAA"/>
+    <SolidColorBrush x:Key="PropertyFloatTextBrush" Color="#FF66B3A3"/>
+    <SolidColorBrush x:Key="PropertyIntSurfaceBrush" Color="#44FFEAE2"/>
+    <SolidColorBrush x:Key="PropertyIntTextBrush" Color="#FFB0948A"/>
+    <SolidColorBrush x:Key="PropertyStringSurfaceBrush" Color="#3332AAF4"/>
+    <SolidColorBrush x:Key="PropertyStringTextBrush" Color="#FF6699CC"/>
+    <SolidColorBrush x:Key="PropertyArraySurfaceBrush" Color="#44FFE2BA"/>
+    <SolidColorBrush x:Key="PropertyArrayTextBrush" Color="#FF9085A0"/>
+    <SolidColorBrush x:Key="PropertyBoolSurfaceBrush" Color="#44ECFFE2"/>
+    <SolidColorBrush x:Key="PropertyBoolTextBrush" Color="#FF8FAA82"/>
+    <SolidColorBrush x:Key="PropertyStructSurfaceBrush" Color="#44F4BEEA"/>
+    <SolidColorBrush x:Key="PropertyStructTextBrush" Color="#FFA88AA0"/>
+    <SolidColorBrush x:Key="PropertyByteSurfaceBrush" Color="#44AFAEAF"/>
+    <SolidColorBrush x:Key="PropertyByteTextBrush" Color="#FF9A9999"/>
+    <SolidColorBrush x:Key="PropertyEnumSurfaceBrush" Color="#33A972FF"/>
+    <SolidColorBrush x:Key="PropertyEnumTextBrush" Color="#FF9A7DCC"/>
+    <SolidColorBrush x:Key="PropertyNameSurfaceBrush" Color="#44E2EDFF"/>
+    <SolidColorBrush x:Key="PropertyNameTextBrush" Color="#FF8FA3BB"/>
+    <SolidColorBrush x:Key="PropertyNoneSurfaceBrush" Color="#44FFB759"/>
+    <SolidColorBrush x:Key="PropertyNoneTextBrush" Color="#FFB08A5A"/>
+    <SolidColorBrush x:Key="PropertyUnknownSurfaceBrush" Color="Red"/>
+    <SolidColorBrush x:Key="PropertyUnknownTextBrush" Color="White"/>
+    <SolidColorBrush x:Key="PropertySelectionBrush" Color="#FF004080"/>
 
     <!-- ScrollBar RepeatButton for line buttons (arrows) -->
     <Style x:Key="ScrollBarLineButton" TargetType="{x:Type RepeatButton}">

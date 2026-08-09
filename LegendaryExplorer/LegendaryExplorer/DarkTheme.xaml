@@ -4,89 +4,19 @@ xmlns:xctk="http://schemas.xceed.com/wpf/xaml/toolkit"
 xmlns:xctkthemes="clr-namespace:Xceed.Wpf.Toolkit.Themes;assembly=DotNetProjects.Wpf.Extended.Toolkit"
 xmlns:sharedUi="clr-namespace:LegendaryExplorer.SharedUI"
 xmlns:controls="clr-namespace:LegendaryExplorer.SharedUI.Controls">
-    
-    <!-- 
-    Dark Theme for Legendary Explorer
-    This theme overrides system colors to provide a dark, eye-friendly interface.
-    Colors are designed to reduce eye strain while maintaining good contrast and readability.
-    -->
-    
-    <!-- Main background colors - dark grays that are easy on the eyes -->
-    <Color x:Key="DarkBackground">#FF1E1E1E</Color>
-    <Color x:Key="DarkBackgroundAlt">#FF252526</Color>
-    <Color x:Key="DarkControl">#FF2D2D30</Color>
-    <Color x:Key="DarkControlLight">#FF3E3E42</Color>
-    <Color x:Key="DarkControlDark">#FF1B1B1C</Color>
-    
-    <!-- Text colors - light enough for good contrast but not pure white -->
-    <Color x:Key="DarkText">#FFE0E0E0</Color>
-    <Color x:Key="DarkTextSecondary">#FFB0B0B0</Color>
-    <Color x:Key="DarkTextDisabled">#FF6D6D6D</Color>
-    
-    <!-- Accent colors -->
-    <Color x:Key="DarkHighlight">#FF007ACC</Color>
-    <Color x:Key="DarkHighlightText">#FFFFFFFF</Color>
-    <Color x:Key="DarkBorder">#FF3F3F46</Color>
-    <Color x:Key="DarkBorderLight">#FF555555</Color>
-    
-    <!-- Selection colors -->
-    <Color x:Key="DarkSelection">#FF264F78</Color>
-    <Color x:Key="DarkSelectionInactive">#FF3D3D40</Color>
-    
-    <!-- Override System Colors for comprehensive dark mode support -->
-    
-    <!-- System Color Keys (Colors) - Required for Xceed toolkit components that bind to ColorKey instead of BrushKey -->
-    <Color x:Key="{x:Static SystemColors.WindowColorKey}">#FF1E1E1E</Color>
-    <Color x:Key="{x:Static SystemColors.ControlColorKey}">#FF2D2D30</Color>
-    <Color x:Key="{x:Static SystemColors.ControlLightColorKey}">#FF3E3E42</Color>
-    <Color x:Key="{x:Static SystemColors.ControlDarkColorKey}">#FF1B1B1C</Color>
-    <Color x:Key="{x:Static SystemColors.ActiveBorderColorKey}">#FF3F3F46</Color>
-    <Color x:Key="{x:Static SystemColors.WindowTextColorKey}">#FFE0E0E0</Color>
-    <Color x:Key="{x:Static SystemColors.ControlTextColorKey}">#FFE0E0E0</Color>
-    <Color x:Key="{x:Static SystemColors.GrayTextColorKey}">#FF6D6D6D</Color>
-    <Color x:Key="{x:Static SystemColors.HighlightColorKey}">#FF007ACC</Color>
-    <Color x:Key="{x:Static SystemColors.HighlightTextColorKey}">#FFFFFFFF</Color>
-    
-    <!-- Window and control backgrounds -->
-    <SolidColorBrush x:Key="{x:Static SystemColors.WindowBrushKey}" Color="{StaticResource DarkBackground}"/>
-    <SolidColorBrush x:Key="{x:Static SystemColors.ControlBrushKey}" Color="{StaticResource DarkControl}"/>
-    <SolidColorBrush x:Key="{x:Static SystemColors.ControlLightBrushKey}" Color="{StaticResource DarkControlLight}"/>
-    <SolidColorBrush x:Key="{x:Static SystemColors.ControlLightLightBrushKey}" Color="{StaticResource DarkControlLight}"/>
-    <SolidColorBrush x:Key="{x:Static SystemColors.ControlDarkBrushKey}" Color="{StaticResource DarkControlDark}"/>
-    <SolidColorBrush x:Key="{x:Static SystemColors.ControlDarkDarkBrushKey}" Color="{StaticResource DarkControlDark}"/>
-    <SolidColorBrush x:Key="{x:Static SystemColors.MenuBrushKey}" Color="{StaticResource DarkControl}"/>
-    <SolidColorBrush x:Key="{x:Static SystemColors.MenuBarBrushKey}" Color="{StaticResource DarkControl}"/>
-    <SolidColorBrush x:Key="{x:Static SystemColors.MenuHighlightBrushKey}" Color="{StaticResource DarkHighlight}"/>
-    
-    <!-- Text colors -->
-    <SolidColorBrush x:Key="{x:Static SystemColors.WindowTextBrushKey}" Color="{StaticResource DarkText}"/>
-    <SolidColorBrush x:Key="{x:Static SystemColors.ControlTextBrushKey}" Color="{StaticResource DarkText}"/>
-    <SolidColorBrush x:Key="{x:Static SystemColors.MenuTextBrushKey}" Color="{StaticResource DarkText}"/>
-    <SolidColorBrush x:Key="{x:Static SystemColors.InfoTextBrushKey}" Color="{StaticResource DarkText}"/>
-    <SolidColorBrush x:Key="{x:Static SystemColors.GrayTextBrushKey}" Color="{StaticResource DarkTextDisabled}"/>
-    
-    
-    <!-- Selection and highlight -->
-    <SolidColorBrush x:Key="{x:Static SystemColors.HighlightBrushKey}" Color="{StaticResource DarkHighlight}"/>
-    <SolidColorBrush x:Key="{x:Static SystemColors.HighlightTextBrushKey}" Color="{StaticResource DarkHighlightText}"/>
-    <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightBrushKey}" Color="{StaticResource DarkSelectionInactive}"/>
-    <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightTextBrushKey}" Color="{StaticResource DarkText}"/>
-    <SolidColorBrush x:Key="{x:Static SystemColors.HotTrackBrushKey}" Color="#FF3794FF"/>
-    
-    <!-- Borders -->
-    <SolidColorBrush x:Key="{x:Static SystemColors.ActiveBorderBrushKey}" Color="{StaticResource DarkBorder}"/>
-    <SolidColorBrush x:Key="{x:Static SystemColors.InactiveBorderBrushKey}" Color="{StaticResource DarkBorder}"/>
-    
-    <!-- Info/tooltip backgrounds -->
-    <SolidColorBrush x:Key="{x:Static SystemColors.InfoBrushKey}" Color="{StaticResource DarkBackgroundAlt}"/>
-    
-    <!-- Scrollbar -->
-    <SolidColorBrush x:Key="{x:Static SystemColors.ScrollBarBrushKey}" Color="{StaticResource DarkControl}"/>
-    
-    <!-- Menu popup background brush - dedicated resource for use in Popup elements -->
-    <!-- Popups exist outside the visual tree, so we need a StaticResource reference -->
-    <SolidColorBrush x:Key="MenuPopupBackgroundBrush" Color="{StaticResource DarkControl}"/>
-    <SolidColorBrush x:Key="MenuPopupBorderBrush" Color="{StaticResource DarkBorder}"/>
+    <ResourceDictionary.MergedDictionaries>
+        <ResourceDictionary Source="/LegendaryExplorer;component/Themes/AudemusTypography.xaml"/>
+        <ResourceDictionary Source="/LegendaryExplorer;component/Themes/AudemusDark.Tokens.xaml"/>
+        <ResourceDictionary Source="/LegendaryExplorer;component/Themes/AudemusDark.Primitives.xaml"/>
+        <ResourceDictionary Source="/LegendaryExplorer;component/Themes/AudemusDark.Controls.xaml"/>
+        <ResourceDictionary Source="/LegendaryExplorer;component/Themes/AudemusDark.DataGrid.xaml"/>
+        <ResourceDictionary Source="/LegendaryExplorer;component/Themes/AudemusDark.ToolWindows.xaml"/>
+        <ResourceDictionary Source="/LegendaryExplorer;component/Themes/AudemusDark.LegendaryExplorerAdapters.xaml"/>
+        <ResourceDictionary Source="/LegendaryExplorer;component/Themes/LegendaryDark.Tokens.xaml"/>
+    </ResourceDictionary.MergedDictionaries>
+
+    <!-- Existing implicit templates remain in this compatibility layer until each complex
+         control family has been regression-tested against the explicit styles above. -->
     
     
     <!-- Additional application-specific overrides -->
@@ -99,32 +29,30 @@ xmlns:controls="clr-namespace:LegendaryExplorer.SharedUI.Controls">
     
     <!-- Menu styling -->
     <Style TargetType="{x:Type Menu}">
-        <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.MenuBrushKey}}"/>
-        <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.MenuTextBrushKey}}"/>
-        <Setter Property="FontFamily" Value="{DynamicResource {x:Static SystemFonts.MenuFontFamilyKey}}"/>
-        <Setter Property="FontSize" Value="{DynamicResource {x:Static SystemFonts.MenuFontSizeKey}}"/>
-        <Setter Property="FontStyle" Value="{DynamicResource {x:Static SystemFonts.MenuFontStyleKey}}"/>
-        <Setter Property="FontWeight" Value="{DynamicResource {x:Static SystemFonts.MenuFontWeightKey}}"/>
+        <Setter Property="Background" Value="{DynamicResource ToolbarBackgroundBrush}"/>
+        <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
+        <Setter Property="FontFamily" Value="{StaticResource AudemusUiFont}"/>
+        <Setter Property="FontSize" Value="{StaticResource AudemusBodyFontSize}"/>
     </Style>
     
     <!-- MenuItem styling with template to fix submenu popup background -->
     <Style TargetType="{x:Type MenuItem}">
         <Setter Property="OverridesDefaultStyle" Value="True"/>
         <Setter Property="Background" Value="Transparent"/>
-        <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.MenuTextBrushKey}}"/>
-        <Setter Property="FontFamily" Value="{DynamicResource {x:Static SystemFonts.MenuFontFamilyKey}}"/>
-        <Setter Property="FontSize" Value="{DynamicResource {x:Static SystemFonts.MenuFontSizeKey}}"/>
-        <Setter Property="FontStyle" Value="{DynamicResource {x:Static SystemFonts.MenuFontStyleKey}}"/>
-        <Setter Property="FontWeight" Value="{DynamicResource {x:Static SystemFonts.MenuFontWeightKey}}"/>
-        <Setter Property="BorderThickness" Value="1"/>
-        <Setter Property="Padding" Value="6,3"/>
+        <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
+        <Setter Property="FontFamily" Value="{StaticResource AudemusUiFont}"/>
+        <Setter Property="FontSize" Value="{StaticResource AudemusBodyFontSize}"/>
+        <Setter Property="BorderBrush" Value="Transparent"/>
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="Padding" Value="11,6"/>
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="{x:Type MenuItem}">
                     <Border x:Name="Border" 
                             Background="{TemplateBinding Background}" 
-                            BorderBrush="{TemplateBinding BorderBrush}"
-                            BorderThickness="{TemplateBinding BorderThickness}"
+                             BorderBrush="{TemplateBinding BorderBrush}"
+                             BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="2"
                             SnapsToDevicePixels="True">
                         <Grid x:Name="MainGrid">
                             <Grid.ColumnDefinitions>
@@ -152,7 +80,7 @@ xmlns:controls="clr-namespace:LegendaryExplorer.SharedUI.Controls">
                                     HorizontalAlignment="Center">
                                 <Path x:Name="Glyph"
                                       Width="10" Height="10"
-                                      Fill="{DynamicResource {x:Static SystemColors.MenuTextBrushKey}}"
+                                      Fill="{DynamicResource AccentBrush}"
                                       FlowDirection="LeftToRight"
                                       Data="M 0,5.1 L 1.7,5.2 L 3.4,7.1 L 8,0.4 L 9.2,0 L 3.3,10.8 Z"/>
                             </Border>
@@ -171,14 +99,14 @@ xmlns:controls="clr-namespace:LegendaryExplorer.SharedUI.Controls">
                                        Text="{TemplateBinding InputGestureText}"
                                        Margin="20,0,0,0"
                                        VerticalAlignment="Center"
-                                       Foreground="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}"/>
+                                       Foreground="{DynamicResource MutedTextBrush}"/>
 
                             <!-- Submenu arrow -->
                             <Path x:Name="SubMenuArrow"
                                   Grid.Column="3"
                                   VerticalAlignment="Center"
                                   HorizontalAlignment="Center"
-                                  Fill="{DynamicResource {x:Static SystemColors.MenuTextBrushKey}}"
+                                  Fill="{DynamicResource MutedTextBrush}"
                                   Data="M 0,0 L 0,7 L 4,3.5 Z"
                                   Visibility="Collapsed"/>
 
@@ -186,16 +114,17 @@ xmlns:controls="clr-namespace:LegendaryExplorer.SharedUI.Controls">
 
                             <!-- Submenu Popup -->
                             <Popup x:Name="PART_Popup"
-                                   AllowsTransparency="False"
+                                   AllowsTransparency="True"
                                    Focusable="False"
                                    IsOpen="{Binding IsSubmenuOpen, RelativeSource={RelativeSource TemplatedParent}}"
                                    Placement="Right"
                                    HorizontalOffset="-2"
-                                   PopupAnimation="None">
+                                   PopupAnimation="Fade">
                                 <Border x:Name="SubMenuBorder"
-                                        Background="#FF2D2D30"
-                                        BorderBrush="#FF3F3F46"
+                                        Background="{DynamicResource MenuPopupBackgroundBrush}"
+                                        BorderBrush="{DynamicResource MenuPopupBorderBrush}"
                                         BorderThickness="1"
+                                        CornerRadius="3"
                                         Padding="2">
                                     <ScrollViewer x:Name="SubMenuScrollViewer"
                                                   CanContentScroll="True"
@@ -223,7 +152,7 @@ xmlns:controls="clr-namespace:LegendaryExplorer.SharedUI.Controls">
                             <Setter TargetName="Icon" Property="Visibility" Value="Collapsed"/>
                             <Setter TargetName="GlyphPanel" Property="Visibility" Value="Collapsed"/>
                             <Setter TargetName="PART_Popup" Property="Placement" Value="Bottom"/>
-                            <Setter TargetName="HeaderHost" Property="Margin" Value="6,2,6,3"/>
+                            <Setter TargetName="HeaderHost" Property="Margin" Value="8,4"/>
                             <Setter Property="Grid.IsSharedSizeScope" Value="True"/>
                             <Setter TargetName="SubMenuBorder" Property="Padding" Value="2"/>
                         </Trigger>
@@ -236,7 +165,7 @@ xmlns:controls="clr-namespace:LegendaryExplorer.SharedUI.Controls">
                             <Setter TargetName="SubMenuArrow" Property="Visibility" Value="Collapsed"/>
                             <Setter TargetName="Icon" Property="Visibility" Value="Collapsed"/>
                             <Setter TargetName="GlyphPanel" Property="Visibility" Value="Collapsed"/>
-                            <Setter TargetName="HeaderHost" Property="Margin" Value="6,2,6,3"/>
+                            <Setter TargetName="HeaderHost" Property="Margin" Value="8,4"/>
                         </Trigger>
                         <!-- SubmenuHeader: submenu items with nested submenus -->
                         <Trigger Property="Role" Value="SubmenuHeader">
@@ -261,13 +190,17 @@ xmlns:controls="clr-namespace:LegendaryExplorer.SharedUI.Controls">
                         </Trigger>
                         <!-- Highlighting -->
                         <Trigger Property="IsHighlighted" Value="True">
-                            <Setter TargetName="Border" Property="Background" Value="{DynamicResource {x:Static SystemColors.MenuHighlightBrushKey}}"/>
-                            <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.HighlightTextBrushKey}}"/>
+                            <Setter TargetName="Border" Property="Background" Value="{DynamicResource HoverBackgroundBrush}"/>
+                            <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
+                        </Trigger>
+                        <Trigger Property="IsSubmenuOpen" Value="True">
+                            <Setter TargetName="Border" Property="Background" Value="{DynamicResource PressedBackgroundBrush}"/>
                         </Trigger>
                         <!-- Disabled state -->
                         <Trigger Property="IsEnabled" Value="False">
-                            <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}"/>
-                            <Setter TargetName="Glyph" Property="Fill" Value="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}"/>
+                            <Setter Property="Foreground" Value="{DynamicResource DisabledTextBrush}"/>
+                            <Setter TargetName="Glyph" Property="Fill" Value="{DynamicResource DisabledTextBrush}"/>
+                            <Setter TargetName="SubMenuArrow" Property="Fill" Value="{DynamicResource DisabledTextBrush}"/>
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
@@ -279,13 +212,11 @@ xmlns:controls="clr-namespace:LegendaryExplorer.SharedUI.Controls">
     <!-- ContextMenu styling with template -->
     <Style TargetType="{x:Type ContextMenu}">
         <Setter Property="OverridesDefaultStyle" Value="True"/>
-        <Setter Property="Background" Value="#FF2D2D30"/>
-        <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.MenuTextBrushKey}}"/>
-        <Setter Property="FontFamily" Value="{DynamicResource {x:Static SystemFonts.MenuFontFamilyKey}}"/>
-        <Setter Property="FontSize" Value="{DynamicResource {x:Static SystemFonts.MenuFontSizeKey}}"/>
-        <Setter Property="FontStyle" Value="{DynamicResource {x:Static SystemFonts.MenuFontStyleKey}}"/>
-        <Setter Property="FontWeight" Value="{DynamicResource {x:Static SystemFonts.MenuFontWeightKey}}"/>
-        <Setter Property="BorderBrush" Value="#FF3F3F46"/>
+        <Setter Property="Background" Value="{DynamicResource MenuPopupBackgroundBrush}"/>
+        <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
+        <Setter Property="FontFamily" Value="{StaticResource AudemusUiFont}"/>
+        <Setter Property="FontSize" Value="{StaticResource AudemusBodyFontSize}"/>
+        <Setter Property="BorderBrush" Value="{DynamicResource MenuPopupBorderBrush}"/>
         <Setter Property="BorderThickness" Value="1"/>
         <Setter Property="Padding" Value="2"/>
         <Setter Property="Grid.IsSharedSizeScope" Value="True"/>
@@ -294,9 +225,10 @@ xmlns:controls="clr-namespace:LegendaryExplorer.SharedUI.Controls">
             <Setter.Value>
                 <ControlTemplate TargetType="{x:Type ContextMenu}">
                     <Border x:Name="Border"
-                            Background="#FF2D2D30"
-                            BorderBrush="#FF3F3F46"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
                             BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="3"
                             Padding="{TemplateBinding Padding}"
                             SnapsToDevicePixels="True">
                         <ItemsPresenter KeyboardNavigation.DirectionalNavigation="Cycle"
@@ -1014,18 +946,21 @@ xmlns:controls="clr-namespace:LegendaryExplorer.SharedUI.Controls">
         <Grid>
             <Grid.ColumnDefinitions>
                 <ColumnDefinition />
-                <ColumnDefinition Width="20" />
+                <ColumnDefinition Width="28" />
             </Grid.ColumnDefinitions>
-            <Border x:Name="Border" 
+            <Border x:Name="Shell"
                     Grid.ColumnSpan="2"
-                    Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"
-                    BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"
-                    BorderThickness="1" />
-            <Border Grid.Column="0"
-                    Margin="1" 
-                    Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}" 
-                    BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"
-                    BorderThickness="0,0,1,0" />
+                    Background="{DynamicResource FieldBackgroundBrush}"
+                    BorderBrush="{TemplateBinding BorderBrush}"
+                    BorderThickness="1"
+                    CornerRadius="3" />
+            <Border x:Name="ArrowZone"
+                    Grid.Column="1"
+                    Margin="0,1,1,1"
+                    Background="Transparent"
+                    BorderBrush="{DynamicResource BorderBrush}"
+                    BorderThickness="1,0,0,0"
+                    CornerRadius="0,2,2,0" />
             <Path x:Name="Arrow"
                   Grid.Column="1"     
                   Fill="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}"
@@ -1035,11 +970,17 @@ xmlns:controls="clr-namespace:LegendaryExplorer.SharedUI.Controls">
         </Grid>
         <ControlTemplate.Triggers>
             <Trigger Property="IsMouseOver" Value="True">
-                <Setter TargetName="Border" Property="Background" Value="{DynamicResource {x:Static SystemColors.ControlLightBrushKey}}"/>
+                <Setter TargetName="ArrowZone" Property="Background" Value="{DynamicResource HoverBackgroundBrush}"/>
+            </Trigger>
+            <Trigger Property="IsPressed" Value="True">
+                <Setter TargetName="ArrowZone" Property="Background" Value="{DynamicResource PressedBackgroundBrush}"/>
+            </Trigger>
+            <Trigger Property="IsChecked" Value="True">
+                <Setter TargetName="ArrowZone" Property="Background" Value="{DynamicResource PressedBackgroundBrush}"/>
             </Trigger>
             <Trigger Property="IsEnabled" Value="False">
-                <Setter TargetName="Border" Property="Background" Value="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"/>
-                <Setter TargetName="Arrow" Property="Fill" Value="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}"/>
+                <Setter TargetName="Shell" Property="Background" Value="{DynamicResource RecessedBackgroundBrush}"/>
+                <Setter TargetName="Arrow" Property="Fill" Value="{DynamicResource DisabledTextBrush}"/>
             </Trigger>
         </ControlTemplate.Triggers>
     </ControlTemplate>
@@ -1059,9 +1000,13 @@ xmlns:controls="clr-namespace:LegendaryExplorer.SharedUI.Controls">
         <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Auto"/>
         <Setter Property="ScrollViewer.VerticalScrollBarVisibility" Value="Auto"/>
         <Setter Property="ScrollViewer.CanContentScroll" Value="True"/>
-        <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"/>
+        <Setter Property="Background" Value="{DynamicResource FieldBackgroundBrush}"/>
         <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}"/>
         <Setter Property="BorderBrush" Value="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="MaxDropDownHeight" Value="320"/>
+        <Setter Property="MinHeight" Value="24"/>
+        <Setter Property="FocusVisualStyle" Value="{StaticResource AudemusFocusVisualStyle}"/>
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="{x:Type ComboBox}">
@@ -1069,6 +1014,8 @@ xmlns:controls="clr-namespace:LegendaryExplorer.SharedUI.Controls">
                         <ToggleButton Name="ToggleButton" 
                                       Template="{StaticResource ComboBoxToggleButton}" 
                                       Grid.Column="2" 
+                                      BorderBrush="{TemplateBinding BorderBrush}"
+                                      BorderThickness="{TemplateBinding BorderThickness}"
                                       Focusable="False"
                                       IsChecked="{Binding Path=IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}"
                                       ClickMode="Press"/>
@@ -1077,37 +1024,38 @@ xmlns:controls="clr-namespace:LegendaryExplorer.SharedUI.Controls">
                                           Content="{TemplateBinding SelectionBoxItem}"
                                           ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
                                           ContentTemplateSelector="{TemplateBinding ItemTemplateSelector}"
-                                          Margin="3,3,23,3"
+                                          Margin="6,2,34,2"
                                           VerticalAlignment="Center"
                                           HorizontalAlignment="Left" />
                         <TextBox x:Name="PART_EditableTextBox"
                                  Style="{x:Null}" 
                                  Template="{StaticResource ComboBoxTextBox}" 
-                                 HorizontalAlignment="Left" 
+                                 HorizontalAlignment="Stretch"
                                  VerticalAlignment="Center" 
-                                 Margin="3,3,23,3"
+                                 Margin="6,2,34,2"
                                  Focusable="True" 
-                                 Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"
+                                  Background="{DynamicResource FieldBackgroundBrush}"
                                  Foreground="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}"
                                  CaretBrush="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}"
                                  ContextMenu="{DynamicResource DarkTextBoxContextMenu}"
                                  Visibility="Hidden"
                                  IsReadOnly="{TemplateBinding IsReadOnly}"/>
-                        <Popup Name="Popup"
+                        <Popup x:Name="PART_Popup"
                                Placement="Bottom"
                                IsOpen="{TemplateBinding IsDropDownOpen}"
                                AllowsTransparency="True" 
                                Focusable="False"
-                               PopupAnimation="Slide">
+                               PopupAnimation="Fade">
                             <Grid Name="DropDown"
                                   SnapsToDevicePixels="True"                
                                   MinWidth="{TemplateBinding ActualWidth}"
                                   MaxHeight="{TemplateBinding MaxDropDownHeight}">
                                 <Border x:Name="DropDownBorder"
-                                        Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"
+                                        Background="{DynamicResource PanelRaisedBrush}"
                                         BorderThickness="1"
-                                        BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"/>
-                                <ScrollViewer Margin="4,6,4,6" SnapsToDevicePixels="True" CanContentScroll="True">
+                                        BorderBrush="{DynamicResource PopupBorderBrush}"
+                                        CornerRadius="3"/>
+                                <ScrollViewer Margin="3" SnapsToDevicePixels="True" CanContentScroll="True">
                                     <ItemsPresenter KeyboardNavigation.DirectionalNavigation="Contained" />
                                 </ScrollViewer>
                             </Grid>
@@ -1123,6 +1071,9 @@ xmlns:controls="clr-namespace:LegendaryExplorer.SharedUI.Controls">
                         <Trigger Property="IsGrouping" Value="True">
                             <Setter Property="ScrollViewer.CanContentScroll" Value="False"/>
                         </Trigger>
+                        <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                            <Setter TargetName="ToggleButton" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
+                        </Trigger>
                         <Trigger Property="IsEditable" Value="True">
                             <Setter Property="IsTabStop" Value="False"/>
                             <Setter TargetName="PART_EditableTextBox" Property="Visibility" Value="Visible"/>
@@ -1135,28 +1086,47 @@ xmlns:controls="clr-namespace:LegendaryExplorer.SharedUI.Controls">
     </Style>
 
     <Style TargetType="{x:Type ComboBoxItem}">
-        <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"/>
-        <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}"/>
-        <Style.Triggers>
-            <Trigger Property="IsHighlighted" Value="True">
-                <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}"/>
-                <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.HighlightTextBrushKey}}"/>
-            </Trigger>
-            <Trigger Property="IsSelected" Value="True">
-                <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}"/>
-                <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.HighlightTextBrushKey}}"/>
-            </Trigger>
-        </Style.Triggers>
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
+        <Setter Property="Padding" Value="8,4"/>
+        <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type ComboBoxItem}">
+                    <Border x:Name="ItemBorder"
+                            Margin="0,1"
+                            Padding="{TemplateBinding Padding}"
+                            Background="{TemplateBinding Background}"
+                            CornerRadius="2"
+                            SnapsToDevicePixels="True">
+                        <ContentPresenter VerticalAlignment="Center"
+                                          HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsHighlighted" Value="True">
+                            <Setter TargetName="ItemBorder" Property="Background" Value="{DynamicResource HoverBackgroundBrush}"/>
+                        </Trigger>
+                        <Trigger Property="IsSelected" Value="True">
+                            <Setter TargetName="ItemBorder" Property="Background" Value="{DynamicResource SelectedBackgroundBrush}"/>
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Foreground" Value="{DynamicResource DisabledTextBrush}"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
     </Style>
     
     <!-- Button styling with custom template to properly apply dark theme -->
     <Style TargetType="{x:Type Button}">
-        <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"/>
+        <Setter Property="Background" Value="{DynamicResource PanelRaisedBrush}"/>
         <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
         <Setter Property="BorderBrush" Value="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"/>
         <Setter Property="BorderThickness" Value="1"/>
-        <Setter Property="Padding" Value="4,1"/>
+        <Setter Property="Padding" Value="6,2"/>
         <Setter Property="SnapsToDevicePixels" Value="True"/>
+        <Setter Property="FocusVisualStyle" Value="{StaticResource AudemusFocusVisualStyle}"/>
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="{x:Type Button}">
@@ -1164,6 +1134,7 @@ xmlns:controls="clr-namespace:LegendaryExplorer.SharedUI.Controls">
                             Background="{TemplateBinding Background}"
                             BorderBrush="{TemplateBinding BorderBrush}"
                             BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="3"
                             SnapsToDevicePixels="True">
                         <ContentPresenter x:Name="contentPresenter"
                                           Focusable="False"
@@ -1175,15 +1146,18 @@ xmlns:controls="clr-namespace:LegendaryExplorer.SharedUI.Controls">
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsDefaulted" Value="True">
-                            <Setter TargetName="border" Property="BorderBrush" Value="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}"/>
+                            <Setter TargetName="border" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
                         </Trigger>
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter TargetName="border" Property="Background" Value="{DynamicResource {x:Static SystemColors.ControlLightBrushKey}}"/>
-                            <Setter TargetName="border" Property="BorderBrush" Value="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}"/>
+                            <Setter TargetName="border" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
+                        </Trigger>
+                        <Trigger Property="IsKeyboardFocused" Value="True">
+                            <Setter TargetName="border" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
                         </Trigger>
                         <Trigger Property="IsPressed" Value="True">
                             <Setter TargetName="border" Property="Background" Value="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}"/>
-                            <Setter TargetName="border" Property="BorderBrush" Value="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}"/>
+                            <Setter TargetName="border" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
                             <Setter TargetName="border" Property="Background" Value="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}"/>
@@ -1198,11 +1172,11 @@ xmlns:controls="clr-namespace:LegendaryExplorer.SharedUI.Controls">
     
     <!-- ToggleButton styling -->
     <Style TargetType="{x:Type ToggleButton}">
-        <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"/>
+        <Setter Property="Background" Value="{DynamicResource PanelRaisedBrush}"/>
         <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
         <Setter Property="BorderBrush" Value="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"/>
         <Setter Property="BorderThickness" Value="1"/>
-        <Setter Property="Padding" Value="4,1"/>
+        <Setter Property="Padding" Value="6,2"/>
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="{x:Type ToggleButton}">
@@ -1243,7 +1217,7 @@ xmlns:controls="clr-namespace:LegendaryExplorer.SharedUI.Controls">
     <!-- CheckBox styling with full template for dark mode checkmark visibility -->
     <Style TargetType="{x:Type CheckBox}">
         <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
-        <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"/>
+        <Setter Property="Background" Value="{DynamicResource FieldBackgroundBrush}"/>
         <Setter Property="BorderBrush" Value="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"/>
         <Setter Property="BorderThickness" Value="1"/>
         <Setter Property="SnapsToDevicePixels" Value="True"/>
@@ -1359,7 +1333,6 @@ xmlns:controls="clr-namespace:LegendaryExplorer.SharedUI.Controls">
     </Style>
     
     <!-- ToolBox accent color - used for sequence/dialogue editor toolboxes -->
-    <SolidColorBrush x:Key="ToolBoxAccentBrush" Color="#303234"/>
 
     <!-- Icon foreground color - used for FontAwesome icons in tool buttons -->
     <SolidColorBrush x:Key="IconForegroundBrush" Color="White"/>
@@ -1550,11 +1523,13 @@ xmlns:controls="clr-namespace:LegendaryExplorer.SharedUI.Controls">
     <!-- Label styling -->
     <Style TargetType="{x:Type Label}">
         <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
+        <Setter Property="FontFamily" Value="{StaticResource AudemusUiFont}"/>
     </Style>
     
     <!-- TextBlock styling (base style, won't override explicit styles) -->
     <Style TargetType="{x:Type TextBlock}">
         <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
+        <Setter Property="FontFamily" Value="{StaticResource AudemusUiFont}"/>
     </Style>
     
     <!-- ToolTip styling -->
@@ -1589,14 +1564,14 @@ xmlns:controls="clr-namespace:LegendaryExplorer.SharedUI.Controls">
 
     <!-- TextBox styling with full template to ensure dark theme applies -->
     <Style TargetType="{x:Type TextBox}">
-        <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"/>
+        <Setter Property="Background" Value="{DynamicResource FieldBackgroundBrush}"/>
         <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}"/>
         <Setter Property="BorderBrush" Value="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"/>
         <Setter Property="CaretBrush" Value="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}"/>
         <Setter Property="SelectionBrush" Value="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}"/>
         <Setter Property="ContextMenu" Value="{DynamicResource DarkTextBoxContextMenu}"/>
         <Setter Property="BorderThickness" Value="1"/>
-        <Setter Property="Padding" Value="2"/>
+        <Setter Property="Padding" Value="4,2"/>
         <Setter Property="AllowDrop" Value="True"/>
         <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
         <Setter Property="ScrollViewer.PanningMode" Value="VerticalFirst"/>
@@ -1608,6 +1583,7 @@ xmlns:controls="clr-namespace:LegendaryExplorer.SharedUI.Controls">
                             Background="{TemplateBinding Background}"
                             BorderBrush="{TemplateBinding BorderBrush}"
                             BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="2"
                             SnapsToDevicePixels="True">
                         <ScrollViewer x:Name="PART_ContentHost"
                                       Focusable="False"
@@ -1621,10 +1597,17 @@ xmlns:controls="clr-namespace:LegendaryExplorer.SharedUI.Controls">
                             <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}"/>
                         </Trigger>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="border" Property="BorderBrush" Value="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}"/>
+                            <Setter TargetName="border" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
                         </Trigger>
                         <Trigger Property="IsKeyboardFocused" Value="True">
-                            <Setter TargetName="border" Property="BorderBrush" Value="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}"/>
+                            <Setter TargetName="border" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
+                        </Trigger>
+                        <Trigger Property="IsReadOnly" Value="True">
+                            <Setter TargetName="border" Property="Background" Value="{DynamicResource RecessedBackgroundBrush}"/>
+                            <Setter Property="Foreground" Value="{DynamicResource MutedTextBrush}"/>
+                        </Trigger>
+                        <Trigger Property="Validation.HasError" Value="True">
+                            <Setter TargetName="border" Property="BorderBrush" Value="{DynamicResource DangerBrush}"/>
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
@@ -1824,16 +1807,16 @@ xmlns:controls="clr-namespace:LegendaryExplorer.SharedUI.Controls">
             <Setter.Value>
                 <ControlTemplate TargetType="{x:Type Thumb}">
                     <Border x:Name="ThumbBorder"
-                            Background="{DynamicResource {x:Static SystemColors.ControlLightBrushKey}}"
+                            Background="{DynamicResource PopupBorderBrush}"
                             BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"
                             BorderThickness="0"
-                            CornerRadius="0"/>
+                            CornerRadius="5"/>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="ThumbBorder" Property="Background" Value="#FF686868"/>
+                            <Setter TargetName="ThumbBorder" Property="Background" Value="{DynamicResource MutedTextBrush}"/>
                         </Trigger>
                         <Trigger Property="IsDragging" Value="True">
-                            <Setter TargetName="ThumbBorder" Property="Background" Value="#FF9E9E9E"/>
+                            <Setter TargetName="ThumbBorder" Property="Background" Value="{DynamicResource AccentBrush}"/>
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
@@ -1893,12 +1876,12 @@ xmlns:controls="clr-namespace:LegendaryExplorer.SharedUI.Controls">
     <ControlTemplate x:Key="VerticalScrollBar" TargetType="{x:Type ScrollBar}">
         <Grid>
             <Grid.RowDefinitions>
-                <RowDefinition MaxHeight="17"/>
+                <RowDefinition Height="0"/>
                 <RowDefinition Height="0.00001*"/>
-                <RowDefinition MaxHeight="17"/>
+                <RowDefinition Height="0"/>
             </Grid.RowDefinitions>
             <Border Grid.RowSpan="3"
-                    Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"/>
+                    Background="{DynamicResource RecessedBackgroundBrush}"/>
             <RepeatButton Grid.Row="0"
                           Style="{StaticResource ScrollBarLineButton}"
                           Height="17"
@@ -1932,12 +1915,12 @@ xmlns:controls="clr-namespace:LegendaryExplorer.SharedUI.Controls">
     <ControlTemplate x:Key="HorizontalScrollBar" TargetType="{x:Type ScrollBar}">
         <Grid>
             <Grid.ColumnDefinitions>
-                <ColumnDefinition MaxWidth="17"/>
+                <ColumnDefinition Width="0"/>
                 <ColumnDefinition Width="0.00001*"/>
-                <ColumnDefinition MaxWidth="17"/>
+                <ColumnDefinition Width="0"/>
             </Grid.ColumnDefinitions>
             <Border Grid.ColumnSpan="3"
-                    Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"/>
+                    Background="{DynamicResource RecessedBackgroundBrush}"/>
             <RepeatButton Grid.Column="0"
                           Style="{StaticResource ScrollBarLineButton}"
                           Width="17"
@@ -1974,11 +1957,11 @@ xmlns:controls="clr-namespace:LegendaryExplorer.SharedUI.Controls">
         <Style.Triggers>
             <Trigger Property="Orientation" Value="Horizontal">
                 <Setter Property="Width" Value="Auto"/>
-                <Setter Property="Height" Value="17"/>
+                <Setter Property="Height" Value="12"/>
                 <Setter Property="Template" Value="{StaticResource HorizontalScrollBar}"/>
             </Trigger>
             <Trigger Property="Orientation" Value="Vertical">
-                <Setter Property="Width" Value="17"/>
+                <Setter Property="Width" Value="12"/>
                 <Setter Property="Height" Value="Auto"/>
                 <Setter Property="Template" Value="{StaticResource VerticalScrollBar}"/>
             </Trigger>

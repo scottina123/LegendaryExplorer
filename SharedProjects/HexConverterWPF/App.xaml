@@ -4,61 +4,25 @@
              xmlns:local="clr-namespace:HexConverter"
              StartupUri="MainWindow.xaml">
     <Application.Resources>
-        <Color x:Key="DarkBackground">#FF1E1E1E</Color>
-        <Color x:Key="DarkBackgroundAlt">#FF252526</Color>
-        <Color x:Key="DarkControl">#FF2D2D30</Color>
-        <Color x:Key="DarkControlLight">#FF3E3E42</Color>
-        <Color x:Key="DarkControlDark">#FF1B1B1C</Color>
-        <Color x:Key="DarkText">#FFE0E0E0</Color>
-        <Color x:Key="DarkTextSecondary">#FFB0B0B0</Color>
-        <Color x:Key="DarkTextDisabled">#FF6D6D6D</Color>
-        <Color x:Key="DarkHighlight">#FF007ACC</Color>
-        <Color x:Key="DarkHighlightText">#FFFFFFFF</Color>
-        <Color x:Key="DarkBorder">#FF3F3F46</Color>
-        <Color x:Key="DarkSelectionInactive">#FF3D3D40</Color>
-
-        <Color x:Key="{x:Static SystemColors.WindowColorKey}">#FF1E1E1E</Color>
-        <Color x:Key="{x:Static SystemColors.ControlColorKey}">#FF2D2D30</Color>
-        <Color x:Key="{x:Static SystemColors.ControlLightColorKey}">#FF3E3E42</Color>
-        <Color x:Key="{x:Static SystemColors.ControlDarkColorKey}">#FF1B1B1C</Color>
-        <Color x:Key="{x:Static SystemColors.ActiveBorderColorKey}">#FF3F3F46</Color>
-        <Color x:Key="{x:Static SystemColors.WindowTextColorKey}">#FFE0E0E0</Color>
-        <Color x:Key="{x:Static SystemColors.ControlTextColorKey}">#FFE0E0E0</Color>
-        <Color x:Key="{x:Static SystemColors.GrayTextColorKey}">#FF6D6D6D</Color>
-        <Color x:Key="{x:Static SystemColors.HighlightColorKey}">#FF007ACC</Color>
-        <Color x:Key="{x:Static SystemColors.HighlightTextColorKey}">#FFFFFFFF</Color>
-
-        <SolidColorBrush x:Key="WindowBackgroundBrush" Color="{StaticResource DarkBackgroundAlt}"/>
-        <SolidColorBrush x:Key="WindowForegroundBrush" Color="{StaticResource DarkText}"/>
-        <SolidColorBrush x:Key="ControlBackgroundBrush" Color="{StaticResource DarkBackground}"/>
-        <SolidColorBrush x:Key="ControlForegroundBrush" Color="{StaticResource DarkText}"/>
-        <SolidColorBrush x:Key="BorderBrush" Color="{StaticResource DarkBorder}"/>
-        <SolidColorBrush x:Key="SecondaryForegroundBrush" Color="{StaticResource DarkTextSecondary}"/>
-
-        <SolidColorBrush x:Key="{x:Static SystemColors.WindowBrushKey}" Color="{StaticResource DarkBackground}"/>
-        <SolidColorBrush x:Key="{x:Static SystemColors.ControlBrushKey}" Color="{StaticResource DarkControl}"/>
-        <SolidColorBrush x:Key="{x:Static SystemColors.ControlLightBrushKey}" Color="{StaticResource DarkControlLight}"/>
-        <SolidColorBrush x:Key="{x:Static SystemColors.ControlDarkBrushKey}" Color="{StaticResource DarkControlDark}"/>
-        <SolidColorBrush x:Key="{x:Static SystemColors.ActiveBorderBrushKey}" Color="{StaticResource DarkBorder}"/>
-        <SolidColorBrush x:Key="{x:Static SystemColors.WindowTextBrushKey}" Color="{StaticResource DarkText}"/>
-        <SolidColorBrush x:Key="{x:Static SystemColors.ControlTextBrushKey}" Color="{StaticResource DarkText}"/>
-        <SolidColorBrush x:Key="{x:Static SystemColors.GrayTextBrushKey}" Color="{StaticResource DarkTextDisabled}"/>
-        <SolidColorBrush x:Key="{x:Static SystemColors.HighlightBrushKey}" Color="{StaticResource DarkHighlight}"/>
-        <SolidColorBrush x:Key="{x:Static SystemColors.HighlightTextBrushKey}" Color="{StaticResource DarkHighlightText}"/>
-        <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightBrushKey}" Color="{StaticResource DarkSelectionInactive}"/>
-        <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightTextBrushKey}" Color="{StaticResource DarkText}"/>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="/HexConverter;component/Themes/HexConverter.Dark.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
 
         <Style TargetType="{x:Type Window}">
             <Setter Property="Background" Value="{DynamicResource WindowBackgroundBrush}"/>
             <Setter Property="Foreground" Value="{DynamicResource WindowForegroundBrush}"/>
+            <Setter Property="FontFamily" Value="Segoe UI"/>
+            <Setter Property="FontSize" Value="12"/>
         </Style>
 
         <Style TargetType="{x:Type GroupBox}">
-            <Setter Property="Background" Value="{DynamicResource WindowBackgroundBrush}"/>
+            <Setter Property="Background" Value="{DynamicResource PanelBackgroundBrush}"/>
             <Setter Property="Foreground" Value="{DynamicResource WindowForegroundBrush}"/>
             <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="Padding" Value="8"/>
+            <Setter Property="Margin" Value="0,0,0,6"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="{x:Type GroupBox}">
@@ -72,11 +36,11 @@
                                     Background="{TemplateBinding Background}"
                                     BorderBrush="{TemplateBinding BorderBrush}"
                                     BorderThickness="{TemplateBinding BorderThickness}"
-                                    CornerRadius="6"/>
+                                    CornerRadius="3"/>
                             <Border Grid.Row="0"
                                     Margin="10,0,10,0"
                                     Padding="4,0"
-                                    Background="{DynamicResource WindowBackgroundBrush}"
+                                    Background="{DynamicResource PanelBackgroundBrush}"
                                     HorizontalAlignment="Left">
                                 <ContentPresenter ContentSource="Header"
                                                   RecognizesAccessKey="True"
@@ -96,12 +60,26 @@
         </Style>
 
         <Style TargetType="{x:Type TextBox}">
+            <Setter Property="FontFamily" Value="Lucida Console"/>
+            <Setter Property="FontSize" Value="12"/>
             <Setter Property="Background" Value="{DynamicResource ControlBackgroundBrush}"/>
             <Setter Property="Foreground" Value="{DynamicResource ControlForegroundBrush}"/>
             <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="6,3"/>
+            <Setter Property="MinHeight" Value="24"/>
             <Setter Property="CaretBrush" Value="{DynamicResource ControlForegroundBrush}"/>
             <Setter Property="SelectionBrush" Value="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}"/>
             <Setter Property="SelectionTextBrush" Value="{DynamicResource {x:Static SystemColors.HighlightTextBrushKey}}"/>
+            <Style.Triggers>
+                <Trigger Property="IsKeyboardFocused" Value="True">
+                    <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
+                </Trigger>
+                <Trigger Property="IsEnabled" Value="False">
+                    <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}"/>
+                    <Setter Property="Background" Value="{DynamicResource PanelBackgroundBrush}"/>
+                </Trigger>
+            </Style.Triggers>
         </Style>
 
         <Style TargetType="{x:Type CheckBox}">
@@ -119,7 +97,8 @@
                                     <Border x:Name="CheckBorder"
                                             Background="{TemplateBinding Background}"
                                             BorderBrush="{TemplateBinding BorderBrush}"
-                                            BorderThickness="1"/>
+                                            BorderThickness="1"
+                                            CornerRadius="2"/>
                                     <Path x:Name="CheckMark"
                                           Width="10"
                                           Height="8"
@@ -142,6 +121,7 @@
                             <Trigger Property="IsChecked" Value="True">
                                 <Setter TargetName="CheckMark" Property="Visibility" Value="Visible"/>
                                 <Setter TargetName="CheckBorder" Property="Background" Value="{DynamicResource {x:Static SystemColors.InactiveSelectionHighlightBrushKey}}"/>
+                                <Setter TargetName="CheckBorder" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
                             </Trigger>
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter TargetName="CheckBorder" Property="BorderBrush" Value="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}"/>
@@ -156,5 +136,6 @@
                 </Setter.Value>
             </Setter>
         </Style>
+        </ResourceDictionary>
     </Application.Resources>
 </Application>

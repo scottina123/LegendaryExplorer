@@ -7,7 +7,7 @@ using System.Windows.Media;
 namespace LegendaryExplorer.SharedUI.Converters
 {
     /// <summary>
-    /// Returns a color for setting to the foreground of a fontawesome icon to indiciate it's state (black = enabled, grey = off)
+    /// Returns a theme-aware foreground for a FontAwesome state icon.
     /// </summary>
     [ValueConversion(typeof(bool), typeof(Visibility))]
     public class FontAwesomeStateColorConverter : IValueConverter
@@ -15,8 +15,8 @@ namespace LegendaryExplorer.SharedUI.Converters
         // parameter is allowed class type for visibility
         public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
         {
-            if ((bool)value) { return new SolidColorBrush(Colors.Black); }
-            return new SolidColorBrush(Colors.Gray);
+            string resourceKey = (bool)value ? "IconForegroundBrush" : "MutedTextBrush";
+            return Application.Current?.TryFindResource(resourceKey) as Brush ?? Brushes.Gray;
         }
 
         public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)

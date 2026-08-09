@@ -68,7 +68,7 @@
                 </Button>
             </ToolBar>
             <ide:UnrealScriptTextEditor x:Name="textEditor" Grid.Row="1" Document="{Binding Document}" SyntaxHighlighting="Unrealscript"
-                                        FontFamily="Consolas" ContextMenuOpening="TextEditor_OnContextMenuOpening" ContextMenuClosing="TextEditor_OnContextMenuClosing"
+                                        FontFamily="{DynamicResource AudemusDataFont}" FontSize="{DynamicResource AudemusDataFontSize}" ContextMenuOpening="TextEditor_OnContextMenuOpening" ContextMenuClosing="TextEditor_OnContextMenuClosing"
                                         MouseHover="TextEditor_OnMouseHover" MouseHoverStopped="TextEditor_OnMouseHoverStopped">
                 <avalonedit:TextEditor.InputBindings>
                     <!-- OemQuestion is the forward slash key -->

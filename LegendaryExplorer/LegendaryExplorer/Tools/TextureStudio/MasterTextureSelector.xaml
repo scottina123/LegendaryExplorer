@@ -44,7 +44,7 @@
                     <Button DockPanel.Dock="Left" Content="Add a new texture" HorizontalAlignment="Center" Padding="20" Command="{Binding AddNewTextureCommand}"/>
                     <Button Content="Select this texture" HorizontalAlignment="Right" Padding="20"   Command="{Binding SelectTextureCommand}"/>
                 </DockPanel>
-                <TreeView x:Name="LeftSide_TreeView" Grid.Column="0" FontFamily="Consolas" ItemsSource="{Binding AllTreeViewNodesX}" FocusManager.IsFocusScope="True" VirtualizingStackPanel.IsVirtualizing="True" VirtualizingStackPanel.VirtualizationMode="Recycling">
+                <TreeView x:Name="LeftSide_TreeView" Grid.Column="0" FontFamily="{DynamicResource AudemusDataFont}" FontSize="{DynamicResource AudemusDataFontSize}" ItemsSource="{Binding AllTreeViewNodesX}" FocusManager.IsFocusScope="True" VirtualizingStackPanel.IsVirtualizing="True" VirtualizingStackPanel.VirtualizationMode="Recycling">
                     <TreeView.Resources>
                         <HierarchicalDataTemplate DataType="{x:Type sharedUi:TreeViewEntry}" ItemsSource="{Binding Sublinks}">
                             <Border Tag="{Binding RelativeSource={RelativeSource AncestorType={x:Type Window}}}" Background="Transparent">

@@ -15,7 +15,7 @@
         <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
     </Window.Resources>
     <Grid>
-        <TreeView x:Name="LeftSide_TreeView" Grid.Column="0" Grid.Row="1" FontFamily="Consolas" ItemsSource="{Binding RootObjects}" FocusManager.IsFocusScope="True" VirtualizingStackPanel.IsVirtualizing="True" VirtualizingStackPanel.VirtualizationMode="Recycling">
+        <TreeView x:Name="LeftSide_TreeView" Grid.Column="0" Grid.Row="1" FontFamily="{DynamicResource AudemusDataFont}" FontSize="{DynamicResource AudemusDataFontSize}" ItemsSource="{Binding RootObjects}" FocusManager.IsFocusScope="True" VirtualizingStackPanel.IsVirtualizing="True" VirtualizingStackPanel.VirtualizationMode="Recycling">
             <TreeView.Resources>
                 <HierarchicalDataTemplate DataType="{x:Type local:ClassViewerWindow+ClassObject}" ItemsSource="{Binding Descendents}">
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">

@@ -16,7 +16,7 @@
             <TextBlock DockPanel.Dock="Top" Margin="4,0,4,4" Text="{Binding LeftInstructionCount}"/>
             <DataGrid ItemsSource="{Binding LeftEntries}" AutoGenerateColumns="False"
                       IsReadOnly="True" HeadersVisibility="Column" GridLinesVisibility="All"
-                      FontFamily="Consolas" FontSize="11" CanUserSortColumns="True">
+                      FontFamily="{DynamicResource AudemusDataFont}" FontSize="11" CanUserSortColumns="True">
                 <DataGrid.Columns>
                     <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="*"/>
                     <DataGridTextColumn Header="Buffer" Binding="{Binding BufferIndex}" Width="50"/>
@@ -35,7 +35,7 @@
             <TextBlock DockPanel.Dock="Top" Margin="4,0,4,4" Text="{Binding RightInstructionCount}"/>
             <DataGrid ItemsSource="{Binding RightEntries}" AutoGenerateColumns="False"
                       IsReadOnly="True" HeadersVisibility="Column" GridLinesVisibility="All"
-                      FontFamily="Consolas" FontSize="11" CanUserSortColumns="True">
+                      FontFamily="{DynamicResource AudemusDataFont}" FontSize="11" CanUserSortColumns="True">
                 <DataGrid.Columns>
                     <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="*"/>
                     <DataGridTextColumn Header="Buffer" Binding="{Binding BufferIndex}" Width="50"/>

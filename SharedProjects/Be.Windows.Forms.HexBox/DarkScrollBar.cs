@@ -1,6 +1,7 @@
 using System;
 using System.ComponentModel;
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
 
@@ -16,16 +17,16 @@ namespace Be.Windows.Forms
     public class DarkScrollBar : VScrollBar
     {
         private bool _isDarkMode;
-        private Color _trackColor = Color.FromArgb(0x3E, 0x3E, 0x42);      // Dark track
-        private Color _thumbColor = Color.FromArgb(0x68, 0x68, 0x6B);      // Dark thumb
-        private Color _thumbHoverColor = Color.FromArgb(0x9E, 0x9E, 0x9E); // Lighter on hover
-        private Color _arrowColor = Color.FromArgb(0x99, 0x99, 0x99);      // Arrow color
-        private Color _borderColor = Color.FromArgb(0x3F, 0x3F, 0x46);     // Border
+        private Color _trackColor = Color.FromArgb(0x08, 0x0D, 0x13);
+        private Color _thumbColor = Color.FromArgb(0x2A, 0x3A, 0x49);
+        private Color _thumbHoverColor = Color.FromArgb(0x49, 0x64, 0x77);
+        private Color _thumbDraggingColor = Color.FromArgb(0x47, 0xB4, 0xD5);
+        private Color _arrowColor = Color.FromArgb(0x8F, 0xA2, 0xB2);
+        private Color _borderColor = Color.FromArgb(0x2A, 0x3A, 0x49);
 
         private bool _thumbHovered;
         private bool _upArrowHovered;
         private bool _downArrowHovered;
-        private bool _isDragging;
 
         // Custom thumb drag state
         private bool _isThumbDragging;
@@ -134,6 +135,26 @@ namespace Be.Windows.Forms
         }
 
         /// <summary>
+        /// Gets or sets the thumb color while it is being dragged in dark mode.
+        /// </summary>
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
+        public Color ThumbDraggingColor
+        {
+            get => _thumbDraggingColor;
+            set { _thumbDraggingColor = value; if (_isDarkMode) Invalidate(); }
+        }
+
+        /// <summary>
+        /// Gets or sets the structural border color in dark mode.
+        /// </summary>
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
+        public Color BorderColor
+        {
+            get => _borderColor;
+            set { _borderColor = value; if (_isDarkMode) Invalidate(); }
+        }
+
+        /// <summary>
         /// Gets or sets the arrow button color in dark mode.
         /// </summary>
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
@@ -193,12 +214,10 @@ namespace Be.Windows.Forms
                         {
                             // Thumb drag was interrupted (e.g., focus stolen)
                             _isThumbDragging = false;
-                            _isDragging = false;
                             PaintDarkScrollBar();
                         }
                         else
                         {
-                            _isDragging = false;
                             base.WndProc(ref m);
                             PaintDarkScrollBar();
                         }
@@ -249,7 +268,6 @@ namespace Be.Windows.Forms
                 // because it enters a native modal tracking loop that paints
                 // the light scrollbar directly via GetDC.
                 _isThumbDragging = true;
-                _isDragging = true;
                 _thumbDragStartMouseY = mouseY;
                 _thumbDragStartValue = Value;
                 Capture = true;
@@ -262,7 +280,6 @@ namespace Be.Windows.Forms
             {
                 // Arrow or track click: let base handle with rendering suppressed.
                 // These don't use a modal loop for the initial click.
-                _isDragging = true;
                 BaseWndProcWithoutRedraw(ref m);
             }
         }
@@ -317,7 +334,6 @@ namespace Be.Windows.Forms
             if (_isThumbDragging)
             {
                 _isThumbDragging = false;
-                _isDragging = false;
                 Capture = false;
 
                 OnScroll(new ScrollEventArgs(ScrollEventType.ThumbPosition, Value));
@@ -326,7 +342,6 @@ namespace Be.Windows.Forms
             }
             else
             {
-                _isDragging = false;
                 BaseWndProcWithoutRedraw(ref m);
             }
         }
@@ -383,7 +398,9 @@ namespace Be.Windows.Forms
                 Rectangle thumbRect = GetThumbRect();
                 if (thumbRect.Height > 0)
                 {
-                    Color currentThumbColor = (_thumbHovered || _isDragging) ? _thumbHoverColor : _thumbColor;
+                    Color currentThumbColor = _isThumbDragging
+                        ? _thumbDraggingColor
+                        : _thumbHovered ? _thumbHoverColor : _thumbColor;
                     using (var thumbBrush = new SolidBrush(currentThumbColor))
                     {
                         int padding = 2;
@@ -395,7 +412,12 @@ namespace Be.Windows.Forms
 
                         if (innerThumb.Width > 0 && innerThumb.Height > 0)
                         {
-                            g.FillRectangle(thumbBrush, innerThumb);
+                            int radius = Math.Min(5, Math.Min(innerThumb.Width, innerThumb.Height) / 2);
+                            using GraphicsPath thumbPath = CreateRoundedRectangle(innerThumb, radius);
+                            SmoothingMode oldSmoothingMode = g.SmoothingMode;
+                            g.SmoothingMode = SmoothingMode.AntiAlias;
+                            g.FillPath(thumbBrush, thumbPath);
+                            g.SmoothingMode = oldSmoothingMode;
                         }
                     }
                 }
@@ -443,14 +465,14 @@ namespace Be.Windows.Forms
             // Draw button background if hovered
             if (isHovered)
             {
-                using (var hoverBrush = new SolidBrush(Color.FromArgb(0x50, 0x50, 0x54)))
+                using (var hoverBrush = new SolidBrush(Color.FromArgb(0x20, 0x35, 0x47)))
                 {
                     g.FillRectangle(hoverBrush, rect);
                 }
             }
 
             // Draw arrow
-            int arrowSize = 5;
+            int arrowSize = Math.Max(2, Math.Min(4, rect.Width / 4));
             int centerX = rect.X + rect.Width / 2;
             int centerY = rect.Y + rect.Height / 2;
 
@@ -495,6 +517,28 @@ namespace Be.Windows.Forms
             int thumbPosition = range > 0 ? (int)((float)(Value - Minimum) / range * availableTrack) : 0;
 
             return new Rectangle(0, arrowHeight + thumbPosition, Width, thumbHeight);
+        }
+
+        private static GraphicsPath CreateRoundedRectangle(Rectangle rectangle, int radius)
+        {
+            var path = new GraphicsPath();
+            if (radius <= 0)
+            {
+                path.AddRectangle(rectangle);
+                return path;
+            }
+
+            int diameter = radius * 2;
+            var arc = new Rectangle(rectangle.Location, new Size(diameter, diameter));
+            path.AddArc(arc, 180, 90);
+            arc.X = rectangle.Right - diameter;
+            path.AddArc(arc, 270, 90);
+            arc.Y = rectangle.Bottom - diameter;
+            path.AddArc(arc, 0, 90);
+            arc.X = rectangle.Left;
+            path.AddArc(arc, 90, 90);
+            path.CloseFigure();
+            return path;
         }
 
         protected override void OnMouseMove(MouseEventArgs e)

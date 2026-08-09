@@ -281,7 +281,7 @@
                                 <Separator Name="SaveToggle_Separator" Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" />
                             </ToolBar>
                             <sharedUi:WindowsFormsHostEx x:Name="HIRC_Hexbox_Host" Grid.Row="1" Grid.Column="0" VerticalAlignment="Stretch" HorizontalAlignment="Stretch">
-                                <hb1:HexBox MinBytesPerLine="4" MaxBytesPerLine="16" ColumnInfoVisible="True" LineInfoVisible="True" Font="Courier New,10" BoldFont="Consolas,10" StringViewVisible="True" SelectionStartChanged="Soundpanel_HIRCHexbox_SelectionChanged" VScrollBarVisible="True">
+                                <hb1:HexBox MinBytesPerLine="4" MaxBytesPerLine="16" ColumnInfoVisible="True" LineInfoVisible="True" StringViewVisible="True" SelectionStartChanged="Soundpanel_HIRCHexbox_SelectionChanged" VScrollBarVisible="True">
                                 </hb1:HexBox>
                             </sharedUi:WindowsFormsHostEx>
                             <GridSplitter Grid.Column="1" 

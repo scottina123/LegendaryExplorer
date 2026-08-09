@@ -1,0 +1,41 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <!-- Traditional Legendary Explorer dark palette. -->
+    <Color x:Key="DarkBackground">#FF1E1E1E</Color>
+    <Color x:Key="DarkBackgroundAlt">#FF252526</Color>
+    <Color x:Key="DarkControl">#FF2D2D30</Color>
+    <Color x:Key="DarkControlLight">#FF3E3E42</Color>
+    <Color x:Key="DarkControlDark">#FF1B1B1C</Color>
+    <Color x:Key="DarkText">#FFE0E0E0</Color>
+    <Color x:Key="DarkTextSecondary">#FFB0B0B0</Color>
+    <Color x:Key="DarkTextDisabled">#FF6D6D6D</Color>
+    <Color x:Key="DarkHighlight">#FF007ACC</Color>
+    <Color x:Key="DarkHighlightText">#FFFFFFFF</Color>
+    <Color x:Key="DarkBorder">#FF3F3F46</Color>
+    <Color x:Key="DarkSelectionInactive">#FF3D3D40</Color>
+    <Color x:Key="DarkAccent">#FF007ACC</Color>
+    <Color x:Key="DarkPanel">#FF2D2D30</Color>
+    <Color x:Key="DarkPanelRaised">#FF3E3E42</Color>
+
+    <SolidColorBrush x:Key="WindowBackgroundBrush" Color="{StaticResource DarkBackgroundAlt}"/>
+    <SolidColorBrush x:Key="WindowForegroundBrush" Color="{StaticResource DarkText}"/>
+    <SolidColorBrush x:Key="ControlBackgroundBrush" Color="{StaticResource DarkBackground}"/>
+    <SolidColorBrush x:Key="ControlForegroundBrush" Color="{StaticResource DarkText}"/>
+    <SolidColorBrush x:Key="BorderBrush" Color="{StaticResource DarkBorder}"/>
+    <SolidColorBrush x:Key="SecondaryForegroundBrush" Color="{StaticResource DarkTextSecondary}"/>
+    <SolidColorBrush x:Key="PanelBackgroundBrush" Color="{StaticResource DarkPanel}"/>
+    <SolidColorBrush x:Key="PanelRaisedBrush" Color="{StaticResource DarkPanelRaised}"/>
+    <SolidColorBrush x:Key="AccentBrush" Color="{StaticResource DarkAccent}"/>
+    <SolidColorBrush x:Key="{x:Static SystemColors.WindowBrushKey}" Color="{StaticResource DarkBackground}"/>
+    <SolidColorBrush x:Key="{x:Static SystemColors.ControlBrushKey}" Color="{StaticResource DarkControl}"/>
+    <SolidColorBrush x:Key="{x:Static SystemColors.ControlLightBrushKey}" Color="{StaticResource DarkControlLight}"/>
+    <SolidColorBrush x:Key="{x:Static SystemColors.ControlDarkBrushKey}" Color="{StaticResource DarkControlDark}"/>
+    <SolidColorBrush x:Key="{x:Static SystemColors.ActiveBorderBrushKey}" Color="{StaticResource DarkBorder}"/>
+    <SolidColorBrush x:Key="{x:Static SystemColors.WindowTextBrushKey}" Color="{StaticResource DarkText}"/>
+    <SolidColorBrush x:Key="{x:Static SystemColors.ControlTextBrushKey}" Color="{StaticResource DarkText}"/>
+    <SolidColorBrush x:Key="{x:Static SystemColors.GrayTextBrushKey}" Color="{StaticResource DarkTextDisabled}"/>
+    <SolidColorBrush x:Key="{x:Static SystemColors.HighlightBrushKey}" Color="{StaticResource DarkHighlight}"/>
+    <SolidColorBrush x:Key="{x:Static SystemColors.HighlightTextBrushKey}" Color="{StaticResource DarkHighlightText}"/>
+    <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightBrushKey}" Color="{StaticResource DarkSelectionInactive}"/>
+    <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightTextBrushKey}" Color="{StaticResource DarkText}"/>
+</ResourceDictionary>

@@ -175,7 +175,7 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext, IVfxDepthStateP
         {
             VfxPreviewBackground.Transparent => Color.FromArgb(0, 0, 0, 0),
             VfxPreviewBackground.Black => Color.FromRgb(0, 0, 0),
-            _ when isDarkMode => Color.FromRgb(0x1E, 0x1E, 0x1E),
+            _ when isDarkMode => LegendaryExplorer.Misc.ThemeManager.DarkCanvasMediaColor,
             _ => Color.FromRgb(0x66, 0x66, 0x66)
         };
     }
