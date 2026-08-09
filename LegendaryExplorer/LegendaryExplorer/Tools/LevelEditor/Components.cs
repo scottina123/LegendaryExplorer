@@ -713,6 +713,9 @@ public abstract class MeshComponentProxy : PrimitiveComponentProxy, ILevelRender
     public int LOD;
     public List<IEntry> MaterialOverrides = [];
     protected BoxSphereBounds? SerializedMeshBounds;
+    private Matrix4x4 serializedBoundsTransform;
+    private BoxSphereBounds serializedWorldBounds;
+    private bool hasSerializedWorldBounds;
     private volatile bool renderResourcesInitialized;
     protected readonly object RenderResourceLock = new();
     internal bool RenderResourcesInitialized
@@ -738,7 +741,20 @@ public abstract class MeshComponentProxy : PrimitiveComponentProxy, ILevelRender
         }
         if (Mesh is null || Mesh.LODs.Count <= LOD)
         {
-            return SerializedMeshBounds is { } bounds ? bounds.TransformBy(LocalToWorld) : base.GetBounds();
+            if (SerializedMeshBounds is not { } bounds)
+            {
+                return base.GetBounds();
+            }
+            // Before GPU resources are ready, culling falls back to the serialized mesh bounds. Their world
+            // transform is stable unless the actor moves, so do not transform all eight box corners on every
+            // render pass while a large level is still loading.
+            if (!hasSerializedWorldBounds || serializedBoundsTransform != LocalToWorld)
+            {
+                serializedBoundsTransform = LocalToWorld;
+                serializedWorldBounds = bounds.TransformBy(LocalToWorld);
+                hasSerializedWorldBounds = true;
+            }
+            return serializedWorldBounds;
         }
         return Mesh.LODs[LOD].Mesh.TransformedBounds;
     }

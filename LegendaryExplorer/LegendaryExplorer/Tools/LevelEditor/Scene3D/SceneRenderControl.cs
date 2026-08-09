@@ -335,6 +335,9 @@ public abstract class RenderContext
 /// </summary>
 public sealed class SceneRenderControl : ContentControl, IDisposable, INotifyPropertyChanged
 {
+    // Demand-rendered views can legitimately sit idle for seconds. Do not pass that idle time to camera,
+    // animation, or particle updates when the next frame is eventually requested.
+    private const float MaximumUpdateTimestep = 0.1f;
     private Microsoft.Wpf.Interop.DirectX.D3D11Image D3DImage;
     private Image Image;
     private readonly Stopwatch Stopwatch = new();
@@ -587,8 +590,9 @@ public sealed class SceneRenderControl : ContentControl, IDisposable, INotifyPro
         if (_shouldRender)
         {
             // Debug.WriteLine("_shouldRender");
-            Context.Update((float)Stopwatch.Elapsed.Ticks / TimeSpan.TicksPerSecond);
+            float timestep = Math.Min((float)Stopwatch.Elapsed.TotalSeconds, MaximumUpdateTimestep);
             Stopwatch.Restart();
+            Context.Update(timestep);
             bool capturing = false;
             if (CaptureNextFrame && RenderDoc.IsRenderDocAttached())
             {
@@ -609,9 +613,28 @@ public sealed class SceneRenderControl : ContentControl, IDisposable, INotifyPro
 
     public void SetShouldRender(bool shouldRender)
     {
+        if (_shouldRender == shouldRender)
+        {
+            if (shouldRender)
+            {
+                _renderDirty = true;
+            }
+            return;
+        }
+
         _shouldRender = shouldRender;
         if (shouldRender)
+        {
+            // Loading and hidden-tab time is not simulation time. Reset both clocks so the resumed frame is
+            // immediately eligible and starts with a zero/short timestep instead of a multi-second catch-up.
+            _lastRenderRequestTimestamp = 0;
+            Stopwatch.Restart();
             _renderDirty = true;
+        }
+        else
+        {
+            Stopwatch.Stop();
+        }
     }
 
     #region Input Events

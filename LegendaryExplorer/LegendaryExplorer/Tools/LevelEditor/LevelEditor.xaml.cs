@@ -167,6 +167,8 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
     public ObservableCollectionExtended<ActorProxy> Actors { get; } = [];
     public ICollectionView ActorsView { get; }
     private string _actorFilterText = "";
+    private readonly record struct VisibleActor(ActorProxy Actor, BoxSphereBounds Bounds, Vector3 HitTestId);
+    private readonly List<VisibleActor> visibleActors = [];
 
     private bool _hasAnyFileOpen;
     public bool HasAnyFileOpen
@@ -669,6 +671,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
     private int _cameraPositionEditorsFocused;
     private bool _updatingCameraRotationText;
     private int _cameraRotationEditorsFocused;
+    private long _lastCameraTextUpdateTimestamp;
 
     public ObservableCollectionExtended<RecentFileSet> RecentSets { get; } = [];
 
@@ -690,6 +693,11 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
 
         LoadCommands();
         InitializeComponent();
+        // Resource preparation should yield for interactions anywhere in the editor, not only over the viewport.
+        PreviewMouseMove += (_, _) => RenderContext.NotifyUserActivity();
+        PreviewMouseDown += (_, _) => RenderContext.NotifyUserActivity();
+        PreviewMouseWheel += (_, _) => RenderContext.NotifyUserActivity();
+        PreviewKeyDown += (_, _) => RenderContext.NotifyUserActivity();
         ApplyPointOfInterestToolTipTheme(Settings.Global_DarkMode_Enabled);
         LevelLiveMaterialEditor.CloseMaterialEditorRequested += LevelLiveMaterialEditor_CloseRequested;
         LevelLiveMaterialEditor.LiveMaterialPreviewChanged += LevelLiveMaterialEditor_PreviewChanged;
@@ -736,8 +744,13 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
 
     private void UpdateScene(object sender, float e)
     {
-        UpdateCameraPositionText();
-        UpdateCameraRotationText();
+        long timestamp = System.Diagnostics.Stopwatch.GetTimestamp();
+        if (timestamp - _lastCameraTextUpdateTimestamp >= System.Diagnostics.Stopwatch.Frequency / 10)
+        {
+            _lastCameraTextUpdateTimestamp = timestamp;
+            UpdateCameraPositionText();
+            UpdateCameraRotationText();
+        }
         if (RenderContext.ShowEmitterVfx)
         {
             RenderContext.QueueVisibleEmitterResources();
@@ -759,6 +772,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
     {
         RenderContext.ShowVolumes = ShowVolumes;
         RenderContext.ShowVolumetrics = ShowVolumetrics;
+        BuildVisibleActorList();
         Span<RenderPass> passes = (ShowCollision, RenderContext.ShouldRenderHitTestPass) switch
         {
             (true, true) => [RenderPass.Base, RenderPass.Hair, RenderPass.Collision, RenderPass.HitTest],
@@ -774,27 +788,54 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
 
         RenderContext.DrawUI();
     }
-    void DoRenderPass(RenderPass pass)
+
+    private void BuildVisibleActorList()
     {
-        for (int i = 0; i < RenderContext.DrawList_3D.Count; i++)
+        visibleActors.Clear();
+        MeshRenderContext.BoundsVisibilityTester visibility = RenderContext.CreateBoundsVisibilityTester();
+        for (int actorIndex = 0; actorIndex < RenderContext.DrawList_3D.Count; actorIndex++)
         {
-            ActorProxy actor = RenderContext.DrawList_3D[i];
+            ActorProxy actor = RenderContext.DrawList_3D[actorIndex];
             if (actor is DecalActorProxy && !ShowDecalActors) continue;
             if (actor is SFXPointOfInterestProxy && !ShowPointsOfInterest) continue;
             if (actor.IsVolume && !ShowVolumes) continue;
             if (actor.IsVolumetricMesh && !ShowVolumetrics) continue;
             if (_zCutoffEnabled && actor.Location.Z >= _zCutoff) continue;
-            // Character actors appear as a coherent unit. Rendering a body before its head/hair/outfit
-            // resources are ready produces the black, triangle-like flicker seen during population.
-            if ((actor is SkeletalMeshActorProxy or SFXStuntActorProxy)
-                && actor.Components.OfType<MeshComponentProxy>().Any(component => !component.RenderResourcesInitialized))
-            {
-                continue;
-            }
-            BoxSphereBounds actorBounds = actor.GetBounds();
-            if (!RenderContext.IsBoundsVisible(actorBounds)) continue;
+            if (HasIncompleteCharacterResources(actor)) continue;
+
+            BoxSphereBounds bounds = actor.GetBounds();
+            if (!visibility.IsVisible(bounds)) continue;
+
             int hitID = actor.HitID;
-            RenderContext.CurrentHitTestId = new Vector3((hitID & 0xFF) / 255f, ((hitID >> 8) & 0xFF) / 255f, ((hitID >> 16) & 0xFF) / 255f);
+            var hitTestId = new Vector3((hitID & 0xFF) / 255f, ((hitID >> 8) & 0xFF) / 255f,
+                ((hitID >> 16) & 0xFF) / 255f);
+            visibleActors.Add(new VisibleActor(actor, bounds, hitTestId));
+        }
+    }
+
+    private static bool HasIncompleteCharacterResources(ActorProxy actor)
+    {
+        if (actor is not (SkeletalMeshActorProxy or SFXStuntActorProxy))
+        {
+            return false;
+        }
+        foreach (PrimitiveComponentProxy component in actor.Components)
+        {
+            if (component is MeshComponentProxy { RenderResourcesInitialized: false })
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    void DoRenderPass(RenderPass pass)
+    {
+        for (int i = 0; i < visibleActors.Count; i++)
+        {
+            VisibleActor visibleActor = visibleActors[i];
+            ActorProxy actor = visibleActor.Actor;
+            RenderContext.CurrentHitTestId = visibleActor.HitTestId;
             // Keep the actor selected for material picking and editor synchronization, but do not tint it
             // blue while evaluating live material changes. The selection shader obscures the actual result.
             if (actor == selectedActor && !IsLevelMaterialEditorOpen)
@@ -805,8 +846,8 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
             if (pass == RenderPass.Base && actor == selectedActor
                 && !string.IsNullOrWhiteSpace(actor.PreviewAnimationName))
             {
-                Vector3 labelPosition = actorBounds.Origin
-                                        + Vector3.UnitZ * (MathF.Abs(actorBounds.BoxExtent.Z) + 20f);
+                Vector3 labelPosition = visibleActor.Bounds.Origin
+                                        + Vector3.UnitZ * (MathF.Abs(visibleActor.Bounds.BoxExtent.Z) + 20f);
                 if (RenderContext.WorldToPixel(labelPosition, out Vector2 pixel))
                 {
                     RenderContext.ScreenLabels.Add(new ScreenLabel(pixel.X, pixel.Y,

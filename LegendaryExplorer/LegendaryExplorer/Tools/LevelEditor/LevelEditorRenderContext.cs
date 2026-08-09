@@ -58,7 +58,7 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
     private Task renderResourceWorker;
     private int renderResourceRedrawRequested;
     private ActorProxy prioritizedResourceActor;
-    private long lastPointerActivityTimestamp;
+    private long lastUserActivityTimestamp;
     private long lastHoverHitTestTimestamp;
     private int visibleEmitterInstanceCount;
 
@@ -85,6 +85,13 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
     public override bool ProcessBackgroundWork() =>
         Interlocked.Exchange(ref renderResourceRedrawRequested, 0) != 0;
 
+    /// <summary>
+    /// Gives interactive work priority over bulk mesh and material preparation. Input from the whole editor
+    /// window feeds this timestamp, so scrolling or editing either side panel remains responsive too.
+    /// </summary>
+    internal void NotifyUserActivity()
+        => Interlocked.Exchange(ref lastUserActivityTimestamp, System.Diagnostics.Stopwatch.GetTimestamp());
+
     private void StartRenderResourceWorker()
     {
         lock (renderResourceQueueLock)
@@ -108,7 +115,7 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
             Thread.CurrentThread.Priority = ThreadPriority.BelowNormal;
             while (!token.IsCancellationRequested)
             {
-                while (SecondsSince(Interlocked.Read(ref lastPointerActivityTimestamp)) < 0.1)
+                while (SecondsSince(Interlocked.Read(ref lastUserActivityTimestamp)) < 0.15)
                 {
                     if (token.WaitHandle.WaitOne(20)) return;
                 }
@@ -406,6 +413,7 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
 
     public override bool MouseDown(MouseButtons button, int x, int y)
     {
+        NotifyUserActivity();
         mouseDownHitProxy = null;
         if (TransformWidget.IsDragging)
         {
@@ -443,7 +451,7 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
 
     public override bool MouseMove(int x, int y)
     {
-        Interlocked.Exchange(ref lastPointerActivityTimestamp, System.Diagnostics.Stopwatch.GetTimestamp());
+        NotifyUserActivity();
         if (TransformWidget.IsDragging)
         {
             //failsafe if mouseup event was not captured
@@ -488,8 +496,14 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
 
     public override bool MouseScroll(int delta)
     {
-        Interlocked.Exchange(ref lastPointerActivityTimestamp, System.Diagnostics.Stopwatch.GetTimestamp());
+        NotifyUserActivity();
         return base.MouseScroll(delta);
+    }
+
+    public override bool KeyDown(Key key)
+    {
+        NotifyUserActivity();
+        return base.KeyDown(key);
     }
 
     private IHitProxy GetHitProxy(int x, int y)
@@ -618,7 +632,9 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
     {
         foreach (ILevelRenderResource component in actor.Components.OfType<ILevelRenderResource>())
         {
-            if (ShouldPrepareRenderResource(component) && !component.RenderResourcesInitialized
+            // The visibility test for particle systems can walk actor bounds. Most components are already
+            // initialized after the first pass, so reject them before doing that work every update frame.
+            if (!component.RenderResourcesInitialized && ShouldPrepareRenderResource(component)
                 && pendingRenderResourceSet.Add(component))
             {
                 pendingRenderResources.Enqueue(component);

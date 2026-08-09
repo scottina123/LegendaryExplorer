@@ -165,8 +165,8 @@ public class MeshRenderContext : RenderContext
     public uint NumFrames { get; private set; }
 
     private float FPS;
-    private float lastFPSTime;
-    private float lastFPSFrame;
+    private long fpsWindowStartTimestamp;
+    private uint fpsWindowStartFrame;
     public string ErrorText;
 
     private static RawColor4 GetStatsTextColor()
@@ -398,14 +398,31 @@ public class MeshRenderContext : RenderContext
     public override void Update(float timestep)
     {
         Time += timestep;
-        float fpsDelta = Time - lastFPSTime;
-        if (fpsDelta >= 1f)
+        // Count FPS only while the renderer is intentionally producing continuous frames. Demand-rendered
+        // idle time is not a performance sample, and simulation time is separately capped by the host.
+        if (!IsActivelyUpdating())
         {
-            float frameDelta = NumFrames - lastFPSFrame;
-            lastFPSTime = Time;
-            lastFPSFrame = NumFrames;
-
-            FPS = MathF.Round(frameDelta / fpsDelta);
+            fpsWindowStartTimestamp = 0;
+            FPS = 0;
+        }
+        else
+        {
+            long timestamp = Stopwatch.GetTimestamp();
+            if (fpsWindowStartTimestamp == 0)
+            {
+                fpsWindowStartTimestamp = timestamp;
+                fpsWindowStartFrame = NumFrames;
+            }
+            else
+            {
+                double fpsWindowSeconds = (timestamp - fpsWindowStartTimestamp) / (double)Stopwatch.Frequency;
+                if (fpsWindowSeconds >= 1d)
+                {
+                    FPS = MathF.Round((NumFrames - fpsWindowStartFrame) / (float)fpsWindowSeconds);
+                    fpsWindowStartTimestamp = timestamp;
+                    fpsWindowStartFrame = NumFrames;
+                }
+            }
         }
 
         if (Camera.IsOrthographic)
@@ -885,7 +902,9 @@ public class MeshRenderContext : RenderContext
         {
             SceneLightIndex ??= new SceneLightSpatialIndex(SceneLights);
             nearestLights = SceneLightIndex.FindNearest(objectPosition, meshMask);
-            if (NearestLightCache.Count >= 16_384) NearestLightCache.Clear();
+            // In normal static scenes this tops out at the number of distinct mesh positions, and it is cleared
+            // when lights change or the scene unloads. Clearing the entire cache at a fixed count made levels
+            // above that count rebuild thousands of spatial queries on every render pass/frame.
             NearestLightCache[lightQuery] = nearestLights;
         }
 
@@ -1263,11 +1282,13 @@ public class MeshRenderContext : RenderContext
     }
 
     private System.Drawing.Point lastMouse;
+    private const float MouseInputReferenceFramesPerSecond = 60f;
     public override bool MouseMove(int x, int y)
     {
         bool handled = false;
         int xDiff = (x - lastMouse.X);
         int yDiff = (y - lastMouse.Y);
+        float mouseTranslationScale = CameraSpeed / MouseInputReferenceFramesPerSecond;
         if (Camera.IsOrthographic)
         {
             switch (PressedMouseButton)
@@ -1291,13 +1312,13 @@ public class MeshRenderContext : RenderContext
             {
                 case MouseButtons.Left:
                     var camFwd = (Camera.CameraForward with { Z = 0 }).Normal();
-                    Camera.Position += camFwd * -yDiff * (CameraSpeed / FPS);
+                    Camera.Position += camFwd * -yDiff * mouseTranslationScale;
                     Camera.Yaw += xDiff * 0.01f;
                     handled = true;
                     break;
                 case MouseButtons.Middle:
-                    Camera.Position += Camera.CameraRight * -xDiff * (CameraSpeed / FPS);
-                    Camera.Position += Camera.CameraUp * yDiff * (CameraSpeed / FPS);
+                    Camera.Position += Camera.CameraRight * -xDiff * mouseTranslationScale;
+                    Camera.Position += Camera.CameraUp * yDiff * mouseTranslationScale;
                     handled = true;
                     break;
                 case MouseButtons.Right:
@@ -1344,7 +1365,8 @@ public class MeshRenderContext : RenderContext
         }
         else if (Camera.FirstPerson)
         {
-            Camera.Position += Camera.CameraForward * (CameraSpeed / FPS) * (delta / 10f);
+            Camera.Position += Camera.CameraForward
+                               * (CameraSpeed / MouseInputReferenceFramesPerSecond) * (delta / 10f);
         }
         else
         {
@@ -1465,41 +1487,70 @@ public class MeshRenderContext : RenderContext
     }
 
     /// <summary>
-    /// Conservative sphere/frustum test used by the Level Editor before submitting an actor's draw calls.
-    /// Zero/invalid bounds stay visible so helper actors and partially supported exports are never lost.
+    /// Immutable per-frame camera data for conservative actor culling. Projection trigonometry and the
+    /// orthographic view matrix are calculated once rather than once for every actor and render pass.
     /// </summary>
-    public bool IsBoundsVisible(BoxSphereBounds bounds)
+    public readonly struct BoundsVisibilityTester
     {
-        float radius = MathF.Abs(bounds.SphereRadius);
-        if (!(radius > 0f) || !float.IsFinite(radius)
-            || !float.IsFinite(bounds.Origin.X) || !float.IsFinite(bounds.Origin.Y) || !float.IsFinite(bounds.Origin.Z))
+        private readonly Matrix4x4 viewMatrix;
+        private readonly float zNear;
+        private readonly float zFar;
+        private readonly bool isOrthographic;
+        private readonly float halfWidth;
+        private readonly float halfHeight;
+        private readonly float tanX;
+        private readonly float tanY;
+        private readonly float xRadiusFactor;
+        private readonly float yRadiusFactor;
+
+        internal BoundsVisibilityTester(SceneCamera camera)
         {
-            return true;
+            viewMatrix = camera.ViewMatrix;
+            zNear = camera.ZNear;
+            zFar = camera.ZFar;
+            isOrthographic = camera.IsOrthographic;
+            halfWidth = camera.OrthoWidth * 0.5f;
+            halfHeight = camera.OrthoSize;
+            tanY = MathF.Tan(camera.FOV * 0.5f);
+            tanX = tanY * camera.aspect;
+            xRadiusFactor = MathF.Sqrt(1f + tanX * tanX);
+            yRadiusFactor = MathF.Sqrt(1f + tanY * tanY);
         }
 
-        Vector3 viewCenter = Vector3.Transform(bounds.Origin, Camera.ViewMatrix);
-        if (viewCenter.Z + radius < Camera.ZNear || viewCenter.Z - radius > Camera.ZFar)
+        /// <summary>
+        /// Zero or invalid bounds stay visible so helper actors and partially supported exports are not lost.
+        /// </summary>
+        public bool IsVisible(BoxSphereBounds bounds)
         {
-            return false;
-        }
+            float radius = MathF.Abs(bounds.SphereRadius);
+            if (!(radius > 0f) || !float.IsFinite(radius)
+                || !float.IsFinite(bounds.Origin.X) || !float.IsFinite(bounds.Origin.Y)
+                || !float.IsFinite(bounds.Origin.Z))
+            {
+                return true;
+            }
 
-        if (Camera.IsOrthographic)
-        {
-            float halfWidth = Camera.OrthoWidth * 0.5f;
-            float halfHeight = Camera.OrthoSize;
-            return MathF.Abs(viewCenter.X) <= halfWidth + radius
-                   && MathF.Abs(viewCenter.Y) <= halfHeight + radius;
-        }
+            Vector3 viewCenter = Vector3.Transform(bounds.Origin, viewMatrix);
+            if (viewCenter.Z + radius < zNear || viewCenter.Z - radius > zFar)
+            {
+                return false;
+            }
 
-        float tanY = MathF.Tan(Camera.FOV * 0.5f);
-        float tanX = tanY * Camera.aspect;
-        float depth = MathF.Max(viewCenter.Z, Camera.ZNear);
-        // Plane-normal factors make this conservative for spheres intersecting a side plane.
-        float xAllowance = radius * MathF.Sqrt(1f + tanX * tanX);
-        float yAllowance = radius * MathF.Sqrt(1f + tanY * tanY);
-        return MathF.Abs(viewCenter.X) <= depth * tanX + xAllowance
-               && MathF.Abs(viewCenter.Y) <= depth * tanY + yAllowance;
+            if (isOrthographic)
+            {
+                return MathF.Abs(viewCenter.X) <= halfWidth + radius
+                       && MathF.Abs(viewCenter.Y) <= halfHeight + radius;
+            }
+
+            float depth = MathF.Max(viewCenter.Z, zNear);
+            return MathF.Abs(viewCenter.X) <= depth * tanX + radius * xRadiusFactor
+                   && MathF.Abs(viewCenter.Y) <= depth * tanY + radius * yRadiusFactor;
+        }
     }
+
+    public BoundsVisibilityTester CreateBoundsVisibilityTester() => new(Camera);
+
+    public bool IsBoundsVisible(BoxSphereBounds bounds) => CreateBoundsVisibilityTester().IsVisible(bounds);
 
     public bool ScreenToPixel(Vector4 point, out Vector2 pixel)
     {
