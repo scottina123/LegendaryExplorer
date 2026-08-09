@@ -1266,12 +1266,14 @@ public class StaticLightingTests
     }
 
     [TestMethod]
-    public void StaticLightingProperties_DisableRuntimeLightAcceptance()
+    public void StaticLightingProperties_SelectUe3EncodingAndDisableRuntimeLightAcceptance()
     {
         using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("StaticLightingProperties.pcc", MEGame.LE3);
         ExportEntry component = package.CreateExport("StaticMeshComponent_0", "StaticMeshComponent", null,
             indexed: false);
-        component.WriteProperties([]);
+        component.WriteProperties([
+            new EnumProperty("LMET_Vector", nameof(LightMapEncodingType), package.Game, "LightMapEncoding")
+        ]);
         var method = typeof(StaticLightingWriter).GetMethod("ApplyStaticLightingProperties",
             System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
 
@@ -1282,6 +1284,7 @@ public class StaticLightingTests
         Assert.IsFalse(component.GetProperty<BoolProperty>("bAcceptsDynamicLights").Value);
         Assert.IsTrue(component.GetProperty<BoolProperty>("bForceDirectLightMap").Value);
         Assert.IsTrue(component.GetProperty<BoolProperty>("bUsePrecomputedShadows").Value);
+        Assert.AreEqual("LMET_UE3", component.GetProperty<EnumProperty>("LightMapEncoding").Value.Name);
     }
 
     private static IReadOnlyList<StaticLightingTriangle> CreatePanelTriangles(int cells, float cellSize)

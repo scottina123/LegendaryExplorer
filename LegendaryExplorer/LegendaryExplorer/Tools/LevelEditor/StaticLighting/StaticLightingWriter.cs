@@ -257,6 +257,12 @@ public static class StaticLightingWriter
     private static void ApplyStaticLightingProperties(ExportEntry component, IReadOnlyList<Guid> irrelevantLights)
     {
         PropertyCollection properties = component.GetProperties();
+        // The generated 1D and 2D mappings use UE3's standard directional coefficient encoding.
+        // BioWare's LMET_Vector setting selects FCustomVector* draw policies instead; materials that
+        // only contain FDirectional* static-lighting shaders then fail to render once a map exists.
+        if (component.Game.IsGame3())
+            properties.AddOrReplaceProp(new EnumProperty("LMET_UE3", nameof(LightMapEncodingType),
+                component.Game, "LightMapEncoding"));
         properties.AddOrReplaceProp(new BoolProperty(false, "bAcceptsLights"));
         properties.AddOrReplaceProp(new BoolProperty(false, "bAcceptsDynamicLights"));
         properties.AddOrReplaceProp(new BoolProperty(true, "bForceDirectLightMap"));
