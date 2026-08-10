@@ -823,6 +823,11 @@ namespace LegendaryExplorer.DialogueEditor
                 return;
             }
 
+            if (!TryChooseDialoguePreviewPlayerFaceFx(out CurveEditor3D.DialoguePreviewPlayerFaceFx playerFaceFx))
+            {
+                return;
+            }
+
             if (!StageBoneOriginResolver.TrySelectContext(this, Pcc, interpData, SelectedConv,
                     out StageConversationContext stageContext, out string stageMessage))
             {
@@ -831,45 +836,8 @@ namespace LegendaryExplorer.DialogueEditor
                 return;
             }
 
-            string[] actorTags = SelectedSpeakerList
-                .Select(speaker => speaker.SpeakerName)
-                .Where(tag => !string.IsNullOrWhiteSpace(tag))
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToArray();
-            var actorOrigins = new Dictionary<string, CameraOrigin>(StringComparer.OrdinalIgnoreCase);
-            var context = new CameraActorAnchorContext(SelectedConv, SelectedDialogueNode, actorTags);
-            ActorSceneStatePath bestPath = CameraActorSceneStateResolver.ResolvePaths(context, actorTags,
-                    stageContext.StageOrigin)
-                .OrderByDescending(path => actorTags.Count(path.ActorTransforms.ContainsKey))
-                .ThenBy(path => path.PathId, StringComparer.Ordinal)
-                .FirstOrDefault();
-            if (bestPath is not null)
-            {
-                foreach ((string actorTag, ResolvedActorTransform transform) in bestPath.ActorTransforms)
-                {
-                    actorOrigins[actorTag] = new CameraOrigin(transform.Location, transform.Rotation);
-                }
-            }
-
-            foreach (string builtInActor in actorTags.Where(tag =>
-                         tag.Equals("player", StringComparison.OrdinalIgnoreCase)
-                         || tag.Equals("owner", StringComparison.OrdinalIgnoreCase)))
-            {
-                if (!actorOrigins.ContainsKey(builtInActor)
-                    && TrySelectCrossEditorStageOrigin(SelectedDialogueNode, out CameraOrigin stageOrigin, false,
-                        builtInActor))
-                {
-                    actorOrigins[builtInActor] = stageOrigin;
-                }
-            }
-
-            List<CurveEditor3D.DialogueNodePreviewActor> actors = actorTags
-                .Select((tag, index) => new CurveEditor3D.DialogueNodePreviewActor(tag,
-                    actorOrigins.GetValueOrDefault(tag,
-                        stageContext.ActorOrigins.GetValueOrDefault(tag,
-                            new CameraOrigin(stageContext.StageOrigin.Location + new Vector3(0, index * 100, 0),
-                                stageContext.StageOrigin.Rotation)))))
-                .ToList();
+            List<CurveEditor3D.DialogueNodePreviewActor> actors = BuildDialogueConversationPreviewActors(
+                SelectedConv, SelectedDialogueNode, stageContext);
             var levelPicker = new DialoguePreviewLevelPicker { Owner = this };
             if (levelPicker.ShowDialog() != true)
             {
@@ -878,7 +846,8 @@ namespace LegendaryExplorer.DialogueEditor
             }
             IReadOnlyList<string> levelPaths = levelPicker.SelectedLevelPaths;
             var preview = new CurveEditor3D();
-            preview.ConfigureDialogueNodePreview(SelectedConv, SelectedDialogueNode, actors, levelPaths, stageContext);
+            preview.ConfigureDialogueNodePreview(SelectedConv, SelectedDialogueNode, actors, levelPaths, stageContext,
+                playerFaceFx);
             var window = new ExportLoaderHostedWindow(preview, previewTrackMove)
             {
                 Owner = this,
@@ -5814,6 +5783,11 @@ namespace LegendaryExplorer.DialogueEditor
                 return;
             }
 
+            if (!TryChooseDialoguePreviewPlayerFaceFx(out CurveEditor3D.DialoguePreviewPlayerFaceFx playerFaceFx))
+            {
+                return;
+            }
+
             var levelPicker = new DialoguePreviewLevelPicker { Owner = this };
             if (levelPicker.ShowDialog() != true)
             {
@@ -5844,13 +5818,42 @@ namespace LegendaryExplorer.DialogueEditor
 
             var preview = new CurveEditor3D();
             preview.ConfigureDialogueConversationPreview(SelectedConv, startNode, actors,
-                levelPicker.SelectedLevelPaths, stageContext);
+                levelPicker.SelectedLevelPaths, stageContext, playerFaceFx);
             var window = new ExportLoaderHostedWindow(preview, previewTrackMove)
             {
                 Owner = this,
                 Title = $"Dialogue Conversation Preview - {SelectedConv.Export.ObjectName.Instanced} - {(startNode.IsReply ? "R" : "E")}{startNode.NodeCount}"
             };
             window.Show();
+        }
+
+        private bool TryChooseDialoguePreviewPlayerFaceFx(
+            out CurveEditor3D.DialoguePreviewPlayerFaceFx playerFaceFx)
+        {
+            playerFaceFx = null;
+            IReadOnlyList<string> assetNames = CurveEditor3D.GetDialoguePreviewFaceFxAssetNames(Pcc.Game);
+            if (assetNames.Count == 0)
+            {
+                MessageBox.Show(this, "No FaceFX assets were found in BIOG_FaceFX_Assets.",
+                    "Player FaceFX Unavailable", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return false;
+            }
+
+            string defaultAsset = assetNames.FirstOrDefault(name =>
+                                      name.Equals("SFX_HumanFemale_FaceFX", StringComparison.OrdinalIgnoreCase))
+                                  ?? assetNames[0];
+            string selectedAsset = StringSelectorDialog.GetValue(this,
+                "Choose the FaceFX asset to attach to the player before playback starts.",
+                "Player FaceFX", assetNames, defaultAsset);
+            if (string.IsNullOrWhiteSpace(selectedAsset))
+            {
+                return false;
+            }
+
+            bool useFemaleLines = selectedAsset.Contains("Female", StringComparison.OrdinalIgnoreCase)
+                                  || !selectedAsset.Contains("Male", StringComparison.OrdinalIgnoreCase);
+            playerFaceFx = new CurveEditor3D.DialoguePreviewPlayerFaceFx(selectedAsset, useFemaleLines);
+            return true;
         }
 
         private List<CurveEditor3D.DialogueNodePreviewActor> BuildDialogueConversationPreviewActors(

@@ -13,6 +13,32 @@ namespace LegendaryExplorer.Tests.UserControls.InterpTrackMove3D;
 public class InterpTrackMoveTransformTests
 {
     [TestMethod]
+    public void SetFacingChangesYawWithoutChangingActorLocation()
+    {
+        var actor = new CameraOrigin(new Vector3(-15842.27f, 8299.669f, -170309f),
+            new Vector3(3f, -4f, 15f));
+        var stageNode = new Vector3(-15323.47f, 8973.74f, -170244.2f);
+
+        CameraOrigin faced = CurveEditor3D.ApplyActorDirectionRotation(actor, stageNode,
+            includePitch: false, orientationOffset: 0);
+
+        Assert.AreEqual(actor.Location, faced.Location);
+        Assert.AreEqual(actor.Rotation.X, faced.Rotation.X, 0.0001f);
+        Assert.AreEqual(actor.Rotation.Y, faced.Rotation.Y, 0.0001f);
+        Assert.AreNotEqual(actor.Rotation.Z, faced.Rotation.Z);
+    }
+
+    [TestMethod]
+    public void SwitchCameraUsesLastAuthoredStageBoneKeyAtPlaybackTime()
+    {
+        float[] keyTimes = [0, 3.125f, 3.2083335f];
+
+        Assert.AreEqual(0, CurveEditor3D.GetActiveSwitchCameraKeyIndex(keyTimes, 0));
+        Assert.AreEqual(1, CurveEditor3D.GetActiveSwitchCameraKeyIndex(keyTimes, 3.125f));
+        Assert.AreEqual(2, CurveEditor3D.GetActiveSwitchCameraKeyIndex(keyTimes, 4.5f));
+    }
+
+    [TestMethod]
     public void AnchorObjectTrackOriginIsComposedWithStageTransform()
     {
         var stage = new CameraOrigin(new Vector3(-2545.6843f, -52040.52f, 1309f),

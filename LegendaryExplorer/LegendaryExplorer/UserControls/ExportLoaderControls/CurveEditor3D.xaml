@@ -161,6 +161,145 @@
             <TextBlock Text="{Binding SceneStatus}"/>
         </StatusBar>
 
+        <Border x:Name="DialogueTimelinePanel" DockPanel.Dock="Bottom" Height="300" Padding="8"
+                BorderBrush="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}" BorderThickness="0,1,0,0"
+                Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" Visibility="Collapsed">
+            <DockPanel>
+                <Grid DockPanel.Dock="Top" Margin="0,0,0,6">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="Dialogue Timeline" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                    <Button x:Name="DialogueTimelinePlayButton" Grid.Column="1" Content="Play" Width="58" Padding="6,3"
+                            Click="DialogueTimelinePlayPause_Click"/>
+                    <Button Grid.Column="2" Content="Rewind" Width="66" Margin="5,0,8,0" Padding="6,3"
+                            Click="DialogueTimelineRewind_Click" ToolTip="Restart the current dialogue node"/>
+                    <Slider x:Name="DialogueTimelineSlider" Grid.Column="3" Minimum="0" Value="0" Margin="0,0,10,0"
+                            VerticalAlignment="Center" PreviewMouseDown="DialogueTimelineSlider_PreviewMouseDown"
+                            ValueChanged="DialogueTimelineSlider_ValueChanged"/>
+                    <TextBlock x:Name="DialogueTimelineTimeText" Grid.Column="4" VerticalAlignment="Center"
+                               Text="0.00 / 0.00" MinWidth="92" TextAlignment="Right"/>
+                </Grid>
+
+                <ScrollViewer x:Name="DialogueTimelineTreeScrollViewer"
+                              HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"
+                              CanContentScroll="False" Focusable="False">
+                    <Grid Width="{Binding DialogueTimelineTreeWidth}" Height="{Binding DialogueTimelineTreeHeight}">
+                        <ItemsControl ItemsSource="{Binding DialogueTimelineEdges}" IsHitTestVisible="False"
+                                      Width="{Binding DialogueTimelineTreeWidth}" Height="{Binding DialogueTimelineTreeHeight}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate><Canvas/></ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Line X1="{Binding X1}" Y1="{Binding Y1}" X2="{Binding X2}" Y2="{Binding Y2}">
+                                        <Line.Style>
+                                            <Style TargetType="Line">
+                                                <Setter Property="Stroke" Value="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}"/>
+                                                <Setter Property="StrokeThickness" Value="2"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsOnActivePath}" Value="True">
+                                                        <Setter Property="Stroke" Value="#FFFFC13D"/>
+                                                        <Setter Property="StrokeThickness" Value="3"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Line.Style>
+                                    </Line>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <ListBox x:Name="DialogueTimelineListBox" ItemsSource="{Binding DialogueTimelineSegments}"
+                                 Width="{Binding DialogueTimelineTreeWidth}" Height="{Binding DialogueTimelineTreeHeight}"
+                                 Background="Transparent" BorderThickness="0" Padding="0"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                 ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                                 SelectionChanged="DialogueTimelineNode_SelectionChanged">
+                            <ListBox.ItemsPanel>
+                                <ItemsPanelTemplate><Canvas/></ItemsPanelTemplate>
+                            </ListBox.ItemsPanel>
+                            <ListBox.ItemContainerStyle>
+                                <Style TargetType="ListBoxItem">
+                                    <Setter Property="Canvas.Left" Value="{Binding TreeLeft}"/>
+                                    <Setter Property="Canvas.Top" Value="{Binding TreeTop}"/>
+                                    <Setter Property="Padding" Value="0"/>
+                                    <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                    <Setter Property="VerticalContentAlignment" Value="Stretch"/>
+                                    <Setter Property="Opacity" Value="0.55"/>
+                                    <Setter Property="Template">
+                                        <Setter.Value>
+                                            <ControlTemplate TargetType="ListBoxItem">
+                                                <Border x:Name="SelectionBorder" BorderBrush="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}"
+                                                        BorderThickness="1" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}">
+                                                    <ContentPresenter/>
+                                                </Border>
+                                                <ControlTemplate.Triggers>
+                                                    <Trigger Property="IsSelected" Value="True">
+                                                        <Setter TargetName="SelectionBorder" Property="BorderBrush" Value="#FFFFC13D"/>
+                                                        <Setter TargetName="SelectionBorder" Property="BorderThickness" Value="3"/>
+                                                    </Trigger>
+                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                        <Setter TargetName="SelectionBorder" Property="Background" Value="{DynamicResource {x:Static SystemColors.ControlLightBrushKey}}"/>
+                                                    </Trigger>
+                                                </ControlTemplate.Triggers>
+                                            </ControlTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsVisited}" Value="True">
+                                            <Setter Property="Opacity" Value="0.8"/>
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding IsOnActivePath}" Value="True">
+                                            <Setter Property="Opacity" Value="1"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </ListBox.ItemContainerStyle>
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid Width="230" Height="82">
+                                        <Grid.RowDefinitions><RowDefinition Height="25"/><RowDefinition Height="*"/><RowDefinition Height="20"/></Grid.RowDefinitions>
+                                        <Border Grid.Row="0">
+                                            <Border.Style>
+                                                <Style TargetType="Border">
+                                                    <Setter Property="Background" Value="#FF5B008F"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding Node.IsReply}" Value="True">
+                                                            <Setter Property="Background" Value="#FF607A2B"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Border.Style>
+                                            <Grid Margin="6,0">
+                                                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                                <TextBlock Text="{Binding NodeLabel}" Foreground="White" FontWeight="Bold" VerticalAlignment="Center"/>
+                                                <TextBlock Grid.Column="1" Text="{Binding SpeakerLabel, StringFormat=S: {0}}" Foreground="White"
+                                                           Margin="10,0,0,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                                <TextBlock Grid.Column="2" Text="{Binding ListenerLabel, StringFormat=L: {0}}" Foreground="White"
+                                                           Margin="8,0,0,0" VerticalAlignment="Center"/>
+                                            </Grid>
+                                        </Border>
+                                        <TextBlock Grid.Row="1" Text="{Binding LineLabel}" Margin="7,4" TextWrapping="Wrap"
+                                                   TextTrimming="CharacterEllipsis" MaxHeight="36"/>
+                                        <Grid Grid.Row="2" Margin="7,0">
+                                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                            <TextBlock Text="{Binding StrRefLabel}" FontSize="11" Opacity="0.7"/>
+                                            <TextBlock Grid.Column="1" Text="{Binding DurationLabel}" FontSize="11" Opacity="0.7"/>
+                                        </Grid>
+                                    </Grid>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </Grid>
+                </ScrollViewer>
+            </DockPanel>
+        </Border>
+
         <Grid>
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto"/>
@@ -175,64 +314,9 @@
                     Visibility="Collapsed">
                 <DockPanel>
                     <TextBlock DockPanel.Dock="Top" Text="Dialogue Actors" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,8"/>
-                    <StackPanel DockPanel.Dock="Top" Margin="0,0,0,10">
-                        <TextBlock Text="Conversation Timeline" FontWeight="SemiBold" VerticalAlignment="Center"/>
-                        <StackPanel Orientation="Horizontal" Margin="0,5,0,2">
-                            <Button x:Name="DialogueTimelinePlayButton" Content="Play" Width="52" Padding="5,2"
-                                    Click="DialogueTimelinePlayPause_Click"/>
-                            <Button Content="Rewind" Width="58" Margin="5,0,0,0" Padding="5,2"
-                                    Click="DialogueTimelineRewind_Click"/>
-                            <TextBlock x:Name="DialogueTimelineTimeText" Margin="8,0,0,0" VerticalAlignment="Center"
-                                       Text="0.00 / 0.00"/>
-                        </StackPanel>
-                        <Slider x:Name="DialogueTimelineSlider" Minimum="0" Value="0" Margin="0,2"
-                                PreviewMouseDown="DialogueTimelineSlider_PreviewMouseDown"
-                                ValueChanged="DialogueTimelineSlider_ValueChanged"/>
-                        <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled" Margin="0,3">
-                            <ItemsControl ItemsSource="{Binding DialogueTimelineSegments}">
-                                <ItemsControl.ItemsPanel>
-                                    <ItemsPanelTemplate>
-                                        <StackPanel Orientation="Horizontal"/>
-                                    </ItemsPanelTemplate>
-                                </ItemsControl.ItemsPanel>
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate>
-                                        <Button Content="{Binding NodeLabel}" Tag="{Binding}" Click="DialogueTimelineNode_Click"
-                                                MinWidth="46" Padding="7,3" Margin="0,0,3,0" ToolTip="{Binding DisplayLabel}"/>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-                        </ScrollViewer>
-                        <Border x:Name="DialogueBranchChoicePanel" Margin="0,6,0,0" Padding="6"
-                                BorderThickness="1" BorderBrush="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}"
-                                Visibility="Collapsed">
-                            <StackPanel>
-                                <TextBlock Text="Choose the next node" FontWeight="SemiBold"/>
-                                <TextBlock Text="Playback is paused at this branch." FontSize="11" Opacity="0.75"/>
-                                <ItemsControl ItemsSource="{Binding DialogueBranchOptions}" Margin="0,4,0,0">
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate>
-                                            <Button Content="{Binding DisplayLabel}" Tag="{Binding}" Click="DialogueBranchChoice_Click"
-                                                    HorizontalContentAlignment="Left" Padding="6,4" Margin="0,2,0,0"
-                                                    ToolTip="{Binding DisplayLabel}"/>
-                                        </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
-                            </StackPanel>
-                        </Border>
-                    </StackPanel>
-                    <StackPanel DockPanel.Dock="Bottom" Margin="0,8,0,0">
-                        <TextBlock Text="Audio" FontWeight="SemiBold"/>
-                        <ComboBox x:Name="DialoguePreviewAudioGenderComboBox" Margin="0,4,0,8"
-                                  SelectionChanged="DialoguePreviewAudioGender_SelectionChanged"/>
-                        <TextBlock Text="FaceFX Asset" FontWeight="SemiBold"/>
-                        <ComboBox x:Name="DialoguePreviewFaceFxAssetComboBox" Margin="0,4,0,0" IsEditable="True"
-                                  IsTextSearchEnabled="True" SelectionChanged="DialoguePreviewFaceFxAsset_SelectionChanged"
-                                  LostKeyboardFocus="DialoguePreviewFaceFxAsset_LostKeyboardFocus"/>
-                        <exportLoaderControls:Soundpanel x:Name="DialoguePreviewSoundpanel" Margin="0,8,0,0"
-                                                         MiniPlayerMode="True"/>
-                        <exportLoaderControls:Soundpanel x:Name="FaceOnlyVoSoundpanel" Visibility="Collapsed"
-                                                         MiniPlayerMode="True"/>
+                    <StackPanel DockPanel.Dock="Bottom" Visibility="Collapsed">
+                        <exportLoaderControls:Soundpanel x:Name="DialoguePreviewSoundpanel" MiniPlayerMode="True"/>
+                        <exportLoaderControls:Soundpanel x:Name="FaceOnlyVoSoundpanel" MiniPlayerMode="True"/>
                     </StackPanel>
                     <ListBox x:Name="DialoguePreviewActorListBox" DisplayMemberPath="DisplayName"
                              SelectionChanged="DialoguePreviewActorListBox_SelectionChanged"/>
