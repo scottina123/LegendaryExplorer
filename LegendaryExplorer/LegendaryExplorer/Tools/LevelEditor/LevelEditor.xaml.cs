@@ -3470,6 +3470,14 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         spotLightItem.Click += (_, _) => CreateSpotLight(location);
         createMenu.Items.Add(spotLightItem);
 
+        var directionalLightItem = new System.Windows.Controls.MenuItem { Header = "Directional Light" };
+        directionalLightItem.Click += (_, _) => CreateDirectionalLight(location);
+        createMenu.Items.Add(directionalLightItem);
+
+        var skyLightItem = new System.Windows.Controls.MenuItem { Header = "Sky Light" };
+        skyLightItem.Click += (_, _) => CreateSkyLight(location);
+        createMenu.Items.Add(skyLightItem);
+
         return createMenu;
     }
 
@@ -3766,7 +3774,20 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         }
     }
 
-    private void CreatePointLight(Vector3 location)
+    private void CreatePointLight(Vector3 location) =>
+        CreateLight("PointLight", "PointLightComponent", location, CreatePointLightProperties(location));
+
+    private void CreateSpotLight(Vector3 location) =>
+        CreateLight("SpotLight", "SpotLightComponent", location, CreateSpotLightProperties(location));
+
+    private void CreateDirectionalLight(Vector3 location) =>
+        CreateLight("DirectionalLight", "DirectionalLightComponent", location, CreateDirectionalLightProperties());
+
+    private void CreateSkyLight(Vector3 location) =>
+        CreateLight("SkyLight", "SkyLightComponent", location, CreateSkyLightProperties());
+
+    private void CreateLight(string actorClassName, string componentClassName, Vector3 location,
+        PropertyCollection componentProperties)
     {
         if (ActiveFile is not { IsReadOnly: false } activeFile)
         {
@@ -3778,20 +3799,23 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         try
         {
             IMEPackage package = activeFile.Package;
-            actorExport = ExportCreator.CreateExport(package, "PointLight", "PointLight", activeFile.LevelExport, createWithStack: true);
-            ExportEntry componentExport = ExportCreator.CreateExport(package, "PointLightComponent", "PointLightComponent", actorExport, prePropBinary: new byte[8]);
+            actorExport = ExportCreator.CreateExport(package, actorClassName, actorClassName,
+                activeFile.LevelExport, createWithStack: true);
+            ExportEntry componentExport = ExportCreator.CreateExport(package, componentClassName,
+                componentClassName, actorExport, prePropBinary: new byte[8]);
             componentExport.ObjectFlags |= UnrealFlags.EObjectFlags.Transactional;
-            componentExport.Archetype = PreviewLevelBuilder.GetImportArchetype(package, "Engine", "Default__PointLight.PointLightComponent0");
+            componentExport.Archetype = PreviewLevelBuilder.GetImportArchetype(package, "Engine",
+                $"Default__{actorClassName}.{componentClassName}0");
 
             actorExport.WriteProperties([
                 new ObjectProperty(componentExport, "LightComponent"),
                 CommonStructs.Vector3Prop(location, "Location")
             ]);
 
-            componentExport.WritePropertiesAndBinary(CreatePointLightProperties(location), LightComponent.Create());
+            componentExport.WritePropertiesAndBinary(componentProperties, LightComponent.Create());
 
             actor = ActorProxy.Create(this, actorExport)
-                    ?? throw new InvalidOperationException("The level editor cannot render PointLight actors.");
+                    ?? throw new InvalidOperationException($"The level editor cannot render {actorClassName} actors.");
             actor.OwningFile = activeFile;
 
             Level level = activeFile.LevelExport.GetBinaryData<Level>();
@@ -3810,7 +3834,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
             {
                 EntryPruner.TrashEntryAndDescendants(actorExport);
             }
-            MessageBox.Show(this, $"Failed to create PointLight:\n{ex.Message}", "Error");
+            MessageBox.Show(this, $"Failed to create {actorClassName}:\n{ex.Message}", "Error");
         }
     }
 
@@ -3835,54 +3859,6 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         ];
     }
 
-    private void CreateSpotLight(Vector3 location)
-    {
-        if (ActiveFile is not { IsReadOnly: false } activeFile)
-        {
-            return;
-        }
-
-        ExportEntry actorExport = null;
-        ActorProxy actor = null;
-        try
-        {
-            IMEPackage package = activeFile.Package;
-            actorExport = ExportCreator.CreateExport(package, "SpotLight", "SpotLight", activeFile.LevelExport, createWithStack: true);
-            ExportEntry componentExport = ExportCreator.CreateExport(package, "SpotLightComponent", "SpotLightComponent", actorExport, prePropBinary: new byte[8]);
-            componentExport.ObjectFlags |= UnrealFlags.EObjectFlags.Transactional;
-            componentExport.Archetype = PreviewLevelBuilder.GetImportArchetype(package, "Engine", "Default__SpotLight.SpotLightComponent0");
-
-            actorExport.WriteProperties([
-                new ObjectProperty(componentExport, "LightComponent"),
-                CommonStructs.Vector3Prop(location, "Location")
-            ]);
-
-            componentExport.WritePropertiesAndBinary(CreateSpotLightProperties(location), LightComponent.Create());
-
-            actor = ActorProxy.Create(this, actorExport)
-                    ?? throw new InvalidOperationException("The level editor cannot render SpotLight actors.");
-            actor.OwningFile = activeFile;
-
-            Level level = activeFile.LevelExport.GetBinaryData<Level>();
-            level.Actors.Add(actorExport.UIndex);
-            activeFile.LevelExport.WriteBinary(level);
-            AddActor(actor);
-            SelectActor(actor, false);
-            activeFile.IsDirty = true;
-            UndoHistory.Clear();
-            _preEditSnapshot = null;
-            SceneViewer?.MarkRenderDirty();
-        }
-        catch (Exception ex)
-        {
-            if (actorExport is not null && !actorExport.IsTrash())
-            {
-                EntryPruner.TrashEntryAndDescendants(actorExport);
-            }
-            MessageBox.Show(this, $"Failed to create SpotLight:\n{ex.Message}", "Error");
-        }
-    }
-
     private static PropertyCollection CreateSpotLightProperties(Vector3 location)
     {
         return [
@@ -3902,6 +3878,42 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
             new StructProperty("LightmassPointLightSettings", [
                 new FloatProperty(0.2f, "IndirectLightingScale")
             ], "LightmassSettings"),
+            new ArrayProperty<NameProperty>("OtherLevelsToAffect")
+        ];
+    }
+
+    private static PropertyCollection CreateDirectionalLightProperties()
+    {
+        return [
+            new FloatProperty(2f, "Brightness"),
+            CommonStructs.ColorProp(System.Drawing.Color.White, "LightColor"),
+            new BoolProperty(true, "bHasLightEverBeenBuiltIntoLightMap"),
+            CreateInitializedLightingChannelsProperty(),
+            CommonStructs.ColorProp(System.Drawing.Color.White, "LightEnv_BouncedModulationColor"),
+            new FloatProperty(0.129841f, "LightEnv_BouncedLightBrightness"),
+            new BoolProperty(true, "CastShadows"),
+            CommonStructs.GuidProp(Guid.NewGuid(), "LightGuid"),
+            CommonStructs.GuidProp(Guid.NewGuid(), "LightmapGuid"),
+            new StructProperty("LightmassDirectionalLightSettings", [
+                new FloatProperty(0.2f, "IndirectLightingScale")
+            ], "LightmassSettings"),
+            new ArrayProperty<NameProperty>("OtherLevelsToAffect")
+        ];
+    }
+
+    private static PropertyCollection CreateSkyLightProperties()
+    {
+        return [
+            new FloatProperty(1.1f, "Brightness"),
+            CommonStructs.ColorProp(System.Drawing.Color.White, "LightColor"),
+            new FloatProperty(1.1f, "LowerBrightness"),
+            CommonStructs.ColorProp(System.Drawing.Color.White, "LowerColor"),
+            new BoolProperty(true, "bHasLightEverBeenBuiltIntoLightMap"),
+            CreateInitializedLightingChannelsProperty(),
+            CommonStructs.ColorProp(System.Drawing.Color.White, "LightEnv_BouncedModulationColor"),
+            new FloatProperty(0.129841f, "LightEnv_BouncedLightBrightness"),
+            CommonStructs.GuidProp(Guid.NewGuid(), "LightGuid"),
+            CommonStructs.GuidProp(Guid.NewGuid(), "LightmapGuid"),
             new ArrayProperty<NameProperty>("OtherLevelsToAffect")
         ];
     }
