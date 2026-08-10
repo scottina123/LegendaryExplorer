@@ -241,7 +241,8 @@
             <GridSplitter x:Name="DialoguePreviewActorPanelSplitter" Grid.Column="1" Width="5"
                           HorizontalAlignment="Stretch" Visibility="Collapsed"/>
 
-            <scene3D:SceneRenderControl x:Name="SceneViewer" Grid.Column="2"/>
+            <scene3D:SceneRenderControl x:Name="SceneViewer" Grid.Column="2" MaximumFramesPerSecond="60"
+                                        PreviewMouseMove="SceneViewer_PreviewMouseMove"/>
             <GridSplitter Grid.Column="3" Width="5" HorizontalAlignment="Stretch"/>
 
             <ScrollViewer Grid.Column="4" VerticalScrollBarVisibility="Auto" Padding="8">
@@ -365,7 +366,7 @@
                             <TextBlock x:Name="PreviewActorStatusTextBlock" Margin="2,2,0,0" Opacity="0.7" TextWrapping="Wrap"/>
                         </StackPanel>
                     </Expander>
-                    <TextBlock Text="Keyframes" FontSize="18" FontWeight="SemiBold"/>
+                    <TextBlock Text="InterpTrackMove tracks" FontSize="18" FontWeight="SemiBold"/>
                     <ListBox x:Name="KeyframeTrackMoveTabs" Margin="0,4,0,8"
                              Background="Transparent" BorderThickness="0"
                              ScrollViewer.HorizontalScrollBarVisibility="Disabled"
@@ -410,6 +411,109 @@
                             </DataTemplate>
                         </ListBox.ItemTemplate>
                     </ListBox>
+                    <Expander x:Name="FovTrackPanel" Header="FOVAngle (InterpTrackFloatProp)" IsExpanded="True"
+                              Margin="0,4,0,8" Visibility="Collapsed">
+                        <StackPanel Margin="6">
+                            <DockPanel Margin="0,0,0,4">
+                                <Border DockPanel.Dock="Left" Width="11" Height="11" Margin="0,2,7,0"
+                                        Background="#FF19D9FF" BorderBrush="#FF08596A" BorderThickness="1"/>
+                                <TextBlock x:Name="FovTrackNameTextBlock" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                            </DockPanel>
+                            <TextBlock Margin="0,0,0,5" TextWrapping="Wrap" Opacity="0.75"
+                                       Text="Move and FOV are separate selectable tracks. Viewport preview and Play evaluate both at the same InVal, so each FOV icon sits on the linked Move path."/>
+                            <CheckBox Content="Show FOV icons in viewport" IsChecked="{Binding ShowFovIcons}"
+                                      Margin="0,0,0,5" ToolTip="Hide only the cyan FOV frustum icons; the Move path and keys remain visible."/>
+                            <ListBox x:Name="FovKeyframeList" MaxHeight="220" Margin="0,0,0,6"
+                                     SelectionChanged="FovKeyframeList_SelectionChanged"
+                                     PreviewMouseDown="FovKeyframeEditor_PreviewMouseDown"
+                                     ToolTip="Select independently from Move keys. Use Preview Move + FOV when you want to enter the camera view.">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid Margin="2,3">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="{Binding Time, StringFormat=InVal {0:0.###}}" VerticalAlignment="Center"/>
+                                            <TextBlock Grid.Column="1" Margin="8,0,0,0"
+                                                       Text="{Binding Value, StringFormat=OutVal {0:0.###}°}" VerticalAlignment="Center"/>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                            <WrapPanel Margin="0,0,0,5">
+                                <Button Content="Preview Move + FOV" Click="PreviewFovKeyframe_Click" Padding="6,3" Margin="0,0,4,4"/>
+                                <Button Content="Add FOV Key..." Click="AddFovKeyframe_Click" Padding="6,3" Margin="0,0,4,4"/>
+                                <Button Content="Delete FOV Key" Click="DeleteFovKeyframe_Click" Padding="6,3" Margin="0,0,4,4"/>
+                            </WrapPanel>
+                            <Grid DataContext="{Binding SelectedFovKeyframe}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+                                <TextBlock Text="InVal" VerticalAlignment="Center" Margin="0,0,6,4"/>
+                                <DockPanel Grid.Column="1" Margin="0,0,0,4">
+                                    <Button DockPanel.Dock="Right" Content="Apply" Click="ApplyFovKeyframeInVal_Click" Padding="7,2" Margin="5,0,0,0"/>
+                                    <TextBox Text="{Binding DataContext.SelectedFovKeyframeInVal, RelativeSource={RelativeSource AncestorType={x:Type exportLoaderControls:CurveEditor3D}}, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                             KeyDown="FovKeyframeInVal_KeyDown" GotFocus="CoordinateEditor_GotFocus"
+                                             VerticalContentAlignment="Center"/>
+                                </DockPanel>
+                                <TextBlock Grid.Row="1" Text="OutVal" VerticalAlignment="Center" Margin="0,0,6,4"/>
+                                <xctk:SingleUpDown Grid.Row="1" Grid.Column="1" Margin="0,0,0,4"
+                                                   Value="{Binding Value, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=100, ValidatesOnExceptions=True}"
+                                                   Increment="{Binding Value, ElementName=FovIncrementUpDown}" ToolTip="FOVAngle in degrees"/>
+                                <TextBlock Grid.Row="2" Text="ArriveTangent" VerticalAlignment="Center" Margin="0,0,6,4"/>
+                                <xctk:SingleUpDown Grid.Row="2" Grid.Column="1" Margin="0,0,0,4"
+                                                   Value="{Binding ArriveTangent, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=100, ValidatesOnExceptions=True}"
+                                                   Increment="{Binding Value, ElementName=FovIncrementUpDown}"/>
+                                <TextBlock Grid.Row="3" Text="LeaveTangent" VerticalAlignment="Center" Margin="0,0,6,4"/>
+                                <xctk:SingleUpDown Grid.Row="3" Grid.Column="1" Margin="0,0,0,4"
+                                                   Value="{Binding LeaveTangent, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=100, ValidatesOnExceptions=True}"
+                                                   Increment="{Binding Value, ElementName=FovIncrementUpDown}"/>
+                                <TextBlock Grid.Row="4" Text="InterpMode" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                <ComboBox Grid.Row="4" Grid.Column="1"
+                                          ItemsSource="{Binding DataContext.InterpModes, RelativeSource={RelativeSource AncestorType={x:Type exportLoaderControls:CurveEditor3D}}}"
+                                          SelectedItem="{Binding InterpMode, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                            </Grid>
+                            <StackPanel Margin="0,8,0,0">
+                                <CheckBox Content="Camera framing mode" IsChecked="{Binding CameraFramingMode}"
+                                          FontWeight="SemiBold" Margin="0,0,0,6"
+                                          ToolTip="View through the exact linked Move transform and FOV while editing. Move paths, Move keys, FOV keys, and the gizmo are hidden."/>
+                                <DockPanel Margin="0,0,0,4">
+                                    <TextBlock Text="Scrub increment" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                    <xctk:SingleUpDown x:Name="FovIncrementUpDown" Value="0.1" Increment="0.1" Minimum="0.0001"
+                                                       ToolTip="Amount applied for each step while dragging the FOV value scrubber"/>
+                                </DockPanel>
+                                <UniformGrid Rows="1" Columns="4" Margin="0,0,0,4">
+                                    <RadioButton Content="InVal" Tag="Time" GroupName="FovScrubProperty"
+                                                 HorizontalContentAlignment="Center" Checked="FovScrubProperty_Checked"/>
+                                    <RadioButton Content="OutVal" Tag="Value" GroupName="FovScrubProperty" IsChecked="True"
+                                                 HorizontalContentAlignment="Center" Checked="FovScrubProperty_Checked"/>
+                                    <RadioButton Content="Arrive" Tag="ArriveTangent" GroupName="FovScrubProperty"
+                                                 HorizontalContentAlignment="Center" Checked="FovScrubProperty_Checked"/>
+                                    <RadioButton Content="Leave" Tag="LeaveTangent" GroupName="FovScrubProperty"
+                                                 HorizontalContentAlignment="Center" Checked="FovScrubProperty_Checked"/>
+                                </UniformGrid>
+                                <Grid Height="24" ToolTip="Drag left or right for an unbounded, relative edit of the selected FOV value">
+                                    <Border Height="8" CornerRadius="4" VerticalAlignment="Center"
+                                            Background="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}"/>
+                                    <Border Width="2" Height="16" VerticalAlignment="Center" HorizontalAlignment="Center"
+                                            Background="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}" IsHitTestVisible="False"/>
+                                    <Thumb x:Name="FovScrubThumb" Width="24" Height="20" HorizontalAlignment="Center"
+                                           DragStarted="FovScrubThumb_DragStarted"
+                                           DragDelta="FovScrubThumb_DragDelta"
+                                           DragCompleted="FovScrubThumb_DragCompleted"/>
+                                </Grid>
+                            </StackPanel>
+                        </StackPanel>
+                    </Expander>
                     <GroupBox Header="Playback" Margin="0,4,0,8">
                         <StackPanel Margin="6">
                             <WrapPanel Margin="0,0,0,6">
@@ -515,6 +619,12 @@
                                     </UniformGrid>
                                     <CheckBox x:Name="LocationScrubAllKeysCheckBox" Content="Apply location drag to all keys" Margin="0,0,0,4"
                                               ToolTip="Apply the same location delta to every keyframe while preserving the track shape"/>
+                                    <CheckBox Content="Camera framing mode" IsChecked="{Binding DataContext.CameraFramingMode, RelativeSource={RelativeSource AncestorType={x:Type exportLoaderControls:CurveEditor3D}}}"
+                                              FontWeight="SemiBold" Margin="0,0,0,4"
+                                              ToolTip="View through the exact linked Move transform and FOV while editing. Move paths, Move keys, FOV keys, and the gizmo are hidden."/>
+                                    <Button x:Name="SnapKeyToCursorButton" Content="Snap selected key to viewport cursor"
+                                            Click="SnapSelectedKeyframeToCurrentViewportCursor_Click" IsEnabled="False" Margin="0,0,0,4"
+                                            ToolTip="Move the selected key to the last cursor position inside the viewport while preserving its current camera-facing depth"/>
                                     <Grid Height="24" ToolTip="Drag left or right to move keyframes continuously along the selected axes">
                                         <Border Height="8" CornerRadius="4" VerticalAlignment="Center"
                                                 Background="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}"/>

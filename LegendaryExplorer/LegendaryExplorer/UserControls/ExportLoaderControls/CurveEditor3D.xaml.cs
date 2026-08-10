@@ -405,7 +405,8 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         public ExportEntry Group { get; init; }
         public ExportEntry TrackMove { get; init; }
         public CurveEditor3DModel Model { get; init; }
-        public InterpCurveFloat FovTrack { get; init; }
+        public CurveEditor3DFovModel FovModel { get; init; }
+        public InterpCurveFloat FovTrack => FovModel?.Track;
     }
 
     private sealed class PreviewActorPlaybackState
@@ -491,6 +492,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     private readonly ObservableCollection<DialogueBranchOption> dialogueBranchOptions = [];
     private readonly Dictionary<string, DialogueNodeReference> dialogueBranchSelections = new(StringComparer.Ordinal);
     private CurveEditor3DKeyframe selectedKeyframe;
+    private CurveEditor3DFovKeyframe selectedFovKeyframe;
     private string currentExportName;
     private string sceneStatus = "Select an InterpTrackMove export, then optionally open a level backdrop.";
     private string playbackKeyframeStatus = "Not playing";
@@ -507,11 +509,16 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     private DialogueNodePreviewConfiguration dialogueNodePreview;
     private bool isDialogueConversationPreview;
     private CurveEditor3DModel registeredKeyframeModel;
+    private CurveEditor3DFovModel registeredFovModel;
     private bool updatingKeyframeTrackTabs;
+    private Point? lastViewportCursorPosition;
     private Vector3 pendingViewportKeyframeLocation;
     private Vector3 pendingViewportSelectedKeyframeLocation;
     private bool showCollision = Settings.LevelEditor_ShowCollision;
     private bool showLightIcons;
+    private bool showFovIcons = true;
+    private bool cameraFramingMode;
+    private bool suppressTrackVisualizationForCameraPreview;
     private bool showVolumes = Settings.LevelEditor_ShowVolumes;
     private bool showVolumetrics;
     private bool unlit = Settings.LevelEditor_Unlit;
@@ -534,9 +541,13 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     private bool updatingCameraRotationText;
     private int cameraRotationEditorsFocused;
     private string selectedKeyframeInVal;
+    private string selectedFovKeyframeInVal;
     private string locationScrubAxes = "X";
     private double locationScrubDragAccumulator;
     private double locationScrubPreviousHorizontalChange;
+    private string fovScrubProperty = nameof(CurveEditor3DFovKeyframe.Value);
+    private double fovScrubDragAccumulator;
+    private double fovScrubPreviousHorizontalChange;
     private string rotationDialAxis = nameof(CurveEditor3DKeyframe.Pitch);
     private bool rotationDialDragging;
     private double rotationDialAngleAccumulator;
@@ -558,6 +569,11 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     private CurveEditor3DModel ActiveModel
         => (KeyframeTrackMoveTabs?.SelectedItem as TrackMovePlaybackOption)?.Model ?? model;
 
+    private TrackMovePlaybackOption ActiveTrackMoveOption
+        => KeyframeTrackMoveTabs?.SelectedItem as TrackMovePlaybackOption ?? primaryTrackMove;
+
+    private CurveEditor3DFovModel ActiveFovModel => ActiveTrackMoveOption?.FovModel;
+
     private ExportEntry ActiveTrackMoveExport => ActiveModel.Export ?? CurrentLoadedExport;
 
     private CameraOrigin? ActiveTrackCoordinateBasis =>
@@ -572,6 +588,9 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         backgroundColor = LevelEditor.GetThemeDefaultBackgroundColor();
         RenderContext.BackgroundColor = backgroundColor;
         RenderContext.ShowLightIcons = showLightIcons;
+        RenderContext.ShowEmitterIcons = false;
+        RenderContext.ShowPointsOfInterest = false;
+        RenderContext.SetShowEmitterVfx(false);
         if (unlit)
         {
             RenderContext.RenderFlags |= LevelEditorRenderContext.ShaderFlags.Unlit;
@@ -579,6 +598,11 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         InterpModes = Enum.GetValues<EInterpCurveMode>();
         LoadCommands();
         InitializeComponent();
+        // Match Level Editor input scheduling so background resource preparation yields during interaction.
+        PreviewMouseMove += (_, _) => RenderContext.NotifyUserActivity();
+        PreviewMouseDown += (_, _) => RenderContext.NotifyUserActivity();
+        PreviewMouseWheel += (_, _) => RenderContext.NotifyUserActivity();
+        PreviewKeyDown += (_, _) => RenderContext.NotifyUserActivity();
         PreviewActorListBox.ItemsSource = previewActors;
         DialoguePreviewActorListBox.ItemsSource = previewActors;
         DialoguePreviewAudioGenderComboBox.ItemsSource = Enum.GetValues<DialoguePreviewAudioGender>();
@@ -825,6 +849,44 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         }
     }
 
+    public bool ShowFovIcons
+    {
+        get => showFovIcons;
+        set
+        {
+            if (SetProperty(ref showFovIcons, value))
+            {
+                SceneViewer?.MarkRenderDirty();
+            }
+        }
+    }
+
+    public bool CameraFramingMode
+    {
+        get => cameraFramingMode;
+        set
+        {
+            if (!SetProperty(ref cameraFramingMode, value))
+            {
+                return;
+            }
+
+            suppressTrackVisualizationForCameraPreview = false;
+            if (value)
+            {
+                RenderContext.TransformWidget.Attach = null;
+                PreviewSelectedCameraTrackValue();
+            }
+            else
+            {
+                RenderContext.TransformWidget.Attach = previewActorWidgetActive
+                    ? previewActorWidgetTarget
+                    : SelectedKeyframe;
+            }
+            SceneViewer?.MarkRenderDirty();
+        }
+    }
+
     public bool ShowVolumes
     {
         get => showVolumes;
@@ -1066,17 +1128,66 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         get => selectedKeyframe;
         private set
         {
+            if (value is not null)
+            {
+                suppressTrackVisualizationForCameraPreview = false;
+            }
             bool selectionChanged = SetProperty(ref selectedKeyframe, value);
+            if (value is not null && selectedFovKeyframe is not null)
+            {
+                selectedFovKeyframe = null;
+                OnPropertyChanged(nameof(SelectedFovKeyframe));
+                FovKeyframeList.SelectedItem = null;
+            }
             previewActorWidgetActive = false;
             SelectedKeyframeInVal = value?.Time.ToString(CultureInfo.CurrentCulture);
             SnapToKeyButton.IsEnabled = value is not null;
+            SnapKeyToCursorButton.IsEnabled = value is not null;
             KeyframeList.SelectedItem = value;
             if (value is not null && (selectionChanged || !KeyframeList.IsKeyboardFocusWithin))
             {
                 KeyframeList.ScrollIntoView(value);
             }
-            RenderContext.TransformWidget.Attach = value;
+            RenderContext.TransformWidget.Attach = CameraFramingMode ? null : value;
             UpdateRotationDialIndicator();
+            if (CameraFramingMode && value is not null)
+            {
+                PreviewSelectedCameraTrackValue();
+            }
+            SceneViewer?.MarkRenderDirty();
+        }
+    }
+
+    public CurveEditor3DFovKeyframe SelectedFovKeyframe
+    {
+        get => selectedFovKeyframe;
+        private set
+        {
+            if (value is not null)
+            {
+                suppressTrackVisualizationForCameraPreview = false;
+            }
+            bool selectionChanged = SetProperty(ref selectedFovKeyframe, value);
+            if (value is not null && selectedKeyframe is not null)
+            {
+                selectedKeyframe = null;
+                OnPropertyChanged(nameof(SelectedKeyframe));
+                KeyframeList.SelectedItem = null;
+                SnapToKeyButton.IsEnabled = false;
+                SnapKeyToCursorButton.IsEnabled = false;
+            }
+            SelectedFovKeyframeInVal = value?.Time.ToString(CultureInfo.CurrentCulture);
+            FovKeyframeList.SelectedItem = value;
+            if (value is not null && (selectionChanged || !FovKeyframeList.IsKeyboardFocusWithin))
+            {
+                FovKeyframeList.ScrollIntoView(value);
+            }
+            previewActorWidgetActive = false;
+            RenderContext.TransformWidget.Attach = CameraFramingMode || value is not null ? null : SelectedKeyframe;
+            if (CameraFramingMode && value is not null)
+            {
+                PreviewSelectedCameraTrackValue();
+            }
             SceneViewer?.MarkRenderDirty();
         }
     }
@@ -1085,6 +1196,12 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     {
         get => selectedKeyframeInVal;
         set => SetProperty(ref selectedKeyframeInVal, value);
+    }
+
+    public string SelectedFovKeyframeInVal
+    {
+        get => selectedFovKeyframeInVal;
+        set => SetProperty(ref selectedFovKeyframeInVal, value);
     }
 
     public override bool CanParse(ExportEntry exportEntry)
@@ -1135,6 +1252,9 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         PlaybackKeyframeStatus = "Not playing";
         KeyframeList.ItemsSource = null;
         SelectedKeyframe = null;
+        FovKeyframeList.ItemsSource = null;
+        SelectedFovKeyframe = null;
+        FovTrackPanel.Visibility = Visibility.Collapsed;
         CurrentLoadedExport = null;
         CurrentExportName = null;
         previewActorGestureAssignments.Clear();
@@ -1263,6 +1383,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
     private void RefreshMulticamPlaybackOptions(ExportEntry trackMove)
     {
+        var fovModelsByExport = new Dictionary<int, CurveEditor3DFovModel>();
         Dictionary<PreviewActorConfiguration, ExportEntry> previousActorTracks = dialogueNodePreview is null
             ? previewActorTrackAssignments
                 .Where(pair => pair.Value?.TrackMove is not null)
@@ -1305,7 +1426,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                         Group = group,
                         TrackMove = groupTrackMove,
                         Model = trackModel,
-                        FovTrack = LoadCameraFovTrack(group),
+                        FovModel = LoadCameraFovModel(group, fovModelsByExport),
                     };
                     availableTrackMoves.Add(option);
                     bool isCameraTrackForGroup = cameraOptionsByGroup.TryAdd(groupName, option);
@@ -1365,7 +1486,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             Group = trackMove.Parent as ExportEntry,
             TrackMove = trackMove,
             Model = model,
-            FovTrack = LoadCameraFovTrack(trackMove.Parent as ExportEntry),
+            FovModel = LoadCameraFovModel(trackMove.Parent as ExportEntry, fovModelsByExport),
         };
         if (availableTrackMoves.All(option => !IsSameExport(option.TrackMove, primaryTrackMove.TrackMove)))
         {
@@ -1485,7 +1606,8 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     private static string GetInterpGroupName(ExportEntry group)
         => group.GetProperty<NameProperty>("GroupName")?.Value.Instanced ?? group.ObjectName.Instanced;
 
-    private static InterpCurveFloat LoadCameraFovTrack(ExportEntry group)
+    private CurveEditor3DFovModel LoadCameraFovModel(ExportEntry group,
+        IDictionary<int, CurveEditor3DFovModel> fovModelsByExport)
     {
         ExportEntry fovTrack = GetReferencedExports(group, "InterpTracks").FirstOrDefault(track =>
             track.ClassName == "InterpTrackFloatProp"
@@ -1493,8 +1615,20 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                     StringComparison.OrdinalIgnoreCase)
                 || string.Equals(track.GetProperty<StrProperty>("TrackTitle")?.Value, "FOVAngle",
                     StringComparison.OrdinalIgnoreCase)));
-        StructProperty floatTrack = fovTrack?.GetProperty<StructProperty>("FloatTrack");
-        return floatTrack is null ? null : InterpCurveFloat.FromStructProperty(floatTrack, fovTrack.Game);
+        if (fovTrack is null)
+        {
+            return null;
+        }
+        if (fovModelsByExport.TryGetValue(fovTrack.UIndex, out CurveEditor3DFovModel existingModel))
+        {
+            return existingModel;
+        }
+
+        var fovModel = new CurveEditor3DFovModel();
+        fovModel.Load(fovTrack);
+        fovModel.Changed += FovModel_Changed;
+        fovModelsByExport[fovTrack.UIndex] = fovModel;
+        return fovModel;
     }
 
     private static IEnumerable<ExportEntry> FindDirectorTracks(ExportEntry interpData)
@@ -2674,6 +2808,10 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         {
             SelectedKeyframe = keyframe;
         }
+        else if (hitProxy is CurveEditor3DFovKeyframe fovKeyframe)
+        {
+            SelectedFovKeyframe = fovKeyframe;
+        }
     }
 
     private void RightClickHitProxy(IHitProxy hitProxy)
@@ -2683,6 +2821,10 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             SelectedKeyframe = keyframe;
             ShowKeyframeContextMenu(SceneViewer);
         }
+        else if (hitProxy is CurveEditor3DFovKeyframe fovKeyframe)
+        {
+            SelectedFovKeyframe = fovKeyframe;
+        }
         else
         {
             ShowViewportContextMenu(SceneViewer);
@@ -2691,7 +2833,9 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
     private void IgnoreActorSelection(ActorProxy actor)
     {
-        RenderContext.TransformWidget.Attach = previewActorWidgetActive ? previewActorWidgetTarget : SelectedKeyframe;
+        RenderContext.TransformWidget.Attach = CameraFramingMode
+            ? null
+            : previewActorWidgetActive ? previewActorWidgetTarget : SelectedKeyframe;
     }
 
     private void RightClickActor(ActorProxy actor)
@@ -3129,6 +3273,229 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         e.Handled = true;
     }
 
+    private void FovKeyframeList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (FovKeyframeList.SelectedItem is CurveEditor3DFovKeyframe keyframe
+            && keyframe != SelectedFovKeyframe)
+        {
+            SelectedFovKeyframe = keyframe;
+        }
+    }
+
+    private void FovKeyframeEditor_PreviewMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        if (ItemsControl.ContainerFromElement(FovKeyframeList, e.OriginalSource as DependencyObject) is ListBoxItem
+            { DataContext: CurveEditor3DFovKeyframe keyframe })
+        {
+            SelectedFovKeyframe = keyframe;
+        }
+    }
+
+    private void PreviewFovKeyframe_Click(object sender, RoutedEventArgs e)
+    {
+        StopPlayback();
+        PreviewSelectedFovKeyframe();
+    }
+
+    private void PreviewSelectedFovKeyframe()
+    {
+        if (SelectedFovKeyframe is not { } keyframe || ActiveTrackMoveOption is not { } trackMove)
+        {
+            return;
+        }
+
+        suppressTrackVisualizationForCameraPreview = true;
+        ApplyViewportCameraAtTime(trackMove, keyframe.Time);
+        RenderContext.Camera.FocusDepth = 0f;
+        UpdateCameraPositionText();
+        UpdateCameraRotationText();
+        SceneStatus = $"Previewing linked Move + FOV tracks at InVal {keyframe.Time:0.###} ({keyframe.Value:0.##}°).";
+        SceneViewer?.MarkRenderDirty();
+        SceneViewer?.Focus();
+    }
+
+    private void PreviewSelectedCameraTrackValue()
+    {
+        float? time = SelectedFovKeyframe?.Time ?? SelectedKeyframe?.Time;
+        if (time is null || ActiveTrackMoveOption is not { } trackMove)
+        {
+            return;
+        }
+
+        ApplyViewportCameraAtTime(trackMove, time.Value);
+        RenderContext.Camera.FocusDepth = 0f;
+        UpdateCameraPositionText();
+        UpdateCameraRotationText();
+    }
+
+    private void ApplyFovKeyframeInVal_Click(object sender, RoutedEventArgs e)
+    {
+        if (SelectedFovKeyframe is not { } keyframe || ActiveFovModel is not { } fovModel)
+        {
+            return;
+        }
+
+        if (!float.TryParse(SelectedFovKeyframeInVal, NumberStyles.Float, CultureInfo.CurrentCulture,
+                out float inVal) || !float.IsFinite(inVal))
+        {
+            MessageBox.Show("Enter a valid finite InVal.");
+            return;
+        }
+
+        if (fovModel.HasKeyframeAtTime(inVal, keyframe))
+        {
+            MessageBox.Show("An FOV key already exists at this InVal.");
+            return;
+        }
+
+        StopPlayback();
+        keyframe.Time = inVal;
+        SelectedFovKeyframeInVal = keyframe.Time.ToString(CultureInfo.CurrentCulture);
+        SceneStatus = $"Changed FOV key InVal to {keyframe.Time:0.###}.";
+    }
+
+    private void FovKeyframeInVal_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Enter)
+        {
+            return;
+        }
+
+        ApplyFovKeyframeInVal_Click(sender, e);
+        e.Handled = true;
+    }
+
+    private void FovScrubProperty_Checked(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: string propertyName })
+        {
+            fovScrubProperty = propertyName;
+        }
+    }
+
+    private void FovScrubThumb_DragStarted(object sender, DragStartedEventArgs e)
+    {
+        if (SelectedFovKeyframe is null)
+        {
+            e.Handled = true;
+            return;
+        }
+
+        StopPlayback(false);
+        fovScrubDragAccumulator = 0;
+        fovScrubPreviousHorizontalChange = 0;
+    }
+
+    private void FovScrubThumb_DragDelta(object sender, DragDeltaEventArgs e)
+    {
+        if (SelectedFovKeyframe is not { } keyframe || !double.IsFinite(e.HorizontalChange))
+        {
+            return;
+        }
+
+        double horizontalChange = e.HorizontalChange - fovScrubPreviousHorizontalChange;
+        fovScrubPreviousHorizontalChange = e.HorizontalChange;
+        fovScrubDragAccumulator += horizontalChange;
+        double dragStep = SystemParameters.MinimumHorizontalDragDistance;
+        int stepCount = (int)(fovScrubDragAccumulator / dragStep);
+        if (stepCount == 0)
+        {
+            return;
+        }
+
+        fovScrubDragAccumulator -= stepCount * dragStep;
+        float delta = stepCount * (FovIncrementUpDown.Value ?? 0.1f);
+        switch (fovScrubProperty)
+        {
+            case nameof(CurveEditor3DFovKeyframe.Time):
+                float proposedTime = keyframe.Time + delta;
+                if (ActiveFovModel?.HasKeyframeAtTime(proposedTime, keyframe) == true)
+                {
+                    return;
+                }
+                keyframe.Time = proposedTime;
+                SelectedFovKeyframeInVal = keyframe.Time.ToString(CultureInfo.CurrentCulture);
+                break;
+            case nameof(CurveEditor3DFovKeyframe.ArriveTangent):
+                keyframe.ArriveTangent += delta;
+                break;
+            case nameof(CurveEditor3DFovKeyframe.LeaveTangent):
+                keyframe.LeaveTangent += delta;
+                break;
+            default:
+                keyframe.Value += delta;
+                break;
+        }
+    }
+
+    private void FovScrubThumb_DragCompleted(object sender, DragCompletedEventArgs e)
+    {
+        SceneViewer?.MarkRenderDirty();
+    }
+
+    private void AddFovKeyframe_Click(object sender, RoutedEventArgs e)
+    {
+        StopPlayback();
+        if (ActiveFovModel is not { } fovModel)
+        {
+            return;
+        }
+
+        float defaultTime = SelectedFovKeyframe?.Time + 1f
+                            ?? SelectedKeyframe?.Time
+                            ?? ActiveModel.Keyframes.FirstOrDefault()?.Time
+                            ?? 0f;
+        string response = PromptDialog.Prompt(
+            this,
+            "Enter the InVal for the new FOV key.",
+            "Add FOV Key",
+            defaultTime.ToString(CultureInfo.CurrentCulture),
+            selectText: true,
+            validator: text =>
+            {
+                if (!float.TryParse(text, NumberStyles.Float, CultureInfo.CurrentCulture, out float value)
+                    || !float.IsFinite(value))
+                {
+                    return (false, "Enter a valid finite number.");
+                }
+                return fovModel.HasKeyframeAtTime(value)
+                    ? (false, "An FOV key already exists at this InVal.")
+                    : (true, null);
+            });
+        if (!float.TryParse(response, NumberStyles.Float, CultureInfo.CurrentCulture, out float inVal))
+        {
+            return;
+        }
+
+        float value = fovModel.Track.Eval(inVal, 60f);
+        CurveEditor3DFovKeyframe keyframe = fovModel.AddKeyframe(inVal, value);
+        if (keyframe is null)
+        {
+            return;
+        }
+
+        RenderContext.AddHitProxy(keyframe);
+        SelectedFovKeyframe = keyframe;
+        SceneStatus = $"Added FOV key at InVal {keyframe.Time:0.###}.";
+        RefreshFovKeyframePanel();
+        SceneViewer?.MarkRenderDirty();
+    }
+
+    private void DeleteFovKeyframe_Click(object sender, RoutedEventArgs e)
+    {
+        StopPlayback();
+        if (ActiveFovModel is not { } fovModel || SelectedFovKeyframe is not { } keyframe)
+        {
+            return;
+        }
+
+        RenderContext.RemoveHitProxy(keyframe);
+        SelectedFovKeyframe = fovModel.DeleteKeyframe(keyframe);
+        SceneStatus = $"{fovModel.Keyframes.Count} FOV key(s) remain.";
+        RefreshFovKeyframePanel();
+        SceneViewer?.MarkRenderDirty();
+    }
+
     private void ApplyKeyframeInVal_Click(object sender, RoutedEventArgs e)
     {
         if (SelectedKeyframe is not { } keyframe)
@@ -3231,6 +3598,27 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
         keyframe.Location = pendingViewportSelectedKeyframeLocation;
         SceneStatus = $"Snapped keyframe at InVal {keyframe.Time:0.###} to the viewport cursor.";
+    }
+
+    private void SceneViewer_PreviewMouseMove(object sender, MouseEventArgs e)
+    {
+        lastViewportCursorPosition = e.GetPosition(SceneViewer);
+    }
+
+    private void SnapSelectedKeyframeToCurrentViewportCursor_Click(object sender, RoutedEventArgs e)
+    {
+        if (SelectedKeyframe is not { } keyframe)
+        {
+            return;
+        }
+        if (lastViewportCursorPosition is not { } viewportPoint)
+        {
+            SceneStatus = "Move the cursor over the viewport before snapping the selected keyframe.";
+            return;
+        }
+
+        pendingViewportSelectedKeyframeLocation = GetViewportKeyframeLocation(viewportPoint, keyframe.Location);
+        SnapSelectedKeyframeToViewport_Click(sender, e);
     }
 
     private void AddKeyframeAfterLast_Click(object sender, RoutedEventArgs e)
@@ -3429,10 +3817,10 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
         if (RenderContext.Camera.IsOrthographic)
         {
-            return cameraPosition
-                   + (right * (normalizedX * RenderContext.Camera.OrthoWidth * 0.5f))
-                   + (up * (normalizedY * RenderContext.Camera.OrthoWidth / MathF.Max(RenderContext.Camera.aspect, float.Epsilon) * 0.5f))
-                   + (forward * Vector3.Dot(referenceLocation - cameraPosition, forward));
+            return ToTrackSpace(cameraPosition
+                                + (right * (normalizedX * RenderContext.Camera.OrthoWidth * 0.5f))
+                                + (up * (normalizedY * RenderContext.Camera.OrthoWidth / MathF.Max(RenderContext.Camera.aspect, float.Epsilon) * 0.5f))
+                                + (forward * Vector3.Dot(referenceLocation - cameraPosition, forward)));
         }
 
         float halfHeightAtUnitDepth = MathF.Tan(RenderContext.Camera.FOV * 0.5f);
@@ -3463,6 +3851,17 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         }
     }
 
+    private void RefreshFovKeyframePanel()
+    {
+        FovKeyframeList?.Items.Refresh();
+        OnPropertyChanged(nameof(SelectedFovKeyframe));
+        FovKeyframeList.SelectedItem = SelectedFovKeyframe;
+        if (SelectedFovKeyframe is not null)
+        {
+            FovKeyframeList.ScrollIntoView(SelectedFovKeyframe);
+        }
+    }
+
     private void SnapCameraToKey_Click(object sender, RoutedEventArgs e)
     {
         StopPlayback();
@@ -3476,6 +3875,17 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
     private void SnapCameraToKey(CurveEditor3DKeyframe keyframe, bool focusViewport = true)
     {
+        if (CameraFramingMode)
+        {
+            PreviewSelectedCameraTrackValue();
+            SceneViewer.MarkRenderDirty();
+            if (focusViewport)
+            {
+                SceneViewer.Focus();
+            }
+            return;
+        }
+
         const float degreesToRadians = 0.017453292519943295f;
         const float cameraDistance = 150f;
         CameraOrigin displayOrigin = keyframe.DisplayOrigin;
@@ -3507,6 +3917,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
     private void PlayMove_Click(object sender, RoutedEventArgs e)
     {
+        suppressTrackVisualizationForCameraPreview = false;
         if (isPlayingMove)
         {
             bool wasPlayingCamera = !isPlayingActor;
@@ -3546,6 +3957,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
     private void PlayActor_Click(object sender, RoutedEventArgs e)
     {
+        suppressTrackVisualizationForCameraPreview = false;
         if (isPlayingMove)
         {
             bool wasPlayingActor = isPlayingActor;
@@ -3674,6 +4086,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
     private void StartDialogueTimelinePlayback()
     {
+        suppressTrackVisualizationForCameraPreview = false;
         isPlayingDialogueTimeline = true;
         if (FindName("DialogueTimelinePlayButton") is Button playButton)
         {
@@ -3904,6 +4317,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             : ActiveModel.Keyframes;
         playbackStartTime = initialKeys[0].Time;
         playbackEndTime = initialKeys[^1].Time;
+        IncludeFovPlaybackRange(ActiveTrackMoveOption);
 
         if (includeActorTracks)
         {
@@ -3927,6 +4341,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         {
             playbackStartTime = MathF.Min(playbackStartTime, extraKeys[0].Time);
             playbackEndTime = MathF.Max(playbackEndTime, extraKeys[^1].Time);
+            IncludeFovPlaybackRange(selectedExtraTrackMove);
         }
 
         if (playDirectorMulticam && selectedDirectorPlayback?.Cuts is { Count: > 0 } cuts)
@@ -3939,9 +4354,21 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                 {
                     playbackStartTime = MathF.Min(playbackStartTime, cameraKeys[0].Time);
                     playbackEndTime = MathF.Max(playbackEndTime, cameraKeys[^1].Time);
+                    IncludeFovPlaybackRange(cut.Camera);
                 }
             }
         }
+    }
+
+    private void IncludeFovPlaybackRange(TrackMovePlaybackOption camera)
+    {
+        if (camera?.FovModel?.Keyframes is not { Count: > 0 } fovKeys)
+        {
+            return;
+        }
+
+        playbackStartTime = MathF.Min(playbackStartTime, fovKeys[0].Time);
+        playbackEndTime = MathF.Max(playbackEndTime, fovKeys[^1].Time);
     }
 
     private TrackMovePlaybackOption GetPlaybackCameraOption(float time)
@@ -4200,7 +4627,9 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         {
             previewActorWidgetTarget.SetTransform(selectedPreviewActor.Origin);
         }
-        RenderContext.TransformWidget.Attach = previewActorWidgetActive ? previewActorWidgetTarget : SelectedKeyframe;
+        RenderContext.TransformWidget.Attach = CameraFramingMode
+            ? null
+            : previewActorWidgetActive ? previewActorWidgetTarget : SelectedKeyframe;
         if (restoreStatus)
         {
             SceneStatus = $"{ActiveModel.Keyframes.Count} trajectory keyframe(s); {levelPaths.Count} level backdrop file(s).";
@@ -4277,7 +4706,16 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             keyframe.SetCoordinateBasis(ActiveTrackCoordinateBasis);
         }
         KeyframeList.ItemsSource = ActiveModel.Keyframes;
+        FovKeyframeList.ItemsSource = ActiveFovModel?.Keyframes;
+        FovTrackPanel.Visibility = ActiveFovModel is null ? Visibility.Collapsed : Visibility.Visible;
+        if (ActiveFovModel?.Export is { } fovExport)
+        {
+            string title = fovExport.GetProperty<StrProperty>("TrackTitle")?.Value ?? fovExport.ObjectName.Instanced;
+            FovTrackNameTextBlock.Text = $"{fovExport.UIndex}: {title}";
+            FovTrackNameTextBlock.ToolTip = fovExport.InstancedFullPath;
+        }
         RegisterKeyframes();
+        SelectedFovKeyframe = null;
         SelectedKeyframe = ActiveModel.Keyframes.FirstOrDefault();
         UpdatePlaybackButton();
         SceneStatus = $"{ActiveModel.Keyframes.Count} trajectory keyframe(s); {levelPaths.Count} level backdrop file(s).";
@@ -4312,9 +4750,26 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     private void Model_Changed()
     {
         StopPlayback();
+        suppressTrackVisualizationForCameraPreview = false;
         UpdatePlaybackButton();
         trajectorySamplesDirty = true;
         RefreshKeyframePanel();
+        if (CameraFramingMode && SelectedKeyframe is not null)
+        {
+            PreviewSelectedCameraTrackValue();
+        }
+        SceneViewer?.MarkRenderDirty();
+    }
+
+    private void FovModel_Changed()
+    {
+        StopPlayback();
+        suppressTrackVisualizationForCameraPreview = false;
+        if (CameraFramingMode && SelectedFovKeyframe is not null)
+        {
+            PreviewSelectedCameraTrackValue();
+        }
+        RefreshFovKeyframePanel();
         SceneViewer?.MarkRenderDirty();
     }
 
@@ -4324,6 +4779,8 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         {
             foreach (ActorProxy actor in RenderContext.DrawList_3D)
             {
+                if (actor is EmitterActorProxy) continue;
+                if (actor is SFXPointOfInterestProxy) continue;
                 if (actor.IsVolume && !ShowVolumes) continue;
                 if (actor.IsVolumetricMesh && !ShowVolumetrics) continue;
                 int hitId = actor.HitID;
@@ -4332,9 +4789,14 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             }
         }
 
-        if (!isPlayingMove && !isPlayingActor && !isPlayingDialogueTimeline)
+        if (!isPlayingMove && !isPlayingActor && !isPlayingDialogueTimeline
+            && !CameraFramingMode && !suppressTrackVisualizationForCameraPreview)
         {
             DrawTrajectory(ActiveModel);
+            if (ShowFovIcons)
+            {
+                DrawFovKeyframes(ActiveTrackMoveOption);
+            }
         }
         RenderPreviewActors();
         RenderContext.DrawUI();
@@ -4446,6 +4908,71 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         RenderContext.Primitives.AddLine(position, position + up * axisLength, new Vector4(0.2f, 0.45f, 1f, 1f), keyframe.HitID);
     }
 
+    private void DrawFovKeyframes(TrackMovePlaybackOption trackMove)
+    {
+        if (trackMove?.FovModel?.Keyframes is not { Count: > 0 } fovKeyframes
+            || trackMove.Model is null)
+        {
+            return;
+        }
+
+        foreach (CurveEditor3DFovKeyframe fovKeyframe in fovKeyframes)
+        {
+            CameraOrigin origin = ResolveCameraTrackOrigin(trackMove,
+                EvaluateTrackMove(trackMove.Model, fovKeyframe.Time));
+            DrawFovKeyframe(fovKeyframe, origin);
+        }
+    }
+
+    private void DrawFovKeyframe(CurveEditor3DFovKeyframe keyframe, CameraOrigin origin)
+    {
+        const float markerRadius = 13f;
+        const float frustumDepth = 55f;
+        const float degreesToRadians = 0.017453292519943295f;
+        Vector4 color = keyframe == SelectedFovKeyframe
+            ? new Vector4(1f, 1f, 1f, 1f)
+            : new Vector4(0.1f, 0.85f, 1f, 1f);
+        Quaternion orientation = Rotator.FromDegreesVector(origin.Rotation).ToQuaternion();
+        Vector3 position = origin.Location;
+        Vector3 forward = Vector3.Transform(Vector3.UnitX, orientation);
+        Vector3 right = Vector3.Transform(Vector3.UnitY, orientation);
+        Vector3 up = Vector3.Transform(Vector3.UnitZ, orientation);
+
+        var marker = RenderContext.Primitives.BuildMesh(color, keyframe.HitID,
+            Matrix4x4.CreateTranslation(position));
+        marker.AddVertex(markerRadius, 0, 0);
+        marker.AddVertex(-markerRadius, 0, 0);
+        marker.AddVertex(0, markerRadius, 0);
+        marker.AddVertex(0, -markerRadius, 0);
+        marker.AddVertex(0, 0, markerRadius);
+        marker.AddVertex(0, 0, -markerRadius);
+        marker.AddTriangle(0, 2, 4);
+        marker.AddTriangle(0, 4, 3);
+        marker.AddTriangle(0, 3, 5);
+        marker.AddTriangle(0, 5, 2);
+        marker.AddTriangle(1, 4, 2);
+        marker.AddTriangle(1, 3, 4);
+        marker.AddTriangle(1, 5, 3);
+        marker.AddTriangle(1, 2, 5);
+
+        float clampedFov = Math.Clamp(keyframe.Value, 1f, 179f);
+        float halfHeight = Math.Clamp(MathF.Tan(clampedFov * degreesToRadians * 0.5f) * 18f, 8f, 70f);
+        float halfWidth = halfHeight * 16f / 9f;
+        Vector3 center = position + forward * frustumDepth;
+        Vector3 topRight = center + right * halfWidth + up * halfHeight;
+        Vector3 topLeft = center - right * halfWidth + up * halfHeight;
+        Vector3 bottomRight = center + right * halfWidth - up * halfHeight;
+        Vector3 bottomLeft = center - right * halfWidth - up * halfHeight;
+        RenderContext.Primitives.AddLine(position, topRight, color, keyframe.HitID);
+        RenderContext.Primitives.AddLine(position, topLeft, color, keyframe.HitID);
+        RenderContext.Primitives.AddLine(position, bottomRight, color, keyframe.HitID);
+        RenderContext.Primitives.AddLine(position, bottomLeft, color, keyframe.HitID);
+        RenderContext.Primitives.AddLine(topLeft, topRight, color, keyframe.HitID);
+        RenderContext.Primitives.AddLine(topRight, bottomRight, color, keyframe.HitID);
+        RenderContext.Primitives.AddLine(bottomRight, bottomLeft, color, keyframe.HitID);
+        RenderContext.Primitives.AddLine(bottomLeft, topLeft, color, keyframe.HitID);
+    }
+
     private void RegisterKeyframes()
     {
         registeredKeyframeModel = ActiveModel;
@@ -4453,20 +4980,39 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         {
             RenderContext.AddHitProxy(keyframe);
         }
+        registeredFovModel = ActiveFovModel;
+        if (registeredFovModel is not null)
+        {
+            foreach (CurveEditor3DFovKeyframe keyframe in registeredFovModel.Keyframes)
+            {
+                RenderContext.AddHitProxy(keyframe);
+            }
+        }
     }
 
     private void UnregisterKeyframes()
     {
-        if (registeredKeyframeModel is null)
+        if (registeredKeyframeModel is null && registeredFovModel is null)
         {
             return;
         }
 
-        foreach (CurveEditor3DKeyframe keyframe in registeredKeyframeModel.Keyframes)
+        if (registeredKeyframeModel is not null)
         {
-            RenderContext.RemoveHitProxy(keyframe);
+            foreach (CurveEditor3DKeyframe keyframe in registeredKeyframeModel.Keyframes)
+            {
+                RenderContext.RemoveHitProxy(keyframe);
+            }
+        }
+        if (registeredFovModel is not null)
+        {
+            foreach (CurveEditor3DFovKeyframe keyframe in registeredFovModel.Keyframes)
+            {
+                RenderContext.RemoveHitProxy(keyframe);
+            }
         }
         registeredKeyframeModel = null;
+        registeredFovModel = null;
     }
 
     private async void OpenLevel_Click(object sender, RoutedEventArgs e)
@@ -4654,6 +5200,13 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         foreach (CurveEditor3DKeyframe keyframe in ActiveModel.Keyframes)
         {
             keyframe.HitID = 0;
+        }
+        if (ActiveFovModel is not null)
+        {
+            foreach (CurveEditor3DFovKeyframe keyframe in ActiveFovModel.Keyframes)
+            {
+                keyframe.HitID = 0;
+            }
         }
         RegisterKeyframes();
         SceneViewer?.MarkRenderDirty();
@@ -4846,13 +5399,13 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         if (actorIndex < 0 || actorIndex >= previewActors.Count)
         {
             previewActorWidgetActive = false;
-            RenderContext.TransformWidget.Attach = SelectedKeyframe;
+            RenderContext.TransformWidget.Attach = CameraFramingMode ? null : SelectedKeyframe;
             SceneViewer.MarkRenderDirty();
             return;
         }
         previewActorWidgetTarget.SetTransform(previewActors[actorIndex].Origin);
         previewActorWidgetActive = true;
-        RenderContext.TransformWidget.Attach = isPlayingMove ? null : previewActorWidgetTarget;
+        RenderContext.TransformWidget.Attach = isPlayingMove || CameraFramingMode ? null : previewActorWidgetTarget;
         SceneViewer.MarkRenderDirty();
     }
 

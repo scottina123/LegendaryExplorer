@@ -189,7 +189,7 @@ public sealed class EmitterIconOverlay : UIElement
 
     public override void Draw(LevelEditorRenderContext context)
     {
-        if (context.ShowEmitterVfx)
+        if (!context.ShowEmitterIcons || context.ShowEmitterVfx)
         {
             return;
         }
