@@ -84,6 +84,10 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         /// </summary>
         public ConcurrentDictionary<string, ActorRecord> GeneratedActors = new();
         /// <summary>
+        /// Dictionary that stores tagged objects and objects that reference those tags.
+        /// </summary>
+        public ConcurrentDictionary<string, TagRecord> GeneratedTags = new(System.StringComparer.OrdinalIgnoreCase);
+        /// <summary>
         /// Dictionary that stores generated gesture track records
         /// </summary>
         public ConcurrentDictionary<string, GestureTrackRecord> GeneratedGestureTracks = new();
@@ -124,6 +128,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             GeneratedTransitionRecords.Clear();
             GeneratedMaterialSpecifications.Clear();
             GeneratedActors.Clear();
+            GeneratedTags.Clear();
             GeneratedGestureTracks.Clear();
             GeneratedPropActions.Clear();
             GeneratedMorphFaces.Clear();
@@ -142,6 +147,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                    $"Lines: {GeneratedLines.Count}\n" +
                    $"Sequence Events: {GeneratedSequenceEvents.Count}\n" +
                    $"Actors: {GeneratedActors.Count}\n" +
+                   $"Tags: {GeneratedTags.Count}\n" +
                    $"Gesture Tracks: {GeneratedGestureTracks.Count}\n" +
                    $"Prop Actions: {GeneratedPropActions.Count}\n" +
                    $"Morph Faces: {GeneratedMorphFaces.Count}\n" +
@@ -228,6 +234,20 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                 actor.IsModOnly = actor.Usages.All(u => u.IsInMod);
             }
             pdb.Actors.AddRange(actorsSorted);
+
+            var tagsSorted = GeneratedTags.Values
+                .OrderBy(x => x.Tag, System.StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            foreach (var tag in tagsSorted)
+            {
+                tag.Usages = tag.Usages
+                    .OrderBy(usage => usage.FileKey)
+                    .ThenBy(usage => usage.UIndex)
+                    .ThenBy(usage => usage.Context)
+                    .ToList();
+                tag.IsModOnly = tag.Usages.Count > 0 && tag.Usages.All(usage => usage.IsInMod);
+            }
+            pdb.Tags.AddRange(tagsSorted);
 
             var gestureTracksSorted = GeneratedGestureTracks.Values
                 .OrderBy(x => x.TrackName, System.StringComparer.OrdinalIgnoreCase)

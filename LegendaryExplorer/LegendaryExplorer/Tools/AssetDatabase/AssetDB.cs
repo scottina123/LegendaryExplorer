@@ -57,6 +57,8 @@ namespace LegendaryExplorer.Tools.AssetDatabase
 
         public List<ActorRecord> Actors { get; set; } = new();
 
+        public List<TagRecord> Tags { get; set; } = new();
+
         public List<GestureTrackRecord> GestureTracks { get; set; } = new();
 
         public List<PropActionRecord> PropActions { get; set; } = new();
@@ -102,6 +104,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             SequenceEvents.Clear();
             TlkStrings.Clear();
             Actors.Clear();
+            Tags.Clear();
             GestureTracks.Clear();
             PropActions.Clear();
             MorphFaces.Clear();
@@ -124,6 +127,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             SequenceEvents.AddRange(from.SequenceEvents);
             TlkStrings.AddRange(from.TlkStrings);
             Actors.AddRange(from.Actors);
+            Tags.AddRange(from.Tags);
             GestureTracks.AddRange(from.GestureTracks);
             PropActions.AddRange(from.PropActions);
             MorphFaces.AddRange(from.MorphFaces);
@@ -951,6 +955,70 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         PointOfInterest
     }
 
+    public enum TagUsageContext
+    {
+        TaggedObject,
+        TagPropertyReference,
+        ObjectReference,
+        ArchetypeReference
+    }
+
+    public class TagRecord : IAssetRecord
+    {
+        public string Tag { get; set; }
+
+        public bool IsModOnly { get; set; }
+
+        public List<TagUsage> Usages { get; set; } = new();
+
+        [IgnoredMember]
+        public IEnumerable<IAssetUsage> AssetUsages => Usages;
+
+        [IgnoredMember]
+        public string SearchDisplayName => Tag;
+
+        [IgnoredMember]
+        public string TypeDisplay => "Tag";
+
+        [IgnoredMember]
+        public int TaggedObjectCount => Usages.Count(usage => usage.Context == TagUsageContext.TaggedObject);
+
+        [IgnoredMember]
+        public int ReferenceCount => Usages.Count - TaggedObjectCount;
+
+        public TagRecord(string tag)
+        {
+            Tag = tag;
+        }
+
+        public TagRecord()
+        { }
+    }
+
+    public sealed record TagUsage(
+        int FileKey,
+        int UIndex,
+        bool IsInDLC,
+        bool IsInMod,
+        string ObjectName,
+        string ClassName,
+        TagUsageContext Context,
+        string Reference) : IAssetUsage
+    {
+        [IgnoredMember]
+        public string ContextDisplay => Context switch
+        {
+            TagUsageContext.TaggedObject => "tagged object",
+            TagUsageContext.TagPropertyReference => "tag reference",
+            TagUsageContext.ObjectReference => "object reference",
+            TagUsageContext.ArchetypeReference => "archetype tag",
+            _ => Context.ToString()
+        };
+
+        public TagUsage() : this(default, default, default, default, default, default, default, default)
+        { }
+    }
+
     public class ActorRecord : IAssetRecord
     {
         public string ActorName { get; set; }
@@ -981,6 +1049,9 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         public string DisplayString => string.IsNullOrWhiteSpace(Tag)
             ? $"{ActorName} ({TypeDisplay})"
             : $"{ActorName} [{Tag}] ({TypeDisplay})";
+
+        [IgnoredMember]
+        public string SearchDisplayName => ActorName;
 
         public ActorRecord(string actorName, string tag, int gameNameStrRef, ActorType actorType, bool isModOnly)
         {

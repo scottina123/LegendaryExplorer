@@ -293,8 +293,8 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         }
 
         #region Declarations
-        // v17.0: Index official BioPlanet surface/cloud MIC parameter profiles for Galaxy Map randomization.
-        public const string dbCurrentBuild = "17.0";
+        // v18.0: Index tagged exports and PersistentLevel/Sequence objects that reference their tags.
+        public const string dbCurrentBuild = "18.0";
 
         private int previousView { get; set; }
         private readonly ConditionalWeakTable<ConvoLine, LineUsageExpansionState> _lineUsageExpansionStates = new();
@@ -654,6 +654,23 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                 }
             }
         }
+
+        private bool _searchActorsByTag;
+        public bool SearchActorsByTag
+        {
+            get => _searchActorsByTag;
+            set
+            {
+                if (SetProperty(ref _searchActorsByTag, value))
+                {
+                    OnPropertyChanged(nameof(ActorResultsHeader));
+                    UpdateActorFilterWatermark();
+                    Filter();
+                }
+            }
+        }
+
+        public string ActorResultsHeader => SearchActorsByTag ? "Tags" : "Actors";
 
         private readonly List<(string SourceName, Dictionary<int, string> Values)> _loadedTlkSources = [];
         private readonly Dictionary<int, string> _mergedTlkValues = [];
@@ -1517,7 +1534,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
 
         private string GetDatabaseSummaryText()
         {
-            return $"Database generated {CurrentDataBase.GenerationDate} Classes: {CurrentDataBase.ClassRecords.Count} Animations: {CurrentDataBase.Animations.Count} Materials: {CurrentDataBase.Materials.Count} Meshes: {CurrentDataBase.Meshes.Count} Particles: {CurrentDataBase.Particles.Count} Textures: {CurrentDataBase.Textures.Count} Elements: {CurrentDataBase.GUIElements.Count} Lines: {CurrentDataBase.Lines.Count} Sequence Events: {CurrentDataBase.SequenceEvents.Count} TLKs: {CurrentDataBase.TlkStrings.Count} Actors: {CurrentDataBase.Actors.Count} Gesture Tracks: {CurrentDataBase.GestureTracks.Count} Track Props: {CurrentDataBase.PropActions.Count} Morph Faces: {CurrentDataBase.MorphFaces.Count} BioPlanet Materials: {CurrentDataBase.BioPlanetMaterials.Count}";
+            return $"Database generated {CurrentDataBase.GenerationDate} Classes: {CurrentDataBase.ClassRecords.Count} Animations: {CurrentDataBase.Animations.Count} Materials: {CurrentDataBase.Materials.Count} Meshes: {CurrentDataBase.Meshes.Count} Particles: {CurrentDataBase.Particles.Count} Textures: {CurrentDataBase.Textures.Count} Elements: {CurrentDataBase.GUIElements.Count} Lines: {CurrentDataBase.Lines.Count} Sequence Events: {CurrentDataBase.SequenceEvents.Count} TLKs: {CurrentDataBase.TlkStrings.Count} Actors: {CurrentDataBase.Actors.Count} Tags: {CurrentDataBase.Tags.Count} Gesture Tracks: {CurrentDataBase.GestureTracks.Count} Track Props: {CurrentDataBase.PropActions.Count} Morph Faces: {CurrentDataBase.MorphFaces.Count} BioPlanet Materials: {CurrentDataBase.BioPlanetMaterials.Count}";
         }
 
         private void RefreshTlkLookup()
@@ -1740,6 +1757,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             RefreshTextureDropdownFilters();
             SelectedSequenceEventTypeFilter = AllSequenceEventFilterOption;
             SelectedActorTypeFilter = AllActorTypeFilterOption;
+            SearchActorsByTag = false;
             FilterText = string.Empty;
             _loadedTlkSources.Clear();
             _mergedTlkValues.Clear();
@@ -2847,8 +2865,8 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                                                       $"Animations: {CurrentDataBase.Animations.Count} Materials: {CurrentDataBase.Materials.Count} Meshes: {CurrentDataBase.Meshes.Count} " +
                                                       $"Particles: {CurrentDataBase.Particles.Count} Textures: {CurrentDataBase.Textures.Count} Elements: {CurrentDataBase.GUIElements.Count} " +
                                                       $"Lines: {CurrentDataBase.Lines.Count} TLKs: {CurrentDataBase.TlkStrings.Count} Actors: {CurrentDataBase.Actors.Count} " +
-                                                       $"Gesture Tracks: {CurrentDataBase.GestureTracks.Count} Track Props: {CurrentDataBase.PropActions.Count} " +
-                                                       $"Morph Faces: {CurrentDataBase.MorphFaces.Count} BioPlanet Materials: {CurrentDataBase.BioPlanetMaterials.Count}";
+                                                      $"Tags: {CurrentDataBase.Tags.Count} Gesture Tracks: {CurrentDataBase.GestureTracks.Count} Track Props: {CurrentDataBase.PropActions.Count} " +
+                                                      $"Morph Faces: {CurrentDataBase.MorphFaces.Count} BioPlanet Materials: {CurrentDataBase.BioPlanetMaterials.Count}";
 #if DEBUG
                         var end = DateTime.UtcNow;
                         double length = (end - start).TotalMilliseconds;
@@ -3606,7 +3624,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                         FilterWatermark = "Search (by TLK string id, parsed value, or source)";
                         break;
                     case 12:
-                        FilterWatermark = "Search (by export name, tag, or game name)";
+                        UpdateActorFilterWatermark();
                         break;
                     case 13:
                         FilterWatermark = "Search (by track, pose, gesture, or transition name)";
@@ -5800,6 +5818,16 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                 return $"{baseText} {tlkUsage.ReferenceDisplay} {tlkUsage.InnerFileName}";
             }
 
+            if (usage is TagUsage tagUsage)
+            {
+                var baseText = TryGetUsageKeys(tagUsage, out int tagFileKey, out int tagUIndex)
+                    && tagFileKey >= 0
+                    && tagFileKey < FileListExtended.Count
+                    ? $"{FileListExtended[tagFileKey].FileName}  # {tagUIndex}   {FileListExtended[tagFileKey].Directory}"
+                    : usage.ToString();
+                return $"{baseText} {tagUsage.ContextDisplay} {tagUsage.ObjectName} {tagUsage.ClassName} {tagUsage.Reference}";
+            }
+
             if (!TryGetUsageKeys(usage, out int fileKey, out int uIndex)
                 || fileKey < 0
                 || fileKey >= FileListExtended.Count)
@@ -6125,6 +6153,11 @@ namespace LegendaryExplorer.Tools.AssetDatabase
 
         private bool ActorTabFilter(object obj)
         {
+            if (obj is TagRecord tagRecord)
+            {
+                return string.IsNullOrWhiteSpace(FilterText) || ContainsText(tagRecord.Tag, FilterText);
+            }
+
             if (obj is not ActorRecord actorRecord)
             {
                 return false;
@@ -6328,7 +6361,8 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                     lstbx_TlkStrings.ItemsSource = viewTlk;
                     break;
                 case 12: // Actors
-                    ICollectionView viewAct = CollectionViewSource.GetDefaultView(CurrentDataBase.Actors);
+                    ICollectionView viewAct = CollectionViewSource.GetDefaultView(
+                        SearchActorsByTag ? CurrentDataBase.Tags : CurrentDataBase.Actors);
                     viewAct.Filter = ActorTabFilter;
                     lstbx_Actors.ItemsSource = viewAct;
                     break;
@@ -6345,6 +6379,16 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                 default: //Files
                     lstbx_Files.Items.Filter = FileFilter;
                     break;
+            }
+        }
+
+        private void UpdateActorFilterWatermark()
+        {
+            if (currentView == 12)
+            {
+                FilterWatermark = SearchActorsByTag
+                    ? "Search tags"
+                    : "Search (by export name, tag, or game name)";
             }
         }
 
@@ -7168,7 +7212,10 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             }
             var export = (int)values[2];
             (string fileName, string directory, int mount) = listofFiles[fileindex];
-            return $"{fileName}  # {export}   {directory} ";
+            string suffix = values.Length > 3 && values[3] is TagUsage tagUsage
+                ? $" — {tagUsage.ObjectName} ({tagUsage.ClassName}, {tagUsage.ContextDisplay}: {tagUsage.Reference})"
+                : string.Empty;
+            return $"{fileName}  # {export}   {directory}{suffix} ";
         }
 
         public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture)

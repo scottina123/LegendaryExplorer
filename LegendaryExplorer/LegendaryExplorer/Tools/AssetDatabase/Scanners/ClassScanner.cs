@@ -54,6 +54,10 @@ namespace LegendaryExplorer.Tools.AssetDatabase.Scanners
                         {
                             break;
                         }
+                        if (propName == "Tag")
+                        {
+                            e.HasTopLevelTagProperty = true;
+                        }
                         int num = MemoryMarshal.Read<int>(data[pos..]);
                         pos += 4;
                         if (pos + 12 >= data.Length)

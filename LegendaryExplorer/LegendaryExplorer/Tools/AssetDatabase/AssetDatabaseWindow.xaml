@@ -1838,19 +1838,25 @@
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
-                            <TextBlock Text="Actors" Style="{StaticResource ColumnHeaderStyle}" ToolTip="SFX actor placements found in level files." Grid.Row="0" Grid.Column="0"/>
+                            <TextBlock Text="{Binding ActorResultsHeader}" Style="{StaticResource ColumnHeaderStyle}" ToolTip="SFX actor placements or indexed tag references found in game packages." Grid.Row="0" Grid.Column="0"/>
                             <DockPanel Grid.Row="1" Grid.ColumnSpan="3" Margin="4,2" LastChildFill="False">
                                 <TextBlock Text="Actor Type:" VerticalAlignment="Center" Margin="0,0,6,0"/>
                                 <ComboBox Width="200"
                                           ItemsSource="{Binding ActorTypeFilters}"
                                           SelectedItem="{Binding SelectedActorTypeFilter, Mode=TwoWay}"
+                                          IsEnabled="{Binding SearchActorsByTag, Converter={StaticResource InverseBooleanConverter}}"
                                           IsTextSearchEnabled="True"/>
+                                <CheckBox Content="Search by tag"
+                                          IsChecked="{Binding SearchActorsByTag, Mode=TwoWay}"
+                                          VerticalAlignment="Center"
+                                          Margin="16,0,0,0"
+                                          ToolTip="Show every tagged export and PersistentLevel or Sequence object that references its tag."/>
                             </DockPanel>
                             <controls:ListBoxScroll x:Name="lstbx_Actors" MinWidth="300" Grid.Row="2" Grid.Column="0">
                                 <controls:ListBoxScroll.ItemTemplate>
                                     <DataTemplate>
                                         <StackPanel Orientation="Horizontal">
-                                            <TextBlock Text="{Binding ActorName}" />
+                                            <TextBlock Text="{Binding SearchDisplayName}" />
                                             <TextBlock FontSize="10" Text=" (" VerticalAlignment="Center"/>
                                             <TextBlock FontSize="10" Text="{Binding TypeDisplay}" VerticalAlignment="Center"/>
                                             <TextBlock FontSize="10" Text=")" VerticalAlignment="Center"/>
@@ -1864,22 +1870,32 @@
                             <TextBlock Text="Details" Style="{StaticResource ColumnHeaderStyle}" ToolTip="Actor details" Grid.Row="0" Grid.Column="1"/>
                             <Border BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}" BorderThickness="0.65" Grid.Row="2" Grid.Column="1">
                                 <StackPanel Margin="5">
-                                    <TextBlock Text="Export Name:" Margin="0,0,0,2"/>
-                                    <TextBlock Text="{Binding SelectedItem.ActorName, ElementName=lstbx_Actors}" TextWrapping="Wrap"/>
+                                    <StackPanel Visibility="{Binding SearchActorsByTag, Converter={StaticResource InverseBoolToVisibilityConverter}}">
+                                        <TextBlock Text="Export Name:" Margin="0,0,0,2"/>
+                                        <TextBlock Text="{Binding SelectedItem.SearchDisplayName, ElementName=lstbx_Actors}" TextWrapping="Wrap"/>
+                                    </StackPanel>
                                     <TextBlock Text="Tag:" Margin="0,8,0,2"/>
                                     <TextBlock Text="{Binding SelectedItem.Tag, ElementName=lstbx_Actors}" TextWrapping="Wrap"/>
-                                    <TextBlock Text="Actor Type:" Margin="0,8,0,2"/>
+                                    <TextBlock Text="Type:" Margin="0,8,0,2"/>
                                     <TextBlock Text="{Binding SelectedItem.TypeDisplay, ElementName=lstbx_Actors}"/>
-                                    <TextBlock Text="Game Name StrRef:" Margin="0,8,0,2"/>
-                                    <TextBlock Text="{Binding SelectedItem.GameNameStrRef, ElementName=lstbx_Actors}"/>
+                                    <StackPanel Visibility="{Binding SearchActorsByTag, Converter={StaticResource InverseBoolToVisibilityConverter}}">
+                                        <TextBlock Text="Game Name StrRef:" Margin="0,8,0,2"/>
+                                        <TextBlock Text="{Binding SelectedItem.GameNameStrRef, ElementName=lstbx_Actors}"/>
+                                    </StackPanel>
+                                    <StackPanel Visibility="{Binding SearchActorsByTag, Converter={StaticResource BoolToVisibilityConverter}}">
+                                        <TextBlock Text="Tagged Objects:" Margin="0,8,0,2"/>
+                                        <TextBlock Text="{Binding SelectedItem.TaggedObjectCount, ElementName=lstbx_Actors}"/>
+                                        <TextBlock Text="References:" Margin="0,8,0,2"/>
+                                        <TextBlock Text="{Binding SelectedItem.ReferenceCount, ElementName=lstbx_Actors}"/>
+                                    </StackPanel>
                                     <TextBlock Text="Usages:" Margin="0,8,0,2"/>
                                     <TextBlock Text="{Binding SelectedItem.Usages.Count, ElementName=lstbx_Actors}"/>
                                 </StackPanel>
                             </Border>
                             <assetDatabase:AssetUsagesPanel x:Name="actorsUsagesPanel" Grid.Row="0" Grid.RowSpan="3" Grid.Column="2"
                                                            FilterText="{Binding UsageFilterText, RelativeSource={RelativeSource AncestorType=Window}}"
-                                                           UsagesSource="{Binding SelectedItem.Usages, ElementName=lstbx_Actors}"
-                                                           HeaderToolTip="Every file that contains this actor&#x0a;Right click to open in Package Editor">
+                                                           UsagesSource="{Binding SelectedItem.AssetUsages, ElementName=lstbx_Actors}"
+                                                           HeaderToolTip="Every file that contains this actor, tagged object, or tag reference&#x0a;Right click to open in Package Editor">
                                 <assetDatabase:AssetUsagesPanel.UsageContextMenu>
                                     <ContextMenu>
                                         <MenuItem Header="Open in Package Editor" Command="{Binding OpenUsagePkgCommand}" ToolTip="Open this actor in Package Editor."/>

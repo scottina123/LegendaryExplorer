@@ -39,6 +39,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                 export = value;
                 assetKey = null;
                 props = null;
+                HasTopLevelTagProperty = false;
                 ObjectNameInstanced = export.ObjectName.Instanced;
                 ClassName = export.ClassName;
                 IsDefault = export?.IsDefaultObject == true;
@@ -53,6 +54,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         public bool IsDefault { get; private set; }
         public string ClassName { get; private set; }
         public FileLib FileLib { get; set; }
+        public bool HasTopLevelTagProperty { get; set; }
 
         //This is usually not needed, and creates many gigabytes of string allocations if done on every single export
         private string assetKey;
@@ -208,6 +210,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
 
                 bool isDlc = pcc.IsInOfficialDLC();
                 bool isMod = !pcc.IsInBasegame() && !isDlc;
+                var tagScanner = new TagScanner();
                 ExportScanInfo esi = null;
                 foreach (ExportEntry export in pcc.Exports)
                 {
@@ -231,12 +234,18 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                         {
                             scanner.ScanExport(esi, dbScanner, _options);
                         }
+                        tagScanner.ScanExport(esi, dbScanner, _options);
                     }
                     catch (Exception e) //when (!App.IsDebug)
                     {
                         Application.Current.Dispatcher.Invoke(() =>
                             MessageBox.Show($"Error while scanning {export.FileRef.FilePath} #{export.UIndex} {export.InstancedFullPath}\n\n{e.FlattenException()}"));
                     }
+                }
+
+                if (!DumpCanceled)
+                {
+                    tagScanner.CompletePackageScan(pcc, dbScanner, () => DumpCanceled);
                 }
             }
             catch (Exception e) //when (!App.IsDebug)
