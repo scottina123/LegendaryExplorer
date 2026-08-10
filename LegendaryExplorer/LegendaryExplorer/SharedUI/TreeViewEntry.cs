@@ -617,6 +617,13 @@ namespace LegendaryExplorer.SharedUI
                             _subtext = particleSystem.ObjectName.Instanced;
                         }
 
+                        // Static-mesh actor/component names are usually generic numbered placeholders.
+                        // Show the mesh asset they use so they can be identified without expanding them.
+                        if (StaticMeshDisplayNameResolver.ResolveStaticMeshEntry(ee) is { } staticMesh)
+                        {
+                            _subtext = staticMesh.ObjectName.Instanced;
+                        }
+
                         if (ee.ClassName == "SFXPointOfInterest" && ResolvePointOfInterestGameName(ee) is { } gameName)
                         {
                             _subtext = _subtext != null

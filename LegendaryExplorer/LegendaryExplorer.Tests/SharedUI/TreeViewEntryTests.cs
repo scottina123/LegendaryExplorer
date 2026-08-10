@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using LegendaryExplorer.Misc.AppSettings;
 using LegendaryExplorer.SharedUI;
+using LegendaryExplorer.UserControls.ExportLoaderControls;
 using LegendaryExplorerCore;
 using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.Unreal;
@@ -61,5 +62,50 @@ public class TreeViewEntryTests
         {
             Settings.PackageEditor_ShowTreeEntrySubText = previousSetting;
         }
+    }
+
+    [TestMethod]
+    public void StaticMeshActorAndComponentSubtitlesShowReferencedMeshName()
+    {
+        bool previousSetting = Settings.PackageEditor_ShowTreeEntrySubText;
+        try
+        {
+            Settings.PackageEditor_ShowTreeEntrySubText = true;
+            using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("StaticMeshSubtitleTest.pcc", MEGame.LE3);
+            ExportEntry staticMesh = package.CreateExport("BIOG_Example_StaticMesh", "StaticMesh", indexed: false);
+            ExportEntry component = package.CreateExport("StaticMeshComponent_0", "StaticMeshComponent", indexed: false);
+            ExportEntry actor = package.CreateExport("StaticMeshActor_0", "StaticMeshActor", indexed: false);
+            component.WriteProperty(new ObjectProperty(staticMesh, "StaticMesh"));
+            actor.WriteProperty(new ObjectProperty(component, "StaticMeshComponent"));
+
+            using var componentTreeEntry = new TreeViewEntry(component);
+            using var actorTreeEntry = new TreeViewEntry(actor);
+
+            Assert.AreEqual("BIOG_Example_StaticMesh", componentTreeEntry.SubText);
+            Assert.AreEqual("BIOG_Example_StaticMesh", actorTreeEntry.SubText);
+        }
+        finally
+        {
+            Settings.PackageEditor_ShowTreeEntrySubText = previousSetting;
+        }
+    }
+
+    [TestMethod]
+    public void InterpreterObjectReferenceShowsMeshUsedByStaticMeshComponentSubclass()
+    {
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("StaticMeshInterpreterTest.pcc", MEGame.LE3);
+        ExportEntry staticMesh = package.CreateExport("BIOG_Example_StaticMesh", "StaticMesh", indexed: false);
+        ExportEntry component = package.CreateExport("FracturedStaticMeshComponent_0", "FracturedStaticMeshComponent", indexed: false);
+        ExportEntry actor = package.CreateExport("StaticMeshActor_0", "StaticMeshActor", indexed: false);
+        component.WriteProperty(new ObjectProperty(staticMesh, "StaticMesh"));
+        var componentProperty = new ObjectProperty(component, "StaticMeshComponent");
+
+        var parent = new UPropertyTreeViewEntry { AttachedExport = actor };
+        UPropertyTreeViewEntry propertyEntry = InterpreterExportLoader.GenerateUPropertyTreeViewEntry(
+            componentProperty,
+            parent,
+            actor);
+
+        StringAssert.Contains(propertyEntry.EditableValue, "(BIOG_Example_StaticMesh)");
     }
 }

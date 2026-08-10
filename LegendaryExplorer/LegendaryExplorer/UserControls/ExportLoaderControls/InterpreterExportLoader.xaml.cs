@@ -1750,7 +1750,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             {
                 var topLevelTree = new UPropertyTreeViewEntry
                 {
-                    DisplayName = $"Export {CurrentLoadedExport.UIndex}: {CurrentLoadedExport.ObjectName.Instanced} ({CurrentLoadedExport.ClassName})",
+                    DisplayName = GetExportHeaderDisplayName(CurrentLoadedExport, useFullPath: false),
                     IsExpanded = true
                 };
 
@@ -1767,7 +1767,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             {
                 var topLevelTree = new UPropertyTreeViewEntry
                 {
-                    DisplayName = $"Export {CurrentLoadedExport.UIndex}: {CurrentLoadedExport.InstancedFullPath} ({CurrentLoadedExport.ClassName})",
+                    DisplayName = GetExportHeaderDisplayName(CurrentLoadedExport, useFullPath: true),
                     IsExpanded = true
                 };
 
@@ -1839,6 +1839,18 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     PendingAddedArrayElementIndex = -1;
                 }
             }
+        }
+
+        private static string GetExportHeaderDisplayName(ExportEntry export, bool useFullPath)
+        {
+            string objectName = useFullPath ? export.InstancedFullPath : export.ObjectName.Instanced;
+            string displayName = $"Export {export.UIndex}: {objectName} ({export.ClassName})";
+            if (StaticMeshDisplayNameResolver.ResolveStaticMeshEntry(export) is { } staticMesh)
+            {
+                displayName += $"\n{staticMesh.ObjectName.Instanced}";
+            }
+
+            return displayName;
         }
 
         private void ApplyBioEvtSysTrackPropActionChoices(UPropertyTreeViewEntry topLevelTree)
@@ -2349,9 +2361,12 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                             parsedValue = useAssetDatabaseOwnerFriendlyNames
                                 ? ConversationOwnerFriendlyNameResolver.GetEntryDisplayText(entry)
                                 : entry.InstancedFullPath;
-                            if (index > 0 && ExportToStringConverters.Contains(entry.ClassName))
+                            if (index > 0
+                                && entry is ExportEntry referencedExport
+                                && (ExportToStringConverters.Contains(entry.ClassName)
+                                    || StaticMeshDisplayNameResolver.ResolveStaticMeshEntry(referencedExport) != null))
                             {
-                                editableValue = $"{index} {ExportToString(parsingExport.FileRef.GetUExport(index))}";
+                                editableValue = $"{index} {ExportToString(referencedExport)}";
                             }
                             if (entry.ClassName == "WwiseEvent" && entry.ObjectName.Name.StartsWith("VO_"))
                             {
@@ -3125,6 +3140,11 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         private static string ExportToString(ExportEntry exportEntry)
         {
+            if (StaticMeshDisplayNameResolver.ResolveStaticMeshEntry(exportEntry) is { } staticMesh)
+            {
+                return $"({staticMesh.ObjectName.Instanced})";
+            }
+
             switch (exportEntry.ClassName)
             {
                 case "LevelStreamingKismet":
