@@ -98,6 +98,40 @@ public class InterpTrackMoveTransformTests
     }
 
     [TestMethod]
+    public void SetFacingBetweenStageKeysComposesAnimationRootMotionFromActiveFacingKey()
+    {
+        var actor = new CameraOrigin(new Vector3(-15842.27f, 8299.669f, -170309f),
+            new Vector3(3f, -4f, 15f));
+        var stageNode = new CameraOrigin(new Vector3(-15323.47f, 8973.74f, -170244.2f),
+            new Vector3(0, 0, 90f));
+
+        CameraOrigin faced = CurveEditor3D.ApplySetFacingStageNode(actor, stageNode, hasMovementTrack: false,
+            orientationOffset: 0, rootMotionSinceFacingKey: new Vector3(100, 0, 0),
+            hasFollowingFacingKey: true);
+
+        Assert.AreEqual(stageNode.Location.X, faced.Location.X, 0.0001f);
+        Assert.AreEqual(stageNode.Location.Y + 100f, faced.Location.Y, 0.0001f);
+        Assert.AreEqual(stageNode.Location.Z + 88f, faced.Location.Z, 0.0001f);
+    }
+
+    [TestMethod]
+    public void FinalSetFacingKeyDoesNotContinueAnimationRootMotionPastStageNode()
+    {
+        var actor = new CameraOrigin(new Vector3(-15842.27f, 8299.669f, -170309f),
+            new Vector3(3f, -4f, 15f));
+        var stageNode = new CameraOrigin(new Vector3(-15323.47f, 8973.74f, -170244.2f),
+            new Vector3(0, 0, 90f));
+
+        CameraOrigin faced = CurveEditor3D.ApplySetFacingStageNode(actor, stageNode, hasMovementTrack: false,
+            orientationOffset: 0, rootMotionSinceFacingKey: new Vector3(100, 0, 0),
+            hasFollowingFacingKey: false);
+
+        Assert.AreEqual(stageNode.Location.X, faced.Location.X, 0.0001f);
+        Assert.AreEqual(stageNode.Location.Y, faced.Location.Y, 0.0001f);
+        Assert.AreEqual(stageNode.Location.Z + 88f, faced.Location.Z, 0.0001f);
+    }
+
+    [TestMethod]
     public void SwitchCameraUsesLastAuthoredStageBoneKeyAtPlaybackTime()
     {
         float[] keyTimes = [0, 3.125f, 3.2083335f];
