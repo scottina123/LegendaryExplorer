@@ -68,7 +68,6 @@
                         <ListBox x:Name="AnimationListBox" 
                                  ItemsSource="{Binding FilteredAnimations}"
                                  SelectedItem="{Binding SelectedAnimation}"
-                                 SelectionChanged="AnimationListBox_SelectionChanged"
                                  VirtualizingStackPanel.IsVirtualizing="True"
                                  VirtualizingStackPanel.VirtualizationMode="Recycling">
                             <ListBox.ItemTemplate>
@@ -600,7 +599,6 @@
                         <ListBox x:Name="AmbPerfListBox" 
                                  ItemsSource="{Binding FilteredAmbPerfs}"
                                  SelectedItem="{Binding SelectedAmbPerf}"
-                                 SelectionChanged="AmbPerfListBox_SelectionChanged"
                                  VirtualizingStackPanel.IsVirtualizing="True"
                                  VirtualizingStackPanel.VirtualizationMode="Recycling">
                             <ListBox.ItemTemplate>

@@ -70,7 +70,7 @@ public partial class GesturePreviewExportLoader : ExportLoaderControl
         public string FiltersText => Settings?.FiltersText;
     }
 
-    private readonly List<(string FileName, string ContentDir)> _databaseFiles = [];
+    private Dictionary<int, string> _databaseFilePaths = [];
     private readonly PackageCache _packageCache = new();
     private AssetDB _meshDatabase;
     private List<MeshRecord> _previewMeshes = [];
@@ -121,7 +121,14 @@ public partial class GesturePreviewExportLoader : ExportLoaderControl
         StatusText = _animations.Count == 0
             ? "This gesture track does not reference any animations."
             : $"Loaded {_animations.Count} animation slots in chronological order.";
-        _ = LoadMeshDatabaseAsync(exportEntry.Game);
+        if (_meshDatabase?.Game == exportEntry.Game)
+        {
+            ResetPreviewModels(exportEntry.Game);
+        }
+        else
+        {
+            _ = LoadMeshDatabaseAsync(exportEntry.Game);
+        }
     }
 
     internal static List<GestureAnimationItem> BuildAnimationTimeline(ExportEntry track, PackageCache packageCache)
@@ -380,7 +387,8 @@ public partial class GesturePreviewExportLoader : ExportLoaderControl
         try
         {
             var database = new AssetDB();
-            await AssetDatabaseWindow.LoadDatabase(databasePath, game, database, cancellationToken);
+            await Task.Run(() => AssetDatabaseWindow.LoadDatabase(databasePath, game, database,
+                cancellationToken), cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
             if (database.DatabaseVersion != AssetDatabaseWindow.dbCurrentBuild)
             {
@@ -388,8 +396,9 @@ public partial class GesturePreviewExportLoader : ExportLoaderControl
                 return;
             }
 
-            _databaseFiles.Clear();
-            _databaseFiles.AddRange(database.FileList.Select(file => (file.FileName, database.ContentDir[file.DirectoryKey])));
+            _databaseFilePaths = await AssetDatabaseFilePathResolver.BuildIndexAsync(database, game,
+                cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
             List<MeshRecord> meshes = database.Meshes.Where(mesh => mesh.IsSkeleton).ToList();
             _meshDatabase = database;
             _previewMeshes = meshes;
@@ -469,26 +478,17 @@ public partial class GesturePreviewExportLoader : ExportLoaderControl
     private void LoadPreviewMesh(MeshRecord mesh, PreviewActorModelComponent component, bool baseGameOnly)
     {
 
-        string rootPath = MEDirectories.GetDefaultGamePath(CurrentLoadedExport.Game);
-        if (string.IsNullOrWhiteSpace(rootPath) || !Directory.Exists(rootPath))
-        {
-            StatusText = $"The {CurrentLoadedExport.Game} installation path is not configured.";
-            return;
-        }
-
         try
         {
             foreach (MeshUsage usage in PreviewActorModelDefaults.GetUsages(mesh, _meshDatabase, baseGameOnly))
             {
-                if (usage.FileKey < 0 || usage.FileKey >= _databaseFiles.Count)
+                if (usage.FileKey < 0 || usage.FileKey >= _meshDatabase.FileList.Count)
                 {
                     continue;
                 }
 
-                var (fileName, contentDir) = _databaseFiles[usage.FileKey];
-                string filePath = Directory.EnumerateFiles(rootPath, $"{fileName}.*", SearchOption.AllDirectories)
-                    .FirstOrDefault(path => path.Contains(contentDir, StringComparison.OrdinalIgnoreCase));
-                if (filePath == null)
+                if (!_databaseFilePaths.TryGetValue(usage.FileKey, out string filePath)
+                    || !File.Exists(filePath))
                 {
                     continue;
                 }
@@ -726,8 +726,6 @@ public partial class GesturePreviewExportLoader : ExportLoaderControl
         PreviewMeshTextBox.Clear();
         PreviewHeadMeshTextBox.Clear();
         PreviewHairMeshTextBox.Clear();
-        _meshDatabase = null;
-        _previewMeshes = [];
         SelectedAnimation = null;
         TrackPropertiesText = null;
         StatusText = "Load a preview mesh to play the gesture track.";
@@ -754,6 +752,9 @@ public partial class GesturePreviewExportLoader : ExportLoaderControl
     {
         _databaseLoadCancellationTokenSource?.Cancel();
         _databaseLoadCancellationTokenSource?.Dispose();
+        _databaseFilePaths.Clear();
+        _meshDatabase = null;
+        _previewMeshes = [];
         AnimPreviewControl.AnimationCompleted -= AnimPreviewControl_AnimationCompleted;
         AnimPreviewControl.AnimTimeChanged -= AnimPreviewControl_AnimTimeChanged;
         AnimPreviewControl.Dispose();

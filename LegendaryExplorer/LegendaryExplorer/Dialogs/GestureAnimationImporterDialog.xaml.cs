@@ -422,6 +422,8 @@ namespace LegendaryExplorer.Dialogs
 
         // File list from DB for resolving paths
         private List<(string FileName, string ContentDir)> _fileListExtended = new();
+        private Dictionary<int, string> _resolvedFilePaths = [];
+        private CancellationTokenSource _databaseLoadCancellationTokenSource;
 
         // Animation preview state
         private IMEPackage _animPreviewPcc;
@@ -588,6 +590,7 @@ namespace LegendaryExplorer.Dialogs
         {
             _db = null;
             _fileListExtended.Clear();
+            _resolvedFilePaths.Clear();
             _allAnimations = [];
             _skeletonMeshes = [];
             SelectedAnimation = null;
@@ -621,6 +624,10 @@ namespace LegendaryExplorer.Dialogs
         private async Task LoadDatabaseAsync()
         {
             MEGame game = _selectedAnimSourceGame;
+            _databaseLoadCancellationTokenSource?.Cancel();
+            _databaseLoadCancellationTokenSource?.Dispose();
+            _databaseLoadCancellationTokenSource = new CancellationTokenSource();
+            CancellationToken cancellationToken = _databaseLoadCancellationTokenSource.Token;
             string dbPath = AssetDatabaseWindow.GetDBPath(game);
             if (!File.Exists(dbPath))
             {
@@ -635,53 +642,89 @@ namespace LegendaryExplorer.Dialogs
 
             AnimationStatusText = $"Loading {game} database...";
 
-            _db = new AssetDB();
-            await AssetDatabaseWindow.LoadDatabase(dbPath, game, _db, CancellationToken.None);
-
-            if (_db.DatabaseVersion != AssetDatabaseWindow.dbCurrentBuild)
+            try
             {
-                ClearLoadedAnimationDatabaseState();
-                AnimationStatusText = $"{game} asset database is out of date. Please regenerate it in the Asset Database tool.";
+                var database = new AssetDB();
+                await Task.Run(() => AssetDatabaseWindow.LoadDatabase(dbPath, game, database,
+                    cancellationToken), cancellationToken);
+                cancellationToken.ThrowIfCancellationRequested();
+
+                if (database.DatabaseVersion != AssetDatabaseWindow.dbCurrentBuild)
+                {
+                    ClearLoadedAnimationDatabaseState();
+                    AnimationStatusText = $"{game} asset database is out of date. Please regenerate it in the Asset Database tool.";
+                    if (UsesDefaultPoseSetTarget)
+                    {
+                        AmbPerfStatusText = AnimationStatusText;
+                    }
+                    return;
+                }
+
+                List<(string FileName, string ContentDir)> fileList = database.FileList
+                    .Select(file => (file.FileName, database.ContentDir[file.DirectoryKey]))
+                    .ToList();
+                List<GestureTrackRecord> gestureTracks = database.GestureTracks.ToList();
+
+                // Both operations perform substantial disk I/O. Keep them away from WPF's dispatcher,
+                // then publish their already-materialized results to the bound collections below.
+                Task<Dictionary<int, string>> filePathTask =
+                    AssetDatabaseFilePathResolver.BuildIndexAsync(database, game, cancellationToken);
+                Task<Dictionary<int, string>> tlkTask = Task.Run(
+                    () => LoadGestureTrackTlkStrings(game, database.Localization, cancellationToken),
+                    cancellationToken);
+                await Task.WhenAll(filePathTask, tlkTask);
+                cancellationToken.ThrowIfCancellationRequested();
+
+                _db = database;
+                _fileListExtended = fileList;
+                _resolvedFilePaths = await filePathTask;
+
+                _allAnimations = database.Animations.Where(a => !a.IsAmbPerf).ToList();
+                FilteredAnimations.ReplaceAll(_allAnimations);
+                AnimationStatusText = $"{_allAnimations.Count} {game} animations loaded.";
+
+                Dictionary<int, string> tlkValues = await tlkTask;
+                foreach (GestureTrackRecord track in gestureTracks)
+                {
+                    track.NodeTlkString = track.NodeStrRef > 0
+                        ? tlkValues.GetValueOrDefault(track.NodeStrRef, $"TLK #{track.NodeStrRef}")
+                        : string.Empty;
+                }
+                _allGestureTracks = gestureTracks;
+                FilteredGestureTracks.ReplaceAll(_allGestureTracks);
+                GestureTrackStatusText = $"{_allGestureTracks.Count} {game} gesture tracks loaded.";
+
+                // Set up skeleton mesh list for animation preview
+                _skeletonMeshes = database.Meshes.Where(m => m.IsSkeleton).ToList();
+                ResetPreviewModels(AnimPreviewControl, PreviewMeshTextBox, PreviewHeadMeshTextBox,
+                    PreviewHairMeshTextBox, game);
+
+                // Load ambient performances for targets that expose m_pPerfGameData
                 if (UsesDefaultPoseSetTarget)
                 {
-                    AmbPerfStatusText = AnimationStatusText;
+                    _allAmbPerfs = database.Animations.Where(a => a.IsAmbPerf).ToList();
+                    FilteredAmbPerfs.ReplaceAll(_allAmbPerfs);
+                    AmbPerfStatusText = $"{_allAmbPerfs.Count} {game} ambient performances loaded.";
+                    ResetPreviewModels(AmbPerfPreviewControl, AmbPerfMeshTextBox, AmbPerfHeadMeshTextBox,
+                        AmbPerfHairMeshTextBox, game);
                 }
-                return;
             }
-
-            // Build file list for resolving paths
-            _fileListExtended.Clear();
-            foreach ((string fileName, int dirIndex) in _db.FileList)
+            catch (OperationCanceledException)
             {
-                _fileListExtended.Add((fileName, _db.ContentDir[dirIndex]));
             }
-
-            _allAnimations = _db.Animations.Where(a => !a.IsAmbPerf).ToList();
-            FilteredAnimations.ReplaceAll(_allAnimations);
-            AnimationStatusText = $"{_allAnimations.Count} {game} animations loaded.";
-
-            _allGestureTracks = _db.GestureTracks.ToList();
-            LoadGestureTrackTlkStrings(game, _db.Localization);
-            FilteredGestureTracks.ReplaceAll(_allGestureTracks);
-            GestureTrackStatusText = $"{_allGestureTracks.Count} {game} gesture tracks loaded.";
-
-            // Set up skeleton mesh list for animation preview
-            _skeletonMeshes = _db.Meshes.Where(m => m.IsSkeleton).ToList();
-            ResetPreviewModels(AnimPreviewControl, PreviewMeshTextBox, PreviewHeadMeshTextBox,
-                PreviewHairMeshTextBox, game);
-
-            // Load ambient performances for targets that expose m_pPerfGameData
-            if (UsesDefaultPoseSetTarget)
+            catch (Exception exception)
             {
-                _allAmbPerfs = _db.Animations.Where(a => a.IsAmbPerf).ToList();
-                FilteredAmbPerfs.ReplaceAll(_allAmbPerfs);
-                AmbPerfStatusText = $"{_allAmbPerfs.Count} {game} ambient performances loaded.";
-                ResetPreviewModels(AmbPerfPreviewControl, AmbPerfMeshTextBox, AmbPerfHeadMeshTextBox,
-                    AmbPerfHairMeshTextBox, game);
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    return;
+                }
+                ClearLoadedAnimationDatabaseState();
+                AnimationStatusText = $"Could not load the {game} asset database: {exception.Message}";
             }
         }
 
-        private void LoadGestureTrackTlkStrings(MEGame game, MELocalization localization)
+        private static Dictionary<int, string> LoadGestureTrackTlkStrings(MEGame game,
+            MELocalization localization, CancellationToken cancellationToken)
         {
             var mergedTlkValues = new Dictionary<int, string>();
             string gamePath = MEDirectories.GetDefaultGamePath(game);
@@ -694,19 +737,14 @@ namespace LegendaryExplorer.Dialogs
 
                 foreach (var talkFile in talkFiles)
                 {
+                    cancellationToken.ThrowIfCancellationRequested();
                     foreach (var stringRef in talkFile.StringRefs.Where(stringRef => stringRef.StringID > 0))
                     {
                         mergedTlkValues[stringRef.StringID] = NormalizeTlkText(stringRef.Data);
                     }
                 }
             }
-
-            foreach (GestureTrackRecord track in _allGestureTracks)
-            {
-                track.NodeTlkString = track.NodeStrRef > 0
-                    ? mergedTlkValues.GetValueOrDefault(track.NodeStrRef, $"TLK #{track.NodeStrRef}")
-                    : string.Empty;
-            }
+            return mergedTlkValues;
         }
 
         private static string NormalizeTlkText(string text)
@@ -1055,14 +1093,6 @@ namespace LegendaryExplorer.Dialogs
         #endregion
 
         #region Animation Import
-
-        private void AnimationListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
-        {
-            OnPropertyChanged(nameof(SelectedAnimation));
-            OnPropertyChanged(nameof(CanImport));
-            OnPropertyChanged(nameof(SelectedAnimationDetails));
-            LoadAnimationPreview(SelectedAnimation, AnimPreviewControl);
-        }
 
         private void PreviewMesh_Select_Click(object sender, RoutedEventArgs e)
         {
@@ -1547,18 +1577,7 @@ namespace LegendaryExplorer.Dialogs
             }
 
             (fileName, contentDir) = _fileListExtended[fileKey];
-            string fileNamePattern = fileName;
-            string contentDirPath = contentDir;
-            string rootPath = MEDirectories.GetDefaultGamePath(_selectedAnimSourceGame);
-            if (rootPath == null || !Directory.Exists(rootPath))
-            {
-                return false;
-            }
-
-            filePath = Directory.EnumerateFiles(rootPath, $"{fileNamePattern}.*", SearchOption.AllDirectories)
-                .FirstOrDefault(f => f.Contains(contentDirPath));
-
-            return filePath != null;
+            return _resolvedFilePaths.TryGetValue(fileKey, out filePath) && File.Exists(filePath);
         }
 
         /// <summary>
@@ -2745,14 +2764,6 @@ namespace LegendaryExplorer.Dialogs
             }
         }
 
-        private void AmbPerfListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
-        {
-            if (SelectedAmbPerf != null)
-            {
-                LoadAmbPerfPreview(SelectedAmbPerf);
-            }
-        }
-
         private void AmbPerfMesh_Select_Click(object sender, RoutedEventArgs e)
         {
             SelectPreviewMesh(sender, AmbPerfPreviewControl, AmbPerfMeshTextBox, AmbPerfHeadMeshTextBox, AmbPerfHairMeshTextBox);
@@ -3006,6 +3017,9 @@ namespace LegendaryExplorer.Dialogs
 
         private void Window_Closing(object sender, CancelEventArgs e)
         {
+            _databaseLoadCancellationTokenSource?.Cancel();
+            _databaseLoadCancellationTokenSource?.Dispose();
+            _databaseLoadCancellationTokenSource = null;
             AnimPreviewControl?.Dispose();
             AmbPerfPreviewControl?.Dispose();
             GestureTrackPreviewControl?.Dispose();
