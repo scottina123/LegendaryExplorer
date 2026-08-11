@@ -8157,7 +8157,9 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
     private void PreviewActorGesture_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (updatingPreviewActorControls || selectedPreviewActor is null)
+        // Activating a cached node clears and repopulates this ComboBox. That transient selection
+        // change must not remove the selected actor's gesture from the node we are leaving.
+        if (updatingPreviewActorControls || suppressDialogueCacheEditTracking || selectedPreviewActor is null)
         {
             return;
         }
