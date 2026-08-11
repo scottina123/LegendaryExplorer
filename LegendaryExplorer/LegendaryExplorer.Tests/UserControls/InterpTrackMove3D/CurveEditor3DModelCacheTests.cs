@@ -243,6 +243,27 @@ public class CurveEditor3DModelCacheTests
     }
 
     [TestMethod]
+    public void SharedConversationDirectionTrackUsesItsOwnActorBinding()
+    {
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("DirectionTrackActorTest.pcc", MEGame.LE3);
+        ExportEntry playerFacing = package.CreateExport("PlayerFacing", "BioEvtSysTrackSetFacing", indexed: false);
+        playerFacing.WriteProperties(new PropertyCollection
+        {
+            new NameProperty("Player", "m_nmFindActor"),
+        });
+        ExportEntry ownerFacing = package.CreateExport("OwnerFacing", "BioEvtSysTrackSetFacing", indexed: false);
+        ownerFacing.WriteProperties(new PropertyCollection
+        {
+            new NameProperty("Owner", "m_nmFindActor"),
+        });
+        ExportEntry unbound = package.CreateExport("UnboundFacing", "BioEvtSysTrackSetFacing", indexed: false);
+
+        Assert.AreEqual("Player", CurveEditor3D.GetDirectionTrackActorTag(playerFacing));
+        Assert.AreEqual("Owner", CurveEditor3D.GetDirectionTrackActorTag(ownerFacing));
+        Assert.IsNull(CurveEditor3D.GetDirectionTrackActorTag(unbound));
+    }
+
+    [TestMethod]
     public void FovIdentifiesCameraTrackWhenGroupNameDoesNotStartWithCam()
     {
         using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("FovCameraGroupTest.pcc", MEGame.LE3);

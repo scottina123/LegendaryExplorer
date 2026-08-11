@@ -4698,20 +4698,24 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
         foreach (ExportEntry group in GetReferencedExports(interpData, "InterpGroups"))
         {
-            PreviewActorConfiguration actor = previewActors
+            PreviewActorConfiguration groupActor = previewActors
                 .Select(candidate => new { Actor = candidate, Score = GetActorGroupMatchScore(group, candidate.ActorTag) })
                 .Where(candidate => candidate.Score > 0)
                 .OrderByDescending(candidate => candidate.Score)
                 .Select(candidate => candidate.Actor)
                 .FirstOrDefault();
-            if (actor is null)
-            {
-                continue;
-            }
 
             foreach (ExportEntry track in GetReferencedExports(group, "InterpTracks")
                          .Where(track => track.IsA("BioEvtSysTrackSetFacing") || track.IsA("BioEvtSysTrackLookAt")))
             {
+                string trackActorTag = GetDirectionTrackActorTag(track);
+                PreviewActorConfiguration actor = trackActorTag is null
+                    ? groupActor
+                    : FindPreviewActorByTag(trackActorTag);
+                if (actor is null)
+                {
+                    continue;
+                }
                 bool isLookAt = track.IsA("BioEvtSysTrackLookAt");
                 string dataPropertyName = isLookAt ? "m_aLookAtKeys" : "m_aFacingKeys";
                 ArrayProperty<StructProperty> times = track.GetProperty<ArrayProperty<StructProperty>>("m_aTrackKeys");
@@ -4750,6 +4754,16 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                 }
             }
         }
+    }
+
+    internal static string GetDirectionTrackActorTag(ExportEntry track)
+    {
+        string actorTag = track?.GetProperty<NameProperty>("m_nmFindActor")?.Value.Instanced
+                          ?? track?.GetProperty<StrProperty>("m_nmFindActor")?.Value;
+        return string.IsNullOrWhiteSpace(actorTag)
+               || actorTag.Equals("None", StringComparison.OrdinalIgnoreCase)
+            ? null
+            : actorTag;
     }
 
     private string FindDirectionTargetActor(StructProperty keyData, string sourceActorTag)
