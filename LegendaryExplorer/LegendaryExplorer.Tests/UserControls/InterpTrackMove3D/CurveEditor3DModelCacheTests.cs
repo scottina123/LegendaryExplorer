@@ -94,6 +94,120 @@ public class CurveEditor3DModelCacheTests
     }
 
     [TestMethod]
+    public void CameraTrackMoveCannotBeAssignedToDialogueActor()
+    {
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("ActorCameraAssignmentTest.pcc", MEGame.LE3);
+        ExportEntry actorTrack = package.CreateExport("OwnerMove", "InterpTrackMove", indexed: false);
+        ExportEntry cameraTrack = package.CreateExport("Cam1Move", "InterpTrackMove", indexed: false);
+
+        Assert.IsTrue(CurveEditor3D.IsEligibleActorTrackMove(actorTrack, [cameraTrack]));
+        Assert.IsFalse(CurveEditor3D.IsEligibleActorTrackMove(cameraTrack, [cameraTrack]));
+    }
+
+    [TestMethod]
+    public void TrackMoveEvaluationHonorsNegativeKeysTangentsAndConstantSegments()
+    {
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("TrackMoveInterpolationTest.pcc", MEGame.LE3);
+        var position = new InterpCurve<Vector3>();
+        position.Points.Add(new InterpCurvePoint<Vector3>(-2, Vector3.Zero,
+            Vector3.Zero, new Vector3(4, 0, 0), EInterpCurveMode.CIM_CurveUser));
+        position.Points.Add(new InterpCurvePoint<Vector3>(0, new Vector3(10, 0, 0),
+            new Vector3(2, 0, 0), Vector3.Zero, EInterpCurveMode.CIM_Constant));
+        position.Points.Add(new InterpCurvePoint<Vector3>(2, new Vector3(30, 0, 0),
+            Vector3.Zero, Vector3.Zero, EInterpCurveMode.CIM_CurveAutoClamped));
+        var rotation = new InterpCurve<Vector3>();
+        rotation.Points.Add(new InterpCurvePoint<Vector3>(-2, Vector3.Zero));
+        rotation.Points.Add(new InterpCurvePoint<Vector3>(0, Vector3.Zero));
+        rotation.Points.Add(new InterpCurvePoint<Vector3>(2, Vector3.Zero));
+        ExportEntry export = package.CreateExport("MoveTrack", "InterpTrackMove", indexed: false);
+        export.WriteProperties(new PropertyCollection
+        {
+            position.ToStructProperty(package.Game, "PosTrack"),
+            rotation.ToStructProperty(package.Game, "EulerTrack"),
+            CreateLookupTrack(-2, 0, 2),
+        });
+        var model = new CurveEditor3DModel();
+        model.Load(export);
+
+        CameraOrigin tangentMidpoint = CurveEditor3D.EvaluateTrackMove(model, -1);
+        CameraOrigin constantMidpoint = CurveEditor3D.EvaluateTrackMove(model, 1);
+        CameraOrigin exactNextKey = CurveEditor3D.EvaluateTrackMove(model, 2);
+
+        Assert.AreEqual(5.5f, tangentMidpoint.Location.X, 0.001f);
+        Assert.AreEqual(10f, constantMidpoint.Location.X, 0.001f);
+        Assert.AreEqual(30f, exactNextKey.Location.X, 0.001f);
+    }
+
+    [TestMethod]
+    public void QuaternionTrackStillHonorsConstantRotationKeys()
+    {
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("QuaternionConstantTrackMoveTest.pcc", MEGame.LE3);
+        var position = new InterpCurve<Vector3>();
+        position.Points.Add(new InterpCurvePoint<Vector3>(0, Vector3.Zero));
+        position.Points.Add(new InterpCurvePoint<Vector3>(2, Vector3.Zero));
+        var rotation = new InterpCurve<Vector3>();
+        rotation.Points.Add(new InterpCurvePoint<Vector3>(0, new Vector3(0, 0, 10),
+            Vector3.Zero, Vector3.Zero, EInterpCurveMode.CIM_Constant));
+        rotation.Points.Add(new InterpCurvePoint<Vector3>(2, new Vector3(0, 0, 100),
+            Vector3.Zero, Vector3.Zero, EInterpCurveMode.CIM_Linear));
+        ExportEntry export = package.CreateExport("MoveTrack", "InterpTrackMove", indexed: false);
+        export.WriteProperties(new PropertyCollection
+        {
+            position.ToStructProperty(package.Game, "PosTrack"),
+            rotation.ToStructProperty(package.Game, "EulerTrack"),
+            CreateLookupTrack(0, 2),
+        });
+        var model = new CurveEditor3DModel();
+        model.Load(export);
+
+        CameraOrigin held = CurveEditor3D.EvaluateTrackMove(model, 1, useQuaternionInterpolation: true);
+        CameraOrigin nextKey = CurveEditor3D.EvaluateTrackMove(model, 2, useQuaternionInterpolation: true);
+
+        Assert.AreEqual(10f, held.Rotation.Z, 0.001f);
+        Assert.AreEqual(100f, nextKey.Rotation.Z, 0.001f);
+    }
+
+    [TestMethod]
+    public void TrackMoveCurveTensionIsUsedAndPreservedByCacheSnapshots()
+    {
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("TrackMoveTensionTest.pcc", MEGame.LE3);
+        var position = new InterpCurve<Vector3>();
+        var rotation = new InterpCurve<Vector3>();
+        foreach ((float time, float value) in new[] { (0f, 0f), (1f, 10f), (2f, 20f) })
+        {
+            position.Points.Add(new InterpCurvePoint<Vector3>(time, new Vector3(value, 0, 0),
+                Vector3.Zero, Vector3.Zero, EInterpCurveMode.CIM_CurveAutoClamped));
+            rotation.Points.Add(new InterpCurvePoint<Vector3>(time, new Vector3(0, 0, value * 2),
+                Vector3.Zero, Vector3.Zero, EInterpCurveMode.CIM_CurveAutoClamped));
+        }
+        ExportEntry export = package.CreateExport("MoveTrack", "InterpTrackMove", indexed: false);
+        export.WriteProperties(new PropertyCollection
+        {
+            position.ToStructProperty(package.Game, "PosTrack"),
+            rotation.ToStructProperty(package.Game, "EulerTrack"),
+            CreateLookupTrack(0, 1, 2),
+            new FloatProperty(0.5f, "LinCurveTension"),
+            new FloatProperty(0.25f, "AngCurveTension"),
+        });
+        var source = new CurveEditor3DModel { AutoCommit = false };
+        source.Load(export);
+
+        source.SetAllPosTrackInterpModes(EInterpCurveMode.CIM_CurveAutoClamped);
+        source.SetAllEulerTrackInterpModes(EInterpCurveMode.CIM_CurveAutoClamped);
+
+        Assert.AreEqual(5f, source.PositionTrack.Points[1].LeaveTangent.X, 0.001f);
+        Assert.AreEqual(15f, source.RotationTrack.Points[1].LeaveTangent.Z, 0.001f);
+        CurveEditor3DModelSnapshot snapshot = JsonConvert.DeserializeObject<CurveEditor3DModelSnapshot>(
+            JsonConvert.SerializeObject(source.CreateCacheSnapshot()));
+        var restored = new CurveEditor3DModel { AutoCommit = false };
+        restored.LoadCacheSnapshot(export, snapshot);
+        Assert.AreEqual(0.5f, restored.PositionCurveTension, 0.001f);
+        Assert.AreEqual(0.25f, restored.RotationCurveTension, 0.001f);
+        Assert.AreEqual(5f, restored.PositionTrack.Points[1].LeaveTangent.X, 0.001f);
+        Assert.AreEqual(15f, restored.RotationTrack.Points[1].LeaveTangent.Z, 0.001f);
+    }
+
+    [TestMethod]
     public void CacheSnapshotRestoresPendingCurvesAndStageLookupBones()
     {
         using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("TrackMovePresetTest.pcc", MEGame.LE3);
@@ -131,5 +245,16 @@ public class CurveEditor3DModelCacheTests
         InterpCurve<Vector3> unchangedExport = InterpCurve<Vector3>.FromStructProperty(
             export.GetProperty<StructProperty>("PosTrack"), package.Game);
         Assert.AreEqual(1, unchangedExport.Points[0].OutVal.X, 0.001f);
+    }
+
+    private static StructProperty CreateLookupTrack(params float[] times)
+    {
+        var lookupPoints = new ArrayProperty<StructProperty>("Points");
+        foreach (float time in times)
+        {
+            lookupPoints.Add(new StructProperty("InterpLookupPoint", false,
+                new NameProperty("None", "GroupName"), new FloatProperty(time, "Time")));
+        }
+        return new StructProperty("InterpLookupTrack", new PropertyCollection { lookupPoints }, "LookupTrack");
     }
 }

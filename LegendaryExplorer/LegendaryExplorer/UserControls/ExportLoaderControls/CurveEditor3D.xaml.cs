@@ -2238,6 +2238,11 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     private static bool IsSameExport(ExportEntry left, ExportEntry right)
         => left is not null && right is not null && left.FileRef == right.FileRef && left.UIndex == right.UIndex;
 
+    internal static bool IsEligibleActorTrackMove(ExportEntry trackMove, IEnumerable<ExportEntry> cameraTrackMoves)
+        => trackMove is not null
+           && (cameraTrackMoves is null
+               || cameraTrackMoves.All(cameraTrack => !IsSameExport(trackMove, cameraTrack)));
+
     private static ExportEntry FindOwningInterpData(ExportEntry track)
         => track?.Parent is ExportEntry interpGroup && interpGroup.Parent is ExportEntry interpData ? interpData : null;
 
@@ -3048,12 +3053,28 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
     private void RepairMissingActorAssignments(DialogueSegmentRuntime runtime)
     {
+        ExportEntry[] cameraTrackMoves = runtime.CameraTracks
+            .Where(option => option?.TrackMove is not null)
+            .Select(option => option.TrackMove)
+            .ToArray();
         foreach (PreviewActorConfiguration actor in previewActors)
         {
+            if (runtime.ActorTrackAssignments.TryGetValue(actor.ActorTag,
+                    out TrackMovePlaybackOption assignedTrackMove)
+                && !IsEligibleActorTrackMove(assignedTrackMove.TrackMove, cameraTrackMoves))
+            {
+                // Camera groups can share a stage transform with Owner/Player. That makes the
+                // transform useful as an actor-tag alias, but it must never attach the actor to
+                // the camera spline. This also repairs presets saved before the distinction was
+                // enforced.
+                runtime.ActorTrackAssignments.Remove(actor.ActorTag);
+            }
+
             if (!runtime.ActorTrackAssignments.ContainsKey(actor.ActorTag))
             {
                 TrackMovePlaybackOption trackMove = runtime.TrackMoves
                     .Where(option => option?.TrackMove is not null)
+                    .Where(option => IsEligibleActorTrackMove(option.TrackMove, cameraTrackMoves))
                     .Select(option => new
                     {
                         Option = option,
@@ -4469,9 +4490,14 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     private void AssignDialoguePreviewTrackMoves()
     {
         previewActorTrackAssignments.Clear();
+        ExportEntry[] cameraTrackMoves = dialoguePreviewCameraActors
+            .Where(option => option?.TrackMove is not null)
+            .Select(option => option.TrackMove)
+            .ToArray();
         foreach (PreviewActorConfiguration actor in previewActors)
         {
             TrackMovePlaybackOption trackMove = availableTrackMoves
+                .Where(option => IsEligibleActorTrackMove(option.TrackMove, cameraTrackMoves))
                 .Select(option => new { Option = option, Score = GetActorGroupMatchScore(option.Group, actor.ActorTag) })
                 .Where(candidate => candidate.Score > 0)
                 .OrderByDescending(candidate => candidate.Score)
@@ -6889,6 +6915,10 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         }
         InterpCurvePoint<Vector3> lower = points[upperIndex - 1];
         InterpCurvePoint<Vector3> upper = points[upperIndex];
+        if (lower.InterpMode == EInterpCurveMode.CIM_Constant && time < upper.InVal)
+        {
+            return lower.OutVal;
+        }
         Quaternion lowerRotation = Rotator.FromDegreesVector(lower.OutVal).ToQuaternion();
         Quaternion upperRotation = Rotator.FromDegreesVector(upper.OutVal).ToQuaternion();
         if (Quaternion.Dot(lowerRotation, upperRotation) < 0)
@@ -8106,7 +8136,13 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         unassignedItem.Click += PreviewActorTrackMoveMenuItem_Click;
         menu.Items.Add(unassignedItem);
         menu.Items.Add(new Separator());
-        foreach (TrackMovePlaybackOption trackMove in availableTrackMoves)
+        ExportEntry[] cameraTrackMoves = dialoguePreviewCameraActors
+            .Where(option => option?.TrackMove is not null)
+            .Select(option => option.TrackMove)
+            .ToArray();
+        foreach (TrackMovePlaybackOption trackMove in availableTrackMoves.Where(option =>
+                     dialogueNodePreview is null
+                     || IsEligibleActorTrackMove(option.TrackMove, cameraTrackMoves)))
         {
             var item = new MenuItem
             {

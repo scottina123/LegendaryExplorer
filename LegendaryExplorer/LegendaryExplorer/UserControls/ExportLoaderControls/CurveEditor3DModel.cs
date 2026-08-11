@@ -29,6 +29,10 @@ public sealed class CurveEditor3DModel
 
     public InterpCurveVector RotationTrack { get; private set; }
 
+    public float PositionCurveTension { get; private set; }
+
+    public float RotationCurveTension { get; private set; }
+
     public System.Collections.ObjectModel.ObservableCollection<CurveEditor3DKeyframe> Keyframes { get; } = [];
 
     public event Action Changed;
@@ -37,6 +41,8 @@ public sealed class CurveEditor3DModel
     {
         PositionInterpMethod = PositionTrack?.InterpMethod ?? EInterpMethodType.IMT_UseFixedTangentEvalAndNewAutoTangents,
         RotationInterpMethod = RotationTrack?.InterpMethod ?? EInterpMethodType.IMT_UseFixedTangentEvalAndNewAutoTangents,
+        PositionCurveTension = PositionCurveTension,
+        RotationCurveTension = RotationCurveTension,
         PositionPoints = PositionTrack?.Points.Select(CurveEditor3DVectorPointSnapshot.FromPoint).ToList() ?? [],
         RotationPoints = RotationTrack?.Points.Select(CurveEditor3DVectorPointSnapshot.FromPoint).ToList() ?? [],
         LookupPoints = lookupPoints?.Select(point => new CurveEditor3DLookupPointSnapshot
@@ -52,6 +58,8 @@ public sealed class CurveEditor3DModel
         ArgumentNullException.ThrowIfNull(export);
         ArgumentNullException.ThrowIfNull(snapshot);
         Load(export);
+        PositionCurveTension = snapshot.PositionCurveTension;
+        RotationCurveTension = snapshot.RotationCurveTension;
         PositionTrack.Points.Clear();
         PositionTrack.InterpMethod = snapshot.PositionInterpMethod;
         PositionTrack.Points.AddRange(snapshot.PositionPoints.Select(point => point.ToPoint()));
@@ -76,6 +84,8 @@ public sealed class CurveEditor3DModel
         var emptyCurve = new StructProperty("InterpCurveVector", false);
         PositionTrack = InterpCurveVector.FromStructProperty(properties.GetProp<StructProperty>("PosTrack") ?? emptyCurve, export.Game);
         RotationTrack = InterpCurveVector.FromStructProperty(properties.GetProp<StructProperty>("EulerTrack") ?? emptyCurve, export.Game);
+        PositionCurveTension = properties.GetProp<FloatProperty>("LinCurveTension")?.Value ?? 0;
+        RotationCurveTension = properties.GetProp<FloatProperty>("AngCurveTension")?.Value ?? 0;
         lookupTrack = properties.GetProp<StructProperty>("LookupTrack") ?? new StructProperty("InterpLookupTrack", new PropertyCollection
         {
             new ArrayProperty<StructProperty>("Points")
@@ -90,6 +100,8 @@ public sealed class CurveEditor3DModel
         Export = null;
         PositionTrack = null;
         RotationTrack = null;
+        PositionCurveTension = 0;
+        RotationCurveTension = 0;
         lookupTrack = null;
         lookupPoints = null;
         lookupPointsByPositionPoint.Clear();
@@ -198,8 +210,8 @@ public sealed class CurveEditor3DModel
             lookupPoints.Remove(lookupPoint);
         }
         Keyframes.RemoveAt(index);
-        PositionTrack.ReCalculateTangents();
-        RotationTrack.ReCalculateTangents();
+        PositionTrack.ReCalculateTangents(PositionCurveTension);
+        RotationTrack.ReCalculateTangents(RotationCurveTension);
         WriteTracks();
         Changed?.Invoke();
 
@@ -228,7 +240,7 @@ public sealed class CurveEditor3DModel
             point.InterpMode = interpMode;
         }
 
-        PositionTrack.ReCalculateTangents();
+        PositionTrack.ReCalculateTangents(PositionCurveTension);
         WriteTracks();
         Changed?.Invoke();
     }
@@ -250,7 +262,7 @@ public sealed class CurveEditor3DModel
             point.InterpMode = interpMode;
         }
 
-        RotationTrack.ReCalculateTangents();
+        RotationTrack.ReCalculateTangents(RotationCurveTension);
         WriteTracks();
         Changed?.Invoke();
     }
@@ -269,7 +281,7 @@ public sealed class CurveEditor3DModel
             keyframe.PositionPoint.OutVal = location;
         }
 
-        PositionTrack.ReCalculateTangents();
+        PositionTrack.ReCalculateTangents(PositionCurveTension);
         WriteTracks();
         Changed?.Invoke();
     }
@@ -287,7 +299,7 @@ public sealed class CurveEditor3DModel
             keyframe.PositionPoint.OutVal = keyframe.Location;
         }
 
-        PositionTrack.ReCalculateTangents();
+        PositionTrack.ReCalculateTangents(PositionCurveTension);
         WriteTracks();
         Changed?.Invoke();
     }
@@ -311,7 +323,7 @@ public sealed class CurveEditor3DModel
             rotationPoint.OutVal = rotation;
         }
 
-        RotationTrack.ReCalculateTangents();
+        RotationTrack.ReCalculateTangents(RotationCurveTension);
         WriteTracks();
         Changed?.Invoke();
     }
@@ -334,7 +346,7 @@ public sealed class CurveEditor3DModel
             rotationPoint.OutVal = keyframe.Rotation;
         }
 
-        RotationTrack.ReCalculateTangents();
+        RotationTrack.ReCalculateTangents(RotationCurveTension);
         WriteTracks();
         Changed?.Invoke();
     }
@@ -394,8 +406,8 @@ public sealed class CurveEditor3DModel
             lookupPoints.Add(sortedLookupPoint);
         }
         SortKeyframes();
-        PositionTrack.ReCalculateTangents();
-        RotationTrack.ReCalculateTangents();
+        PositionTrack.ReCalculateTangents(PositionCurveTension);
+        RotationTrack.ReCalculateTangents(RotationCurveTension);
         WriteTracks();
         Changed?.Invoke();
     }
@@ -461,6 +473,8 @@ public sealed class CurveEditor3DModelSnapshot
 {
     public EInterpMethodType PositionInterpMethod { get; set; }
     public EInterpMethodType RotationInterpMethod { get; set; }
+    public float PositionCurveTension { get; set; }
+    public float RotationCurveTension { get; set; }
     public List<CurveEditor3DVectorPointSnapshot> PositionPoints { get; set; } = [];
     public List<CurveEditor3DVectorPointSnapshot> RotationPoints { get; set; } = [];
     public List<CurveEditor3DLookupPointSnapshot> LookupPoints { get; set; } = [];
