@@ -582,9 +582,17 @@ public partial class GesturePreviewExportLoader : ExportLoaderControl
         StatusText = $"Moved to {item.DisplayName} at {item.Time:F2}s.";
     }
 
-    internal static List<AnimationPreviewControl.AnimationTimelineClip> BuildPlaybackTimeline(List<GestureAnimationItem> animations)
+    internal static List<AnimationPreviewControl.AnimationTimelineClip> BuildPlaybackTimeline(
+        List<GestureAnimationItem> animations) => BuildPlaybackTimelineWithBaseLayer(animations,
+        hasExternalBaseLayer: false);
+
+    internal static List<AnimationPreviewControl.AnimationTimelineClip> BuildPlaybackTimelineWithBaseLayer(
+        List<GestureAnimationItem> animations, bool hasExternalBaseLayer)
     {
         var timeline = new List<AnimationPreviewControl.AnimationTimelineClip>();
+        bool hasBaseLayer = hasExternalBaseLayer || animations.Any(item =>
+            item.AnimationExport is not null
+            && (!item.GestureIndex.HasValue || item.SlotName == "Pose"));
         List<IGrouping<int?, GestureAnimationItem>> gestureGroups = animations
             .Where(item => item.GestureIndex.HasValue && item.Settings is { InvalidData: false })
             .GroupBy(item => item.GestureIndex)
@@ -629,7 +637,8 @@ public partial class GesturePreviewExportLoader : ExportLoaderControl
             AddTimelineClip(timeline, pose, keyTime, primaryEnd, settings, settings.SnapToPose ? 0 : settings.StartBlendDuration,
                 settings.EndBlendDuration, settings.PlayUntilNext && !settings.OneShotAnimation);
             AddTimelineClip(timeline, gesture, keyTime, primaryEnd, settings, settings.SnapToPose ? 0 : settings.StartBlendDuration,
-                settings.EndBlendDuration, settings.PlayUntilNext && !settings.OneShotAnimation);
+                settings.EndBlendDuration, settings.PlayUntilNext && !settings.OneShotAnimation,
+                useMotionBoneMask: hasBaseLayer);
 
             if (transition != null)
             {
@@ -640,7 +649,8 @@ public partial class GesturePreviewExportLoader : ExportLoaderControl
                 {
                     transitionEnd = Math.Min(transitionEnd, transitionCutoff);
                 }
-                AddTimelineClip(timeline, transition, transitionStart, transitionEnd, settings, transitionBlend, 0, false);
+                AddTimelineClip(timeline, transition, transitionStart, transitionEnd, settings, transitionBlend, 0, false,
+                    useMotionBoneMask: hasBaseLayer);
             }
         }
 
@@ -673,7 +683,7 @@ public partial class GesturePreviewExportLoader : ExportLoaderControl
 
     private static void AddTimelineClip(IList<AnimationPreviewControl.AnimationTimelineClip> timeline, GestureAnimationItem item,
         float startTime, float endTime, GesturePlaybackSettings settings, float blendIn, float blendOut, bool loop,
-        bool insertAtStart = false)
+        bool insertAtStart = false, bool useMotionBoneMask = false)
     {
         if (item?.AnimationExport == null || endTime <= startTime)
         {
@@ -700,7 +710,7 @@ public partial class GesturePreviewExportLoader : ExportLoaderControl
             Weight = settings.Weight,
             Loop = loop,
             IsBaseLayer = item.SlotName is "Starting Pose" or "Pose",
-            UseMotionBoneMask = item.SlotName is "Gesture" or "Transition",
+            UseMotionBoneMask = useMotionBoneMask && item.SlotName is "Gesture" or "Transition",
         };
         if (insertAtStart)
         {

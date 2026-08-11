@@ -1899,7 +1899,8 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             GesturePreviewExportLoader.GestureAnimationItem startingPose = resolvedAnimations
                 .FirstOrDefault(animation => !animation.GestureIndex.HasValue);
             List<AnimationPreviewControl.AnimationTimelineClip> timeline = GesturePreviewExportLoader
-                .BuildPlaybackTimeline(animations.Where(animation => animation.GestureIndex.HasValue).ToList());
+                .BuildPlaybackTimelineWithBaseLayer(animations.Where(animation => animation.GestureIndex.HasValue).ToList(),
+                    startingPose is not null);
             string title = gestureTrack.GetProperty<StrProperty>("TrackTitle")?.Value ?? gestureTrack.ObjectName.Instanced;
             string actor = gestureTrack.GetProperty<NameProperty>("m_nmFindActor")?.Value.Instanced ?? "None";
             availableGestureTracks.Add(new GestureTrackOption

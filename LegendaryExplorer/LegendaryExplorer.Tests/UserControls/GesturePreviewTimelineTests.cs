@@ -108,6 +108,22 @@ public class GesturePreviewTimelineTests
             .ToArray());
     }
 
+    [TestMethod]
+    public void GestureWithoutStartingPoseAnimatesTheCompleteSkeleton()
+    {
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("StandaloneGestureTest.pcc", MEGame.LE3);
+        ExportEntry gestureAnimation = CreateAnimation(package, "StandaloneGesture", 2);
+
+        List<AnimationPreviewControl.AnimationTimelineClip> timeline = BuildPlaybackTimeline(
+        [
+            CreateGesture(0, 0, gestureAnimation),
+        ]);
+
+        Assert.HasCount(1, timeline);
+        Assert.IsFalse(timeline[0].UseMotionBoneMask);
+        Assert.IsFalse(timeline[0].IsBaseLayer);
+    }
+
     private static ExportEntry CreateAnimation(IMEPackage package, string name, float duration)
     {
         ExportEntry animation = package.CreateExport(name, "AnimSequence", indexed: false);
