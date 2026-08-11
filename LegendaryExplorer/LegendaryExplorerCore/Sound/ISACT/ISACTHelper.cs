@@ -11,6 +11,8 @@ using System.Text;
 using LegendaryExplorerCore.Helpers;
 using LegendaryExplorerCore.Gammtek.Extensions.IO;
 using LegendaryExplorerCore.Gammtek.IO;
+using LegendaryExplorerCore.Unreal;
+using LegendaryExplorerCore.Unreal.BinaryConverters;
 
 namespace LegendaryExplorerCore.Sound.ISACT
 {
@@ -48,6 +50,72 @@ namespace LegendaryExplorerCore.Sound.ISACT
             wsdExport.WriteBinary(ms.ToArray());
 
             return null;
+        }
+
+        /// <summary>
+        /// Rebuilds only the stripped ISB metadata inside an existing streaming-data export. The
+        /// embedded ICB is retained unchanged.
+        /// </summary>
+        public static void RefreshStreamingDataSampleBank(ExportEntry wsdExport, string isbPath)
+        {
+            ArgumentNullException.ThrowIfNull(wsdExport);
+            if (wsdExport.ClassName != "BioSoundNodeWaveStreamingData")
+                throw new ArgumentException("The export must be BioSoundNodeWaveStreamingData.", nameof(wsdExport));
+            if (!File.Exists(isbPath))
+                throw new FileNotFoundException("ISB path not available.", isbPath);
+
+            ISACTBank externalIsb;
+            using (var stream = File.OpenRead(isbPath))
+                externalIsb = new ISACTBank(stream);
+            if (externalIsb.BankType != ISACTBankType.ISB)
+                throw new InvalidDataException("The selected file is not an ISACT sample bank.");
+            externalIsb.StripSamples();
+
+            var streamingData = wsdExport.GetBinaryData<BioSoundNodeWaveStreamingData>();
+            streamingData.BankPair.ISBBank = externalIsb;
+            wsdExport.WriteBinary(streamingData);
+        }
+
+        /// <summary>
+        /// Creates a native LE1 streaming-data export under DVDStreamingAudioData{suffix}.PC and fills it
+        /// with a compiled ICB plus stripped external-ISB metadata.
+        /// </summary>
+        public static ExportEntry CreateSoundNodeWaveStreamingData(
+            IMEPackage package, string bankName, string icbPath, string isbPath,
+            string localizationSuffix = "")
+        {
+            ArgumentNullException.ThrowIfNull(package);
+            ArgumentException.ThrowIfNullOrWhiteSpace(bankName);
+            if (package.Game != MEGame.LE1)
+                throw new ArgumentException("Streaming-data export creation is only supported for LE1 packages.", nameof(package));
+            localizationSuffix ??= "";
+            if (localizationSuffix.Length > 0 && !localizationSuffix.StartsWith('_'))
+                localizationSuffix = $"_{localizationSuffix}";
+            if (localizationSuffix is not ("" or "_DE" or "_FR" or "_IT" or "_PLPC" or "_RA"))
+                throw new ArgumentException($"Unsupported LE1 audio localization suffix: '{localizationSuffix}'.", nameof(localizationSuffix));
+
+            string localizedBankName = bankName + localizationSuffix;
+            ExportEntry streamingRoot = package.CreatePackageExport("DVDStreamingAudioData" + localizationSuffix);
+            ExportEntry pcPackage = package.CreatePackageExport("PC", streamingRoot);
+            if (package.FindExport($"{pcPackage.InstancedFullPath}.{localizedBankName}") is not null)
+                throw new InvalidOperationException(
+                    $"A streaming-data export named '{localizedBankName}' already exists. Select it for updating instead.");
+            ExportEntry streamingData = package.CreateExport(
+                new NameReference(localizedBankName), "BioSoundNodeWaveStreamingData", pcPackage, indexed: false);
+            GenerateSoundNodeWaveStreamingDataCS(streamingData, icbPath, isbPath);
+            return streamingData;
+        }
+
+        public static void ExportStreamingDataContentBank(ExportEntry wsdExport, string outputPath)
+        {
+            ArgumentNullException.ThrowIfNull(wsdExport);
+            ArgumentException.ThrowIfNullOrWhiteSpace(outputPath);
+            if (wsdExport.ClassName != "BioSoundNodeWaveStreamingData")
+                throw new ArgumentException("The export must be BioSoundNodeWaveStreamingData.", nameof(wsdExport));
+
+            var streamingData = wsdExport.GetBinaryData<BioSoundNodeWaveStreamingData>();
+            using var stream = File.Create(outputPath);
+            streamingData.BankPair.ICBBank.Write(stream);
         }
 
         private static MemoryStream GetStreamingData(string icbPath, string isbPath)
@@ -135,6 +203,15 @@ namespace LegendaryExplorerCore.Sound.ISACT
         public ISACTBankType BankType;
         public long BankRIFFPosition { get; }
         public List<BankChunk> BankChunks { get; set; }
+
+        /// <summary>
+        /// Creates an empty bank that can be populated and serialized without an existing ISACT file.
+        /// </summary>
+        public ISACTBank(ISACTBankType bankType)
+        {
+            BankType = bankType;
+            BankChunks = new List<BankChunk>();
+        }
 
         public ISACTBank(Stream inStream)
         {
@@ -387,6 +464,12 @@ namespace LegendaryExplorerCore.Sound.ISACT
         /// </summary>
         public static readonly string FixedChunkTitle = "chnk";
         public int ChannelCount;
+
+        public ChannelBankChunk()
+        {
+            ChunkName = FixedChunkTitle;
+        }
+
         public ChannelBankChunk(Stream inStream, BankChunk parent)
         {
             Parent = parent;
@@ -516,6 +599,21 @@ namespace LegendaryExplorerCore.Sound.ISACT
             }
 
             // Map the items
+            foreach (var chunk in SubChunks)
+            {
+                BankSubChunkMap[chunk.ChunkName] = chunk;
+            }
+        }
+
+        /// <summary>
+        /// Creates a new LIST object with the supplied type and child chunks.
+        /// </summary>
+        public ISACTListBankChunk(string objectType, IEnumerable<BankChunk> subChunks)
+        {
+            ChunkName = FixedChunkTitle;
+            ObjectType = objectType;
+            SubChunks = subChunks?.ToList() ?? new List<BankChunk>();
+
             foreach (var chunk in SubChunks)
             {
                 BankSubChunkMap[chunk.ChunkName] = chunk;
@@ -793,6 +891,11 @@ public class CompressionInfoBankChunk : BankChunk
     /// Not sure
     /// </summary>
     public float CompressionQuality;
+    public CompressionInfoBankChunk()
+    {
+        ChunkName = FixedChunkTitle;
+    }
+
     public CompressionInfoBankChunk(Stream inStream, BankChunk parent)
     {
         Parent = parent;
@@ -843,6 +946,11 @@ public class SampleInfoBankChunk : BankChunk
 
     //Content of Padding doesn't matter, but we save it so that we can do an identical reserialization (Its value is inconsistent)
     private ushort Padding;
+    public SampleInfoBankChunk()
+    {
+        ChunkName = FixedChunkTitle;
+    }
+
     public SampleInfoBankChunk(Stream inStream, BankChunk parent)
     {
         Parent = parent;
