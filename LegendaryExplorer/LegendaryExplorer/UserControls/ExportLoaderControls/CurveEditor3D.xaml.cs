@@ -162,6 +162,14 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             new(StringComparer.OrdinalIgnoreCase);
         public Dictionary<string, CameraOrigin> ActorOriginOverrides { get; } =
             new(StringComparer.OrdinalIgnoreCase);
+        public Dictionary<string, CameraOrigin> StartCameraOrigins { get; } =
+            new(StringComparer.OrdinalIgnoreCase);
+        public Dictionary<string, CameraOrigin> EndCameraOrigins { get; } =
+            new(StringComparer.OrdinalIgnoreCase);
+        public Dictionary<string, float> StartCameraFovs { get; } =
+            new(StringComparer.OrdinalIgnoreCase);
+        public Dictionary<string, float> EndCameraFovs { get; } =
+            new(StringComparer.OrdinalIgnoreCase);
         public Dictionary<string, Matrix4x4[]> StartActorGesturePoses { get; } =
             new(StringComparer.OrdinalIgnoreCase);
         public Dictionary<string, Matrix4x4[]> EndActorGesturePoses { get; } =
@@ -726,7 +734,13 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         public string GroupName { get; init; }
         public TrackMovePlaybackOption Camera { get; init; }
         public ExportEntry SwitchCameraTrack { get; init; }
+        public string CameraActorTag { get; init; }
+        public ExportEntry CameraActor { get; set; }
+        public CameraOrigin? FallbackOrigin { get; set; }
+        public float? FallbackFovDegrees { get; set; }
     }
+
+    private sealed record PlacedCameraState(ExportEntry Actor, CameraOrigin Origin, float? FovDegrees);
 
     private const float PreviewBodyMeshRelativeZ = -88f;
     private static readonly RenderPass[] RenderPasses = [RenderPass.Base, RenderPass.Hair];
@@ -758,6 +772,12 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     private readonly ObservableCollection<DirectorPlaybackOption> availableDirectorTracks = [];
     private readonly ObservableCollection<TrackMovePlaybackOption> keyframeTrackMoves = [];
     private readonly List<TrackMovePlaybackOption> dialoguePreviewCameraActors = [];
+    private readonly Dictionary<string, PlacedCameraState> dialoguePlacedCameras =
+        new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, PlacedCameraState> dialogueAuthoredCameraDefaults =
+        new(StringComparer.OrdinalIgnoreCase);
+    private CameraOrigin dialoguePreviewInitialCameraOrigin;
+    private float dialoguePreviewInitialCameraFovDegrees = 60f;
     private AssetDB previewAssetDatabase;
     private List<MeshRecord> previewActorMeshes = [];
     private List<(string FileName, string ContentDir)> previewAssetFiles = [];
@@ -2076,7 +2096,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         }
     }
 
-    private void RefreshMulticamPlaybackOptions(ExportEntry trackMove)
+    private void RefreshMulticamPlaybackOptions(ExportEntry trackMove, ExportEntry interpDataOverride = null)
     {
         var fovModelsByExport = new Dictionary<int, CurveEditor3DFovModel>();
         Dictionary<PreviewActorConfiguration, ExportEntry> previousActorTracks = dialogueNodePreview is null
@@ -2093,13 +2113,15 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         availableDirectorTracks.Add(DirectorPlaybackOption.None);
         dialoguePreviewCameraActors.Clear();
 
-        ExportEntry interpData = FindOwningInterpData(trackMove);
+        ExportEntry interpData = interpDataOverride ?? FindOwningInterpData(trackMove);
         if (interpData is not null)
         {
             Dictionary<string, TrackMovePlaybackOption> cameraOptionsByGroup = new(StringComparer.OrdinalIgnoreCase);
+            Dictionary<string, ExportEntry> groupsByName = new(StringComparer.OrdinalIgnoreCase);
             foreach (ExportEntry group in GetReferencedExports(interpData, "InterpGroups"))
             {
                 string groupName = GetInterpGroupName(group);
+                groupsByName.TryAdd(groupName, group);
                 foreach (ExportEntry groupTrackMove in GetReferencedExports(group, "InterpTracks")
                              .Where(track => track.ClassName == "InterpTrackMove"))
                 {
@@ -2138,7 +2160,8 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
             foreach (ExportEntry directorTrack in FindDirectorTracks(interpData))
             {
-                List<DirectorCameraCut> cuts = BuildDirectorCameraCuts(directorTrack, cameraOptionsByGroup);
+                List<DirectorCameraCut> cuts = BuildDirectorCameraCuts(directorTrack, cameraOptionsByGroup,
+                    groupsByName);
                 if (cuts.Count == 0)
                 {
                     continue;
@@ -2159,11 +2182,17 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                     .SelectMany(director => director.Cuts)
                     .Select(cut => cut.GroupName)
                     .ToHashSet(StringComparer.OrdinalIgnoreCase);
+                HashSet<string> cameraActorTags = availableDirectorTracks
+                    .SelectMany(director => director.Cuts)
+                    .Select(cut => cut.CameraActorTag)
+                    .Where(tag => !string.IsNullOrWhiteSpace(tag))
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
                 cameraGroupNames.UnionWith(availableTrackMoves
                     .Where(option => IsCameraTrackGroup(option.Group, option.FovModel is not null))
                     .Select(option => GetInterpGroupName(option.Group)));
                 dialoguePreviewCameraActors.AddRange(availableTrackMoves
-                    .Where(option => cameraGroupNames.Contains(GetInterpGroupName(option.Group)))
+                    .Where(option => cameraGroupNames.Contains(GetInterpGroupName(option.Group))
+                                     || cameraActorTags.Contains(GetCameraActorTag(option.Group)))
                     .DistinctBy(option => option.TrackMove.UIndex));
             }
         }
@@ -2175,17 +2204,20 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         playExtraTrackMove = ExtraTrackMoveCheckBox.IsChecked == true && selectedExtraTrackMove?.TrackMove is not null;
         playDirectorMulticam = DirectorMulticamCheckBox.IsChecked == true && selectedDirectorPlayback?.Cuts.Count > 0;
         updatingMulticamControls = false;
-        primaryTrackMove ??= new TrackMovePlaybackOption
+        if (trackMove is not null)
         {
-            DisplayName = trackMove.GetProperty<StrProperty>("TrackTitle")?.Value ?? trackMove.ObjectName.Instanced,
-            Group = trackMove.Parent as ExportEntry,
-            TrackMove = trackMove,
-            Model = model,
-            FovModel = LoadCameraFovModel(trackMove.Parent as ExportEntry, fovModelsByExport),
-        };
-        if (availableTrackMoves.All(option => !IsSameExport(option.TrackMove, primaryTrackMove.TrackMove)))
-        {
-            availableTrackMoves.Insert(0, primaryTrackMove);
+            primaryTrackMove ??= new TrackMovePlaybackOption
+            {
+                DisplayName = trackMove.GetProperty<StrProperty>("TrackTitle")?.Value ?? trackMove.ObjectName.Instanced,
+                Group = trackMove.Parent as ExportEntry,
+                TrackMove = trackMove,
+                Model = model,
+                FovModel = LoadCameraFovModel(trackMove.Parent as ExportEntry, fovModelsByExport),
+            };
+            if (availableTrackMoves.All(option => !IsSameExport(option.TrackMove, primaryTrackMove.TrackMove)))
+            {
+                availableTrackMoves.Insert(0, primaryTrackMove);
+            }
         }
         previewActorTrackAssignments.Clear();
         foreach ((PreviewActorConfiguration actor, ExportEntry previousTrack) in previousActorTracks)
@@ -2358,7 +2390,8 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     }
 
     private List<DirectorCameraCut> BuildDirectorCameraCuts(ExportEntry directorTrack,
-        IReadOnlyDictionary<string, TrackMovePlaybackOption> cameraOptionsByGroup)
+        IReadOnlyDictionary<string, TrackMovePlaybackOption> cameraOptionsByGroup,
+        IReadOnlyDictionary<string, ExportEntry> groupsByName)
     {
         ArrayProperty<StructProperty> cutTrack = directorTrack.GetProperty<ArrayProperty<StructProperty>>("CutTrack");
         if (cutTrack is null)
@@ -2375,20 +2408,48 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                 GroupName = cut.GetProp<NameProperty>("TargetCamGroup")?.Value.Instanced,
             })
             .Where(cut => !string.IsNullOrWhiteSpace(cut.GroupName))
-            .Select(cut => new DirectorCameraCut
+            .Select(cut =>
             {
-                Time = cut.Time,
-                GroupName = cut.GroupName,
-                Camera = cameraOptionsByGroup.GetValueOrDefault(cut.GroupName),
-                SwitchCameraTrack = cut.GroupName.Equals("Conversation", StringComparison.OrdinalIgnoreCase)
-                                    && TryResolveSwitchCameraOrigin(switchCameraTrack, cut.Time, out _)
-                    ? switchCameraTrack
-                    : null,
+                ExportEntry group = groupsByName.GetValueOrDefault(cut.GroupName);
+                string actorTag = GetCameraActorTag(group);
+                PlacedCameraState placedCamera = !string.IsNullOrWhiteSpace(actorTag)
+                    ? dialoguePlacedCameras.GetValueOrDefault(actorTag)
+                    : null;
+                return new DirectorCameraCut
+                {
+                    Time = cut.Time,
+                    GroupName = cut.GroupName,
+                    Camera = cameraOptionsByGroup.GetValueOrDefault(cut.GroupName),
+                    SwitchCameraTrack = cut.GroupName.Equals("Conversation", StringComparison.OrdinalIgnoreCase)
+                                        && TryResolveSwitchCameraOrigin(switchCameraTrack, cut.Time, out _)
+                        ? switchCameraTrack
+                        : null,
+                    CameraActorTag = actorTag,
+                    CameraActor = placedCamera?.Actor,
+                    FallbackOrigin = placedCamera?.Origin,
+                    FallbackFovDegrees = placedCamera?.FovDegrees,
+                };
             })
-            .Where(cut => cut.Camera is not null || cut.SwitchCameraTrack is not null)
+            .Where(cut => ShouldRetainDirectorCameraCut(cut.Camera is not null,
+                cut.SwitchCameraTrack is not null, cut.CameraActorTag))
             .OrderBy(cut => cut.Time)
             .ToList();
     }
+
+    internal static string GetCameraActorTag(ExportEntry group) =>
+        group?.GetProperty<NameProperty>("m_nmSFXFindActor")?.Value.Instanced;
+
+    internal static bool ShouldRetainDirectorCameraCut(bool hasTrackMove, bool hasSwitchCamera,
+        string cameraActorTag) =>
+        hasTrackMove || hasSwitchCamera || !string.IsNullOrWhiteSpace(cameraActorTag);
+
+    internal static CameraOrigin ResolveDialogueCameraSeed(CameraOrigin? placed, CameraOrigin? authored,
+        CameraOrigin? cached, CameraOrigin viewport) =>
+        placed ?? authored ?? cached ?? viewport;
+
+    internal static float ResolveDialogueCameraFovSeed(float? placed, float? authored, float? cached,
+        float viewport) =>
+        placed ?? authored ?? cached ?? viewport;
 
     private static ExportEntry FindSwitchCameraTrack(ExportEntry interpData) =>
         GetReferencedExports(interpData, "InterpGroups")
@@ -2592,6 +2653,157 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         {
             await LoadLevelAsync(paths[index], replace: index == 0).ConfigureAwait(true);
         }
+        IndexDialoguePreviewCameras();
+    }
+
+    private void IndexDialoguePreviewCameras()
+    {
+        const float radiansToDegrees = 57.29577951308232f;
+        dialoguePreviewInitialCameraOrigin = new CameraOrigin(RenderContext.Camera.Position,
+            new Vector3(RenderContext.Camera.Roll, RenderContext.Camera.Pitch, RenderContext.Camera.Yaw)
+            * radiansToDegrees);
+        dialoguePreviewInitialCameraFovDegrees = RenderContext.Camera.FOV > 0
+            ? RenderContext.Camera.FOV * radiansToDegrees
+            : 60f;
+        dialoguePlacedCameras.Clear();
+        dialogueAuthoredCameraDefaults.Clear();
+
+        IEnumerable<IMEPackage> packages = levelPackages;
+        if (dialogueNodePreview?.Conversation?.Export?.FileRef is { } conversationPackage
+            && levelPackages.All(package => !ReferenceEquals(package, conversationPackage)))
+        {
+            packages = packages.Append(conversationPackage);
+        }
+
+        foreach (IMEPackage package in packages.Distinct())
+        {
+            // CameraActor is intentionally not a renderable Level Editor proxy, so it never appears
+            // in levelActors. Read it from Level.Actors instead; this also covers cameras owned by a
+            // selected non-LOC BioD or BioP rather than by the conversation's LOC package.
+            foreach (ExportEntry actor in EnumerateLevelActorExports(package))
+            {
+                if (!actor.ClassName.Equals("CameraActor", StringComparison.OrdinalIgnoreCase)
+                    && !actor.IsA("CameraActor"))
+                {
+                    continue;
+                }
+                string actorTag = actor.GetProperty<NameProperty>("Tag")?.Value.Instanced;
+                if (string.IsNullOrWhiteSpace(actorTag)
+                    || actorTag.Equals("None", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+                dialoguePlacedCameras.TryAdd(actorTag, ReadPlacedCameraState(actor));
+            }
+        }
+        IndexDialogueAuthoredCameraDefaults();
+        UpdateDirectorCameraFallbacks(availableDirectorTracks);
+    }
+
+    private void IndexDialogueAuthoredCameraDefaults()
+    {
+        // Cam_1/Cam_2 are persistent runtime cameras and commonly have no placed export. A preview
+        // may start on a stub before that actor has moved on the selected path, so seed it from the
+        // first real camera curve authored for the same tag instead of from an unrelated actor curve.
+        IEnumerable<DialogueNodeExtended> nodes = dialogueNodePreview?.Conversation?.EntryList
+            .Concat(dialogueNodePreview.Conversation.ReplyList) ?? [];
+        foreach (ExportEntry interpData in nodes.SelectMany(GetDialogueNodeInterpDatas)
+                     .DistinctBy(interpData => (interpData.FileRef, interpData.UIndex)))
+        {
+            foreach (ExportEntry group in GetReferencedExports(interpData, "InterpGroups"))
+            {
+                string actorTag = GetCameraActorTag(group);
+                if (string.IsNullOrWhiteSpace(actorTag)
+                    || dialogueAuthoredCameraDefaults.ContainsKey(actorTag))
+                {
+                    continue;
+                }
+                ExportEntry trackMove = GetReferencedExports(group, "InterpTracks")
+                    .FirstOrDefault(track => track.ClassName == "InterpTrackMove");
+                if (trackMove is null)
+                {
+                    continue;
+                }
+                ExportEntry fovTrack = GetReferencedExports(group, "InterpTracks").FirstOrDefault(track =>
+                    track.ClassName == "InterpTrackFloatProp"
+                    && (string.Equals(track.GetProperty<NameProperty>("PropertyName")?.Value.Instanced,
+                            "FOVAngle", StringComparison.OrdinalIgnoreCase)
+                        || string.Equals(track.GetProperty<StrProperty>("TrackTitle")?.Value, "FOVAngle",
+                            StringComparison.OrdinalIgnoreCase)));
+                if (!IsCameraTrackGroup(group, fovTrack is not null))
+                {
+                    continue;
+                }
+
+                var trackModel = new CurveEditor3DModel();
+                trackModel.Load(trackMove);
+                if (trackModel.Keyframes is not { Count: > 0 } keys)
+                {
+                    continue;
+                }
+                CurveEditor3DFovModel fovModel = null;
+                if (fovTrack is not null)
+                {
+                    fovModel = new CurveEditor3DFovModel();
+                    fovModel.Load(fovTrack);
+                }
+                var option = new TrackMovePlaybackOption
+                {
+                    Group = group,
+                    TrackMove = trackMove,
+                    Model = trackModel,
+                    FovModel = fovModel,
+                };
+                float firstTime = keys[0].Time;
+                CameraOrigin origin = ResolveCameraTrackOrigin(option, EvaluateTrackMove(option, firstTime));
+                float? fovDegrees = fovModel?.Track?.Eval(firstTime, 60f);
+                dialogueAuthoredCameraDefaults[actorTag] = new PlacedCameraState(null, origin, fovDegrees);
+            }
+        }
+    }
+
+    private void UpdateDirectorCameraFallbacks(IEnumerable<DirectorPlaybackOption> directorOptions)
+    {
+        foreach (DirectorCameraCut cut in directorOptions.SelectMany(option => option.Cuts)
+                     .Where(cut => cut.Camera is null && cut.SwitchCameraTrack is null
+                                                   && !string.IsNullOrWhiteSpace(cut.CameraActorTag)))
+        {
+            PlacedCameraState placed = dialoguePlacedCameras.GetValueOrDefault(cut.CameraActorTag);
+            PlacedCameraState authored = dialogueAuthoredCameraDefaults.GetValueOrDefault(cut.CameraActorTag);
+            cut.CameraActor = placed?.Actor;
+            cut.FallbackOrigin = ResolveDialogueCameraSeed(placed?.Origin, authored?.Origin, null,
+                dialoguePreviewInitialCameraOrigin);
+            cut.FallbackFovDegrees = ResolveDialogueCameraFovSeed(placed?.FovDegrees, authored?.FovDegrees,
+                null, dialoguePreviewInitialCameraFovDegrees);
+        }
+    }
+
+    private static IEnumerable<ExportEntry> EnumerateLevelActorExports(IMEPackage package)
+    {
+        foreach (ExportEntry levelExport in package.Exports.Where(export => export.ClassName == "Level"))
+        {
+            Level level = levelExport.GetBinaryData<Level>();
+            foreach (int actorIndex in level.Actors)
+            {
+                if (package.TryGetUExport(actorIndex, out ExportEntry actor))
+                {
+                    yield return actor;
+                }
+            }
+        }
+    }
+
+    private static PlacedCameraState ReadPlacedCameraState(ExportEntry actor)
+    {
+        StructProperty locationProperty = actor.GetProperty<StructProperty>("location")
+                                          ?? actor.GetProperty<StructProperty>("Location");
+        StructProperty rotationProperty = actor.GetProperty<StructProperty>("Rotation");
+        CameraOrigin origin = new(
+            locationProperty is null ? Vector3.Zero : CommonStructs.GetVector3(locationProperty),
+            rotationProperty is null ? Vector3.Zero : CommonStructs.GetRotator(rotationProperty).GetDegreesVector());
+        float authoredFov = actor.GetProperty<FloatProperty>("FOVAngle")?.Value ?? 0;
+        float? fovDegrees = authoredFov is > 0 and < 180 ? authoredFov : null;
+        return new PlacedCameraState(actor, origin, fovDegrees);
     }
 
     private void ShowDialogueConversationPreviewUi()
@@ -2646,10 +2858,13 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                     else
                     {
                         ResetTrackPlaybackOptionsForCachedNode();
+                        RefreshMulticamPlaybackOptions(null, interpData);
                         RefreshAvailableGestureTracksForInterpData(interpData);
                     }
 
-                    ConfigureDialoguePreviewPlayback(configureTrackPlayback: trackMove is not null,
+                    bool hasCameraPlayback = availableDirectorTracks.Any(option =>
+                        option.DirectorTrack is not null && option.Cuts.Count > 0);
+                    ConfigureDialoguePreviewPlayback(configureTrackPlayback: trackMove is not null || hasCameraPlayback,
                         interpDataOverride: interpData);
                     interpRuntimes.Add(CaptureDialogueSegmentRuntime(segment));
                 }
@@ -2779,6 +2994,12 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                         GroupName = cut.GroupName,
                         CameraTrack = CreateExportReference(cut.Camera?.TrackMove),
                         SwitchCameraTrack = CreateExportReference(cut.SwitchCameraTrack),
+                        CameraActorTag = cut.CameraActorTag,
+                        CameraActor = CreateExportReference(cut.CameraActor),
+                        FallbackOrigin = cut.FallbackOrigin is { } fallbackOrigin
+                            ? CreateOriginCache(fallbackOrigin)
+                            : null,
+                        FallbackFovDegrees = cut.FallbackFovDegrees,
                     }).ToList(),
                 }).ToList(),
             CameraTracks = runtime.CameraTracks.Where(option => option.TrackMove is not null)
@@ -3078,6 +3299,12 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                         Camera = FindTrack(cut.CameraTrack),
                         SwitchCameraTrack = ResolveExportReference(cut.SwitchCameraTrack,
                             required: cut.SwitchCameraTrack is not null),
+                        CameraActorTag = cut.CameraActorTag,
+                        CameraActor = ResolveExportReference(cut.CameraActor, required: false),
+                        FallbackOrigin = cut.FallbackOrigin is null
+                            ? null
+                            : new CameraOrigin(cut.FallbackOrigin.Location, cut.FallbackOrigin.Rotation),
+                        FallbackFovDegrees = cut.FallbackFovDegrees,
                     }).ToArray(),
                 }).Prepend(DirectorPlaybackOption.None).ToArray(),
             CameraTracks = preset.CameraTracks.Select(FindTrack)
@@ -3442,6 +3669,10 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                     GroupName = cut.GroupName,
                     Camera = Remap(cut.Camera),
                     SwitchCameraTrack = cut.SwitchCameraTrack,
+                    CameraActorTag = cut.CameraActorTag,
+                    CameraActor = cut.CameraActor,
+                    FallbackOrigin = cut.FallbackOrigin,
+                    FallbackFovDegrees = cut.FallbackFovDegrees,
                 }).ToArray(),
             })
             .Prepend(DirectorPlaybackOption.None)
@@ -3698,7 +3929,122 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             }
         }
 
+        BuildDialogueRuntimeCameraSnapshots();
         ReprojectDialogueActivePathActorOrigins();
+    }
+
+    private void BuildDialogueRuntimeCameraSnapshots()
+    {
+        // An empty camera group means "leave that camera actor where the previous Matinee left it."
+        // Project camera state through the tree just like stunt-actor state so direct seeks and
+        // linear playback agree, including intervening reply/no-data nodes.
+        foreach (DialogueTimelineSegment segment in dialogueTimelineSegments.OrderBy(segment => segment.TreeDepth))
+        {
+            DialogueSegmentRuntime runtime = dialogueRuntimeCache[segment];
+            DialogueSegmentRuntime parentRuntime = segment.Parent is not null
+                                                   && dialogueRuntimeCache.TryGetValue(segment.Parent,
+                                                       out DialogueSegmentRuntime resolvedParent)
+                ? resolvedParent
+                : null;
+            IReadOnlyDictionary<string, CameraOrigin> inheritedOrigins = parentRuntime?.EndCameraOrigins;
+            IReadOnlyDictionary<string, float> inheritedFovs = parentRuntime?.EndCameraFovs;
+            PopulateDialogueCameraStartState(runtime, inheritedOrigins, inheritedFovs);
+            EvaluateDialogueCameraEndState(runtime);
+            ResolveDialogueStubCameraCuts(runtime);
+        }
+    }
+
+    private void PopulateDialogueCameraStartState(DialogueSegmentRuntime runtime,
+        IReadOnlyDictionary<string, CameraOrigin> inheritedOrigins,
+        IReadOnlyDictionary<string, float> inheritedFovs)
+    {
+        runtime.StartCameraOrigins.Clear();
+        runtime.StartCameraFovs.Clear();
+        if (inheritedOrigins is not null)
+        {
+            foreach ((string actorTag, CameraOrigin origin) in inheritedOrigins)
+            {
+                runtime.StartCameraOrigins[actorTag] = origin;
+                runtime.StartCameraFovs[actorTag] = inheritedFovs?.GetValueOrDefault(actorTag)
+                                                    ?? dialoguePreviewInitialCameraFovDegrees;
+            }
+        }
+        foreach (string actorTag in GetDialogueCameraActorTags(runtime))
+        {
+            if (runtime.StartCameraOrigins.ContainsKey(actorTag))
+            {
+                continue;
+            }
+            PlacedCameraState placed = dialoguePlacedCameras.GetValueOrDefault(actorTag);
+            PlacedCameraState authored = dialogueAuthoredCameraDefaults.GetValueOrDefault(actorTag);
+            DirectorCameraCut cachedCut = runtime.DirectorTracks.SelectMany(option => option.Cuts)
+                .FirstOrDefault(cut => string.Equals(cut.CameraActorTag, actorTag,
+                    StringComparison.OrdinalIgnoreCase) && cut.FallbackOrigin.HasValue);
+            runtime.StartCameraOrigins[actorTag] = ResolveDialogueCameraSeed(placed?.Origin, authored?.Origin,
+                cachedCut?.FallbackOrigin, dialoguePreviewInitialCameraOrigin);
+            runtime.StartCameraFovs[actorTag] = ResolveDialogueCameraFovSeed(placed?.FovDegrees,
+                authored?.FovDegrees, cachedCut?.FallbackFovDegrees, dialoguePreviewInitialCameraFovDegrees);
+        }
+    }
+
+    private static IEnumerable<string> GetDialogueCameraActorTags(DialogueSegmentRuntime runtime) =>
+        runtime.CameraTracks.Select(option => GetCameraActorTag(option.Group))
+            .Concat(runtime.DirectorTracks.SelectMany(option => option.Cuts)
+                .Select(cut => cut.CameraActorTag))
+            .Where(tag => !string.IsNullOrWhiteSpace(tag)
+                          && !tag.Equals("None", StringComparison.OrdinalIgnoreCase))
+            .Distinct(StringComparer.OrdinalIgnoreCase);
+
+    private void EvaluateDialogueCameraEndState(DialogueSegmentRuntime runtime)
+    {
+        runtime.EndCameraOrigins.Clear();
+        runtime.EndCameraFovs.Clear();
+        foreach ((string actorTag, CameraOrigin origin) in runtime.StartCameraOrigins)
+        {
+            runtime.EndCameraOrigins[actorTag] = origin;
+            runtime.EndCameraFovs[actorTag] = runtime.StartCameraFovs.GetValueOrDefault(actorTag,
+                dialoguePreviewInitialCameraFovDegrees);
+        }
+        foreach (TrackMovePlaybackOption camera in runtime.CameraTracks)
+        {
+            string actorTag = GetCameraActorTag(camera.Group);
+            if (string.IsNullOrWhiteSpace(actorTag) || camera.Model?.Keyframes is not { Count: > 0 })
+            {
+                continue;
+            }
+            CameraOrigin initialOrigin = runtime.StartCameraOrigins.GetValueOrDefault(actorTag,
+                dialoguePreviewInitialCameraOrigin);
+            float initialFov = runtime.StartCameraFovs.GetValueOrDefault(actorTag,
+                dialoguePreviewInitialCameraFovDegrees);
+            runtime.EndCameraOrigins[actorTag] = ResolveCameraTrackOrigin(camera,
+                EvaluateTrackMove(camera, runtime.Segment.Duration), initialOrigin);
+            runtime.EndCameraFovs[actorTag] = camera.FovTrack?.Eval(runtime.Segment.Duration, initialFov)
+                                              ?? initialFov;
+        }
+    }
+
+    private void ResolveDialogueStubCameraCuts(DialogueSegmentRuntime runtime)
+    {
+        foreach (DirectorCameraCut cut in runtime.DirectorTracks.SelectMany(option => option.Cuts)
+                     .Where(cut => cut.Camera is null && cut.SwitchCameraTrack is null
+                                                   && !string.IsNullOrWhiteSpace(cut.CameraActorTag)))
+        {
+            CameraOrigin origin = runtime.StartCameraOrigins.GetValueOrDefault(cut.CameraActorTag,
+                cut.FallbackOrigin ?? dialoguePreviewInitialCameraOrigin);
+            float fovDegrees = runtime.StartCameraFovs.GetValueOrDefault(cut.CameraActorTag,
+                cut.FallbackFovDegrees ?? dialoguePreviewInitialCameraFovDegrees);
+            TrackMovePlaybackOption actorCamera = runtime.CameraTracks.FirstOrDefault(option =>
+                string.Equals(GetCameraActorTag(option.Group), cut.CameraActorTag,
+                    StringComparison.OrdinalIgnoreCase)
+                && option.Model?.Keyframes is { Count: > 0 });
+            if (actorCamera is not null)
+            {
+                origin = ResolveCameraTrackOrigin(actorCamera, EvaluateTrackMove(actorCamera, cut.Time), origin);
+                fovDegrees = actorCamera.FovTrack?.Eval(cut.Time, fovDegrees) ?? fovDegrees;
+            }
+            cut.FallbackOrigin = origin;
+            cut.FallbackFovDegrees = fovDegrees;
+        }
     }
 
     private void ReprojectDialogueActivePathActorOrigins()
@@ -3770,6 +4116,22 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                     previewActorAnimationStates.GetValueOrDefault(actor));
             }
             inheritedOrigins = runtime.EndActorOrigins;
+        }
+        ReprojectDialogueActivePathCameraStates();
+    }
+
+    private void ReprojectDialogueActivePathCameraStates()
+    {
+        IReadOnlyDictionary<string, CameraOrigin> inheritedOrigins = null;
+        IReadOnlyDictionary<string, float> inheritedFovs = null;
+        foreach (DialogueTimelineSegment segment in dialogueTimelineActivePath)
+        {
+            DialogueSegmentRuntime runtime = dialogueRuntimeCache[segment];
+            PopulateDialogueCameraStartState(runtime, inheritedOrigins, inheritedFovs);
+            EvaluateDialogueCameraEndState(runtime);
+            ResolveDialogueStubCameraCuts(runtime);
+            inheritedOrigins = runtime.EndCameraOrigins;
+            inheritedFovs = runtime.EndCameraFovs;
         }
     }
 
@@ -7180,10 +7542,36 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             ? InterpTrackMoveTransform.ToWorld(anchor, trackOrigin)
             : trackOrigin;
 
-    private CameraOrigin ResolveCameraTrackOrigin(TrackMovePlaybackOption trackMove, CameraOrigin trackOrigin)
-        => GetTrackMoveFrame(trackMove?.TrackMove ?? ActiveTrackMoveExport) == EInterpTrackMoveFrame.IMF_AnchorObject
-            ? ResolveAnchorObjectTrackOrigin(trackOrigin)
+    private CameraOrigin ResolveCameraTrackOrigin(TrackMovePlaybackOption trackMove, CameraOrigin trackOrigin,
+        CameraOrigin? initialOrigin = null)
+    {
+        EInterpTrackMoveFrame moveFrame = GetTrackMoveFrame(trackMove?.TrackMove ?? ActiveTrackMoveExport);
+        if (moveFrame == EInterpTrackMoveFrame.IMF_AnchorObject)
+        {
+            return ResolveAnchorObjectTrackOrigin(trackOrigin);
+        }
+        if (moveFrame != EInterpTrackMoveFrame.IMF_RelativeToInitial)
+        {
+            return trackOrigin;
+        }
+
+        string actorTag = GetCameraActorTag(trackMove?.Group);
+        if (initialOrigin is null && !string.IsNullOrWhiteSpace(actorTag))
+        {
+            if (activeDialogueSegmentRuntime?.StartCameraOrigins.TryGetValue(actorTag,
+                    out CameraOrigin cachedInitial) == true)
+            {
+                initialOrigin = cachedInitial;
+            }
+            else if (dialoguePlacedCameras.TryGetValue(actorTag, out PlacedCameraState placedCamera))
+            {
+                initialOrigin = placedCamera.Origin;
+            }
+        }
+        return initialOrigin is { } basis
+            ? InterpTrackMoveTransform.ToWorld(basis, trackOrigin)
             : trackOrigin;
+    }
 
     private CameraOrigin ResolveActorTrackOrigin(PreviewActorPlaybackState state, CameraOrigin trackOrigin)
     {
@@ -7226,13 +7614,19 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         const float defaultFovDegrees = 60f;
         const float degreesToRadians = 0.017453292519943295f;
         camera ??= ActiveTrackMoveOption;
+        string actorTag = GetCameraActorTag(camera?.Group);
+        float initialFovDegrees = !string.IsNullOrWhiteSpace(actorTag)
+                                  && activeDialogueSegmentRuntime?.StartCameraFovs.TryGetValue(actorTag,
+                                      out float cachedFov) == true
+            ? cachedFov
+            : defaultFovDegrees;
         if (camera?.DisableMovement != true)
         {
             CameraOrigin origin = ResolveCameraTrackOrigin(camera, EvaluateTrackMove(camera, time));
             origin = ApplyTrackLookAtRotation(camera, origin, time, null);
             ApplyViewportCameraOrigin(origin);
         }
-        RenderContext.Camera.FOV = (camera?.FovTrack?.Eval(time, defaultFovDegrees) ?? defaultFovDegrees)
+        RenderContext.Camera.FOV = (camera?.FovTrack?.Eval(time, initialFovDegrees) ?? initialFovDegrees)
                                    * degreesToRadians;
     }
 
@@ -7243,6 +7637,14 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             && TryResolveSwitchCameraOrigin(directorCut.SwitchCameraTrack, time, out CameraOrigin stageCamera))
         {
             ApplyViewportCameraOrigin(stageCamera);
+            return;
+        }
+        if (directorCut?.Camera is null && directorCut?.FallbackOrigin is { } fallbackOrigin)
+        {
+            const float degreesToRadians = 0.017453292519943295f;
+            ApplyViewportCameraOrigin(fallbackOrigin);
+            RenderContext.Camera.FOV = (directorCut.FallbackFovDegrees ?? dialoguePreviewInitialCameraFovDegrees)
+                                       * degreesToRadians;
             return;
         }
 
@@ -8054,6 +8456,8 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         }
         levelPackages.Clear();
         levelPaths.Clear();
+        dialoguePlacedCameras.Clear();
+        dialogueAuthoredCameraDefaults.Clear();
 
         foreach (CurveEditor3DKeyframe keyframe in ActiveModel.Keyframes)
         {

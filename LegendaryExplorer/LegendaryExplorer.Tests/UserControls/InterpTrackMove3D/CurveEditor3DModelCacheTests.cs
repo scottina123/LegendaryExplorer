@@ -173,6 +173,76 @@ public class CurveEditor3DModelCacheTests
     }
 
     [TestMethod]
+    public void EmptyCameraStubStillParticipatesInDirectorPlayback()
+    {
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("EmptyDirectorCameraGroupTest.pcc",
+            MEGame.LE3);
+        ExportEntry emptyCameraGroup = package.CreateExport("Cam1", "InterpGroup", indexed: false);
+        emptyCameraGroup.WriteProperties(new PropertyCollection
+        {
+            new NameProperty("Cam1", "GroupName"),
+            new NameProperty("Cam_2", "m_nmSFXFindActor"),
+            new ArrayProperty<ObjectProperty>("InterpTracks"),
+        });
+
+        string actorTag = CurveEditor3D.GetCameraActorTag(emptyCameraGroup);
+
+        Assert.AreEqual("Cam_2", actorTag);
+        Assert.IsTrue(CurveEditor3D.ShouldRetainDirectorCameraCut(hasTrackMove: false,
+            hasSwitchCamera: false, actorTag));
+        Assert.IsFalse(CurveEditor3D.ShouldRetainDirectorCameraCut(hasTrackMove: false,
+            hasSwitchCamera: false, cameraActorTag: null));
+    }
+
+    [TestMethod]
+    public void StubCameraFallbackSurvivesCacheSerialization()
+    {
+        var source = new DialogueDirectorCutCache
+        {
+            Time = 1.25f,
+            GroupName = "Cam1",
+            CameraActorTag = "mircam1",
+            CameraActor = new PackageExportReference
+            {
+                PackagePath = @"C:\BioD_Test.pcc",
+                UIndex = 42,
+                InstancedFullPath = "TheWorld.PersistentLevel.CameraActor_0",
+                ClassName = "CameraActor",
+            },
+            FallbackOrigin = new DialogueOriginCache
+            {
+                Location = new Vector3(10, 20, 30),
+                Rotation = new Vector3(0, -5, 170),
+            },
+            FallbackFovDegrees = 47f,
+        };
+
+        DialogueDirectorCutCache restored = JsonConvert.DeserializeObject<DialogueDirectorCutCache>(
+            JsonConvert.SerializeObject(source));
+
+        Assert.AreEqual(source.CameraActorTag, restored.CameraActorTag);
+        Assert.AreEqual(source.CameraActor.UIndex, restored.CameraActor.UIndex);
+        Assert.AreEqual(source.FallbackOrigin.Location, restored.FallbackOrigin.Location);
+        Assert.AreEqual(source.FallbackOrigin.Rotation, restored.FallbackOrigin.Rotation);
+        Assert.AreEqual(source.FallbackFovDegrees, restored.FallbackFovDegrees);
+    }
+
+    [TestMethod]
+    public void CameraSeedPrefersLevelActorThenAuthoredTrackThenSavedFallback()
+    {
+        var placed = new CameraOrigin(new Vector3(1, 0, 0), Vector3.Zero);
+        var authored = new CameraOrigin(new Vector3(2, 0, 0), Vector3.Zero);
+        var cached = new CameraOrigin(new Vector3(3, 0, 0), Vector3.Zero);
+        var viewport = new CameraOrigin(new Vector3(4, 0, 0), Vector3.Zero);
+
+        Assert.AreEqual(placed, CurveEditor3D.ResolveDialogueCameraSeed(placed, authored, cached, viewport));
+        Assert.AreEqual(authored, CurveEditor3D.ResolveDialogueCameraSeed(null, authored, cached, viewport));
+        Assert.AreEqual(cached, CurveEditor3D.ResolveDialogueCameraSeed(null, null, cached, viewport));
+        Assert.AreEqual(viewport, CurveEditor3D.ResolveDialogueCameraSeed(null, null, null, viewport));
+        Assert.AreEqual(47f, CurveEditor3D.ResolveDialogueCameraFovSeed(null, 47f, 55f, 60f));
+    }
+
+    [TestMethod]
     public void FovIdentifiesCameraTrackWhenGroupNameDoesNotStartWithCam()
     {
         using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("FovCameraGroupTest.pcc", MEGame.LE3);

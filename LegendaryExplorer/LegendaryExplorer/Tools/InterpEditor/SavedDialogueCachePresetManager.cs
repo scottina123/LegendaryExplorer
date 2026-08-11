@@ -14,7 +14,7 @@ namespace LegendaryExplorer.Tools.InterpEditor;
 
 public static class SavedDialogueCachePresetManager
 {
-    private const int CurrentVersion = 3;
+    private const int CurrentVersion = 4;
     public static string StorageDirectory => Path.Combine(AppDirectories.AppDataFolder, "DialogueConversationCaches");
 
     public static IReadOnlyList<DialogueCachePreset> LoadAll()
@@ -94,18 +94,6 @@ public static class SavedDialogueCachePresetManager
         try
         {
             DialogueCachePreset preset = JsonConvert.DeserializeObject<DialogueCachePreset>(File.ReadAllText(path));
-            if (preset?.Version is 1 or 2)
-            {
-                foreach (DialogueGestureClipCache clip in preset.Nodes
-                             .SelectMany(node => node.GestureTracks)
-                             .SelectMany(track => track.Timeline))
-                {
-                    // The v2 motion-only filter dropped valid single-key transforms from authored
-                    // BioGestureData animations. Preserve old presets, but restore complete clips.
-                    clip.UseMotionBoneMask = false;
-                }
-                preset.Version = CurrentVersion;
-            }
             if (preset is null || preset.Version != CurrentVersion || preset.Id == Guid.Empty
                 || string.IsNullOrWhiteSpace(preset.Label) || preset.Nodes.Count == 0)
             {
@@ -211,6 +199,10 @@ public sealed class DialogueDirectorCutCache
     public string GroupName { get; set; }
     public PackageExportReference CameraTrack { get; set; }
     public PackageExportReference SwitchCameraTrack { get; set; }
+    public string CameraActorTag { get; set; }
+    public PackageExportReference CameraActor { get; set; }
+    public DialogueOriginCache FallbackOrigin { get; set; }
+    public float? FallbackFovDegrees { get; set; }
 }
 
 public sealed class DialogueGestureTrackCache
