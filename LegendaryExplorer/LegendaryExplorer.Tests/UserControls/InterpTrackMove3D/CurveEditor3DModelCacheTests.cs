@@ -94,7 +94,7 @@ public class CurveEditor3DModelCacheTests
     }
 
     [TestMethod]
-    public void CameraTrackMoveCannotBeAssignedToDialogueActor()
+    public void CameraTrackMoveCannotBeAssignedToOwnerOrPlayer()
     {
         using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("ActorCameraAssignmentTest.pcc", MEGame.LE3);
         ExportEntry actorTrack = package.CreateExport("OwnerMove", "InterpTrackMove", indexed: false);
@@ -102,6 +102,51 @@ public class CurveEditor3DModelCacheTests
 
         Assert.IsTrue(CurveEditor3D.IsEligibleActorTrackMove(actorTrack, [cameraTrack]));
         Assert.IsFalse(CurveEditor3D.IsEligibleActorTrackMove(cameraTrack, [cameraTrack]));
+    }
+
+    [TestMethod]
+    public void EmptyCameraStubGroupCannotParticipateInActorMatching()
+    {
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("EmptyCameraGroupTest.pcc", MEGame.LE3);
+        ExportEntry emptyCameraGroup = package.CreateExport("Cam2", "InterpGroup", indexed: false);
+        emptyCameraGroup.WriteProperties(new PropertyCollection
+        {
+            new NameProperty("cam2", "GroupName"),
+            new NameProperty("Cam_2", "m_nmSFXFindActor"),
+            new ArrayProperty<ObjectProperty>("InterpTracks"),
+        });
+        ExportEntry actorGroup = package.CreateExport("Owner", "InterpGroup", indexed: false);
+        ExportEntry actorTrack = package.CreateExport("OwnerMove", "InterpTrackMove", indexed: false);
+        actorGroup.WriteProperties(new PropertyCollection
+        {
+            new NameProperty("Miranda", "GroupName"),
+            new NameProperty("Owner", "m_nmSFXFindActor"),
+            new ArrayProperty<ObjectProperty>("InterpTracks") { new(actorTrack) },
+        });
+
+        Assert.IsFalse(CurveEditor3D.IsActorMatchingInterpGroup(emptyCameraGroup));
+        Assert.IsTrue(CurveEditor3D.IsActorMatchingInterpGroup(actorGroup));
+    }
+
+    [TestMethod]
+    public void FovIdentifiesCameraTrackWhenGroupNameDoesNotStartWithCam()
+    {
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("FovCameraGroupTest.pcc", MEGame.LE3);
+        ExportEntry pcam = package.CreateExport("InterpGroup_0", "InterpGroup", indexed: false);
+        pcam.WriteProperties(new PropertyCollection
+        {
+            new NameProperty("pcam", "GroupName"),
+            new NameProperty("mircam1", "m_nmSFXFindActor"),
+        });
+        ExportEntry owner = package.CreateExport("InterpGroup_1", "InterpGroup", indexed: false);
+        owner.WriteProperties(new PropertyCollection
+        {
+            new NameProperty("Miranda", "GroupName"),
+            new NameProperty("Owner", "m_nmSFXFindActor"),
+        });
+
+        Assert.IsTrue(CurveEditor3D.IsCameraTrackGroup(pcam, hasFovTrack: true));
+        Assert.IsFalse(CurveEditor3D.IsCameraTrackGroup(owner, hasFovTrack: false));
     }
 
     [TestMethod]

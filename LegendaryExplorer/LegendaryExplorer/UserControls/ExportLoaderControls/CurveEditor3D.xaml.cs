@@ -2120,7 +2120,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                     .Select(cut => cut.GroupName)
                     .ToHashSet(StringComparer.OrdinalIgnoreCase);
                 cameraGroupNames.UnionWith(availableTrackMoves
-                    .Where(option => GetInterpGroupName(option.Group).StartsWith("Cam", StringComparison.OrdinalIgnoreCase))
+                    .Where(option => IsCameraTrackGroup(option.Group, option.FovModel is not null))
                     .Select(option => GetInterpGroupName(option.Group)));
                 dialoguePreviewCameraActors.AddRange(availableTrackMoves
                     .Where(option => cameraGroupNames.Contains(GetInterpGroupName(option.Group)))
@@ -2242,6 +2242,13 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         => trackMove is not null
            && (cameraTrackMoves is null
                || cameraTrackMoves.All(cameraTrack => !IsSameExport(trackMove, cameraTrack)));
+
+    internal static bool IsActorMatchingInterpGroup(ExportEntry group)
+        => GetReferencedExports(group, "InterpTracks").Any();
+
+    internal static bool IsCameraTrackGroup(ExportEntry group, bool hasFovTrack)
+        => hasFovTrack
+           || GetInterpGroupName(group).StartsWith("Cam", StringComparison.OrdinalIgnoreCase);
 
     private static ExportEntry FindOwningInterpData(ExportEntry track)
         => track?.Parent is ExportEntry interpGroup && interpGroup.Parent is ExportEntry interpData ? interpData : null;
@@ -2877,6 +2884,13 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                 dialogueRuntimeCache[segment] = RestoreDialogueCacheNode(segment, nodePreset);
             }
 
+            // Actor assignments are revalidated while each node is restored (for example, old
+            // presets may have cached Owner or Player against a camera TrackMove). Start/end origins are
+            // derived state, so serialized snapshots based on an invalid assignment must not be
+            // reused. Re-project them from the already-loaded cache; no PCC, curve, or animation
+            // assets are rebuilt here.
+            BuildDialogueRuntimeActorSnapshots();
+
             activeDialogueTimelineSegment = null;
             activeDialogueSegmentRuntime = null;
             ResetDialogueTimelineActorGestures();
@@ -3021,7 +3035,15 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                             required: cut.SwitchCameraTrack is not null),
                     }).ToArray(),
                 }).Prepend(DirectorPlaybackOption.None).ToArray(),
-            CameraTracks = preset.CameraTracks.Select(FindTrack).Where(option => option is not null).ToArray(),
+            CameraTracks = preset.CameraTracks.Select(FindTrack)
+                .Where(option => option is not null)
+                // Older presets only recorded director/Cam*-named tracks as cameras. FOV is
+                // authored on camera groups such as E10's `pcam`, so use it to repair their
+                // classification before validating Owner/Player assignments.
+                .Concat(trackMoves.Where(option => IsCameraTrackGroup(option.Group,
+                    option.FovModel is not null)))
+                .DistinctBy(option => (option.TrackMove.FileRef, option.TrackMove.UIndex))
+                .ToArray(),
             GestureTracks = gestureTracks.Prepend(GestureTrackOption.None).ToArray(),
             ActorTrackAssignments = preset.ActorTrackAssignments
                 .Select(pair => (pair.Key, Track: FindTrack(pair.Value)))
@@ -3666,7 +3688,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         if (configureTrackPlayback && !playDirectorMulticam)
         {
             selectedExtraTrackMove = availableTrackMoves.FirstOrDefault(option =>
-                GetInterpGroupName(option.Group).StartsWith("Cam", StringComparison.OrdinalIgnoreCase))
+                IsCameraTrackGroup(option.Group, option.FovModel is not null))
                 ?? TrackMovePlaybackOption.None;
             playExtraTrackMove = selectedExtraTrackMove.TrackMove is not null;
         }
@@ -4534,7 +4556,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
     private int GetActorGroupMatchScore(ExportEntry group, string actorTag)
     {
-        if (group is null || string.IsNullOrWhiteSpace(actorTag))
+        if (group is null || string.IsNullOrWhiteSpace(actorTag) || !IsActorMatchingInterpGroup(group))
         {
             return 0;
         }
