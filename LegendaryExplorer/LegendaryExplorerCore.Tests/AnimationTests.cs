@@ -337,6 +337,83 @@ public class AnimationTests
         Assert.AreEqual(15, player.ExtractedRootMotionTranslation.X, 0.001f);
     }
 
+    [TestMethod]
+    public void SubUnitRootJitterDoesNotInterruptMovingRootOwnership()
+    {
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("RootJitterOverlayTest.pcc", MEGame.LE3);
+        var skeletalMesh = new SkeletalMesh
+        {
+            RefSkeleton =
+            [
+                CreateBone("Master", 0),
+                new MeshBone
+                {
+                    Name = "Root",
+                    Orientation = Quaternion.Identity,
+                    Position = new Vector3(10, 0, 0),
+                    ParentIndex = 0,
+                },
+            ],
+        };
+        AnimSequence locomotion = CreateAnimation(package, "Locomotion", ["Root"],
+            [CreateTranslationTrack(new Vector3(100, 0, 0), new Vector3(120, 0, 0))], useTranslation: true);
+        AnimSequence poseOverlay = CreateAnimation(package, "PoseWithRootJitter", ["Root"],
+            [CreateTranslationTrack(new Vector3(500, 0, 0), new Vector3(500.4f, 0.2f, 0))], useTranslation: true);
+        var player = new AnimSequencePlayer(skeletalMesh);
+        player.SetAnimationTimeline(
+        [
+            new AnimSequencePlayer.ScheduledAnimationClip
+            {
+                Animation = locomotion,
+                StartTime = 0,
+                EndTime = 1,
+                AnimationStartTime = 0,
+                AnimationEndTime = 1,
+                NormalizeRootTranslation = true,
+            },
+            new AnimSequencePlayer.ScheduledAnimationClip
+            {
+                Animation = poseOverlay,
+                StartTime = 0.25f,
+                EndTime = 1,
+                AnimationStartTime = 0,
+                AnimationEndTime = 1,
+                NormalizeRootTranslation = true,
+            },
+        ]);
+
+        player.SetCurrentTime(0.75f);
+        player.ComputeSkinningMatrices();
+
+        Assert.AreEqual(15, player.ExtractedRootMotionTranslation.X, 0.001f);
+
+        var skeletalRootPlayer = new AnimSequencePlayer(skeletalMesh);
+        skeletalRootPlayer.SetAnimationTimeline(
+        [
+            new AnimSequencePlayer.ScheduledAnimationClip
+            {
+                Animation = locomotion,
+                StartTime = 0,
+                EndTime = 1,
+                AnimationStartTime = 0,
+                AnimationEndTime = 1,
+            },
+            new AnimSequencePlayer.ScheduledAnimationClip
+            {
+                Animation = poseOverlay,
+                StartTime = 0.25f,
+                EndTime = 1,
+                AnimationStartTime = 0,
+                AnimationEndTime = 1,
+            },
+        ]);
+
+        skeletalRootPlayer.SetCurrentTime(0.75f);
+        skeletalRootPlayer.ComputeSkinningMatrices();
+
+        Assert.AreEqual(115, skeletalRootPlayer.BoneComponentSpaceTransforms[1].Translation.X, 0.001f);
+    }
+
     private static MeshBone CreateBone(string name, int parentIndex) => new()
     {
         Name = name,

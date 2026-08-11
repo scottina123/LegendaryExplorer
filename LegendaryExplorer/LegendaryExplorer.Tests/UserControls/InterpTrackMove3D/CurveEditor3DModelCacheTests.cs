@@ -18,16 +18,30 @@ public class CurveEditor3DModelCacheTests
     public void GestureRootTranslationRemainsEnabledForSplineDrivenActors()
     {
         Assert.IsFalse(CurveEditor3D.ShouldLockDialogueGestureRootTranslation(
-            isConversationPreview: true, hasMovementTrack: true));
+            isConversationPreview: true, movementKeyCount: 2));
+    }
+
+    [TestMethod]
+    public void GestureRootTranslationRemainsEnabledForSingleKeyActorAnchor()
+    {
+        Assert.IsFalse(CurveEditor3D.ShouldLockDialogueGestureRootTranslation(
+            isConversationPreview: true, movementKeyCount: 1));
     }
 
     [TestMethod]
     public void GestureRootTranslationIsLockedWhenTheNodeHasNoActorTrackMove()
     {
         Assert.IsTrue(CurveEditor3D.ShouldLockDialogueGestureRootTranslation(
-            isConversationPreview: true, hasMovementTrack: false));
+            isConversationPreview: true, movementKeyCount: 0));
         Assert.IsFalse(CurveEditor3D.ShouldLockDialogueGestureRootTranslation(
-            isConversationPreview: false, hasMovementTrack: false));
+            isConversationPreview: false, movementKeyCount: 0));
+    }
+
+    [TestMethod]
+    public void LookAtDoesNotRotateThePawnTransform()
+    {
+        Assert.IsFalse(CurveEditor3D.DirectionTrackControlsActorTransform(isLookAt: true));
+        Assert.IsTrue(CurveEditor3D.DirectionTrackControlsActorTransform(isLookAt: false));
     }
 
     [TestMethod]

@@ -16,6 +16,10 @@ namespace LegendaryExplorerCore.Unreal.Animation;
 /// </remarks>
 public class AnimSequencePlayer : AnimPlayer
 {
+    // Authored dialogue poses often contain sub-unit Root drift from compression or capture noise.
+    // Treating that as locomotion makes a pose overlay steal ownership from a walk animation.
+    private const float MinimumRootMotionDistance = 1f;
+
     public sealed class ScheduledAnimationClip
     {
         public AnimSequence Animation { get; init; }
@@ -577,12 +581,16 @@ public class AnimSequencePlayer : AnimPlayer
                     Vector3 position = Vector3.Lerp(currentPosition, nextPosition, alpha);
                     if (boneIndex == _rootMotionBoneIndex && dominantRootMotion >= 0)
                     {
-                        Vector3 candidate = Vector3.Lerp(rootBasePosition, nextPosition, Math.Clamp(weight, 0, 1));
-                        float candidateMotion = Vector3.DistanceSquared(candidate, rootBasePosition);
-                        if (candidateMotion > dominantRootMotion)
+                        if (state.HasAnimatedRootTranslation)
                         {
-                            dominantRootPosition = candidate;
-                            dominantRootMotion = candidateMotion;
+                            Vector3 candidate = Vector3.Lerp(rootBasePosition, nextPosition,
+                                Math.Clamp(weight, 0, 1));
+                            float candidateMotion = Vector3.DistanceSquared(candidate, rootBasePosition);
+                            if (candidateMotion > dominantRootMotion)
+                            {
+                                dominantRootPosition = candidate;
+                                dominantRootMotion = candidateMotion;
+                            }
                         }
                         position = dominantRootPosition;
                     }
@@ -702,7 +710,9 @@ public class AnimSequencePlayer : AnimPlayer
         }
 
         Vector3 firstPosition = positions[0];
-        return positions.Any(position => Vector3.DistanceSquared(position, firstPosition) > 0.000001f);
+        float minimumDistanceSquared = MinimumRootMotionDistance * MinimumRootMotionDistance;
+        return positions.Any(position =>
+            Vector3.DistanceSquared(position, firstPosition) > minimumDistanceSquared);
     }
 
     private Vector3 SampleRootLocalPosition(AnimSequencePlayer player, float animationTime)

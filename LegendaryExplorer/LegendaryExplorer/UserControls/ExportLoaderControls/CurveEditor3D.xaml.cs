@@ -4434,6 +4434,13 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                 continue;
             }
 
+            if (!DirectionTrackControlsActorTransform(track.IsLookAt))
+            {
+                // BioEvtSysTrackLookAt drives the character gaze, not the pawn transform.
+                // Rotating the whole preview actor here turns a forward root-motion walk sideways.
+                continue;
+            }
+
             PreviewActorConfiguration targetActor = key.TargetActorTag is null
                 ? null
                 : resolvedActorOrigins.Keys.FirstOrDefault(candidate =>
@@ -4446,6 +4453,8 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         }
         return origin;
     }
+
+    internal static bool DirectionTrackControlsActorTransform(bool isLookAt) => !isLookAt;
 
     internal static CameraOrigin ApplySetFacingStageNode(CameraOrigin actorOrigin, CameraOrigin stageNodeOrigin,
         bool hasMovementTrack, float orientationOffset, Vector3 rootMotionSinceFacingKey = default,
@@ -8483,19 +8492,25 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             return;
         }
 
-        bool hasMovementTrack = previewActorTrackAssignments.TryGetValue(actor,
-                                    out TrackMovePlaybackOption movementTrack)
-                                && movementTrack?.Model?.Keyframes is { Count: > 0 };
+        int movementKeyCount = previewActorTrackAssignments.TryGetValue(actor,
+                                   out TrackMovePlaybackOption movementTrack)
+            ? movementTrack?.Model?.Keyframes?.Count ?? 0
+            : 0;
         animationState.SetTimeline(gesture.StartingPose, gesture.Timeline, previewActorGesturePackageCache,
             playbackDuration ?? activeDialogueSegmentRuntime?.Segment.Duration, gesture,
             maskDialogueOverlayStaticBones: isDialogueConversationPreview,
             lockRootTranslation: ShouldLockDialogueGestureRootTranslation(isDialogueConversationPreview,
-                hasMovementTrack));
+                movementKeyCount));
         UpdatePreviewActorSkinning(actor);
     }
 
     internal static bool ShouldLockDialogueGestureRootTranslation(bool isConversationPreview,
-        bool hasMovementTrack) => isConversationPreview && !hasMovementTrack;
+        int movementKeyCount)
+    {
+        // A one-key TrackMove still owns an authored actor anchor. Keep its animation Root in the
+        // skeletal path so consecutive anchored nodes do not accumulate actor-space displacement.
+        return isConversationPreview && movementKeyCount == 0;
+    }
 
     internal static CameraOrigin ApplyDialogueGestureRootMotion(CameraOrigin origin, Vector3 localTranslation)
     {
