@@ -3546,6 +3546,37 @@ namespace LegendaryExplorer.DialogueEditor
             if (sender == null || SelectedConv == null || SelectedDialogueNode == null)
                 return;
 
+            // DialogueNodeExtended also contains parsed references, display-only values, and graph UI state.
+            // PropertyChanged.Fody raises notifications for those properties too, but none of them belongs in
+            // the serialized conversation node. Ignore them before the generic persistence path below so merely
+            // navigating the editor cannot mark the conversation as modified.
+            if (e.PropertyName is not (
+                nameof(DialogueNodeExtended.Listener)
+                or nameof(DialogueNodeExtended.SpeakerIndex)
+                or nameof(DialogueNodeExtended.LineStrRef)
+                or nameof(DialogueNodeExtended.ExportID)
+                or nameof(DialogueNodeExtended.ConditionalOrBool)
+                or nameof(DialogueNodeExtended.ConditionalParam)
+                or nameof(DialogueNodeExtended.Transition)
+                or nameof(DialogueNodeExtended.TransitionParam)
+                or nameof(DialogueNodeExtended.InterpLength)
+                or nameof(DialogueNodeExtended.CameraIntimacy)
+                or nameof(DialogueNodeExtended.FiresConditional)
+                or nameof(DialogueNodeExtended.IsAmbient)
+                or nameof(DialogueNodeExtended.IsNonTextLine)
+                or nameof(DialogueNodeExtended.IgnoreBodyGesture)
+                or nameof(DialogueNodeExtended.Script)
+                or nameof(DialogueNodeExtended.GUIStyle)
+                or nameof(DialogueNodeExtended.HideSubtitle)
+                or nameof(DialogueNodeExtended.IsSkippable)
+                or nameof(DialogueNodeExtended.IsUnskippable)
+                or nameof(DialogueNodeExtended.ReplyType)
+                or nameof(DialogueNodeExtended.IsDefaultAction)
+                or nameof(DialogueNodeExtended.IsMajorDecision)))
+            {
+                return;
+            }
+
             var diagnode = (DialogueNodeExtended)sender;  //THIS IS A GATE TO CHECK IF VALUES HAVE CHANGED
             var newvalue = diagnode.GetType().GetProperty(e.PropertyName).GetValue(diagnode, null);
             var oldvalue = MirrorDialogueNode.GetType().GetProperty(e.PropertyName).GetValue(MirrorDialogueNode, null);

@@ -1,5 +1,6 @@
 using System;
 using System.ComponentModel;
+using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
 using System.Windows;
@@ -21,7 +22,7 @@ public class DialogueEditorSelectionTests
     public static void Initialize(TestContext _) => LegendaryExplorerCoreLib.InitLib(TaskScheduler.Default);
 
     [STATestMethod]
-    public void SelectingDialogueNodeDoesNotDirtyConversation()
+    public void NavigatingDialogueNodeDoesNotDirtyConversation()
     {
         typeof(Application).GetField("_resourceAssembly", BindingFlags.Static | BindingFlags.NonPublic)!
             .SetValue(null, typeof(DialogueEditorWindow).Assembly);
@@ -90,6 +91,13 @@ public class DialogueEditorSelectionTests
             };
 
             editor.SelectDialogueNodeByIndex(0);
+
+            var viewportTabs = (TabControl)editor.FindName("BottomViewportTabControl");
+            viewportTabs.SelectedItem = viewportTabs.Items.OfType<TabItem>().Single(tab => Equals(tab.Header, "InterpData"));
+            viewportTabs.SelectedItem = viewportTabs.Items.OfType<TabItem>().Single(tab => Equals(tab.Header, "Matinee"));
+            editor.SelectedDialogueNode.PlotChecksExpanded = true;
+            editor.SelectedDialogueNode.PlotTransitionsExpanded = true;
+            editor.SelectedDialogueNode.MatineeExpanded = true;
 
             Assert.AreEqual(-1, editor.SelectedDialogueNode.SpeakerIndex);
             Assert.AreEqual(-2, editor.SelectedDialogueNode.Listener);
