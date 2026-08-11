@@ -17,11 +17,37 @@ public sealed class CurveEditor3DFovModel
 
     public ExportEntry Export { get; private set; }
 
+    /// <summary>
+    /// When false, edits remain in this model until <see cref="CommitChanges"/> is called.
+    /// </summary>
+    public bool AutoCommit { get; set; } = true;
+
+    public bool HasPendingChanges { get; private set; }
+
     public InterpCurve<float> Track { get; private set; }
 
     public ObservableCollection<CurveEditor3DFovKeyframe> Keyframes { get; } = [];
 
     public event Action Changed;
+
+    public CurveEditor3DFovModelSnapshot CreateCacheSnapshot() => new()
+    {
+        InterpMethod = Track?.InterpMethod ?? EInterpMethodType.IMT_UseFixedTangentEvalAndNewAutoTangents,
+        Points = Track?.Points.Select(CurveEditor3DFloatPointSnapshot.FromPoint).ToList() ?? [],
+        HasPendingChanges = HasPendingChanges,
+    };
+
+    public void LoadCacheSnapshot(ExportEntry export, CurveEditor3DFovModelSnapshot snapshot)
+    {
+        ArgumentNullException.ThrowIfNull(export);
+        ArgumentNullException.ThrowIfNull(snapshot);
+        Load(export);
+        Track.Points.Clear();
+        Track.InterpMethod = snapshot.InterpMethod;
+        Track.Points.AddRange(snapshot.Points.Select(point => point.ToPoint()));
+        RebuildKeyframes();
+        HasPendingChanges = snapshot.HasPendingChanges;
+    }
 
     public void Load(ExportEntry export)
     {
@@ -31,6 +57,7 @@ public sealed class CurveEditor3DFovModel
                                     ?? new InterpCurve<float>().ToStructProperty(export.Game, "FloatTrack");
         Track = InterpCurve<float>.FromStructProperty(floatTrack, export.Game);
         RebuildKeyframes();
+        HasPendingChanges = false;
     }
 
     public void Clear()
@@ -38,6 +65,18 @@ public sealed class CurveEditor3DFovModel
         Export = null;
         Track = null;
         Keyframes.Clear();
+        HasPendingChanges = false;
+    }
+
+    public void CommitChanges()
+    {
+        if (Export is null || !HasPendingChanges)
+        {
+            return;
+        }
+
+        WriteTrackToExport();
+        HasPendingChanges = false;
     }
 
     public bool HasKeyframeAtTime(float time, CurveEditor3DFovKeyframe excludedKeyframe = null)
@@ -140,5 +179,45 @@ public sealed class CurveEditor3DFovModel
         }
     }
 
-    private void WriteTrack() => Export.WriteProperty(Track.ToStructProperty(Export.Game, "FloatTrack"));
+    private void WriteTrack()
+    {
+        if (!AutoCommit)
+        {
+            HasPendingChanges = true;
+            return;
+        }
+
+        WriteTrackToExport();
+        HasPendingChanges = false;
+    }
+
+    private void WriteTrackToExport() => Export.WriteProperty(Track.ToStructProperty(Export.Game, "FloatTrack"));
+}
+
+public sealed class CurveEditor3DFovModelSnapshot
+{
+    public EInterpMethodType InterpMethod { get; set; }
+    public List<CurveEditor3DFloatPointSnapshot> Points { get; set; } = [];
+    public bool HasPendingChanges { get; set; }
+}
+
+public sealed class CurveEditor3DFloatPointSnapshot
+{
+    public float Time { get; set; }
+    public float Value { get; set; }
+    public float ArriveTangent { get; set; }
+    public float LeaveTangent { get; set; }
+    public EInterpCurveMode InterpMode { get; set; }
+
+    internal static CurveEditor3DFloatPointSnapshot FromPoint(InterpCurvePoint<float> point) => new()
+    {
+        Time = point.InVal,
+        Value = point.OutVal,
+        ArriveTangent = point.ArriveTangent,
+        LeaveTangent = point.LeaveTangent,
+        InterpMode = point.InterpMode,
+    };
+
+    internal InterpCurvePoint<float> ToPoint() =>
+        new(Time, Value, ArriveTangent, LeaveTangent, InterpMode);
 }

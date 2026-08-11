@@ -28,12 +28,15 @@ public class AnimSequencePlayer : AnimPlayer
         public float BlendOutDuration { get; init; }
         public float Weight { get; init; } = 1f;
         public bool Loop { get; init; }
+        public bool IsBaseLayer { get; init; }
+        public bool UseMotionBoneMask { get; init; }
     }
 
     private sealed class ScheduledAnimationClipState
     {
         public required ScheduledAnimationClip Clip { get; init; }
         public required AnimSequencePlayer Player { get; init; }
+        public required bool[] BoneMask { get; init; }
     }
 
     // Animation state
@@ -178,7 +181,12 @@ public class AnimSequencePlayer : AnimPlayer
                 IsLooping = false,
             };
             player.SetAnimation(clip.Animation, packageCache);
-            _scheduledClips.Add(new ScheduledAnimationClipState { Clip = clip, Player = player });
+            _scheduledClips.Add(new ScheduledAnimationClipState
+            {
+                Clip = clip,
+                Player = player,
+                BoneMask = player.BuildScheduledBoneMask(clip.UseMotionBoneMask),
+            });
         }
 
         if (_scheduledClips.Count == 0)
@@ -219,6 +227,44 @@ public class AnimSequencePlayer : AnimPlayer
         }
         // otherwise, return true
         return true;
+    }
+
+    private bool[] BuildScheduledBoneMask(bool motionOnly)
+    {
+        var boneMask = new bool[_bones.Length];
+        bool foundMotion = false;
+        for (int boneIndex = 0; boneIndex < _bones.Length; boneIndex++)
+        {
+            int trackIndex = _skelToAnimMap[boneIndex];
+            if (trackIndex < 0 || _animSequence?.RawAnimationData is null
+                               || trackIndex >= _animSequence.RawAnimationData.Count)
+            {
+                continue;
+            }
+
+            if (!motionOnly)
+            {
+                boneMask[boneIndex] = true;
+                continue;
+            }
+
+            AnimTrack track = _animSequence.RawAnimationData[trackIndex];
+            bool hasMotion = track.Positions is { Count: > 1 } || track.Rotations is { Count: > 1 };
+            boneMask[boneIndex] = hasMotion;
+            foundMotion |= hasMotion;
+        }
+
+        // A single-frame authored gesture is a pose rather than a motion clip. In that case the
+        // complete authored pose is still meaningful and must not disappear from the timeline.
+        if (motionOnly && !foundMotion)
+        {
+            for (int boneIndex = 0; boneIndex < _bones.Length; boneIndex++)
+            {
+                boneMask[boneIndex] = _skelToAnimMap[boneIndex] >= 0;
+            }
+        }
+
+        return boneMask;
     }
 
     public override void SetCurrentTime(float time)
@@ -424,11 +470,47 @@ public class AnimSequencePlayer : AnimPlayer
 
         var blendedLocalPose = new Matrix4x4[_bones.Length];
         var clipLocalPose = new Matrix4x4[_bones.Length];
-        float activeWeight = activeClips.Sum(activeClip => activeClip.Weight);
-        float accumulatedWeight = _scheduledLocalPose is null ? 0 : Math.Max(0, 1 - activeWeight);
         if (_scheduledLocalPose is not null)
         {
             Array.Copy(_scheduledLocalPose, blendedLocalPose, blendedLocalPose.Length);
+        }
+
+        // Pose animations establish the continuously evaluated base layer. This is how gesture
+        // tracks can keep a walk cycle running while dialogue gestures animate the upper body.
+        foreach ((ScheduledAnimationClipState state, float weight) in activeClips
+                     .Where(activeClip => activeClip.State.Clip.IsBaseLayer))
+        {
+            ConvertComponentToLocalPose(state.Player._boneComponentSpace, clipLocalPose);
+            float alpha = Math.Clamp(weight, 0, 1);
+            for (int boneIndex = 0; boneIndex < _bones.Length; boneIndex++)
+            {
+                if (!state.BoneMask[boneIndex])
+                {
+                    continue;
+                }
+
+                BlendLocalTransform(ref blendedLocalPose[boneIndex], clipLocalPose[boneIndex], alpha);
+            }
+        }
+
+        List<(ScheduledAnimationClipState State, float Weight)> overlayClips = activeClips
+            .Where(activeClip => !activeClip.State.Clip.IsBaseLayer)
+            .ToList();
+        var overlayWeights = new float[_bones.Length];
+        foreach ((ScheduledAnimationClipState state, float weight) in overlayClips)
+        {
+            for (int boneIndex = 0; boneIndex < _bones.Length; boneIndex++)
+            {
+                if (state.BoneMask[boneIndex])
+                {
+                    overlayWeights[boneIndex] += weight;
+                }
+            }
+        }
+        var accumulatedWeights = new float[_bones.Length];
+        for (int boneIndex = 0; boneIndex < _bones.Length; boneIndex++)
+        {
+            accumulatedWeights[boneIndex] = Math.Max(0, 1 - overlayWeights[boneIndex]);
         }
 
         Vector3 rootBasePosition = Vector3.Zero;
@@ -441,13 +523,21 @@ public class AnimSequencePlayer : AnimPlayer
             dominantRootMotion = 0;
         }
 
-        for (int clipIndex = 0; clipIndex < activeClips.Count; clipIndex++)
+        for (int clipIndex = 0; clipIndex < overlayClips.Count; clipIndex++)
         {
-            (ScheduledAnimationClipState state, float weight) = activeClips[clipIndex];
+            (ScheduledAnimationClipState state, float weight) = overlayClips[clipIndex];
             ConvertComponentToLocalPose(state.Player._boneComponentSpace, clipLocalPose);
-            float alpha = accumulatedWeight <= 0 ? 1 : Math.Clamp(weight / (accumulatedWeight + weight), 0, 1);
             for (int boneIndex = 0; boneIndex < _bones.Length; boneIndex++)
             {
+                if (!state.BoneMask[boneIndex])
+                {
+                    continue;
+                }
+
+                float accumulatedWeight = accumulatedWeights[boneIndex];
+                float alpha = accumulatedWeight <= 0
+                    ? 1
+                    : Math.Clamp(weight / (accumulatedWeight + weight), 0, 1);
                 if (Matrix4x4.Decompose(blendedLocalPose[boneIndex], out _, out Quaternion currentRotation, out Vector3 currentPosition)
                     && Matrix4x4.Decompose(clipLocalPose[boneIndex], out _, out Quaternion nextRotation, out Vector3 nextPosition))
                 {
@@ -466,8 +556,8 @@ public class AnimSequencePlayer : AnimPlayer
                     }
                     blendedLocalPose[boneIndex] = Matrix4x4.CreateFromQuaternion(rotation) * Matrix4x4.CreateTranslation(position);
                 }
+                accumulatedWeights[boneIndex] += weight;
             }
-            accumulatedWeight += weight;
         }
 
         for (int boneIndex = 0; boneIndex < _bones.Length; boneIndex++)
@@ -480,6 +570,17 @@ public class AnimSequencePlayer : AnimPlayer
         }
 
         return _skinningMatrices;
+    }
+
+    private static void BlendLocalTransform(ref Matrix4x4 currentTransform, Matrix4x4 nextTransform, float alpha)
+    {
+        if (Matrix4x4.Decompose(currentTransform, out _, out Quaternion currentRotation, out Vector3 currentPosition)
+            && Matrix4x4.Decompose(nextTransform, out _, out Quaternion nextRotation, out Vector3 nextPosition))
+        {
+            Quaternion rotation = Quaternion.Slerp(currentRotation, nextRotation, alpha);
+            Vector3 position = Vector3.Lerp(currentPosition, nextPosition, alpha);
+            currentTransform = Matrix4x4.CreateFromQuaternion(rotation) * Matrix4x4.CreateTranslation(position);
+        }
     }
 
     private void ConvertComponentToLocalPose(Matrix4x4[] componentPose, Matrix4x4[] localPose)

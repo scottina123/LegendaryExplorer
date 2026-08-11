@@ -243,7 +243,7 @@ public partial class GesturePreviewExportLoader : ExportLoaderControl
             SnapToPose = properties.GetProp<BoolProperty>("bSnapToPose")?.Value ?? false,
             PoseFilter = EnumValue("ePoseFilter"),
             Pose = EnumValue("ePose"),
-            GestureFilter = EnumValue("eGestureFiler"),
+            GestureFilter = EnumValue("eGestureFilter"),
             Gesture = EnumValue("eGesture"),
             ChainedGestures = chainedGestures is { Count: > 0 }
                 ? string.Join(", ", chainedGestures.Select(property => property.Value))
@@ -341,6 +341,18 @@ public partial class GesturePreviewExportLoader : ExportLoaderControl
             }
 
             if (export.GetProperty<ObjectProperty>("InterpData")?.Value == interpData.UIndex)
+            {
+                return export.Parent as ExportEntry;
+            }
+
+            ArrayProperty<StructProperty> variableLinks = export
+                .GetProperty<ArrayProperty<StructProperty>>("VariableLinks");
+            bool linksInterpData = variableLinks?.Any(variableLink =>
+                string.Equals(variableLink.GetProp<StrProperty>("LinkDesc")?.Value, "Data",
+                    StringComparison.OrdinalIgnoreCase)
+                && variableLink.GetProp<ArrayProperty<ObjectProperty>>("LinkedVariables")?
+                    .Any(reference => reference.Value == interpData.UIndex) == true) == true;
+            if (linksInterpData)
             {
                 return export.Parent as ExportEntry;
             }
@@ -687,6 +699,8 @@ public partial class GesturePreviewExportLoader : ExportLoaderControl
             BlendOutDuration = blendOut,
             Weight = settings.Weight,
             Loop = loop,
+            IsBaseLayer = item.SlotName is "Starting Pose" or "Pose",
+            UseMotionBoneMask = item.SlotName is "Gesture" or "Transition",
         };
         if (insertAtStart)
         {

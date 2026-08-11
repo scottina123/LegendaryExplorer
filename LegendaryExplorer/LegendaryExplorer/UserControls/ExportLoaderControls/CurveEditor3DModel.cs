@@ -18,6 +18,13 @@ public sealed class CurveEditor3DModel
 
     public ExportEntry Export { get; private set; }
 
+    /// <summary>
+    /// When false, edits remain in this model until <see cref="CommitChanges"/> is called.
+    /// </summary>
+    public bool AutoCommit { get; set; } = true;
+
+    public bool HasPendingChanges { get; private set; }
+
     public InterpCurveVector PositionTrack { get; private set; }
 
     public InterpCurveVector RotationTrack { get; private set; }
@@ -25,6 +32,42 @@ public sealed class CurveEditor3DModel
     public System.Collections.ObjectModel.ObservableCollection<CurveEditor3DKeyframe> Keyframes { get; } = [];
 
     public event Action Changed;
+
+    public CurveEditor3DModelSnapshot CreateCacheSnapshot() => new()
+    {
+        PositionInterpMethod = PositionTrack?.InterpMethod ?? EInterpMethodType.IMT_UseFixedTangentEvalAndNewAutoTangents,
+        RotationInterpMethod = RotationTrack?.InterpMethod ?? EInterpMethodType.IMT_UseFixedTangentEvalAndNewAutoTangents,
+        PositionPoints = PositionTrack?.Points.Select(CurveEditor3DVectorPointSnapshot.FromPoint).ToList() ?? [],
+        RotationPoints = RotationTrack?.Points.Select(CurveEditor3DVectorPointSnapshot.FromPoint).ToList() ?? [],
+        LookupPoints = lookupPoints?.Select(point => new CurveEditor3DLookupPointSnapshot
+        {
+            Time = point.GetProp<FloatProperty>("Time")?.Value ?? 0,
+            GroupName = point.GetProp<NameProperty>("GroupName")?.Value.Instanced ?? "None",
+        }).ToList() ?? [],
+        HasPendingChanges = HasPendingChanges,
+    };
+
+    public void LoadCacheSnapshot(ExportEntry export, CurveEditor3DModelSnapshot snapshot)
+    {
+        ArgumentNullException.ThrowIfNull(export);
+        ArgumentNullException.ThrowIfNull(snapshot);
+        Load(export);
+        PositionTrack.Points.Clear();
+        PositionTrack.InterpMethod = snapshot.PositionInterpMethod;
+        PositionTrack.Points.AddRange(snapshot.PositionPoints.Select(point => point.ToPoint()));
+        RotationTrack.Points.Clear();
+        RotationTrack.InterpMethod = snapshot.RotationInterpMethod;
+        RotationTrack.Points.AddRange(snapshot.RotationPoints.Select(point => point.ToPoint()));
+        lookupPoints.Clear();
+        foreach (CurveEditor3DLookupPointSnapshot point in snapshot.LookupPoints)
+        {
+            lookupPoints.Add(new StructProperty("InterpLookupPoint", false,
+                new NameProperty(string.IsNullOrWhiteSpace(point.GroupName) ? "None" : point.GroupName, "GroupName"),
+                new FloatProperty(point.Time, "Time")));
+        }
+        RebuildKeyframes();
+        HasPendingChanges = snapshot.HasPendingChanges;
+    }
 
     public void Load(ExportEntry export)
     {
@@ -39,6 +82,7 @@ public sealed class CurveEditor3DModel
         }, "LookupTrack");
         lookupPoints = lookupTrack.GetProp<ArrayProperty<StructProperty>>("Points");
         RebuildKeyframes();
+        HasPendingChanges = false;
     }
 
     public void Clear()
@@ -50,6 +94,18 @@ public sealed class CurveEditor3DModel
         lookupPoints = null;
         lookupPointsByPositionPoint.Clear();
         Keyframes.Clear();
+        HasPendingChanges = false;
+    }
+
+    public void CommitChanges()
+    {
+        if (Export is null || !HasPendingChanges)
+        {
+            return;
+        }
+
+        WriteTracksToExport();
+        HasPendingChanges = false;
     }
 
     public IReadOnlyList<Vector3> SampleTrajectory(int samplesPerSegment = 16)
@@ -362,6 +418,18 @@ public sealed class CurveEditor3DModel
 
     private void WriteTracks()
     {
+        if (!AutoCommit)
+        {
+            HasPendingChanges = true;
+            return;
+        }
+
+        WriteTracksToExport();
+        HasPendingChanges = false;
+    }
+
+    private void WriteTracksToExport()
+    {
         PropertyCollection properties = Export.GetProperties();
         properties.AddOrReplaceProp(PositionTrack.ToStructProperty(Export.Game, "PosTrack"));
         properties.AddOrReplaceProp(RotationTrack.ToStructProperty(Export.Game, "EulerTrack"));
@@ -387,4 +455,41 @@ public sealed class CurveEditor3DModel
         int index = track.AddPoint(time, value, Vector3.Zero, Vector3.Zero, interpMode);
         return track.Points[index];
     }
+}
+
+public sealed class CurveEditor3DModelSnapshot
+{
+    public EInterpMethodType PositionInterpMethod { get; set; }
+    public EInterpMethodType RotationInterpMethod { get; set; }
+    public List<CurveEditor3DVectorPointSnapshot> PositionPoints { get; set; } = [];
+    public List<CurveEditor3DVectorPointSnapshot> RotationPoints { get; set; } = [];
+    public List<CurveEditor3DLookupPointSnapshot> LookupPoints { get; set; } = [];
+    public bool HasPendingChanges { get; set; }
+}
+
+public sealed class CurveEditor3DVectorPointSnapshot
+{
+    public float Time { get; set; }
+    public Vector3 Value { get; set; }
+    public Vector3 ArriveTangent { get; set; }
+    public Vector3 LeaveTangent { get; set; }
+    public EInterpCurveMode InterpMode { get; set; }
+
+    internal static CurveEditor3DVectorPointSnapshot FromPoint(InterpCurvePoint<Vector3> point) => new()
+    {
+        Time = point.InVal,
+        Value = point.OutVal,
+        ArriveTangent = point.ArriveTangent,
+        LeaveTangent = point.LeaveTangent,
+        InterpMode = point.InterpMode,
+    };
+
+    internal InterpCurvePoint<Vector3> ToPoint() =>
+        new(Time, Value, ArriveTangent, LeaveTangent, InterpMode);
+}
+
+public sealed class CurveEditor3DLookupPointSnapshot
+{
+    public float Time { get; set; }
+    public string GroupName { get; set; }
 }

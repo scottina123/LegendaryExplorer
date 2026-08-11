@@ -66,4 +66,57 @@ public class CurveEditor3DFovModelTests
             export.GetProperty<StructProperty>("FloatTrack"), package.Game);
         Assert.AreEqual(0, saved.Points.Count);
     }
+
+    [TestMethod]
+    public void CachedFovEditsWaitForExplicitCommit()
+    {
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("CurveEditor3DFovCacheTest.pcc", MEGame.LE3);
+        var curve = new InterpCurve<float>();
+        curve.Points.Add(new InterpCurvePoint<float>(0, 60, 0, 0, EInterpCurveMode.CIM_CurveAuto));
+        ExportEntry export = package.CreateExport("FOVAngle", "InterpTrackFloatProp", indexed: false);
+        export.WriteProperty(curve.ToStructProperty(package.Game, "FloatTrack"));
+        var model = new CurveEditor3DFovModel { AutoCommit = false };
+        model.Load(export);
+
+        model.Keyframes[0].Value = 95;
+
+        Assert.IsTrue(model.HasPendingChanges);
+        InterpCurve<float> beforeCommit = InterpCurve<float>.FromStructProperty(
+            export.GetProperty<StructProperty>("FloatTrack"), package.Game);
+        Assert.AreEqual(60, beforeCommit.Points[0].OutVal, 0.001f);
+
+        model.CommitChanges();
+
+        Assert.IsFalse(model.HasPendingChanges);
+        InterpCurve<float> afterCommit = InterpCurve<float>.FromStructProperty(
+            export.GetProperty<StructProperty>("FloatTrack"), package.Game);
+        Assert.AreEqual(95, afterCommit.Points[0].OutVal, 0.001f);
+    }
+
+    [TestMethod]
+    public void CacheSnapshotRestoresPendingFovCurveExactly()
+    {
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("FovPresetTest.pcc", MEGame.LE3);
+        var curve = new InterpCurve<float>();
+        curve.Points.Add(new InterpCurvePoint<float>(1, 70, 3, -4, EInterpCurveMode.CIM_CurveUser));
+        ExportEntry export = package.CreateExport("FOVAngle", "InterpTrackFloatProp", indexed: false);
+        export.WriteProperty(curve.ToStructProperty(package.Game, "FloatTrack"));
+        var source = new CurveEditor3DFovModel { AutoCommit = false };
+        source.Load(export);
+        source.Keyframes[0].Value = 88;
+        source.Keyframes[0].ArriveTangent = 3;
+        source.Keyframes[0].LeaveTangent = -4;
+
+        CurveEditor3DFovModelSnapshot snapshot = source.CreateCacheSnapshot();
+        var restored = new CurveEditor3DFovModel { AutoCommit = false };
+        restored.LoadCacheSnapshot(export, snapshot);
+
+        Assert.IsTrue(restored.HasPendingChanges);
+        Assert.AreEqual(88, restored.Keyframes[0].Value, 0.001f);
+        Assert.AreEqual(EInterpCurveMode.CIM_CurveUser, restored.Keyframes[0].InterpMode);
+        Assert.AreEqual(3, restored.Keyframes[0].ArriveTangent, 0.001f);
+        Assert.AreEqual(-4, restored.Keyframes[0].LeaveTangent, 0.001f);
+        Assert.AreEqual(70, InterpCurve<float>.FromStructProperty(
+            export.GetProperty<StructProperty>("FloatTrack"), package.Game).Points[0].OutVal, 0.001f);
+    }
 }

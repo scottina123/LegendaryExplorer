@@ -48,6 +48,8 @@ public partial class AnimationPreviewControl : NotifyPropertyChangedControlBase,
         public float BlendOutDuration { get; init; }
         public float Weight { get; init; } = 1f;
         public bool Loop { get; init; }
+        public bool IsBaseLayer { get; init; }
+        public bool UseMotionBoneMask { get; init; }
     }
 
     private readonly PackageCache _packageCache = new();
@@ -525,6 +527,8 @@ public partial class AnimationPreviewControl : NotifyPropertyChangedControlBase,
                     BlendOutDuration = clip.BlendOutDuration,
                     Weight = clip.Weight,
                     Loop = clip.Loop,
+                    IsBaseLayer = clip.IsBaseLayer,
+                    UseMotionBoneMask = clip.UseMotionBoneMask,
                 });
             }
 

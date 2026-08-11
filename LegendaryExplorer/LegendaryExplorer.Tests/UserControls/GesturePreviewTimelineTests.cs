@@ -69,6 +69,45 @@ public class GesturePreviewTimelineTests
         Assert.AreEqual(13, timeline.Single(clip => clip.AnimationExport == chainedAnimation).EndTime, 0.0001f);
     }
 
+    [TestMethod]
+    public void EveryBioGestureDataEntryIsScheduledWithTheStartingPoseAsItsBaseLayer()
+    {
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("MultiGestureTest.pcc", MEGame.LE3);
+        ExportEntry startingPose = CreateAnimation(package, "StartingPose", 3);
+        ExportEntry first = CreateAnimation(package, "First", 10);
+        ExportEntry second = CreateAnimation(package, "Second", 10);
+        ExportEntry third = CreateAnimation(package, "Third", 10);
+        ExportEntry fourth = CreateAnimation(package, "Fourth", 10);
+        var animations = new List<GesturePreviewExportLoader.GestureAnimationItem>
+        {
+            new()
+            {
+                Time = 0,
+                SlotOrder = -1,
+                SlotName = "Starting Pose",
+                SetName = "PoseSet",
+                AnimationName = startingPose.ObjectName,
+                AnimationExport = startingPose,
+                Settings = new GesturePreviewExportLoader.GesturePlaybackSettings(),
+            },
+            CreateGesture(0, 0, first),
+            CreateGesture(1, 4.417f, second, chainToPrevious: true),
+            CreateGesture(2, 4.458f, third),
+            CreateGesture(3, 4.5f, fourth),
+        };
+
+        List<AnimationPreviewControl.AnimationTimelineClip> timeline = BuildPlaybackTimeline(animations);
+
+        Assert.HasCount(5, timeline);
+        Assert.IsTrue(timeline.Single(clip => clip.AnimationExport == startingPose).IsBaseLayer);
+        Assert.IsTrue(timeline.Where(clip => clip.AnimationExport != startingPose)
+            .All(clip => clip.UseMotionBoneMask));
+        CollectionAssert.AreEquivalent(new[] { first, second, third, fourth }, timeline
+            .Where(clip => clip.AnimationExport != startingPose)
+            .Select(clip => clip.AnimationExport)
+            .ToArray());
+    }
+
     private static ExportEntry CreateAnimation(IMEPackage package, string name, float duration)
     {
         ExportEntry animation = package.CreateExport(name, "AnimSequence", indexed: false);

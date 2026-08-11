@@ -4,6 +4,7 @@ using System.Numerics;
 using System.Reflection;
 using LegendaryExplorer.Tools.InterpEditor;
 using LegendaryExplorer.UserControls.ExportLoaderControls;
+using LegendaryExplorerCore.Unreal.Animation;
 using LegendaryExplorerCore.Unreal.BinaryConverters;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 

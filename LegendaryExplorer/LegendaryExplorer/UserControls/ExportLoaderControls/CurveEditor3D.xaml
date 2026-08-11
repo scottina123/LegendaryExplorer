@@ -170,6 +170,10 @@
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
@@ -178,10 +182,25 @@
                             Click="DialogueTimelinePlayPause_Click"/>
                     <Button Grid.Column="2" Content="Rewind" Width="66" Margin="5,0,8,0" Padding="6,3"
                             Click="DialogueTimelineRewind_Click" ToolTip="Restart the current dialogue node"/>
-                    <Slider x:Name="DialogueTimelineSlider" Grid.Column="3" Minimum="0" Value="0" Margin="0,0,10,0"
+                    <Button x:Name="DialogueNodeCommitButton" Grid.Column="3" Content="Commit Node" Margin="0,0,8,0"
+                            Padding="8,3" Visibility="Collapsed" IsEnabled="False"
+                            Click="DialogueNodeCommit_Click"
+                            ToolTip="Write only the active node's cached TrackMove/FOV edits; other node caches are unchanged."/>
+                    <Button x:Name="DialogueCacheCommitAllButton" Grid.Column="4" Content="Commit Entire Cache" Margin="0,0,8,0"
+                            Padding="8,3" Visibility="Collapsed" IsEnabled="False"
+                            Click="DialogueCacheCommitAll_Click"
+                            ToolTip="Write every pending TrackMove/FOV edit from this conversation cache to the PCC."/>
+                    <Button x:Name="DialogueCacheSaveButton" Grid.Column="5" Content="Save Cache..." Margin="0,0,5,0"
+                            Padding="8,3" Visibility="Collapsed" Click="DialogueCacheSave_Click"
+                            ToolTip="Save the complete conversation cache as a persistent preset."/>
+                    <Button x:Name="DialogueCachePresetsButton" Grid.Column="6" Content="Cache Presets..." Margin="0,0,8,0"
+                            Padding="8,3" Visibility="Collapsed" Click="DialogueCachePresets_Click"
+                            ToolTip="Search, load, save, or delete dialogue cache presets."/>
+                    <Slider x:Name="DialogueTimelineSlider" Grid.Column="7" Minimum="0" Value="0" Margin="0,0,10,0"
                             VerticalAlignment="Center" PreviewMouseDown="DialogueTimelineSlider_PreviewMouseDown"
+                            PreviewMouseUp="DialogueTimelineSlider_PreviewMouseUp"
                             ValueChanged="DialogueTimelineSlider_ValueChanged"/>
-                    <TextBlock x:Name="DialogueTimelineTimeText" Grid.Column="4" VerticalAlignment="Center"
+                    <TextBlock x:Name="DialogueTimelineTimeText" Grid.Column="8" VerticalAlignment="Center"
                                Text="0.00 / 0.00" MinWidth="92" TextAlignment="Right"/>
                 </Grid>
 
@@ -219,6 +238,7 @@
                                  Background="Transparent" BorderThickness="0" Padding="0"
                                  ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                                  ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                                 PreviewMouseLeftButtonDown="DialogueTimelineNode_PreviewMouseLeftButtonDown"
                                  SelectionChanged="DialogueTimelineNode_SelectionChanged">
                             <ListBox.ItemsPanel>
                                 <ItemsPanelTemplate><Canvas/></ItemsPanelTemplate>
@@ -325,11 +345,23 @@
             <GridSplitter x:Name="DialoguePreviewActorPanelSplitter" Grid.Column="1" Width="5"
                           HorizontalAlignment="Stretch" Visibility="Collapsed"/>
 
-            <scene3D:SceneRenderControl x:Name="SceneViewer" Grid.Column="2" MaximumFramesPerSecond="60"
-                                        PreviewMouseMove="SceneViewer_PreviewMouseMove"/>
+            <Grid Grid.Column="2">
+                <scene3D:SceneRenderControl x:Name="SceneViewer" MaximumFramesPerSecond="60"
+                                            PreviewMouseMove="SceneViewer_PreviewMouseMove"/>
+                <Border x:Name="DialogueCacheLoadingOverlay" Visibility="Collapsed"
+                        Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}">
+                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="430">
+                        <TextBlock Text="Building conversation preview cache" FontSize="20" FontWeight="SemiBold"
+                                   HorizontalAlignment="Center"/>
+                        <TextBlock x:Name="DialogueCacheLoadingText" Margin="0,8,0,0"
+                                   Text="Resolving every dialogue node before opening the viewport..."
+                                   TextAlignment="Center" TextWrapping="Wrap" Opacity="0.75"/>
+                    </StackPanel>
+                </Border>
+            </Grid>
             <GridSplitter Grid.Column="3" Width="5" HorizontalAlignment="Stretch"/>
 
-            <ScrollViewer Grid.Column="4" VerticalScrollBarVisibility="Auto" Padding="8">
+            <ScrollViewer x:Name="PreviewEditorPanel" Grid.Column="4" VerticalScrollBarVisibility="Auto" Padding="8">
                 <StackPanel>
                     <Expander Header="Preview Actors" IsExpanded="True" Margin="0,0,0,10">
                         <StackPanel Margin="0,6,0,0">
