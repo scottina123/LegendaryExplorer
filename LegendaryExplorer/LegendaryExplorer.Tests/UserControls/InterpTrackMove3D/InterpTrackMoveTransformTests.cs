@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using System.Reflection;
@@ -13,6 +14,26 @@ namespace LegendaryExplorer.Tests.UserControls.InterpTrackMove3D;
 [TestClass]
 public class InterpTrackMoveTransformTests
 {
+    [TestMethod]
+    public void DialogueOwnerUsesLinkedStageActorTagAsAnAlias()
+    {
+        var ownerOrigin = new CameraOrigin(new Vector3(-16000, 7800, -170250), new Vector3(0, 0, 180));
+        var origins = new Dictionary<string, CameraOrigin>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["Owner"] = ownerOrigin,
+            ["global_miranda"] = ownerOrigin,
+            ["Player"] = new CameraOrigin(ownerOrigin.Location with { Z = ownerOrigin.Location.Z + 88 },
+                ownerOrigin.Rotation),
+        };
+
+        Dictionary<string, HashSet<string>> aliases = CurveEditor3D.BuildActorTagAliases(
+            ["owner", "player"], origins);
+
+        Assert.IsTrue(CurveEditor3D.ActorTagMatchesAlias("global_miranda", "owner", aliases));
+        Assert.IsTrue(CurveEditor3D.ActorTagMatchesAlias("Owner", "owner", aliases));
+        Assert.IsFalse(CurveEditor3D.ActorTagMatchesAlias("global_miranda", "player", aliases));
+    }
+
     [TestMethod]
     public void DialoguePreviewAlwaysUsesAuthoredTrackZ()
     {

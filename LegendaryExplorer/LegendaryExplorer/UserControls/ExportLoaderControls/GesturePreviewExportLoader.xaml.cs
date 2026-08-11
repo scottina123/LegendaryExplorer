@@ -590,9 +590,6 @@ public partial class GesturePreviewExportLoader : ExportLoaderControl
         List<GestureAnimationItem> animations, bool hasExternalBaseLayer)
     {
         var timeline = new List<AnimationPreviewControl.AnimationTimelineClip>();
-        bool hasBaseLayer = hasExternalBaseLayer || animations.Any(item =>
-            item.AnimationExport is not null
-            && (!item.GestureIndex.HasValue || item.SlotName == "Pose"));
         List<IGrouping<int?, GestureAnimationItem>> gestureGroups = animations
             .Where(item => item.GestureIndex.HasValue && item.Settings is { InvalidData: false })
             .GroupBy(item => item.GestureIndex)
@@ -637,8 +634,7 @@ public partial class GesturePreviewExportLoader : ExportLoaderControl
             AddTimelineClip(timeline, pose, keyTime, primaryEnd, settings, settings.SnapToPose ? 0 : settings.StartBlendDuration,
                 settings.EndBlendDuration, settings.PlayUntilNext && !settings.OneShotAnimation);
             AddTimelineClip(timeline, gesture, keyTime, primaryEnd, settings, settings.SnapToPose ? 0 : settings.StartBlendDuration,
-                settings.EndBlendDuration, settings.PlayUntilNext && !settings.OneShotAnimation,
-                useMotionBoneMask: hasBaseLayer);
+                settings.EndBlendDuration, settings.PlayUntilNext && !settings.OneShotAnimation);
 
             if (transition != null)
             {
@@ -650,7 +646,7 @@ public partial class GesturePreviewExportLoader : ExportLoaderControl
                     transitionEnd = Math.Min(transitionEnd, transitionCutoff);
                 }
                 AddTimelineClip(timeline, transition, transitionStart, transitionEnd, settings, transitionBlend, 0, false,
-                    useMotionBoneMask: hasBaseLayer);
+                    useMotionBoneMask: false);
             }
         }
 

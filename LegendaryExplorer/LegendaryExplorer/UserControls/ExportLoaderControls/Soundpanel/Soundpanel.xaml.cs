@@ -915,15 +915,15 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             StartOrPausePlaying();
         }
 
-        public void StartOrPausePlaying(double startPos = 0)
+        public bool StartOrPausePlaying(double startPos = 0)
         {
             bool playToggle = true;
-            if (_playbackState == PlaybackState.Stopped)
+            if (_playbackState == PlaybackState.Stopped || _audioPlayer is null)
             {
                 playToggle = InitAudio();
             }
 
-            if (playToggle)
+            if (playToggle && _audioPlayer is not null)
             {
                 if (_playbackState is not PlaybackState.Playing)
                 {
@@ -931,6 +931,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 }
                 _audioPlayer.TogglePlayPause(CurrentVolume);
             }
+
+            return playToggle && _playbackState == PlaybackState.Playing;
         }
 
         public bool InitAudio()
@@ -1097,14 +1099,24 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         {
             seekbarUpdateTimer.Stop();
             CurrentTrackPosition = 0;
-            UpdateSeekBarPos(null, null);
-            if (_audioPlayer != null)
+            SoundpanelAudioPlayer audioPlayer = _audioPlayer;
+            _audioPlayer = null;
+            if (audioPlayer != null)
             {
-                _audioPlayer.PlaybackStopType = SoundpanelAudioPlayer.PlaybackStopTypes.PlaybackStoppedByUser;
-                _audioPlayer.Stop();
+                // A WaveOut stop completes asynchronously. Detach this panel before stopping so a
+                // late callback from the old player cannot reset or toggle a newly loaded voice.
+                audioPlayer.PlaybackPaused -= _audioPlayer_PlaybackPaused;
+                audioPlayer.PlaybackResumed -= _audioPlayer_PlaybackResumed;
+                audioPlayer.PlaybackStopped -= _audioPlayer_PlaybackStopped;
+                audioPlayer.PlaybackStopType = SoundpanelAudioPlayer.PlaybackStopTypes.PlaybackStoppedByUser;
+                audioPlayer.Stop();
             }
 
             audioStream = null;
+            _playbackState = PlaybackState.Stopped;
+            PlayPauseIcon = EFontAwesomeIcon.Solid_Play;
+            PlaybackStateChanged?.Invoke(this, false);
+            CommandManager.InvalidateRequerySuggested();
         }
 
         /// <summary>

@@ -70,7 +70,7 @@ public class GesturePreviewTimelineTests
     }
 
     [TestMethod]
-    public void EveryBioGestureDataEntryIsScheduledWithTheStartingPoseAsItsBaseLayer()
+    public void EveryBioGestureDataEntryIsScheduledCompletelyWithTheStartingPoseAsItsBaseLayer()
     {
         using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("MultiGestureTest.pcc", MEGame.LE3);
         ExportEntry startingPose = CreateAnimation(package, "StartingPose", 3);
@@ -101,7 +101,7 @@ public class GesturePreviewTimelineTests
         Assert.HasCount(5, timeline);
         Assert.IsTrue(timeline.Single(clip => clip.AnimationExport == startingPose).IsBaseLayer);
         Assert.IsTrue(timeline.Where(clip => clip.AnimationExport != startingPose)
-            .All(clip => clip.UseMotionBoneMask));
+            .All(clip => !clip.UseMotionBoneMask));
         CollectionAssert.AreEquivalent(new[] { first, second, third, fourth }, timeline
             .Where(clip => clip.AnimationExport != startingPose)
             .Select(clip => clip.AnimationExport)

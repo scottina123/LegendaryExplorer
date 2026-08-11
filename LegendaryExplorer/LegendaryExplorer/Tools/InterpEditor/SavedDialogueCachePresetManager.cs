@@ -14,7 +14,7 @@ namespace LegendaryExplorer.Tools.InterpEditor;
 
 public static class SavedDialogueCachePresetManager
 {
-    private const int CurrentVersion = 2;
+    private const int CurrentVersion = 3;
     public static string StorageDirectory => Path.Combine(AppDirectories.AppDataFolder, "DialogueConversationCaches");
 
     public static IReadOnlyList<DialogueCachePreset> LoadAll()
@@ -94,15 +94,15 @@ public static class SavedDialogueCachePresetManager
         try
         {
             DialogueCachePreset preset = JsonConvert.DeserializeObject<DialogueCachePreset>(File.ReadAllText(path));
-            if (preset?.Version == 1)
+            if (preset?.Version is 1 or 2)
             {
                 foreach (DialogueGestureClipCache clip in preset.Nodes
                              .SelectMany(node => node.GestureTracks)
                              .SelectMany(track => track.Timeline))
                 {
-                    // Version 1 stored only dialogue gesture clips; retain those presets by
-                    // upgrading their clips to the motion-layer behavior introduced in v2.
-                    clip.UseMotionBoneMask = true;
+                    // The v2 motion-only filter dropped valid single-key transforms from authored
+                    // BioGestureData animations. Preserve old presets, but restore complete clips.
+                    clip.UseMotionBoneMask = false;
                 }
                 preset.Version = CurrentVersion;
             }

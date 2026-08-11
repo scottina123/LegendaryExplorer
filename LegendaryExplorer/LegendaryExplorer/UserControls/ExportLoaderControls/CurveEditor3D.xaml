@@ -251,11 +251,14 @@
                                     <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
                                     <Setter Property="VerticalContentAlignment" Value="Stretch"/>
                                     <Setter Property="Opacity" Value="0.55"/>
+                                    <Setter Property="BorderBrush" Value="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}"/>
+                                    <Setter Property="BorderThickness" Value="1"/>
                                     <Setter Property="Template">
                                         <Setter.Value>
                                             <ControlTemplate TargetType="ListBoxItem">
-                                                <Border x:Name="SelectionBorder" BorderBrush="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}"
-                                                        BorderThickness="1" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}">
+                                                <Border x:Name="SelectionBorder" BorderBrush="{TemplateBinding BorderBrush}"
+                                                        BorderThickness="{TemplateBinding BorderThickness}"
+                                                        Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}">
                                                     <ContentPresenter/>
                                                 </Border>
                                                 <ControlTemplate.Triggers>
@@ -277,6 +280,21 @@
                                         <DataTrigger Binding="{Binding IsOnActivePath}" Value="True">
                                             <Setter Property="Opacity" Value="1"/>
                                         </DataTrigger>
+                                        <DataTrigger Binding="{Binding HasBranches}" Value="True">
+                                            <Setter Property="BorderBrush" Value="#FFE6A23C"/>
+                                            <Setter Property="BorderThickness" Value="2"/>
+                                            <Setter Property="Opacity" Value="0.9"/>
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding IsAwaitingBranchChoice}" Value="True">
+                                            <Setter Property="BorderBrush" Value="#FFFFC13D"/>
+                                            <Setter Property="BorderThickness" Value="4"/>
+                                            <Setter Property="Opacity" Value="1"/>
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding IsAvailableBranch}" Value="True">
+                                            <Setter Property="BorderBrush" Value="#FF43D9FF"/>
+                                            <Setter Property="BorderThickness" Value="4"/>
+                                            <Setter Property="Opacity" Value="1"/>
+                                        </DataTrigger>
                                     </Style.Triggers>
                                 </Style>
                             </ListBox.ItemContainerStyle>
@@ -296,20 +314,46 @@
                                                 </Style>
                                             </Border.Style>
                                             <Grid Margin="6,0">
-                                                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                                                 <TextBlock Text="{Binding NodeLabel}" Foreground="White" FontWeight="Bold" VerticalAlignment="Center"/>
                                                 <TextBlock Grid.Column="1" Text="{Binding SpeakerLabel, StringFormat=S: {0}}" Foreground="White"
                                                            Margin="10,0,0,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
-                                                <TextBlock Grid.Column="2" Text="{Binding ListenerLabel, StringFormat=L: {0}}" Foreground="White"
+                                                <TextBlock Grid.Column="2" Text="CHOICE" Foreground="#FFFFD56A" FontSize="10" FontWeight="Bold"
+                                                           Margin="6,0,0,0" VerticalAlignment="Center">
+                                                    <TextBlock.Style>
+                                                        <Style TargetType="TextBlock">
+                                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding HasBranches}" Value="True">
+                                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </TextBlock.Style>
+                                                </TextBlock>
+                                                <TextBlock Grid.Column="3" Text="{Binding ListenerLabel, StringFormat=L: {0}}" Foreground="White"
                                                            Margin="8,0,0,0" VerticalAlignment="Center"/>
                                             </Grid>
                                         </Border>
                                         <TextBlock Grid.Row="1" Text="{Binding LineLabel}" Margin="7,4" TextWrapping="Wrap"
                                                    TextTrimming="CharacterEllipsis" MaxHeight="36"/>
                                         <Grid Grid.Row="2" Margin="7,0">
-                                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                                             <TextBlock Text="{Binding StrRefLabel}" FontSize="11" Opacity="0.7"/>
-                                            <TextBlock Grid.Column="1" Text="{Binding DurationLabel}" FontSize="11" Opacity="0.7"/>
+                                            <TextBlock Grid.Column="1" Text="AVAILABLE PATH" Foreground="#FF43D9FF" FontSize="10"
+                                                       FontWeight="Bold" Margin="4,0,8,0">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsAvailableBranch}" Value="True">
+                                                                <Setter Property="Visibility" Value="Visible"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                            <TextBlock Grid.Column="2" Text="{Binding DurationLabel}" FontSize="11" Opacity="0.7"/>
                                         </Grid>
                                     </Grid>
                                 </DataTemplate>

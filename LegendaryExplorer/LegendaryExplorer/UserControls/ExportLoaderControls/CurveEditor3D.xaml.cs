@@ -72,6 +72,9 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         private float startTime;
         private bool isOnActivePath;
         private bool isVisited;
+        private bool isAwaitingBranchChoice;
+        private bool isAvailableBranch;
+        private IReadOnlyList<DialogueBranchOption> branchOptions = [];
 
         public DialogueNodeExtended Node { get; init; }
         public DialogueNodeReference Reference { get; init; }
@@ -95,7 +98,17 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         public string ListenerLabel { get; init; }
         public string StrRefLabel => Node.LineStrRef > 0 ? Node.LineStrRef.ToString(CultureInfo.InvariantCulture) : "No TLK";
         public string DurationLabel => $"{Duration:0.00}s";
-        public IReadOnlyList<DialogueBranchOption> BranchOptions { get; set; } = [];
+        public IReadOnlyList<DialogueBranchOption> BranchOptions
+        {
+            get => branchOptions;
+            set
+            {
+                if (SetProperty(ref branchOptions, value ?? []))
+                {
+                    OnPropertyChanged(nameof(HasBranches));
+                }
+            }
+        }
         public bool HasBranches => BranchOptions.Count > 1;
         public DialogueTimelineSegment Parent { get; set; }
         public DialogueBranchOption IncomingBranch { get; set; }
@@ -111,6 +124,16 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         {
             get => isVisited;
             set => SetProperty(ref isVisited, value);
+        }
+        public bool IsAwaitingBranchChoice
+        {
+            get => isAwaitingBranchChoice;
+            set => SetProperty(ref isAwaitingBranchChoice, value);
+        }
+        public bool IsAvailableBranch
+        {
+            get => isAvailableBranch;
+            set => SetProperty(ref isAvailableBranch, value);
         }
     }
 
@@ -431,12 +454,15 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         public SkeletalMesh SkeletalMesh { get; init; }
         public SkinnedMeshRenderer Renderer { get; init; }
         public LayeredAnimationPlayer Player { get; init; }
+        public GestureTrackOption AppliedGesture { get; private set; }
         public bool HasTimeline => Player?.HasAnimation == true;
+        public bool HasGestureTimeline => Player?.GesturePlayer?.HasAnimation == true;
 
         public void SetTimeline(GesturePreviewExportLoader.GestureAnimationItem startingPose,
             IEnumerable<AnimationPreviewControl.AnimationTimelineClip> timeline, PackageCache packageCache,
-            float? playbackDuration = null)
+            float? playbackDuration = null, GestureTrackOption gesture = null)
         {
+            AppliedGesture = gesture;
             List<AnimationPreviewControl.AnimationTimelineClip> timelineClips = timeline.ToList();
             Player.ClearHeldGesturePose();
             Player.GesturePlayer.SetAnimation(null);
@@ -549,6 +575,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
         public void Clear()
         {
+            AppliedGesture = null;
             Player.GesturePlayer.SetAnimation(null);
             Player.ClearHeldGesturePose();
             Player.GestureTimelineOffset = 0;
@@ -561,12 +588,14 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
         public void SetHeldGesturePose(Matrix4x4[] componentPose)
         {
+            AppliedGesture = null;
             Player.SetHeldGesturePose(componentPose);
             Renderer.NeedsUpdate = true;
         }
 
         public void HoldCurrentGesturePose()
         {
+            AppliedGesture = null;
             if (!Player.GesturePlayer.HasAnimation)
             {
                 return;
@@ -675,6 +704,8 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     private readonly ObservableCollection<GestureTrackOption> availableGestureTracks = [];
     private readonly Dictionary<PreviewActorConfiguration, GestureTrackOption> previewActorGestureAssignments = [];
     private readonly Dictionary<PreviewActorConfiguration, PreviewActorAnimationState> previewActorAnimationStates = [];
+    private readonly Dictionary<string, HashSet<string>> dialoguePreviewActorTagAliases =
+        new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<PreviewActorConfiguration, TrackMovePlaybackOption> previewActorTrackAssignments = [];
     private readonly List<TrackMovePlaybackOption> availableTrackMoves = [];
     private readonly ObservableCollection<TrackMovePlaybackOption> availableExtraTrackMoves = [];
@@ -928,6 +959,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         dialogueNodeInterpDataCache.Clear();
         dialogueNodePreview = new DialogueNodePreviewConfiguration(conversation, startNode, actors, levelPaths, stageContext,
             playerFaceFx, 0);
+        BuildDialoguePreviewActorTagAliases(actors, stageContext);
         dialogueNodePreview = dialogueNodePreview with { VoStartTime = GetDialogueNodeVoStartTime(startNode) };
         BuildDialogueTimeline(startNode);
         DialoguePreviewActorPanel.Visibility = conversationPreview ? Visibility.Collapsed : Visibility.Visible;
@@ -1041,6 +1073,8 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         foreach (DialogueTimelineSegment segment in dialogueTimelineSegments)
         {
             segment.IsOnActivePath = false;
+            segment.IsAwaitingBranchChoice = false;
+            segment.IsAvailableBranch = false;
             foreach (DialogueBranchOption branch in segment.BranchOptions)
             {
                 branch.IsSelected = dialogueBranchSelections.TryGetValue(branch.BranchKey,
@@ -1074,9 +1108,14 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                 : outgoing.FirstOrDefault(branch => branch.IsSelected);
             if (next is null)
             {
+                current.IsAwaitingBranchChoice = true;
                 foreach (DialogueBranchOption branch in outgoing)
                 {
                     dialogueBranchOptions.Add(branch);
+                    if (branch.TargetSegment is not null)
+                    {
+                        branch.TargetSegment.IsAvailableBranch = true;
+                    }
                 }
                 break;
             }
@@ -1096,16 +1135,16 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             return false;
         }
 
-        var path = new Stack<DialogueBranchOption>();
-        DialogueTimelineSegment current = target;
-        while (!ReferenceEquals(current, dialogueTimelineStartSegment))
+        DialogueBranchOption availableChoice = dialogueBranchOptions.FirstOrDefault(branch =>
+            ReferenceEquals(branch.TargetSegment, target));
+        List<DialogueBranchOption> path = availableChoice is null
+            ? FindDialogueTimelinePath(target)
+            : FindDialogueTimelinePath(availableChoice.SourceSegment) is { } sourcePath
+                ? [.. sourcePath, availableChoice]
+                : null;
+        if (path is null)
         {
-            if (current.IncomingBranch is null || current.Parent is null)
-            {
-                return false;
-            }
-            path.Push(current.IncomingBranch);
-            current = current.Parent;
+            return false;
         }
 
         bool changed = false;
@@ -1129,6 +1168,72 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             RefreshDialogueTimelineActivePath();
         }
         return dialogueTimelineActivePath.Contains(target);
+    }
+
+    private List<DialogueBranchOption> FindDialogueTimelinePath(DialogueTimelineSegment target)
+    {
+        var pending = new Queue<(DialogueTimelineSegment Segment, List<DialogueBranchOption> Path)>();
+        var visited = new HashSet<DialogueNodeReference>();
+        pending.Enqueue((dialogueTimelineStartSegment, []));
+        while (pending.Count > 0)
+        {
+            (DialogueTimelineSegment segment, List<DialogueBranchOption> path) = pending.Dequeue();
+            if (!visited.Add(segment.Reference))
+            {
+                continue;
+            }
+            if (ReferenceEquals(segment, target))
+            {
+                return path;
+            }
+            foreach (DialogueBranchOption branch in segment.BranchOptions)
+            {
+                if (branch.TargetSegment is not null)
+                {
+                    pending.Enqueue((branch.TargetSegment, [.. path, branch]));
+                }
+            }
+        }
+        return null;
+    }
+
+    private bool ClearDialogueBranchSelectionsFrom(DialogueTimelineSegment segment)
+    {
+        if (segment is null)
+        {
+            return false;
+        }
+
+        bool changed = false;
+        var pending = new Queue<DialogueTimelineSegment>();
+        var visited = new HashSet<DialogueNodeReference>();
+        pending.Enqueue(segment);
+        while (pending.Count > 0)
+        {
+            DialogueTimelineSegment current = pending.Dequeue();
+            if (!visited.Add(current.Reference))
+            {
+                continue;
+            }
+            if (current.BranchOptions.Count > 1
+                && dialogueBranchSelections.Remove(GetDialogueBranchKey(current.Reference)))
+            {
+                changed = true;
+            }
+            foreach (DialogueBranchOption branch in current.BranchOptions)
+            {
+                if (branch.TargetSegment is not null)
+                {
+                    pending.Enqueue(branch.TargetSegment);
+                }
+            }
+        }
+
+        if (changed)
+        {
+            RefreshDialogueTimelineActivePath();
+        }
+        return changed;
     }
 
     private float GetDialogueNodeTimelineDuration(DialogueNodeExtended node)
@@ -2403,8 +2508,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                 {
                     ConfigureDialoguePreviewPlayback();
                 }
-                ApplyDialogueTimelineAtTime(0, reconstruct: true);
-                StartDialogueTimelinePlayback();
+                StartDialogueTimelinePlaybackAt(0, reconstruct: true);
             }
             SetPreviewActorStatus(meshes.Count == 0
                 ? $"The {game} Asset Database contains no skeletal meshes."
@@ -2484,7 +2588,9 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                         interpDataOverride: interpData);
                     interpRuntimes.Add(CaptureDialogueSegmentRuntime(segment));
                 }
-                dialogueRuntimeCache[segment] = MergeDialogueSegmentRuntimes(segment, interpRuntimes);
+                DialogueSegmentRuntime runtime = MergeDialogueSegmentRuntimes(segment, interpRuntimes);
+                RepairMissingActorAssignments(runtime);
+                dialogueRuntimeCache[segment] = runtime;
             }
 
             BuildDialogueRuntimeActorSnapshots();
@@ -2872,8 +2978,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             return new FaceOnlyVoEvent(item.StartTime, track,
                 ResolveExportReference(item.Group, required: true), node, FindPreviewActorByTag(item.ActorTag));
         }).Where(item => item.Node is not null && item.Actor is not null).ToArray();
-        PreviewActorConfiguration speakingActor = previewActors.FirstOrDefault(actor =>
-            string.Equals(actor.ActorTag, segment.Node.SpeakerTag?.SpeakerName, StringComparison.OrdinalIgnoreCase));
+        PreviewActorConfiguration speakingActor = FindPreviewActorByTag(segment.Node.SpeakerTag?.SpeakerName);
         DialogueFaceFxBinding mainFaceFx = CreateDialogueFaceFxBinding(segment.Node, speakingActor,
             dialogueNodePreview.VoStartTime);
         var fovoFaceFx = faceOnlyVoEvents.Select(item => new
@@ -2929,7 +3034,53 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         CopyOrigins(preset.ActorOriginOverrides, runtime.ActorOriginOverrides);
         CopyPoses(preset.StartActorGesturePoses, runtime.StartActorGesturePoses);
         CopyPoses(preset.EndActorGesturePoses, runtime.EndActorGesturePoses);
+        RepairMissingActorAssignments(runtime);
         return runtime;
+    }
+
+    private void RepairMissingActorAssignments(DialogueSegmentRuntime runtime)
+    {
+        foreach (PreviewActorConfiguration actor in previewActors)
+        {
+            if (!runtime.ActorTrackAssignments.ContainsKey(actor.ActorTag))
+            {
+                TrackMovePlaybackOption trackMove = runtime.TrackMoves
+                    .Where(option => option?.TrackMove is not null)
+                    .Select(option => new
+                    {
+                        Option = option,
+                        Score = GetActorGroupMatchScore(option.Group, actor.ActorTag),
+                    })
+                    .Where(candidate => candidate.Score > 0)
+                    .OrderByDescending(candidate => candidate.Score)
+                    .ThenByDescending(candidate => GetAuthoredMovementRank(candidate.Option))
+                    .Select(candidate => candidate.Option)
+                    .FirstOrDefault();
+                if (trackMove is not null)
+                {
+                    runtime.ActorTrackAssignments[actor.ActorTag] = trackMove;
+                }
+            }
+
+            if (!runtime.ActorGestureAssignments.ContainsKey(actor.ActorTag))
+            {
+                GestureTrackOption gesture = runtime.GestureTracks
+                    .Where(option => option?.Track is not null)
+                    .Select(option => new
+                    {
+                        Option = option,
+                        Score = GetGestureActorMatchScore(option, actor.ActorTag),
+                    })
+                    .Where(candidate => candidate.Score > 0)
+                    .OrderByDescending(candidate => candidate.Score)
+                    .Select(candidate => candidate.Option)
+                    .FirstOrDefault();
+                if (gesture is not null)
+                {
+                    runtime.ActorGestureAssignments[actor.ActorTag] = gesture;
+                }
+            }
+        }
     }
 
     private GestureTrackOption RestoreGestureTrack(DialogueGestureTrackCache cached)
@@ -3414,7 +3565,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                     && previewActorAnimationStates.TryGetValue(actor, out PreviewActorAnimationState animationState))
                 {
                     animationState.SetTimeline(gesture.StartingPose, gesture.Timeline,
-                        previewActorGesturePackageCache, segment.Duration);
+                        previewActorGesturePackageCache, segment.Duration, gesture);
                     animationState.SetTime(segment.Duration);
                     if (animationState.CaptureGesturePose() is { } pose)
                     {
@@ -3548,8 +3699,12 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             : trackActor;
         if (string.Equals(actorTag, "Owner", StringComparison.OrdinalIgnoreCase))
         {
-            actorTag = ConversationExtended.ResolveOwnerTagFromExport(track)
-                       ?? ConversationExtended.ResolveOwnerTagFromExport(group);
+            string resolvedOwner = ConversationExtended.ResolveOwnerTagFromExport(track)
+                                   ?? ConversationExtended.ResolveOwnerTagFromExport(group);
+            if (!string.IsNullOrWhiteSpace(resolvedOwner))
+            {
+                actorTag = resolvedOwner;
+            }
         }
         if (string.IsNullOrWhiteSpace(actorTag)
             || string.Equals(actorTag, "None", StringComparison.OrdinalIgnoreCase))
@@ -3568,7 +3723,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         }
 
         PreviewActorConfiguration actor = previewActors.FirstOrDefault(candidate =>
-            string.Equals(candidate.ActorTag, actorTag, StringComparison.OrdinalIgnoreCase));
+            ActorTagMatches(actorTag, candidate.ActorTag));
         if (actor is not null)
         {
             return actor;
@@ -3585,7 +3740,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             {
                 candidateTag = candidateTag[faceOnlyVoPrefix.Length..];
             }
-            return string.Equals(candidateTag, unprefixedActorTag, StringComparison.OrdinalIgnoreCase);
+            return ActorTagMatches(unprefixedActorTag, candidateTag);
         });
     }
 
@@ -3645,8 +3800,8 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             {
                 FaceOnlyVoSoundpanel.LoadExport(audio);
                 FaceOnlyVoSoundpanel.StopPlaying();
-                FaceOnlyVoSoundpanel.StartOrPausePlaying(Math.Max(0, time - faceOnlyVo.StartTime));
-                faceOnlyVoAudioStarted = true;
+                faceOnlyVoAudioStarted = FaceOnlyVoSoundpanel.StartOrPausePlaying(
+                    Math.Max(0, time - faceOnlyVo.StartTime));
             }
         }
     }
@@ -3975,7 +4130,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
     private bool IsDialogueNodeSpeaker(PreviewActorConfiguration actor) =>
         dialogueNodePreview?.Node.SpeakerTag is { } speaker
-        && actor.ActorTag.Equals(speaker.SpeakerName, StringComparison.OrdinalIgnoreCase);
+        && ActorTagMatches(speaker.SpeakerName, actor.ActorTag);
 
     private void BuildActorDirectionTracks(ExportEntry interpDataOverride = null)
     {
@@ -4046,9 +4201,8 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     {
         string candidate = keyData.GetProp<NameProperty>("nmFindActor")?.Value.Instanced
                            ?? keyData.GetProp<StrProperty>("nmFindActor")?.Value;
-        return !string.Equals(candidate, sourceActorTag, StringComparison.OrdinalIgnoreCase)
-               && previewActors.Any(actor => string.Equals(actor.ActorTag, candidate,
-                   StringComparison.OrdinalIgnoreCase))
+        return !ActorTagMatches(candidate, sourceActorTag)
+               && FindPreviewActorByTag(candidate) is not null
             ? candidate
             : null;
     }
@@ -4071,8 +4225,8 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
             PreviewActorConfiguration targetActor = key.TargetActorTag is null
                 ? null
-                : resolvedActorOrigins.Keys.FirstOrDefault(candidate => string.Equals(candidate.ActorTag,
-                    key.TargetActorTag, StringComparison.OrdinalIgnoreCase));
+                : resolvedActorOrigins.Keys.FirstOrDefault(candidate =>
+                    ActorTagMatches(key.TargetActorTag, candidate.ActorTag));
             Vector3? targetLocation = targetActor is not null
                 ? resolvedActorOrigins[targetActor].Location
                 : key.TargetStageNode is not null
@@ -4107,11 +4261,11 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         return new CameraOrigin(actorOrigin.Location, rotation);
     }
 
-    private static int GetGestureActorMatchScore(GestureTrackOption gesture, string actorTag)
+    private int GetGestureActorMatchScore(GestureTrackOption gesture, string actorTag)
     {
         string findActor = gesture.Track?.GetProperty<NameProperty>("m_nmFindActor")?.Value.Instanced;
         int score = GetActorGroupMatchScore(gesture.Group, actorTag);
-        if (string.Equals(findActor, actorTag, StringComparison.OrdinalIgnoreCase))
+        if (ActorTagMatches(findActor, actorTag))
         {
             score += 4;
         }
@@ -4244,6 +4398,65 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         PreviewActorGestureComboBox.Items.Refresh();
     }
 
+    private void BuildDialoguePreviewActorTagAliases(IReadOnlyList<DialogueNodePreviewActor> actors,
+        StageConversationContext stageContext)
+    {
+        dialoguePreviewActorTagAliases.Clear();
+        foreach ((string actorTag, HashSet<string> aliases) in BuildActorTagAliases(
+                     actors.Select(actor => actor.ActorTag), stageContext.ActorOrigins))
+        {
+            dialoguePreviewActorTagAliases[actorTag] = aliases;
+        }
+    }
+
+    internal static Dictionary<string, HashSet<string>> BuildActorTagAliases(IEnumerable<string> actorTags,
+        IReadOnlyDictionary<string, CameraOrigin> actorOrigins)
+    {
+        var result = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
+        foreach (string actorTag in actorTags.Where(tag => !string.IsNullOrWhiteSpace(tag))
+                     .Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            var aliases = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { actorTag };
+            if (actorOrigins.TryGetValue(actorTag, out CameraOrigin actorOrigin))
+            {
+                foreach ((string authoredTag, CameraOrigin authoredOrigin) in actorOrigins)
+                {
+                    // StartConversation exposes both its generic Owner/Player slot and the linked
+                    // actor's real tag. Identical slot transforms make that relationship explicit.
+                    if (HaveEquivalentActorAliasOrigins(actorOrigin, authoredOrigin))
+                    {
+                        aliases.Add(authoredTag);
+                    }
+                }
+            }
+            result[actorTag] = aliases;
+        }
+        return result;
+    }
+
+    private static bool HaveEquivalentActorAliasOrigins(CameraOrigin left, CameraOrigin right) =>
+        Vector3.DistanceSquared(left.Location, right.Location) <= 0.0001f
+        && Vector3.DistanceSquared(left.Rotation, right.Rotation) <= 0.0001f;
+
+    private bool ActorTagMatches(string authoredTag, string actorTag)
+        => ActorTagMatchesAlias(authoredTag, actorTag, dialoguePreviewActorTagAliases);
+
+    internal static bool ActorTagMatchesAlias(string authoredTag, string actorTag,
+        IReadOnlyDictionary<string, HashSet<string>> actorAliases)
+    {
+        if (string.IsNullOrWhiteSpace(authoredTag) || string.IsNullOrWhiteSpace(actorTag)
+            || authoredTag.Equals("None", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+        if (string.Equals(authoredTag, actorTag, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+        return actorAliases.TryGetValue(actorTag, out HashSet<string> aliases)
+               && aliases.Contains(authoredTag);
+    }
+
     private void AssignDialoguePreviewTrackMoves()
     {
         previewActorTrackAssignments.Clear();
@@ -4284,18 +4497,16 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             : 2;
     }
 
-    private static int GetActorGroupMatchScore(ExportEntry group, string actorTag)
+    private int GetActorGroupMatchScore(ExportEntry group, string actorTag)
     {
         if (group is null || string.IsNullOrWhiteSpace(actorTag))
         {
             return 0;
         }
 
-        bool groupNameMatches = string.Equals(GetInterpGroupName(group), actorTag,
-            StringComparison.OrdinalIgnoreCase);
-        bool findActorMatches = string.Equals(
-            group.GetProperty<NameProperty>("m_nmSFXFindActor")?.Value.Instanced, actorTag,
-            StringComparison.OrdinalIgnoreCase);
+        bool groupNameMatches = ActorTagMatches(GetInterpGroupName(group), actorTag);
+        bool findActorMatches = ActorTagMatches(
+            group.GetProperty<NameProperty>("m_nmSFXFindActor")?.Value.Instanced, actorTag);
         return (groupNameMatches ? 1 : 0) + (findActorMatches ? 2 : 0);
     }
 
@@ -5907,13 +6118,14 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         }
         if (dialogueTimelineCurrentTime >= endTime)
         {
-            ApplyDialogueTimelineAtTime(0, reconstruct: true);
+            StartDialogueTimelinePlaybackAt(0, reconstruct: true);
+            return;
         }
 
         StartDialogueTimelinePlayback();
     }
 
-    private void StartDialogueTimelinePlayback()
+    private void StartDialogueTimelinePlayback(bool applyCurrentFrame = true)
     {
         if (isPlayingMove)
         {
@@ -5926,13 +6138,22 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             playButton.Content = "Pause";
         }
         RenderContext.ForceContinuousRendering = true;
-        if (activeDialogueTimelineSegment is not null)
+        if (applyCurrentFrame && activeDialogueTimelineSegment is not null)
         {
             ApplyPlaybackAtTime(Math.Clamp(dialogueTimelineCurrentTime - activeDialogueTimelineSegment.StartTime,
                 0, activeDialogueTimelineSegment.Duration), playAudio: true);
         }
         SceneViewer?.MarkRenderDirty();
         SceneViewer.Focus();
+    }
+
+    private void StartDialogueTimelinePlaybackAt(float globalTime, bool reconstruct)
+    {
+        // Enter the playing state before restoring/evaluating the target node. This makes the
+        // first evaluation start body animation, FaceFX and VO together instead of producing a
+        // paused frame whose audio-start flags have to be repaired by a second Play click.
+        StartDialogueTimelinePlayback(applyCurrentFrame: false);
+        ApplyDialogueTimelineAtTime(globalTime, reconstruct);
     }
 
     private void DialogueTimelineRewind_Click(object sender, RoutedEventArgs e)
@@ -5948,8 +6169,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         }
         PauseDialogueTimeline();
         ForceCachedDialogueSegmentReactivation(node);
-        ApplyDialogueTimelineAtTime(node.StartTime, reconstruct: true);
-        StartDialogueTimelinePlayback();
+        StartDialogueTimelinePlaybackAt(node.StartTime, reconstruct: true);
     }
 
     private void DialogueNodeCommit_Click(object sender, RoutedEventArgs e)
@@ -6044,8 +6264,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                 "Load Dialogue Cache", MessageBoxButton.OK, MessageBoxImage.Error);
             return;
         }
-        ApplyDialogueTimelineAtTime(0, reconstruct: true);
-        StartDialogueTimelinePlayback();
+        StartDialogueTimelinePlaybackAt(0, reconstruct: true);
     }
 
     private void UpdateDialogueNodeCommitButton()
@@ -6126,15 +6345,23 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
     private void PlayDialogueTimelineSegmentFromStart(DialogueTimelineSegment segment)
     {
+        PauseDialogueTimeline();
         bool selectedDifferentBranch = !dialogueTimelineActivePath.Contains(segment);
+        bool navigatingBackward = !selectedDifferentBranch
+                                  && segment.StartTime < dialogueTimelineCurrentTime - 0.0001f;
+        if (selectedDifferentBranch || navigatingBackward)
+        {
+            // A seek back to a choice point invalidates every decision made after that point.
+            // Clicking an off-path node is itself the new explicit choice, so only its downstream
+            // choices are cleared before selecting the route to it.
+            ClearDialogueBranchSelectionsFrom(segment);
+        }
         if (selectedDifferentBranch && !SelectDialogueTimelinePathTo(segment))
         {
             return;
         }
-        PauseDialogueTimeline();
         ForceCachedDialogueSegmentReactivation(segment);
-        ApplyDialogueTimelineAtTime(segment.StartTime, reconstruct: true);
-        StartDialogueTimelinePlayback();
+        StartDialogueTimelinePlaybackAt(segment.StartTime, reconstruct: true);
     }
 
     private void ForceCachedDialogueSegmentReactivation(DialogueTimelineSegment segment)
@@ -6161,13 +6388,28 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             return;
         }
 
+        bool movingBackward = globalTime < dialogueTimelineCurrentTime - 0.0001f;
         float endTime = GetDialogueTimelineEndTime();
         globalTime = Math.Clamp(globalTime, 0, endTime);
         DialogueTimelineSegment target = dialogueTimelineActivePath
             .FirstOrDefault(segment => globalTime < segment.EndTime)
             ?? dialogueTimelineActivePath[^1];
+        if (movingBackward && ClearDialogueBranchSelectionsFrom(target))
+        {
+            endTime = GetDialogueTimelineEndTime();
+            globalTime = Math.Clamp(globalTime, 0, endTime);
+        }
 
         bool useCachedRuntime = isDialogueConversationPreview && dialogueRuntimeCache.Count > 0;
+        if (reconstruct && useCachedRuntime)
+        {
+            // Cached activation replaces every actor's movement and gesture state below. Do not
+            // clear the live players first: rendering that intermediate bind pose is what caused
+            // actors to T-pose when navigating backward.
+            activeDialogueTimelineSegment = null;
+            activeDialogueSegmentRuntime = null;
+            playbackActors.Clear();
+        }
         if (reconstruct && !useCachedRuntime)
         {
             activeDialogueTimelineSegment = null;
@@ -6787,11 +7029,23 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                 UpdatePreviewActorRotationDialIndicator();
                 updatingPreviewActorControls = false;
             }
-            if (previewActorAnimationStates.TryGetValue(state.Actor, out PreviewActorAnimationState animationState)
-                && animationState.HasTimeline)
+            if (previewActorAnimationStates.TryGetValue(state.Actor, out PreviewActorAnimationState animationState))
             {
-                animationState.SetTime(time);
-                UpdatePreviewActorSkinning(state.Actor);
+                // FaceFX is a separate layer and can remain active after the body player has been
+                // cleared. Validate the authored gesture layer independently so seeking backward
+                // cannot leave a speaking actor facially animated over the skeletal bind pose.
+                if (previewActorGestureAssignments.TryGetValue(state.Actor, out GestureTrackOption assignedGesture)
+                    && (assignedGesture.Timeline.Count > 0 || assignedGesture.StartingPose is not null)
+                    && (!animationState.HasGestureTimeline
+                        || !ReferenceEquals(animationState.AppliedGesture, assignedGesture)))
+                {
+                    ApplyAssignedGestureToActor(state.Actor, activeDialogueSegmentRuntime?.Segment.Duration);
+                }
+                if (animationState.HasTimeline)
+                {
+                    animationState.SetTime(time);
+                    UpdatePreviewActorSkinning(state.Actor);
+                }
             }
         }
         ApplyActorPlaybackCameraAtTime(time);
@@ -7792,8 +8046,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         }
         DialoguePreviewSoundpanel.StopPlaying();
         float audioTime = Math.Max(0, time - dialogueNodePreview.VoStartTime);
-        DialoguePreviewSoundpanel.StartOrPausePlaying(audioTime);
-        dialoguePreviewAudioStarted = true;
+        dialoguePreviewAudioStarted = DialoguePreviewSoundpanel.StartOrPausePlaying(audioTime);
     }
 
     private void UpdateDialoguePreviewAudio(float time)
@@ -7946,7 +8199,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         }
 
         animationState.SetTimeline(gesture.StartingPose, gesture.Timeline, previewActorGesturePackageCache,
-            playbackDuration ?? activeDialogueSegmentRuntime?.Segment.Duration);
+            playbackDuration ?? activeDialogueSegmentRuntime?.Segment.Duration, gesture);
         UpdatePreviewActorSkinning(actor);
     }
 
