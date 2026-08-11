@@ -14,6 +14,19 @@ namespace LegendaryExplorer.Tests.UserControls.InterpTrackMove3D;
 public class InterpTrackMoveTransformTests
 {
     [TestMethod]
+    public void DialoguePreviewAlwaysUsesAuthoredTrackZ()
+    {
+        Assert.IsTrue(CurveEditor3D.ShouldUseActorTrackZ(isDialoguePreview: true,
+            manualTrackZEnabled: false));
+        Assert.IsTrue(CurveEditor3D.ShouldUseActorTrackZ(isDialoguePreview: true,
+            manualTrackZEnabled: true));
+        Assert.IsFalse(CurveEditor3D.ShouldUseActorTrackZ(isDialoguePreview: false,
+            manualTrackZEnabled: false));
+        Assert.IsTrue(CurveEditor3D.ShouldUseActorTrackZ(isDialoguePreview: false,
+            manualTrackZEnabled: true));
+    }
+
+    [TestMethod]
     public void SetFacingChangesYawWithoutChangingActorLocation()
     {
         var actor = new CameraOrigin(new Vector3(-15842.27f, 8299.669f, -170309f),

@@ -940,6 +940,11 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         DialogueCachePresetsButton.Visibility = conversationPreview ? Visibility.Visible : Visibility.Collapsed;
         DialogueCacheLoadingOverlay.Visibility = conversationPreview ? Visibility.Visible : Visibility.Collapsed;
         SceneViewer.Visibility = conversationPreview ? Visibility.Hidden : Visibility.Visible;
+        // Dialogue actors are attached to authored TrackMove splines. Their vertical position is
+        // part of that spline (stairs, lifts, ramps, and similar movement), so the standalone curve
+        // editor's manual Z override must never be allowed to flatten dialogue playback.
+        ActorPlaybackTrackZCheckBox.IsChecked = true;
+        ActorPlaybackTrackZCheckBox.IsEnabled = false;
     }
 
     private void BuildDialogueTimeline(DialogueNodeExtended startNode)
@@ -6682,12 +6687,16 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             // BodyMesh was moved down by 88 units (see SFXStuntActor.OnTeleport in SFXGame.pcc).
             location.Z -= PreviewBodyMeshRelativeZ;
         }
-        if (ActorPlaybackTrackZCheckBox.IsChecked != true)
+        if (!ShouldUseActorTrackZ(dialogueNodePreview is not null,
+                ActorPlaybackTrackZCheckBox.IsChecked == true))
         {
             location.Z = state.OriginalOrigin.Location.Z;
         }
         return new CameraOrigin(location, origin.Rotation);
     }
+
+    internal static bool ShouldUseActorTrackZ(bool isDialoguePreview, bool manualTrackZEnabled) =>
+        isDialoguePreview || manualTrackZEnabled;
 
     private void ApplyViewportCameraOrigin(CameraOrigin origin)
     {
