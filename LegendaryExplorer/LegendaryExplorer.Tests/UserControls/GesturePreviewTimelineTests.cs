@@ -124,6 +124,26 @@ public class GesturePreviewTimelineTests
         Assert.IsFalse(timeline[0].IsBaseLayer);
     }
 
+    [TestMethod]
+    public void ConversationStartingPoseWithoutGestureKeysUsesTheNodeDuration()
+    {
+        (float start, float end) = CurveEditor3D.ResolveStartingPoseTimelineRange(
+            [], playbackDuration: 2.08f, animationStart: 0.5f, animationSequenceLength: 3);
+
+        Assert.AreEqual(0, start, 0.0001f);
+        Assert.AreEqual(2.08f, end, 0.0001f);
+    }
+
+    [TestMethod]
+    public void StartingPoseWithoutGestureKeysFallsBackToItsRemainingAnimationLength()
+    {
+        (float start, float end) = CurveEditor3D.ResolveStartingPoseTimelineRange(
+            [], playbackDuration: null, animationStart: 0.5f, animationSequenceLength: 3);
+
+        Assert.AreEqual(0, start, 0.0001f);
+        Assert.AreEqual(2.5f, end, 0.0001f);
+    }
+
     private static ExportEntry CreateAnimation(IMEPackage package, string name, float duration)
     {
         ExportEntry animation = package.CreateExport(name, "AnimSequence", indexed: false);

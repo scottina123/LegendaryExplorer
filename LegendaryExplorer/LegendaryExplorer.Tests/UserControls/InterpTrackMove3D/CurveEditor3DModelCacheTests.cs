@@ -14,6 +14,36 @@ namespace LegendaryExplorer.Tests.UserControls.InterpTrackMove3D;
 [TestClass]
 public class CurveEditor3DModelCacheTests
 {
+    [TestMethod]
+    public void GestureRootTranslationRemainsEnabledForSplineDrivenActors()
+    {
+        Assert.IsFalse(CurveEditor3D.ShouldLockDialogueGestureRootTranslation(
+            isConversationPreview: true, hasMovementTrack: true));
+    }
+
+    [TestMethod]
+    public void GestureRootTranslationIsLockedWhenTheNodeHasNoActorTrackMove()
+    {
+        Assert.IsTrue(CurveEditor3D.ShouldLockDialogueGestureRootTranslation(
+            isConversationPreview: true, hasMovementTrack: false));
+        Assert.IsFalse(CurveEditor3D.ShouldLockDialogueGestureRootTranslation(
+            isConversationPreview: false, hasMovementTrack: false));
+    }
+
+    [TestMethod]
+    public void ExtractedGestureMotionContinuesFromInheritedActorOrigin()
+    {
+        var inherited = new CameraOrigin(new Vector3(100, 200, 300), new Vector3(0, 0, 90));
+
+        CameraOrigin moved = CurveEditor3D.ApplyDialogueGestureRootMotion(inherited,
+            new Vector3(25, 0, 0));
+
+        Assert.AreEqual(100, moved.Location.X, 0.001f);
+        Assert.AreEqual(225, moved.Location.Y, 0.001f);
+        Assert.AreEqual(300, moved.Location.Z, 0.001f);
+        Assert.AreEqual(inherited.Rotation, moved.Rotation);
+    }
+
     [ClassInitialize]
     public static void Initialize(TestContext _) => LegendaryExplorerCoreLib.InitLib(TaskScheduler.Default);
 
@@ -147,6 +177,46 @@ public class CurveEditor3DModelCacheTests
 
         Assert.IsTrue(CurveEditor3D.IsCameraTrackGroup(pcam, hasFovTrack: true));
         Assert.IsFalse(CurveEditor3D.IsCameraTrackGroup(owner, hasFovTrack: false));
+    }
+
+    [TestMethod]
+    public void PlayerOnlyAcceptsTrackMovesOwnedByPlayerGroup()
+    {
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("StrictPlayerTrackGroupTest.pcc", MEGame.LE3);
+        ExportEntry playerGroup = package.CreateExport("InterpGroup_0", "InterpGroup", indexed: false);
+        playerGroup.WriteProperty(new NameProperty("Player", "GroupName"));
+        ExportEntry cameraGroup = package.CreateExport("InterpGroup_1", "InterpGroup", indexed: false);
+        cameraGroup.WriteProperties(new PropertyCollection
+        {
+            new NameProperty("pcam", "GroupName"),
+            new NameProperty("Player", "m_nmSFXFindActor"),
+        });
+        ExportEntry ownerGroup = package.CreateExport("InterpGroup_2", "InterpGroup", indexed: false);
+        ownerGroup.WriteProperties(new PropertyCollection
+        {
+            new NameProperty("Miranda", "GroupName"),
+            new NameProperty("Owner", "m_nmSFXFindActor"),
+        });
+
+        Assert.IsTrue(CurveEditor3D.IsEligibleActorTrackGroup(playerGroup, "player"));
+        Assert.IsFalse(CurveEditor3D.IsEligibleActorTrackGroup(cameraGroup, "player"));
+        Assert.IsFalse(CurveEditor3D.IsEligibleActorTrackGroup(ownerGroup, "player"));
+        Assert.IsTrue(CurveEditor3D.IsEligibleActorTrackGroup(ownerGroup, "owner"));
+    }
+
+    [TestMethod]
+    public void NoTrackNodeInheritsTheActorsLastLiveTransform()
+    {
+        var cachedStart = new CameraOrigin(new Vector3(-16053, 7767, -170309), new Vector3(0, 0, -140));
+        var lastTrackKey = new CameraOrigin(new Vector3(-15842, 8299, -170309), new Vector3(0, 0, -309));
+        var manualOverride = new CameraOrigin(new Vector3(10, 20, 30), new Vector3(0, 0, 45));
+
+        Assert.AreEqual(lastTrackKey, CurveEditor3D.ResolveDialogueActorStartOrigin(cachedStart,
+            actorOverride: null, liveInheritedOrigin: lastTrackKey, hasMovementTrack: false));
+        Assert.AreEqual(cachedStart, CurveEditor3D.ResolveDialogueActorStartOrigin(cachedStart,
+            actorOverride: null, liveInheritedOrigin: lastTrackKey, hasMovementTrack: true));
+        Assert.AreEqual(manualOverride, CurveEditor3D.ResolveDialogueActorStartOrigin(cachedStart,
+            actorOverride: manualOverride, liveInheritedOrigin: lastTrackKey, hasMovementTrack: false));
     }
 
     [TestMethod]

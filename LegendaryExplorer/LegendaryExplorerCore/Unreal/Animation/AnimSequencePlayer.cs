@@ -30,6 +30,7 @@ public class AnimSequencePlayer : AnimPlayer
         public bool Loop { get; init; }
         public bool IsBaseLayer { get; init; }
         public bool UseMotionBoneMask { get; init; }
+        public bool NormalizeRootTranslation { get; init; }
     }
 
     private sealed class ScheduledAnimationClipState
@@ -37,6 +38,9 @@ public class AnimSequencePlayer : AnimPlayer
         public required ScheduledAnimationClip Clip { get; init; }
         public required AnimSequencePlayer Player { get; init; }
         public required bool[] BoneMask { get; init; }
+        public bool HasAnimatedRootTranslation { get; init; }
+        public Vector3 RootStartPosition { get; init; }
+        public Vector3 RootEndPosition { get; init; }
     }
 
     // Animation state
@@ -59,8 +63,20 @@ public class AnimSequencePlayer : AnimPlayer
     public AnimSequencePlayer(SkeletalMesh skeletalMesh) : base(skeletalMesh)
     {
         _skelToAnimMap = new int[_bones.Length];
+        // BioAnimSetData names the locomotion translation track `Root`. Some character rigs have
+        // a separate parentless master bone above it, so hierarchy-root detection alone leaves the
+        // actual animation Root translation untouched. Prefer the mapped animation bone name and
+        // retain the hierarchy root as a fallback for rigs that use a different convention.
         _rootMotionBoneIndex = Array.FindIndex(_bones,
             bone => bone.Name.Name.Equals("Root", StringComparison.OrdinalIgnoreCase));
+        for (int boneIndex = 0; _rootMotionBoneIndex < 0 && boneIndex < _bones.Length; boneIndex++)
+        {
+            if (_bones[boneIndex].ParentIndex < 0 || _bones[boneIndex].ParentIndex == boneIndex)
+            {
+                _rootMotionBoneIndex = boneIndex;
+                break;
+            }
+        }
     }
 
     public NameReference AnimName => _animSequence?.Name ?? "None";
@@ -72,6 +88,13 @@ public class AnimSequencePlayer : AnimPlayer
     public override float EndTime => _scheduledClips != null ? _scheduledEndTime : Duration;
 
     public override bool HasAnimation => _scheduledClips is { Count: > 0 } || _animSequence != null;
+
+    /// <summary>
+    /// Root translation accumulated across the scheduled clips at <see cref="AnimPlayer.CurrentTime"/>.
+    /// This is populated only when a scheduled clip requests root normalization. The caller can
+    /// apply it to the owning actor while the skeletal Root remains fixed at its reference position.
+    /// </summary>
+    public Vector3 ExtractedRootMotionTranslation { get; private set; }
 
     public int CurrentFrame
     {
@@ -106,6 +129,7 @@ public class AnimSequencePlayer : AnimPlayer
         _scheduledLocalPose = null;
         _scheduledStartTime = 0;
         _scheduledEndTime = 0;
+        ExtractedRootMotionTranslation = Vector3.Zero;
         _animSequence = animSequence;
         CurrentTime = 0;
         _skelToAnimMap.AsSpan().Fill(-1);
@@ -181,11 +205,16 @@ public class AnimSequencePlayer : AnimPlayer
                 IsLooping = false,
             };
             player.SetAnimation(clip.Animation, packageCache);
+            Vector3 rootStartPosition = SampleRootLocalPosition(player, clip.AnimationStartTime);
+            Vector3 rootEndPosition = SampleRootLocalPosition(player, clip.AnimationEndTime);
             _scheduledClips.Add(new ScheduledAnimationClipState
             {
                 Clip = clip,
                 Player = player,
                 BoneMask = player.BuildScheduledBoneMask(clip.UseMotionBoneMask),
+                HasAnimatedRootTranslation = HasAnimatedRootTranslation(player),
+                RootStartPosition = rootStartPosition,
+                RootEndPosition = rootEndPosition,
             });
         }
 
@@ -196,6 +225,7 @@ public class AnimSequencePlayer : AnimPlayer
             _scheduledLocalPose = null;
             _scheduledStartTime = 0;
             _scheduledEndTime = 0;
+            ExtractedRootMotionTranslation = Vector3.Zero;
             CurrentTime = 0;
         }
         else
@@ -410,6 +440,8 @@ public class AnimSequencePlayer : AnimPlayer
 
     private Matrix4x4[] ComputeScheduledSkinningMatrices()
     {
+        bool normalizeRootTranslation = _rootMotionBoneIndex >= 0
+                                        && _scheduledClips.Any(state => state.Clip.NormalizeRootTranslation);
         List<(ScheduledAnimationClipState State, float Weight)> activeClips = [];
         foreach (ScheduledAnimationClipState state in _scheduledClips)
         {
@@ -455,7 +487,7 @@ public class AnimSequencePlayer : AnimPlayer
             }
         }
 
-        if (activeClips.Count == 0)
+        if (activeClips.Count == 0 && !normalizeRootTranslation)
         {
             if (_scheduledBasePose is not null)
             {
@@ -560,6 +592,22 @@ public class AnimSequencePlayer : AnimPlayer
             }
         }
 
+        ExtractedRootMotionTranslation = normalizeRootTranslation
+            ? ComputeExtractedRootMotionTranslation(CurrentTime)
+            : Vector3.Zero;
+        if (normalizeRootTranslation
+            && Matrix4x4.Decompose(blendedLocalPose[_rootMotionBoneIndex], out _, out Quaternion rootRotation,
+                out _))
+        {
+            // UE3 extracts root motion into the owning actor. Leaving it on the skeletal Root makes
+            // each BioGestureData AnimSequence restart from its own authored coordinates, producing
+            // a visible snap at clip boundaries. Keep the bone at the mesh reference position; the
+            // conversation preview applies ExtractedRootMotionTranslation to the actor transform.
+            blendedLocalPose[_rootMotionBoneIndex] = Matrix4x4.CreateFromQuaternion(rootRotation)
+                                                      * Matrix4x4.CreateTranslation(
+                                                          _bones[_rootMotionBoneIndex].Position);
+        }
+
         for (int boneIndex = 0; boneIndex < _bones.Length; boneIndex++)
         {
             int parentIndex = _bones[boneIndex].ParentIndex;
@@ -570,6 +618,112 @@ public class AnimSequencePlayer : AnimPlayer
         }
 
         return _skinningMatrices;
+    }
+
+    private Vector3 ComputeExtractedRootMotionTranslation(float timelineTime)
+    {
+        Vector3 translation = Vector3.Zero;
+        // BioGesture pose clips may overlap, but their root motion is not additive. A newer
+        // gesture with authored Root translation takes ownership from the older gesture at its
+        // start time. Keep the older displacement already travelled, then continue from the new
+        // clip's authored root curve. Constant-root pose/head clips do not interrupt locomotion.
+        List<ScheduledAnimationClipState> rootMotionClips = _scheduledClips
+            .Where(state => state.Clip.NormalizeRootTranslation && state.HasAnimatedRootTranslation)
+            .OrderBy(state => state.Clip.StartTime)
+            .ToList();
+
+        for (int clipIndex = 0; clipIndex < rootMotionClips.Count; clipIndex++)
+        {
+            ScheduledAnimationClipState state = rootMotionClips[clipIndex];
+            ScheduledAnimationClip clip = state.Clip;
+            if (timelineTime <= clip.StartTime)
+            {
+                continue;
+            }
+
+            float ownershipEndTime = clip.EndTime;
+            if (clipIndex + 1 < rootMotionClips.Count)
+            {
+                ownershipEndTime = Math.Min(ownershipEndTime, rootMotionClips[clipIndex + 1].Clip.StartTime);
+            }
+            if (ownershipEndTime <= clip.StartTime)
+            {
+                continue;
+            }
+
+            float timelineElapsed = Math.Clamp(
+                Math.Min(timelineTime, ownershipEndTime) - clip.StartTime,
+                0,
+                ownershipEndTime - clip.StartTime);
+            float animationElapsed = timelineElapsed * Math.Max(0.0001f, clip.PlayRate);
+            float animationDuration = clip.AnimationEndTime - clip.AnimationStartTime;
+            if (animationDuration <= 0)
+            {
+                continue;
+            }
+
+            int completedLoops = 0;
+            float animationTime;
+            if (clip.Loop)
+            {
+                completedLoops = (int)MathF.Floor(animationElapsed / animationDuration);
+                float remainder = animationElapsed - completedLoops * animationDuration;
+                animationTime = clip.AnimationStartTime + remainder;
+            }
+            else
+            {
+                animationTime = Math.Clamp(clip.AnimationStartTime + animationElapsed,
+                    clip.AnimationStartTime, clip.AnimationEndTime);
+            }
+
+            Vector3 currentPosition = SampleRootLocalPosition(state.Player, animationTime);
+            Vector3 clipTranslation = completedLoops * (state.RootEndPosition - state.RootStartPosition)
+                                      + currentPosition - state.RootStartPosition;
+            translation += clipTranslation * Math.Max(0, clip.Weight);
+        }
+        return translation;
+    }
+
+    private static bool HasAnimatedRootTranslation(AnimSequencePlayer player)
+    {
+        int rootBoneIndex = player._rootMotionBoneIndex;
+        if (rootBoneIndex < 0 || rootBoneIndex >= player._skelToAnimMap.Length
+                              || !player.ShouldBoneUsePositionTrack(player._bones[rootBoneIndex].Name))
+        {
+            return false;
+        }
+
+        int trackIndex = player._skelToAnimMap[rootBoneIndex];
+        if (trackIndex < 0 || player._animSequence?.RawAnimationData is null
+                           || trackIndex >= player._animSequence.RawAnimationData.Count
+                           || player._animSequence.RawAnimationData[trackIndex].Positions is not { Count: > 1 } positions)
+        {
+            return false;
+        }
+
+        Vector3 firstPosition = positions[0];
+        return positions.Any(position => Vector3.DistanceSquared(position, firstPosition) > 0.000001f);
+    }
+
+    private Vector3 SampleRootLocalPosition(AnimSequencePlayer player, float animationTime)
+    {
+        if (_rootMotionBoneIndex < 0)
+        {
+            return Vector3.Zero;
+        }
+
+        player.SetCurrentTime(animationTime);
+        player.ComputeSkinningMatrices();
+        Matrix4x4 rootTransform = player._boneComponentSpace[_rootMotionBoneIndex];
+        int parentIndex = _bones[_rootMotionBoneIndex].ParentIndex;
+        if (parentIndex >= 0 && parentIndex < _rootMotionBoneIndex
+            && Matrix4x4.Invert(player._boneComponentSpace[parentIndex], out Matrix4x4 inverseParent))
+        {
+            rootTransform *= inverseParent;
+        }
+        return Matrix4x4.Decompose(rootTransform, out _, out _, out Vector3 position)
+            ? position
+            : Vector3.Zero;
     }
 
     private static void BlendLocalTransform(ref Matrix4x4 currentTransform, Matrix4x4 nextTransform, float alpha)
