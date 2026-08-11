@@ -1,5 +1,6 @@
 ﻿using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 
 namespace LegendaryExplorer.SharedUI.Controls
 {
@@ -35,6 +36,20 @@ namespace LegendaryExplorer.SharedUI.Controls
                     grid.ColumnDefinitions.RemoveAt(1);
                 }
             }
+        }
+
+        protected override void OnKeyDown(KeyEventArgs e)
+        {
+            // TreeViewItem treats numpad minus as a built-in collapse command. This is
+            // unexpected in LEX trees and is especially disruptive in the property editor.
+            if (e.Key == Key.Subtract)
+            {
+                // Do not mark the event handled: text editors still need it to produce '-'.
+                // Skipping the base implementation is enough to prevent the collapse.
+                return;
+            }
+
+            base.OnKeyDown(e);
         }
 
         protected override DependencyObject GetContainerForItemOverride()
