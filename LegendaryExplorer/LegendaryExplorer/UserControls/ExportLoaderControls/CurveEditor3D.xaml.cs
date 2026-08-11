@@ -460,7 +460,8 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
         public void SetTimeline(GesturePreviewExportLoader.GestureAnimationItem startingPose,
             IEnumerable<AnimationPreviewControl.AnimationTimelineClip> timeline, PackageCache packageCache,
-            float? playbackDuration = null, GestureTrackOption gesture = null)
+            float? playbackDuration = null, GestureTrackOption gesture = null,
+            bool maskDialogueOverlayStaticBones = false)
         {
             AppliedGesture = gesture;
             List<AnimationPreviewControl.AnimationTimelineClip> timelineClips = timeline.ToList();
@@ -529,7 +530,14 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                     Weight = clip.Weight,
                     Loop = clip.Loop,
                     IsBaseLayer = clip.IsBaseLayer,
-                    UseMotionBoneMask = clip.UseMotionBoneMask,
+                    // Matinee locomotion is supplied by the TrackGesture starting pose while
+                    // BioGestureData entries layer head/body gestures over it. Head gestures still
+                    // contain constant tracks for the rest of the skeleton; treating those as a
+                    // full-body overlay replaces the walk cycle and makes the actor slide. Apply
+                    // the motion mask only in whole-conversation playback so the standalone
+                    // Gesture Preview and regular 3D editor continue showing complete clips.
+                    UseMotionBoneMask = clip.UseMotionBoneMask
+                                        || maskDialogueOverlayStaticBones && !clip.IsBaseLayer,
                 });
             }
 
@@ -3565,7 +3573,8 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                     && previewActorAnimationStates.TryGetValue(actor, out PreviewActorAnimationState animationState))
                 {
                     animationState.SetTimeline(gesture.StartingPose, gesture.Timeline,
-                        previewActorGesturePackageCache, segment.Duration, gesture);
+                        previewActorGesturePackageCache, segment.Duration, gesture,
+                        maskDialogueOverlayStaticBones: true);
                     animationState.SetTime(segment.Duration);
                     if (animationState.CaptureGesturePose() is { } pose)
                     {
@@ -8201,7 +8210,8 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         }
 
         animationState.SetTimeline(gesture.StartingPose, gesture.Timeline, previewActorGesturePackageCache,
-            playbackDuration ?? activeDialogueSegmentRuntime?.Segment.Duration, gesture);
+            playbackDuration ?? activeDialogueSegmentRuntime?.Segment.Duration, gesture,
+            maskDialogueOverlayStaticBones: isDialogueConversationPreview);
         UpdatePreviewActorSkinning(actor);
     }
 
