@@ -3681,8 +3681,10 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             }
             foreach (PreviewActorConfiguration actor in previewActors)
             {
+                bool hasMovementTrack = runtime.ActorTrackAssignments.GetValueOrDefault(actor.ActorTag)?.TrackMove
+                    is not null;
                 CameraOrigin end = ApplyActorDirectionTracks(runtime.DirectionTracks, actor, segment.Duration,
-                    resolved[actor], resolved);
+                    resolved[actor], resolved, hasMovementTrack);
                 if (evaluatedGesturePoses.TryGetValue(actor.ActorTag, out Matrix4x4[] pose))
                 {
                     runtime.EndActorGesturePoses[actor.ActorTag] = pose;
@@ -3760,8 +3762,10 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             }
             foreach (PreviewActorConfiguration actor in previewActors)
             {
+                bool hasMovementTrack = runtime.ActorTrackAssignments.GetValueOrDefault(actor.ActorTag)?.TrackMove
+                    is not null;
                 runtime.EndActorOrigins[actor.ActorTag] = ApplyActorDirectionTracks(runtime.DirectionTracks, actor,
-                    segment.Duration, resolved[actor], resolved);
+                    segment.Duration, resolved[actor], resolved, hasMovementTrack);
             }
             inheritedOrigins = runtime.EndActorOrigins;
         }
@@ -4395,12 +4399,13 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     }
 
     private CameraOrigin ApplyActorDirectionTracks(PreviewActorConfiguration actor, float time, CameraOrigin origin,
-        IReadOnlyDictionary<PreviewActorConfiguration, CameraOrigin> resolvedActorOrigins)
-        => ApplyActorDirectionTracks(actorDirectionTracks, actor, time, origin, resolvedActorOrigins);
+        IReadOnlyDictionary<PreviewActorConfiguration, CameraOrigin> resolvedActorOrigins, bool hasMovementTrack)
+        => ApplyActorDirectionTracks(actorDirectionTracks, actor, time, origin, resolvedActorOrigins,
+            hasMovementTrack);
 
     private CameraOrigin ApplyActorDirectionTracks(IEnumerable<ActorDirectionTrack> directionTracks,
         PreviewActorConfiguration actor, float time, CameraOrigin origin,
-        IReadOnlyDictionary<PreviewActorConfiguration, CameraOrigin> resolvedActorOrigins)
+        IReadOnlyDictionary<PreviewActorConfiguration, CameraOrigin> resolvedActorOrigins, bool hasMovementTrack)
     {
         foreach (ActorDirectionTrack track in directionTracks.Where(track => ReferenceEquals(track.Actor, actor)))
         {
@@ -4410,22 +4415,42 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                 continue;
             }
 
+            if (!track.IsLookAt && key.TargetStageNode is not null
+                && dialogueNodePreview.StageContext.StageNodeOrigins.TryGetValue(key.TargetStageNode,
+                    out CameraOrigin stageNodeOrigin))
+            {
+                origin = ApplySetFacingStageNode(origin, stageNodeOrigin, hasMovementTrack, key.OrientationOffset);
+                continue;
+            }
+
             PreviewActorConfiguration targetActor = key.TargetActorTag is null
                 ? null
                 : resolvedActorOrigins.Keys.FirstOrDefault(candidate =>
                     ActorTagMatches(key.TargetActorTag, candidate.ActorTag));
-            Vector3? targetLocation = targetActor is not null
-                ? resolvedActorOrigins[targetActor].Location
-                : key.TargetStageNode is not null
-                    ? dialogueNodePreview.StageContext.StageNodeOrigins.GetValueOrDefault(key.TargetStageNode).Location
-                    : null;
-            if (targetLocation is null)
+            if (targetActor is not null)
             {
-                continue;
+                origin = ApplyActorDirectionRotation(origin, resolvedActorOrigins[targetActor].Location,
+                    includePitch: true, orientationOffset: key.OrientationOffset);
             }
-            origin = ApplyActorDirectionRotation(origin, targetLocation.Value, track.IsLookAt, key.OrientationOffset);
         }
         return origin;
+    }
+
+    internal static CameraOrigin ApplySetFacingStageNode(CameraOrigin actorOrigin, CameraOrigin stageNodeOrigin,
+        bool hasMovementTrack, float orientationOffset)
+    {
+        Vector3 location = actorOrigin.Location;
+        if (!hasMovementTrack)
+        {
+            // Stage nodes identify the body slot, while every preview actor renders its BodyMesh
+            // 88 units below the pawn origin. Compensate for that shared render offset when a
+            // SetFacing key supplies the pawn location.
+            location = stageNodeOrigin.Location;
+            location.Z -= PreviewBodyMeshRelativeZ;
+        }
+        Vector3 rotation = actorOrigin.Rotation;
+        rotation.Z = stageNodeOrigin.Rotation.Z + orientationOffset;
+        return new CameraOrigin(location, rotation);
     }
 
     internal static CameraOrigin ApplyActorDirectionRotation(CameraOrigin actorOrigin, Vector3 targetLocation,
@@ -7266,7 +7291,8 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         foreach (PreviewActorPlaybackState state in playbackActors)
         {
             CameraOrigin origin = ApplyTrackLookAtRotation(state.TrackMove, resolvedOrigins[state], time, resolvedOrigins);
-            state.Actor.Origin = ApplyActorDirectionTracks(state.Actor, time, origin, actorOrigins);
+            state.Actor.Origin = ApplyActorDirectionTracks(state.Actor, time, origin, actorOrigins,
+                state.TrackMove?.TrackMove is not null);
             if (ReferenceEquals(selectedPreviewActor, state.Actor))
             {
                 updatingPreviewActorControls = true;

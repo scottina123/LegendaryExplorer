@@ -48,7 +48,7 @@ public class InterpTrackMoveTransformTests
     }
 
     [TestMethod]
-    public void SetFacingChangesYawWithoutChangingActorLocation()
+    public void LookAtChangesYawWithoutChangingActorLocation()
     {
         var actor = new CameraOrigin(new Vector3(-15842.27f, 8299.669f, -170309f),
             new Vector3(3f, -4f, 15f));
@@ -61,6 +61,40 @@ public class InterpTrackMoveTransformTests
         Assert.AreEqual(actor.Rotation.X, faced.Rotation.X, 0.0001f);
         Assert.AreEqual(actor.Rotation.Y, faced.Rotation.Y, 0.0001f);
         Assert.AreNotEqual(actor.Rotation.Z, faced.Rotation.Z);
+    }
+
+    [TestMethod]
+    public void SetFacingWithoutTrackMoveSnapsActorToPreviewAdjustedStageNode()
+    {
+        var actor = new CameraOrigin(new Vector3(-15842.27f, 8299.669f, -170309f),
+            new Vector3(3f, -4f, 15f));
+        var stageNode = new CameraOrigin(new Vector3(-15323.47f, 8973.74f, -170244.2f),
+            new Vector3(0, 0, 125f));
+
+        CameraOrigin faced = CurveEditor3D.ApplySetFacingStageNode(actor, stageNode, hasMovementTrack: false,
+            orientationOffset: 20f);
+
+        Assert.AreEqual(stageNode.Location.X, faced.Location.X, 0.0001f);
+        Assert.AreEqual(stageNode.Location.Y, faced.Location.Y, 0.0001f);
+        Assert.AreEqual(stageNode.Location.Z + 88f, faced.Location.Z, 0.0001f);
+        Assert.AreEqual(actor.Rotation.X, faced.Rotation.X, 0.0001f);
+        Assert.AreEqual(actor.Rotation.Y, faced.Rotation.Y, 0.0001f);
+        Assert.AreEqual(145f, faced.Rotation.Z, 0.0001f);
+    }
+
+    [TestMethod]
+    public void SetFacingWithTrackMoveKeepsEvaluatedActorLocation()
+    {
+        var actor = new CameraOrigin(new Vector3(-15842.27f, 8299.669f, -170309f),
+            new Vector3(3f, -4f, 15f));
+        var stageNode = new CameraOrigin(new Vector3(-15323.47f, 8973.74f, -170244.2f),
+            new Vector3(0, 0, 125f));
+
+        CameraOrigin faced = CurveEditor3D.ApplySetFacingStageNode(actor, stageNode, hasMovementTrack: true,
+            orientationOffset: 20f);
+
+        Assert.AreEqual(actor.Location, faced.Location);
+        Assert.AreEqual(145f, faced.Rotation.Z, 0.0001f);
     }
 
     [TestMethod]
