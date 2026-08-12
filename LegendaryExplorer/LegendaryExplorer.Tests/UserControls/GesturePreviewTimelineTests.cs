@@ -125,6 +125,52 @@ public class GesturePreviewTimelineTests
     }
 
     [TestMethod]
+    public void ConversationPoseLoopsUntilTheNodeEndsWithoutExtendingGestures()
+    {
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("PersistentPoseTest.pcc", MEGame.LE3);
+        ExportEntry wallLeanPose = CreateAnimation(package, "WallLeanPose", 5);
+        ExportEntry headGesture = CreateAnimation(package, "HeadGesture", 1);
+        var animations = new List<GesturePreviewExportLoader.GestureAnimationItem>
+        {
+            CreatePose(0, 0, wallLeanPose),
+            CreateGesture(1, 3.8f, headGesture),
+        };
+
+        List<AnimationPreviewControl.AnimationTimelineClip> timeline =
+            BuildPlaybackTimelineWithBaseLayer(animations, playbackDuration: 5.467f);
+
+        AnimationPreviewControl.AnimationTimelineClip poseClip =
+            timeline.Single(clip => clip.AnimationExport == wallLeanPose);
+        AnimationPreviewControl.AnimationTimelineClip gestureClip =
+            timeline.Single(clip => clip.AnimationExport == headGesture);
+        Assert.AreEqual(5.467f, poseClip.EndTime, 0.0001f);
+        Assert.IsTrue(poseClip.Loop);
+        Assert.IsTrue(poseClip.IsBaseLayer);
+        Assert.AreEqual(0, poseClip.BlendOutDuration, 0.0001f);
+        Assert.AreEqual(4.8f, gestureClip.EndTime, 0.0001f);
+        Assert.IsFalse(gestureClip.Loop);
+    }
+
+    [TestMethod]
+    public void MatchingStartingPoseContinuesTheInheritedConversationPhase()
+    {
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("PoseContinuationTest.pcc", MEGame.LE3);
+        ExportEntry wallLeanPose = CreateAnimation(package, "WallLeanPose", 5);
+        float e22EndPhase = CurveEditor3D.ResolveGestureAnimationTime(5.467f, 0, 0, 5, 1, loop: true);
+
+        float? r22StartPhase = CurveEditor3D.ResolveMatchingStartingPoseTime(wallLeanPose,
+            hasAuthoredTimeline: false, startingPoseDuration: 5, inheritedAnimation: wallLeanPose,
+            inheritedAnimationTime: e22EndPhase);
+
+        Assert.AreEqual(0.467f, e22EndPhase, 0.0001f);
+        Assert.IsTrue(r22StartPhase.HasValue);
+        Assert.AreEqual(e22EndPhase, r22StartPhase.Value, 0.0001f);
+        Assert.IsNull(CurveEditor3D.ResolveMatchingStartingPoseTime(wallLeanPose,
+            hasAuthoredTimeline: true, startingPoseDuration: 5, inheritedAnimation: wallLeanPose,
+            inheritedAnimationTime: e22EndPhase));
+    }
+
+    [TestMethod]
     public void ConversationStartingPoseWithoutGestureKeysUsesTheNodeDuration()
     {
         (float start, float end) = CurveEditor3D.ResolveStartingPoseTimelineRange(
@@ -167,6 +213,22 @@ public class GesturePreviewTimelineTests
         },
     };
 
+    private static GesturePreviewExportLoader.GestureAnimationItem CreatePose(int index, float time,
+        ExportEntry animation) => new()
+    {
+        GestureIndex = index,
+        Time = time,
+        SlotOrder = 0,
+        SlotName = "Pose",
+        SetName = "TestSet",
+        AnimationName = animation.ObjectName,
+        AnimationExport = animation,
+        Settings = new GesturePreviewExportLoader.GesturePlaybackSettings
+        {
+            EndBlendDuration = 0.1f,
+        },
+    };
+
     private static List<AnimationPreviewControl.AnimationTimelineClip> BuildPlaybackTimeline(
         List<GesturePreviewExportLoader.GestureAnimationItem> animations)
     {
@@ -174,5 +236,15 @@ public class GesturePreviewTimelineTests
             BindingFlags.Static | BindingFlags.NonPublic);
         Assert.IsNotNull(method);
         return (List<AnimationPreviewControl.AnimationTimelineClip>)method.Invoke(null, [animations]);
+    }
+
+    private static List<AnimationPreviewControl.AnimationTimelineClip> BuildPlaybackTimelineWithBaseLayer(
+        List<GesturePreviewExportLoader.GestureAnimationItem> animations, float playbackDuration)
+    {
+        MethodInfo method = typeof(GesturePreviewExportLoader).GetMethod("BuildPlaybackTimelineWithBaseLayer",
+            BindingFlags.Static | BindingFlags.NonPublic);
+        Assert.IsNotNull(method);
+        return (List<AnimationPreviewControl.AnimationTimelineClip>)method.Invoke(null,
+            [animations, false, playbackDuration]);
     }
 }

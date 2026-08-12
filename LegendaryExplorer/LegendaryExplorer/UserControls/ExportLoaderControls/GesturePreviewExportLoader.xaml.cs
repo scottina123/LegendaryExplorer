@@ -587,7 +587,7 @@ public partial class GesturePreviewExportLoader : ExportLoaderControl
         hasExternalBaseLayer: false);
 
     internal static List<AnimationPreviewControl.AnimationTimelineClip> BuildPlaybackTimelineWithBaseLayer(
-        List<GestureAnimationItem> animations, bool hasExternalBaseLayer)
+        List<GestureAnimationItem> animations, bool hasExternalBaseLayer, float? playbackDuration = null)
     {
         var timeline = new List<AnimationPreviewControl.AnimationTimelineClip>();
         List<IGrouping<int?, GestureAnimationItem>> gestureGroups = animations
@@ -631,8 +631,47 @@ public partial class GesturePreviewExportLoader : ExportLoaderControl
                 primaryEnd = next;
             }
 
-            AddTimelineClip(timeline, pose, keyTime, primaryEnd, settings, settings.SnapToPose ? 0 : settings.StartBlendDuration,
-                settings.EndBlendDuration, settings.PlayUntilNext && !settings.OneShotAnimation);
+            float naturalPoseEnd = keyTime + GetPlaybackDuration(pose, settings);
+            float poseEnd = naturalPoseEnd;
+            // A BioGestureData Pose is the base stance for subsequent overlay gestures, not a
+            // one-shot clip. Keep it evaluated until the node ends unless another authored pose
+            // or a terminate-all key replaces it. Otherwise a short idle sequence expires and the
+            // skeletal player falls back to the standing bind pose before the dialogue node ends.
+            float? nextPoseTime = gestureGroups
+                .Skip(groupIndex + 1)
+                .FirstOrDefault(nextGroup => nextGroup.First().Time > keyTime
+                                             && nextGroup.Any(item => item.SlotName == "Pose"
+                                                                      && item.AnimationExport is not null))?
+                .First().Time;
+            float? poseBoundary = playbackDuration is > 0 && playbackDuration.Value > keyTime
+                ? playbackDuration
+                : null;
+            if (nextPoseTime is float nextPose)
+            {
+                poseBoundary = poseBoundary is float boundary ? Math.Min(boundary, nextPose) : nextPose;
+            }
+            if (terminationTime is float poseTermination)
+            {
+                poseBoundary = poseBoundary is float boundary
+                    ? Math.Min(boundary, poseTermination)
+                    : poseTermination;
+            }
+            if (poseBoundary is float resolvedPoseEnd)
+            {
+                poseEnd = resolvedPoseEnd;
+            }
+            bool loopPose = !settings.OneShotAnimation
+                            && (settings.PlayUntilNext
+                                || poseEnd > naturalPoseEnd + 0.0001f);
+            // The node switch replaces this complete gesture track. Blending its pose out at the
+            // node boundary only reveals nmStartingPoseAnim underneath (E22 uses a standing idle),
+            // even though the next node continues the authored wall-lean pose.
+            bool poseEndsAtNodeBoundary = playbackDuration is float nodeEnd
+                                          && Math.Abs(poseEnd - nodeEnd) < 0.0001f;
+            float poseBlendOut = poseEndsAtNodeBoundary ? 0 : settings.EndBlendDuration;
+
+            AddTimelineClip(timeline, pose, keyTime, poseEnd, settings, settings.SnapToPose ? 0 : settings.StartBlendDuration,
+                poseBlendOut, loopPose);
             AddTimelineClip(timeline, gesture, keyTime, primaryEnd, settings, settings.SnapToPose ? 0 : settings.StartBlendDuration,
                 settings.EndBlendDuration, settings.PlayUntilNext && !settings.OneShotAnimation);
 
