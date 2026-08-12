@@ -912,7 +912,9 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     private readonly List<TrackMovePlaybackOption> availableTrackMoves = [];
     private readonly ObservableCollection<TrackMovePlaybackOption> availableExtraTrackMoves = [];
     private readonly ObservableCollection<DirectorPlaybackOption> availableDirectorTracks = [];
-    private readonly ObservableCollection<TrackMovePlaybackOption> keyframeTrackMoves = [];
+    private readonly ObservableCollection<TrackMovePlaybackOption> characterTrackMoves = [];
+    private readonly ObservableCollection<TrackMovePlaybackOption> cameraTrackMoves = [];
+    private readonly HashSet<string> tracksWithVisibleKeys = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<TrackMovePlaybackOption> dialoguePreviewCameraActors = [];
     private readonly Dictionary<string, PlacedCameraState> dialoguePlacedCameras =
         new(StringComparer.OrdinalIgnoreCase);
@@ -987,7 +989,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     private CurveEditor3DModel registeredKeyframeModel;
     private CurveEditor3DFovModel registeredFovModel;
     private bool updatingKeyframeTrackTabs;
-    private Point? lastViewportCursorPosition;
+    private bool updatingTrackKeyVisibilityControls;
     private Vector3 pendingViewportKeyframeLocation;
     private Vector3 pendingViewportSelectedKeyframeLocation;
     private bool showCollision = Settings.LevelEditor_ShowCollision;
@@ -1053,11 +1055,23 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     private string SavedPreviewActorsPath => Path.Combine(AppDirectories.AppDataFolder,
         $"CurveEditor3DPreviewActors_{previewActorGame}.json");
 
-    private CurveEditor3DModel ActiveModel
-        => (KeyframeTrackMoveTabs?.SelectedItem as TrackMovePlaybackOption)?.Model ?? model;
+    private CurveEditor3DModel ActiveModel => ActiveTrackMoveOption?.Model ?? model;
 
-    private TrackMovePlaybackOption ActiveTrackMoveOption
-        => KeyframeTrackMoveTabs?.SelectedItem as TrackMovePlaybackOption ?? primaryTrackMove;
+    private TrackMovePlaybackOption ActiveTrackMoveOption => SelectedPreviewEditorCategory switch
+    {
+        "Cameras" => CameraTrackMoveTabs?.SelectedItem as TrackMovePlaybackOption,
+        "Characters" => CharacterTrackMoveTabs?.SelectedItem as TrackMovePlaybackOption,
+        _ => null,
+    };
+
+    private string SelectedPreviewEditorCategory =>
+        (PreviewEditorCategoryTabs?.SelectedItem as TabItem)?.Tag as string ?? "Actors";
+
+    private bool IsTrackEditorCategorySelected => SelectedPreviewEditorCategory is "Characters" or "Cameras";
+
+    private bool AreActiveTrackKeysVisible => IsTrackEditorCategorySelected
+        && ActiveTrackMoveOption?.TrackMove is { } trackMove
+        && tracksWithVisibleKeys.Contains(GetTrackMoveEditingKey(trackMove));
 
     private CurveEditor3DFovModel ActiveFovModel => ActiveTrackMoveOption?.FovModel;
 
@@ -1100,7 +1114,8 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         PreviewActorGestureComboBox.ItemsSource = availableGestureTracks;
         ExtraTrackMoveComboBox.ItemsSource = availableExtraTrackMoves;
         DirectorTrackComboBox.ItemsSource = availableDirectorTracks;
-        KeyframeTrackMoveTabs.ItemsSource = keyframeTrackMoves;
+        CharacterTrackMoveTabs.ItemsSource = characterTrackMoves;
+        CameraTrackMoveTabs.ItemsSource = cameraTrackMoves;
         ConfigureKeyframeContextMenu();
         SceneViewer.Context = RenderContext;
         RenderContext.EnableTransformWidget();
@@ -2286,6 +2301,10 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         model.Load(exportEntry);
         RefreshAvailableGestureTracks(exportEntry);
         RefreshMulticamPlaybackOptions(exportEntry);
+        if (dialogueNodePreview is null && PreviewEditorCategoryTabs.SelectedIndex == 0)
+        {
+            PreviewEditorCategoryTabs.SelectedIndex = 1;
+        }
         if (!loadingDialogueTimelineSegment)
         {
             InitializePreviewActorLayout(exportEntry.Game);
@@ -2293,9 +2312,14 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         EnsurePreviewActorTrackAssignments();
         RefreshKeyframeTrackMoveTabs();
         trajectorySamplesDirty = true;
-        SelectedKeyframe = selectedKeyframeTime.HasValue && model.Keyframes.Count > 0
-            ? model.Keyframes.MinBy(keyframe => MathF.Abs(keyframe.Time - selectedKeyframeTime.Value))
-            : model.Keyframes.FirstOrDefault();
+        if (dialogueNodePreview is null && ActiveTrackMoveOption?.TrackMove is { } standaloneTrack)
+        {
+            tracksWithVisibleKeys.Add(GetTrackMoveEditingKey(standaloneTrack));
+            ActivateSelectedTrackMove();
+        }
+        SelectedKeyframe = selectedKeyframeTime.HasValue && ActiveModel.Keyframes.Count > 0
+            ? ActiveModel.Keyframes.MinBy(keyframe => MathF.Abs(keyframe.Time - selectedKeyframeTime.Value))
+            : ActiveModel.Keyframes.FirstOrDefault();
         if (!hasSnappedInitialCamera && model.Keyframes.MinBy(keyframe => keyframe.Time) is { } earliestKeyframe)
         {
             SnapCameraToKey(earliestKeyframe);
@@ -2333,7 +2357,9 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         availableTrackMoves.Clear();
         availableExtraTrackMoves.Clear();
         availableDirectorTracks.Clear();
-        keyframeTrackMoves.Clear();
+        characterTrackMoves.Clear();
+        cameraTrackMoves.Clear();
+        tracksWithVisibleKeys.Clear();
         selectedExtraTrackMove = null;
         selectedDirectorPlayback = null;
         primaryTrackMove = null;
@@ -2633,8 +2659,15 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
     private void RefreshKeyframeTrackMoveTabs()
     {
-        ExportEntry previouslySelectedTrack = (KeyframeTrackMoveTabs.SelectedItem as TrackMovePlaybackOption)?.TrackMove;
+        ExportEntry previouslySelectedCharacter =
+            (CharacterTrackMoveTabs.SelectedItem as TrackMovePlaybackOption)?.TrackMove;
+        ExportEntry previouslySelectedCamera =
+            (CameraTrackMoveTabs.SelectedItem as TrackMovePlaybackOption)?.TrackMove;
         List<TrackMovePlaybackOption> tabs = [];
+        foreach (TrackMovePlaybackOption availableTrack in availableTrackMoves)
+        {
+            AddDistinctTrackMove(tabs, availableTrack);
+        }
         AddDistinctTrackMove(tabs, primaryTrackMove);
         AddDistinctTrackMove(tabs, selectedExtraTrackMove);
         if (selectedDirectorPlayback is not null)
@@ -2660,18 +2693,39 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                 : $"{tab.DisplayName} [{actorNames}]";
         }
 
-        updatingKeyframeTrackTabs = true;
-        keyframeTrackMoves.Clear();
-        foreach (TrackMovePlaybackOption tab in tabs)
-        {
-            keyframeTrackMoves.Add(tab);
-        }
+        TrackMovePlaybackOption[] cameras = tabs.Where(IsCameraMovementTrack).ToArray();
+        TrackMovePlaybackOption[] characters = tabs.Where(tab => !IsCameraMovementTrack(tab)).ToArray();
 
-        KeyframeTrackMoveTabs.SelectedItem = tabs.FirstOrDefault(tab => IsSameExport(tab.TrackMove, previouslySelectedTrack))
-                                                 ?? primaryTrackMove;
+        updatingKeyframeTrackTabs = true;
+        characterTrackMoves.Clear();
+        foreach (TrackMovePlaybackOption tab in characters)
+        {
+            characterTrackMoves.Add(tab);
+        }
+        cameraTrackMoves.Clear();
+        foreach (TrackMovePlaybackOption tab in cameras)
+        {
+            cameraTrackMoves.Add(tab);
+        }
+        CharacterTrackMoveTabs.SelectedItem = characters.FirstOrDefault(tab =>
+                                                      IsSameExport(tab.TrackMove, previouslySelectedCharacter))
+                                                  ?? characters.FirstOrDefault(tab =>
+                                                      IsSameExport(tab.TrackMove, primaryTrackMove?.TrackMove))
+                                                  ?? characters.FirstOrDefault();
+        CameraTrackMoveTabs.SelectedItem = cameras.FirstOrDefault(tab =>
+                                                   IsSameExport(tab.TrackMove, previouslySelectedCamera))
+                                               ?? cameras.FirstOrDefault(tab =>
+                                                   IsSameExport(tab.TrackMove, primaryTrackMove?.TrackMove))
+                                               ?? cameras.FirstOrDefault();
         updatingKeyframeTrackTabs = false;
         ActivateSelectedTrackMove();
     }
+
+    private bool IsCameraMovementTrack(TrackMovePlaybackOption option) => option?.TrackMove is not null
+        && (dialoguePreviewCameraActors.Any(camera => IsSameExport(camera.TrackMove, option.TrackMove))
+            || availableDirectorTracks.SelectMany(director => director.Cuts)
+                .Any(cut => IsSameExport(cut.Camera?.TrackMove, option.TrackMove))
+            || IsCameraTrackGroup(option.Group, option.FovModel is not null));
 
     private static void AddDistinctTrackMove(List<TrackMovePlaybackOption> tabs, TrackMovePlaybackOption option)
     {
@@ -4162,7 +4216,8 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         availableDirectorTracks.Add(DirectorPlaybackOption.None);
         dialoguePreviewCameraActors.Clear();
         previewActorTrackAssignments.Clear();
-        keyframeTrackMoves.Clear();
+        characterTrackMoves.Clear();
+        cameraTrackMoves.Clear();
         selectedExtraTrackMove = TrackMovePlaybackOption.None;
         selectedDirectorPlayback = DirectorPlaybackOption.None;
         playExtraTrackMove = false;
@@ -4359,26 +4414,61 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         {
             return null;
         }
-        ExportEntry assetExport = GetDialoguePreviewFaceFxAssetExport(actor);
-        if (assetExport is null)
-        {
-            return null;
-        }
-
         foreach (DialoguePreviewAudioGender gender in GetDialogueLineGenderCandidates())
         {
-            ExportEntry animSetExport = ResolveDialogueFaceFxAnimSet(node, gender);
-            if (animSetExport is null)
+            ExportEntry dialogueFaceFxExport = ResolveDialogueFaceFxAnimSet(node, gender);
+            if (dialogueFaceFxExport is null)
             {
                 continue;
             }
-            FaceFXAnimSet animSet = animSetExport.GetBinaryData<FaceFXAnimSet>();
-            FaceFXLine line = FindDialogueFaceFxLine(animSet, node,
-                gender == DialoguePreviewAudioGender.Female, animSetExport.Game);
-            if (line is not null)
+            bool isFemale = gender == DialoguePreviewAudioGender.Female;
+            if (dialogueFaceFxExport.ClassName == "FaceFXAsset")
+            {
+                FaceFXAsset dialogueAsset = dialogueFaceFxExport.GetBinaryData<FaceFXAsset>();
+                FaceFXLine dialogueLine = FindDialogueFaceFxLine(dialogueAsset.Lines, node, isFemale,
+                    dialogueFaceFxExport.Game);
+                if (dialogueLine is not null)
+                {
+                    return new DialogueFaceFxBinding(actor, dialogueAsset, null, dialogueLine, timelineOffset);
+                }
+                continue;
+            }
+            if (dialogueFaceFxExport.ClassName != "FaceFXAnimSet")
+            {
+                continue;
+            }
+
+            FaceFXAnimSet animSet = dialogueFaceFxExport.GetBinaryData<FaceFXAnimSet>();
+            FaceFXLine line = FindDialogueFaceFxLine(animSet.Lines, node, isFemale, dialogueFaceFxExport.Game);
+            if (line is null)
+            {
+                continue;
+            }
+            // The DLG owns the authored animation curves, but the actor owns the compiled facial
+            // graph and its bone mapping. Combining the DLG AnimSet with a FaceFXAsset found next
+            // to it can bind successfully while producing no deformation on this actor's skeleton.
+            ExportEntry assetExport = GetDialoguePreviewFaceFxAssetExport(actor);
+            if (assetExport is not null)
             {
                 return new DialogueFaceFxBinding(actor, assetExport.GetBinaryData<FaceFXAsset>(), animSet, line,
                     timelineOffset);
+            }
+        }
+
+        // A tagged pawn can carry its own FaceFXAsset and lines. Those are intentionally considered
+        // only after every DLG-owned FaceFX reference failed to supply this line.
+        ExportEntry importedAssetExport = ResolveExportReference(actor.Construction?.FaceFxAsset, required: false);
+        if (importedAssetExport?.ClassName == "FaceFXAsset")
+        {
+            FaceFXAsset importedAsset = importedAssetExport.GetBinaryData<FaceFXAsset>();
+            foreach (DialoguePreviewAudioGender gender in GetDialogueLineGenderCandidates())
+            {
+                FaceFXLine line = FindDialogueFaceFxLine(importedAsset.Lines, node,
+                    gender == DialoguePreviewAudioGender.Female, importedAssetExport.Game);
+                if (line is not null)
+                {
+                    return new DialogueFaceFxBinding(actor, importedAsset, null, line, timelineOffset);
+                }
             }
         }
         return null;
@@ -5025,46 +5115,38 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
         if (activeDialogueSegmentRuntime?.FaceOnlyVoFaceFx.GetValueOrDefault(faceOnlyVo) is { } cachedFaceFx)
         {
-            dialoguePreviewFaceFxAnimSets[cachedFaceFx.Actor] = cachedFaceFx.AnimSet;
+            if (cachedFaceFx.AnimSet is not null)
+            {
+                dialoguePreviewFaceFxAnimSets[cachedFaceFx.Actor] = cachedFaceFx.AnimSet;
+            }
             animationState.SetFaceFx(cachedFaceFx.Asset, cachedFaceFx.AnimSet, cachedFaceFx.Line,
                 cachedFaceFx.TimelineOffset);
             animationState.SetTime(playbackCurrentTime);
             UpdatePreviewActorSkinning(cachedFaceFx.Actor);
             return;
         }
-        ExportEntry assetExport = GetDialoguePreviewFaceFxAssetExport(faceOnlyVo.Actor);
-        if (assetExport is null)
+        DialogueFaceFxBinding binding = CreateDialogueFaceFxBinding(faceOnlyVo.Node, faceOnlyVo.Actor,
+            faceOnlyVo.StartTime);
+        if (binding is null)
         {
             return;
         }
-
-        foreach (DialoguePreviewAudioGender gender in GetDialogueLineGenderCandidates())
+        if (binding.AnimSet is not null)
         {
-            ExportEntry animSetExport = ResolveDialogueFaceFxAnimSet(faceOnlyVo.Node, gender);
-            if (animSetExport is null)
-            {
-                continue;
-            }
-
-            FaceFXAnimSet animSet = animSetExport.GetBinaryData<FaceFXAnimSet>();
-            FaceFXLine line = FindDialogueFaceFxLine(animSet, faceOnlyVo.Node,
-                gender == DialoguePreviewAudioGender.Female, animSetExport.Game);
-            if (line is null)
-            {
-                continue;
-            }
-
-            dialoguePreviewFaceFxAnimSets[faceOnlyVo.Actor] = animSet;
-            animationState.SetFaceFx(assetExport.GetBinaryData<FaceFXAsset>(), animSet, line, faceOnlyVo.StartTime);
-            animationState.SetTime(playbackCurrentTime);
-            UpdatePreviewActorSkinning(faceOnlyVo.Actor);
-            return;
+            dialoguePreviewFaceFxAnimSets[faceOnlyVo.Actor] = binding.AnimSet;
         }
+        animationState.SetFaceFx(binding.Asset, binding.AnimSet, binding.Line, binding.TimelineOffset);
+        animationState.SetTime(playbackCurrentTime);
+        UpdatePreviewActorSkinning(faceOnlyVo.Actor);
     }
 
-    private static FaceFXLine FindDialogueFaceFxLine(FaceFXAnimSet animSet, DialogueNodeExtended node,
+    private static FaceFXLine FindDialogueFaceFxLine(IEnumerable<FaceFXLine> lines, DialogueNodeExtended node,
         bool isFemale, MEGame game)
     {
+        if (lines is null)
+        {
+            return null;
+        }
         var candidateNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         string parsedLineName = isFemale ? node.FaceFX_Female : node.FaceFX_Male;
         if (!string.IsNullOrWhiteSpace(parsedLineName)
@@ -5080,7 +5162,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             candidateNames.Add(baseLineName);
         }
 
-        FaceFXLine line = animSet.Lines.FirstOrDefault(candidate =>
+        FaceFXLine line = lines.FirstOrDefault(candidate =>
             candidateNames.Contains(candidate.NameAsString));
         if (line is not null)
         {
@@ -5088,7 +5170,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         }
 
         string lineId = node.LineStrRef.ToString(CultureInfo.InvariantCulture);
-        return animSet.Lines.FirstOrDefault(candidate =>
+        return lines.FirstOrDefault(candidate =>
             string.Equals(candidate.ID, lineId, StringComparison.OrdinalIgnoreCase));
     }
 
@@ -5213,34 +5295,18 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             return;
         }
 
-        ExportEntry assetExport = GetDialoguePreviewFaceFxAssetExport(actor);
-        if (assetExport is null)
+        DialogueFaceFxBinding binding = CreateDialogueFaceFxBinding(dialogueNodePreview.Node, actor,
+            dialogueNodePreview.VoStartTime);
+        if (binding is null)
         {
             return;
         }
-
-        foreach (DialoguePreviewAudioGender gender in GetDialogueLineGenderCandidates())
+        if (binding.AnimSet is not null)
         {
-            ExportEntry animSetExport = ResolveDialogueFaceFxAnimSet(dialogueNodePreview.Node, gender);
-            if (animSetExport is null)
-            {
-                continue;
-            }
-
-            FaceFXAnimSet animSet = animSetExport.GetBinaryData<FaceFXAnimSet>();
-            FaceFXLine line = FindDialogueFaceFxLine(animSet, dialogueNodePreview.Node,
-                gender == DialoguePreviewAudioGender.Female, animSetExport.Game);
-            if (line is null)
-            {
-                continue;
-            }
-
-            dialoguePreviewFaceFxAnimSets[actor] = animSet;
-            animationState.SetFaceFx(assetExport.GetBinaryData<FaceFXAsset>(), animSet, line,
-                dialogueNodePreview.VoStartTime);
-            UpdatePreviewActorSkinning(actor);
-            return;
+            dialoguePreviewFaceFxAnimSets[actor] = binding.AnimSet;
         }
+        animationState.SetFaceFx(binding.Asset, binding.AnimSet, binding.Line, binding.TimelineOffset);
+        UpdatePreviewActorSkinning(actor);
     }
 
     private void AttachDialoguePreviewFaceFxAsset(PreviewActorConfiguration actor)
@@ -5344,18 +5410,26 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
     private ExportEntry GetDialoguePreviewFaceFxAssetExport(PreviewActorConfiguration actor)
     {
-        ExportEntry resolved = ResolveExportReference(actor?.Construction?.FaceFxAsset, required: false);
-        if (resolved?.ClassName == "FaceFXAsset")
+        // This applies uniformly to every actor: use the FaceFXAsset discovered on the actor/pawn,
+        // one of its components, or its archetype chain. The DLG separately supplies the AnimSet
+        // and line. Player presets and actors without an imported graph fall back to the matching
+        // shared base-game asset.
+        ExportEntry importedActorAsset = ResolveExportReference(actor?.Construction?.FaceFxAsset, required: false);
+        if (importedActorAsset?.ClassName == "FaceFXAsset")
         {
-            return resolved;
+            return importedActorAsset;
         }
-        if (dialoguePreviewFaceFxPackage is null || string.IsNullOrWhiteSpace(actor?.FaceFxAssetName))
+        if (dialoguePreviewFaceFxPackage is not null && !string.IsNullOrWhiteSpace(actor?.FaceFxAssetName))
         {
-            return null;
+            ExportEntry baseGameAsset = dialoguePreviewFaceFxPackage.Exports.FirstOrDefault(export =>
+                export.ClassName == "FaceFXAsset"
+                && export.ObjectNameString.Equals(actor.FaceFxAssetName, StringComparison.OrdinalIgnoreCase));
+            if (baseGameAsset is not null)
+            {
+                return baseGameAsset;
+            }
         }
-        return dialoguePreviewFaceFxPackage.Exports.FirstOrDefault(export =>
-            export.ClassName == "FaceFXAsset"
-            && export.ObjectNameString.Equals(actor.FaceFxAssetName, StringComparison.OrdinalIgnoreCase));
+        return null;
     }
 
     internal static string GetDirectionTrackActorTag(ExportEntry track)
@@ -5524,6 +5598,23 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                 && actor.Construction.Meshes.All(mesh =>
                     ResolveExportReference(mesh.MeshExport, required: false)?.ClassName == "SkeletalMesh"))
             {
+                // Older caches may contain all of the actor meshes but no FaceFX reference because
+                // the graph is normally owned by the inherited conversation module rather than a
+                // property directly on the pawn. Repair that construction without rebuilding or
+                // replacing its cached meshes.
+                if (actor.Construction.FaceFxAsset is null
+                    && ResolveExportReference(actor.Construction.SourceActor, required: false) is { } cachedSourceActor)
+                {
+                    IEnumerable<ExportEntry> cachedRelatedExports = actor.Construction.Meshes
+                        .SelectMany(mesh => new[]
+                        {
+                            ResolveExportReference(mesh.ComponentExport, required: false),
+                            ResolveExportReference(mesh.MeshExport, required: false),
+                        })
+                        .Where(export => export is not null);
+                    actor.Construction.FaceFxAsset = CreateExportReference(
+                        FindFaceFxAsset(cachedSourceActor, cachedRelatedExports));
+                }
                 actor.ModelName = GetCachedActorModelName(actor.Construction, PreviewActorModelComponent.Body);
                 actor.HeadModelName = GetCachedActorModelName(actor.Construction, PreviewActorModelComponent.Head);
                 actor.HairModelName = GetCachedActorModelName(actor.Construction, PreviewActorModelComponent.Hair);
@@ -5850,17 +5941,31 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     {
         foreach (ExportEntry source in new[] { actor }.Concat(relatedExports).Where(export => export is not null))
         {
-            foreach ((string propertyName, ExportEntry export) in EnumerateInheritedObjectExports(source))
+            if (FindFaceFxAssetReference(source) is { } directAsset)
             {
-                if (propertyName.Contains("FaceFX", StringComparison.OrdinalIgnoreCase)
-                    && export?.ClassName == "FaceFXAsset")
+                return directAsset;
+            }
+
+            // SFXPawns and SFXStuntActors normally obtain their facial graph from an inherited
+            // SFXModule_Conversation in Modules. The pawn itself therefore has no FaceFX object
+            // property even though the in-game actor has a valid m_pDefaultFaceFXAsset.
+            foreach (ExportEntry module in FindInheritedObjectArrayExports(source, "Modules")
+                         .Where(export => export is not null))
+            {
+                if (FindFaceFxAssetReference(module) is { } moduleAsset)
                 {
-                    return export;
+                    return moduleAsset;
                 }
             }
         }
         return null;
     }
+
+    private ExportEntry FindFaceFxAssetReference(ExportEntry source) =>
+        EnumerateInheritedObjectExports(source)
+            .FirstOrDefault(pair => pair.PropertyName.Contains("FaceFX", StringComparison.OrdinalIgnoreCase)
+                                    && pair.Export?.ClassName == "FaceFXAsset")
+            .Export;
 
     private ExportEntry FindFaceOrMorphExport(ExportEntry source, string propertyName)
     {
@@ -7398,23 +7503,19 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         SceneStatus = $"Snapped keyframe at InVal {keyframe.Time:0.###} to the viewport cursor.";
     }
 
-    private void SceneViewer_PreviewMouseMove(object sender, MouseEventArgs e)
-    {
-        lastViewportCursorPosition = e.GetPosition(SceneViewer);
-    }
-
     private void SnapSelectedKeyframeToCurrentViewportCursor_Click(object sender, RoutedEventArgs e)
     {
         if (SelectedKeyframe is not { } keyframe)
         {
             return;
         }
-        if (lastViewportCursorPosition is not { } viewportPoint)
+        if (!SceneViewer.IsMouseOver)
         {
             SceneStatus = "Move the cursor over the viewport before snapping the selected keyframe.";
             return;
         }
 
+        Point viewportPoint = Mouse.GetPosition(SceneViewer);
         pendingViewportSelectedKeyframeLocation = GetViewportKeyframeLocation(viewportPoint, keyframe.Location);
         SnapSelectedKeyframeToViewport_Click(sender, e);
     }
@@ -8372,7 +8473,10 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             if (runtime.MainFaceFx is { } faceFx
                 && previewActorAnimationStates.TryGetValue(faceFx.Actor, out PreviewActorAnimationState animationState))
             {
-                dialoguePreviewFaceFxAnimSets[faceFx.Actor] = faceFx.AnimSet;
+                if (faceFx.AnimSet is not null)
+                {
+                    dialoguePreviewFaceFxAnimSets[faceFx.Actor] = faceFx.AnimSet;
+                }
                 animationState.SetFaceFx(faceFx.Asset, faceFx.AnimSet, faceFx.Line, faceFx.TimelineOffset);
                 UpdatePreviewActorSkinning(faceFx.Actor);
             }
@@ -8403,7 +8507,8 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             else
             {
                 UnregisterKeyframes();
-                keyframeTrackMoves.Clear();
+                characterTrackMoves.Clear();
+                cameraTrackMoves.Clear();
                 KeyframeList.ItemsSource = null;
                 FovKeyframeList.ItemsSource = null;
                 SelectedKeyframe = null;
@@ -9169,11 +9274,96 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         SceneViewer?.MarkRenderDirty();
     }
 
-    private void KeyframeTrackMoveTabs_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    private void CharacterTrackMoveTabs_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (!updatingKeyframeTrackTabs)
+        if (!updatingKeyframeTrackTabs && SelectedPreviewEditorCategory == "Characters")
         {
             ActivateSelectedTrackMove();
+        }
+    }
+
+    private void CameraTrackMoveTabs_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!updatingKeyframeTrackTabs && SelectedPreviewEditorCategory == "Cameras")
+        {
+            ActivateSelectedTrackMove();
+        }
+    }
+
+    private void PreviewEditorCategoryTabs_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (ActorEditorTabContent is null)
+        {
+            return;
+        }
+
+        string category = SelectedPreviewEditorCategory;
+        ActorEditorTabContent.Visibility = category == "Actors" ? Visibility.Visible : Visibility.Collapsed;
+        CharacterMovementTabContent.Visibility = category == "Characters"
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        CameraMovementTabContent.Visibility = category == "Cameras"
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        ActivateSelectedTrackMove();
+        if (category == "Actors")
+        {
+            SelectPreviewActor(PreviewActorListBox.SelectedIndex);
+        }
+    }
+
+    private void SelectedTrackKeyVisibility_Changed(object sender, RoutedEventArgs e)
+    {
+        if (updatingTrackKeyVisibilityControls || ActiveTrackMoveOption?.TrackMove is not { } trackMove)
+        {
+            return;
+        }
+
+        bool enabled = sender switch
+        {
+            CheckBox checkBox => checkBox.IsChecked == true,
+            _ => false,
+        };
+        string key = GetTrackMoveEditingKey(trackMove);
+        if (enabled)
+        {
+            tracksWithVisibleKeys.Add(key);
+        }
+        else
+        {
+            tracksWithVisibleKeys.Remove(key);
+        }
+        SceneViewer?.MarkRenderDirty();
+    }
+
+    private static string GetTrackMoveEditingKey(ExportEntry trackMove) => trackMove is null
+        ? string.Empty
+        : $"{trackMove.FileRef?.FilePath}|{trackMove.UIndex}";
+
+    private void SynchronizeTrackKeyframeEditingControls()
+    {
+        updatingTrackKeyVisibilityControls = true;
+        try
+        {
+            if (CharacterTrackKeyVisibilityCheckBox is not null)
+            {
+                TrackMovePlaybackOption character =
+                    CharacterTrackMoveTabs.SelectedItem as TrackMovePlaybackOption;
+                CharacterTrackKeyVisibilityCheckBox.IsEnabled = character?.TrackMove is not null;
+                CharacterTrackKeyVisibilityCheckBox.IsChecked = character?.TrackMove is { } characterTrack
+                    && tracksWithVisibleKeys.Contains(GetTrackMoveEditingKey(characterTrack));
+            }
+            if (CameraTrackKeyVisibilityCheckBox is not null)
+            {
+                TrackMovePlaybackOption camera = CameraTrackMoveTabs.SelectedItem as TrackMovePlaybackOption;
+                CameraTrackKeyVisibilityCheckBox.IsEnabled = camera?.TrackMove is not null;
+                CameraTrackKeyVisibilityCheckBox.IsChecked = camera?.TrackMove is { } cameraTrack
+                    && tracksWithVisibleKeys.Contains(GetTrackMoveEditingKey(cameraTrack));
+            }
+        }
+        finally
+        {
+            updatingTrackKeyVisibilityControls = false;
         }
     }
 
@@ -9181,6 +9371,25 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     {
         StopPlayback(false);
         UnregisterKeyframes();
+        SynchronizeTrackKeyframeEditingControls();
+        KeyframeEditorPanel.Visibility = IsTrackEditorCategorySelected && ActiveTrackMoveOption?.TrackMove is not null
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        CameraPlaybackPanel.Visibility = SelectedPreviewEditorCategory == "Cameras"
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        if (!IsTrackEditorCategorySelected || ActiveTrackMoveOption?.TrackMove is null)
+        {
+            KeyframeList.ItemsSource = null;
+            FovKeyframeList.ItemsSource = null;
+            FovTrackPanel.Visibility = Visibility.Collapsed;
+            SelectedFovKeyframe = null;
+            SelectedKeyframe = null;
+            RenderContext.TransformWidget.Attach = null;
+            SceneViewer?.MarkRenderDirty();
+            return;
+        }
+
         trajectorySamplesDirty = true;
         foreach (CurveEditor3DKeyframe keyframe in ActiveModel.Keyframes)
         {
@@ -9188,7 +9397,9 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         }
         KeyframeList.ItemsSource = ActiveModel.Keyframes;
         FovKeyframeList.ItemsSource = ActiveFovModel?.Keyframes;
-        FovTrackPanel.Visibility = ActiveFovModel is null ? Visibility.Collapsed : Visibility.Visible;
+        FovTrackPanel.Visibility = SelectedPreviewEditorCategory == "Cameras" && ActiveFovModel is not null
+            ? Visibility.Visible
+            : Visibility.Collapsed;
         if (ActiveFovModel?.Export is { } fovExport)
         {
             string title = fovExport.GetProperty<StrProperty>("TrackTitle")?.Value ?? fovExport.ObjectName.Instanced;
@@ -9283,7 +9494,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         if (!isPlayingMove && !isPlayingActor && !isPlayingDialogueTimeline
             && !CameraFramingMode && !suppressTrackVisualizationForCameraPreview)
         {
-            DrawTrajectory(ActiveModel);
+            DrawTrajectory(ActiveModel, AreActiveTrackKeysVisible);
             if (ShowFovIcons)
             {
                 DrawFovKeyframes(ActiveTrackMoveOption);
@@ -9339,7 +9550,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                * Matrix4x4.CreateTranslation(transform.Location);
     }
 
-    private void DrawTrajectory(CurveEditor3DModel activeModel)
+    private void DrawTrajectory(CurveEditor3DModel activeModel, bool drawKeyframes)
     {
         IReadOnlyList<Vector3> samples = GetTrajectorySamples(activeModel);
         CameraOrigin? coordinateBasis = ActiveTrackCoordinateBasis;
@@ -9360,6 +9571,10 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                 activeModel.Keyframes[i].DisplayOrigin.Location, connectorColor, 0);
         }
 
+        if (!drawKeyframes)
+        {
+            return;
+        }
         foreach (CurveEditor3DKeyframe keyframe in activeModel.Keyframes)
         {
             DrawKeyframe(keyframe);

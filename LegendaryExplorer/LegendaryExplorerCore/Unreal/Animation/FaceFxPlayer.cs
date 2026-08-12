@@ -75,7 +75,7 @@ public class FaceFxPlayer : AnimPlayer
 
     public override void SetCurrentTime(float time)
     {
-        if (FxActor is null || AnimSet is null || Line is null)
+        if (FxActor is null || Line is null)
         {
             CurrentTime = 0;
             return;

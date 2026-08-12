@@ -54,6 +54,35 @@ public class AnimationTests
     }
 
     [TestMethod]
+    public void FaceFxAssetOwnedLineAdvancesWithoutAnAnimSet()
+    {
+        var skeletalMesh = new SkeletalMesh { RefSkeleton = [] };
+        var line = new FaceFXLine
+        {
+            AnimationNames = [],
+            NumKeys = [],
+            Points =
+            [
+                new FaceFXControlPoint { time = 0 },
+                new FaceFXControlPoint { time = 1 },
+            ],
+        };
+        var asset = new FaceFXAsset
+        {
+            Names = [],
+            RefBones = [],
+            CompiledFaceGraph = [],
+            Lines = [line],
+        };
+        var player = new FaceFxPlayer(skeletalMesh) { FxActor = asset };
+        player.SetFaceFXLine(line);
+
+        player.SetCurrentTime(0.5f);
+
+        Assert.AreEqual(0.5f, player.CurrentTime);
+    }
+
+    [TestMethod]
     public void GestureMotionMaskPreservesContinuouslyEvaluatedBaseAnimation()
     {
         using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("GestureLayerTest.pcc", MEGame.LE3);

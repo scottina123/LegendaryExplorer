@@ -390,8 +390,7 @@
                           HorizontalAlignment="Stretch" Visibility="Collapsed"/>
 
             <Grid Grid.Column="2">
-                <scene3D:SceneRenderControl x:Name="SceneViewer" MaximumFramesPerSecond="60"
-                                            PreviewMouseMove="SceneViewer_PreviewMouseMove"/>
+                <scene3D:SceneRenderControl x:Name="SceneViewer" MaximumFramesPerSecond="60"/>
                 <Border x:Name="DialogueCacheLoadingOverlay" Visibility="Collapsed"
                         Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}">
                     <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="430">
@@ -405,8 +404,20 @@
             </Grid>
             <GridSplitter Grid.Column="3" Width="5" HorizontalAlignment="Stretch"/>
 
-            <ScrollViewer x:Name="PreviewEditorPanel" Grid.Column="4" VerticalScrollBarVisibility="Auto" Padding="8">
+            <Grid x:Name="PreviewEditorPanel" Grid.Column="4">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+                <TabControl x:Name="PreviewEditorCategoryTabs" Margin="8,8,8,0" Height="32"
+                            SelectionChanged="PreviewEditorCategoryTabs_SelectionChanged">
+                    <TabItem Header="Actors" Tag="Actors" IsSelected="True"/>
+                    <TabItem Header="Character Movement" Tag="Characters"/>
+                    <TabItem Header="Cameras" Tag="Cameras"/>
+                </TabControl>
+                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="8">
                 <StackPanel>
+                    <StackPanel x:Name="ActorEditorTabContent">
                     <Expander Header="Preview Actors" IsExpanded="True" Margin="0,0,0,10">
                         <StackPanel Margin="0,6,0,0">
                             <DockPanel Margin="0,0,0,4">
@@ -526,12 +537,18 @@
                             <TextBlock x:Name="PreviewActorStatusTextBlock" Margin="2,2,0,0" Opacity="0.7" TextWrapping="Wrap"/>
                         </StackPanel>
                     </Expander>
-                    <TextBlock Text="InterpTrackMove tracks" FontSize="18" FontWeight="SemiBold"/>
-                    <ListBox x:Name="KeyframeTrackMoveTabs" Margin="0,4,0,8"
+                    </StackPanel>
+                    <StackPanel x:Name="CharacterMovementTabContent" Visibility="Collapsed">
+                    <TextBlock Text="Character InterpTrackMove tracks" FontSize="18" FontWeight="SemiBold"/>
+                    <CheckBox x:Name="CharacterTrackKeyVisibilityCheckBox"
+                              Content="Show selected character track keys in viewport"
+                              Margin="0,5,0,4" Checked="SelectedTrackKeyVisibility_Changed"
+                              Unchecked="SelectedTrackKeyVisibility_Changed"/>
+                    <ListBox x:Name="CharacterTrackMoveTabs" Margin="0,4,0,8"
                              Background="Transparent" BorderThickness="0"
                              ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                              ScrollViewer.VerticalScrollBarVisibility="Disabled"
-                             SelectionChanged="KeyframeTrackMoveTabs_SelectionChanged">
+                             SelectionChanged="CharacterTrackMoveTabs_SelectionChanged">
                         <ListBox.ItemsPanel>
                             <ItemsPanelTemplate>
                                 <WrapPanel/>
@@ -571,6 +588,55 @@
                             </DataTemplate>
                         </ListBox.ItemTemplate>
                     </ListBox>
+                    </StackPanel>
+                    <StackPanel x:Name="CameraMovementTabContent" Visibility="Collapsed">
+                    <TextBlock Text="Camera InterpTrackMove tracks" FontSize="18" FontWeight="SemiBold"/>
+                    <CheckBox x:Name="CameraTrackKeyVisibilityCheckBox"
+                              Content="Show selected camera track keys in viewport"
+                              Margin="0,5,0,4" Checked="SelectedTrackKeyVisibility_Changed"
+                              Unchecked="SelectedTrackKeyVisibility_Changed"/>
+                    <ListBox x:Name="CameraTrackMoveTabs" Margin="0,4,0,8"
+                             Background="Transparent" BorderThickness="0"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                             ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                             SelectionChanged="CameraTrackMoveTabs_SelectionChanged">
+                        <ListBox.ItemsPanel>
+                            <ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate>
+                        </ListBox.ItemsPanel>
+                        <ListBox.ItemContainerStyle>
+                            <Style TargetType="ListBoxItem">
+                                <Setter Property="Margin" Value="0,0,3,3"/>
+                                <Setter Property="Padding" Value="8,4"/>
+                                <Setter Property="Background" Value="Transparent"/>
+                                <Setter Property="BorderBrush" Value="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}"/>
+                                <Setter Property="BorderThickness" Value="1"/>
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="ListBoxItem">
+                                            <Border Padding="{TemplateBinding Padding}" Background="{TemplateBinding Background}"
+                                                    BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}">
+                                                <ContentPresenter/>
+                                            </Border>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                                <Style.Triggers>
+                                    <Trigger Property="IsSelected" Value="True">
+                                        <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}"/>
+                                        <Setter Property="BorderBrush" Value="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}"/>
+                                        <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.HighlightTextBrushKey}}"/>
+                                    </Trigger>
+                                </Style.Triggers>
+                            </Style>
+                        </ListBox.ItemContainerStyle>
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding TabDisplayName}" ToolTip="{Binding TrackMove.InstancedFullPath}"/>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                    </StackPanel>
+                    <StackPanel x:Name="KeyframeEditorPanel" Visibility="Collapsed">
                     <Expander x:Name="FovTrackPanel" Header="FOVAngle (InterpTrackFloatProp)" IsExpanded="True"
                               Margin="0,4,0,8" Visibility="Collapsed">
                         <StackPanel Margin="6">
@@ -674,15 +740,13 @@
                             </StackPanel>
                         </StackPanel>
                     </Expander>
-                    <GroupBox Header="Playback" Margin="0,4,0,8">
+                    <GroupBox x:Name="CameraPlaybackPanel" Header="Camera playback" Margin="0,4,0,8">
                         <StackPanel Margin="6">
                             <WrapPanel Margin="0,0,0,6">
                                 <Button Content="Play" Click="PlayMove_Click" Loaded="PlayMoveButton_Loaded" IsEnabled="False" Margin="0,0,4,4"
                                         ToolTip="Play the move through the scene camera using the track interpolation modes"/>
                                 <Button x:Name="SnapToKeyButton" Content="Snap Camera to Key" Click="SnapCameraToKey_Click" IsEnabled="False" Margin="0,0,4,4"
                                         ToolTip="Move the camera to the selected keyframe and apply its rotation"/>
-                                <Button Content="Add Keyframe..." Click="AddKeyframe_Click" Margin="0,0,4,4" ToolTip="Add a keyframe based on the selected keyframe"/>
-                                <Button Content="Shift InterpTrack..." Click="ShiftInterpTrack_Click" Margin="0,0,4,4" ToolTip="Shift the entire interpolation track"/>
                             </WrapPanel>
                             <Grid Margin="0,0,0,4">
                                 <Grid.ColumnDefinitions>
@@ -709,6 +773,14 @@
                             <TextBlock Text="{Binding PlaybackKeyframeStatus}" TextWrapping="Wrap"/>
                         </StackPanel>
                     </GroupBox>
+                    <WrapPanel Margin="0,0,0,5">
+                        <Button Content="Add Keyframe..." Click="AddKeyframe_Click" Margin="0,0,4,4"
+                                ToolTip="Add a keyframe to only the selected TrackMove"/>
+                        <Button Content="Delete Selected Key" Click="DeleteKeyframe_Click" Margin="0,0,4,4"
+                                ToolTip="Delete the selected keyframe from only the selected TrackMove"/>
+                        <Button Content="Shift Selected Track..." Click="ShiftInterpTrack_Click" Margin="0,0,4,4"
+                                ToolTip="Shift only the selected TrackMove"/>
+                    </WrapPanel>
                     <ListBox x:Name="KeyframeList" Margin="0,4,0,10" MaxHeight="220"
                              SelectionChanged="KeyframeList_SelectionChanged"
                              MouseDoubleClick="KeyframeList_MouseDoubleClick">
@@ -886,7 +958,9 @@
                         <TextBlock Margin="0,12,0,0" Text="Select a cube or list item, then edit values or use the Translate/Rotate gizmo." TextWrapping="Wrap" Opacity="0.7"/>
                     </StackPanel>
                 </StackPanel>
+                </StackPanel>
             </ScrollViewer>
+            </Grid>
         </Grid>
     </DockPanel>
 </exportLoaderControls:ExportLoaderControl>
