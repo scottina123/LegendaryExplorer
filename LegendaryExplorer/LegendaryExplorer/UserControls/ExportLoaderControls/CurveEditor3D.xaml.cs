@@ -561,7 +561,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         public void SetTimeline(GesturePreviewExportLoader.GestureAnimationItem startingPose,
             IEnumerable<AnimationPreviewControl.AnimationTimelineClip> timeline, PackageCache packageCache,
             float? playbackDuration = null, GestureTrackOption gesture = null,
-            bool maskDialogueOverlayStaticBones = false, bool lockRootTranslation = false)
+            bool maskDialogueOverlayStaticBones = false, bool extractRootTranslation = false)
         {
             AppliedGesture = gesture;
             List<AnimationPreviewControl.AnimationTimelineClip> timelineClips = timeline.ToList();
@@ -604,7 +604,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                         Weight = 1,
                         Loop = true,
                         IsBaseLayer = true,
-                        NormalizeRootTranslation = lockRootTranslation,
+                        NormalizeRootTranslation = extractRootTranslation,
                     });
                 }
             }
@@ -638,7 +638,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                     // Gesture Preview and regular 3D editor continue showing complete clips.
                     UseMotionBoneMask = clip.UseMotionBoneMask
                                         || maskDialogueOverlayStaticBones && !clip.IsBaseLayer,
-                    NormalizeRootTranslation = lockRootTranslation,
+                    NormalizeRootTranslation = extractRootTranslation,
                 });
             }
 
@@ -4038,8 +4038,10 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                 CameraOrigin start = runtime.StartActorOrigins[actor.ActorTag];
                 TrackMovePlaybackOption trackMove = runtime.ActorTrackAssignments.GetValueOrDefault(actor.ActorTag);
                 float? movementTrackEndTime = null;
+                int movementKeyCount = 0;
                 if (trackMove?.Model?.Keyframes is { Count: > 0 } keys)
                 {
+                    movementKeyCount = keys.Count;
                     float time = Math.Clamp(segment.Duration, keys[0].Time, keys[^1].Time);
                     movementTrackEndTime = keys[^1].Time;
                     var state = new PreviewActorPlaybackState
@@ -4062,10 +4064,10 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                     animationState.SetTimeline(gesture.StartingPose, gesture.Timeline,
                         previewActorGesturePackageCache, segment.Duration, gesture,
                         maskDialogueOverlayStaticBones: true,
-                        // Runtime-cache evaluation is hidden and may extract the gesture motion
-                        // that continues after the final TrackMove key. The visible player is
-                        // configured separately and must retain its normal spline-driven root.
-                        lockRootTranslation: true);
+                        // Only a genuine movement spline may transfer gesture motion into the
+                        // actor transform inherited by the following dialogue node.
+                        extractRootTranslation: ShouldExtractDialogueGestureRootTranslation(
+                            isDialogueConversationPreview, movementKeyCount));
                     Vector3 rootMotion = movementTrackEndTime is float trackEndTime
                         ? animationState.EvaluateExtractedRootMotionDelta(trackEndTime, segment.Duration)
                         : animationState.EvaluateExtractedRootMotion(segment.Duration);
@@ -4306,8 +4308,10 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                     runtime.StartActorOrigins[actor.ActorTag]);
                 TrackMovePlaybackOption trackMove = runtime.ActorTrackAssignments.GetValueOrDefault(actor.ActorTag);
                 float? movementTrackEndTime = null;
+                int movementKeyCount = 0;
                 if (trackMove?.Model?.Keyframes is { Count: > 0 } keys)
                 {
+                    movementKeyCount = keys.Count;
                     float time = Math.Clamp(segment.Duration, keys[0].Time, keys[^1].Time);
                     movementTrackEndTime = keys[^1].Time;
                     var state = new PreviewActorPlaybackState
@@ -4330,7 +4334,8 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                     animationState.SetTimeline(gesture.StartingPose, gesture.Timeline,
                         previewActorGesturePackageCache, segment.Duration, gesture,
                         maskDialogueOverlayStaticBones: true,
-                        lockRootTranslation: true);
+                        extractRootTranslation: ShouldExtractDialogueGestureRootTranslation(
+                            isDialogueConversationPreview, movementKeyCount));
                     Vector3 rootMotion = movementTrackEndTime is float trackEndTime
                         ? animationState.EvaluateExtractedRootMotionDelta(trackEndTime, segment.Duration)
                         : animationState.EvaluateExtractedRootMotion(segment.Duration);
@@ -9249,17 +9254,26 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         animationState.SetTimeline(gesture.StartingPose, gesture.Timeline, previewActorGesturePackageCache,
             playbackDuration ?? activeDialogueSegmentRuntime?.Segment.Duration, gesture,
             maskDialogueOverlayStaticBones: isDialogueConversationPreview,
-            lockRootTranslation: ShouldLockDialogueGestureRootTranslation(isDialogueConversationPreview,
-                movementKeyCount));
+            // Keep authored locomotion on the skeletal Root during visible playback. Constant
+            // TrackMove segments such as R3 deliberately pair a held actor anchor with a walking
+            // gesture, then resynchronize the actor at the next key. Normalizing that Root here
+            // freezes the walk and applying only the post-track delta moves it from the wrong
+            // origin. Cache evaluation separately extracts the final persistent displacement.
+            extractRootTranslation: ShouldExtractDialogueGestureRootTranslation(isDialogueConversationPreview,
+                movementKeyCount, isCacheEvaluation: false));
         UpdatePreviewActorSkinning(actor);
     }
 
-    internal static bool ShouldLockDialogueGestureRootTranslation(bool isConversationPreview,
-        int movementKeyCount)
+    internal static bool ShouldExtractDialogueGestureRootTranslation(bool isConversationPreview,
+        int movementKeyCount, bool isCacheEvaluation = true)
     {
-        // A one-key TrackMove still owns an authored actor anchor. Keep its animation Root in the
-        // skeletal path so consecutive anchored nodes do not accumulate actor-space displacement.
-        return isConversationPreview && movementKeyCount == 0;
+        // Only a multi-key TrackMove establishes an actor-space locomotion path. Its gesture root
+        // may continue that motion after the final spline key. Without a TrackMove, keep motion on
+        // the skeletal Root so it cannot displace the pawn inherited by the next dialogue node. A
+        // one-key TrackMove is an authored anchor and likewise must not accumulate gesture motion.
+        // Visible playback retains the Root on the skeleton because constant TrackMove segments
+        // use that local translation to travel between their authored synchronization keys.
+        return isConversationPreview && isCacheEvaluation && movementKeyCount > 1;
     }
 
     internal static CameraOrigin ApplyDialogueGestureRootMotion(CameraOrigin origin, Vector3 localTranslation)

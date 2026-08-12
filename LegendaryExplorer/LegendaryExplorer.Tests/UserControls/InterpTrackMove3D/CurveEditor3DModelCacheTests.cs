@@ -15,25 +15,32 @@ namespace LegendaryExplorer.Tests.UserControls.InterpTrackMove3D;
 public class CurveEditor3DModelCacheTests
 {
     [TestMethod]
-    public void GestureRootTranslationRemainsEnabledForSplineDrivenActors()
+    public void GestureRootTranslationIsExtractedForSplineDrivenActors()
     {
-        Assert.IsFalse(CurveEditor3D.ShouldLockDialogueGestureRootTranslation(
+        Assert.IsTrue(CurveEditor3D.ShouldExtractDialogueGestureRootTranslation(
             isConversationPreview: true, movementKeyCount: 2));
     }
 
     [TestMethod]
-    public void GestureRootTranslationRemainsEnabledForSingleKeyActorAnchor()
+    public void VisibleSplinePlaybackKeepsAuthoredLocomotionOnTheSkeletalRoot()
     {
-        Assert.IsFalse(CurveEditor3D.ShouldLockDialogueGestureRootTranslation(
+        Assert.IsFalse(CurveEditor3D.ShouldExtractDialogueGestureRootTranslation(
+            isConversationPreview: true, movementKeyCount: 2, isCacheEvaluation: false));
+    }
+
+    [TestMethod]
+    public void GestureRootTranslationIsNotExtractedForSingleKeyActorAnchor()
+    {
+        Assert.IsFalse(CurveEditor3D.ShouldExtractDialogueGestureRootTranslation(
             isConversationPreview: true, movementKeyCount: 1));
     }
 
     [TestMethod]
-    public void GestureRootTranslationIsLockedWhenTheNodeHasNoActorTrackMove()
+    public void GestureRootTranslationIsNotExtractedWithoutAnActorTrackMove()
     {
-        Assert.IsTrue(CurveEditor3D.ShouldLockDialogueGestureRootTranslation(
+        Assert.IsFalse(CurveEditor3D.ShouldExtractDialogueGestureRootTranslation(
             isConversationPreview: true, movementKeyCount: 0));
-        Assert.IsFalse(CurveEditor3D.ShouldLockDialogueGestureRootTranslation(
+        Assert.IsFalse(CurveEditor3D.ShouldExtractDialogueGestureRootTranslation(
             isConversationPreview: false, movementKeyCount: 0));
     }
 
