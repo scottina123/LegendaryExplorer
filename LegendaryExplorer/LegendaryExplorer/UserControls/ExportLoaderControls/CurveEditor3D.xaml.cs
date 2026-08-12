@@ -6827,7 +6827,6 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         else
         {
             SelectedKeyframe.DisplayLocation += locationDelta;
-            SnapCameraToKey(SelectedKeyframe, focusViewport: false);
         }
     }
 
