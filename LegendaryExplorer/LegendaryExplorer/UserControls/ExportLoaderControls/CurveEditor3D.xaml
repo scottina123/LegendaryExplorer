@@ -185,11 +185,11 @@
                     <Button x:Name="DialogueNodeCommitButton" Grid.Column="3" Content="Commit Node" Margin="0,0,8,0"
                             Padding="8,3" Visibility="Collapsed" IsEnabled="False"
                             Click="DialogueNodeCommit_Click"
-                            ToolTip="Write only the active node's cached TrackMove/FOV edits; other node caches are unchanged."/>
+                            ToolTip="Write the active node's cached TrackMove/FOV edits and staged Package Editor changes to the PCC; other node curve caches are unchanged."/>
                     <Button x:Name="DialogueCacheCommitAllButton" Grid.Column="4" Content="Commit Entire Cache" Margin="0,0,8,0"
                             Padding="8,3" Visibility="Collapsed" IsEnabled="False"
                             Click="DialogueCacheCommitAll_Click"
-                            ToolTip="Write every pending TrackMove/FOV edit from this conversation cache to the PCC."/>
+                            ToolTip="Write every pending TrackMove/FOV edit and staged Package Editor change from this conversation cache to the PCC."/>
                     <Button x:Name="DialogueCacheSaveButton" Grid.Column="5" Content="Save Cache..." Margin="0,0,5,0"
                             Padding="8,3" Visibility="Collapsed" Click="DialogueCacheSave_Click"
                             ToolTip="Save the complete conversation cache as a persistent preset."/>
@@ -373,18 +373,27 @@
                 <ColumnDefinition Width="340"/>
             </Grid.ColumnDefinitions>
 
-            <Border x:Name="DialoguePreviewActorPanel" Grid.Column="0" Width="260" Padding="8"
+            <Border x:Name="DialoguePreviewActorPanel" Grid.Column="0" Width="260"
                     BorderBrush="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}" BorderThickness="0,0,1,0"
                     Visibility="Collapsed">
-                <DockPanel>
-                    <TextBlock DockPanel.Dock="Top" Text="Dialogue Actors" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,8"/>
-                    <StackPanel DockPanel.Dock="Bottom" Visibility="Collapsed">
-                        <exportLoaderControls:Soundpanel x:Name="DialoguePreviewSoundpanel" MiniPlayerMode="True"/>
-                        <exportLoaderControls:Soundpanel x:Name="FaceOnlyVoSoundpanel" MiniPlayerMode="True"/>
-                    </StackPanel>
-                    <ListBox x:Name="DialoguePreviewActorListBox" DisplayMemberPath="DisplayName"
-                             SelectionChanged="DialoguePreviewActorListBox_SelectionChanged"/>
-                </DockPanel>
+                <TabControl x:Name="DialoguePreviewLeftTabs"
+                            SelectionChanged="DialoguePreviewLeftTabs_SelectionChanged">
+                    <TabItem Header="Actors" IsSelected="True">
+                        <DockPanel Margin="8">
+                            <TextBlock DockPanel.Dock="Top" Text="Dialogue Actors" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,8"/>
+                            <StackPanel DockPanel.Dock="Bottom" Visibility="Collapsed">
+                                <exportLoaderControls:Soundpanel x:Name="DialoguePreviewSoundpanel" MiniPlayerMode="True"/>
+                                <exportLoaderControls:Soundpanel x:Name="FaceOnlyVoSoundpanel" MiniPlayerMode="True"/>
+                            </StackPanel>
+                            <ListBox x:Name="DialoguePreviewActorListBox" DisplayMemberPath="DisplayName"
+                                     SelectionChanged="DialoguePreviewActorListBox_SelectionChanged"/>
+                        </DockPanel>
+                    </TabItem>
+                    <TabItem x:Name="DialoguePackageEditorTab" Header="Package Editor" Visibility="Collapsed"
+                             ToolTip="Edit the active node's InterpData in working memory; use Commit Node or Commit Entire Cache to apply it to the PCC.">
+                        <ContentControl x:Name="DialoguePackageEditorHost"/>
+                    </TabItem>
+                </TabControl>
             </Border>
             <GridSplitter x:Name="DialoguePreviewActorPanelSplitter" Grid.Column="1" Width="5"
                           HorizontalAlignment="Stretch" Visibility="Collapsed"/>

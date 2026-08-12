@@ -18,6 +18,7 @@ using LegendaryExplorer.SharedUI;
 using LegendaryExplorer.Tools.AssetDatabase;
 using LegendaryExplorer.Tools.LevelEditor;
 using LegendaryExplorer.Tools.LevelEditor.Scene3D;
+using LegendaryExplorer.Tools.PackageEditor;
 using LegendaryExplorer.Tools.PackageEditor.Experiments;
 using LegendaryExplorer.Tools.InterpEditor;
 using LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator;
@@ -47,7 +48,8 @@ using Key = System.Windows.Input.Key;
 
 namespace LegendaryExplorer.UserControls.ExportLoaderControls;
 
-public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorContext, ISceneRenderContextConfigurable
+public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorContext, ISceneRenderContextConfigurable,
+    IWeakPackageUser
 {
     private enum DialoguePreviewAudioGender
     {
@@ -221,8 +223,10 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         public Dictionary<string, DialogueGesturePoseState> EndActorGestureStates { get; } =
             new(StringComparer.OrdinalIgnoreCase);
         public bool HasPendingPreviewChanges { get; set; }
+        public bool HasPendingPackageChanges { get; set; }
 
         public bool HasPendingChanges => HasPendingPreviewChanges
+                                         || HasPendingPackageChanges
                                          || TrackMoves.Any(option => option.Model?.HasPendingChanges == true)
                                          || TrackMoves.Select(option => option.FovModel).Where(model => model is not null)
                                              .Distinct().Any(model => model.HasPendingChanges);
@@ -965,6 +969,13 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     private readonly Dictionary<string, DialogueNodeReference> dialogueBranchSelections = new(StringComparer.Ordinal);
     private readonly Dictionary<DialogueTimelineSegment, DialogueSegmentRuntime> dialogueRuntimeCache = [];
     private readonly Dictionary<DialogueNodeExtended, IReadOnlyList<ExportEntry>> dialogueNodeInterpDataCache = [];
+    private IMEPackage dialoguePreviewWorkingPackage;
+    private IMEPackage dialoguePreviewSourcePackage;
+    private PackageEditorWindow dialoguePackageEditor;
+    private int dialogueWorkingCommittedNameCount;
+    private int dialogueWorkingCommittedImportCount;
+    private int dialogueWorkingCommittedExportCount;
+    private bool suppressDialoguePackageEditTracking;
     private DialogueCachePreset loadedDialogueCachePreset;
     private DialogueTimelineSegment dialogueTimelineStartSegment;
     private double dialogueTimelineTreeWidth = 230;
@@ -1190,6 +1201,11 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         loadedDialogueCachePreset = null;
         isDialogueConversationPreview = conversationPreview;
         dialogueNodeInterpDataCache.Clear();
+        DisposeDialoguePackageEditor();
+        if (conversationPreview)
+        {
+            InitializeDialogueWorkingPackage(conversation.Export.FileRef, startNode.InterpData?.UIndex ?? 0);
+        }
         dialogueNodePreview = new DialogueNodePreviewConfiguration(conversation, startNode, actors, levelPaths, stageContext,
             playerSelection, cachePreset, newCacheLabel, 0);
         BuildDialoguePreviewActorTagAliases(actors, stageContext);
@@ -1197,6 +1213,9 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         BuildDialogueTimeline(startNode);
         DialoguePreviewActorPanel.Visibility = conversationPreview ? Visibility.Collapsed : Visibility.Visible;
         DialoguePreviewActorPanelSplitter.Visibility = conversationPreview ? Visibility.Collapsed : Visibility.Visible;
+        DialoguePackageEditorTab.Visibility = conversationPreview ? Visibility.Visible : Visibility.Collapsed;
+        DialoguePreviewLeftTabs.SelectedIndex = 0;
+        DialoguePreviewActorPanel.Width = 260;
         DialogueTimelinePanel.Visibility = Visibility.Collapsed;
         PreviewEditorPanel.Visibility = conversationPreview ? Visibility.Collapsed : Visibility.Visible;
         DialogueNodeCommitButton.Visibility = conversationPreview ? Visibility.Visible : Visibility.Collapsed;
@@ -1211,6 +1230,99 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         // editor's manual Z override must never be allowed to flatten dialogue playback.
         ActorPlaybackTrackZCheckBox.IsChecked = true;
         ActorPlaybackTrackZCheckBox.IsEnabled = false;
+    }
+
+    private void InitializeDialogueWorkingPackage(IMEPackage sourcePackage, int initialUIndex)
+    {
+        ArgumentNullException.ThrowIfNull(sourcePackage);
+
+        dialoguePreviewSourcePackage = sourcePackage;
+        using MemoryStream snapshot = sourcePackage.SaveToStream(false);
+        snapshot.Position = 0;
+        dialoguePreviewWorkingPackage = MEPackageHandler.OpenMEPackageFromStream(snapshot,
+            sourcePackage.FilePath, useSharedPackageCache: false);
+        dialoguePreviewWorkingPackage.IsMemoryPackage = true;
+        dialoguePreviewWorkingPackage.WeakUsers.Add(this);
+        dialogueWorkingCommittedNameCount = dialoguePreviewWorkingPackage.Names.Count;
+        dialogueWorkingCommittedImportCount = dialoguePreviewWorkingPackage.Imports.Count;
+        dialogueWorkingCommittedExportCount = dialoguePreviewWorkingPackage.Exports.Count;
+
+        dialoguePackageEditor = new PackageEditorWindow(submitTelemetry: false);
+        _ = new System.Windows.Interop.WindowInteropHelper(dialoguePackageEditor).EnsureHandle();
+        dialoguePackageEditor.LoadPackage(dialoguePreviewWorkingPackage, initialUIndex);
+        FrameworkElement workspace = dialoguePackageEditor.PackageEditorWorkspace;
+        if (workspace.Parent is Panel parent)
+        {
+            parent.Children.Remove(workspace);
+        }
+        workspace.DataContext = dialoguePackageEditor;
+        DialoguePackageEditorHost.Content = workspace;
+    }
+
+    private void DisposeDialoguePackageEditor()
+    {
+        if (DialoguePackageEditorHost is not null)
+        {
+            DialoguePackageEditorHost.Content = null;
+        }
+
+        IMEPackage workingPackage = dialoguePreviewWorkingPackage;
+        if (workingPackage is not null)
+        {
+            workingPackage.WeakUsers.Remove(this);
+        }
+        if (dialoguePackageEditor is not null)
+        {
+            if (workingPackage is not null && ReferenceEquals(dialoguePackageEditor.Pcc, workingPackage))
+            {
+                workingPackage.Release(dialoguePackageEditor);
+            }
+            dialoguePackageEditor.Close();
+            dialoguePackageEditor = null;
+        }
+        workingPackage?.Dispose();
+        dialoguePreviewWorkingPackage = null;
+        dialoguePreviewSourcePackage = null;
+        dialogueWorkingCommittedNameCount = 0;
+        dialogueWorkingCommittedImportCount = 0;
+        dialogueWorkingCommittedExportCount = 0;
+        suppressDialoguePackageEditTracking = false;
+    }
+
+    private void DialoguePreviewLeftTabs_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!ReferenceEquals(e.Source, DialoguePreviewLeftTabs))
+        {
+            return;
+        }
+
+        bool packageEditorSelected = ReferenceEquals(DialoguePreviewLeftTabs.SelectedItem,
+            DialoguePackageEditorTab);
+        DialoguePreviewActorPanel.Width = packageEditorSelected ? 760 : 260;
+        if (!packageEditorSelected || dialoguePackageEditor is null)
+        {
+            return;
+        }
+
+        PauseDialogueTimeline();
+        NavigateDialoguePackageEditorToActiveNode();
+    }
+
+    private void NavigateDialoguePackageEditorToActiveNode()
+    {
+        if (dialoguePackageEditor?.Pcc is null || dialoguePackageEditor.IsBusy
+                                                 || activeDialogueTimelineSegment is null)
+        {
+            return;
+        }
+
+        ExportEntry interpData = GetDialogueNodeInterpDatas(activeDialogueTimelineSegment.Node)
+            .FirstOrDefault();
+        if (interpData is not null
+            && dialoguePackageEditor.NavigateToEntryCommand?.CanExecute(interpData) == true)
+        {
+            dialoguePackageEditor.NavigateToEntryCommand.Execute(interpData);
+        }
     }
 
     private void BuildDialogueTimeline(DialogueNodeExtended startNode)
@@ -1536,8 +1648,27 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         }
 
         cached = ResolveDialogueNodeInterpDatas(dialogueNodePreview?.Conversation, node);
+        if (dialoguePreviewWorkingPackage is not null)
+        {
+            cached = cached.Select(MapDialogueExportToWorkingPackage)
+                .Where(export => export is not null)
+                .ToArray();
+        }
         dialogueNodeInterpDataCache[node] = cached;
         return cached;
+    }
+
+    private ExportEntry MapDialogueExportToWorkingPackage(ExportEntry export)
+    {
+        if (export is null || dialoguePreviewWorkingPackage is null
+                           || export.FileRef != dialoguePreviewSourcePackage)
+        {
+            return export;
+        }
+
+        return dialoguePreviewWorkingPackage.TryGetUExport(export.UIndex, out ExportEntry workingExport)
+            ? workingExport
+            : null;
     }
 
     private static IReadOnlyList<ExportEntry> ResolveDialogueNodeInterpDatas(ConversationExtended conversation,
@@ -2397,6 +2528,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         previewActorGesturePackageCache.ReleasePackages();
         dialoguePreviewFaceFxPackage?.Dispose();
         dialoguePreviewFaceFxPackage = null;
+        DisposeDialoguePackageEditor();
         dialogueNodePreview?.StageContext.Dispose();
         SceneViewer.Dispose();
     }
@@ -4129,7 +4261,8 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             return null;
         }
 
-        IMEPackage package = new[] { dialogueNodePreview.Conversation.Export.FileRef }
+        IMEPackage package = new[] { dialoguePreviewWorkingPackage, dialogueNodePreview.Conversation.Export.FileRef }
+            .Where(candidate => candidate is not null)
             .Concat(levelPackages)
             .FirstOrDefault(candidate => string.Equals(candidate.FilePath, reference.PackagePath,
                 StringComparison.OrdinalIgnoreCase));
@@ -8029,6 +8162,190 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         StartDialogueTimelinePlaybackAt(node.StartTime, reconstruct: true);
     }
 
+    public void HandleUpdate(List<PackageUpdate> updates)
+    {
+        if (!Dispatcher.CheckAccess())
+        {
+            Dispatcher.BeginInvoke(() => HandleUpdate(updates));
+            return;
+        }
+        if (!isDialogueConversationPreview || dialoguePreviewWorkingPackage is null
+                                            || suppressDialoguePackageEditTracking
+                                            || !HasDialogueWorkingPackageChanges())
+        {
+            return;
+        }
+
+        bool markedRuntime = false;
+        foreach (PackageUpdate update in updates)
+        {
+            if (!dialoguePreviewWorkingPackage.TryGetUExport(update.Index, out ExportEntry changedExport))
+            {
+                continue;
+            }
+
+            foreach (DialogueSegmentRuntime runtime in dialogueRuntimeCache.Values)
+            {
+                bool belongsToNode = GetDialogueNodeInterpDatas(runtime.Segment.Node).Any(interpData =>
+                    changedExport == interpData || changedExport.IsDescendantOf(interpData));
+                if (belongsToNode)
+                {
+                    runtime.HasPendingPackageChanges = true;
+                    markedRuntime = true;
+                }
+            }
+        }
+        if (!markedRuntime && activeDialogueSegmentRuntime is not null)
+        {
+            activeDialogueSegmentRuntime.HasPendingPackageChanges = true;
+        }
+        DialoguePackageEditorTab.Header = "Package Editor *";
+        PauseDialogueTimeline();
+        UpdateDialogueNodeCommitButton();
+    }
+
+    private bool HasDialogueWorkingPackageChanges()
+    {
+        if (dialoguePreviewWorkingPackage is null || dialoguePreviewSourcePackage is null)
+        {
+            return false;
+        }
+
+        return dialoguePreviewWorkingPackage.Names.Count != dialoguePreviewSourcePackage.Names.Count
+               || !dialoguePreviewWorkingPackage.Names.SequenceEqual(dialoguePreviewSourcePackage.Names)
+               || dialoguePreviewWorkingPackage.Imports.Count != dialogueWorkingCommittedImportCount
+               || dialoguePreviewWorkingPackage.Exports.Count != dialogueWorkingCommittedExportCount
+               || dialoguePreviewWorkingPackage.Imports.Any(entry => entry.EntryHasPendingChanges)
+               || dialoguePreviewWorkingPackage.Exports.Any(entry => entry.EntryHasPendingChanges);
+    }
+
+    private bool CommitDialogueWorkingPackageChanges(out int changedEntryCount, out string error)
+    {
+        changedEntryCount = 0;
+        error = null;
+        if (dialoguePreviewWorkingPackage is null || dialoguePreviewSourcePackage is null
+                                                        || !HasDialogueWorkingPackageChanges())
+        {
+            return true;
+        }
+
+        IMEPackage working = dialoguePreviewWorkingPackage;
+        IMEPackage source = dialoguePreviewSourcePackage;
+        if (source.Names.Count != dialogueWorkingCommittedNameCount
+            || source.Imports.Count != dialogueWorkingCommittedImportCount
+            || source.Exports.Count != dialogueWorkingCommittedExportCount)
+        {
+            error = "The source package structure changed outside the preview. Close and reopen the preview before committing its package edits.";
+            return false;
+        }
+        if (working.Names.Count < dialogueWorkingCommittedNameCount
+            || working.Imports.Count < dialogueWorkingCommittedImportCount
+            || working.Exports.Count < dialogueWorkingCommittedExportCount)
+        {
+            error = "The preview package removed table entries in a way that cannot be merged into the open source package.";
+            return false;
+        }
+
+        suppressDialoguePackageEditTracking = true;
+        try
+        {
+            for (int index = 0; index < dialogueWorkingCommittedNameCount; index++)
+            {
+                if (!string.Equals(source.Names[index], working.Names[index], StringComparison.Ordinal))
+                {
+                    source.replaceName(index, working.Names[index]);
+                }
+            }
+            for (int index = dialogueWorkingCommittedNameCount; index < working.Names.Count; index++)
+            {
+                int sourceIndex = source.FindNameOrAdd(working.Names[index]);
+                if (sourceIndex != index)
+                {
+                    error = $"Unable to preserve name index {index} while merging the preview package.";
+                    return false;
+                }
+            }
+
+            for (int index = dialogueWorkingCommittedImportCount; index < working.Imports.Count; index++)
+            {
+                ImportEntry workingImport = working.Imports[index];
+                var sourceImport = new ImportEntry(source) { Header = workingImport.Header };
+                source.AddImport(sourceImport);
+                if (sourceImport.UIndex != workingImport.UIndex)
+                {
+                    error = $"Unable to preserve import index {workingImport.UIndex} while merging the preview package.";
+                    return false;
+                }
+                changedEntryCount++;
+            }
+            for (int index = dialogueWorkingCommittedExportCount; index < working.Exports.Count; index++)
+            {
+                ExportEntry workingExport = working.Exports[index];
+                var sourceExport = new ExportEntry(source, workingExport.Header) { Data = workingExport.Data };
+                source.AddExport(sourceExport);
+                if (sourceExport.UIndex != workingExport.UIndex)
+                {
+                    error = $"Unable to preserve export index {workingExport.UIndex} while merging the preview package.";
+                    return false;
+                }
+                changedEntryCount++;
+            }
+
+            for (int index = 0; index < dialogueWorkingCommittedImportCount; index++)
+            {
+                ImportEntry workingImport = working.Imports[index];
+                if (!workingImport.EntryHasPendingChanges)
+                {
+                    continue;
+                }
+                source.Imports[index].Header = workingImport.Header;
+                changedEntryCount++;
+            }
+            for (int index = 0; index < dialogueWorkingCommittedExportCount; index++)
+            {
+                ExportEntry workingExport = working.Exports[index];
+                if (!workingExport.EntryHasPendingChanges)
+                {
+                    continue;
+                }
+                ExportEntry sourceExport = source.Exports[index];
+                sourceExport.Header = workingExport.Header;
+                sourceExport.Data = workingExport.Data;
+                changedEntryCount++;
+            }
+
+            dialogueWorkingCommittedNameCount = working.Names.Count;
+            dialogueWorkingCommittedImportCount = working.Imports.Count;
+            dialogueWorkingCommittedExportCount = working.Exports.Count;
+            foreach (ImportEntry import in working.Imports)
+            {
+                import.HeaderChanged = false;
+                import.EntryHasPendingChanges = false;
+            }
+            foreach (ExportEntry export in working.Exports)
+            {
+                export.DataChanged = false;
+                export.HeaderChanged = false;
+                export.EntryHasPendingChanges = false;
+            }
+            foreach (DialogueSegmentRuntime runtime in dialogueRuntimeCache.Values)
+            {
+                runtime.HasPendingPackageChanges = false;
+            }
+            DialoguePackageEditorTab.Header = "Package Editor";
+            return true;
+        }
+        catch (Exception exception)
+        {
+            error = exception.Message;
+            return false;
+        }
+        finally
+        {
+            suppressDialoguePackageEditTracking = false;
+        }
+    }
+
     private void DialogueNodeCommit_Click(object sender, RoutedEventArgs e)
     {
         if (!isDialogueConversationPreview || activeDialogueSegmentRuntime is null)
@@ -8046,9 +8363,20 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         {
             fovModel.CommitChanges();
         }
+        if (!CommitDialogueWorkingPackageChanges(out int changedEntryCount, out string error))
+        {
+            activeDialogueSegmentRuntime.HasPendingPackageChanges = true;
+            MessageBox.Show(Window.GetWindow(this), $"Unable to commit the cached package edits: {error}",
+                "Commit Dialogue Node", MessageBoxButton.OK, MessageBoxImage.Error);
+            UpdateDialogueNodeCommitButton();
+            return;
+        }
         activeDialogueSegmentRuntime.HasPendingPreviewChanges = false;
+        activeDialogueSegmentRuntime.HasPendingPackageChanges = false;
         UpdateDialogueNodeCommitButton();
-        SceneStatus = $"Committed cached edits for {activeDialogueSegmentRuntime.Segment.NodeLabel}.";
+        SceneStatus = changedEntryCount > 0
+            ? $"Committed cached edits for {activeDialogueSegmentRuntime.Segment.NodeLabel}, including {changedEntryCount} package entr{(changedEntryCount == 1 ? "y" : "ies")}."
+            : $"Committed cached edits for {activeDialogueSegmentRuntime.Segment.NodeLabel}.";
     }
 
     private void DialogueCacheCommitAll_Click(object sender, RoutedEventArgs e)
@@ -8065,7 +8393,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             return;
         }
         if (MessageBox.Show(Window.GetWindow(this),
-                $"Commit all cached TrackMove and FOV edits from {pendingRuntimes.Length} node(s) to "
+                $"Commit all cached TrackMove, FOV, and Package Editor edits from {pendingRuntimes.Length} node(s) to "
                 + $"{Path.GetFileName(dialogueNodePreview.Conversation.Export.FileRef.FilePath)}?",
                 "Commit Entire Dialogue Cache", MessageBoxButton.YesNo, MessageBoxImage.Warning)
             != MessageBoxResult.Yes)
@@ -8083,12 +8411,26 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         {
             fovModel.CommitChanges();
         }
+        if (!CommitDialogueWorkingPackageChanges(out int changedEntryCount, out string error))
+        {
+            foreach (DialogueSegmentRuntime runtime in pendingRuntimes)
+            {
+                runtime.HasPendingPackageChanges = true;
+            }
+            MessageBox.Show(Window.GetWindow(this), $"Unable to commit the cached package edits: {error}",
+                "Commit Entire Dialogue Cache", MessageBoxButton.OK, MessageBoxImage.Error);
+            UpdateDialogueNodeCommitButton();
+            return;
+        }
         foreach (DialogueSegmentRuntime runtime in pendingRuntimes)
         {
             runtime.HasPendingPreviewChanges = false;
+            runtime.HasPendingPackageChanges = false;
         }
         UpdateDialogueNodeCommitButton();
-        SceneStatus = $"Committed the entire dialogue cache ({pendingRuntimes.Length} changed node(s)) to the PCC.";
+        SceneStatus = changedEntryCount > 0
+            ? $"Committed the entire dialogue cache ({pendingRuntimes.Length} changed node(s), {changedEntryCount} package entr{(changedEntryCount == 1 ? "y" : "ies")}) to the PCC."
+            : $"Committed the entire dialogue cache ({pendingRuntimes.Length} changed node(s)) to the PCC.";
     }
 
     private void DialogueCacheSave_Click(object sender, RoutedEventArgs e) => SaveDialogueCachePresetInteractively();
@@ -8522,6 +8864,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         {
             suppressDialogueCacheEditTracking = false;
         }
+        NavigateDialoguePackageEditorToActiveNode();
         UpdateDialogueNodeCommitButton();
     }
 

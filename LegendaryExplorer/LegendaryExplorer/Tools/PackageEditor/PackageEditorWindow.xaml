@@ -394,7 +394,7 @@
                     </StackPanel>
                 </StatusBarItem>
             </StatusBar>
-            <Grid>
+            <Grid x:Name="PackageEditorWorkspace">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="1*"/>
@@ -660,13 +660,13 @@
                         <TabItem.Header>
                             <TextBlock Text="Properties" ToolTip="Edit UnrealScript properties on exports"/>
                         </TabItem.Header>
-                        <exportLoaderControls:InterpreterExportLoader x:Name="InterpreterTab_Interpreter" SubstituteImageForHexBox="{Binding IsBusy, RelativeSource={RelativeSource AncestorType=Window}}" NavigateToEntryCommand="{Binding NavigateToEntryCommand, RelativeSource={RelativeSource AncestorType=Window}}"/>
+                        <exportLoaderControls:InterpreterExportLoader x:Name="InterpreterTab_Interpreter" SubstituteImageForHexBox="{Binding Source={StaticResource bindingProxy}, Path=Data.IsBusy}" NavigateToEntryCommand="{Binding Source={StaticResource bindingProxy}, Path=Data.NavigateToEntryCommand}"/>
                     </TabItem>
                     <TabItem Name="Metadata_Tab" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}">
                         <TabItem.Header>
                             <TextBlock Text="Metadata" ToolTip="Edit entry metadata such as class, object name, etc"/>
                         </TabItem.Header>
-                        <exportLoaderControls:EntryMetadataExportLoader x:Name="MetadataTab_MetadataEditor" SubstituteImageForHexBox="{Binding IsBusy, RelativeSource={RelativeSource AncestorType=Window}}"/>
+                        <exportLoaderControls:EntryMetadataExportLoader x:Name="MetadataTab_MetadataEditor" SubstituteImageForHexBox="{Binding Source={StaticResource bindingProxy}, Path=Data.IsBusy}"/>
                     </TabItem>
                     <TabItem Name="Bio2DAViewer_Tab" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}">
                         <TabItem.Header>
@@ -678,13 +678,13 @@
                         <TabItem.Header>
                             <TextBlock Text="Texture" ToolTip="View texture"/>
                         </TabItem.Header>
-                        <exportLoaderControls:TextureViewerExportLoader x:Name="EmbeddedTextureViewerTab_EmbededTextureViewer" HostingControl="{Binding RelativeSource={RelativeSource AncestorType=Window}}"/>
+                        <exportLoaderControls:TextureViewerExportLoader x:Name="EmbeddedTextureViewerTab_EmbededTextureViewer" HostingControl="{Binding Source={StaticResource bindingProxy}, Path=Data}"/>
                     </TabItem>
                     <TabItem Name="BinaryInterpreter_Tab" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}">
                         <TabItem.Header>
                             <TextBlock Text="Binary Interpreter" ToolTip="View and edit binary data for supported classes"/>
                         </TabItem.Header>
-                        <exportLoaderControls:BinaryInterpreterWPF x:Name="BinaryInterpreterTab_BinaryInterpreter" SubstituteImageForHexBox="{Binding IsBusy, RelativeSource={RelativeSource AncestorType=Window}}" NavigateToEntryCommand="{Binding NavigateToEntryCommand, RelativeSource={RelativeSource AncestorType=Window}}" HostingControl="{Binding RelativeSource={RelativeSource AncestorType=Window}}"/>
+                        <exportLoaderControls:BinaryInterpreterWPF x:Name="BinaryInterpreterTab_BinaryInterpreter" SubstituteImageForHexBox="{Binding Source={StaticResource bindingProxy}, Path=Data.IsBusy}" NavigateToEntryCommand="{Binding Source={StaticResource bindingProxy}, Path=Data.NavigateToEntryCommand}" HostingControl="{Binding Source={StaticResource bindingProxy}, Path=Data}"/>
                     </TabItem>
                     <TabItem Name="MeshRenderer_Tab" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}">
                         <TabItem.Header>
@@ -702,7 +702,7 @@
                         <TabItem.Header>
                             <TextBlock Text="Bytecode" ToolTip="View and edit UnrealScript bytecode"/>
                         </TabItem.Header>
-                        <exportLoaderControls:BytecodeEditor x:Name="BytecodeTab_BytecodeEditor" SubstituteImageForHexBox="{Binding IsBusy, RelativeSource={RelativeSource AncestorType=Window}}"/>
+                        <exportLoaderControls:BytecodeEditor x:Name="BytecodeTab_BytecodeEditor" SubstituteImageForHexBox="{Binding Source={StaticResource bindingProxy}, Path=Data.IsBusy}"/>
                     </TabItem>
                     <TabItem Name="Script_Tab" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}">
                         <TabItem.Header>
@@ -732,7 +732,7 @@
                         <TabItem.Header>
                             <TextBlock Text="Sound" ToolTip="Edit and play audio"/>
                         </TabItem.Header>
-                        <exportLoaderControls:Soundpanel x:Name="SoundTab_Soundpanel" HostingControl="{Binding RelativeSource={RelativeSource AncestorType=Window}}"/>
+                        <exportLoaderControls:Soundpanel x:Name="SoundTab_Soundpanel" HostingControl="{Binding Source={StaticResource bindingProxy}, Path=Data}"/>
                     </TabItem>
                     <TabItem Name="JPEXLauncher_Tab" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}">
                         <TabItem.Header>
@@ -786,7 +786,7 @@
                         <TabItem.Header>
                             <TextBlock Text="AnimNode" ToolTip="AnimNode viewer"/>
                         </TabItem.Header>
-                        <exportLoaderControls:AnimNodeExportLoader x:Name="AnimNodeTab_AnimNodeLoader" NavigateToEntryCommand="{Binding NavigateToEntryCommand, RelativeSource={RelativeSource AncestorType=Window}}"/>
+                        <exportLoaderControls:AnimNodeExportLoader x:Name="AnimNodeTab_AnimNodeLoader" NavigateToEntryCommand="{Binding Source={StaticResource bindingProxy}, Path=Data.NavigateToEntryCommand}"/>
                     </TabItem>
                     <TabItem Name="ActorPreview_Tab" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}">
                         <TabItem.Header>
