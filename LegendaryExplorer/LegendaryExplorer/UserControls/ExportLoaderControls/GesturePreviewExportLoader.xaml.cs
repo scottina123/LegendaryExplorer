@@ -620,6 +620,24 @@ public partial class GesturePreviewExportLoader : ExportLoaderControl
             GestureAnimationItem pose = items.FirstOrDefault(item => item.SlotName == "Pose" && item.AnimationExport is not null);
             GestureAnimationItem gesture = items.FirstOrDefault(item => item.SlotName == "Gesture" && item.AnimationExport is not null);
             GestureAnimationItem transition = items.FirstOrDefault(item => item.SlotName == "Transition" && item.AnimationExport is not null);
+            float? transitionStart = null;
+            float? transitionEnd = null;
+            float transitionBlendIn = 0;
+            float transitionBlendOut = 0;
+            if (transition != null)
+            {
+                transitionBlendOut = settings.TransitionBlendTime > 0
+                    ? settings.TransitionBlendTime
+                    : settings.EndBlendDuration;
+                transitionBlendIn = settings.SnapToPose ? 0 : settings.StartBlendDuration;
+                transitionStart = keyTime;
+                transitionEnd = transitionStart.Value + GetPlaybackDuration(transition, settings);
+                if (cutoffTime is float transitionCutoff)
+                {
+                    transitionEnd = Math.Min(transitionEnd.Value, transitionCutoff);
+                }
+            }
+
             float primaryDuration = GetPlaybackDuration(gesture ?? pose, settings);
             float primaryEnd = keyTime + primaryDuration;
             if (cutoffTime is float cutoff)
@@ -631,7 +649,14 @@ public partial class GesturePreviewExportLoader : ExportLoaderControl
                 primaryEnd = next;
             }
 
-            float naturalPoseEnd = keyTime + GetPlaybackDuration(pose, settings);
+            // A Pose + Transition key describes an entry into the Pose. The destination pose must
+            // not start advancing underneath the transition at keyTime: doing that reveals it more
+            // than four seconds into its loop when WI_WallLeanLeftEnter fades out. Start the pose at
+            // the transition's fade-out so its first frame receives the authored handoff instead.
+            float poseStart = transitionEnd is float resolvedTransitionEnd
+                ? Math.Max(keyTime, resolvedTransitionEnd - transitionBlendOut)
+                : keyTime;
+            float naturalPoseEnd = poseStart + GetPlaybackDuration(pose, settings);
             float poseEnd = naturalPoseEnd;
             // A BioGestureData Pose is the base stance for subsequent overlay gestures, not a
             // one-shot clip. Keep it evaluated until the node ends unless another authored pose
@@ -670,28 +695,19 @@ public partial class GesturePreviewExportLoader : ExportLoaderControl
                                           && Math.Abs(poseEnd - nodeEnd) < 0.0001f;
             float poseBlendOut = poseEndsAtNodeBoundary ? 0 : settings.EndBlendDuration;
 
-            AddTimelineClip(timeline, pose, keyTime, poseEnd, settings, settings.SnapToPose ? 0 : settings.StartBlendDuration,
+            float poseBlendIn = transitionEnd.HasValue ? 0 : settings.SnapToPose ? 0 : settings.StartBlendDuration;
+            AddTimelineClip(timeline, pose, poseStart, poseEnd, settings, poseBlendIn,
                 poseBlendOut, loopPose);
             AddTimelineClip(timeline, gesture, keyTime, primaryEnd, settings, settings.SnapToPose ? 0 : settings.StartBlendDuration,
                 settings.EndBlendDuration, settings.PlayUntilNext && !settings.OneShotAnimation);
 
-            if (transition != null)
+            if (transition != null && transitionStart.HasValue && transitionEnd.HasValue)
             {
-                float transitionBlendOut = settings.TransitionBlendTime > 0
-                    ? settings.TransitionBlendTime
-                    : settings.EndBlendDuration;
-                float transitionBlendIn = settings.SnapToPose ? 0 : settings.StartBlendDuration;
-                float transitionStart = keyTime;
-                float transitionEnd = transitionStart + GetPlaybackDuration(transition, settings);
-                if (cutoffTime is float transitionCutoff)
-                {
-                    transitionEnd = Math.Min(transitionEnd, transitionCutoff);
-                }
                 // A transition leads from the prior base pose into the newly authored Pose. It
                 // therefore needs to relinquish the body gradually at its end. Fading it only at
                 // the start and then dropping it at transitionEnd caused E22's wall-lean enter to
                 // hard-cut back to WI_WallLeanLeftIdle near the node boundary.
-                AddTimelineClip(timeline, transition, transitionStart, transitionEnd, settings,
+                AddTimelineClip(timeline, transition, transitionStart.Value, transitionEnd.Value, settings,
                     transitionBlendIn, transitionBlendOut, false,
                     useMotionBoneMask: false);
             }

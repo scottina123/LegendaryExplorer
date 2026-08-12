@@ -14,7 +14,7 @@ namespace LegendaryExplorer.Tools.InterpEditor;
 
 public static class SavedDialogueCachePresetManager
 {
-    private const int CurrentVersion = 7;
+    private const int CurrentVersion = 8;
     public static string StorageDirectory => Path.Combine(AppDirectories.AppDataFolder, "DialogueConversationCaches");
 
     public static IReadOnlyList<DialogueCachePreset> LoadAll()

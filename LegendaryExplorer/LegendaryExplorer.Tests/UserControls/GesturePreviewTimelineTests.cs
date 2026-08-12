@@ -189,10 +189,76 @@ public class GesturePreviewTimelineTests
 
         AnimationPreviewControl.AnimationTimelineClip transition =
             timeline.Single(clip => clip.AnimationExport == wallLeanEnter);
+        AnimationPreviewControl.AnimationTimelineClip pose =
+            timeline.Single(clip => clip.AnimationExport == wallLeanPose);
         Assert.IsTrue(transition.IsTransition);
         Assert.AreEqual(0.1f, transition.BlendInDuration, 0.0001f);
         Assert.AreEqual(0.1f, transition.BlendOutDuration, 0.0001f);
         Assert.AreEqual(4.3333335f, transition.EndTime, 0.0001f);
+        Assert.AreEqual(4.2333335f, pose.StartTime, 0.0001f);
+        Assert.AreEqual(0, pose.BlendInDuration, 0.0001f);
+        Assert.AreEqual(0, pose.AnimationStartTime, 0.0001f);
+    }
+
+    [TestMethod]
+    public void PoseTransitionPreservesTheIncomingNegativeTimeGesture()
+    {
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("PoseTransitionPrerollTest.pcc", MEGame.LE3);
+        ExportEntry wanderSouth = CreateAnimation(package, "WanderSouth", 8.333333f);
+        ExportEntry wallLeanPose = CreateAnimation(package, "WallLeanPose", 5);
+        ExportEntry wallLeanEnter = CreateAnimation(package, "WallLeanEnter", 4.3333335f);
+        var incomingSettings = new GesturePreviewExportLoader.GesturePlaybackSettings
+        {
+            StartOffset = 5.5f,
+            EndBlendDuration = 0.1f,
+        };
+        var transitionSettings = new GesturePreviewExportLoader.GesturePlaybackSettings
+        {
+            StartBlendDuration = 0.1f,
+            EndBlendDuration = 0.1f,
+        };
+        var animations = new List<GesturePreviewExportLoader.GestureAnimationItem>
+        {
+            new()
+            {
+                GestureIndex = 0,
+                Time = -1.5f,
+                SlotOrder = 1,
+                SlotName = "Gesture",
+                AnimationExport = wanderSouth,
+                Settings = incomingSettings,
+            },
+            new()
+            {
+                GestureIndex = 1,
+                Time = 0,
+                SlotOrder = 0,
+                SlotName = "Pose",
+                AnimationExport = wallLeanPose,
+                Settings = transitionSettings,
+            },
+            new()
+            {
+                GestureIndex = 1,
+                Time = 0,
+                SlotOrder = 2,
+                SlotName = "Transition",
+                AnimationExport = wallLeanEnter,
+                Settings = transitionSettings,
+            },
+        };
+
+        List<AnimationPreviewControl.AnimationTimelineClip> timeline =
+            BuildPlaybackTimelineWithBaseLayer(animations, playbackDuration: 5.467f);
+
+        AnimationPreviewControl.AnimationTimelineClip incoming =
+            timeline.Single(clip => clip.AnimationExport == wanderSouth);
+        AnimationPreviewControl.AnimationTimelineClip transition =
+            timeline.Single(clip => clip.AnimationExport == wallLeanEnter);
+        Assert.AreEqual(-1.5f, incoming.StartTime, 0.0001f);
+        Assert.AreEqual(1.333333f, incoming.EndTime, 0.0001f);
+        Assert.AreEqual(5.5f, incoming.AnimationStartTime, 0.0001f);
+        Assert.AreEqual(0, transition.StartTime, 0.0001f);
     }
 
     [TestMethod]
