@@ -108,7 +108,7 @@ public sealed class LightIconOverlay : UIElement
         if (sp.W <= 0f) return false;
 
         // initial scale estimate
-        float scale = sp.W * (4f / context.Width / context.Camera.ProjectionMatrix[0, 0]);
+        float scale = sp.W * (4f / context.SceneViewportWidth / context.Camera.ProjectionMatrix[0, 0]);
         Vector3 right = context.Camera.CameraRight * scale;
         Vector3 up = context.Camera.CameraUp * scale;
         Vector3 center = basePos + (up * IconOffset);
@@ -116,7 +116,7 @@ public sealed class LightIconOverlay : UIElement
         // refine using center depth
         Vector4 centerSp = context.WorldToScreen(center);
         if (centerSp.W <= 0f) return false;
-        scale = centerSp.W * (4f / context.Width / context.Camera.ProjectionMatrix[0, 0]);
+        scale = centerSp.W * (4f / context.SceneViewportWidth / context.Camera.ProjectionMatrix[0, 0]);
         right = context.Camera.CameraRight * scale;
         up = context.Camera.CameraUp * scale;
         center = basePos + (up * IconOffset);
@@ -245,8 +245,8 @@ public sealed class EmitterIconOverlay : UIElement
         }
 
         float scale = context.Camera.IsOrthographic
-            ? context.Camera.OrthoWidth * 4f / context.Width
-            : screenPosition.W * (4f / context.Width / context.Camera.ProjectionMatrix[0, 0]);
+            ? context.Camera.OrthoWidth * 4f / context.SceneViewportWidth
+            : screenPosition.W * (4f / context.SceneViewportWidth / context.Camera.ProjectionMatrix[0, 0]);
         Vector3 right = context.Camera.CameraRight * scale;
         Vector3 up = context.Camera.CameraUp * scale;
         Vector3 center = basePosition + up * IconOffset;
@@ -358,8 +358,8 @@ public sealed class PointOfInterestIconOverlay : UIElement
         }
 
         float scale = context.Camera.IsOrthographic
-            ? context.Camera.OrthoWidth * 4f / context.Width
-            : screenPosition.W * (4f / context.Width / context.Camera.ProjectionMatrix[0, 0]);
+            ? context.Camera.OrthoWidth * 4f / context.SceneViewportWidth
+            : screenPosition.W * (4f / context.SceneViewportWidth / context.Camera.ProjectionMatrix[0, 0]);
         Vector3 right = context.Camera.CameraRight * scale;
         Vector3 up = context.Camera.CameraUp * scale;
         Vector3 center = basePosition + up * IconOffset;
@@ -516,9 +516,9 @@ public class Widget : UIElement
         const float scaleFactor = 4f;
         if (context.Camera.IsOrthographic)
         {
-            return context.Camera.OrthoWidth * scaleFactor / context.Width;
+            return context.Camera.OrthoWidth * scaleFactor / context.SceneViewportWidth;
         }
-        return context.WorldToScreen(origin).W * (scaleFactor / context.Width / context.Camera.ProjectionMatrix[0, 0]);
+        return context.WorldToScreen(origin).W * (scaleFactor / context.SceneViewportWidth / context.Camera.ProjectionMatrix[0, 0]);
     }
 
     private (Vector4 xColor, Vector4 yColor, Vector4 zColor) GetAxisColors()

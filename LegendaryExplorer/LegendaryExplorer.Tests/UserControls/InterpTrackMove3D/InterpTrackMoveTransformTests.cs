@@ -142,6 +142,40 @@ public class InterpTrackMoveTransformTests
     }
 
     [TestMethod]
+    public void SwitchCameraUsesNativeConversationFov()
+    {
+        Assert.AreEqual(52.9f, CurveEditor3D.ConversationSwitchCameraFovDegrees, 0.0001f);
+    }
+
+    [TestMethod]
+    public void SwitchCameraSeparatesImmediateAndQueuedKeys()
+    {
+        float[] keyTimes = [0, 0.06f, 4f];
+        bool[] queued = [false, true, false];
+
+        Assert.AreEqual(0, CurveEditor3D.GetSwitchCameraKeyIndex(keyTimes, queued, 1f, queued: false));
+        Assert.AreEqual(1, CurveEditor3D.GetSwitchCameraKeyIndex(keyTimes, queued, 1f, queued: true));
+        Assert.AreEqual(-1, CurveEditor3D.GetSwitchCameraKeyIndex(keyTimes, queued, 0.05f, queued: true));
+        Assert.AreEqual(2, CurveEditor3D.GetSwitchCameraKeyIndex(keyTimes, queued, 5f, queued: false));
+    }
+
+    [TestMethod]
+    public void StageCameraBinaryOffsetsAreAppliedAfterBoneWorldTransform()
+    {
+        var bone = new CameraOrigin(new Vector3(-13811.018f, 9488.872f, -170329.03f),
+            new Vector3(0, -3.1585693f, -168.60168f));
+
+        CameraOrigin camera = StageBoneOriginResolver.ApplyStageCameraOffsets(bone,
+            heightDelta: 12f, pitchDelta: 0.8f, yawDelta: -2.5f);
+
+        Assert.AreEqual(bone.Location.X, camera.Location.X, 0.0001f);
+        Assert.AreEqual(bone.Location.Y, camera.Location.Y, 0.0001f);
+        Assert.AreEqual(bone.Location.Z + 12f, camera.Location.Z, 0.0001f);
+        Assert.AreEqual(bone.Rotation.Y + 0.8f, camera.Rotation.Y, 0.0001f);
+        Assert.AreEqual(bone.Rotation.Z - 2.5f, camera.Rotation.Z, 0.0001f);
+    }
+
+    [TestMethod]
     public void AnchorObjectTrackOriginIsComposedWithStageTransform()
     {
         var stage = new CameraOrigin(new Vector3(-2545.6843f, -52040.52f, 1309f),

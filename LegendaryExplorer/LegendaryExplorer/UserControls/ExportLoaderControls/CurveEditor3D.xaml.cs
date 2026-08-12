@@ -39,6 +39,7 @@ using System.Windows.Threading;
 using CameraOrigin = LegendaryExplorer.Tools.InterpEditor.CameraOrigin;
 using InterpTrackMoveTransform = LegendaryExplorer.Tools.InterpEditor.InterpTrackMoveTransform;
 using StageBoneOriginResolver = LegendaryExplorer.Tools.InterpEditor.StageBoneOriginResolver;
+using StageCameraDefinition = LegendaryExplorer.Tools.InterpEditor.StageCameraDefinition;
 using StageConversationContext = LegendaryExplorer.Tools.InterpEditor.StageConversationContext;
 using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
 using InterpCurveFloat = LegendaryExplorerCore.Unreal.BinaryConverters.InterpCurve<float>;
@@ -814,8 +815,10 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     }
 
     private sealed record PlacedCameraState(ExportEntry Actor, CameraOrigin Origin, float? FovDegrees);
+    private sealed record ResolvedSwitchCamera(CameraOrigin Origin, float FovDegrees);
 
     private const float PreviewBodyMeshRelativeZ = -88f;
+    internal const float ConversationSwitchCameraFovDegrees = 52.9f;
     private static readonly RenderPass[] RenderPasses = [RenderPass.Base, RenderPass.Hair];
     private static readonly object sessionLevelPathsLock = new();
     private static readonly List<string> sessionLevelPaths = [];
@@ -1001,7 +1004,10 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
     public CurveEditor3D() : base("3D Curve Editor")
     {
-        RenderContext = new LevelEditorRenderContext();
+        RenderContext = new LevelEditorRenderContext
+        {
+            ConstrainedAspectRatio = 16f / 9f
+        };
         backgroundColor = LevelEditor.GetThemeDefaultBackgroundColor();
         RenderContext.BackgroundColor = backgroundColor;
         RenderContext.ShowLightIcons = showLightIcons;
@@ -2530,7 +2536,8 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                     GroupName = cut.GroupName,
                     Camera = cameraOptionsByGroup.GetValueOrDefault(cut.GroupName),
                     SwitchCameraTrack = cut.GroupName.Equals("Conversation", StringComparison.OrdinalIgnoreCase)
-                                        && TryResolveSwitchCameraOrigin(switchCameraTrack, cut.Time, out _)
+                                        && TryResolveSwitchCamera(switchCameraTrack, cut.Time,
+                                            useForNextCamera: false, out _)
                         ? switchCameraTrack
                         : null,
                     CameraActorTag = actorTag,
@@ -2566,9 +2573,11 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             .SelectMany(group => GetReferencedExports(group, "InterpTracks"))
             .FirstOrDefault(track => track.IsA("BioEvtSysTrackSwitchCamera"));
 
-    private bool TryResolveSwitchCameraOrigin(ExportEntry switchCameraTrack, float time, out CameraOrigin origin)
+    private bool TryResolveSwitchCamera(ExportEntry switchCameraTrack, float time, bool useForNextCamera,
+        out ResolvedSwitchCamera camera)
     {
-        origin = default;
+        camera = null;
+        StageConversationContext stageContext = dialogueNodePreview?.StageContext ?? trackAnchorStageContext;
         IReadOnlyDictionary<string, CameraOrigin> stageNodes = dialogueNodePreview?.StageContext.StageNodeOrigins
                                                                ?? trackAnchorStageContext?.StageNodeOrigins;
         ArrayProperty<StructProperty> cameraKeys = switchCameraTrack?
@@ -2576,7 +2585,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         ArrayProperty<StructProperty> trackKeys = switchCameraTrack?
             .GetProperty<ArrayProperty<StructProperty>>("m_aTrackKeys");
         int keyCount = Math.Min(cameraKeys?.Count ?? 0, trackKeys?.Count ?? 0);
-        if (stageNodes is null || keyCount == 0)
+        if (stageContext is null || stageNodes is null || keyCount == 0)
         {
             return false;
         }
@@ -2584,11 +2593,32 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         float[] keyTimes = trackKeys.Take(keyCount)
             .Select(key => key.GetProp<FloatProperty>("fTime")?.Value ?? 0)
             .ToArray();
-        int keyIndex = GetActiveSwitchCameraKeyIndex(keyTimes, time);
+        bool[] queuedKeys = cameraKeys.Take(keyCount)
+            .Select(key => key.GetProp<BoolProperty>("bUseForNextCamera")?.Value == true)
+            .ToArray();
+        int keyIndex = GetSwitchCameraKeyIndex(keyTimes, queuedKeys, time, useForNextCamera);
+        if (keyIndex < 0)
+        {
+            return false;
+        }
         string stageBone = cameraKeys[keyIndex].GetProp<NameProperty>("nmStageSpecificCam")?.Value.Instanced;
-        return !string.IsNullOrWhiteSpace(stageBone)
-               && !stageBone.Equals("None", StringComparison.OrdinalIgnoreCase)
-               && stageNodes.TryGetValue(stageBone, out origin);
+        if (string.IsNullOrWhiteSpace(stageBone) || stageBone.Equals("None", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (stageContext.StageCameras.TryGetValue(stageBone, out StageCameraDefinition stageCamera))
+        {
+            camera = new ResolvedSwitchCamera(stageCamera.Origin,
+                stageCamera.FovDegrees ?? ConversationSwitchCameraFovDegrees);
+            return true;
+        }
+        if (stageNodes.TryGetValue(stageBone, out CameraOrigin stageNode))
+        {
+            camera = new ResolvedSwitchCamera(stageNode, ConversationSwitchCameraFovDegrees);
+            return true;
+        }
+        return false;
     }
 
     internal static int GetActiveSwitchCameraKeyIndex(IReadOnlyList<float> keyTimes, float time)
@@ -2606,6 +2636,25 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                 break;
             }
             keyIndex = index;
+        }
+        return keyIndex;
+    }
+
+    internal static int GetSwitchCameraKeyIndex(IReadOnlyList<float> keyTimes,
+        IReadOnlyList<bool> useForNextCamera, float time, bool queued)
+    {
+        int keyCount = Math.Min(keyTimes?.Count ?? 0, useForNextCamera?.Count ?? 0);
+        int keyIndex = -1;
+        for (int index = 0; index < keyCount; index++)
+        {
+            if (keyTimes[index] > time)
+            {
+                break;
+            }
+            if (useForNextCamera[index] == queued)
+            {
+                keyIndex = index;
+            }
         }
         return keyIndex;
     }
@@ -6679,10 +6728,10 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             referenceLocation = InterpTrackMoveTransform.ToWorld(activeBasis,
                 new CameraOrigin(referenceLocation, Vector3.Zero)).Location;
         }
-        float width = MathF.Max(RenderContext.Width, 1f);
-        float height = MathF.Max(RenderContext.Height, 1f);
-        float normalizedX = ((float)viewportPoint.X / width * 2f) - 1f;
-        float normalizedY = 1f - ((float)viewportPoint.Y / height * 2f);
+        Vector2 normalizedViewportPoint = RenderContext.PixelToViewportNormalized(
+            (float)viewportPoint.X, (float)viewportPoint.Y);
+        float normalizedX = normalizedViewportPoint.X;
+        float normalizedY = normalizedViewportPoint.Y;
         Vector3 forward = RenderContext.Camera.CameraForward;
         Vector3 right = RenderContext.Camera.CameraRight;
         Vector3 up = RenderContext.Camera.CameraUp;
@@ -7860,11 +7909,18 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
     private void ApplyPlaybackViewportCameraAtTime(float time)
     {
+        if (TryResolveQueuedSwitchCameraAtSegmentEnd(time, out ResolvedSwitchCamera queuedCamera))
+        {
+            ApplySwitchCamera(queuedCamera);
+            return;
+        }
+
         DirectorCameraCut directorCut = GetPlaybackDirectorCut(time);
         if (directorCut?.SwitchCameraTrack is not null
-            && TryResolveSwitchCameraOrigin(directorCut.SwitchCameraTrack, time, out CameraOrigin stageCamera))
+            && TryResolveSwitchCamera(directorCut.SwitchCameraTrack, time, useForNextCamera: false,
+                out ResolvedSwitchCamera stageCamera))
         {
-            ApplyViewportCameraOrigin(stageCamera);
+            ApplySwitchCamera(stageCamera);
             return;
         }
         if (directorCut?.Camera is null && directorCut?.FallbackOrigin is { } fallbackOrigin)
@@ -7877,6 +7933,34 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         }
 
         ApplyViewportCameraAtTime(directorCut?.Camera ?? GetPlaybackCameraOption(time), time);
+    }
+
+    private bool TryResolveQueuedSwitchCameraAtSegmentEnd(float time, out ResolvedSwitchCamera camera)
+    {
+        camera = null;
+        if (activeDialogueSegmentRuntime?.Segment is not { } segment
+            || time < segment.Duration - 0.0001f)
+        {
+            return false;
+        }
+
+        foreach (ExportEntry interpData in GetDialogueNodeInterpDatas(segment.Node))
+        {
+            ExportEntry switchCameraTrack = FindSwitchCameraTrack(interpData);
+            if (TryResolveSwitchCamera(switchCameraTrack, time, useForNextCamera: true,
+                    out ResolvedSwitchCamera queuedCamera))
+            {
+                camera = queuedCamera;
+            }
+        }
+        return camera is not null;
+    }
+
+    private void ApplySwitchCamera(ResolvedSwitchCamera camera)
+    {
+        const float degreesToRadians = 0.017453292519943295f;
+        ApplyViewportCameraOrigin(camera.Origin);
+        RenderContext.Camera.FOV = camera.FovDegrees * degreesToRadians;
     }
 
     private void UpdateAdditionalCameraPlayback(float time)

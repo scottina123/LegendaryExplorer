@@ -15,6 +15,12 @@ using LegendaryExplorerCore.Unreal.BinaryConverters;
 
 namespace LegendaryExplorer.Tools.InterpEditor;
 
+internal sealed record StageCameraDefinition(
+    CameraOrigin Origin,
+    float? FovDegrees,
+    float NearPlane,
+    bool DisableHeightAdjustment);
+
 internal sealed class StageConversationContext : IDisposable
 {
     private readonly bool ownsMainPackage;
@@ -24,11 +30,13 @@ internal sealed class StageConversationContext : IDisposable
     public ExportEntry Stage { get; }
     public CameraOrigin StageOrigin { get; }
     public IReadOnlyDictionary<string, CameraOrigin> StageNodeOrigins { get; }
+    public IReadOnlyDictionary<string, StageCameraDefinition> StageCameras { get; }
     public IReadOnlyDictionary<string, CameraOrigin> ActorOrigins { get; }
     public IReadOnlyDictionary<string, string> VariableLinkSubtitles { get; }
 
     public StageConversationContext(IMEPackage mainPackage, bool ownsMainPackage, ExportEntry startConversation,
         ExportEntry stage, CameraOrigin stageOrigin, IReadOnlyDictionary<string, CameraOrigin> stageNodeOrigins,
+        IReadOnlyDictionary<string, StageCameraDefinition> stageCameras,
         IReadOnlyDictionary<string, CameraOrigin> actorOrigins,
         IReadOnlyDictionary<string, string> variableLinkSubtitles)
     {
@@ -38,6 +46,7 @@ internal sealed class StageConversationContext : IDisposable
         Stage = stage;
         StageOrigin = stageOrigin;
         StageNodeOrigins = stageNodeOrigins;
+        StageCameras = stageCameras;
         ActorOrigins = actorOrigins;
         VariableLinkSubtitles = variableLinkSubtitles;
     }
@@ -170,12 +179,15 @@ internal static class StageBoneOriginResolver
                 ? Vector3.Zero
                 : CommonStructs.GetRotator(rotationProperty).GetDegreesVector();
             var stageOrigin = new CameraOrigin(stageLocation, stageRotation);
-            IReadOnlyDictionary<string, CameraOrigin> stageNodeOrigins = ResolveStageNodeOrigins(selectedStage.Stage,
+            List<BoneOption> stageBones = FindBones(selectedStage.Stage, new Dictionary<string, string>(), cache);
+            IReadOnlyDictionary<string, CameraOrigin> stageNodeOrigins = ResolveStageNodeOrigins(stageBones,
                 stageOrigin, cache);
+            IReadOnlyDictionary<string, StageCameraDefinition> stageCameras = ResolveStageCameras(
+                selectedStage.Stage, stageBones, stageOrigin, cache);
             IReadOnlyDictionary<string, CameraOrigin> actorOrigins = ResolveLinkedActorOrigins(stageNodeOrigins,
                 KismetHelper.GetVariableLinks(selectedStage.StartConversation.GetProperties(), mainPackage), cache);
             context = new StageConversationContext(mainPackage, ownsMainPackage, selectedStage.StartConversation,
-                selectedStage.Stage, stageOrigin, stageNodeOrigins, actorOrigins,
+                selectedStage.Stage, stageOrigin, stageNodeOrigins, stageCameras, actorOrigins,
                 selectedStage.VariableLinkSubtitles);
             mainPackage = null;
             return true;
@@ -268,12 +280,64 @@ internal static class StageBoneOriginResolver
         return subtitles;
     }
 
-    private static IReadOnlyDictionary<string, CameraOrigin> ResolveStageNodeOrigins(ExportEntry stage,
-        CameraOrigin stageOrigin, PackageCache cache) => FindBones(stage, new Dictionary<string, string>(), cache)
+    private static IReadOnlyDictionary<string, CameraOrigin> ResolveStageNodeOrigins(IEnumerable<BoneOption> bones,
+        CameraOrigin stageOrigin, PackageCache cache) => bones
         .GroupBy(option => option.Bone.Name.Instanced, StringComparer.OrdinalIgnoreCase)
         .ToDictionary(group => group.Key,
             group => ResolveBoneOrigin(group.First().Mesh, group.First().Index, stageOrigin, cache),
             StringComparer.OrdinalIgnoreCase);
+
+    private static IReadOnlyDictionary<string, StageCameraDefinition> ResolveStageCameras(ExportEntry stage,
+        IReadOnlyList<BoneOption> bones, CameraOrigin stageOrigin, PackageCache cache)
+    {
+        var cameras = new Dictionary<string, StageCameraDefinition>(StringComparer.OrdinalIgnoreCase);
+        if (!stage.Game.IsGame3())
+        {
+            return cameras;
+        }
+
+        LegendaryExplorerCore.Unreal.BinaryConverters.BioStage stageBinary =
+            ObjectBinary.From<LegendaryExplorerCore.Unreal.BinaryConverters.BioStage>(stage, cache);
+        if (stageBinary?.CameraList is null)
+        {
+            return cameras;
+        }
+
+        foreach ((NameReference cameraName, PropertyCollection cameraProperties) in stageBinary.CameraList)
+        {
+            BoneOption bone = bones.FirstOrDefault(option =>
+                option.Bone.Name.Number == cameraName.Number
+                && string.Equals(option.Bone.Name.Name, cameraName.Name, StringComparison.OrdinalIgnoreCase));
+            if (bone is null)
+            {
+                continue;
+            }
+
+            CameraOrigin boneOrigin = ResolveBoneOrigin(bone.Mesh, bone.Index, stageOrigin, cache);
+            float heightDelta = cameraProperties.GetProp<FloatProperty>("fHeightDelta")?.Value ?? 0;
+            float pitchDelta = cameraProperties.GetProp<FloatProperty>("fPitchDelta")?.Value ?? 0;
+            float yawDelta = cameraProperties.GetProp<FloatProperty>("fYawDelta")?.Value ?? 0;
+            CameraOrigin origin = ApplyStageCameraOffsets(boneOrigin, heightDelta, pitchDelta, yawDelta);
+            float fov = cameraProperties.GetProp<FloatProperty>("fFov")?.Value ?? 0;
+            cameras[cameraName.Instanced] = new StageCameraDefinition(
+                origin,
+                fov is > 0 and < 180 ? fov : null,
+                cameraProperties.GetProp<FloatProperty>("fNearPlane")?.Value ?? 10f,
+                cameraProperties.GetProp<BoolProperty>("bDisableHeightAdjustment")?.Value == true);
+        }
+        return cameras;
+    }
+
+    internal static CameraOrigin ApplyStageCameraOffsets(CameraOrigin boneOrigin, float heightDelta,
+        float pitchDelta, float yawDelta)
+    {
+        Vector3 location = boneOrigin.Location;
+        location.Z += heightDelta;
+        Vector3 rotation = boneOrigin.Rotation;
+        rotation.Y += pitchDelta;
+        rotation.Z += yawDelta;
+        return new CameraOrigin(location, rotation);
+    }
 
     private static IReadOnlyDictionary<string, CameraOrigin> ResolveLinkedActorOrigins(
         IReadOnlyDictionary<string, CameraOrigin> slotOrigins, IEnumerable<VarLinkInfo> variableLinks,

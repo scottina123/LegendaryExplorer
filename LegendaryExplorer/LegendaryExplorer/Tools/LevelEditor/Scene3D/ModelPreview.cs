@@ -409,7 +409,7 @@ internal class LEShaderPreviewMaterial : ModelPreviewMaterial<LEVertex>
             }
             var psConstants = new LEPSConstants
             {
-                ScreenPositionScaleBias = new Vector4(1f / 2f, 1f / -2f, (context.Height / 2f + 0.5f) / context.Height, (context.Width / 2f + 0.5f) / context.Width),
+                ScreenPositionScaleBias = context.ScreenPositionScaleBias,
                 MinZ_MaxZRatio = new Vector4(depthAdd, depthMul, 1f / depthAdd, depthMul / depthAdd),
                 DynamicScale = Vector4.One,
             };

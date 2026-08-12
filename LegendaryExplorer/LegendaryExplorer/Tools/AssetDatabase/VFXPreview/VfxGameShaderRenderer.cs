@@ -641,11 +641,7 @@ public sealed class VfxGameShaderRenderer : IDisposable
         float depthAddition = camera.ProjectionMatrix[3, 2];
         var pixelConstants = new LEPSConstants
         {
-            ScreenPositionScaleBias = new Vector4(
-                0.5f,
-                -0.5f,
-                (context.Height / 2f + 0.5f) / context.Height,
-                (context.Width / 2f + 0.5f) / context.Width),
+            ScreenPositionScaleBias = context.ScreenPositionScaleBias,
             MinZ_MaxZRatio = new Vector4(
                 depthAddition,
                 depthMultiplier,

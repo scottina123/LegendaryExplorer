@@ -187,7 +187,7 @@ internal static class ShaderParameterSetters
 
         if (p.ScreenPositionScaleBias.IsBound())
         {
-            buffer.WriteVal(p.ScreenPositionScaleBias, new Vector4(1f / 2f, 1f / -2f, (context.Height / 2f + 0.5f) / context.Height, (context.Width / 2f + 0.5f) / context.Width));
+            buffer.WriteVal(p.ScreenPositionScaleBias, context.ScreenPositionScaleBias);
 
         }
         if (p.MinZ_MaxZRatio.IsBound())

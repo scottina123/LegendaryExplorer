@@ -94,6 +94,54 @@ public class MeshRenderContext : RenderContext
 
     public Color BackgroundColor = Color.FromArgb(255, 255, 255, 255); //Default
 
+    /// <summary>
+    /// Optional aspect ratio for the 3D scene. When set, the scene is centered inside the available
+    /// backbuffer and the unused area remains clear, instead of changing the camera framing as the host
+    /// control is resized.
+    /// </summary>
+    public float? ConstrainedAspectRatio { get; set; }
+
+    public float SceneViewportX { get; private set; }
+    public float SceneViewportY { get; private set; }
+    public float SceneViewportWidth { get; private set; }
+    public float SceneViewportHeight { get; private set; }
+
+    public Vector4 ScreenPositionScaleBias
+    {
+        get
+        {
+            float bufferWidth = MathF.Max(Width, 1f);
+            float bufferHeight = MathF.Max(Height, 1f);
+            return new Vector4(
+                SceneViewportWidth / bufferWidth * 0.5f,
+                SceneViewportHeight / bufferHeight * -0.5f,
+                (SceneViewportY + SceneViewportHeight * 0.5f + 0.5f) / bufferHeight,
+                (SceneViewportX + SceneViewportWidth * 0.5f + 0.5f) / bufferWidth);
+        }
+    }
+
+    public static (float X, float Y, float Width, float Height) CalculateFittedViewport(
+        float availableWidth, float availableHeight, float? constrainedAspectRatio)
+    {
+        availableWidth = MathF.Max(availableWidth, 1f);
+        availableHeight = MathF.Max(availableHeight, 1f);
+        if (constrainedAspectRatio is not > 0f || !float.IsFinite(constrainedAspectRatio.Value))
+        {
+            return (0f, 0f, availableWidth, availableHeight);
+        }
+
+        float targetAspectRatio = constrainedAspectRatio.Value;
+        float availableAspectRatio = availableWidth / availableHeight;
+        if (availableAspectRatio > targetAspectRatio)
+        {
+            float viewportWidth = availableHeight * targetAspectRatio;
+            return ((availableWidth - viewportWidth) * 0.5f, 0f, viewportWidth, availableHeight);
+        }
+
+        float viewportHeight = availableWidth / targetAspectRatio;
+        return (0f, (availableHeight - viewportHeight) * 0.5f, availableWidth, viewportHeight);
+    }
+
     #region Size-Dependent Resources
     public RenderTargetView BackbufferView { get; private set; }
     public Texture2D DepthBuffer { get; private set; } // also called Depth-Stencil, but we don't use stencil at the moment.
@@ -734,9 +782,12 @@ public class MeshRenderContext : RenderContext
         HitBufferView = new RenderTargetView(Device, HitBuffer);
 
         ImmediateContext.OutputMerger.SetRenderTargets(DepthBufferView, BackbufferView, HitBufferView);
-        ImmediateContext.Rasterizer.SetViewport(0, 0, Width, Height);
+        (SceneViewportX, SceneViewportY, SceneViewportWidth, SceneViewportHeight) =
+            CalculateFittedViewport(Width, Height, ConstrainedAspectRatio);
+        ImmediateContext.Rasterizer.SetViewport(SceneViewportX, SceneViewportY,
+            SceneViewportWidth, SceneViewportHeight);
 
-        Camera.aspect = (float)Width / Height;
+        Camera.aspect = SceneViewportWidth / SceneViewportHeight;
 
 
         using var factory = new D2D.Factory(D2D.FactoryType.SingleThreaded, App.IsDebug ? D2D.DebugLevel.Information : D2D.DebugLevel.None);
@@ -1633,8 +1684,19 @@ public class MeshRenderContext : RenderContext
         }
 
         float invW = 1f / point.W;
-        pixel = new Vector2((0.5f + point.X * 0.5f * invW) * Width, (0.5f - point.Y * 0.5f * invW) * Height);
+        pixel = new Vector2(
+            SceneViewportX + (0.5f + point.X * 0.5f * invW) * SceneViewportWidth,
+            SceneViewportY + (0.5f - point.Y * 0.5f * invW) * SceneViewportHeight);
         return true;
+    }
+
+    public Vector2 PixelToViewportNormalized(float x, float y)
+    {
+        float viewportWidth = MathF.Max(SceneViewportWidth, 1f);
+        float viewportHeight = MathF.Max(SceneViewportHeight, 1f);
+        return new Vector2(
+            ((x - SceneViewportX) / viewportWidth * 2f) - 1f,
+            1f - ((y - SceneViewportY) / viewportHeight * 2f));
     }
 
     public bool WorldToPixel(Vector3 point, out Vector2 pixel) => ScreenToPixel(WorldToScreen(point), out pixel);
