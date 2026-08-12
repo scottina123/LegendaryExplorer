@@ -264,6 +264,29 @@ public class CurveEditor3DModelCacheTests
     }
 
     [TestMethod]
+    public void MissingInterpLengthUsesLatestVoOrFaceOnlyVoTimePlusOneSecond()
+    {
+        Assert.AreEqual(6f, CurveEditor3D.ResolveDialogueNodeFallbackDuration(
+            interpLength: 0, voStartTime: 0, voDuration: 5, lastFaceOnlyVoKeyTime: 3));
+        Assert.AreEqual(9f, CurveEditor3D.ResolveDialogueNodeFallbackDuration(
+            interpLength: 0, voStartTime: 0.5f, voDuration: 4, lastFaceOnlyVoKeyTime: 8));
+        Assert.AreEqual(4f, CurveEditor3D.ResolveDialogueNodeFallbackDuration(
+            interpLength: 4, voStartTime: 0, voDuration: 20, lastFaceOnlyVoKeyTime: 30));
+        Assert.AreEqual(0.1f, CurveEditor3D.ResolveDialogueNodeFallbackDuration(
+            interpLength: 0, voStartTime: 0, voDuration: 0, lastFaceOnlyVoKeyTime: 0));
+    }
+
+    [TestMethod]
+    public void LastFaceOnlyVoKeyIsReadAcrossAllNodeInterps()
+    {
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("FaceOnlyVoDurationTest.pcc", MEGame.LE3);
+        ExportEntry firstInterp = CreateFaceOnlyVoInterp(package, "First", 1.5f, 4.25f);
+        ExportEntry secondInterp = CreateFaceOnlyVoInterp(package, "Second", 3f, 7.5f);
+
+        Assert.AreEqual(7.5f, CurveEditor3D.GetLastFaceOnlyVoKeyTime([firstInterp, secondInterp]));
+    }
+
+    [TestMethod]
     public void FovIdentifiesCameraTrackWhenGroupNameDoesNotStartWithCam()
     {
         using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("FovCameraGroupTest.pcc", MEGame.LE3);
@@ -476,5 +499,28 @@ public class CurveEditor3DModelCacheTests
                 new NameProperty("None", "GroupName"), new FloatProperty(time, "Time")));
         }
         return new StructProperty("InterpLookupTrack", new PropertyCollection { lookupPoints }, "LookupTrack");
+    }
+
+    private static ExportEntry CreateFaceOnlyVoInterp(IMEPackage package, string name, params float[] keyTimes)
+    {
+        ExportEntry interp = package.CreateExport($"{name}Interp", "InterpData", indexed: false);
+        ExportEntry group = package.CreateExport($"{name}Group", "InterpGroup", indexed: false);
+        ExportEntry track = package.CreateExport($"{name}FaceOnlyVo", "SFXInterpTrackPlayFaceOnlyVO", indexed: false);
+        var trackKeys = new ArrayProperty<StructProperty>("m_aTrackKeys");
+        foreach (float keyTime in keyTimes)
+        {
+            trackKeys.Add(new StructProperty("SFXInterpTrackKey", false,
+                new FloatProperty(keyTime, "fTime")));
+        }
+        track.WriteProperty(trackKeys);
+        group.WriteProperty(new ArrayProperty<ObjectProperty>("InterpTracks")
+        {
+            new(track.UIndex),
+        });
+        interp.WriteProperty(new ArrayProperty<ObjectProperty>("InterpGroups")
+        {
+            new(group.UIndex),
+        });
+        return interp;
     }
 }

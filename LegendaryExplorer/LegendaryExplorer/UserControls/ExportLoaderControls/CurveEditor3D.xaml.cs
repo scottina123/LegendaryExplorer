@@ -20,6 +20,7 @@ using LegendaryExplorer.Tools.LevelEditor;
 using LegendaryExplorer.Tools.LevelEditor.Scene3D;
 using LegendaryExplorer.Tools.PackageEditor.Experiments;
 using LegendaryExplorer.Tools.InterpEditor;
+using LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator;
 using LegendaryExplorer.UserControls.Interfaces;
 using LegendaryExplorer.UserControls.SharedToolControls;
 using LegendaryExplorerCore.GameFilesystem;
@@ -1310,8 +1311,42 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         // node's authored clock. Additional Interps contribute tracks, never more timeline time.
         float interpLength = node.InterpData?.GetProperty<FloatProperty>("InterpLength")?.Value
                              ?? node.InterpLength;
-        return MathF.Max(interpLength, 0.1f);
+        if (interpLength > 0)
+        {
+            return interpLength;
+        }
+
+        IReadOnlyList<ExportEntry> interpDatas = GetDialogueNodeInterpDatas(node);
+        float voStartTime = GetDialogueNodeVoStartTime(node);
+        float voDuration = AudioAnalyzer.GetAudioDuration(GetDialogueNodeAudio(node));
+        float lastFaceOnlyVoKeyTime = GetLastFaceOnlyVoKeyTime(interpDatas);
+        return ResolveDialogueNodeFallbackDuration(interpLength, voStartTime, voDuration,
+            lastFaceOnlyVoKeyTime);
     }
+
+    internal static float ResolveDialogueNodeFallbackDuration(float interpLength, float voStartTime,
+        float voDuration, float lastFaceOnlyVoKeyTime)
+    {
+        if (interpLength > 0)
+        {
+            return interpLength;
+        }
+
+        float voEndTime = MathF.Max(0, voStartTime) + MathF.Max(0, voDuration);
+        float contentEndTime = MathF.Max(voEndTime, MathF.Max(0, lastFaceOnlyVoKeyTime));
+        return contentEndTime > 0 ? contentEndTime + 1f : 0.1f;
+    }
+
+    internal static float GetLastFaceOnlyVoKeyTime(IEnumerable<ExportEntry> interpDatas) =>
+        interpDatas.Where(interpData => interpData is not null)
+            .SelectMany(interpData => GetReferencedExports(interpData, "InterpGroups"))
+            .SelectMany(group => GetReferencedExports(group, "InterpTracks"))
+            .Where(track => track.IsA("SFXInterpTrackPlayFaceOnlyVO"))
+            .SelectMany(track => track.GetProperty<ArrayProperty<StructProperty>>("m_aTrackKeys")?.AsEnumerable()
+                                 ?? Enumerable.Empty<StructProperty>())
+            .Select(key => key.GetProp<FloatProperty>("fTime")?.Value ?? 0)
+            .DefaultIfEmpty(0)
+            .Max();
 
     private float GetDialogueNodeVoStartTime(DialogueNodeExtended node)
     {
