@@ -1586,6 +1586,61 @@ namespace LegendaryExplorer.Tools.PackageEditor
             LoadFile(entry.FileRef.FilePath, entry.UIndex);
         }
 
+        internal void SetEmbeddedTreeScope(IReadOnlyList<TreeViewEntry> rootNodes,
+            int? preferredSelectedUIndex = null)
+        {
+            rootNodes ??= [];
+            CurrentView = CurrentViewMode.Tree;
+            PackageEditorWorkspace.RowDefinitions[0].Height = new GridLength(0);
+            LeftSide_ListView.Visibility = Visibility.Collapsed;
+            LeftSide_TreeView.Visibility = Visibility.Visible;
+            LeftSide_TreeView.ItemsSource = rootNodes;
+
+            TreeViewEntry selectedNode = preferredSelectedUIndex.HasValue
+                ? rootNodes.SelectMany(root => root.FlattenTree())
+                    .FirstOrDefault(node => node.UIndex == preferredSelectedUIndex.Value)
+                : null;
+            selectedNode ??= rootNodes.FirstOrDefault();
+            if (selectedNode is null)
+            {
+                ClearTreeMultiSelection();
+                _treeSelectionAnchor = null;
+                if (_selectedItem is not null)
+                {
+                    _selectedItem.IsSelected = false;
+                    _selectedItem = null;
+                    OnPropertyChanged(nameof(SelectedItem));
+                }
+                if (PackageEditorWorkspace.IsLoaded)
+                {
+                    ClearPreviewPane();
+                }
+                else
+                {
+                    EditorTabs.IsEnabled = false;
+                    Metadata_Tab.Visibility = Visibility.Collapsed;
+                    Intro_Tab.Visibility = Visibility.Visible;
+                    Intro_Tab.IsSelected = true;
+                }
+                return;
+            }
+
+            foreach (TreeViewEntry root in rootNodes)
+            {
+                root.IsExpanded = true;
+            }
+            if (!ReferenceEquals(_selectedItem, selectedNode))
+            {
+                if (_selectedItem is not null)
+                {
+                    _selectedItem.IsSelected = false;
+                }
+                selectedNode.IsProgramaticallySelecting = true;
+                SelectedItem = selectedNode;
+            }
+            selectedNode.IsSelected = true;
+        }
+
         private void NavigateToEntry(object obj)
         {
             IEntry e = (IEntry)obj;

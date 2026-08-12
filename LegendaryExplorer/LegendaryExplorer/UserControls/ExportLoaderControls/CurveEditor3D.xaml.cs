@@ -1,6 +1,7 @@
 using System;
 using System.Collections.ObjectModel;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -1248,8 +1249,10 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         dialogueWorkingCommittedExportCount = dialoguePreviewWorkingPackage.Exports.Count;
 
         dialoguePackageEditor = new PackageEditorWindow(submitTelemetry: false);
+        dialoguePackageEditor.PropertyChanged += DialoguePackageEditor_PropertyChanged;
         _ = new System.Windows.Interop.WindowInteropHelper(dialoguePackageEditor).EnsureHandle();
         dialoguePackageEditor.LoadPackage(dialoguePreviewWorkingPackage, initialUIndex);
+        dialoguePackageEditor.SetEmbeddedTreeScope([]);
         FrameworkElement workspace = dialoguePackageEditor.PackageEditorWorkspace;
         if (workspace.Parent is Panel parent)
         {
@@ -1273,6 +1276,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         }
         if (dialoguePackageEditor is not null)
         {
+            dialoguePackageEditor.PropertyChanged -= DialoguePackageEditor_PropertyChanged;
             if (workingPackage is not null && ReferenceEquals(dialoguePackageEditor.Pcc, workingPackage))
             {
                 workingPackage.Release(dialoguePackageEditor);
@@ -1287,6 +1291,16 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         dialogueWorkingCommittedImportCount = 0;
         dialogueWorkingCommittedExportCount = 0;
         suppressDialoguePackageEditTracking = false;
+    }
+
+    private void DialoguePackageEditor_PropertyChanged(object sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(PackageEditorWindow.IsBusy)
+            && ReferenceEquals(sender, dialoguePackageEditor)
+            && dialoguePackageEditor.IsBusy == false)
+        {
+            NavigateDialoguePackageEditorToActiveNode();
+        }
     }
 
     private void DialoguePreviewLeftTabs_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -1316,12 +1330,31 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             return;
         }
 
-        ExportEntry interpData = GetDialogueNodeInterpDatas(activeDialogueTimelineSegment.Node)
-            .FirstOrDefault();
-        if (interpData is not null
-            && dialoguePackageEditor.NavigateToEntryCommand?.CanExecute(interpData) == true)
+        ExportEntry interpData = MapDialogueExportToWorkingPackage(activeDialogueTimelineSegment.Node.InterpData);
+        int? scopedInterpDataUIndex = interpData?.FileRef == dialoguePreviewWorkingPackage
+            ? interpData.UIndex
+            : null;
+        List<TreeViewEntry> scopedRoots = dialoguePackageEditor.AllTreeViewNodesX
+            .SelectMany(root => root.FlattenTree())
+            .Where(node => node.Entry is ExportEntry export && export.UIndex == scopedInterpDataUIndex)
+            .ToList();
+        HashSet<int> scopedUIndexes = scopedRoots
+            .SelectMany(root => root.FlattenTree())
+            .Select(node => node.UIndex)
+            .ToHashSet();
+        int? preferredSelection = dialoguePackageEditor.SelectedItem is { } selected
+                                  && scopedUIndexes.Contains(selected.UIndex)
+            ? selected.UIndex
+            : scopedRoots.FirstOrDefault()?.UIndex;
+        dialoguePackageEditor.SetEmbeddedTreeScope(scopedRoots, preferredSelection);
+    }
+
+    private void QueueDialoguePackageEditorScopeRefresh()
+    {
+        if (dialoguePackageEditor is not null)
         {
-            dialoguePackageEditor.NavigateToEntryCommand.Execute(interpData);
+            Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle,
+                new Action(NavigateDialoguePackageEditorToActiveNode));
         }
     }
 
@@ -8199,6 +8232,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         {
             activeDialogueSegmentRuntime.HasPendingPackageChanges = true;
         }
+        QueueDialoguePackageEditorScopeRefresh();
         DialoguePackageEditorTab.Header = "Package Editor *";
         PauseDialogueTimeline();
         UpdateDialogueNodeCommitButton();

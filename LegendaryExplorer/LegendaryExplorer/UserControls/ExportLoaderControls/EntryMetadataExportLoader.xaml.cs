@@ -645,7 +645,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             InfoTab_ExportDataSize_TextBox.Text = null;
             InfoTab_ExportOffsetHex_TextBox.Text = null;
             InfoTab_ExportOffsetDec_TextBox.Text = null;
-            headerByteProvider.Clear();
+            headerByteProvider?.Clear();
             loadingNewData = false;
         }
 
