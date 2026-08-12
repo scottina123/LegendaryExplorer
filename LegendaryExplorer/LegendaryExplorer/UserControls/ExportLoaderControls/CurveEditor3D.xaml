@@ -420,7 +420,7 @@
                                          MouseDoubleClick="PreviewActorListBox_MouseDoubleClick"
                                          ToolTip="Double-click an actor to focus it in the viewport"/>
                             </DockPanel>
-                            <StackPanel Margin="0,0,0,4">
+                            <StackPanel x:Name="PreviewActorModelSelectionPanel" Margin="0,0,0,4">
                             <Grid>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="55"/>

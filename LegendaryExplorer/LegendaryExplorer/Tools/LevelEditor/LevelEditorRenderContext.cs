@@ -35,6 +35,13 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
     /// </summary>
     public bool UseGameShaderMeshPreviews { get; set; }
 
+    /// <summary>
+    /// Allows static mesh components to use the compiled game-shader preview when game-shader mesh
+    /// previews are enabled. Dialogue/curve preview disables this because compiling an entire level's
+    /// static geometry through the native material path causes severe frame-rate loss.
+    /// </summary>
+    public bool UseGameShaderStaticMeshPreviews { get; set; } = true;
+
     public event Action<ActorProxy> SelectActor;
     public event Action<ActorProxy> RightClickActor;
     public event Action<IHitProxy> SelectHitProxy;

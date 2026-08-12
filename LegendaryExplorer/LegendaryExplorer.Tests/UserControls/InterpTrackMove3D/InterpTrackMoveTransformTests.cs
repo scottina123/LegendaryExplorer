@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using System.Reflection;
+using LegendaryExplorer.Dialogs;
+using LegendaryExplorer.Tools.AssetDatabase;
 using LegendaryExplorer.Tools.InterpEditor;
 using LegendaryExplorer.UserControls.ExportLoaderControls;
 using LegendaryExplorerCore.Unreal.Animation;
@@ -15,6 +17,43 @@ namespace LegendaryExplorer.Tests.UserControls.InterpTrackMove3D;
 [TestClass]
 public class InterpTrackMoveTransformTests
 {
+    [TestMethod]
+    public void DialoguePlayerSelectionsUseTheRequestedBaseGameModels()
+    {
+        CurveEditor3D.DialoguePreviewPlayerSelection female =
+            CurveEditor3D.DialoguePreviewPlayerSelection.Female;
+        CurveEditor3D.DialoguePreviewPlayerSelection male =
+            CurveEditor3D.DialoguePreviewPlayerSelection.Male;
+
+        Assert.AreEqual("HMF_ARM_CTHb_MDL", female.BodyModelName);
+        Assert.AreEqual("SFX_HumanFemale_FaceFX", female.AssetName);
+        Assert.AreEqual("HMM_ARM_CTHb_MDL", male.BodyModelName);
+        Assert.AreEqual("HMM_HED_PROSheppard_MDL", male.HeadModelName);
+        Assert.IsNull(male.HairModelName);
+        Assert.AreEqual("SFX_HumanMale_FaceFX", male.AssetName);
+        Assert.IsFalse(male.UseFemaleLines);
+    }
+
+    [TestMethod]
+    public void DialogueActorLookupPrioritizesVanillaBeforeModsAndStuntActorsBeforePawns()
+    {
+        var vanillaStunt = new TagUsage(0, 1, false, false, "Stunt", "SFXStuntActor",
+            TagUsageContext.TaggedObject, "Tag");
+        var vanillaPawn = new TagUsage(1, 1, false, false, "Pawn", "BioPawn",
+            TagUsageContext.TaggedObject, "Tag");
+        var dlcStunt = new TagUsage(2, 1, true, false, "DlcStunt", "SFXStuntActor",
+            TagUsageContext.TaggedObject, "Tag");
+        var modStunt = new TagUsage(3, 1, true, true, "ModStunt", "SFXStuntActor",
+            TagUsageContext.TaggedObject, "Tag");
+
+        Assert.IsTrue(CurveEditor3D.GetDialogueActorUsagePriority(vanillaStunt)
+            .CompareTo(CurveEditor3D.GetDialogueActorUsagePriority(vanillaPawn)) < 0);
+        Assert.IsTrue(CurveEditor3D.GetDialogueActorUsagePriority(vanillaPawn)
+            .CompareTo(CurveEditor3D.GetDialogueActorUsagePriority(dlcStunt)) < 0);
+        Assert.IsTrue(CurveEditor3D.GetDialogueActorUsagePriority(dlcStunt)
+            .CompareTo(CurveEditor3D.GetDialogueActorUsagePriority(modStunt)) < 0);
+    }
+
     [TestMethod]
     public void DialogueOwnerUsesLinkedStageActorTagAsAnAlias()
     {
@@ -33,6 +72,73 @@ public class InterpTrackMoveTransformTests
         Assert.IsTrue(CurveEditor3D.ActorTagMatchesAlias("global_miranda", "owner", aliases));
         Assert.IsTrue(CurveEditor3D.ActorTagMatchesAlias("Owner", "owner", aliases));
         Assert.IsFalse(CurveEditor3D.ActorTagMatchesAlias("global_miranda", "player", aliases));
+    }
+
+    [TestMethod]
+    public void DialogueActorIdentitiesCollapseOwnerGlobalTagAndGroupName()
+    {
+        var mirandaOrigin = new CameraOrigin(new Vector3(-16000, 7800, -170250), new Vector3(0, 0, 180));
+        var origins = new Dictionary<string, CameraOrigin>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["Owner"] = mirandaOrigin,
+            ["Global_Miranda"] = mirandaOrigin,
+            ["Miranda"] = mirandaOrigin,
+        };
+        CurveEditor3D.DialoguePreviewActorIdentity[] identities =
+        [
+            new("Owner", ["Owner"]),
+            new("Global_Miranda", ["Global_Miranda", "Miranda"]),
+        ];
+
+        IReadOnlyList<CurveEditor3D.DialoguePreviewActorIdentity> merged =
+            CurveEditor3D.MergeDialoguePreviewActorIdentities(identities, origins);
+
+        Assert.HasCount(1, merged);
+        Assert.AreEqual("Owner", merged[0].ActorTag);
+        CollectionAssert.IsSubsetOf(new[] { "Owner", "Global_Miranda", "Miranda" },
+            merged[0].Aliases.ToArray());
+    }
+
+    [TestMethod]
+    public void DialogueCameraNameDetectionMatchesCamAnywhere()
+    {
+        Assert.IsTrue(CurveEditor3D.IsDialogueCameraName("CamActor"));
+        Assert.IsTrue(CurveEditor3D.IsDialogueCameraName("SecurityCamera"));
+        Assert.IsTrue(CurveEditor3D.IsDialogueCameraName("BIO_CAM_03"));
+        Assert.IsFalse(CurveEditor3D.IsDialogueCameraName("Global_Miranda"));
+    }
+
+    [TestMethod]
+    public void DialoguePlayerIsNotExcludedWhenADirectorCameraFollowsPlayer()
+    {
+        IReadOnlySet<string> directorCameraGroups = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "CamPlayer",
+            "DirectorCloseup",
+        };
+
+        Assert.IsTrue(CurveEditor3D.ShouldCreateDialogueActor("Player", directorCameraGroups));
+        Assert.IsFalse(CurveEditor3D.ShouldCreateDialogueActor("CamPlayer", directorCameraGroups));
+        Assert.IsFalse(CurveEditor3D.ShouldCreateDialogueActor("DirectorCloseup", directorCameraGroups));
+    }
+
+    [TestMethod]
+    public void DialogueCachePresetSearchMatchesPresetMetadata()
+    {
+        var preset = new DialogueCachePreset
+        {
+            Label = "Miranda loyalty preview",
+            PccName = "BioD_Nor_103aGalaxy",
+            DialogueName = "citprs_miranda_talk1_m_dlg",
+            SourceFilePath = @"C:\Games\Mass Effect 2\BioGame\CookedPC\BioD_Nor_103aGalaxy.pcc",
+            SavedUtc = new DateTime(2026, 8, 12, 6, 0, 0, DateTimeKind.Utc),
+        };
+
+        Assert.IsTrue(DialoguePreviewLevelPicker.CachePresetMatchesSearch(preset, "LOYALTY"));
+        Assert.IsTrue(DialoguePreviewLevelPicker.CachePresetMatchesSearch(preset, "103agalaxy"));
+        Assert.IsTrue(DialoguePreviewLevelPicker.CachePresetMatchesSearch(preset, "citprs_miranda"));
+        Assert.IsTrue(DialoguePreviewLevelPicker.CachePresetMatchesSearch(preset, "cookedpc"));
+        Assert.IsFalse(DialoguePreviewLevelPicker.CachePresetMatchesSearch(preset, "garrus"));
     }
 
     [TestMethod]

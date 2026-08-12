@@ -19,20 +19,13 @@ public partial class DialogueCachePresetDialog : Window
     public DialogueCachePreset SelectedPreset { get; private set; }
 
     public DialogueCachePresetDialog(Func<string, DialogueCachePreset> saveCurrent,
-        Func<DialogueCachePreset, bool> canLoad, bool chooseBeforeBuild = false)
+        Func<DialogueCachePreset, bool> canLoad)
     {
         InitializeComponent();
         CustomWindowChrome.ApplyCustomChrome(this);
         this.saveCurrent = saveCurrent;
         this.canLoad = canLoad;
         SaveCurrentButton.IsEnabled = saveCurrent is not null;
-        if (chooseBeforeBuild)
-        {
-            Title = "Choose Dialogue Cache";
-            SaveCurrentButton.Visibility = Visibility.Collapsed;
-            CloseButton.Content = "Build New Cache";
-            CloseButton.MinWidth = 120;
-        }
         presets = SavedDialogueCachePresetManager.LoadAll().ToList();
         RefreshItems();
         SearchTextBox.Focus();

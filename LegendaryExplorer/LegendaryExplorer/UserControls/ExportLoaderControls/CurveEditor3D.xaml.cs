@@ -55,9 +55,43 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         Female
     }
 
-    public sealed record DialogueNodePreviewActor(string ActorTag, CameraOrigin Origin);
+    public enum DialoguePreviewPlayerGender
+    {
+        Female,
+        Male
+    }
+
+    public sealed record DialogueNodePreviewActor(string ActorTag, CameraOrigin Origin,
+        IReadOnlyList<string> Aliases = null);
+    internal sealed record DialoguePreviewActorIdentity(string ActorTag, IReadOnlyList<string> Aliases);
     public sealed record DialoguePreviewRecentLevelSet(string DisplayName, IReadOnlyList<string> FilePaths);
-    public sealed record DialoguePreviewPlayerFaceFx(string AssetName, bool UseFemaleLines);
+    public sealed record DialoguePreviewPlayerSelection(
+        DialoguePreviewPlayerGender Gender,
+        string AssetName,
+        bool UseFemaleLines,
+        string BodyModelName,
+        string HeadModelName,
+        string HairModelName)
+    {
+        public static DialoguePreviewPlayerSelection Female { get; } = new(
+            DialoguePreviewPlayerGender.Female,
+            "SFX_HumanFemale_FaceFX",
+            true,
+            "HMF_ARM_CTHb_MDL",
+            "HMF_HED_PROShepard_MDL",
+            "HMF_HIR_PROShepard_MDL");
+
+        public static DialoguePreviewPlayerSelection Male { get; } = new(
+            DialoguePreviewPlayerGender.Male,
+            "SFX_HumanMale_FaceFX",
+            false,
+            "HMM_ARM_CTHb_MDL",
+            "HMM_HED_PROSheppard_MDL",
+            null);
+
+        public static DialoguePreviewPlayerSelection ForGender(DialoguePreviewPlayerGender gender) =>
+            gender == DialoguePreviewPlayerGender.Male ? Male : Female;
+    }
     public sealed record DialogueNodeReference(bool IsReply, int Index);
 
     private sealed record DialogueNodePreviewConfiguration(
@@ -66,7 +100,9 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         IReadOnlyList<DialogueNodePreviewActor> Actors,
         IReadOnlyList<string> LevelPaths,
         StageConversationContext StageContext,
-        DialoguePreviewPlayerFaceFx PlayerFaceFx,
+        DialoguePreviewPlayerSelection PlayerSelection,
+        DialogueCachePreset CachePreset,
+        string NewCacheLabel,
         float VoStartTime);
 
     public sealed class DialogueTimelineSegment : NotifyPropertyChangedBase
@@ -305,29 +341,45 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         FaceFXLine Line,
         float TimelineOffset);
 
+    private sealed record TaggedDialoguePreviewActor(ExportEntry Actor, TagUsage Usage);
+
     private sealed class ActorModelSet : IDisposable
     {
         public sealed class Component : IDisposable
         {
-            public ModelPreview<WorldVertex> Model { get; init; }
+            public PreviewActorModelComponent Kind { get; init; }
+            public ModelPreview<LEVertex> Model { get; init; }
             public SkinnedMeshRenderer Renderer { get; init; }
+            public Matrix4x4? LocalTransform { get; init; }
             public void Dispose() => Model?.Dispose();
         }
 
-        private readonly Dictionary<PreviewActorModelComponent, Component> components = [];
-        public ModelPreview<WorldVertex> Body => components.GetValueOrDefault(PreviewActorModelComponent.Body)?.Model;
+        private readonly Dictionary<string, Component> components = new(StringComparer.OrdinalIgnoreCase);
+        public ModelPreview<LEVertex> Body => components.Values
+            .FirstOrDefault(component => component.Kind == PreviewActorModelComponent.Body)?.Model;
         public IEnumerable<Component> Components => components.Values;
 
-        public void Set(PreviewActorModelComponent component, ModelPreview<WorldVertex> model,
-            SkinnedMeshRenderer renderer)
+        public void Set(PreviewActorModelComponent component, ModelPreview<LEVertex> model,
+            SkinnedMeshRenderer renderer, string slotName = null, Matrix4x4? localTransform = null)
         {
-            if (components.Remove(component, out Component previous)) previous.Dispose();
-            components[component] = new Component { Model = model, Renderer = renderer };
+            string key = string.IsNullOrWhiteSpace(slotName) ? component.ToString() : slotName;
+            if (components.Remove(key, out Component previous)) previous.Dispose();
+            components[key] = new Component
+            {
+                Kind = component,
+                Model = model,
+                Renderer = renderer,
+                LocalTransform = localTransform,
+            };
         }
 
         public void Remove(PreviewActorModelComponent component)
         {
-            if (components.Remove(component, out Component previous)) previous.Dispose();
+            foreach (string key in components.Where(pair => pair.Value.Kind == component)
+                         .Select(pair => pair.Key).ToArray())
+            {
+                if (components.Remove(key, out Component previous)) previous.Dispose();
+            }
         }
 
         public void Dispose()
@@ -756,7 +808,8 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         public string ModelName { get; set; }
         public string HeadModelName { get; set; }
         public string HairModelName { get; set; }
-        public string FaceFxAssetName { get; set; } = "SFX_HumanFemale_FaceFX";
+        public string FaceFxAssetName { get; set; }
+        public DialogueActorConstructionCache Construction { get; set; }
         public float X { get; set; }
         public float Y { get; set; }
         public float Z { get; set; }
@@ -850,7 +903,6 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     private StageConversationContext trackAnchorStageContext;
     private ConversationExtended trackAnchorConversation;
     private readonly Dictionary<PreviewActorConfiguration, FaceFXAnimSet> dialoguePreviewFaceFxAnimSets = [];
-    private readonly Dictionary<string, FaceFXAsset> dialoguePreviewFaceFxAssets = new(StringComparer.OrdinalIgnoreCase);
     private readonly ObservableCollection<GestureTrackOption> availableGestureTracks = [];
     private readonly Dictionary<PreviewActorConfiguration, GestureTrackOption> previewActorGestureAssignments = [];
     private readonly Dictionary<PreviewActorConfiguration, PreviewActorAnimationState> previewActorAnimationStates = [];
@@ -873,6 +925,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     private AssetDB previewAssetDatabase;
     private List<MeshRecord> previewActorMeshes = [];
     private List<(string FileName, string ContentDir)> previewAssetFiles = [];
+    private Dictionary<int, string> previewAssetFilePaths = [];
     private PreviewActorConfiguration selectedPreviewActor;
     private MEGame previewActorGame = MEGame.Unknown;
     private bool updatingPreviewActorControls;
@@ -1020,7 +1073,9 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     {
         RenderContext = new LevelEditorRenderContext
         {
-            ConstrainedAspectRatio = 16f / 9f
+            ConstrainedAspectRatio = 16f / 9f,
+            UseGameShaderMeshPreviews = true,
+            UseGameShaderStaticMeshPreviews = false,
         };
         backgroundColor = LevelEditor.GetThemeDefaultBackgroundColor();
         RenderContext.BackgroundColor = backgroundColor;
@@ -1093,33 +1148,35 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
     internal void ConfigureDialogueNodePreview(ConversationExtended conversation, DialogueNodeExtended node,
         IReadOnlyList<DialogueNodePreviewActor> actors, IReadOnlyList<string> levelPaths,
-        StageConversationContext stageContext, DialoguePreviewPlayerFaceFx playerFaceFx) =>
-        ConfigureDialoguePreview(conversation, node, actors, levelPaths, stageContext, playerFaceFx,
-            conversationPreview: false);
+        StageConversationContext stageContext, DialoguePreviewPlayerSelection playerSelection) =>
+        ConfigureDialoguePreview(conversation, node, actors, levelPaths, stageContext, playerSelection,
+            cachePreset: null, newCacheLabel: null, conversationPreview: false);
 
     internal void ConfigureDialogueConversationPreview(ConversationExtended conversation, DialogueNodeExtended startNode,
         IReadOnlyList<DialogueNodePreviewActor> actors, IReadOnlyList<string> levelPaths,
-        StageConversationContext stageContext, DialoguePreviewPlayerFaceFx playerFaceFx) =>
-        ConfigureDialoguePreview(conversation, startNode, actors, levelPaths, stageContext, playerFaceFx,
-            conversationPreview: true);
+        StageConversationContext stageContext, DialoguePreviewPlayerSelection playerSelection,
+        DialogueCachePreset cachePreset, string newCacheLabel) =>
+        ConfigureDialoguePreview(conversation, startNode, actors, levelPaths, stageContext, playerSelection,
+            cachePreset, newCacheLabel, conversationPreview: true);
 
     private void ConfigureDialoguePreview(ConversationExtended conversation, DialogueNodeExtended startNode,
         IReadOnlyList<DialogueNodePreviewActor> actors, IReadOnlyList<string> levelPaths,
-        StageConversationContext stageContext, DialoguePreviewPlayerFaceFx playerFaceFx, bool conversationPreview)
+        StageConversationContext stageContext, DialoguePreviewPlayerSelection playerSelection,
+        DialogueCachePreset cachePreset, string newCacheLabel, bool conversationPreview)
     {
         ArgumentNullException.ThrowIfNull(conversation);
         ArgumentNullException.ThrowIfNull(startNode);
         ArgumentNullException.ThrowIfNull(actors);
         ArgumentNullException.ThrowIfNull(levelPaths);
         ArgumentNullException.ThrowIfNull(stageContext);
-        ArgumentNullException.ThrowIfNull(playerFaceFx);
+        ArgumentNullException.ThrowIfNull(playerSelection);
         ReleaseTrackAnchorStageContext();
         dialogueBranchSelections.Clear();
         loadedDialogueCachePreset = null;
         isDialogueConversationPreview = conversationPreview;
         dialogueNodeInterpDataCache.Clear();
         dialogueNodePreview = new DialogueNodePreviewConfiguration(conversation, startNode, actors, levelPaths, stageContext,
-            playerFaceFx, 0);
+            playerSelection, cachePreset, newCacheLabel, 0);
         BuildDialoguePreviewActorTagAliases(actors, stageContext);
         dialogueNodePreview = dialogueNodePreview with { VoStartTime = GetDialogueNodeVoStartTime(startNode) };
         BuildDialogueTimeline(startNode);
@@ -1133,6 +1190,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         DialogueCachePresetsButton.Visibility = conversationPreview ? Visibility.Visible : Visibility.Collapsed;
         DialogueCacheLoadingOverlay.Visibility = conversationPreview ? Visibility.Visible : Visibility.Collapsed;
         SceneViewer.Visibility = conversationPreview ? Visibility.Hidden : Visibility.Visible;
+        PreviewActorModelSelectionPanel.Visibility = Visibility.Collapsed;
         // Dialogue actors are attached to authored TrackMove splines. Their vertical position is
         // part of that spline (stairs, lifts, ramps, and similar movement), so the standalone curve
         // editor's manual Z override must never be allowed to flatten dialogue playback.
@@ -1462,6 +1520,19 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             return cached;
         }
 
+        cached = ResolveDialogueNodeInterpDatas(dialogueNodePreview?.Conversation, node);
+        dialogueNodeInterpDataCache[node] = cached;
+        return cached;
+    }
+
+    private static IReadOnlyList<ExportEntry> ResolveDialogueNodeInterpDatas(ConversationExtended conversation,
+        DialogueNodeExtended node)
+    {
+        if (node is null)
+        {
+            return [];
+        }
+
         var interpDatas = new List<ExportEntry>();
         void AddInterpData(ExportEntry interpData)
         {
@@ -1474,7 +1545,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         }
 
         AddInterpData(node.InterpData);
-        if (dialogueNodePreview?.Conversation.Sequence is ExportEntry sequence)
+        if (conversation?.Sequence is ExportEntry sequence)
         {
             int exportId = node.ExportID != 0
                 ? node.ExportID
@@ -1511,9 +1582,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             }
         }
 
-        cached = interpDatas.ToArray();
-        dialogueNodeInterpDataCache[node] = cached;
-        return cached;
+        return interpDatas.ToArray();
     }
 
     private static IEnumerable<ExportEntry> GetSeqActInterpDatas(ExportEntry seqActInterp)
@@ -1614,6 +1683,180 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     public static IReadOnlyList<DialoguePreviewRecentLevelSet> GetDialoguePreviewRecentLevelSets() =>
         LoadRecentSets().Select(set => new DialoguePreviewRecentLevelSet(set.DisplayName, set.FilePaths.ToArray()))
             .ToArray();
+
+    internal static IReadOnlyList<string> GetDialoguePreviewActorTags(ConversationExtended conversation) =>
+        GetDialoguePreviewActorIdentities(conversation).Select(identity => identity.ActorTag).ToArray();
+
+    internal static IReadOnlyList<DialoguePreviewActorIdentity> GetDialoguePreviewActorIdentities(
+        ConversationExtended conversation)
+    {
+        if (conversation is null)
+        {
+            return [];
+        }
+
+        ExportEntry[] interpDatas = conversation.EntryList.Concat(conversation.ReplyList)
+            .SelectMany(node => ResolveDialogueNodeInterpDatas(conversation, node))
+            .DistinctBy(interp => (interp.FileRef, interp.UIndex))
+            .ToArray();
+        ExportEntry[] interpGroups = interpDatas.SelectMany(interpData =>
+                GetReferencedExports(interpData, "InterpGroups"))
+            .DistinctBy(group => (group.FileRef, group.UIndex))
+            .ToArray();
+        var cameraGroupNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (ExportEntry directorTrack in interpDatas.SelectMany(FindDirectorTracks))
+        {
+            foreach (StructProperty cut in directorTrack.GetProperty<ArrayProperty<StructProperty>>("CutTrack")
+                         ?? Enumerable.Empty<StructProperty>())
+            {
+                string target = cut.GetProp<NameProperty>("TargetCamGroup")?.Value.Instanced;
+                if (!string.IsNullOrWhiteSpace(target)) cameraGroupNames.Add(target);
+            }
+        }
+        foreach (ExportEntry group in interpGroups)
+        {
+            ExportEntry[] tracks = GetReferencedExports(group, "InterpTracks").ToArray();
+            string groupName = GetInterpGroupName(group);
+            bool hasFovTrack = tracks.Any(IsDialogueFovTrack);
+            if (IsDialogueCameraName(groupName) || hasFovTrack)
+            {
+                cameraGroupNames.Add(groupName);
+            }
+        }
+        var candidates = new List<(string Tag, HashSet<string> Aliases)>();
+        void Add(string tag, params string[] aliases)
+        {
+            if (ShouldCreateDialogueActor(tag, cameraGroupNames))
+            {
+                var identityAliases = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { tag };
+                identityAliases.UnionWith(aliases.Where(alias => ShouldCreateDialogueActor(alias,
+                    cameraGroupNames)));
+                candidates.Add((tag, identityAliases));
+            }
+        }
+
+        // Player is a required preview actor even when a malformed conversation omits its
+        // synthetic speaker entry. Camera groups are allowed to follow Player; that attachment
+        // must not turn Player itself into a camera actor.
+        Add("Player");
+        foreach (SpeakerExtended speaker in conversation.Speakers)
+        {
+            Add(speaker.SpeakerName);
+        }
+
+        foreach (ExportEntry interpData in interpDatas)
+        {
+            foreach (ExportEntry group in GetReferencedExports(interpData, "InterpGroups"))
+            {
+                ExportEntry[] tracks = GetReferencedExports(group, "InterpTracks").ToArray();
+                string groupName = GetInterpGroupName(group);
+                bool hasFovTrack = tracks.Any(IsDialogueFovTrack);
+                bool reservedGroup = groupName.Equals("Conversation", StringComparison.OrdinalIgnoreCase)
+                                     || groupName.Equals("Director", StringComparison.OrdinalIgnoreCase)
+                                     || tracks.Any(track => track.IsA("InterpTrackDirector"));
+                bool cameraGroup = reservedGroup || hasFovTrack || IsDialogueCameraName(groupName)
+                                   || cameraGroupNames.Contains(groupName);
+                if (cameraGroup || tracks.Length == 0)
+                {
+                    continue;
+                }
+
+                string groupActor = group.GetProperty<NameProperty>("m_nmSFXFindActor")?.Value.Instanced;
+                string[] trackActors = tracks.SelectMany(track => new[]
+                    {
+                        track.GetProperty<NameProperty>("m_nmSFXFindActor")?.Value.Instanced,
+                        track.GetProperty<NameProperty>("m_nmFindActor")?.Value.Instanced,
+                    })
+                    .Where(tag => !string.IsNullOrWhiteSpace(tag) && !tag.Equals("None",
+                        StringComparison.OrdinalIgnoreCase))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToArray();
+                string canonicalTag = trackActors.FirstOrDefault() ?? groupActor ?? groupName;
+                Add(canonicalTag, trackActors.Append(groupActor).Append(groupName).ToArray());
+            }
+        }
+
+        var identities = new List<DialoguePreviewActorIdentity>();
+        foreach ((string tag, HashSet<string> aliases) in candidates)
+        {
+            DialoguePreviewActorIdentity[] matches = identities
+                .Where(identity => identity.Aliases.Any(aliases.Contains))
+                .ToArray();
+            if (matches.Length == 0)
+            {
+                identities.Add(new DialoguePreviewActorIdentity(tag, aliases.ToArray()));
+                continue;
+            }
+            foreach (DialoguePreviewActorIdentity match in matches)
+            {
+                aliases.UnionWith(match.Aliases);
+                identities.Remove(match);
+            }
+            string preferredTag = aliases.OrderBy(GetDialogueActorIdentityPriority)
+                .ThenBy(alias => alias, StringComparer.OrdinalIgnoreCase)
+                .First();
+            identities.Add(new DialoguePreviewActorIdentity(preferredTag, aliases.ToArray()));
+        }
+        return identities;
+    }
+
+    internal static bool IsDialogueCameraName(string name) =>
+        name?.Contains("cam", StringComparison.OrdinalIgnoreCase) == true;
+
+    internal static bool ShouldCreateDialogueActor(string name, IReadOnlySet<string> directorCameraGroups) =>
+        !string.IsNullOrWhiteSpace(name)
+        && !name.Equals("None", StringComparison.OrdinalIgnoreCase)
+        && !IsDialogueCameraName(name)
+        && !(directorCameraGroups?.Contains(name) ?? false);
+
+    private static bool IsDialogueFovTrack(ExportEntry track) =>
+        track?.ClassName == "InterpTrackFloatProp"
+        && (track.GetProperty<NameProperty>("PropertyName")?.Value.Instanced
+                .Equals("FOVAngle", StringComparison.OrdinalIgnoreCase) == true
+            || track.GetProperty<StrProperty>("TrackTitle")?.Value
+                .Equals("FOVAngle", StringComparison.OrdinalIgnoreCase) == true);
+
+    internal static IReadOnlyList<DialoguePreviewActorIdentity> MergeDialoguePreviewActorIdentities(
+        IEnumerable<DialoguePreviewActorIdentity> identities,
+        IReadOnlyDictionary<string, CameraOrigin> actorOrigins)
+    {
+        var merged = new List<DialoguePreviewActorIdentity>();
+        foreach (DialoguePreviewActorIdentity identity in identities ?? [])
+        {
+            var aliases = new HashSet<string>(identity.Aliases ?? [], StringComparer.OrdinalIgnoreCase)
+            {
+                identity.ActorTag,
+            };
+            foreach (string alias in aliases.ToArray())
+            {
+                if (!actorOrigins.TryGetValue(alias, out CameraOrigin aliasOrigin)) continue;
+                foreach ((string authoredTag, CameraOrigin authoredOrigin) in actorOrigins)
+                {
+                    if (HaveEquivalentActorAliasOrigins(aliasOrigin, authoredOrigin)) aliases.Add(authoredTag);
+                }
+            }
+
+            DialoguePreviewActorIdentity[] matches = merged
+                .Where(existing => existing.Aliases.Any(aliases.Contains))
+                .ToArray();
+            foreach (DialoguePreviewActorIdentity match in matches)
+            {
+                aliases.UnionWith(match.Aliases);
+                merged.Remove(match);
+            }
+            string preferredTag = aliases.OrderBy(GetDialogueActorIdentityPriority)
+                .ThenBy(tag => tag, StringComparer.OrdinalIgnoreCase)
+                .First();
+            merged.Add(new DialoguePreviewActorIdentity(preferredTag, aliases.ToArray()));
+        }
+        return merged;
+    }
+
+    private static int GetDialogueActorIdentityPriority(string tag) =>
+        tag.Equals("Player", StringComparison.OrdinalIgnoreCase) ? 0
+        : tag.Equals("Owner", StringComparison.OrdinalIgnoreCase) ? 1
+        : tag.StartsWith("Global_", StringComparison.OrdinalIgnoreCase) ? 2
+        : 3;
 
     public static IReadOnlyList<string> GetDialoguePreviewFaceFxAssetNames(MEGame game)
     {
@@ -2128,7 +2371,6 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         previewActorGesturePackageCache.ReleasePackages();
         dialoguePreviewFaceFxPackage?.Dispose();
         dialoguePreviewFaceFxPackage = null;
-        dialoguePreviewFaceFxAssets.Clear();
         dialogueNodePreview?.StageContext.Dispose();
         SceneViewer.Dispose();
     }
@@ -2834,13 +3076,30 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             previewAssetFiles = database.FileList
                 .Select(file => (file.FileName, database.ContentDir[file.DirectoryKey]))
                 .ToList();
+            previewAssetFilePaths = await AssetDatabaseFilePathResolver.BuildIndexAsync(database, game,
+                CancellationToken.None).ConfigureAwait(true);
             previewActorMeshes = meshes;
+
+            if (dialogueNodePreview is not null)
+            {
+                // Loading the first backdrop resets the Level Editor render caches. Do it before
+                // constructing actor materials so their compiled shaders and textures remain live.
+                await LoadDialoguePreviewLevelsAsync().ConfigureAwait(true);
+                ResolveDialoguePreviewActorConstructions();
+            }
 
             for (int actorIndex = 0; actorIndex < previewActors.Count; actorIndex++)
             {
                 PreviewActorConfiguration actor = previewActors[actorIndex];
+                HashSet<PreviewActorModelComponent> loadedConstruction = dialogueNodePreview is not null
+                    ? LoadCachedActorConstruction(actorIndex, actor)
+                    : [];
                 foreach (PreviewActorModelComponent component in Enum.GetValues<PreviewActorModelComponent>())
                 {
+                    if (loadedConstruction.Contains(component))
+                    {
+                        continue;
+                    }
                     if (component is not PreviewActorModelComponent.Body
                         && string.IsNullOrEmpty(GetPreviewActorModelName(actor, component)))
                     {
@@ -2848,9 +3107,11 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                         continue;
                     }
                     MeshRecord configuredMesh = FindConfiguredPreviewActorMesh(meshes, actor, component);
-                    MeshRecord mesh = actor.BaseGameModelsOnly
+                    MeshRecord mesh = dialogueNodePreview is not null
                         ? configuredMesh
-                        : configuredMesh ?? PreviewActorModelDefaults.FindDefaultMesh(meshes, database, component, game);
+                        : actor.BaseGameModelsOnly
+                            ? configuredMesh
+                            : configuredMesh ?? PreviewActorModelDefaults.FindDefaultMesh(meshes, database, component, game);
                     if (mesh is null)
                     {
                         continue;
@@ -2862,16 +3123,10 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             SynchronizePreviewActorControls();
             if (dialogueNodePreview is not null)
             {
-                await LoadDialoguePreviewLevelsAsync().ConfigureAwait(true);
                 if (isDialogueConversationPreview)
                 {
                     bool cacheReady = false;
-                    var cacheDialog = new DialogueCachePresetDialog(null, IsDialogueCachePresetCompatible,
-                        chooseBeforeBuild: true)
-                    {
-                        Owner = Window.GetWindow(this),
-                    };
-                    if (cacheDialog.ShowDialog() == true && cacheDialog.SelectedPreset is { } savedPreset)
+                    if (dialogueNodePreview.CachePreset is { } savedPreset)
                     {
                         cacheReady = TryRestoreDialogueCachePreset(savedPreset, out string restoreError);
                         if (!cacheReady)
@@ -2885,9 +3140,17 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                     {
                         return;
                     }
-                    if (!cacheReady)
+                    if (!cacheReady && !string.IsNullOrWhiteSpace(dialogueNodePreview.NewCacheLabel))
                     {
-                        OfferToSaveDialogueCachePreset();
+                        try
+                        {
+                            SaveDialogueCachePreset(dialogueNodePreview.NewCacheLabel);
+                        }
+                        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException
+                                                          or InvalidOperationException or InvalidDataException)
+                        {
+                            SceneStatus = $"The conversation cache is ready but could not be saved: {exception.Message}";
+                        }
                     }
                     ShowDialogueConversationPreviewUi();
                 }
@@ -3183,8 +3446,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
         string sourcePath = conversationExport.FileRef.FilePath;
         if (string.IsNullOrWhiteSpace(sourcePath)
-            || !string.Equals(Path.GetFullPath(preset.SourceFilePath), Path.GetFullPath(sourcePath),
-                StringComparison.OrdinalIgnoreCase)
+            || !DialogueCachePathsEqual(preset.SourceFilePath, sourcePath)
             || preset.Game != conversationExport.Game
             || preset.DialogueUIndex != conversationExport.UIndex
             || !string.Equals(preset.DialogueExportPath, conversationExport.InstancedFullPath,
@@ -3200,6 +3462,24 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             node.IsReply == segment.Reference.IsReply
             && node.NodeIndex == segment.Reference.Index
             && node.LineStrRef == segment.Node.LineStrRef));
+    }
+
+    private static bool DialogueCachePathsEqual(string left, string right)
+    {
+        if (string.IsNullOrWhiteSpace(left) || string.IsNullOrWhiteSpace(right))
+        {
+            return false;
+        }
+        try
+        {
+            return string.Equals(Path.GetFullPath(left), Path.GetFullPath(right),
+                StringComparison.OrdinalIgnoreCase);
+        }
+        catch (Exception exception) when (exception is ArgumentException or NotSupportedException
+                                          or PathTooLongException)
+        {
+            return false;
+        }
     }
 
     private DialogueCachePreset SaveDialogueCachePreset(string label)
@@ -3225,6 +3505,11 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             SourceFileSize = sourceInfo.Exists ? sourceInfo.Length : 0,
             StartNodeIsReply = dialogueTimelineStartSegment.Reference.IsReply,
             StartNodeIndex = dialogueTimelineStartSegment.Reference.Index,
+            PlayerGender = dialogueNodePreview.PlayerSelection.Gender,
+            LevelPaths = dialogueNodePreview.LevelPaths.Select(Path.GetFullPath)
+                .Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
+            Actors = previewActors.Where(actor => actor.Construction is not null)
+                .Select(actor => actor.Construction).ToList(),
             Nodes = dialogueTimelineSegments.Select(CaptureDialogueCacheNode).ToList(),
         };
         loadedDialogueCachePreset = SavedDialogueCachePresetManager.Save(preset);
@@ -3844,16 +4129,6 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         }
     }
 
-    private void OfferToSaveDialogueCachePreset()
-    {
-        if (MessageBox.Show(Window.GetWindow(this),
-                "The entire conversation cache is ready. Save it as a preset so this dialogue does not need to be rebuilt next time?",
-                "Save Dialogue Cache", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes)
-        {
-            SaveDialogueCachePresetInteractively();
-        }
-    }
-
     private void SaveDialogueCachePresetInteractively()
     {
         string suggestedLabel = dialogueNodePreview?.Conversation?.ConvName;
@@ -4080,13 +4355,11 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     private DialogueFaceFxBinding CreateDialogueFaceFxBinding(DialogueNodeExtended node,
         PreviewActorConfiguration actor, float timelineOffset)
     {
-        if (node is null || actor is null || dialoguePreviewFaceFxPackage is null)
+        if (node is null || actor is null)
         {
             return null;
         }
-        ExportEntry assetExport = dialoguePreviewFaceFxPackage.Exports.FirstOrDefault(export =>
-            export.ClassName == "FaceFXAsset"
-            && export.ObjectNameString.Equals(actor.FaceFxAssetName, StringComparison.OrdinalIgnoreCase));
+        ExportEntry assetExport = GetDialoguePreviewFaceFxAssetExport(actor);
         if (assetExport is null)
         {
             return null;
@@ -4535,10 +4808,6 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         LoadFaceOnlyVoEvents(interpDataOverride);
         foreach (PreviewActorConfiguration actor in previewActors)
         {
-            if (!actor.ActorTag.Equals("player", StringComparison.OrdinalIgnoreCase))
-            {
-                actor.FaceFxAssetName = FindCompatibleDialoguePreviewFaceFxAsset(actor) ?? actor.FaceFxAssetName;
-            }
             AttachDialoguePreviewFaceFxAsset(actor);
             if (!dialogueNodePreview.Node.IgnoreBodyGesture)
             {
@@ -4763,14 +5032,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             UpdatePreviewActorSkinning(cachedFaceFx.Actor);
             return;
         }
-        if (dialoguePreviewFaceFxPackage is null)
-        {
-            return;
-        }
-
-        ExportEntry assetExport = dialoguePreviewFaceFxPackage.Exports.FirstOrDefault(export =>
-            export.ClassName == "FaceFXAsset"
-            && export.ObjectNameString.Equals(faceOnlyVo.Actor.FaceFxAssetName, StringComparison.OrdinalIgnoreCase));
+        ExportEntry assetExport = GetDialoguePreviewFaceFxAssetExport(faceOnlyVo.Actor);
         if (assetExport is null)
         {
             return;
@@ -4853,7 +5115,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
     private IEnumerable<DialoguePreviewAudioGender> GetDialogueLineGenderCandidates()
     {
-        DialoguePreviewAudioGender preferred = dialogueNodePreview?.PlayerFaceFx.UseFemaleLines == true
+        DialoguePreviewAudioGender preferred = dialogueNodePreview?.PlayerSelection.UseFemaleLines == true
             ? DialoguePreviewAudioGender.Female
             : DialoguePreviewAudioGender.Male;
         yield return preferred;
@@ -4935,7 +5197,6 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
         dialoguePreviewFaceFxPackage?.Dispose();
         dialoguePreviewFaceFxPackage = null;
-        dialoguePreviewFaceFxAssets.Clear();
         if (packagePath is null)
         {
             return;
@@ -4944,74 +5205,15 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         dialoguePreviewFaceFxPackage = MEPackageHandler.OpenMEPackage(packagePath);
     }
 
-    private string FindCompatibleDialoguePreviewFaceFxAsset(PreviewActorConfiguration actor)
-    {
-        if (dialoguePreviewFaceFxPackage is null
-            || !previewActorAnimationStates.TryGetValue(actor, out PreviewActorAnimationState animationState))
-        {
-            return null;
-        }
-
-        HashSet<string> skeletonBones = animationState.SkeletalMesh.RefSkeleton
-            .Select(bone => bone.Name.Instanced)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        string modelPrefix = actor.ModelName?.Split('_').FirstOrDefault();
-        string PreferredAssetToken() => modelPrefix?.ToUpperInvariant() switch
-        {
-            "HMF" => "HumanFemale",
-            "HMM" => "HumanMale",
-            "ASA" => "Asari",
-            "TUR" => "Turian",
-            "SAL" => "Salarian",
-            "KRO" => "Krogan",
-            "QUA" => "Quarian",
-            _ => null,
-        };
-        string preferredToken = PreferredAssetToken();
-
-        return dialoguePreviewFaceFxPackage.Exports
-            .Where(export => export.ClassName == "FaceFXAsset" && !export.IsDefaultObject)
-            .Select(export =>
-            {
-                try
-                {
-                    if (!dialoguePreviewFaceFxAssets.TryGetValue(export.ObjectNameString, out FaceFXAsset asset))
-                    {
-                        asset = export.GetBinaryData<FaceFXAsset>();
-                        dialoguePreviewFaceFxAssets[export.ObjectNameString] = asset;
-                    }
-                    int matchedBones = asset.RefBones.Count(bone =>
-                        bone.RefBone.BoneName >= 0 && bone.RefBone.BoneName < asset.Names.Count
-                        && skeletonBones.Contains(asset.Names[bone.RefBone.BoneName]));
-                    int missingBones = asset.RefBones.Count - matchedBones;
-                    int nameBonus = preferredToken is not null
-                                    && export.ObjectNameString.Contains(preferredToken, StringComparison.OrdinalIgnoreCase)
-                        ? 10000
-                        : 0;
-                    return new { Name = export.ObjectNameString, Score = nameBonus + matchedBones * 10 - missingBones * 20 };
-                }
-                catch (NotSupportedException)
-                {
-                    return new { Name = export.ObjectNameString, Score = int.MinValue };
-                }
-            })
-            .OrderByDescending(candidate => candidate.Score)
-            .ThenBy(candidate => candidate.Name, StringComparer.OrdinalIgnoreCase)
-            .FirstOrDefault(candidate => candidate.Score > int.MinValue)?.Name;
-    }
-
     private void ApplyDialoguePreviewFaceFx(PreviewActorConfiguration actor)
     {
         if (!IsDialogueNodeSpeaker(actor)
-            || !previewActorAnimationStates.TryGetValue(actor, out PreviewActorAnimationState animationState)
-            || dialoguePreviewFaceFxPackage is null)
+            || !previewActorAnimationStates.TryGetValue(actor, out PreviewActorAnimationState animationState))
         {
             return;
         }
 
-        ExportEntry assetExport = dialoguePreviewFaceFxPackage.Exports.FirstOrDefault(export =>
-            export.ClassName == "FaceFXAsset"
-            && export.ObjectNameString.Equals(actor.FaceFxAssetName, StringComparison.OrdinalIgnoreCase));
+        ExportEntry assetExport = GetDialoguePreviewFaceFxAssetExport(actor);
         if (assetExport is null)
         {
             return;
@@ -5043,17 +5245,16 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
     private void AttachDialoguePreviewFaceFxAsset(PreviewActorConfiguration actor)
     {
-        if (dialoguePreviewFaceFxPackage is null
-            || !previewActorAnimationStates.TryGetValue(actor, out PreviewActorAnimationState animationState))
+        if (!previewActorAnimationStates.TryGetValue(actor, out PreviewActorAnimationState animationState))
         {
             return;
         }
 
-        ExportEntry assetExport = dialoguePreviewFaceFxPackage.Exports.FirstOrDefault(export =>
-            export.ClassName == "FaceFXAsset"
-            && export.ObjectNameString.Equals(actor.FaceFxAssetName, StringComparison.OrdinalIgnoreCase));
+        ExportEntry assetExport = GetDialoguePreviewFaceFxAssetExport(actor);
         if (assetExport is not null)
         {
+            actor.Construction ??= new DialogueActorConstructionCache { ActorTag = actor.ActorTag };
+            actor.Construction.FaceFxAsset ??= CreateExportReference(assetExport);
             animationState.AttachFaceFx(assetExport.GetBinaryData<FaceFXAsset>());
         }
     }
@@ -5139,6 +5340,22 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                 }
             }
         }
+    }
+
+    private ExportEntry GetDialoguePreviewFaceFxAssetExport(PreviewActorConfiguration actor)
+    {
+        ExportEntry resolved = ResolveExportReference(actor?.Construction?.FaceFxAsset, required: false);
+        if (resolved?.ClassName == "FaceFXAsset")
+        {
+            return resolved;
+        }
+        if (dialoguePreviewFaceFxPackage is null || string.IsNullOrWhiteSpace(actor?.FaceFxAssetName))
+        {
+            return null;
+        }
+        return dialoguePreviewFaceFxPackage.Exports.FirstOrDefault(export =>
+            export.ClassName == "FaceFXAsset"
+            && export.ObjectNameString.Equals(actor.FaceFxAssetName, StringComparison.OrdinalIgnoreCase));
     }
 
     internal static string GetDirectionTrackActorTag(ExportEntry track)
@@ -5294,6 +5511,489 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         PreviewActorStatusTextBlock.Text = status;
     }
 
+    private void ResolveDialoguePreviewActorConstructions()
+    {
+        foreach (PreviewActorConfiguration actor in previewActors)
+        {
+            if (actor.BaseGameModelsOnly)
+            {
+                continue;
+            }
+
+            if (actor.Construction?.Meshes.Count > 0
+                && actor.Construction.Meshes.All(mesh =>
+                    ResolveExportReference(mesh.MeshExport, required: false)?.ClassName == "SkeletalMesh"))
+            {
+                actor.ModelName = GetCachedActorModelName(actor.Construction, PreviewActorModelComponent.Body);
+                actor.HeadModelName = GetCachedActorModelName(actor.Construction, PreviewActorModelComponent.Head);
+                actor.HairModelName = GetCachedActorModelName(actor.Construction, PreviewActorModelComponent.Hair);
+                actor.FaceFxAssetName = actor.Construction.FaceFxAsset?.InstancedFullPath?.Split('.').LastOrDefault();
+                continue;
+            }
+
+            IReadOnlyList<TaggedDialoguePreviewActor> taggedActors = FindTaggedDialoguePreviewActors(actor.ActorTag);
+            ExportEntry sourceActor = ResolveExportReference(actor.Construction?.SourceActor, required: false)
+                                      ?? taggedActors.FirstOrDefault()?.Actor;
+            if (sourceActor is null)
+            {
+                actor.Construction = null;
+                actor.ModelName = null;
+                actor.HeadModelName = null;
+                actor.HairModelName = null;
+                actor.FaceFxAssetName = null;
+                continue;
+            }
+
+            DialogueActorConstructionCache construction = BuildDialogueActorConstruction(actor.ActorTag, sourceActor);
+            SupplementDialogueActorHeadAndHair(construction, sourceActor, taggedActors);
+            if (construction.Meshes.Count == 0)
+            {
+                continue;
+            }
+            actor.Construction = construction;
+            actor.ModelName = GetCachedActorModelName(construction, PreviewActorModelComponent.Body);
+            actor.HeadModelName = GetCachedActorModelName(construction, PreviewActorModelComponent.Head);
+            actor.HairModelName = GetCachedActorModelName(construction, PreviewActorModelComponent.Hair);
+            actor.FaceFxAssetName = construction.FaceFxAsset?.InstancedFullPath?.Split('.').LastOrDefault();
+        }
+    }
+
+    private IReadOnlyList<TaggedDialoguePreviewActor> FindTaggedDialoguePreviewActors(string actorTag)
+    {
+        if (previewAssetDatabase is null || string.IsNullOrWhiteSpace(actorTag))
+        {
+            return [];
+        }
+
+        IEnumerable<string> searchTags = dialoguePreviewActorTagAliases.GetValueOrDefault(actorTag)
+            ?? [actorTag];
+        TagUsage[] usages = searchTags
+            .Where(tag => !string.IsNullOrWhiteSpace(tag)
+                          && !tag.Equals("player", StringComparison.OrdinalIgnoreCase)
+                          && !tag.Equals("owner", StringComparison.OrdinalIgnoreCase))
+            .Prepend(actorTag)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .SelectMany(tag => previewAssetDatabase.Tags
+                .Where(record => record.Tag.Equals(tag, StringComparison.OrdinalIgnoreCase))
+                .SelectMany(record => record.Usages))
+            .DistinctBy(usage => (usage.FileKey, usage.UIndex))
+            .OrderBy(GetDialogueActorUsagePriority)
+            .ThenBy(usage => usage.FileKey)
+            .ThenBy(usage => usage.UIndex)
+            .ToArray();
+
+        var actors = new List<TaggedDialoguePreviewActor>();
+        bool foundBaseGameActor = false;
+        bool foundBaseGameHead = false;
+        bool foundBaseGameHair = false;
+        foreach (TagUsage usage in usages)
+        {
+            if ((usage.IsInMod || usage.IsInDLC) && foundBaseGameActor)
+            {
+                // Head/hair supplementation is intentionally vanilla-only. Once the base-game
+                // candidates are exhausted there is no reason to load DLC or mod packages.
+                break;
+            }
+            if (!previewAssetFilePaths.TryGetValue(usage.FileKey, out string packagePath))
+            {
+                continue;
+            }
+            try
+            {
+                IMEPackage package = previewActorGesturePackageCache.GetCachedPackage(packagePath);
+                if (package?.TryGetUExport(usage.UIndex, out ExportEntry candidate) == true
+                    && ActorProxy.CanCreate(candidate) && ActorHasPreviewSkeletalMesh(candidate))
+                {
+                    actors.Add(new TaggedDialoguePreviewActor(candidate, usage));
+                    if (!usage.IsInMod && !usage.IsInDLC)
+                    {
+                        foundBaseGameActor = true;
+                        foundBaseGameHead |= ActorHasNamedPreviewSkeletalMesh(candidate,
+                            "HeadMesh", "m_oHeadMesh");
+                        foundBaseGameHair |= ActorHasNamedPreviewSkeletalMesh(candidate,
+                            "HairMesh", "m_oHairMesh");
+                        if (foundBaseGameHead && foundBaseGameHair)
+                        {
+                            break;
+                        }
+                    }
+                    else
+                    {
+                        // There was no usable base-game actor. Use the first prioritized DLC/mod
+                        // source without sourcing missing pieces from another mod.
+                        break;
+                    }
+                }
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException
+                                              or InvalidDataException)
+            {
+                // A database may outlive an installed mod. Continue to the next vanilla/DLC candidate.
+            }
+        }
+        return actors;
+    }
+
+    private void SupplementDialogueActorHeadAndHair(DialogueActorConstructionCache construction,
+        ExportEntry sourceActor, IReadOnlyList<TaggedDialoguePreviewActor> taggedActors)
+    {
+        bool missingHead = !HasDialogueActorPrimaryComponent(construction, PreviewActorModelComponent.Head,
+            "HeadMesh");
+        bool missingHair = !HasDialogueActorPrimaryComponent(construction, PreviewActorModelComponent.Hair,
+            "HairMesh");
+        if (!missingHead && !missingHair)
+        {
+            return;
+        }
+
+        foreach (TaggedDialoguePreviewActor taggedActor in taggedActors
+                     .Where(candidate => !candidate.Usage.IsInMod && !candidate.Usage.IsInDLC
+                                         && !IsSameExport(candidate.Actor, sourceActor)))
+        {
+            DialogueActorConstructionCache fallback = BuildDialogueActorConstruction(
+                construction.ActorTag, taggedActor.Actor);
+            if (missingHead && FindDialogueActorPrimaryComponent(fallback,
+                    PreviewActorModelComponent.Head, "HeadMesh") is { } head)
+            {
+                construction.Meshes.Add(head);
+                missingHead = false;
+            }
+            if (missingHair && FindDialogueActorPrimaryComponent(fallback,
+                    PreviewActorModelComponent.Hair, "HairMesh") is { } hair)
+            {
+                construction.Meshes.Add(hair);
+                missingHair = false;
+            }
+            construction.FaceFxAsset ??= fallback.FaceFxAsset;
+            if (!missingHead && !missingHair)
+            {
+                break;
+            }
+        }
+    }
+
+    private static bool HasDialogueActorPrimaryComponent(DialogueActorConstructionCache construction,
+        PreviewActorModelComponent component, string slotName) =>
+        FindDialogueActorPrimaryComponent(construction, component, slotName) is not null;
+
+    private static DialogueActorMeshCache FindDialogueActorPrimaryComponent(
+        DialogueActorConstructionCache construction, PreviewActorModelComponent component, string slotName) =>
+        construction?.Meshes?.FirstOrDefault(mesh => mesh.Component == component
+                                                    && string.Equals(mesh.SlotName, slotName,
+                                                        StringComparison.OrdinalIgnoreCase));
+
+    private bool ActorHasPreviewSkeletalMesh(ExportEntry actor)
+    {
+        IEnumerable<ExportEntry> components = new[]
+            {
+                FindInheritedObjectExport(actor, "BodyMesh", "SkeletalMeshComponent", "Mesh"),
+                FindInheritedObjectExport(actor, "HeadMesh", "m_oHeadMesh"),
+                FindInheritedObjectExport(actor, "HairMesh", "m_oHairMesh"),
+            }
+            .Concat(EnumerateInheritedObjectExports(actor)
+                .Where(pair => pair.Export?.IsA("SkeletalMeshComponent") == true)
+                .Select(pair => pair.Export))
+            .Where(component => component is not null)
+            .DistinctBy(component => (component.FileRef, component.UIndex));
+        return components.Any(component => component.ClassName == "SkeletalMesh"
+                                           || FindInheritedObjectExport(component, "SkeletalMesh")?.ClassName
+                                           == "SkeletalMesh");
+    }
+
+    private bool ActorHasNamedPreviewSkeletalMesh(ExportEntry actor, params string[] propertyNames)
+    {
+        ExportEntry component = FindInheritedObjectExport(actor, propertyNames);
+        return component?.ClassName == "SkeletalMesh"
+               || FindInheritedObjectExport(component, "SkeletalMesh")?.ClassName == "SkeletalMesh";
+    }
+
+    internal static int GetDialogueActorClassPriority(string className)
+    {
+        if (string.IsNullOrWhiteSpace(className)) return 100;
+        if (className.Contains("StuntActor", StringComparison.OrdinalIgnoreCase)) return 0;
+        if (className.Contains("BioPawn", StringComparison.OrdinalIgnoreCase)) return 1;
+        if (className.Contains("SFXPawn", StringComparison.OrdinalIgnoreCase)) return 2;
+        if (className.EndsWith("Pawn", StringComparison.OrdinalIgnoreCase)) return 3;
+        if (className.Contains("SFXSkeletalMeshActor", StringComparison.OrdinalIgnoreCase)) return 4;
+        if (className.Contains("SkeletalMeshActor", StringComparison.OrdinalIgnoreCase)) return 5;
+        return 50;
+    }
+
+    internal static (int Mod, int Dlc, int Class, int Context) GetDialogueActorUsagePriority(TagUsage usage) =>
+        (usage.IsInMod ? 1 : 0,
+            usage.IsInDLC ? 1 : 0,
+            GetDialogueActorClassPriority(usage.ClassName),
+            usage.Context == TagUsageContext.TaggedObject ? 0 : 1);
+
+    private DialogueActorConstructionCache BuildDialogueActorConstruction(string actorTag, ExportEntry sourceActor)
+    {
+        var construction = new DialogueActorConstructionCache
+        {
+            ActorTag = actorTag,
+            SourceActor = CreateExportReference(sourceActor),
+        };
+        var components = new List<(PreviewActorModelComponent Kind, string SlotName, ExportEntry Export)>();
+        var seenComponents = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        AddActorComponent(PreviewActorModelComponent.Body,
+            "BodyMesh", FindInheritedObjectExport(sourceActor, "BodyMesh", "SkeletalMeshComponent", "Mesh"));
+        AddActorComponent(PreviewActorModelComponent.Head,
+            "HeadMesh", FindInheritedObjectExport(sourceActor, "HeadMesh", "m_oHeadMesh"));
+        AddActorComponent(PreviewActorModelComponent.Hair,
+            "HairMesh", FindInheritedObjectExport(sourceActor, "HairMesh", "m_oHairMesh"));
+
+        foreach ((string propertyName, ExportEntry component) in EnumerateInheritedObjectExports(sourceActor)
+                     .Where(pair => pair.Export?.IsA("SkeletalMeshComponent") == true))
+        {
+            AddActorComponent(GetComponentKind(propertyName), propertyName, component);
+        }
+        foreach ((string propertyName, ExportEntry component) in EnumerateInheritedObjectArrayExports(sourceActor)
+                     .Where(pair => pair.Export?.IsA("SkeletalMeshComponent") == true))
+        {
+            AddActorComponent(GetComponentKind(propertyName), propertyName, component);
+        }
+
+        ExportEntry morphHead = FindFaceOrMorphExport(sourceActor, "MorphHead");
+        bool hasSeparateHead = components.Any(component => component.Kind == PreviewActorModelComponent.Head);
+        foreach ((PreviewActorModelComponent componentKind, string slotName, ExportEntry component) in components)
+        {
+            ExportEntry meshExport = component.ClassName == "SkeletalMesh"
+                ? component
+                : FindInheritedObjectExport(component, "SkeletalMesh");
+            if (meshExport?.ClassName != "SkeletalMesh")
+            {
+                continue;
+            }
+            ExportEntry componentMorph = FindFaceOrMorphExport(component, "MorphHead") ?? morphHead;
+            bool isPrimaryHead = componentKind == PreviewActorModelComponent.Head
+                                 && slotName.Equals("HeadMesh", StringComparison.OrdinalIgnoreCase);
+            bool isMorphFollower = componentKind == PreviewActorModelComponent.Hair
+                                   && slotName.Equals("HairMesh", StringComparison.OrdinalIgnoreCase);
+            bool isSinglePawnMesh = componentKind == PreviewActorModelComponent.Body && !hasSeparateHead;
+            bool applyMorph = isPrimaryHead || isMorphFollower || isSinglePawnMesh;
+            construction.Meshes.Add(new DialogueActorMeshCache
+            {
+                Component = componentKind,
+                SlotName = slotName,
+                ComponentExport = CreateExportReference(component),
+                MeshExport = CreateExportReference(meshExport),
+                MaterialOverrides = FindInheritedObjectArrayExports(component, "Materials")
+                    .Select(CreateExportReference).ToList(),
+                MorphHead = applyMorph ? CreateExportReference(componentMorph) : null,
+                UseStoredMorphLods = isPrimaryHead || isSinglePawnMesh,
+                LocalTransform = DialogueMatrixCache.FromMatrix(GetDialogueComponentLocalTransform(
+                    sourceActor, componentKind, component)),
+            });
+        }
+
+        construction.FaceFxAsset = CreateExportReference(FindFaceFxAsset(sourceActor,
+            components.Select(component => component.Export)
+                .Concat(construction.Meshes.Select(mesh => ResolveExportReference(mesh.MeshExport,
+                    required: false)))));
+        return construction;
+
+        PreviewActorModelComponent GetComponentKind(string propertyName)
+        {
+            string name = propertyName ?? string.Empty;
+            if (name.Equals("HeadMesh", StringComparison.OrdinalIgnoreCase)
+                || name.Equals("m_oHeadMesh", StringComparison.OrdinalIgnoreCase))
+            {
+                return PreviewActorModelComponent.Head;
+            }
+            if (name.Equals("HairMesh", StringComparison.OrdinalIgnoreCase)
+                || name.Equals("m_oHairMesh", StringComparison.OrdinalIgnoreCase))
+            {
+                return PreviewActorModelComponent.Hair;
+            }
+            return components.Any(existing => existing.Kind == PreviewActorModelComponent.Body)
+                ? PreviewActorModelComponent.Hair
+                : PreviewActorModelComponent.Body;
+        }
+
+        void AddActorComponent(PreviewActorModelComponent kind, string slotName, ExportEntry component)
+        {
+            if (component is null) return;
+            string exportKey = $"{component.FileRef.FilePath}|{component.UIndex}";
+            if (!seenComponents.Add(exportKey)) return;
+            string uniqueSlot = string.IsNullOrWhiteSpace(slotName) ? kind.ToString() : slotName;
+            if (components.Any(existing => existing.SlotName.Equals(uniqueSlot,
+                    StringComparison.OrdinalIgnoreCase)))
+            {
+                uniqueSlot = $"{uniqueSlot}:{component.UIndex}";
+            }
+            components.Add((kind, uniqueSlot, component));
+        }
+    }
+
+    private static Matrix4x4 GetDialogueComponentLocalTransform(ExportEntry sourceActor,
+        PreviewActorModelComponent componentKind, ExportEntry component)
+    {
+        PropertyCollection properties = component.GetCondensedProperties();
+        Vector3 translation = properties.GetProp<StructProperty>("Translation") is { } translationProperty
+            ? CommonStructs.GetVector3(translationProperty)
+            : Vector3.Zero;
+        if (componentKind == PreviewActorModelComponent.Body && translation == Vector3.Zero
+            && sourceActor.IsA("SFXStuntActor"))
+        {
+            translation = new Vector3(0, 0, PreviewBodyMeshRelativeZ);
+        }
+        Rotator rotation = properties.GetProp<StructProperty>("Rotation") is { } rotationProperty
+            ? CommonStructs.GetRotator(rotationProperty)
+            : new Rotator(0, 0, 0);
+        Vector3 scale3D = properties.GetProp<StructProperty>("Scale3D") is { } scaleProperty
+            ? CommonStructs.GetVector3(scaleProperty)
+            : Vector3.One;
+        float scale = properties.GetProp<FloatProperty>("Scale")?.Value ?? 1f;
+        return ActorUtils.ComposeLocalToWorld(translation, rotation, scale * scale3D);
+    }
+
+    private ExportEntry FindFaceFxAsset(ExportEntry actor, IEnumerable<ExportEntry> relatedExports)
+    {
+        foreach (ExportEntry source in new[] { actor }.Concat(relatedExports).Where(export => export is not null))
+        {
+            foreach ((string propertyName, ExportEntry export) in EnumerateInheritedObjectExports(source))
+            {
+                if (propertyName.Contains("FaceFX", StringComparison.OrdinalIgnoreCase)
+                    && export?.ClassName == "FaceFXAsset")
+                {
+                    return export;
+                }
+            }
+        }
+        return null;
+    }
+
+    private ExportEntry FindFaceOrMorphExport(ExportEntry source, string propertyName)
+    {
+        ExportEntry export = FindInheritedObjectExport(source, propertyName);
+        return export?.ClassName is "BioMorphFace" or "FaceFXAsset" ? export : null;
+    }
+
+    private ExportEntry FindInheritedObjectExport(ExportEntry source, params string[] propertyNames)
+    {
+        foreach (ExportEntry current in EnumeratePreviewArchetypeChain(source))
+        {
+            PropertyCollection properties = current.GetProperties();
+            foreach (string propertyName in propertyNames)
+            {
+                if (properties.GetProp<ObjectProperty>(propertyName) is { Value: not 0 } reference
+                    && RenderContext.ResolveExportCached(current.FileRef, reference.Value) is { } export)
+                {
+                    return export;
+                }
+            }
+        }
+        return null;
+    }
+
+    private IEnumerable<ExportEntry> FindInheritedObjectArrayExports(ExportEntry source, string propertyName)
+    {
+        foreach (ExportEntry current in EnumeratePreviewArchetypeChain(source))
+        {
+            if (current.GetProperties().GetProp<ArrayProperty<ObjectProperty>>(propertyName) is not { } references)
+            {
+                continue;
+            }
+            foreach (ObjectProperty reference in references)
+            {
+                yield return reference.Value == 0
+                    ? null
+                    : RenderContext.ResolveExportCached(current.FileRef, reference.Value);
+            }
+            yield break;
+        }
+    }
+
+    private IEnumerable<(string PropertyName, ExportEntry Export)> EnumerateInheritedObjectExports(ExportEntry source)
+    {
+        var seenNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (ExportEntry current in EnumeratePreviewArchetypeChain(source))
+        {
+            foreach (ObjectProperty property in current.GetProperties().OfType<ObjectProperty>())
+            {
+                string propertyName = property.Name.Instanced;
+                if (property.Value != 0 && seenNames.Add(propertyName)
+                    && RenderContext.ResolveExportCached(current.FileRef, property.Value) is { } export)
+                {
+                    yield return (propertyName, export);
+                }
+            }
+        }
+    }
+
+    private IEnumerable<(string PropertyName, ExportEntry Export)> EnumerateInheritedObjectArrayExports(
+        ExportEntry source)
+    {
+        var seenNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (ExportEntry current in EnumeratePreviewArchetypeChain(source))
+        {
+            foreach (ArrayProperty<ObjectProperty> property in current.GetProperties()
+                         .OfType<ArrayProperty<ObjectProperty>>())
+            {
+                string propertyName = property.Name.Instanced;
+                if (!seenNames.Add(propertyName)) continue;
+                for (int index = 0; index < property.Count; index++)
+                {
+                    ObjectProperty item = property[index];
+                    if (item.Value != 0 && RenderContext.ResolveExportCached(current.FileRef, item.Value) is { } export)
+                    {
+                        yield return ($"{propertyName}[{index}]", export);
+                    }
+                }
+            }
+        }
+    }
+
+    private IEnumerable<ExportEntry> EnumeratePreviewArchetypeChain(ExportEntry source)
+    {
+        var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (ExportEntry current = source; current is not null;)
+        {
+            string key = $"{current.FileRef.FilePath}|{current.UIndex}";
+            if (!visited.Add(key)) yield break;
+            yield return current;
+            current = current.Archetype switch
+            {
+                ExportEntry archetype => archetype,
+                ImportEntry import => RenderContext.ResolveExportCached(import),
+                _ => null,
+            };
+        }
+    }
+
+    private HashSet<PreviewActorModelComponent> LoadCachedActorConstruction(int actorIndex,
+        PreviewActorConfiguration actor)
+    {
+        var loaded = new HashSet<PreviewActorModelComponent>();
+        Matrix4x4? bodyLocalTransform = actor.Construction?.Meshes
+            .FirstOrDefault(mesh => mesh.Component == PreviewActorModelComponent.Body)
+            ?.LocalTransform?.ToMatrix();
+        foreach (DialogueActorMeshCache mesh in (actor.Construction?.Meshes ?? []).OrderBy(mesh => mesh.Component))
+        {
+            ExportEntry meshExport = ResolveExportReference(mesh.MeshExport, required: false);
+            if (meshExport?.ClassName != "SkeletalMesh")
+            {
+                continue;
+            }
+            IReadOnlyList<IEntry> materialOverrides = mesh.MaterialOverrides
+                .Select(reference => ResolveExportReference(reference, required: false))
+                .Cast<IEntry>().ToArray();
+            ExportEntry morphHead = ResolveExportReference(mesh.MorphHead, required: false);
+            try
+            {
+                LoadPreviewActorModel(actorIndex, mesh.Component, meshExport, materialOverrides, morphHead,
+                    mesh.UseStoredMorphLods, mesh.SlotName, bodyLocalTransform);
+                SetPreviewActorModelName(actor, mesh.Component, meshExport.ObjectNameString);
+                loaded.Add(mesh.Component);
+            }
+            catch (Exception exception) when (exception is IOException or InvalidDataException
+                                              or NotSupportedException)
+            {
+                // Fall back to the cached model name through the asset database below.
+            }
+        }
+        return loaded;
+    }
+
     private bool TryLoadPreviewActorModel(int actorIndex, PreviewActorModelComponent component,
         MeshRecord meshRecord, bool baseGameOnly, out string error)
     {
@@ -5304,8 +6004,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             return false;
         }
 
-        string gamePath = MEDirectories.GetDefaultGamePath(CurrentLoadedExport.Game);
-        if (string.IsNullOrEmpty(gamePath) || !Directory.Exists(gamePath))
+        if (previewAssetFilePaths.Count == 0)
         {
             error = $"The configured {CurrentLoadedExport.Game} game directory could not be found.";
             return false;
@@ -5318,15 +6017,12 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                 continue;
             }
 
-            (string fileName, string contentDir) = previewAssetFiles[usage.FileKey];
-            string filePath = Directory.EnumerateFiles(gamePath, $"{fileName}.*", SearchOption.AllDirectories)
-                .FirstOrDefault(path => path.Contains(contentDir, StringComparison.OrdinalIgnoreCase));
-            if (filePath is null)
+            if (!previewAssetFilePaths.TryGetValue(usage.FileKey, out string filePath))
             {
                 continue;
             }
 
-            using IMEPackage meshPackage = MEPackageHandler.OpenMEPackage(filePath);
+            IMEPackage meshPackage = previewActorGesturePackageCache.GetCachedPackage(filePath);
             if (!meshPackage.IsUExport(usage.UIndex))
             {
                 continue;
@@ -5341,6 +6037,18 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             try
             {
                 LoadPreviewActorModel(actorIndex, component, meshExport);
+                if (dialogueNodePreview is not null && actorIndex < previewActors.Count)
+                {
+                    PreviewActorConfiguration actor = previewActors[actorIndex];
+                    actor.Construction ??= new DialogueActorConstructionCache { ActorTag = actor.ActorTag };
+                    actor.Construction.Meshes.RemoveAll(cached => cached.Component == component);
+                    actor.Construction.Meshes.Add(new DialogueActorMeshCache
+                    {
+                        Component = component,
+                        SlotName = component.ToString(),
+                        MeshExport = CreateExportReference(meshExport),
+                    });
+                }
                 return true;
             }
             catch (Exception exception)
@@ -5369,6 +6077,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         previewActorGame = game;
         previewAssetDatabase = null;
         previewAssetFiles = [];
+        previewAssetFilePaths = [];
         PreviewActorTextBox.Clear();
         PreviewActorHeadTextBox.Clear();
         PreviewActorHairTextBox.Clear();
@@ -5385,21 +6094,36 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
     private void InitializeDialoguePreviewActors()
     {
+        Dictionary<string, DialogueActorConstructionCache> cachedConstructions = dialogueNodePreview.CachePreset?.Actors
+            .Where(actor => !string.IsNullOrWhiteSpace(actor.ActorTag))
+            .ToDictionary(actor => actor.ActorTag, StringComparer.OrdinalIgnoreCase) ?? [];
         foreach (DialogueNodePreviewActor previewActor in dialogueNodePreview.Actors
                      .Where(actor => !string.IsNullOrWhiteSpace(actor.ActorTag))
                      .DistinctBy(actor => actor.ActorTag, StringComparer.OrdinalIgnoreCase))
         {
             bool isPlayer = string.Equals(previewActor.ActorTag, "player", StringComparison.OrdinalIgnoreCase);
-            DialoguePreviewPlayerFaceFx playerFaceFx = dialogueNodePreview.PlayerFaceFx;
+            DialoguePreviewPlayerSelection player = dialogueNodePreview.PlayerSelection;
+            cachedConstructions.TryGetValue(previewActor.ActorTag, out DialogueActorConstructionCache construction);
+            if (isPlayer && dialogueNodePreview.CachePreset?.PlayerGender != player.Gender)
+            {
+                construction = null;
+            }
             previewActors.Add(new PreviewActorConfiguration
             {
                 ActorTag = previewActor.ActorTag,
                 DisplayName = previewActor.ActorTag,
                 BaseGameModelsOnly = isPlayer,
-                ModelName = isPlayer ? "HMF_ARM_CTHb_MDL" : PreviewActorModelDefaults.BodyMeshName,
-                HeadModelName = isPlayer ? "HMF_HED_PROShepard_MDL" : PreviewActorModelDefaults.HeadMeshName,
-                HairModelName = isPlayer ? "HMF_HIR_PROShepard_MDL" : PreviewActorModelDefaults.HairMeshName,
-                FaceFxAssetName = isPlayer ? playerFaceFx.AssetName : "SFX_HumanFemale_FaceFX",
+                ModelName = isPlayer ? player.BodyModelName : GetCachedActorModelName(construction,
+                    PreviewActorModelComponent.Body),
+                HeadModelName = isPlayer ? player.HeadModelName : GetCachedActorModelName(construction,
+                    PreviewActorModelComponent.Head),
+                HairModelName = isPlayer ? player.HairModelName : GetCachedActorModelName(construction,
+                    PreviewActorModelComponent.Hair),
+                FaceFxAssetName = isPlayer ? player.AssetName : construction?.FaceFxAsset?.InstancedFullPath?
+                    .Split('.').LastOrDefault(),
+                Construction = isPlayer
+                    ? construction ?? new DialogueActorConstructionCache { ActorTag = previewActor.ActorTag }
+                    : construction,
                 Origin = previewActor.Origin,
             });
         }
@@ -5415,14 +6139,24 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         PreviewActorGestureComboBox.Items.Refresh();
     }
 
+    private static string GetCachedActorModelName(DialogueActorConstructionCache construction,
+        PreviewActorModelComponent component) => construction?.Meshes
+        .FirstOrDefault(mesh => mesh.Component == component)?.MeshExport?.InstancedFullPath?
+        .Split('.').LastOrDefault();
+
     private void BuildDialoguePreviewActorTagAliases(IReadOnlyList<DialogueNodePreviewActor> actors,
         StageConversationContext stageContext)
     {
         dialoguePreviewActorTagAliases.Clear();
-        foreach ((string actorTag, HashSet<string> aliases) in BuildActorTagAliases(
-                     actors.Select(actor => actor.ActorTag), stageContext.ActorOrigins))
+        Dictionary<string, HashSet<string>> stageAliases = BuildActorTagAliases(
+            actors.Select(actor => actor.ActorTag), stageContext.ActorOrigins);
+        foreach (DialogueNodePreviewActor actor in actors)
         {
-            dialoguePreviewActorTagAliases[actorTag] = aliases;
+            HashSet<string> aliases = stageAliases.GetValueOrDefault(actor.ActorTag)
+                                      ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            aliases.Add(actor.ActorTag);
+            aliases.UnionWith(actor.Aliases ?? []);
+            dialoguePreviewActorTagAliases[actor.ActorTag] = aliases;
         }
     }
 
@@ -8561,29 +9295,46 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
     private void RenderPreviewActors()
     {
-        int actorCount = Math.Min(previewActorModels.Count, previewActors.Count);
-        for (int actorIndex = 0; actorIndex < actorCount; actorIndex++)
+        bool previousCameraRelative = RenderContext.UseCameraRelativeNativeRendering;
+        RenderContext.UseCameraRelativeNativeRendering = true;
+        try
         {
-            ActorModelSet actorModels = previewActorModels[actorIndex];
-            if (actorModels is null)
+            int actorCount = Math.Min(previewActorModels.Count, previewActors.Count);
+            for (int actorIndex = 0; actorIndex < actorCount; actorIndex++)
             {
-                continue;
+                ActorModelSet actorModels = previewActorModels[actorIndex];
+                if (actorModels is null)
+                {
+                    continue;
+                }
+                UpdatePreviewActorSkinning(previewActors[actorIndex]);
+                foreach (ActorModelSet.Component component in actorModels.Components)
+                {
+                    ModelPreview<LEVertex> actorModel = component.Model;
+                    actorModel.UpdateLocalToWorld(CreatePreviewActorTransform(previewActors[actorIndex].Origin,
+                        component.LocalTransform));
+                    actorModel.Render(RenderPass.Base, RenderContext, 0);
+                    actorModel.Render(RenderPass.Hair, RenderContext, 0);
+                }
             }
-            UpdatePreviewActorSkinning(previewActors[actorIndex]);
-            Matrix4x4 transform = CreatePreviewActorTransform(previewActors[actorIndex].Origin);
-            foreach (ActorModelSet.Component component in actorModels.Components)
-            {
-                ModelPreview<WorldVertex> actorModel = component.Model;
-                actorModel.UpdateLocalToWorld(transform);
-                actorModel.Render(RenderPass.Base, RenderContext, 0);
-                actorModel.Render(RenderPass.Hair, RenderContext, 0);
-            }
+        }
+        finally
+        {
+            RenderContext.UseCameraRelativeNativeRendering = previousCameraRelative;
         }
     }
 
     private static Matrix4x4 CreatePreviewActorTransform(CameraOrigin transform)
     {
         return Matrix4x4.CreateTranslation(0, 0, PreviewBodyMeshRelativeZ)
+               * Rotator.FromDegreesVector(transform.Rotation).ToRotationMatrix()
+               * Matrix4x4.CreateTranslation(transform.Location);
+    }
+
+    private static Matrix4x4 CreatePreviewActorTransform(CameraOrigin transform,
+        Matrix4x4? componentLocalTransform)
+    {
+        return (componentLocalTransform ?? Matrix4x4.CreateTranslation(0, 0, PreviewBodyMeshRelativeZ))
                * Rotator.FromDegreesVector(transform.Rotation).ToRotationMatrix()
                * Matrix4x4.CreateTranslation(transform.Location);
     }
@@ -9081,6 +9832,11 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     }
 
     private void LoadPreviewActorModel(int actorIndex, PreviewActorModelComponent component, ExportEntry skeletalMeshExport)
+        => LoadPreviewActorModel(actorIndex, component, skeletalMeshExport, null, null, false, null, null);
+
+    private void LoadPreviewActorModel(int actorIndex, PreviewActorModelComponent component,
+        ExportEntry skeletalMeshExport, IReadOnlyList<IEntry> materialOverrides, ExportEntry morphHead,
+        bool useStoredMorphLods, string slotName, Matrix4x4? localTransform)
     {
         if (actorIndex < 0 || skeletalMeshExport is null)
         {
@@ -9088,7 +9844,9 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         }
 
         SkeletalMesh skeletalMesh = skeletalMeshExport.GetBinaryData<SkeletalMesh>();
-        ModelPreview<WorldVertex> modelPreview = new(RenderContext, skeletalMesh);
+        ModelPreview<LEVertex> modelPreview = new(RenderContext, skeletalMesh, materialOverrides,
+            loadOnlyFirstLod: true);
+        modelPreview.PrepareGraphicsResources(RenderContext);
         while (previewActorModels.Count <= actorIndex)
         {
             previewActorModels.Add(new ActorModelSet());
@@ -9099,7 +9857,15 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         var componentRenderer = new SkinnedMeshRenderer();
         componentRenderer.BuildFromSkeletalMesh(skeletalMeshExport.Game, skeletalMesh.LODModels[0],
             skeletalMesh.RefSkeleton, bodySkeleton?.RefSkeleton);
-        previewActorModels[actorIndex].Set(component, modelPreview, componentRenderer);
+        if (morphHead is not null)
+        {
+            (LegendaryExplorerCore.Unreal.Classes.BonePosition[] bonePositions, Vector3[][] morphLods) =
+                LegendaryExplorerCore.Unreal.Classes.BioMorphFace.GetBoneAndVertexPositions(morphHead);
+            Vector3[] morphPositions = useStoredMorphLods && morphLods?.Length > 0 ? morphLods[0] : null;
+            componentRenderer.ApplyMorph(skeletalMesh.RefSkeleton, bonePositions, morphPositions);
+            ApplyPreviewMorphMaterialOverrides(modelPreview, morphHead);
+        }
+        previewActorModels[actorIndex].Set(component, modelPreview, componentRenderer, slotName, localTransform);
         if (component is PreviewActorModelComponent.Body && actorIndex < previewActors.Count && skeletalMesh.LODModels.Length > 0)
         {
             var animationState = new PreviewActorAnimationState
@@ -9112,6 +9878,72 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             ApplyAssignedGestureToActor(previewActors[actorIndex]);
         }
         SceneViewer.MarkRenderDirty();
+    }
+
+    private void ApplyPreviewMorphMaterialOverrides(ModelPreview<LEVertex> modelPreview, ExportEntry morphHead)
+    {
+        if (morphHead.GetProperty<ObjectProperty>("m_oMaterialOverrides") is not { Value: not 0 } reference
+            || RenderContext.ResolveExportCached(morphHead.FileRef, reference.Value) is not { } materialOverride)
+        {
+            return;
+        }
+
+        List<MaterialRenderProxy> materials = modelPreview.Materials.Values
+            .OfType<LEShaderPreviewMaterial>()
+            .Select(material => material.RenderProxy)
+            .Distinct()
+            .ToList();
+        PropertyCollection properties = materialOverride.GetProperties(packageCache: RenderContext.PackageCache);
+        foreach (MaterialRenderProxy material in materials)
+        {
+            material.ResetPreviewParameterOverrides();
+            foreach (StructProperty scalar in properties.GetProp<ArrayProperty<StructProperty>>("m_aScalarOverrides")
+                         ?? Enumerable.Empty<StructProperty>())
+            {
+                string name = scalar.GetProp<NameProperty>("nName")?.Value.Instanced;
+                if (!string.IsNullOrEmpty(name))
+                {
+                    material.SetScalarParameter(name, scalar.GetProp<FloatProperty>("sValue")?.Value ?? 0f);
+                }
+            }
+            foreach (StructProperty color in properties.GetProp<ArrayProperty<StructProperty>>("m_aColorOverrides")
+                         ?? Enumerable.Empty<StructProperty>())
+            {
+                string name = color.GetProp<NameProperty>("nName")?.Value.Instanced;
+                if (!string.IsNullOrEmpty(name))
+                {
+                    LinearColor value = color.GetProp<StructProperty>("cValue") is { } linearColor
+                        ? CommonStructs.GetLinearColor(linearColor)
+                        : LinearColor.White;
+                    material.SetVectorParameter(name, value);
+                }
+            }
+        }
+
+        foreach (StructProperty texture in properties.GetProp<ArrayProperty<StructProperty>>("m_aTextureOverrides")
+                     ?? Enumerable.Empty<StructProperty>())
+        {
+            string name = texture.GetProp<NameProperty>("nName")?.Value.Instanced;
+            IEntry textureEntry = texture.GetProp<ObjectProperty>("m_pTexture")?.ResolveToEntry(materialOverride.FileRef);
+            ExportEntry textureExport = textureEntry switch
+            {
+                ExportEntry export when export.IsTexture() => export,
+                ImportEntry import when RenderContext.ResolveExportCached(import) is { } resolved
+                                        && resolved.IsTexture() => resolved,
+                _ => null,
+            };
+            if (string.IsNullOrEmpty(name))
+            {
+                continue;
+            }
+            PreviewTextureCache.TextureEntry cachedTexture = textureExport is not null
+                ? RenderContext.TextureCache.LoadTexture(textureExport, RenderContext.PackageCache)
+                : null;
+            foreach (MaterialRenderProxy material in materials)
+            {
+                material.SetTextureParameter(name, textureExport?.InstancedFullPath, cachedTexture);
+            }
+        }
     }
 
     private void RemovePreviewActorModel(int actorIndex)

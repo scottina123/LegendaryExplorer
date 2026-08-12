@@ -954,7 +954,9 @@ public class StaticMeshComponentProxy : MeshComponentProxy
             if (staticMesh.LODModels.Length > LOD)
             {
                 hasRenderableMesh = true;
-                useGameShader = UseGameShaderPreview(context) && meshExport.Game.IsMEGame();
+                useGameShader = UseGameShaderPreview(context)
+                                && (context as LevelEditorRenderContext)?.UseGameShaderStaticMeshPreviews != false
+                                && meshExport.Game.IsMEGame();
                 MeshIFP = meshExport.InstancedFullPath;
                 if (MeshIFP.Contains("Volumetric", StringComparison.OrdinalIgnoreCase)
                     || GetEffectiveMaterialEntries().Any(entry => entry?.InstancedFullPath.Contains(

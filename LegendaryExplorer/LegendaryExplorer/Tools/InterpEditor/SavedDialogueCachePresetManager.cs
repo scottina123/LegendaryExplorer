@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Numerics;
 using LegendaryExplorer.Misc;
+using LegendaryExplorer.Tools.AssetDatabase;
 using LegendaryExplorer.UserControls.ExportLoaderControls;
 using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.Unreal;
@@ -14,7 +15,7 @@ namespace LegendaryExplorer.Tools.InterpEditor;
 
 public static class SavedDialogueCachePresetManager
 {
-    private const int CurrentVersion = 8;
+    private const int CurrentVersion = 12;
     public static string StorageDirectory => Path.Combine(AppDirectories.AppDataFolder, "DialogueConversationCaches");
 
     public static IReadOnlyList<DialogueCachePreset> LoadAll()
@@ -95,9 +96,19 @@ public static class SavedDialogueCachePresetManager
         {
             DialogueCachePreset preset = JsonConvert.DeserializeObject<DialogueCachePreset>(File.ReadAllText(path));
             if (preset is null || preset.Version != CurrentVersion || preset.Id == Guid.Empty
-                || string.IsNullOrWhiteSpace(preset.Label) || preset.Nodes.Count == 0)
+                || string.IsNullOrWhiteSpace(preset.Label) || preset.Nodes is not { Count: > 0 })
             {
                 return null;
+            }
+            preset.LevelPaths ??= [];
+            preset.Actors ??= [];
+            foreach (DialogueActorConstructionCache actor in preset.Actors)
+            {
+                actor.Meshes ??= [];
+                foreach (DialogueActorMeshCache mesh in actor.Meshes)
+                {
+                    mesh.MaterialOverrides ??= [];
+                }
             }
             preset.CacheFilePath = path;
             return preset;
@@ -133,6 +144,9 @@ public sealed class DialogueCachePreset
     public long SourceFileSize { get; set; }
     public bool StartNodeIsReply { get; set; }
     public int StartNodeIndex { get; set; }
+    public CurveEditor3D.DialoguePreviewPlayerGender PlayerGender { get; set; }
+    public List<string> LevelPaths { get; set; } = [];
+    public List<DialogueActorConstructionCache> Actors { get; set; } = [];
     public List<DialogueCacheNodePreset> Nodes { get; set; } = [];
 
     [JsonIgnore]
@@ -140,7 +154,27 @@ public sealed class DialogueCachePreset
     [JsonIgnore]
     public string SavedDisplay => SavedUtc.ToLocalTime().ToString("g");
     [JsonIgnore]
-    public string Details => $"{PccName}  |  {DialogueName}  |  {Nodes.Count} node(s)";
+    public string Details => $"{PccName}  |  {DialogueName}  |  {Nodes.Count} node(s)  |  {LevelPaths.Count} level(s)";
+}
+
+public sealed class DialogueActorConstructionCache
+{
+    public string ActorTag { get; set; }
+    public PackageExportReference SourceActor { get; set; }
+    public PackageExportReference FaceFxAsset { get; set; }
+    public List<DialogueActorMeshCache> Meshes { get; set; } = [];
+}
+
+public sealed class DialogueActorMeshCache
+{
+    public PreviewActorModelComponent Component { get; set; }
+    public string SlotName { get; set; }
+    public PackageExportReference ComponentExport { get; set; }
+    public PackageExportReference MeshExport { get; set; }
+    public List<PackageExportReference> MaterialOverrides { get; set; } = [];
+    public PackageExportReference MorphHead { get; set; }
+    public bool UseStoredMorphLods { get; set; }
+    public DialogueMatrixCache LocalTransform { get; set; }
 }
 
 public sealed class DialogueCacheNodePreset

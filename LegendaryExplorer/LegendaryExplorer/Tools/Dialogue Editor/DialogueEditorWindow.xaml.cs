@@ -823,7 +823,8 @@ namespace LegendaryExplorer.DialogueEditor
                 return;
             }
 
-            if (!TryChooseDialoguePreviewPlayerFaceFx(out CurveEditor3D.DialoguePreviewPlayerFaceFx playerFaceFx))
+            var options = new DialoguePreviewLevelPicker(Pcc.Game, null, null, includeCache: false) { Owner = this };
+            if (options.ShowDialog() != true)
             {
                 return;
             }
@@ -838,16 +839,9 @@ namespace LegendaryExplorer.DialogueEditor
 
             List<CurveEditor3D.DialogueNodePreviewActor> actors = BuildDialogueConversationPreviewActors(
                 SelectedConv, SelectedDialogueNode, stageContext);
-            var levelPicker = new DialoguePreviewLevelPicker { Owner = this };
-            if (levelPicker.ShowDialog() != true)
-            {
-                stageContext.Dispose();
-                return;
-            }
-            IReadOnlyList<string> levelPaths = levelPicker.SelectedLevelPaths;
             var preview = new CurveEditor3D();
-            preview.ConfigureDialogueNodePreview(SelectedConv, SelectedDialogueNode, actors, levelPaths, stageContext,
-                playerFaceFx);
+            preview.ConfigureDialogueNodePreview(SelectedConv, SelectedDialogueNode, actors,
+                options.SelectedLevelPaths, stageContext, options.PlayerSelection);
             var window = new ExportLoaderHostedWindow(preview, previewTrackMove)
             {
                 Owner = this,
@@ -5814,13 +5808,11 @@ namespace LegendaryExplorer.DialogueEditor
                 return;
             }
 
-            if (!TryChooseDialoguePreviewPlayerFaceFx(out CurveEditor3D.DialoguePreviewPlayerFaceFx playerFaceFx))
+            var options = new DialoguePreviewLevelPicker(Pcc.Game, SelectedConv, startNode, includeCache: true)
             {
-                return;
-            }
-
-            var levelPicker = new DialoguePreviewLevelPicker { Owner = this };
-            if (levelPicker.ShowDialog() != true)
+                Owner = this,
+            };
+            if (options.ShowDialog() != true)
             {
                 return;
             }
@@ -5849,7 +5841,8 @@ namespace LegendaryExplorer.DialogueEditor
 
             var preview = new CurveEditor3D();
             preview.ConfigureDialogueConversationPreview(SelectedConv, startNode, actors,
-                levelPicker.SelectedLevelPaths, stageContext, playerFaceFx);
+                options.SelectedLevelPaths, stageContext, options.PlayerSelection,
+                options.SelectedCachePreset, options.NewCacheLabel);
             var window = new ExportLoaderHostedWindow(preview, previewTrackMove)
             {
                 Owner = this,
@@ -5858,45 +5851,15 @@ namespace LegendaryExplorer.DialogueEditor
             window.Show();
         }
 
-        private bool TryChooseDialoguePreviewPlayerFaceFx(
-            out CurveEditor3D.DialoguePreviewPlayerFaceFx playerFaceFx)
-        {
-            playerFaceFx = null;
-            IReadOnlyList<string> assetNames = CurveEditor3D.GetDialoguePreviewFaceFxAssetNames(Pcc.Game);
-            if (assetNames.Count == 0)
-            {
-                MessageBox.Show(this, "No FaceFX assets were found in BIOG_FaceFX_Assets.",
-                    "Player FaceFX Unavailable", MessageBoxButton.OK, MessageBoxImage.Warning);
-                return false;
-            }
-
-            string defaultAsset = assetNames.FirstOrDefault(name =>
-                                      name.Equals("SFX_HumanFemale_FaceFX", StringComparison.OrdinalIgnoreCase))
-                                  ?? assetNames[0];
-            string selectedAsset = StringSelectorDialog.GetValue(this,
-                "Choose the FaceFX asset to attach to the player before playback starts.",
-                "Player FaceFX", assetNames, defaultAsset);
-            if (string.IsNullOrWhiteSpace(selectedAsset))
-            {
-                return false;
-            }
-
-            bool useFemaleLines = selectedAsset.Contains("Female", StringComparison.OrdinalIgnoreCase)
-                                  || !selectedAsset.Contains("Male", StringComparison.OrdinalIgnoreCase);
-            playerFaceFx = new CurveEditor3D.DialoguePreviewPlayerFaceFx(selectedAsset, useFemaleLines);
-            return true;
-        }
-
         private List<CurveEditor3D.DialogueNodePreviewActor> BuildDialogueConversationPreviewActors(
             ConversationExtended conversation,
             DialogueNodeExtended startNode,
             StageConversationContext stageContext)
         {
-            string[] actorTags = conversation.Speakers
-                .Select(speaker => speaker.SpeakerName)
-                .Where(tag => !string.IsNullOrWhiteSpace(tag))
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToArray();
+            IReadOnlyList<CurveEditor3D.DialoguePreviewActorIdentity> actorIdentities =
+                CurveEditor3D.MergeDialoguePreviewActorIdentities(
+                    CurveEditor3D.GetDialoguePreviewActorIdentities(conversation), stageContext.ActorOrigins);
+            string[] actorTags = actorIdentities.Select(identity => identity.ActorTag).ToArray();
             var actorOrigins = new Dictionary<string, CameraOrigin>(StringComparer.OrdinalIgnoreCase);
             var context = new CameraActorAnchorContext(conversation, startNode, actorTags);
             ActorSceneStatePath bestPath = CameraActorSceneStateResolver.ResolvePaths(context, actorTags,
@@ -5912,11 +5875,30 @@ namespace LegendaryExplorer.DialogueEditor
                 }
             }
 
-            return actorTags.Select((tag, index) => new CurveEditor3D.DialogueNodePreviewActor(tag,
-                actorOrigins.GetValueOrDefault(tag,
-                    stageContext.ActorOrigins.GetValueOrDefault(tag,
-                        new CameraOrigin(stageContext.StageOrigin.Location + new Vector3(0, index * 100, 0),
-                            stageContext.StageOrigin.Rotation))))).ToList();
+            return actorIdentities.Select((identity, index) =>
+            {
+                bool foundOrigin = actorOrigins.TryGetValue(identity.ActorTag, out CameraOrigin origin);
+                foreach (string alias in identity.Aliases)
+                {
+                    if (foundOrigin) break;
+                    foundOrigin = actorOrigins.TryGetValue(alias, out origin);
+                }
+                if (!foundOrigin)
+                {
+                    foundOrigin = stageContext.ActorOrigins.TryGetValue(identity.ActorTag, out origin);
+                }
+                foreach (string alias in identity.Aliases)
+                {
+                    if (foundOrigin) break;
+                    foundOrigin = stageContext.ActorOrigins.TryGetValue(alias, out origin);
+                }
+                if (!foundOrigin)
+                {
+                    origin = new CameraOrigin(stageContext.StageOrigin.Location + new Vector3(0, index * 100, 0),
+                        stageContext.StageOrigin.Rotation);
+                }
+                return new CurveEditor3D.DialogueNodePreviewActor(identity.ActorTag, origin, identity.Aliases);
+            }).ToList();
         }
 
         private void Conversations_CloneTopLevelPackage_Click(object sender, RoutedEventArgs e)
