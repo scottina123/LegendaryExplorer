@@ -170,6 +170,17 @@ public class InterpTrackMoveTransformTests
     }
 
     [TestMethod]
+    public void CachedTrackTabActivationDoesNotPauseDialogueTimeline()
+    {
+        Assert.IsTrue(CurveEditor3D.ShouldPauseDialogueTimelineForTrackEditing(
+            isPlayingDialogueTimeline: true, suppressDialogueCacheEditTracking: false));
+        Assert.IsFalse(CurveEditor3D.ShouldPauseDialogueTimelineForTrackEditing(
+            isPlayingDialogueTimeline: true, suppressDialogueCacheEditTracking: true));
+        Assert.IsFalse(CurveEditor3D.ShouldPauseDialogueTimelineForTrackEditing(
+            isPlayingDialogueTimeline: false, suppressDialogueCacheEditTracking: false));
+    }
+
+    [TestMethod]
     public void LookAtChangesYawWithoutChangingActorLocation()
     {
         var actor = new CameraOrigin(new Vector3(-15842.27f, 8299.669f, -170309f),

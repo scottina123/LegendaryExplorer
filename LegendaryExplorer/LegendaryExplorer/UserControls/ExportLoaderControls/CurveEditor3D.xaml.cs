@@ -9344,11 +9344,16 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
     private void PauseDialogueTimelineForTrackEditing()
     {
-        if (isPlayingDialogueTimeline)
+        if (ShouldPauseDialogueTimelineForTrackEditing(isPlayingDialogueTimeline,
+                suppressDialogueCacheEditTracking))
         {
             PauseDialogueTimeline();
         }
     }
+
+    internal static bool ShouldPauseDialogueTimelineForTrackEditing(bool isPlayingDialogueTimeline,
+        bool suppressDialogueCacheEditTracking) =>
+        isPlayingDialogueTimeline && !suppressDialogueCacheEditTracking;
 
     private static string GetTrackMoveEditingKey(ExportEntry trackMove) => trackMove is null
         ? string.Empty
