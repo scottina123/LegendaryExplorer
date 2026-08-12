@@ -9278,6 +9278,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     {
         if (!updatingKeyframeTrackTabs && SelectedPreviewEditorCategory == "Characters")
         {
+            PauseDialogueTimelineForTrackEditing();
             ActivateSelectedTrackMove();
         }
     }
@@ -9286,6 +9287,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     {
         if (!updatingKeyframeTrackTabs && SelectedPreviewEditorCategory == "Cameras")
         {
+            PauseDialogueTimelineForTrackEditing();
             ActivateSelectedTrackMove();
         }
     }
@@ -9305,6 +9307,10 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         CameraMovementTabContent.Visibility = category == "Cameras"
             ? Visibility.Visible
             : Visibility.Collapsed;
+        if (category is "Characters" or "Cameras")
+        {
+            PauseDialogueTimelineForTrackEditing();
+        }
         ActivateSelectedTrackMove();
         if (category == "Actors")
         {
@@ -9334,6 +9340,14 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             tracksWithVisibleKeys.Remove(key);
         }
         SceneViewer?.MarkRenderDirty();
+    }
+
+    private void PauseDialogueTimelineForTrackEditing()
+    {
+        if (isPlayingDialogueTimeline)
+        {
+            PauseDialogueTimeline();
+        }
     }
 
     private static string GetTrackMoveEditingKey(ExportEntry trackMove) => trackMove is null
@@ -9491,11 +9505,12 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             }
         }
 
-        if (!isPlayingMove && !isPlayingActor && !isPlayingDialogueTimeline
-            && !CameraFramingMode && !suppressTrackVisualizationForCameraPreview)
+        bool trackPlaybackActive = isPlayingMove || isPlayingActor || isPlayingDialogueTimeline;
+        if (ShouldDrawTrackVisualization(trackPlaybackActive, CameraFramingMode,
+                suppressTrackVisualizationForCameraPreview, AreActiveTrackKeysVisible))
         {
             DrawTrajectory(ActiveModel, AreActiveTrackKeysVisible);
-            if (ShowFovIcons)
+            if (!trackPlaybackActive && ShowFovIcons)
             {
                 DrawFovKeyframes(ActiveTrackMoveOption);
             }
@@ -9503,6 +9518,12 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         RenderPreviewActors();
         RenderContext.DrawUI();
     }
+
+    internal static bool ShouldDrawTrackVisualization(bool trackPlaybackActive, bool cameraFramingMode,
+        bool suppressForCameraPreview, bool showSelectedTrackKeys) =>
+        !cameraFramingMode
+        && !suppressForCameraPreview
+        && (!trackPlaybackActive || showSelectedTrackKeys);
 
     private void RenderPreviewActors()
     {

@@ -155,6 +155,21 @@ public class InterpTrackMoveTransformTests
     }
 
     [TestMethod]
+    public void SelectedTrackKeyToggleOverridesPlaybackVisualizationSuppression()
+    {
+        Assert.IsFalse(CurveEditor3D.ShouldDrawTrackVisualization(trackPlaybackActive: true,
+            cameraFramingMode: false, suppressForCameraPreview: false, showSelectedTrackKeys: false));
+        Assert.IsTrue(CurveEditor3D.ShouldDrawTrackVisualization(trackPlaybackActive: true,
+            cameraFramingMode: false, suppressForCameraPreview: false, showSelectedTrackKeys: true));
+        Assert.IsTrue(CurveEditor3D.ShouldDrawTrackVisualization(trackPlaybackActive: false,
+            cameraFramingMode: false, suppressForCameraPreview: false, showSelectedTrackKeys: false));
+        Assert.IsFalse(CurveEditor3D.ShouldDrawTrackVisualization(trackPlaybackActive: true,
+            cameraFramingMode: true, suppressForCameraPreview: false, showSelectedTrackKeys: true));
+        Assert.IsFalse(CurveEditor3D.ShouldDrawTrackVisualization(trackPlaybackActive: true,
+            cameraFramingMode: false, suppressForCameraPreview: true, showSelectedTrackKeys: true));
+    }
+
+    [TestMethod]
     public void LookAtChangesYawWithoutChangingActorLocation()
     {
         var actor = new CameraOrigin(new Vector3(-15842.27f, 8299.669f, -170309f),
