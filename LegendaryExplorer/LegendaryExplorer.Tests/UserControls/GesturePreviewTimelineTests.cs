@@ -152,6 +152,50 @@ public class GesturePreviewTimelineTests
     }
 
     [TestMethod]
+    public void PoseTransitionBlendsOutInsteadOfHardCuttingToThePose()
+    {
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("PoseTransitionTest.pcc", MEGame.LE3);
+        ExportEntry wallLeanPose = CreateAnimation(package, "WallLeanPose", 5);
+        ExportEntry wallLeanEnter = CreateAnimation(package, "WallLeanEnter", 4.3333335f);
+        var settings = new GesturePreviewExportLoader.GesturePlaybackSettings
+        {
+            StartBlendDuration = 0.1f,
+            EndBlendDuration = 0.1f,
+        };
+        var animations = new List<GesturePreviewExportLoader.GestureAnimationItem>
+        {
+            new()
+            {
+                GestureIndex = 0,
+                Time = 0,
+                SlotOrder = 0,
+                SlotName = "Pose",
+                AnimationExport = wallLeanPose,
+                Settings = settings,
+            },
+            new()
+            {
+                GestureIndex = 0,
+                Time = 0,
+                SlotOrder = 2,
+                SlotName = "Transition",
+                AnimationExport = wallLeanEnter,
+                Settings = settings,
+            },
+        };
+
+        List<AnimationPreviewControl.AnimationTimelineClip> timeline =
+            BuildPlaybackTimelineWithBaseLayer(animations, playbackDuration: 5.467f);
+
+        AnimationPreviewControl.AnimationTimelineClip transition =
+            timeline.Single(clip => clip.AnimationExport == wallLeanEnter);
+        Assert.IsTrue(transition.IsTransition);
+        Assert.AreEqual(0.1f, transition.BlendInDuration, 0.0001f);
+        Assert.AreEqual(0.1f, transition.BlendOutDuration, 0.0001f);
+        Assert.AreEqual(4.3333335f, transition.EndTime, 0.0001f);
+    }
+
+    [TestMethod]
     public void MatchingStartingPoseContinuesTheInheritedConversationPhase()
     {
         using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("PoseContinuationTest.pcc", MEGame.LE3);
@@ -159,15 +203,33 @@ public class GesturePreviewTimelineTests
         float e22EndPhase = CurveEditor3D.ResolveGestureAnimationTime(5.467f, 0, 0, 5, 1, loop: true);
 
         float? r22StartPhase = CurveEditor3D.ResolveMatchingStartingPoseTime(wallLeanPose,
-            hasAuthoredTimeline: false, startingPoseDuration: 5, inheritedAnimation: wallLeanPose,
+            startingPoseDuration: 5, inheritedAnimation: wallLeanPose,
             inheritedAnimationTime: e22EndPhase);
 
         Assert.AreEqual(0.467f, e22EndPhase, 0.0001f);
         Assert.IsTrue(r22StartPhase.HasValue);
         Assert.AreEqual(e22EndPhase, r22StartPhase.Value, 0.0001f);
-        Assert.IsNull(CurveEditor3D.ResolveMatchingStartingPoseTime(wallLeanPose,
-            hasAuthoredTimeline: true, startingPoseDuration: 5, inheritedAnimation: wallLeanPose,
+        Assert.AreEqual(e22EndPhase, CurveEditor3D.ResolveMatchingStartingPoseTime(wallLeanPose,
+            startingPoseDuration: 5, inheritedAnimation: wallLeanPose,
             inheritedAnimationTime: e22EndPhase));
+    }
+
+    [TestMethod]
+    public void MatchingStartingPoseSurvivesAnimationPackageReload()
+    {
+        using IMEPackage firstPackage =
+            MEPackageHandler.CreateMemoryEmptyPackage("ReloadedPoseSet.pcc", MEGame.LE3);
+        using IMEPackage reopenedPackage =
+            MEPackageHandler.CreateMemoryEmptyPackage("ReloadedPoseSet.pcc", MEGame.LE3);
+        ExportEntry outgoingPose = CreateAnimation(firstPackage, "WallLeanPose", 5);
+        ExportEntry incomingPose = CreateAnimation(reopenedPackage, "WallLeanPose", 5);
+
+        Assert.AreNotSame(outgoingPose.FileRef, incomingPose.FileRef);
+        Assert.AreEqual(outgoingPose.UIndex, incomingPose.UIndex);
+        Assert.AreEqual(outgoingPose.FileRef.FilePath, incomingPose.FileRef.FilePath);
+        Assert.AreEqual(0.467f, CurveEditor3D.ResolveMatchingStartingPoseTime(incomingPose,
+            startingPoseDuration: 5, inheritedAnimation: outgoingPose,
+            inheritedAnimationTime: 0.467f));
     }
 
     [TestMethod]

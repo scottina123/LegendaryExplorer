@@ -677,14 +677,22 @@ public partial class GesturePreviewExportLoader : ExportLoaderControl
 
             if (transition != null)
             {
-                float transitionBlend = settings.TransitionBlendTime > 0 ? settings.TransitionBlendTime : settings.EndBlendDuration;
+                float transitionBlendOut = settings.TransitionBlendTime > 0
+                    ? settings.TransitionBlendTime
+                    : settings.EndBlendDuration;
+                float transitionBlendIn = settings.SnapToPose ? 0 : settings.StartBlendDuration;
                 float transitionStart = keyTime;
                 float transitionEnd = transitionStart + GetPlaybackDuration(transition, settings);
                 if (cutoffTime is float transitionCutoff)
                 {
                     transitionEnd = Math.Min(transitionEnd, transitionCutoff);
                 }
-                AddTimelineClip(timeline, transition, transitionStart, transitionEnd, settings, transitionBlend, 0, false,
+                // A transition leads from the prior base pose into the newly authored Pose. It
+                // therefore needs to relinquish the body gradually at its end. Fading it only at
+                // the start and then dropping it at transitionEnd caused E22's wall-lean enter to
+                // hard-cut back to WI_WallLeanLeftIdle near the node boundary.
+                AddTimelineClip(timeline, transition, transitionStart, transitionEnd, settings,
+                    transitionBlendIn, transitionBlendOut, false,
                     useMotionBoneMask: false);
             }
         }
@@ -745,6 +753,7 @@ public partial class GesturePreviewExportLoader : ExportLoaderControl
             Weight = settings.Weight,
             Loop = loop,
             IsBaseLayer = item.SlotName is "Starting Pose" or "Pose",
+            IsTransition = item.SlotName == "Transition",
             UseMotionBoneMask = useMotionBoneMask && item.SlotName is "Gesture" or "Transition",
         };
         if (insertAtStart)

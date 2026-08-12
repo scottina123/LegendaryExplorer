@@ -49,6 +49,7 @@ public partial class AnimationPreviewControl : NotifyPropertyChangedControlBase,
         public float Weight { get; init; } = 1f;
         public bool Loop { get; init; }
         public bool IsBaseLayer { get; init; }
+        public bool IsTransition { get; init; }
         public bool UseMotionBoneMask { get; init; }
     }
 

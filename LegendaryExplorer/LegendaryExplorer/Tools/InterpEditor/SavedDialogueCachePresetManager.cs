@@ -14,7 +14,7 @@ namespace LegendaryExplorer.Tools.InterpEditor;
 
 public static class SavedDialogueCachePresetManager
 {
-    private const int CurrentVersion = 6;
+    private const int CurrentVersion = 7;
     public static string StorageDirectory => Path.Combine(AppDirectories.AppDataFolder, "DialogueConversationCaches");
 
     public static IReadOnlyList<DialogueCachePreset> LoadAll()
@@ -257,6 +257,7 @@ public sealed class DialogueGestureClipCache
     public float Weight { get; set; } = 1;
     public bool Loop { get; set; }
     public bool IsBaseLayer { get; set; }
+    public bool IsTransition { get; set; }
     public bool UseMotionBoneMask { get; set; }
 }
 

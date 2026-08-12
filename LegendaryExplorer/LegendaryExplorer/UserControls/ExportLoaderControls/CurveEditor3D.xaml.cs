@@ -645,8 +645,13 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                     // full-body overlay replaces the walk cycle and makes the actor slide. Apply
                     // the motion mask only in whole-conversation playback so the standalone
                     // Gesture Preview and regular 3D editor continue showing complete clips.
+                    // Transition clips are full-body bridges into a new pose. Masking their
+                    // constant tracks lets the destination pose leak through while the bridge is
+                    // still playing, so only ordinary gesture overlays receive the motion mask.
                     UseMotionBoneMask = clip.UseMotionBoneMask
-                                        || maskDialogueOverlayStaticBones && !clip.IsBaseLayer,
+                                        || maskDialogueOverlayStaticBones
+                                        && !clip.IsBaseLayer
+                                        && !clip.IsTransition,
                     NormalizeRootTranslation = extractRootTranslation,
                 });
             }
@@ -2437,6 +2442,14 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     private static bool IsSameExport(ExportEntry left, ExportEntry right)
         => left is not null && right is not null && left.FileRef == right.FileRef && left.UIndex == right.UIndex;
 
+    private static bool IsSameAnimationExport(ExportEntry left, ExportEntry right)
+        => left is not null
+           && right is not null
+           && left.UIndex == right.UIndex
+           && (left.FileRef == right.FileRef
+               || string.Equals(left.FileRef?.FilePath, right.FileRef?.FilePath,
+                   StringComparison.OrdinalIgnoreCase));
+
     internal static float ResolveGestureAnimationTime(float timelineTime, float clipStartTime,
         float animationStartTime, float animationEndTime, float playRate, bool loop)
     {
@@ -2457,20 +2470,20 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     private static float? ResolveStartingPoseContinuationTime(GestureTrackOption gesture,
         DialogueGesturePoseState inheritedState)
         => ResolveMatchingStartingPoseTime(gesture?.StartingPose?.AnimationExport,
-            gesture?.Timeline.Count > 0, gesture?.StartingPose?.AnimationDuration ?? 0,
+            gesture?.StartingPose?.AnimationDuration ?? 0,
             inheritedState?.Animation, inheritedState?.AnimationTime ?? 0);
 
     internal static float? ResolveMatchingStartingPoseTime(ExportEntry startingPoseAnimation,
-        bool hasAuthoredTimeline, float startingPoseDuration, ExportEntry inheritedAnimation,
+        float startingPoseDuration, ExportEntry inheritedAnimation,
         float inheritedAnimationTime)
     {
-        // Starting-pose-only tracks are continuity declarations during a conversation. If they
-        // name the same base animation already running on the actor, keep its current phase. A
-        // track containing authored gesture/pose keys must still start from its own authored time.
+        // A TrackGesture's starting pose is the base beneath every authored gesture/pose key. It
+        // must retain the phase already running on the actor even when this node also has keys.
+        // Restarting E22's standing idle at its authored offset makes the actor visibly snap just
+        // before WI_WallLeanLeftEnter blends in.
         if (startingPoseAnimation is null
-            || hasAuthoredTimeline
             || inheritedAnimation is null
-            || !IsSameExport(startingPoseAnimation, inheritedAnimation))
+            || !IsSameAnimationExport(startingPoseAnimation, inheritedAnimation))
         {
             return null;
         }
@@ -3342,6 +3355,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                 Weight = clip.Weight,
                 Loop = clip.Loop,
                 IsBaseLayer = clip.IsBaseLayer,
+                IsTransition = clip.IsTransition,
                 UseMotionBoneMask = clip.UseMotionBoneMask,
             }).ToList(),
     };
@@ -3696,6 +3710,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                 Weight = clip.Weight,
                 Loop = clip.Loop,
                 IsBaseLayer = clip.IsBaseLayer,
+                IsTransition = clip.IsTransition,
                 UseMotionBoneMask = clip.UseMotionBoneMask,
             }).ToArray(),
         };
@@ -7455,6 +7470,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         }
 
         IReadOnlyDictionary<string, CameraOrigin> liveInheritedOrigins = null;
+        IReadOnlyDictionary<string, DialogueGesturePoseState> liveInheritedGestureStates = null;
         if (activeDialogueTimelineSegment is not null
             && segment.StartTime >= activeDialogueTimelineSegment.EndTime)
         {
@@ -7464,12 +7480,13 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             ApplyPlaybackAtTime(activeDialogueTimelineSegment.Duration, playAudio: false);
             liveInheritedOrigins = previewActors.ToDictionary(actor => actor.ActorTag,
                 actor => actor.Origin, StringComparer.OrdinalIgnoreCase);
+            liveInheritedGestureStates = activeDialogueSegmentRuntime?.EndActorGestureStates;
         }
 
         if (isDialogueConversationPreview
             && dialogueRuntimeCache.TryGetValue(segment, out DialogueSegmentRuntime cachedRuntime))
         {
-            ActivateCachedDialogueRuntime(cachedRuntime, liveInheritedOrigins);
+            ActivateCachedDialogueRuntime(cachedRuntime, liveInheritedOrigins, liveInheritedGestureStates);
             return;
         }
 
@@ -7513,7 +7530,8 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     }
 
     private void ActivateCachedDialogueRuntime(DialogueSegmentRuntime runtime,
-        IReadOnlyDictionary<string, CameraOrigin> liveInheritedOrigins = null)
+        IReadOnlyDictionary<string, CameraOrigin> liveInheritedOrigins = null,
+        IReadOnlyDictionary<string, DialogueGesturePoseState> liveInheritedGestureStates = null)
     {
         DialoguePreviewSoundpanel.StopPlaying();
         FaceOnlyVoSoundpanel.StopPlaying();
@@ -7585,8 +7603,13 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                 if (runtime.ActorGestureAssignments.TryGetValue(actor.ActorTag, out GestureTrackOption gesture))
                 {
                     previewActorGestureAssignments[actor] = gesture;
+                    DialogueGesturePoseState inheritedGestureState = liveInheritedGestureStates is not null
+                                                                     && liveInheritedGestureStates.TryGetValue(
+                                                                         actor.ActorTag, out DialogueGesturePoseState liveState)
+                        ? liveState
+                        : runtime.StartActorGestureStates.GetValueOrDefault(actor.ActorTag);
                     float? startingPoseTimeOverride = ResolveStartingPoseContinuationTime(gesture,
-                        runtime.StartActorGestureStates.GetValueOrDefault(actor.ActorTag));
+                        inheritedGestureState);
                     ApplyAssignedGestureToActor(actor, runtime.Segment.Duration, startingPoseTimeOverride);
                 }
                 else if (previewActorAnimationStates.TryGetValue(actor, out PreviewActorAnimationState heldAnimationState))
