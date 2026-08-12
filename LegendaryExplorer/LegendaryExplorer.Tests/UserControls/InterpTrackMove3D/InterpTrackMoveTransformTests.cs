@@ -7,6 +7,7 @@ using LegendaryExplorer.Tools.InterpEditor;
 using LegendaryExplorer.UserControls.ExportLoaderControls;
 using LegendaryExplorerCore.Unreal.Animation;
 using LegendaryExplorerCore.Unreal.BinaryConverters;
+using LegendaryExplorerCore.Unreal;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace LegendaryExplorer.Tests.UserControls.InterpTrackMove3D;
@@ -173,6 +174,30 @@ public class InterpTrackMoveTransformTests
         Assert.AreEqual(bone.Location.Z + 12f, camera.Location.Z, 0.0001f);
         Assert.AreEqual(bone.Rotation.Y + 0.8f, camera.Rotation.Y, 0.0001f);
         Assert.AreEqual(bone.Rotation.Z - 2.5f, camera.Rotation.Z, 0.0001f);
+    }
+
+    [TestMethod]
+    public void StageCameraBinaryOverridesInheritArchetypeDefaults()
+    {
+        var archetypeDefaults = new PropertyCollection
+        {
+            new FloatProperty(35f, "fFov"),
+            new FloatProperty(0f, "fPitchDelta"),
+            new FloatProperty(0f, "fYawDelta"),
+            new BoolProperty(false, "bDisableHeightAdjustment")
+        };
+        var placedStageOverrides = new PropertyCollection
+        {
+            new FloatProperty(0.8f, "fPitchDelta")
+        };
+
+        StageCameraSettings settings = StageBoneOriginResolver.ResolveStageCameraSettings(
+            [archetypeDefaults, placedStageOverrides]);
+
+        Assert.AreEqual(35f, settings.FovDegrees.GetValueOrDefault(), 0.0001f);
+        Assert.AreEqual(0.8f, settings.PitchDelta, 0.0001f);
+        Assert.AreEqual(0f, settings.YawDelta, 0.0001f);
+        Assert.IsFalse(settings.DisableHeightAdjustment);
     }
 
     [TestMethod]

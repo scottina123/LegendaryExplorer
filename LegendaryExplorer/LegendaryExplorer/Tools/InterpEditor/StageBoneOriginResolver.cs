@@ -21,6 +21,14 @@ internal sealed record StageCameraDefinition(
     float NearPlane,
     bool DisableHeightAdjustment);
 
+internal sealed record StageCameraSettings(
+    float HeightDelta,
+    float PitchDelta,
+    float YawDelta,
+    float? FovDegrees,
+    float NearPlane,
+    bool DisableHeightAdjustment);
+
 internal sealed class StageConversationContext : IDisposable
 {
     private readonly bool ownsMainPackage;
@@ -296,14 +304,8 @@ internal static class StageBoneOriginResolver
             return cameras;
         }
 
-        LegendaryExplorerCore.Unreal.BinaryConverters.BioStage stageBinary =
-            ObjectBinary.From<LegendaryExplorerCore.Unreal.BinaryConverters.BioStage>(stage, cache);
-        if (stageBinary?.CameraList is null)
-        {
-            return cameras;
-        }
-
-        foreach ((NameReference cameraName, PropertyCollection cameraProperties) in stageBinary.CameraList)
+        foreach ((NameReference cameraName, List<PropertyCollection> propertyLayers) in
+                 ResolveStageCameraPropertyLayers(stage, cache).Values)
         {
             BoneOption bone = bones.FirstOrDefault(option =>
                 option.Bone.Name.Number == cameraName.Number
@@ -314,18 +316,110 @@ internal static class StageBoneOriginResolver
             }
 
             CameraOrigin boneOrigin = ResolveBoneOrigin(bone.Mesh, bone.Index, stageOrigin, cache);
-            float heightDelta = cameraProperties.GetProp<FloatProperty>("fHeightDelta")?.Value ?? 0;
-            float pitchDelta = cameraProperties.GetProp<FloatProperty>("fPitchDelta")?.Value ?? 0;
-            float yawDelta = cameraProperties.GetProp<FloatProperty>("fYawDelta")?.Value ?? 0;
-            CameraOrigin origin = ApplyStageCameraOffsets(boneOrigin, heightDelta, pitchDelta, yawDelta);
-            float fov = cameraProperties.GetProp<FloatProperty>("fFov")?.Value ?? 0;
+            StageCameraSettings settings = ResolveStageCameraSettings(propertyLayers);
+            CameraOrigin origin = ApplyStageCameraOffsets(boneOrigin, settings.HeightDelta,
+                settings.PitchDelta, settings.YawDelta);
             cameras[cameraName.Instanced] = new StageCameraDefinition(
                 origin,
-                fov is > 0 and < 180 ? fov : null,
-                cameraProperties.GetProp<FloatProperty>("fNearPlane")?.Value ?? 10f,
-                cameraProperties.GetProp<BoolProperty>("bDisableHeightAdjustment")?.Value == true);
+                settings.FovDegrees,
+                settings.NearPlane,
+                settings.DisableHeightAdjustment);
         }
         return cameras;
+    }
+
+    private static IReadOnlyDictionary<string, (NameReference Name, List<PropertyCollection> Layers)>
+        ResolveStageCameraPropertyLayers(ExportEntry stage, PackageCache cache)
+    {
+        var cameraLayers = new Dictionary<string, (NameReference Name, List<PropertyCollection> Layers)>(
+            StringComparer.OrdinalIgnoreCase);
+        var archetypeChain = new List<ExportEntry>();
+        var visited = new HashSet<ExportEntry>();
+        for (ExportEntry current = stage; current is not null && visited.Add(current);
+             current = ResolveExport(current.Archetype, cache))
+        {
+            archetypeChain.Add(current);
+        }
+
+        foreach (ExportEntry layer in archetypeChain.AsEnumerable().Reverse())
+        {
+            if (layer.GetProperty<ArrayProperty<StructProperty>>("m_aCameraList") is { } defaultCameras)
+            {
+                foreach (StructProperty camera in defaultCameras)
+                {
+                    if (camera.GetProp<NameProperty>("nmCameraTag")?.Value is { } cameraName)
+                    {
+                        AddStageCameraPropertyLayer(cameraLayers, cameraName, camera.Properties);
+                    }
+                }
+            }
+
+            LegendaryExplorerCore.Unreal.BinaryConverters.BioStage stageBinary =
+                ObjectBinary.From<LegendaryExplorerCore.Unreal.BinaryConverters.BioStage>(layer, cache);
+            foreach ((NameReference cameraName, PropertyCollection cameraProperties) in
+                     stageBinary?.CameraList ?? [])
+            {
+                AddStageCameraPropertyLayer(cameraLayers, cameraName, cameraProperties);
+            }
+        }
+        return cameraLayers;
+    }
+
+    private static void AddStageCameraPropertyLayer(
+        IDictionary<string, (NameReference Name, List<PropertyCollection> Layers)> cameras,
+        NameReference cameraName, PropertyCollection properties)
+    {
+        if (string.IsNullOrWhiteSpace(cameraName.Name) || cameraName.Name.Equals("None", StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+        if (!cameras.TryGetValue(cameraName.Instanced, out var camera))
+        {
+            camera = (cameraName, []);
+            cameras.Add(cameraName.Instanced, camera);
+        }
+        camera.Layers.Add(properties);
+    }
+
+    internal static StageCameraSettings ResolveStageCameraSettings(
+        IEnumerable<PropertyCollection> propertyLayers)
+    {
+        float heightDelta = 0;
+        float pitchDelta = 0;
+        float yawDelta = 0;
+        float fov = 0;
+        float nearPlane = 10f;
+        bool disableHeightAdjustment = false;
+        foreach (PropertyCollection properties in propertyLayers ?? [])
+        {
+            if (properties.GetProp<FloatProperty>("fHeightDelta") is { } heightProperty)
+            {
+                heightDelta = heightProperty.Value;
+            }
+            if (properties.GetProp<FloatProperty>("fPitchDelta") is { } pitchProperty)
+            {
+                pitchDelta = pitchProperty.Value;
+            }
+            if (properties.GetProp<FloatProperty>("fYawDelta") is { } yawProperty)
+            {
+                yawDelta = yawProperty.Value;
+            }
+            if (properties.GetProp<FloatProperty>("fFov") is { } fovProperty)
+            {
+                fov = fovProperty.Value;
+            }
+            if (properties.GetProp<FloatProperty>("fNearPlane") is { } nearPlaneProperty)
+            {
+                nearPlane = nearPlaneProperty.Value;
+            }
+            if (properties.GetProp<BoolProperty>("bDisableHeightAdjustment") is { } heightAdjustmentProperty)
+            {
+                disableHeightAdjustment = heightAdjustmentProperty.Value;
+            }
+        }
+
+        return new StageCameraSettings(heightDelta, pitchDelta, yawDelta,
+            fov is > 0 and < 180 ? fov : null, nearPlane, disableHeightAdjustment);
     }
 
     internal static CameraOrigin ApplyStageCameraOffsets(CameraOrigin boneOrigin, float heightDelta,
