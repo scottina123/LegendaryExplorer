@@ -163,6 +163,10 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             new(StringComparer.OrdinalIgnoreCase);
         public Dictionary<string, CameraOrigin> ActorOriginOverrides { get; } =
             new(StringComparer.OrdinalIgnoreCase);
+        public Dictionary<string, string> StartLookAtTargets { get; } =
+            new(StringComparer.OrdinalIgnoreCase);
+        public Dictionary<string, string> EndLookAtTargets { get; } =
+            new(StringComparer.OrdinalIgnoreCase);
         public Dictionary<string, CameraOrigin> StartCameraOrigins { get; } =
             new(StringComparer.OrdinalIgnoreCase);
         public Dictionary<string, CameraOrigin> EndCameraOrigins { get; } =
@@ -360,16 +364,20 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         public sealed class LayeredAnimationPlayer : AnimPlayer
         {
             private Matrix4x4[] heldGestureComponentPose;
+            private readonly int lookAtBoneIndex;
 
             public AnimSequencePlayer GesturePlayer { get; }
             public FaceFxPlayer FaceFxPlayer { get; }
+            public Vector3? LookAtTargetComponent { get; private set; }
+            public bool HasLayeredAnimation => GesturePlayer.HasAnimation
+                                               || heldGestureComponentPose is not null
+                                               || FaceFxPlayer.HasAnimation;
+            public bool HasLookAtTarget => lookAtBoneIndex >= 0 && LookAtTargetComponent.HasValue;
             public float GestureTimelineOffset { get; set; }
             public bool LoopStandaloneGesture { get; set; }
             public bool HoldGesturePose { get; set; }
             public float FaceFxTimelineOffset { get; set; }
-            public override bool HasAnimation => GesturePlayer.HasAnimation
-                                                 || heldGestureComponentPose is not null
-                                                 || FaceFxPlayer.HasAnimation;
+            public override bool HasAnimation => HasLayeredAnimation || HasLookAtTarget;
             public override float Duration => Math.Max(GesturePlayer.Duration, FaceFxPlayer.Duration);
             public override float StartTime => Math.Min(GesturePlayer.StartTime, FaceFxTimelineOffset);
             public override float EndTime => Math.Max(GesturePlayer.EndTime, FaceFxTimelineOffset + FaceFxPlayer.Duration);
@@ -378,6 +386,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             {
                 GesturePlayer = new AnimSequencePlayer(skeletalMesh);
                 FaceFxPlayer = new FaceFxPlayer(skeletalMesh);
+                lookAtBoneIndex = FindLookAtBoneIndex(_bones);
             }
 
             public override void SetCurrentTime(float time)
@@ -429,12 +438,55 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                         }
                     }
 
-                    _boneComponentSpace[index] = bone.ParentIndex >= 0 && bone.ParentIndex < index
+                    Matrix4x4 componentTransform = bone.ParentIndex >= 0 && bone.ParentIndex < index
                         ? finalLocal * _boneComponentSpace[bone.ParentIndex]
                         : finalLocal;
+                    if (index == lookAtBoneIndex && LookAtTargetComponent is { } lookAtTarget)
+                    {
+                        componentTransform = ApplyLookAtBoneRotation(componentTransform, lookAtTarget);
+                    }
+                    _boneComponentSpace[index] = componentTransform;
                     _skinningMatrices[index] = _inverseBindPose[index] * _boneComponentSpace[index];
                 }
                 return _skinningMatrices;
+            }
+
+            public void SetLookAtTargetComponent(Vector3? target)
+            {
+                LookAtTargetComponent = target;
+            }
+
+            public Vector3? GetLookAtAnchorComponent()
+            {
+                if (lookAtBoneIndex < 0)
+                {
+                    return null;
+                }
+                ComputeSkinningMatrices();
+                return _boneComponentSpace[lookAtBoneIndex].Translation;
+            }
+
+            private static int FindLookAtBoneIndex(IReadOnlyList<MeshBone> bones)
+            {
+                string[] preferredNames = ["Head", "Bip01_Head", "b_head"];
+                foreach (string preferredName in preferredNames)
+                {
+                    for (int index = 0; index < bones.Count; index++)
+                    {
+                        if (bones[index].Name.Instanced.Equals(preferredName, StringComparison.OrdinalIgnoreCase))
+                        {
+                            return index;
+                        }
+                    }
+                }
+                for (int index = 0; index < bones.Count; index++)
+                {
+                    if (bones[index].Name.Instanced.Contains("head", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return index;
+                    }
+                }
+                return -1;
             }
 
             public Matrix4x4[] CaptureGesturePose()
@@ -479,8 +531,9 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         public SkinnedMeshRenderer Renderer { get; init; }
         public LayeredAnimationPlayer Player { get; init; }
         public GestureTrackOption AppliedGesture { get; private set; }
-        public bool HasTimeline => Player?.HasAnimation == true;
+        public bool HasTimeline => Player?.HasLayeredAnimation == true;
         public bool HasGestureTimeline => Player?.GesturePlayer?.HasAnimation == true;
+        public bool HasLookAtTarget => Player?.HasLookAtTarget == true;
 
         public Vector3 EvaluateExtractedRootMotion(float time)
         {
@@ -636,7 +689,26 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             Player.GestureTimelineOffset = 0;
             Player.LoopStandaloneGesture = false;
             Player.HoldGesturePose = false;
+            Player.SetLookAtTargetComponent(null);
             Renderer.NeedsUpdate = true;
+        }
+
+        public void SetLookAtTargetWorld(Vector3? targetWorld, CameraOrigin actorOrigin)
+        {
+            Vector3? targetComponent = null;
+            if (targetWorld is { } world
+                && Matrix4x4.Invert(CreatePreviewActorTransform(actorOrigin), out Matrix4x4 worldToComponent))
+            {
+                targetComponent = Vector3.Transform(world, worldToComponent);
+            }
+            Player.SetLookAtTargetComponent(targetComponent);
+            Renderer.NeedsUpdate = true;
+        }
+
+        public Vector3 GetLookAtAnchorWorld(CameraOrigin actorOrigin)
+        {
+            Vector3 componentAnchor = Player.GetLookAtAnchorComponent() ?? new Vector3(0, 0, 160);
+            return Vector3.Transform(componentAnchor, CreatePreviewActorTransform(actorOrigin));
         }
 
         public Matrix4x4[] CaptureGesturePose() => Player.CaptureGesturePose();
@@ -776,6 +848,8 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     private readonly Dictionary<string, PlacedCameraState> dialoguePlacedCameras =
         new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, PlacedCameraState> dialogueAuthoredCameraDefaults =
+        new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, CameraOrigin> dialogueLookAtTargets =
         new(StringComparer.OrdinalIgnoreCase);
     private CameraOrigin dialoguePreviewInitialCameraOrigin;
     private float dialoguePreviewInitialCameraFovDegrees = 60f;
@@ -2702,6 +2776,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             : 60f;
         dialoguePlacedCameras.Clear();
         dialogueAuthoredCameraDefaults.Clear();
+        dialogueLookAtTargets.Clear();
 
         IEnumerable<IMEPackage> packages = levelPackages;
         if (dialogueNodePreview?.Conversation?.Export?.FileRef is { } conversationPackage
@@ -2717,6 +2792,16 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             // selected non-LOC BioD or BioP rather than by the conversation's LOC package.
             foreach (ExportEntry actor in EnumerateLevelActorExports(package))
             {
+                if (actor.ClassName.Equals("BioLookAtTarget", StringComparison.OrdinalIgnoreCase)
+                    || actor.IsA("BioLookAtTarget"))
+                {
+                    string lookAtTag = actor.GetProperty<NameProperty>("Tag")?.Value.Instanced;
+                    if (!string.IsNullOrWhiteSpace(lookAtTag)
+                        && !lookAtTag.Equals("None", StringComparison.OrdinalIgnoreCase))
+                    {
+                        dialogueLookAtTargets.TryAdd(lookAtTag, ReadPlacedCameraState(actor).Origin);
+                    }
+                }
                 if (!actor.ClassName.Equals("CameraActor", StringComparison.OrdinalIgnoreCase)
                     && !actor.IsA("CameraActor"))
                 {
@@ -3964,8 +4049,70 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             }
         }
 
+        BuildDialogueRuntimeLookAtSnapshots();
         BuildDialogueRuntimeCameraSnapshots();
         ReprojectDialogueActivePathActorOrigins();
+    }
+
+    private void BuildDialogueRuntimeLookAtSnapshots()
+    {
+        foreach (DialogueTimelineSegment segment in dialogueTimelineSegments.OrderBy(segment => segment.TreeDepth))
+        {
+            DialogueSegmentRuntime runtime = dialogueRuntimeCache[segment];
+            DialogueSegmentRuntime parentRuntime = segment.Parent is not null
+                                                   && dialogueRuntimeCache.TryGetValue(segment.Parent,
+                                                       out DialogueSegmentRuntime resolvedParent)
+                ? resolvedParent
+                : null;
+            PopulateDialogueLookAtState(runtime, parentRuntime?.EndLookAtTargets);
+        }
+    }
+
+    private void PopulateDialogueLookAtState(DialogueSegmentRuntime runtime,
+        IReadOnlyDictionary<string, string> inheritedTargets)
+    {
+        runtime.StartLookAtTargets.Clear();
+        runtime.EndLookAtTargets.Clear();
+        foreach (PreviewActorConfiguration actor in previewActors)
+        {
+            string inheritedTarget = inheritedTargets?.GetValueOrDefault(actor.ActorTag);
+            runtime.StartLookAtTargets[actor.ActorTag] = inheritedTarget;
+            runtime.EndLookAtTargets[actor.ActorTag] = ResolveDialogueLookAtTarget(runtime.DirectionTracks,
+                actor.ActorTag, runtime.Segment.Duration, inheritedTarget);
+        }
+    }
+
+    private string ResolveDialogueLookAtTarget(IEnumerable<ActorDirectionTrack> directionTracks, string actorTag,
+        float time, string inheritedTarget)
+    {
+        IReadOnlyList<(float Time, bool Enabled, string Target)> keys = directionTracks
+            .Where(track => track.IsLookAt && ActorTagMatches(track.Actor?.ActorTag, actorTag))
+            .SelectMany(track => track.Keys)
+            .Select(key => (key.Time, key.Enabled, key.TargetActorTag))
+            .ToArray();
+        return ResolveInheritedLookAtTarget(inheritedTarget, keys, time);
+    }
+
+    internal static string ResolveInheritedLookAtTarget(string inheritedTarget,
+        IReadOnlyList<(float Time, bool Enabled, string Target)> keys, float time)
+    {
+        (float Time, bool Enabled, string Target) active = default;
+        bool found = false;
+        foreach ((float keyTime, bool enabled, string target) in keys)
+        {
+            if (keyTime <= time && (!found || keyTime >= active.Time))
+            {
+                active = (keyTime, enabled, target);
+                found = true;
+            }
+        }
+        if (!found)
+        {
+            return inheritedTarget;
+        }
+        return active.Enabled && !string.IsNullOrWhiteSpace(active.Target)
+            ? active.Target
+            : null;
     }
 
     private void BuildDialogueRuntimeCameraSnapshots()
@@ -4152,7 +4299,19 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             }
             inheritedOrigins = runtime.EndActorOrigins;
         }
+        ReprojectDialogueActivePathLookAtStates();
         ReprojectDialogueActivePathCameraStates();
+    }
+
+    private void ReprojectDialogueActivePathLookAtStates()
+    {
+        IReadOnlyDictionary<string, string> inheritedTargets = null;
+        foreach (DialogueTimelineSegment segment in dialogueTimelineActivePath)
+        {
+            DialogueSegmentRuntime runtime = dialogueRuntimeCache[segment];
+            PopulateDialogueLookAtState(runtime, inheritedTargets);
+            inheritedTargets = runtime.EndLookAtTargets;
+        }
     }
 
     private void ReprojectDialogueActivePathCameraStates()
@@ -4805,8 +4964,9 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     {
         string candidate = keyData.GetProp<NameProperty>("nmFindActor")?.Value.Instanced
                            ?? keyData.GetProp<StrProperty>("nmFindActor")?.Value;
-        return !ActorTagMatches(candidate, sourceActorTag)
-               && FindPreviewActorByTag(candidate) is not null
+        return !string.IsNullOrWhiteSpace(candidate)
+               && !candidate.Equals("None", StringComparison.OrdinalIgnoreCase)
+               && !ActorTagMatches(candidate, sourceActorTag)
             ? candidate
             : null;
     }
@@ -4866,6 +5026,25 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     }
 
     internal static bool DirectionTrackControlsActorTransform(bool isLookAt) => !isLookAt;
+
+    internal static Matrix4x4 ApplyLookAtBoneRotation(Matrix4x4 componentTransform, Vector3 targetComponent)
+    {
+        Vector3 direction = targetComponent - componentTransform.Translation;
+        if (direction.LengthSquared() <= float.Epsilon)
+        {
+            return componentTransform;
+        }
+
+        float yaw = Math.Clamp(MathF.Atan2(direction.Y, direction.X) * (180f / MathF.PI), -70f, 70f);
+        float horizontalDistance = MathF.Sqrt(direction.X * direction.X + direction.Y * direction.Y);
+        float pitch = Math.Clamp(MathF.Atan2(direction.Z, horizontalDistance) * (180f / MathF.PI), -35f, 35f);
+        Matrix4x4 lookAtRotation = Rotator.FromDegreesVector(new Vector3(0, pitch, yaw)).ToRotationMatrix();
+        Vector3 translation = componentTransform.Translation;
+        componentTransform.Translation = Vector3.Zero;
+        componentTransform *= lookAtRotation;
+        componentTransform.Translation = translation;
+        return componentTransform;
+    }
 
     internal static CameraOrigin ApplySetFacingStageNode(CameraOrigin actorOrigin, CameraOrigin stageNodeOrigin,
         bool hasMovementTrack, float orientationOffset, Vector3 rootMotionSinceFacingKey = default,
@@ -7763,12 +7942,17 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         }
         Dictionary<PreviewActorConfiguration, CameraOrigin> actorOrigins = resolvedOrigins
             .ToDictionary(pair => pair.Key.Actor, pair => pair.Value);
+        var finalActorOrigins = new Dictionary<PreviewActorConfiguration, CameraOrigin>();
         foreach (PreviewActorPlaybackState state in playbackActors)
         {
             CameraOrigin origin = ApplyTrackLookAtRotation(state.TrackMove, resolvedOrigins[state], time, resolvedOrigins);
-            state.Actor.Origin = ApplyActorDirectionTracks(state.Actor, time, origin, actorOrigins,
+            finalActorOrigins[state.Actor] = ApplyActorDirectionTracks(state.Actor, time, origin, actorOrigins,
                 state.TrackMove?.TrackMove is not null,
                 previewActorAnimationStates.GetValueOrDefault(state.Actor));
+        }
+        foreach (PreviewActorPlaybackState state in playbackActors)
+        {
+            state.Actor.Origin = finalActorOrigins[state.Actor];
             if (ReferenceEquals(selectedPreviewActor, state.Actor))
             {
                 updatingPreviewActorControls = true;
@@ -7778,10 +7962,8 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             }
             if (previewActorAnimationStates.TryGetValue(state.Actor, out PreviewActorAnimationState animationState))
             {
-                if (animationState.HasTimeline)
-                {
-                    UpdatePreviewActorSkinning(state.Actor);
-                }
+                ApplyPreviewActorLookAt(state.Actor, time, finalActorOrigins, animationState);
+                UpdatePreviewActorSkinning(state.Actor);
             }
         }
         ApplyActorPlaybackCameraAtTime(time);
@@ -7789,6 +7971,36 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         string cameraMode = playDirectorMulticam ? " with director multicam" : playExtraTrackMove ? " with extra camera" : string.Empty;
         SceneStatus = $"Playing {playbackActors.Count} actor(s){cameraMode} at InVal {time:0.###} / {playbackEndTime:0.###}; {levelPaths.Count} level backdrop file(s).";
         SceneViewer.MarkRenderDirty();
+    }
+
+    private void ApplyPreviewActorLookAt(PreviewActorConfiguration actor, float time,
+        IReadOnlyDictionary<PreviewActorConfiguration, CameraOrigin> actorOrigins,
+        PreviewActorAnimationState animationState)
+    {
+        string inheritedTarget = activeDialogueSegmentRuntime?.StartLookAtTargets
+            .GetValueOrDefault(actor.ActorTag);
+        string targetTag = ResolveDialogueLookAtTarget(
+            activeDialogueSegmentRuntime?.DirectionTracks ?? actorDirectionTracks,
+            actor.ActorTag, time, inheritedTarget);
+        Vector3? targetWorld = null;
+        if (!string.IsNullOrWhiteSpace(targetTag))
+        {
+            PreviewActorConfiguration targetActor = actorOrigins.Keys.FirstOrDefault(candidate =>
+                !ReferenceEquals(candidate, actor) && ActorTagMatches(targetTag, candidate.ActorTag));
+            if (targetActor is not null)
+            {
+                CameraOrigin targetOrigin = actorOrigins[targetActor];
+                targetWorld = previewActorAnimationStates.TryGetValue(targetActor,
+                    out PreviewActorAnimationState targetAnimationState)
+                    ? targetAnimationState.GetLookAtAnchorWorld(targetOrigin)
+                    : targetOrigin.Location + new Vector3(0, 0, 72);
+            }
+            else if (dialogueLookAtTargets.TryGetValue(targetTag, out CameraOrigin targetOrigin))
+            {
+                targetWorld = targetOrigin.Location;
+            }
+        }
+        animationState.SetLookAtTargetWorld(targetWorld, actorOrigins[actor]);
     }
 
     private CameraOrigin ApplyTrackLookAtRotation(TrackMovePlaybackOption trackMove, CameraOrigin origin, float time,
@@ -8507,6 +8719,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         levelPaths.Clear();
         dialoguePlacedCameras.Clear();
         dialogueAuthoredCameraDefaults.Clear();
+        dialogueLookAtTargets.Clear();
 
         foreach (CurveEditor3DKeyframe keyframe in ActiveModel.Keyframes)
         {

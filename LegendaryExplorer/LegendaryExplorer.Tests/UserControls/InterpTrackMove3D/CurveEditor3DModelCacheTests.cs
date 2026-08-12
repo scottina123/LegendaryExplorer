@@ -45,6 +45,40 @@ public class CurveEditor3DModelCacheTests
     }
 
     [TestMethod]
+    public void LookAtTargetIsInheritedUntilAnAuthoredKeyOverridesOrClearsIt()
+    {
+        Assert.AreEqual("lookat_leaning", CurveEditor3D.ResolveInheritedLookAtTarget(
+            "lookat_leaning", [], time: 2));
+        Assert.AreEqual("player", CurveEditor3D.ResolveInheritedLookAtTarget(
+            "lookat_leaning", [(1f, true, "player")], time: 2));
+        Assert.IsNull(CurveEditor3D.ResolveInheritedLookAtTarget(
+            "lookat_leaning", [(1f, false, null)], time: 2));
+    }
+
+    [TestMethod]
+    public void FutureLookAtKeyDoesNotOverrideInheritedTargetEarly()
+    {
+        Assert.AreEqual("lookat_leaning", CurveEditor3D.ResolveInheritedLookAtTarget(
+            "lookat_leaning", [(3f, true, "player")], time: 2));
+        Assert.AreEqual("player", CurveEditor3D.ResolveInheritedLookAtTarget(
+            "lookat_leaning", [(3f, true, "player")], time: 3));
+    }
+
+    [TestMethod]
+    public void LookAtBoneRotationPreservesTheHeadPosition()
+    {
+        Matrix4x4 headTransform = Matrix4x4.CreateTranslation(10, 20, 30);
+
+        Matrix4x4 rotated = CurveEditor3D.ApplyLookAtBoneRotation(headTransform,
+            new Vector3(100, 120, 80));
+
+        Assert.AreEqual(headTransform.Translation, rotated.Translation);
+        Assert.AreNotEqual(headTransform, rotated);
+        Assert.AreEqual(headTransform, CurveEditor3D.ApplyLookAtBoneRotation(headTransform,
+            headTransform.Translation));
+    }
+
+    [TestMethod]
     public void ExtractedGestureMotionContinuesFromInheritedActorOrigin()
     {
         var inherited = new CameraOrigin(new Vector3(100, 200, 300), new Vector3(0, 0, 90));
