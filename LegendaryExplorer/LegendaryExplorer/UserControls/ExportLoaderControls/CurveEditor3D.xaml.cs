@@ -502,10 +502,8 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                     if (hasFaceFx)
                     {
                         Matrix4x4 faceLocal = GetLocalTransform(FaceFxPlayer.BoneComponentSpaceTransforms, index);
-                        if (Matrix4x4.Invert(bindLocal, out Matrix4x4 inverseBindLocal))
-                        {
-                            finalLocal *= inverseBindLocal * faceLocal;
-                        }
+                        finalLocal = ComposeDialogueFaceFxLocal(finalLocal,
+                            FaceFxPlayer.GetReferenceLocalTransform(index), faceLocal);
                     }
 
                     Matrix4x4 componentTransform = bone.ParentIndex >= 0 && bone.ParentIndex < index
@@ -825,6 +823,12 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         }
     }
 
+    internal static Matrix4x4 ComposeDialogueFaceFxLocal(Matrix4x4 gestureLocal,
+        Matrix4x4 faceReferenceLocal, Matrix4x4 faceAnimatedLocal) =>
+        Matrix4x4.Invert(faceReferenceLocal, out Matrix4x4 inverseFaceReference)
+            ? gestureLocal * inverseFaceReference * faceAnimatedLocal
+            : gestureLocal;
+
     private sealed class PreviewActorConfiguration
     {
         public string ActorTag { get; set; }
@@ -1122,6 +1126,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             ConstrainedAspectRatio = 16f / 9f,
             UseGameShaderMeshPreviews = true,
             UseGameShaderStaticMeshPreviews = false,
+            UseSrgbColorManagement = true,
         };
         backgroundColor = LevelEditor.GetThemeDefaultBackgroundColor();
         RenderContext.BackgroundColor = backgroundColor;
@@ -6503,7 +6508,10 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             AddActorComponent(GetComponentKind(propertyName), propertyName, component);
         }
 
-        ExportEntry morphHead = FindFaceOrMorphExport(sourceActor, "MorphHead");
+        ExportEntry morphHead = FindMorphExport(sourceActor, "MorphHead")
+                                ?? components.Select(component => FindMorphExport(component.Export,
+                                        "MorphHead"))
+                                    .FirstOrDefault(morph => morph is not null);
         bool hasSeparateHead = components.Any(component => component.Kind == PreviewActorModelComponent.Head);
         foreach ((PreviewActorModelComponent componentKind, string slotName, ExportEntry component) in components)
         {
@@ -6514,7 +6522,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             {
                 continue;
             }
-            ExportEntry componentMorph = FindFaceOrMorphExport(component, "MorphHead") ?? morphHead;
+            ExportEntry componentMorph = FindMorphExport(component, "MorphHead") ?? morphHead;
             bool isPrimaryHead = componentKind == PreviewActorModelComponent.Head
                                  && slotName.Equals("HeadMesh", StringComparison.OrdinalIgnoreCase);
             bool isMorphFollower = componentKind == PreviewActorModelComponent.Hair
@@ -6612,10 +6620,10 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                                     && pair.Export?.ClassName == "FaceFXAsset")
             .Export;
 
-    private ExportEntry FindFaceOrMorphExport(ExportEntry source, string propertyName)
+    private ExportEntry FindMorphExport(ExportEntry source, string propertyName)
     {
         ExportEntry export = FindInheritedObjectExport(source, propertyName);
-        return export?.ClassName is "BioMorphFace" or "FaceFXAsset" ? export : null;
+        return export?.ClassName == "BioMorphFace" ? export : null;
     }
 
     private ExportEntry FindInheritedObjectExport(ExportEntry source, params string[] propertyNames)
@@ -6714,6 +6722,9 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         PreviewActorConfiguration actor)
     {
         var loaded = new HashSet<PreviewActorModelComponent>();
+        ExportEntry appearanceMorph = (actor.Construction?.Meshes ?? [])
+            .Select(mesh => ResolveExportReference(mesh.MorphHead, required: false))
+            .FirstOrDefault(morph => morph?.ClassName == "BioMorphFace");
         Matrix4x4? bodyLocalTransform = actor.Construction?.Meshes
             .FirstOrDefault(mesh => mesh.Component == PreviewActorModelComponent.Body)
             ?.LocalTransform?.ToMatrix();
@@ -6731,7 +6742,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             try
             {
                 LoadPreviewActorModel(actorIndex, mesh.Component, meshExport, materialOverrides, morphHead,
-                    mesh.UseStoredMorphLods, mesh.SlotName, bodyLocalTransform);
+                    appearanceMorph, mesh.UseStoredMorphLods, mesh.SlotName, bodyLocalTransform);
                 SetPreviewActorModelName(actor, mesh.Component, meshExport.ObjectNameString);
                 loaded.Add(mesh.Component);
             }
@@ -10936,11 +10947,11 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     }
 
     private void LoadPreviewActorModel(int actorIndex, PreviewActorModelComponent component, ExportEntry skeletalMeshExport)
-        => LoadPreviewActorModel(actorIndex, component, skeletalMeshExport, null, null, false, null, null);
+        => LoadPreviewActorModel(actorIndex, component, skeletalMeshExport, null, null, null, false, null, null);
 
     private void LoadPreviewActorModel(int actorIndex, PreviewActorModelComponent component,
-        ExportEntry skeletalMeshExport, IReadOnlyList<IEntry> materialOverrides, ExportEntry morphHead,
-        bool useStoredMorphLods, string slotName, Matrix4x4? localTransform)
+        ExportEntry skeletalMeshExport, IReadOnlyList<IEntry> materialOverrides, ExportEntry geometryMorph,
+        ExportEntry appearanceMorph, bool useStoredMorphLods, string slotName, Matrix4x4? localTransform)
     {
         if (actorIndex < 0 || skeletalMeshExport is null)
         {
@@ -10961,13 +10972,16 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         var componentRenderer = new SkinnedMeshRenderer();
         componentRenderer.BuildFromSkeletalMesh(skeletalMeshExport.Game, skeletalMesh.LODModels[0],
             skeletalMesh.RefSkeleton, bodySkeleton?.RefSkeleton);
-        if (morphHead is not null)
+        if (geometryMorph is not null)
         {
-            (LegendaryExplorerCore.Unreal.Classes.BonePosition[] bonePositions, Vector3[][] morphLods) =
-                LegendaryExplorerCore.Unreal.Classes.BioMorphFace.GetBoneAndVertexPositions(morphHead);
-            Vector3[] morphPositions = useStoredMorphLods && morphLods?.Length > 0 ? morphLods[0] : null;
-            componentRenderer.ApplyMorph(skeletalMesh.RefSkeleton, bonePositions, morphPositions);
-            ApplyPreviewMorphMaterialOverrides(modelPreview, morphHead);
+            BioMorphPreviewPipeline.ApplyGeometry(componentRenderer, skeletalMesh, 0, geometryMorph,
+                useStoredMorphLods);
+        }
+        if (appearanceMorph is not null)
+        {
+            // BioMaterialOverride is actor appearance data. Apply it to every compiled component
+            // material; shaders that do not expose a named skin/hair/eye parameter simply ignore it.
+            BioMorphPreviewPipeline.ApplyMaterialOverrides(modelPreview, appearanceMorph, RenderContext);
         }
         previewActorModels[actorIndex].Set(component, modelPreview, componentRenderer, slotName, localTransform);
         if (component is PreviewActorModelComponent.Body && actorIndex < previewActors.Count && skeletalMesh.LODModels.Length > 0)
@@ -10982,72 +10996,6 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             ApplyAssignedGestureToActor(previewActors[actorIndex]);
         }
         SceneViewer.MarkRenderDirty();
-    }
-
-    private void ApplyPreviewMorphMaterialOverrides(ModelPreview<LEVertex> modelPreview, ExportEntry morphHead)
-    {
-        if (morphHead.GetProperty<ObjectProperty>("m_oMaterialOverrides") is not { Value: not 0 } reference
-            || RenderContext.ResolveExportCached(morphHead.FileRef, reference.Value) is not { } materialOverride)
-        {
-            return;
-        }
-
-        List<MaterialRenderProxy> materials = modelPreview.Materials.Values
-            .OfType<LEShaderPreviewMaterial>()
-            .Select(material => material.RenderProxy)
-            .Distinct()
-            .ToList();
-        PropertyCollection properties = materialOverride.GetProperties(packageCache: RenderContext.PackageCache);
-        foreach (MaterialRenderProxy material in materials)
-        {
-            material.ResetPreviewParameterOverrides();
-            foreach (StructProperty scalar in properties.GetProp<ArrayProperty<StructProperty>>("m_aScalarOverrides")
-                         ?? Enumerable.Empty<StructProperty>())
-            {
-                string name = scalar.GetProp<NameProperty>("nName")?.Value.Instanced;
-                if (!string.IsNullOrEmpty(name))
-                {
-                    material.SetScalarParameter(name, scalar.GetProp<FloatProperty>("sValue")?.Value ?? 0f);
-                }
-            }
-            foreach (StructProperty color in properties.GetProp<ArrayProperty<StructProperty>>("m_aColorOverrides")
-                         ?? Enumerable.Empty<StructProperty>())
-            {
-                string name = color.GetProp<NameProperty>("nName")?.Value.Instanced;
-                if (!string.IsNullOrEmpty(name))
-                {
-                    LinearColor value = color.GetProp<StructProperty>("cValue") is { } linearColor
-                        ? CommonStructs.GetLinearColor(linearColor)
-                        : LinearColor.White;
-                    material.SetVectorParameter(name, value);
-                }
-            }
-        }
-
-        foreach (StructProperty texture in properties.GetProp<ArrayProperty<StructProperty>>("m_aTextureOverrides")
-                     ?? Enumerable.Empty<StructProperty>())
-        {
-            string name = texture.GetProp<NameProperty>("nName")?.Value.Instanced;
-            IEntry textureEntry = texture.GetProp<ObjectProperty>("m_pTexture")?.ResolveToEntry(materialOverride.FileRef);
-            ExportEntry textureExport = textureEntry switch
-            {
-                ExportEntry export when export.IsTexture() => export,
-                ImportEntry import when RenderContext.ResolveExportCached(import) is { } resolved
-                                        && resolved.IsTexture() => resolved,
-                _ => null,
-            };
-            if (string.IsNullOrEmpty(name))
-            {
-                continue;
-            }
-            PreviewTextureCache.TextureEntry cachedTexture = textureExport is not null
-                ? RenderContext.TextureCache.LoadTexture(textureExport, RenderContext.PackageCache)
-                : null;
-            foreach (MaterialRenderProxy material in materials)
-            {
-                material.SetTextureParameter(name, textureExport?.InstancedFullPath, cachedTexture);
-            }
-        }
     }
 
     private void RemovePreviewActorModel(int actorIndex)

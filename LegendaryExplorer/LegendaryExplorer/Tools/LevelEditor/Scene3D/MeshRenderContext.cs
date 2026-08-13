@@ -244,10 +244,11 @@ public class MeshRenderContext : RenderContext
     private readonly Dictionary<RenderTargetBlendDescription, BlendState> BlendStateCache = new(new BlendDescComparer());
     private readonly Dictionary<Guid, VertexShader> VertexShaderCache = [];
     private readonly Dictionary<Guid, InputLayout> InputLayoutCache = [];
-    private readonly Dictionary<Guid, PixelShader> PixelShaderCache = [];
+    private readonly Dictionary<PixelShaderKey, PixelShader> PixelShaderCache = [];
     private readonly Dictionary<Guid, PixelShader> NativePixelShaderCache = [];
     private readonly object ShaderObjectCacheLock = new();
     private readonly record struct MeshSourceKey(IMEPackage Package, int UIndex);
+    private readonly record struct PixelShaderKey(Guid Id, bool EncodeSrgbOutput);
     private readonly record struct MeshGeometryKey(IMEPackage Package, int UIndex, Type VertexType, int LOD);
     private readonly record struct EntryReferenceKey(IMEPackage Package, int UIndex);
     private readonly record struct AnimationLookupKey(IMEPackage Package, int AnimSetUIndex, string AnimationName);
@@ -1220,11 +1221,12 @@ public class MeshRenderContext : RenderContext
         _ => 0
     };
 
-    public PixelShader GetCachedPixelShader(Guid id, byte[] shaderBytecode)
+    public PixelShader GetCachedPixelShader(Guid id, byte[] shaderBytecode, bool useSrgbColorManagement = false)
     {
+        var key = new PixelShaderKey(id, useSrgbColorManagement);
         lock (ShaderObjectCacheLock)
         {
-            if (PixelShaderCache.TryGetValue(id, out PixelShader cachedShader))
+            if (PixelShaderCache.TryGetValue(key, out PixelShader cachedShader))
             {
                 return cachedShader;
             }
@@ -1238,6 +1240,10 @@ public class MeshRenderContext : RenderContext
         //3DMigoto outputs "inf" for the infinity constant, but that's not valid HLSL
         code = code.Replace("// 3Dmigoto declarations", "// 3Dmigoto declarations\n" +
                                                         "#define inf 1.#INF");
+        if (useSrgbColorManagement)
+        {
+            code = PreviewColorSpace.EncodePixelShaderOutput(code);
+        }
         try
         {
             shaderBytecode = ShaderBytecode.Compile(code, "main", "ps_5_0");
@@ -1259,12 +1265,12 @@ public class MeshRenderContext : RenderContext
         var shader = new PixelShader(Device, shaderBytecode);
         lock (ShaderObjectCacheLock)
         {
-            if (PixelShaderCache.TryGetValue(id, out PixelShader cachedShader))
+            if (PixelShaderCache.TryGetValue(key, out PixelShader cachedShader))
             {
                 shader.Dispose();
                 return cachedShader;
             }
-            PixelShaderCache.Add(id, shader);
+            PixelShaderCache.Add(key, shader);
             return shader;
         }
     }
@@ -1701,17 +1707,46 @@ public class MeshRenderContext : RenderContext
 
     public bool WorldToPixel(Vector3 point, out Vector2 pixel) => ScreenToPixel(WorldToScreen(point), out pixel);
 
-    public Texture2D LoadUnrealTexture(ExportEntry texture2DExport)
+    public Texture2D LoadUnrealTexture(ExportEntry texture2DExport, bool useSrgbColorManagement = false)
     {
         if (texture2DExport.ClassName is "TextureRenderTarget2D" or "TextureMovie")
         {
             return WhiteTex;
         }
         var unrealTexture = new LECTexture2D(texture2DExport);
-        return this.LoadUnrealMip(unrealTexture.GetTopMip(), LegendaryExplorerCore.Textures.Image.getPixelFormatType(unrealTexture.Export.GetProperty<EnumProperty>("Format").Value.Name));
+        if (!useSrgbColorManagement)
+        {
+            return this.LoadUnrealMip(unrealTexture.GetTopMip(),
+                LegendaryExplorerCore.Textures.Image.getPixelFormatType(
+                    unrealTexture.Export.GetProperty<EnumProperty>("Format").Value.Name));
+        }
+        var requestedMip = unrealTexture.GetTopMip();
+        if (requestedMip is null)
+        {
+            return WhiteTex;
+        }
+        byte[] imagebytes = unrealTexture.GetImageBytesForMip(requestedMip, texture2DExport.Game,
+            useLowerMipsIfTFCMissing: PreviewColorSpace.IsCharacterDiffuse(texture2DExport),
+            usedMip: out var usedMip);
+        var pixelFormat = LegendaryExplorerCore.Textures.Image.getPixelFormatType(
+            unrealTexture.Export.GetProperty<EnumProperty>("Format").Value.Name);
+        bool useSrgbSampling = useSrgbColorManagement && PreviewColorSpace.UsesSrgbSampling(texture2DExport);
+        if (PreviewColorSpace.HasInferredCharacterDiffuseLodGroup(texture2DExport))
+        {
+            int width = usedMip.width;
+            int height = usedMip.height;
+            byte[] bgraPixels = LegendaryExplorerCore.Textures.Image.convertRawToARGB(
+                imagebytes, ref width, ref height, pixelFormat);
+            Format format = useSrgbSampling
+                ? PreviewColorSpace.ToSrgbFormat(Format.B8G8R8A8_UNorm)
+                : Format.B8G8R8A8_UNorm;
+            return this.LoadTexture((uint)width, (uint)height, format, bgraPixels);
+        }
+        return this.LoadUnrealMip(usedMip, pixelFormat, useSrgbSampling, imagebytes);
     }
 
-    public Texture2D LoadUnrealTextureCube(ExportEntry textureCubeExport, PackageCache packageCache = null)
+    public Texture2D LoadUnrealTextureCube(ExportEntry textureCubeExport, PackageCache packageCache = null,
+        bool useSrgbColorManagement = false)
     {
         if (textureCubeExport.ClassName != "TextureCube") throw new ArgumentException("Expected a TextureCube export.", nameof(textureCubeExport));
 
@@ -1744,6 +1779,10 @@ public class MeshRenderContext : RenderContext
         uint size = (uint)faceTextures[0].GetTopMip().width;
         var format = (Format)LegendaryExplorerCore.Textures.TexConverter.GetDXGIFormatForPixelFormat(
             LegendaryExplorerCore.Textures.Image.getPixelFormatType(faceTextures[0].Export.GetProperty<EnumProperty>("Format").Value.Name));
+        if (useSrgbColorManagement && PreviewColorSpace.UsesSrgbSampling(faceTextures[0].Export))
+        {
+            format = PreviewColorSpace.ToSrgbFormat(format);
+        }
         for (int i = 0; i < 6; i++)
         {
             pixelData[i] = LECTexture2D.GetTextureData(faceTextures[i].GetTopMip(), textureCubeExport.Game);

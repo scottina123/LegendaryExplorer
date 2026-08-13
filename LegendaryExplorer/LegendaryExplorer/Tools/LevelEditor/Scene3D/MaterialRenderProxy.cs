@@ -68,6 +68,7 @@ public class MaterialRenderProxy : MaterialInstanceConstantLevelEditor, ILiveMat
     public string VertexFactoryType { get; private set; } = LocalVertexFactoryType;
     public ParticleVertexFactoryRenderParameters ParticleFactoryParameters { get; } = new();
     public ExportEntry MaterialExport { get; }
+    public bool UseSrgbColorManagement { get; }
 
     /// <summary>
     /// Effective scalar parameters used by the preview, including inherited defaults and instance overrides.
@@ -80,9 +81,11 @@ public class MaterialRenderProxy : MaterialInstanceConstantLevelEditor, ILiveMat
     public IReadOnlyDictionary<string, LinearColor> VectorParameters => VectorParameterValues;
 
     public MaterialRenderProxy(MeshRenderContext context, ExportEntry export,
-        MaterialRenderProxy parameterSource = null) : base(export, context.PackageCache, true)
+        MaterialRenderProxy parameterSource = null, bool useSrgbColorManagement = false)
+        : base(export, context.PackageCache, true)
     {
         MaterialExport = export;
+        UseSrgbColorManagement = useSrgbColorManagement;
         if (parameterSource is not null)
         {
             CopyEffectiveParametersFrom(parameterSource);
@@ -584,7 +587,7 @@ public class MaterialRenderProxy : MaterialInstanceConstantLevelEditor, ILiveMat
             return null;
         }
 
-        texture = context.TextureCache.LoadTexture(textureExport, context.PackageCache);
+        texture = context.TextureCache.LoadTexture(textureExport, context.PackageCache, UseSrgbColorManagement);
         if (texture is null)
         {
             return null;

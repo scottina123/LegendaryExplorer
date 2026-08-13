@@ -228,6 +228,7 @@ public class TexturedPreviewMaterial : ModelPreviewMaterial<WorldVertex>
 internal class LEShaderPreviewMaterial : ModelPreviewMaterial<LEVertex>
 {
     private readonly RenderTargetBlendDescription BlendDescription;
+    private readonly bool UseSrgbColorManagement;
 
     public readonly Dictionary<string, PreviewTextureCache.TextureEntry> TextureMap = new(StringComparer.OrdinalIgnoreCase);
 
@@ -243,20 +244,24 @@ internal class LEShaderPreviewMaterial : ModelPreviewMaterial<LEVertex>
 
     internal MaterialRenderProxy RenderProxy => (MaterialRenderProxy)Material;
 
-    public LEShaderPreviewMaterial(MeshRenderContext renderContext, ExportEntry export)
-        : this(renderContext, export, null)
+    public LEShaderPreviewMaterial(MeshRenderContext renderContext, ExportEntry export,
+        bool useSrgbColorManagement = false)
+        : this(renderContext, export, null, useSrgbColorManagement)
     {
     }
 
     private LEShaderPreviewMaterial(MeshRenderContext renderContext, ExportEntry export,
-        MaterialRenderProxy parameterSource)
-        : base(renderContext, export, new MaterialRenderProxy(renderContext, export, parameterSource))
+        MaterialRenderProxy parameterSource, bool useSrgbColorManagement)
+        : base(renderContext, export, new MaterialRenderProxy(renderContext, export, parameterSource,
+            useSrgbColorManagement))
     {
+        UseSrgbColorManagement = useSrgbColorManagement;
         foreach (IEntry textureEntry in Material.Textures)
         {
             if (!TextureMap.ContainsKey(textureEntry.FullPath))
             {
-                PreviewTextureCache.TextureEntry texture = renderContext.TextureCache.LoadTexture(textureEntry, renderContext.PackageCache);
+                PreviewTextureCache.TextureEntry texture = renderContext.TextureCache.LoadTexture(textureEntry,
+                    renderContext.PackageCache, useSrgbColorManagement);
                 if (texture is not null)
                 {
                     // Shader uniforms use InstancedFullPath while older material data often uses FullPath.
@@ -354,7 +359,7 @@ internal class LEShaderPreviewMaterial : ModelPreviewMaterial<LEVertex>
     }
 
     internal LEShaderPreviewMaterial CreateEffectOverride(MeshRenderContext renderContext, ExportEntry effectMaterial)
-        => new(renderContext, effectMaterial, (MaterialRenderProxy)Material);
+        => new(renderContext, effectMaterial, (MaterialRenderProxy)Material, UseSrgbColorManagement);
 
     internal void PrepareGraphicsResources(MeshRenderContext context)
     {
@@ -364,7 +369,8 @@ internal class LEShaderPreviewMaterial : ModelPreviewMaterial<LEVertex>
             return;
         }
         material.HasRequiredTextures(context);
-        context.GetCachedPixelShader(material.UnrealPixelShader.Guid, material.UnrealPixelShader.ShaderByteCode);
+        context.GetCachedPixelShader(material.UnrealPixelShader.Guid, material.UnrealPixelShader.ShaderByteCode,
+            UseSrgbColorManagement);
         context.GetCachedVertexShader(material.UnrealVertexShader.Guid, material.UnrealVertexShader.ShaderByteCode);
         context.GetCachedBlendState(BlendDescription);
     }
@@ -389,7 +395,8 @@ internal class LEShaderPreviewMaterial : ModelPreviewMaterial<LEVertex>
             // Human lashes use a materially different unlit/translucent constant layout. Meshplorer keeps
             // them on a separate effect so their constants cannot corrupt the eye material drawn afterward.
             LEEffect effect = material.IsHumanLashMaterial ? context.HumanLashEffect : context.LEEffect;
-            PixelShader ps = context.GetCachedPixelShader(material.UnrealPixelShader.Guid, material.UnrealPixelShader.ShaderByteCode);
+            PixelShader ps = context.GetCachedPixelShader(material.UnrealPixelShader.Guid,
+                material.UnrealPixelShader.ShaderByteCode, UseSrgbColorManagement);
             (VertexShader vs, InputLayout inputLayout) = context.GetCachedVertexShader(material.UnrealVertexShader.Guid, material.UnrealVertexShader.ShaderByteCode);
             effect.PrepDraw(context.ImmediateContext, vs, ps, inputLayout, context.GetCachedBlendState(BlendDescription));
 
@@ -454,6 +461,12 @@ public class ModelPreview<TVertex> : IDisposable where TVertex : IVertexBase
     /// their real entries rather than by copying package-local UIndexes into an external mesh binary.
     /// </summary>
     public List<IEntry> MaterialSlots { get; } = [];
+
+    /// <summary>
+    /// True only for skeletal previews that opted into the character color pipeline. Static previews
+    /// keep their legacy shader and texture variants even when they share this render context.
+    /// </summary>
+    public bool UsesSrgbColorManagement { get; private set; }
 
     /// <summary>
     /// Creates a preview of a generic untextured mesh
@@ -585,6 +598,7 @@ public class ModelPreview<TVertex> : IDisposable where TVertex : IVertexBase
     public ModelPreview(MeshRenderContext renderContext, SkeletalMesh m,
         IReadOnlyList<IEntry> materialOverrides = null, bool loadOnlyFirstLod = false)
     {
+        UsesSrgbColorManagement = renderContext.UseSrgbColorManagement && typeof(TVertex) == typeof(LEVertex);
         var mats = new string[m.Materials.Length];
         // STEP 1: MATERIALS
         for (int i = 0; i < m.Materials.Length; i++)
@@ -692,7 +706,8 @@ public class ModelPreview<TVertex> : IDisposable where TVertex : IVertexBase
                     worldVertMats.Add(ifp, new TexturedPreviewMaterial(renderContext, matExport));
                     break;
                 case Dictionary<string, ModelPreviewMaterial<LEVertex>> leVertMats:
-                    leVertMats.Add(ifp, new LEShaderPreviewMaterial(renderContext, matExport));
+                    leVertMats.Add(ifp, new LEShaderPreviewMaterial(renderContext, matExport,
+                        UsesSrgbColorManagement));
                     break;
             }
             renderSectionsCache.Clear();

@@ -19,6 +19,7 @@ using LegendaryExplorerCore.Gammtek;
 using LegendaryExplorerCore.Packages;
 using Texture2D = SharpDX.Direct3D11.Texture2D;
 using LegendaryExplorer.Dialogs;
+using LegendaryExplorer.Misc;
 using System.Numerics;
 using System.Runtime.InteropServices;
 
@@ -110,13 +111,20 @@ public static class RenderContextExtensions
         return renderContext.LoadTexture(width, height, format, pixelData);
     }
 
-    public static Texture2D LoadUnrealMip(this RenderContext renderContext, LegendaryExplorerCore.Unreal.Classes.Texture2DMipInfo mip, LegendaryExplorerCore.Textures.PixelFormat pixelFormat)
+    public static Texture2D LoadUnrealMip(this RenderContext renderContext,
+        LegendaryExplorerCore.Unreal.Classes.Texture2DMipInfo mip,
+        LegendaryExplorerCore.Textures.PixelFormat pixelFormat, bool useSrgbSampling = false,
+        byte[] imagebytes = null)
     {
         // Todo: Needs way to set black alpha
-        var imagebytes = LECTexture2D.GetTextureData(mip, mip.Export.Game);
+        imagebytes ??= LECTexture2D.GetTextureData(mip, mip.Export.Game);
         uint mipWidth = (uint)mip.width;
         uint mipHeight = (uint)mip.height;
         var mipFormat = (Format)LegendaryExplorerCore.Textures.TexConverter.GetDXGIFormatForPixelFormat(pixelFormat);
+        if (useSrgbSampling)
+        {
+            mipFormat = PreviewColorSpace.ToSrgbFormat(mipFormat);
+        }
         if (mipFormat.IsCompressed())
         {
             mipWidth = (mipWidth < 4) ? 4 : mipWidth;
@@ -192,6 +200,12 @@ public abstract class RenderContext
     public Texture2D Backbuffer { get; private set; }
     public BlendState AlphaBlendState { get; private set; } // A BlendState that uses standard alpha blending
     public bool IsReady => Device != null;
+
+    /// <summary>
+    /// Enables the linear/sRGB pipeline for skeletal-mesh previews. Static meshes and level geometry
+    /// deliberately retain the legacy renderer and texture variants.
+    /// </summary>
+    public bool UseSrgbColorManagement { get; set; }
 
     /// <summary>
     /// Opts a renderer into D3D11's normal multithread protection when it prepares immutable resources

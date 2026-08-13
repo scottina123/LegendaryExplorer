@@ -53,7 +53,8 @@ public class PreviewTextureCache : IDisposable
         /// <summary>
         /// Creates a new cache entry for the given texture.
         /// </summary>
-        public TextureEntry(MeshRenderContext renderContext, ExportEntry export)
+        public TextureEntry(MeshRenderContext renderContext, ExportEntry export,
+            bool useSrgbColorManagement = false)
         {
             MemoryAnalyzer.AddTrackedMemoryItem($"PreviewTexture {export.ObjectName}", new WeakReference(this));
             InstanceFullPath = export.InstancedFullPath;
@@ -61,7 +62,9 @@ public class PreviewTextureCache : IDisposable
             AddressU = GetTextureAddressMode(export, "AddressX");
             AddressV = GetTextureAddressMode(export, "AddressY");
 
-            Texture = IsTextureCube ? renderContext.LoadUnrealTextureCube(export) : renderContext.LoadUnrealTexture(export);
+            Texture = IsTextureCube
+                ? renderContext.LoadUnrealTextureCube(export, useSrgbColorManagement: useSrgbColorManagement)
+                : renderContext.LoadUnrealTexture(export, useSrgbColorManagement);
             TextureView = new ShaderResourceView(renderContext.Device, Texture);
         }
 
@@ -113,7 +116,8 @@ public class PreviewTextureCache : IDisposable
         int CurrentColumn;
         float LastFrameTime;
 
-        public FlipBookTextureEntry(MeshRenderContext renderContext, ExportEntry export) : base(renderContext, export)
+        public FlipBookTextureEntry(MeshRenderContext renderContext, ExportEntry export,
+            bool useSrgbColorManagement = false) : base(renderContext, export, useSrgbColorManagement)
         {
             var props = export.GetProperties();
             FrameRate = props.GetProp<FloatProperty>("FrameRate")?.Value ?? 4f;
@@ -341,13 +345,16 @@ public class PreviewTextureCache : IDisposable
     /// <summary>
     /// Stores loaded textures by their full name.
     /// </summary>
-    private Dictionary<string, TextureEntry> AssetCache { get; } = [];
+    private readonly record struct TextureCacheKey(string InstancedFullPath, bool UseSrgbColorManagement);
+
+    private Dictionary<TextureCacheKey, TextureEntry> AssetCache { get; } = [];
 
     private readonly Lock textureLoadLock = new Lock();
     /// <summary>
     /// Queues a texture for eventual loading.
     /// </summary>
-    public TextureEntry LoadTexture(IEntry textureEntry, PackageCache packageCache = null)
+    public TextureEntry LoadTexture(IEntry textureEntry, PackageCache packageCache = null,
+        bool useSrgbColorManagement = false)
     {
         if (textureEntry is null)
         {
@@ -355,9 +362,10 @@ public class PreviewTextureCache : IDisposable
             return null;
         }
         string ifp = textureEntry.InstancedFullPath;
+        var key = new TextureCacheKey(ifp, useSrgbColorManagement);
         lock (textureLoadLock)
         {
-            if (AssetCache.TryGetValue(ifp, out TextureEntry entry))
+            if (AssetCache.TryGetValue(key, out TextureEntry entry))
             {
                 entry.LastUsageTime = DateTime.Now;
                 return entry;
@@ -368,15 +376,18 @@ public class PreviewTextureCache : IDisposable
             }
             if (textureEntry is ExportEntry textureExport)
             {
-                if (AssetCache.TryGetValue(textureExport.InstancedFullPath, out entry))
+                key = new TextureCacheKey(textureExport.InstancedFullPath, useSrgbColorManagement);
+                if (AssetCache.TryGetValue(key, out entry))
                 {
                     entry.LastUsageTime = DateTime.Now;
                     return entry;
                 }
                 try
                 {
-                    entry = textureExport.ClassName is "TextureFlipBook" ? new FlipBookTextureEntry(RenderContext, textureExport) : new TextureEntry(RenderContext, textureExport);
-                    AssetCache.Add(entry.InstanceFullPath, entry);
+                    entry = textureExport.ClassName is "TextureFlipBook"
+                        ? new FlipBookTextureEntry(RenderContext, textureExport, useSrgbColorManagement)
+                        : new TextureEntry(RenderContext, textureExport, useSrgbColorManagement);
+                    AssetCache.Add(key, entry);
                     return entry;
                 }
                 catch

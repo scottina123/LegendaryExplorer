@@ -20,6 +20,7 @@ public struct SkinVertex
     public float BindNormalW;     // Tangent-basis handedness from TangentZ.W
     public Vector2 UV;
     public int Bone0, Bone1, Bone2, Bone3;       // skeleton-wide bone indices
+    public int MorphBone0, MorphBone1, MorphBone2, MorphBone3; // source-mesh skeleton indices
     public float Weight0, Weight1, Weight2, Weight3; // normalized weights
 }
 
@@ -29,6 +30,10 @@ public class SkinnedMeshRenderer
     private MEGame _game;
     private SkinVertex[] _skinVertices;
     private Vector3[] _sourceBindPositions;
+    private MeshBone[] _sourceSkeleton;
+    private MeshBone[] _animationSkeleton;
+    private MeshBone[] _skinningBindSkeleton;
+    private int[] _animationBoneMap;
 
     /// <summary>
     /// Builds per-vertex skinning data from a SkeletalMesh LOD model.
@@ -41,10 +46,14 @@ public class SkinnedMeshRenderer
         MeshBone[] animationSkeleton)
     {
         _game = game;
+        _sourceSkeleton = sourceSkeleton;
+        _animationSkeleton = animationSkeleton;
+        _skinningBindSkeleton = sourceSkeleton;
         bool isME1 = game == MEGame.ME1;
         int vertexCount = isME1 ? lodModel.ME1VertexBufferGPUSkin.Length : (int)lodModel.NumVertices;
         _skinVertices = new SkinVertex[vertexCount];
         int[] boneMap = BuildAnimationBoneMap(sourceSkeleton, animationSkeleton);
+        _animationBoneMap = boneMap;
 
         if (isME1)
         {
@@ -95,11 +104,16 @@ public class SkinnedMeshRenderer
     private static void ResolveInfluences(ref SkinVertex skinVert, Influences bones, Influences weights,
         SkelMeshChunk chunk, int[] boneMap)
     {
-        // Resolve chunk-local bone indices to skeleton-wide indices via BoneMap
-        skinVert.Bone0 = ResolveBoneIndex(bones[0], chunk, boneMap);
-        skinVert.Bone1 = ResolveBoneIndex(bones[1], chunk, boneMap);
-        skinVert.Bone2 = ResolveBoneIndex(bones[2], chunk, boneMap);
-        skinVert.Bone3 = ResolveBoneIndex(bones[3], chunk, boneMap);
+        // BioMorphFace final-skeleton positions are indexed against the component's source mesh.
+        // Runtime animation can instead target a parent/body skeleton, so retain both mappings.
+        skinVert.MorphBone0 = ResolveSourceBoneIndex(bones[0], chunk);
+        skinVert.MorphBone1 = ResolveSourceBoneIndex(bones[1], chunk);
+        skinVert.MorphBone2 = ResolveSourceBoneIndex(bones[2], chunk);
+        skinVert.MorphBone3 = ResolveSourceBoneIndex(bones[3], chunk);
+        skinVert.Bone0 = ResolveAnimationBoneIndex(skinVert.MorphBone0, boneMap);
+        skinVert.Bone1 = ResolveAnimationBoneIndex(skinVert.MorphBone1, boneMap);
+        skinVert.Bone2 = ResolveAnimationBoneIndex(skinVert.MorphBone2, boneMap);
+        skinVert.Bone3 = ResolveAnimationBoneIndex(skinVert.MorphBone3, boneMap);
 
         // Normalize weights (byte -> float)
         float w0 = weights[0] / 255f;
@@ -123,11 +137,11 @@ public class SkinnedMeshRenderer
         }
     }
 
-    private static int ResolveBoneIndex(byte influenceBone, SkelMeshChunk chunk, int[] boneMap)
-    {
-        int sourceIndex = influenceBone < chunk.BoneMap.Length ? chunk.BoneMap[influenceBone] : 0;
-        return boneMap is not null && sourceIndex < boneMap.Length ? boneMap[sourceIndex] : sourceIndex;
-    }
+    private static int ResolveSourceBoneIndex(byte influenceBone, SkelMeshChunk chunk) =>
+        influenceBone < chunk.BoneMap.Length ? chunk.BoneMap[influenceBone] : 0;
+
+    private static int ResolveAnimationBoneIndex(int sourceIndex, int[] boneMap) =>
+        boneMap is not null && sourceIndex < boneMap.Length ? boneMap[sourceIndex] : sourceIndex;
 
     private static int[] BuildAnimationBoneMap(MeshBone[] sourceSkeleton, MeshBone[] animationSkeleton)
     {
@@ -143,13 +157,7 @@ public class SkinnedMeshRenderer
         int[] map = new int[sourceSkeleton.Length];
         for (int sourceIndex = 0; sourceIndex < sourceSkeleton.Length; sourceIndex++)
         {
-            int candidate = sourceIndex;
-            while (candidate >= 0 && candidate < sourceSkeleton.Length
-                   && !animationBones.TryGetValue(sourceSkeleton[candidate].Name.Name, out map[sourceIndex]))
-            {
-                int parent = sourceSkeleton[candidate].ParentIndex;
-                candidate = parent == candidate ? -1 : parent;
-            }
+            map[sourceIndex] = animationBones.GetValueOrDefault(sourceSkeleton[sourceIndex].Name.Name, -1);
         }
         return map;
     }
@@ -164,7 +172,7 @@ public class SkinnedMeshRenderer
         NeedsUpdate = false;
         if (_skinVertices == null || mesh == null || animPlayer == null) return false;
 
-        var skinningMatrices = animPlayer.ComputeSkinningMatrices();
+        var skinningMatrices = GetSkinningMatrices(animPlayer, out bool useSourceBoneIndices);
         if (skinningMatrices == null) return false;
 
         mesh.EnsureUniqueVertices();
@@ -175,10 +183,10 @@ public class SkinnedMeshRenderer
 
             // Blend skinning matrices by bone weights
             var blended = BlendMatrix(
-                skinningMatrices, sv.Bone0, sv.Weight0,
-                sv.Bone1, sv.Weight1,
-                sv.Bone2, sv.Weight2,
-                sv.Bone3, sv.Weight3);
+                skinningMatrices, useSourceBoneIndices ? sv.MorphBone0 : sv.Bone0, sv.Weight0,
+                useSourceBoneIndices ? sv.MorphBone1 : sv.Bone1, sv.Weight1,
+                useSourceBoneIndices ? sv.MorphBone2 : sv.Bone2, sv.Weight2,
+                useSourceBoneIndices ? sv.MorphBone3 : sv.Bone3, sv.Weight3);
 
             // Transform bind position and normal in Unreal space
             var skinnedPos = Vector3.Transform(sv.BindPosition, blended);
@@ -209,7 +217,7 @@ public class SkinnedMeshRenderer
         NeedsUpdate = false;
         if (_skinVertices == null || mesh == null || animPlayer == null) return false;
 
-        var skinningMatrices = animPlayer.ComputeSkinningMatrices();
+        var skinningMatrices = GetSkinningMatrices(animPlayer, out bool useSourceBoneIndices);
         if (skinningMatrices == null) return false;
 
         mesh.EnsureUniqueVertices();
@@ -218,10 +226,10 @@ public class SkinnedMeshRenderer
         {
             ref var sv = ref _skinVertices[i];
             var blended = BlendMatrix(
-                skinningMatrices, sv.Bone0, sv.Weight0,
-                sv.Bone1, sv.Weight1,
-                sv.Bone2, sv.Weight2,
-                sv.Bone3, sv.Weight3);
+                skinningMatrices, useSourceBoneIndices ? sv.MorphBone0 : sv.Bone0, sv.Weight0,
+                useSourceBoneIndices ? sv.MorphBone1 : sv.Bone1, sv.Weight1,
+                useSourceBoneIndices ? sv.MorphBone2 : sv.Bone2, sv.Weight2,
+                useSourceBoneIndices ? sv.MorphBone3 : sv.Bone3, sv.Weight3);
 
             var skinnedPos = Vector3.Transform(sv.BindPosition, blended);
             var skinnedNormal = Vector3.TransformNormal(sv.BindNormal, blended);
@@ -254,6 +262,9 @@ public class SkinnedMeshRenderer
 
         MeshBone[] editedSkeleton = LegendaryExplorerCore.Unreal.Classes.BioMorphFace.CreateFinalSkeleton(
             bindSkeleton, finalSkeleton);
+        _sourceSkeleton ??= bindSkeleton;
+        _animationSkeleton ??= bindSkeleton;
+        _skinningBindSkeleton = editedSkeleton;
         Matrix4x4[] skinningMatrices = LegendaryExplorerCore.Unreal.Classes.BioMorphFace
             .ComputePreviewSkinningMatrices(bindSkeleton, editedSkeleton);
         for (int i = 0; i < _skinVertices.Length; i++)
@@ -264,13 +275,104 @@ public class SkinnedMeshRenderer
                 : _sourceBindPositions[i];
             vertex.BindPosition = LegendaryExplorerCore.Unreal.Classes.BioMorphFace.SkinPreviewPosition(
                 position, skinningMatrices,
-                vertex.Bone0, vertex.Weight0,
-                vertex.Bone1, vertex.Weight1,
-                vertex.Bone2, vertex.Weight2,
-                vertex.Bone3, vertex.Weight3);
+                vertex.MorphBone0, vertex.Weight0,
+                vertex.MorphBone1, vertex.Weight1,
+                vertex.MorphBone2, vertex.Weight2,
+                vertex.MorphBone3, vertex.Weight3);
         }
         NeedsUpdate = true;
     }
+
+    private Matrix4x4[] GetSkinningMatrices(AnimPlayer animPlayer, out bool useSourceBoneIndices)
+    {
+        Matrix4x4[] animationMatrices = animPlayer.ComputeSkinningMatrices();
+        useSourceBoneIndices = false;
+        if (_sourceSkeleton is null || _animationSkeleton is null || _skinningBindSkeleton is null
+            || animPlayer.BoneComponentSpaceTransforms is not { Length: > 0 } animationPose
+            || _animationBoneMap is null && ReferenceEquals(_skinningBindSkeleton, _animationSkeleton))
+        {
+            return animationMatrices;
+        }
+
+        useSourceBoneIndices = true;
+        return ComputeRetargetedSkinningMatrices(_skinningBindSkeleton, _animationSkeleton,
+            _animationBoneMap, animationPose);
+    }
+
+    /// <summary>
+    /// Transfers an animation pose onto a component's own (possibly morphed) reference skeleton.
+    /// UE attached skeletal components share animation by bone name, but each component keeps its own
+    /// local bind translations and rotations. Reusing the parent's skinning matrices directly rotates
+    /// head and eye vertices around the body mesh's different reference-pose pivots.
+    /// </summary>
+    internal static Matrix4x4[] ComputeRetargetedSkinningMatrices(MeshBone[] targetBindSkeleton,
+        MeshBone[] animationBindSkeleton, int[] animationBoneMap, Matrix4x4[] animationComponentPose)
+    {
+        if (targetBindSkeleton is not { Length: > 0 })
+        {
+            return [];
+        }
+
+        var targetBindComponentPose = new Matrix4x4[targetBindSkeleton.Length];
+        var targetAnimatedComponentPose = new Matrix4x4[targetBindSkeleton.Length];
+        var matrices = new Matrix4x4[targetBindSkeleton.Length];
+        for (int targetIndex = 0; targetIndex < targetBindSkeleton.Length; targetIndex++)
+        {
+            MeshBone targetBone = targetBindSkeleton[targetIndex];
+            Matrix4x4 targetBindLocal = CreateBoneLocalTransform(targetBone);
+            int animationIndex = animationBoneMap is null
+                ? targetIndex
+                : targetIndex < animationBoneMap.Length ? animationBoneMap[targetIndex] : -1;
+            Matrix4x4 targetAnimatedLocal = targetBindLocal;
+            if (animationIndex >= 0 && animationIndex < animationBindSkeleton.Length
+                && animationIndex < animationComponentPose.Length)
+            {
+                Matrix4x4 animationLocal = GetLocalTransform(animationBindSkeleton,
+                    animationComponentPose, animationIndex);
+                if (Matrix4x4.Decompose(animationLocal, out Vector3 animationScale,
+                        out Quaternion animationRotation, out Vector3 animationTranslation))
+                {
+                    MeshBone animationBindBone = animationBindSkeleton[animationIndex];
+                    Matrix4x4 targetRotation = Matrix4x4.CreateFromQuaternion(targetBone.Orientation);
+                    Matrix4x4 animationBindRotation = Matrix4x4.CreateFromQuaternion(animationBindBone.Orientation);
+                    Matrix4x4.Invert(animationBindRotation, out Matrix4x4 inverseAnimationBindRotation);
+                    targetAnimatedLocal = targetRotation * inverseAnimationBindRotation
+                                          * Matrix4x4.CreateFromQuaternion(animationRotation)
+                                          * Matrix4x4.CreateScale(animationScale)
+                                          * Matrix4x4.CreateTranslation(targetBone.Position
+                                                                        + animationTranslation
+                                                                        - animationBindBone.Position);
+                }
+            }
+
+            int targetParentIndex = targetBone.ParentIndex;
+            targetBindComponentPose[targetIndex] = targetParentIndex >= 0 && targetParentIndex < targetIndex
+                ? targetBindLocal * targetBindComponentPose[targetParentIndex]
+                : targetBindLocal;
+            targetAnimatedComponentPose[targetIndex] = targetParentIndex >= 0 && targetParentIndex < targetIndex
+                ? targetAnimatedLocal * targetAnimatedComponentPose[targetParentIndex]
+                : targetAnimatedLocal;
+            matrices[targetIndex] = Matrix4x4.Invert(targetBindComponentPose[targetIndex],
+                out Matrix4x4 inverseTargetBind)
+                ? inverseTargetBind * targetAnimatedComponentPose[targetIndex]
+                : Matrix4x4.Identity;
+        }
+        return matrices;
+    }
+
+    private static Matrix4x4 GetLocalTransform(MeshBone[] skeleton, Matrix4x4[] componentPose, int boneIndex)
+    {
+        int parentIndex = skeleton[boneIndex].ParentIndex;
+        if (parentIndex >= 0 && parentIndex < boneIndex && parentIndex < componentPose.Length
+            && Matrix4x4.Invert(componentPose[parentIndex], out Matrix4x4 inverseParent))
+        {
+            return componentPose[boneIndex] * inverseParent;
+        }
+        return componentPose[boneIndex];
+    }
+
+    private static Matrix4x4 CreateBoneLocalTransform(MeshBone bone) =>
+        Matrix4x4.CreateFromQuaternion(bone.Orientation) * Matrix4x4.CreateTranslation(bone.Position);
 
     private static Matrix4x4 BlendMatrix(Matrix4x4[] matrices, int b0, float w0, int b1, float w1, int b2, float w2, int b3, float w3)
     {

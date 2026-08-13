@@ -6,6 +6,7 @@ using System.Reflection;
 using LegendaryExplorer.Dialogs;
 using LegendaryExplorer.Tools.AssetDatabase;
 using LegendaryExplorer.Tools.InterpEditor;
+using LegendaryExplorer.Tools.LevelEditor.Scene3D;
 using LegendaryExplorer.UserControls.ExportLoaderControls;
 using LegendaryExplorerCore.Unreal.Animation;
 using LegendaryExplorerCore.Unreal.BinaryConverters;
@@ -124,6 +125,76 @@ public class InterpTrackMoveTransformTests
     }
 
     [TestMethod]
+    public void MorphUsesSourceMeshBonesBeforeAnimationSkeletonRemap()
+    {
+        var lod = new StaticLODModel
+        {
+            NumVertices = 1,
+            Chunks =
+            [
+                new SkelMeshChunk
+                {
+                    BaseVertexIndex = 0,
+                    NumSoftVertices = 1,
+                    BoneMap = [3],
+                }
+            ],
+            VertexBufferGPUSkin = new SkeletalMeshVertexBuffer
+            {
+                VertexData =
+                [
+                    new GPUSkinVertex
+                    {
+                        Position = Vector3.Zero,
+                        InfluenceBones = new Influences(0, 0, 0, 0),
+                        InfluenceWeights = new Influences(255, 0, 0, 0),
+                    }
+                ]
+            }
+        };
+        MeshBone[] sourceSkeleton =
+        [
+            Bone("root", -1),
+            Bone("jaw", 0),
+            Bone("nose", 0),
+            Bone("eye", 0),
+        ];
+        MeshBone[] animationSkeleton =
+        [
+            Bone("root", -1),
+            Bone("eye", 0),
+            Bone("jaw", 0),
+            Bone("nose", 0),
+        ];
+        var renderer = new SkinnedMeshRenderer();
+        renderer.BuildFromSkeletalMesh(LegendaryExplorerCore.Packages.MEGame.LE3, lod,
+            sourceSkeleton, animationSkeleton);
+        var eyePosition = new LegendaryExplorerCore.Unreal.Classes.BonePosition(new StructProperty(
+            "BioMorphFaceBone", new PropertyCollection
+            {
+                new NameProperty("eye", "nName"),
+                CommonStructs.Vector3Prop(new Vector3(10, 0, 0), "vPos"),
+            }));
+
+        renderer.ApplyMorph(sourceSkeleton, [eyePosition], morphPositions: null);
+
+        SkinVertex[] vertices = (SkinVertex[])typeof(SkinnedMeshRenderer)
+            .GetField("_skinVertices", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .GetValue(renderer)!;
+        Assert.AreEqual(3, vertices[0].MorphBone0);
+        Assert.AreEqual(1, vertices[0].Bone0);
+        Assert.AreEqual(10f, vertices[0].BindPosition.X, 0.0001f);
+
+        static MeshBone Bone(string name, int parentIndex) => new()
+        {
+            Name = new NameReference(name),
+            Orientation = Quaternion.Identity,
+            Position = Vector3.Zero,
+            ParentIndex = parentIndex,
+        };
+    }
+
+    [TestMethod]
     public void DialogueOwnerUsesLinkedStageActorTagAsAnAlias()
     {
         var ownerOrigin = new CameraOrigin(new Vector3(-16000, 7800, -170250), new Vector3(0, 0, 180));
@@ -166,6 +237,57 @@ public class InterpTrackMoveTransformTests
         Assert.AreEqual("Owner", merged[0].ActorTag);
         CollectionAssert.IsSubsetOf(new[] { "Owner", "Global_Miranda", "Miranda" },
             merged[0].Aliases.ToArray());
+    }
+
+    [TestMethod]
+    public void AttachedMorphMeshRetargetsRotationAroundItsOwnEyePivot()
+    {
+        MeshBone[] targetSkeleton =
+        [
+            Bone("root", -1, Vector3.Zero),
+            Bone("eye", 0, new Vector3(10, 0, 0)),
+        ];
+        MeshBone[] animationSkeleton =
+        [
+            Bone("root", -1, Vector3.Zero),
+            Bone("eye", 0, new Vector3(20, 0, 0)),
+        ];
+        Matrix4x4[] animationPose =
+        [
+            Matrix4x4.Identity,
+            Matrix4x4.CreateRotationZ(MathF.PI / 2) * Matrix4x4.CreateTranslation(20, 0, 0),
+        ];
+
+        Matrix4x4[] matrices = SkinnedMeshRenderer.ComputeRetargetedSkinningMatrices(
+            targetSkeleton, animationSkeleton, [0, 1], animationPose);
+        Vector3 transformed = Vector3.Transform(new Vector3(11, 0, 0), matrices[1]);
+
+        Assert.AreEqual(10f, transformed.X, 0.0001f);
+        Assert.AreEqual(1f, transformed.Y, 0.0001f);
+        Assert.AreEqual(0f, transformed.Z, 0.0001f);
+
+        static MeshBone Bone(string name, int parentIndex, Vector3 position) => new()
+        {
+            Name = new NameReference(name),
+            Orientation = Quaternion.Identity,
+            Position = position,
+            ParentIndex = parentIndex,
+        };
+    }
+
+    [TestMethod]
+    public void DialogueFaceFxReferencePoseDoesNotBecomePermanentEyeOffset()
+    {
+        Matrix4x4 gestureEye = Matrix4x4.CreateTranslation(10, 0, 0);
+        Matrix4x4 faceReferenceEye = Matrix4x4.CreateTranslation(20, 0, 0);
+
+        Matrix4x4 atReference = CurveEditor3D.ComposeDialogueFaceFxLocal(
+            gestureEye, faceReferenceEye, faceReferenceEye);
+        Matrix4x4 animated = CurveEditor3D.ComposeDialogueFaceFxLocal(
+            gestureEye, faceReferenceEye, Matrix4x4.CreateTranslation(21, 0, 0));
+
+        Assert.AreEqual(10f, atReference.Translation.X, 0.0001f);
+        Assert.AreEqual(11f, animated.Translation.X, 0.0001f);
     }
 
     [TestMethod]

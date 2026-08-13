@@ -137,6 +137,27 @@ public class FaceFxPlayer : AnimPlayer
         return _skinningMatrices;
     }
 
+    /// <summary>
+    /// Returns the authored FaceFX reference transform for a skeleton bone. FaceFX reference bones
+    /// can differ from the body mesh's bind pose, especially for morph-head eyes. Layered playback
+    /// must remove this baseline before adding facial animation to the gesture pose.
+    /// </summary>
+    public Matrix4x4 GetReferenceLocalTransform(int boneIndex)
+    {
+        if (boneIndex < 0 || boneIndex >= _bones.Length)
+        {
+            return Matrix4x4.Identity;
+        }
+        if (SkelMeshRefSkeletonToFaceFxBoneLookup[boneIndex] is { } faceFxBone)
+        {
+            Vector3 position = faceFxBone.RefBone.Position with { Y = -faceFxBone.RefBone.Position.Y };
+            Quaternion rotation = faceFxBone.RefBone.Rotation with { Y = -faceFxBone.RefBone.Rotation.Y };
+            return Matrix4x4.CreateFromQuaternion(rotation) * Matrix4x4.CreateTranslation(position);
+        }
+        MeshBone bone = _bones[boneIndex];
+        return Matrix4x4.CreateFromQuaternion(bone.Orientation) * Matrix4x4.CreateTranslation(bone.Position);
+    }
+
     private void EvalFaceFxGraph()
     {
         if (Line.AnimationNames.Count != Line.NumKeys.Count)
