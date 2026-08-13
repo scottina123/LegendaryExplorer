@@ -18,6 +18,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Numerics;
 using System.Runtime.InteropServices;
+using System.Threading;
 using System.Windows.Forms;
 using System.Windows.Input;
 using Color = System.Windows.Media.Color;
@@ -151,9 +152,11 @@ public class MeshRenderContext : RenderContext
     private Texture2D PixelReadbackTexture;
     private Texture2D StaticSceneColorCache;
     private Texture2D StaticSceneDepthCache;
+    private Texture2D StaticSceneHitCache;
     private Matrix4x4 staticSceneCacheViewProjection;
     private long staticSceneCacheKey;
     private bool staticSceneCacheValid;
+    private bool staticSceneHitCacheValid;
     private bool evaluatingStaticSceneCache;
     private bool staticSceneCacheRejected;
 
@@ -190,6 +193,8 @@ public class MeshRenderContext : RenderContext
     private readonly Dictionary<(TextureAddressMode U, TextureAddressMode V), SamplerState> TextureSamplerCache = [];
     public readonly SceneCamera Camera = new();
     public SceneLightCollection SceneLights { get; }
+    private int sceneLightRevision;
+    public int SceneLightRevision => Volatile.Read(ref sceneLightRevision);
     private bool wireframe;
     public bool Wireframe
     {
@@ -445,6 +450,7 @@ public class MeshRenderContext : RenderContext
 
     private void InvalidateSceneLightCache()
     {
+        Interlocked.Increment(ref sceneLightRevision);
         NearestLightCache.Clear();
         SceneLightIndex = null;
     }
@@ -841,40 +847,45 @@ public class MeshRenderContext : RenderContext
     }
 
     /// <summary>
-    /// Restores a previously captured static color/depth backdrop entirely on the GPU.
+    /// Restores a previously captured static color/depth backdrop and optional hit-ID surface entirely on the GPU.
     /// </summary>
-    public bool TryRestoreStaticSceneCache(long sceneKey)
+    public bool TryRestoreStaticSceneCache(long sceneKey, bool restoreHitBuffer = false)
     {
         evaluatingStaticSceneCache = false;
         if (!staticSceneCacheValid || StaticSceneColorCache is null || StaticSceneDepthCache is null
+            || (restoreHitBuffer && (!staticSceneHitCacheValid || StaticSceneHitCache is null))
             || sceneKey != staticSceneCacheKey
             || staticSceneCacheViewProjection != Camera.ViewProjectionMatrix)
         {
             return false;
         }
 
-        CopyStaticSceneResources(StaticSceneColorCache, Backbuffer, StaticSceneDepthCache, DepthBuffer);
+        CopyStaticSceneResources(StaticSceneColorCache, Backbuffer, StaticSceneDepthCache, DepthBuffer,
+            restoreHitBuffer ? StaticSceneHitCache : null, restoreHitBuffer ? HitBuffer : null);
         return true;
     }
 
     /// <summary>
-    /// Captures the just-rendered static backdrop. The copies are asynchronous D3D11 commands and do not
-    /// transfer pixels through system memory.
+    /// Captures the just-rendered static backdrop and optional hit-ID surface. The copies are asynchronous
+    /// D3D11 commands and do not transfer pixels through system memory.
     /// </summary>
-    public bool CaptureStaticSceneCache(long sceneKey)
+    public bool CaptureStaticSceneCache(long sceneKey, bool captureHitBuffer = false)
     {
         evaluatingStaticSceneCache = false;
-        if (staticSceneCacheRejected || Backbuffer is null || DepthBuffer is null)
+        if (staticSceneCacheRejected || Backbuffer is null || DepthBuffer is null
+            || (captureHitBuffer && HitBuffer is null))
         {
             InvalidateStaticSceneCache();
             return false;
         }
 
-        EnsureStaticSceneCacheResources();
-        CopyStaticSceneResources(Backbuffer, StaticSceneColorCache, DepthBuffer, StaticSceneDepthCache);
+        EnsureStaticSceneCacheResources(captureHitBuffer);
+        CopyStaticSceneResources(Backbuffer, StaticSceneColorCache, DepthBuffer, StaticSceneDepthCache,
+            captureHitBuffer ? HitBuffer : null, captureHitBuffer ? StaticSceneHitCache : null);
         staticSceneCacheKey = sceneKey;
         staticSceneCacheViewProjection = Camera.ViewProjectionMatrix;
         staticSceneCacheValid = true;
+        staticSceneHitCacheValid = captureHitBuffer;
         return true;
     }
 
@@ -883,32 +894,42 @@ public class MeshRenderContext : RenderContext
         evaluatingStaticSceneCache = false;
         staticSceneCacheRejected = false;
         staticSceneCacheValid = false;
+        staticSceneHitCacheValid = false;
     }
 
-    private void EnsureStaticSceneCacheResources()
+    private void EnsureStaticSceneCacheResources(bool includeHitBuffer)
     {
-        if (StaticSceneColorCache is not null && StaticSceneDepthCache is not null)
+        if (StaticSceneColorCache is null || StaticSceneDepthCache is null)
         {
-            return;
+            Texture2DDescription colorDescription = Backbuffer.Description;
+            colorDescription.BindFlags = BindFlags.None;
+            colorDescription.CpuAccessFlags = CpuAccessFlags.None;
+            colorDescription.OptionFlags = ResourceOptionFlags.None;
+            colorDescription.Usage = ResourceUsage.Default;
+            StaticSceneColorCache = new Texture2D(Device, colorDescription);
+
+            Texture2DDescription depthDescription = DepthBuffer.Description;
+            depthDescription.BindFlags = BindFlags.None;
+            depthDescription.CpuAccessFlags = CpuAccessFlags.None;
+            depthDescription.OptionFlags = ResourceOptionFlags.None;
+            depthDescription.Usage = ResourceUsage.Default;
+            StaticSceneDepthCache = new Texture2D(Device, depthDescription);
         }
 
-        Texture2DDescription colorDescription = Backbuffer.Description;
-        colorDescription.BindFlags = BindFlags.None;
-        colorDescription.CpuAccessFlags = CpuAccessFlags.None;
-        colorDescription.OptionFlags = ResourceOptionFlags.None;
-        colorDescription.Usage = ResourceUsage.Default;
-        StaticSceneColorCache = new Texture2D(Device, colorDescription);
-
-        Texture2DDescription depthDescription = DepthBuffer.Description;
-        depthDescription.BindFlags = BindFlags.None;
-        depthDescription.CpuAccessFlags = CpuAccessFlags.None;
-        depthDescription.OptionFlags = ResourceOptionFlags.None;
-        depthDescription.Usage = ResourceUsage.Default;
-        StaticSceneDepthCache = new Texture2D(Device, depthDescription);
+        if (includeHitBuffer && StaticSceneHitCache is null)
+        {
+            Texture2DDescription hitDescription = HitBuffer.Description;
+            hitDescription.BindFlags = BindFlags.None;
+            hitDescription.CpuAccessFlags = CpuAccessFlags.None;
+            hitDescription.OptionFlags = ResourceOptionFlags.None;
+            hitDescription.Usage = ResourceUsage.Default;
+            StaticSceneHitCache = new Texture2D(Device, hitDescription);
+        }
     }
 
     private void CopyStaticSceneResources(Texture2D colorSource, Texture2D colorDestination,
-        Texture2D depthSource, Texture2D depthDestination)
+        Texture2D depthSource, Texture2D depthDestination, Texture2D hitSource = null,
+        Texture2D hitDestination = null)
     {
         // Temporarily unbind the live targets so debug and strict drivers accept them as copy sources or
         // destinations. Restore the exact MRT layout before any actor or overlay rendering resumes.
@@ -917,6 +938,10 @@ public class MeshRenderContext : RenderContext
         {
             ImmediateContext.CopyResource(colorSource, colorDestination);
             ImmediateContext.CopyResource(depthSource, depthDestination);
+            if (hitSource is not null && hitDestination is not null)
+            {
+                ImmediateContext.CopyResource(hitSource, hitDestination);
+            }
         }
         finally
         {
@@ -987,6 +1012,8 @@ public class MeshRenderContext : RenderContext
         StaticSceneColorCache = null;
         StaticSceneDepthCache?.Dispose();
         StaticSceneDepthCache = null;
+        StaticSceneHitCache?.Dispose();
+        StaticSceneHitCache = null;
         InvalidateStaticSceneCache();
         PixelReadbackTexture?.Dispose();
         PixelReadbackTexture = null;

@@ -107,6 +107,11 @@ public abstract class ModelPreviewMaterial<Vertex> where Vertex : IVertexBase
     public string InstancedFullPath => Material.InstancedFullPath;
 
     /// <summary>
+    /// True when the material must be evaluated again as frame time advances.
+    /// </summary>
+    public virtual bool HasFrameDependentUniforms => false;
+
+    /// <summary>
     /// A Dictionary of string properties. Useful because some materials have properties that others don't.
     /// </summary>
     public readonly Dictionary<string, string> Properties = [];
@@ -243,6 +248,7 @@ internal class LEShaderPreviewMaterial : ModelPreviewMaterial<LEVertex>
     };
 
     internal MaterialRenderProxy RenderProxy => (MaterialRenderProxy)Material;
+    public override bool HasFrameDependentUniforms => RenderProxy.HasFrameDependentUniforms;
 
     public LEShaderPreviewMaterial(MeshRenderContext renderContext, ExportEntry export,
         bool useSrgbColorManagement = false)
@@ -461,6 +467,11 @@ public class ModelPreview<TVertex> : IDisposable where TVertex : IVertexBase
     /// Stores materials for this preview, stored by material name.
     /// </summary>
     public Dictionary<string, ModelPreviewMaterial<TVertex>> Materials { get; } = [];
+
+    /// <summary>
+    /// Whether the currently assigned materials can be retained in a static GPU scene cache.
+    /// </summary>
+    public bool IsStaticSceneCacheSafe => Materials.Values.All(material => !material.HasFrameDependentUniforms);
 
     /// <summary>
     /// Effective material entry for each mesh material slot. Component overrides are represented by

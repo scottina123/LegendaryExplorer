@@ -30,6 +30,9 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy, ITr
 
     public List<PrimitiveComponentProxy> Components = [];
 
+    internal bool IsStaticSceneCacheSafe => Components.Count > 0
+                                            && Components.All(component => component.IsStaticSceneCacheSafe);
+
     /// <summary>
     /// Opts this actor's skeletal-mesh components into the compiled in-game material renderer.
     /// This is deliberately actor-scoped so unrelated Level Editor actor types retain their

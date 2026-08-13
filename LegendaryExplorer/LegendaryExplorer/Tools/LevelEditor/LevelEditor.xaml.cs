@@ -39,6 +39,7 @@ using System.IO;
 using System.Linq;
 using
 System.Numerics;
+using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
 using System.Threading;
 using
@@ -169,6 +170,11 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
     private string _actorFilterText = "";
     private readonly record struct VisibleActor(ActorProxy Actor, BoxSphereBounds Bounds, Vector3 HitTestId);
     private readonly List<VisibleActor> visibleActors = [];
+    private readonly List<VisibleActor> staticVisibleActors = [];
+    private readonly List<VisibleActor> liveVisibleActors = [];
+    private bool hasStaticSceneCacheCandidate;
+    private long lastStaticSceneCacheKey;
+    private Matrix4x4 lastStaticSceneCacheViewProjection;
 
     private bool _hasAnyFileOpen;
     public bool HasAnyFileOpen
@@ -791,17 +797,66 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         RenderContext.ShowVolumes = ShowVolumes;
         RenderContext.ShowVolumetrics = ShowVolumetrics;
         BuildVisibleActorList();
-        Span<RenderPass> passes = (ShowCollision, RenderContext.ShouldRenderHitTestPass) switch
-        {
-            (true, true) => [RenderPass.Base, RenderPass.Hair, RenderPass.Collision, RenderPass.HitTest],
-            (true, false) => [RenderPass.Base, RenderPass.Hair, RenderPass.Collision],
-            (false, true) => [RenderPass.Base, RenderPass.Hair, RenderPass.HitTest],
-            _ => [RenderPass.Base, RenderPass.Hair]
-        };
 
-        foreach (RenderPass pass in passes)
+        bool renderHitTest = RenderContext.ShouldRenderHitTestPass;
+        bool canCacheStaticScene = staticVisibleActors.Count > 0;
+        bool cacheHitBuffer = renderHitTest && !ShowCollision;
+        long staticSceneKey = canCacheStaticScene ? ComputeStaticSceneCacheKey() : 0;
+        bool restoredStaticScene = canCacheStaticScene
+                                   && RenderContext.TryRestoreStaticSceneCache(staticSceneKey, cacheHitBuffer);
+        bool staticHitTestReady = restoredStaticScene && cacheHitBuffer;
+
+        if (!restoredStaticScene && canCacheStaticScene)
         {
-            DoRenderPass(pass);
+            RenderContext.BeginStaticSceneCacheCandidate();
+            DoRenderPass(RenderPass.Base, staticVisibleActors);
+            DoRenderPass(RenderPass.Hair, staticVisibleActors);
+
+            // A collision overlay is deliberately not retained. Without that overlay, the static hit IDs can
+            // share the same GPU cache and avoid a second full static-mesh traversal during continuous updates.
+            if (cacheHitBuffer)
+            {
+                DoRenderPass(RenderPass.HitTest, staticVisibleActors);
+                staticHitTestReady = true;
+            }
+
+            Matrix4x4 viewProjection = RenderContext.Camera.ViewProjectionMatrix;
+            bool cameraAndSceneStable = hasStaticSceneCacheCandidate
+                                        && lastStaticSceneCacheKey == staticSceneKey
+                                        && lastStaticSceneCacheViewProjection == viewProjection;
+            if (cameraAndSceneStable)
+            {
+                RenderContext.CaptureStaticSceneCache(staticSceneKey, cacheHitBuffer);
+            }
+            else
+            {
+                // Avoid full-surface copies while navigating. The cache is created only after two identical
+                // camera/scene frames, when a particle preview or another live object keeps rendering active.
+                RenderContext.InvalidateStaticSceneCache();
+            }
+            hasStaticSceneCacheCandidate = true;
+            lastStaticSceneCacheKey = staticSceneKey;
+            lastStaticSceneCacheViewProjection = viewProjection;
+        }
+        else if (!canCacheStaticScene)
+        {
+            RenderContext.InvalidateStaticSceneCache();
+            hasStaticSceneCacheCandidate = false;
+        }
+
+        DoRenderPass(RenderPass.Base, liveVisibleActors);
+        DoRenderPass(RenderPass.Hair, liveVisibleActors);
+        if (ShowCollision)
+        {
+            DoRenderPass(RenderPass.Collision, visibleActors);
+        }
+        if (renderHitTest)
+        {
+            if (!staticHitTestReady)
+            {
+                DoRenderPass(RenderPass.HitTest, staticVisibleActors);
+            }
+            DoRenderPass(RenderPass.HitTest, liveVisibleActors);
         }
 
         RenderContext.DrawUI();
@@ -810,6 +865,8 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
     private void BuildVisibleActorList()
     {
         visibleActors.Clear();
+        staticVisibleActors.Clear();
+        liveVisibleActors.Clear();
         MeshRenderContext.BoundsVisibilityTester visibility = RenderContext.CreateBoundsVisibilityTester();
         for (int actorIndex = 0; actorIndex < RenderContext.DrawList_3D.Count; actorIndex++)
         {
@@ -827,8 +884,62 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
             int hitID = actor.HitID;
             var hitTestId = new Vector3((hitID & 0xFF) / 255f, ((hitID >> 8) & 0xFF) / 255f,
                 ((hitID >> 16) & 0xFF) / 255f);
-            visibleActors.Add(new VisibleActor(actor, bounds, hitTestId));
+            var visibleActor = new VisibleActor(actor, bounds, hitTestId);
+            visibleActors.Add(visibleActor);
+            if (CanCacheAsStaticSceneActor(actor))
+            {
+                staticVisibleActors.Add(visibleActor);
+            }
+            else
+            {
+                liveVisibleActors.Add(visibleActor);
+            }
         }
+    }
+
+    private bool CanCacheAsStaticSceneActor(ActorProxy actor) => actor != selectedActor
+                                                                 && actor != _levelLiveMaterialActor
+                                                                 && !actor.IsBeingAnimated
+                                                                 && actor.IsStaticSceneCacheSafe;
+
+    private long ComputeStaticSceneCacheKey()
+    {
+        var hash = new HashCode();
+        hash.Add(ShowDecalActors);
+        hash.Add(ShowVolumes);
+        hash.Add(ShowVolumetrics);
+        hash.Add(_zCutoffEnabled);
+        if (_zCutoffEnabled) hash.Add(_zCutoff);
+        hash.Add((int)RenderContext.RenderFlags);
+        hash.Add(RenderContext.BackgroundColor);
+        hash.Add(RenderContext.UseSrgbColorManagement);
+        hash.Add(RenderContext.Wireframe);
+        hash.Add(RenderContext.UseGameShaderMeshPreviews);
+        hash.Add(RenderContext.UseGameShaderStaticMeshPreviews);
+        hash.Add(RenderContext.SceneLightRevision);
+        hash.Add(staticVisibleActors.Count);
+        foreach (VisibleActor visibleActor in staticVisibleActors)
+        {
+            ActorProxy actor = visibleActor.Actor;
+            hash.Add(RuntimeHelpers.GetHashCode(actor));
+            hash.Add(actor.HitID);
+            hash.Add(RenderContext.GetActorVisualRevision(actor));
+            hash.Add(actor.LocalToWorld);
+            hash.Add(visibleActor.Bounds.Origin);
+            hash.Add(visibleActor.Bounds.BoxExtent);
+            hash.Add(visibleActor.Bounds.SphereRadius);
+            foreach (PrimitiveComponentProxy component in actor.Components)
+            {
+                hash.Add(component.LocalToWorld);
+                hash.Add(component.IsVisible);
+                hash.Add(component.LightingChannelMask);
+                if (component is MeshComponentProxy meshComponent)
+                {
+                    hash.Add(meshComponent.RenderResourcesInitialized);
+                }
+            }
+        }
+        return hash.ToHashCode();
     }
 
     private static bool HasIncompleteCharacterResources(ActorProxy actor)
@@ -847,11 +958,11 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         return false;
     }
 
-    void DoRenderPass(RenderPass pass)
+    void DoRenderPass(RenderPass pass, IReadOnlyList<VisibleActor> actors)
     {
-        for (int i = 0; i < visibleActors.Count; i++)
+        for (int i = 0; i < actors.Count; i++)
         {
-            VisibleActor visibleActor = visibleActors[i];
+            VisibleActor visibleActor = actors[i];
             ActorProxy actor = visibleActor.Actor;
             RenderContext.CurrentHitTestId = visibleActor.HitTestId;
             // Keep the actor selected for material picking and editor synchronization, but do not tint it

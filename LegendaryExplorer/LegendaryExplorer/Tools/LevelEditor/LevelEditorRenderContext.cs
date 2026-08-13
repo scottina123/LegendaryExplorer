@@ -54,6 +54,7 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
     private readonly PointOfInterestIconOverlay PointOfInterestIcons = new();
     private readonly Dictionary<ActorProxy, SceneLight> sceneLightCache = [];
     private readonly ConcurrentDictionary<ActorProxy, BoxSphereBounds> actorBoundsCache = [];
+    private readonly ConcurrentDictionary<ActorProxy, int> actorVisualRevisions = [];
     private readonly ConcurrentDictionary<ActorProxy, byte> pendingActorVisualInvalidations = [];
     private readonly ConcurrentDictionary<ActorProxy, byte> pendingSceneLightRefreshes = [];
 
@@ -91,6 +92,11 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
     internal int EmitterIconRevision => Volatile.Read(ref emitterIconRevision);
     internal int PointOfInterestIconRevision => Volatile.Read(ref pointOfInterestIconRevision);
     internal int StaticSceneRevision => Volatile.Read(ref staticSceneRevision);
+    internal int GetActorVisualRevision(ActorProxy actor) =>
+        actorVisualRevisions.TryGetValue(actor, out int revision) ? revision : 0;
+
+    private void IncrementActorVisualRevision(ActorProxy actor) =>
+        actorVisualRevisions.AddOrUpdate(actor, 1, static (_, revision) => unchecked(revision + 1));
 
     public bool ForceContinuousRendering { get; set; }
     public override bool RenderOnUnhandledMouseMove => false;
@@ -227,6 +233,7 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
                 Interlocked.Increment(ref staticSceneRevision);
                 if (component is PrimitiveComponentProxy primitiveComponent)
                 {
+                    IncrementActorVisualRevision(primitiveComponent.Actor);
                     actorBoundsCache.TryRemove(primitiveComponent.Actor, out _);
                 }
 
@@ -342,6 +349,7 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
         }
 
         actorBoundsCache.TryRemove(actor, out _);
+        IncrementActorVisualRevision(actor);
         Interlocked.Increment(ref staticSceneRevision);
         pendingActorVisualInvalidations.TryAdd(actor, 0);
         if (actor.HasLightSettings && CanAffectSceneLight(e.PropertyName))
@@ -776,6 +784,7 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
         bool pointsOfInterestChanged = false;
         foreach (var actor in actors)
         {
+            actorVisualRevisions.TryAdd(actor, 0);
             actor.HitID = HitProxies.Add(actor);
             actor.PropertyChanged += Actor_PropertyChanged;
             CacheSceneLight(actor);
@@ -987,6 +996,7 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
         SceneLights.Clear();
         sceneLightCache.Clear();
         actorBoundsCache.Clear();
+        actorVisualRevisions.Clear();
         pendingActorVisualInvalidations.Clear();
         pendingSceneLightRefreshes.Clear();
         hasPendingViewportClick = false;
@@ -1036,6 +1046,7 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
             actor.PropertyChanged -= Actor_PropertyChanged;
             RemoveSceneLight(actor);
             actorBoundsCache.TryRemove(actor, out _);
+            actorVisualRevisions.TryRemove(actor, out _);
             pendingActorVisualInvalidations.TryRemove(actor, out _);
             pendingSceneLightRefreshes.TryRemove(actor, out _);
             HitProxies.RemoveAt(actor.HitID);
@@ -1051,6 +1062,7 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
             DrawList_3D.Add(actor);
             actor.HitID = HitProxies.Add(actor);
             actor.PropertyChanged += Actor_PropertyChanged;
+            actorVisualRevisions.TryAdd(actor, 0);
             actorBoundsCache.TryRemove(actor, out _);
             CacheSceneLight(actor);
             QueueRenderResources(actor);

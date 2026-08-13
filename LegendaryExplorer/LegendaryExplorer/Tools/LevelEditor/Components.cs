@@ -176,6 +176,12 @@ public class PrimitiveComponentProxy : NotifyPropertyChangedBase, IDisposable
 
     public virtual void Render(MeshRenderContext context, RenderPass pass) { }
 
+    /// <summary>
+    /// Whether this component can be retained in the Level Editor's static GPU scene cache.
+    /// Components opt in explicitly so particles, skeletal meshes, decals, and editor primitives remain live.
+    /// </summary>
+    internal virtual bool IsStaticSceneCacheSafe => false;
+
     public virtual void UpdateScene(MeshRenderContext context, float deltaTime) { }
 
     public virtual void RefreshFromExport()
@@ -936,6 +942,11 @@ public class StaticMeshComponentProxy : MeshComponentProxy
     private bool hasRenderableMesh;
     private StructProperty collisionGeometry;
     private bool collisionGeometryLoaded;
+
+    internal override bool IsStaticSceneCacheSafe => !RenderResourcesInitialized
+                                                     || (GameShaderMesh?.IsStaticSceneCacheSafe
+                                                         ?? Mesh?.IsStaticSceneCacheSafe
+                                                         ?? true);
 
     internal void AppendNavigationCollision(List<LevelCollisionTriangle> output)
     {
