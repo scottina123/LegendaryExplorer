@@ -893,7 +893,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     private sealed record PlacedCameraState(ExportEntry Actor, CameraOrigin Origin, float? FovDegrees);
     private sealed record ResolvedSwitchCamera(CameraOrigin Origin, float FovDegrees);
 
-    private const float PreviewBodyMeshRelativeZ = -88f;
+    private const float PreviewBodyMeshRelativeZ = StageBoneOriginResolver.StuntActorBodyMeshRelativeZ;
     internal const float ConversationSwitchCameraFovDegrees = 52.9f;
     private static readonly RenderPass[] RenderPasses = [RenderPass.Base, RenderPass.Hair];
     private static readonly object sessionLevelPathsLock = new();
@@ -6187,23 +6187,8 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     private static Matrix4x4 GetDialogueComponentLocalTransform(ExportEntry sourceActor,
         PreviewActorModelComponent componentKind, ExportEntry component)
     {
-        PropertyCollection properties = component.GetCondensedProperties();
-        Vector3 translation = properties.GetProp<StructProperty>("Translation") is { } translationProperty
-            ? CommonStructs.GetVector3(translationProperty)
-            : Vector3.Zero;
-        if (componentKind == PreviewActorModelComponent.Body && translation == Vector3.Zero
-            && sourceActor.IsA("SFXStuntActor"))
-        {
-            translation = new Vector3(0, 0, PreviewBodyMeshRelativeZ);
-        }
-        Rotator rotation = properties.GetProp<StructProperty>("Rotation") is { } rotationProperty
-            ? CommonStructs.GetRotator(rotationProperty)
-            : new Rotator(0, 0, 0);
-        Vector3 scale3D = properties.GetProp<StructProperty>("Scale3D") is { } scaleProperty
-            ? CommonStructs.GetVector3(scaleProperty)
-            : Vector3.One;
-        float scale = properties.GetProp<FloatProperty>("Scale")?.Value ?? 1f;
-        return ActorUtils.ComposeLocalToWorld(translation, rotation, scale * scale3D);
+        return StageBoneOriginResolver.ComposeDialogueActorComponentLocalTransform(sourceActor,
+            componentKind == PreviewActorModelComponent.Body, component.GetCondensedProperties());
     }
 
     private ExportEntry FindFaceFxAsset(ExportEntry actor, IEnumerable<ExportEntry> relatedExports)

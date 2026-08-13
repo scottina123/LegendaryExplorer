@@ -15,6 +15,37 @@ namespace LegendaryExplorer.Tests.UserControls.InterpTrackMove3D;
 public class CurveEditor3DModelCacheTests
 {
     [TestMethod]
+    public void StageSlotInvertsTheBoundActorsBodyComponentPivot()
+    {
+        var slot = new CameraOrigin(new Vector3(20610.672f, -7097.9004f, 1614.0001f),
+            new Vector3(0, 0, 51.119385f));
+        Matrix4x4 bodyLocal = Matrix4x4.CreateTranslation(0, 0,
+            StageBoneOriginResolver.StuntActorBodyMeshRelativeZ);
+
+        CameraOrigin actor = StageBoneOriginResolver.ResolveActorOriginFromStageSlot(slot, bodyLocal);
+
+        Assert.AreEqual(slot.Location.X, actor.Location.X, 0.001f);
+        Assert.AreEqual(slot.Location.Y, actor.Location.Y, 0.001f);
+        Assert.AreEqual(slot.Location.Z + 88f, actor.Location.Z, 0.001f);
+        Matrix4x4 actorTransform = ActorUtils.ComposeLocalToWorld(actor.Location,
+            Rotator.FromDegreesVector(actor.Rotation), Vector3.One);
+        Assert.AreEqual(slot.Location.Z, (bodyLocal * actorTransform).Translation.Z, 0.001f);
+    }
+
+    [TestMethod]
+    public void StageSlotDoesNotMoveAnActorWhoseBodyComponentIsIdentity()
+    {
+        var slot = new CameraOrigin(new Vector3(10, 20, 30), new Vector3(0, 0, 45));
+
+        CameraOrigin actor = StageBoneOriginResolver.ResolveActorOriginFromStageSlot(slot, Matrix4x4.Identity);
+
+        Assert.AreEqual(slot.Location.X, actor.Location.X, 0.001f);
+        Assert.AreEqual(slot.Location.Y, actor.Location.Y, 0.001f);
+        Assert.AreEqual(slot.Location.Z, actor.Location.Z, 0.001f);
+        Assert.AreEqual(slot.Rotation.Z, actor.Rotation.Z, 0.01f);
+    }
+
+    [TestMethod]
     public void GestureRootTranslationIsExtractedForSplineDrivenActors()
     {
         Assert.IsTrue(CurveEditor3D.ShouldExtractDialogueGestureRootTranslation(

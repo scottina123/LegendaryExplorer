@@ -8,11 +8,13 @@ using LegendaryExplorer.Dialogs;
 using LegendaryExplorer.Tools.LevelEditor;
 using LegendaryExplorerCore.Dialogue;
 using LegendaryExplorerCore.GameFilesystem;
+using LegendaryExplorerCore.Helpers;
 using LegendaryExplorerCore.Kismet;
 using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.Packages.CloningImportingAndRelinking;
 using LegendaryExplorerCore.Unreal;
 using LegendaryExplorerCore.Unreal.BinaryConverters;
+using LegendaryExplorerCore.Unreal.ObjectInfo;
 
 namespace LegendaryExplorer.Tools.InterpEditor;
 
@@ -74,7 +76,8 @@ internal sealed class StageConversationContext : IDisposable
 
 internal static class StageBoneOriginResolver
 {
-    private const float PlayerStageBoneActorZOffset = 88f;
+    internal const float StuntActorBodyMeshRelativeZ = -88f;
+    private const float PlayerStageBoneActorZOffset = -StuntActorBodyMeshRelativeZ;
 
     private sealed record StageOption(ExportEntry Stage, ExportEntry StartConversation,
         IReadOnlyDictionary<string, string> VariableLinkSubtitles)
@@ -198,10 +201,10 @@ internal static class StageBoneOriginResolver
                 selectedStage.Stage, stageBones, stageOrigin, cache);
             List<VarLinkInfo> startConversationLinks = KismetHelper.GetVariableLinks(
                 selectedStage.StartConversation.GetProperties(), mainPackage);
-            IReadOnlyDictionary<string, CameraOrigin> actorOrigins = ResolveLinkedActorOrigins(stageNodeOrigins,
-                startConversationLinks, cache);
             IReadOnlyDictionary<string, IReadOnlyList<ExportEntry>> actorBindings = ResolveLinkedActorBindings(
                 startConversationLinks, cache);
+            IReadOnlyDictionary<string, CameraOrigin> actorOrigins = ResolveLinkedActorOrigins(stageNodeOrigins,
+                startConversationLinks, actorBindings, cache);
             context = new StageConversationContext(mainPackage, ownsMainPackage, selectedStage.StartConversation,
                 selectedStage.Stage, stageOrigin, stageNodeOrigins, stageCameras, actorOrigins, actorBindings,
                 selectedStage.VariableLinkSubtitles);
@@ -443,7 +446,7 @@ internal static class StageBoneOriginResolver
 
     private static IReadOnlyDictionary<string, CameraOrigin> ResolveLinkedActorOrigins(
         IReadOnlyDictionary<string, CameraOrigin> slotOrigins, IEnumerable<VarLinkInfo> variableLinks,
-        PackageCache cache)
+        IReadOnlyDictionary<string, IReadOnlyList<ExportEntry>> actorBindings, PackageCache cache)
     {
         var origins = new Dictionary<string, CameraOrigin>(StringComparer.OrdinalIgnoreCase);
         List<VarLinkInfo> links = variableLinks.ToList();
@@ -463,12 +466,13 @@ internal static class StageBoneOriginResolver
                 string actorTag = ResolveLinkedActorTag(variable, cache);
                 if (!string.IsNullOrWhiteSpace(actorTag))
                 {
-                    origins[actorTag] = GetActorSlotOrigin(actorTag, slotOrigin);
+                    origins[actorTag] = GetActorSlotOrigin(actorTag, slotOrigin, actorBindings, cache);
                 }
                 if (variableLink.LinkDesc.Equals("Owner", StringComparison.OrdinalIgnoreCase)
                     || variableLink.LinkDesc.Equals("Player", StringComparison.OrdinalIgnoreCase))
                 {
-                    origins[variableLink.LinkDesc] = GetActorSlotOrigin(variableLink.LinkDesc, slotOrigin);
+                    origins[variableLink.LinkDesc] = GetActorSlotOrigin(variableLink.LinkDesc, slotOrigin,
+                        actorBindings, cache);
                 }
             }
         }
@@ -482,21 +486,92 @@ internal static class StageBoneOriginResolver
             && LinksReferToSameVariable(ownerLink, link, cache));
         if (ownerSlot is not null)
         {
-            origins["Owner"] = slotOrigins[ownerSlot.LinkDesc];
+            origins["Owner"] = GetActorSlotOrigin("Owner", slotOrigins[ownerSlot.LinkDesc], actorBindings, cache);
         }
         return origins;
     }
 
-    private static CameraOrigin GetActorSlotOrigin(string actorTag, CameraOrigin slotOrigin)
+    private static CameraOrigin GetActorSlotOrigin(string actorTag, CameraOrigin slotOrigin,
+        IReadOnlyDictionary<string, IReadOnlyList<ExportEntry>> actorBindings, PackageCache cache)
     {
-        if (!actorTag.Equals("Player", StringComparison.OrdinalIgnoreCase))
+        if (actorTag.Equals("Player", StringComparison.OrdinalIgnoreCase))
+        {
+            Vector3 playerLocation = slotOrigin.Location;
+            playerLocation.Z += PlayerStageBoneActorZOffset;
+            return new CameraOrigin(playerLocation, slotOrigin.Rotation);
+        }
+
+        if (actorBindings.TryGetValue(actorTag, out IReadOnlyList<ExportEntry> actors)
+            && actors.FirstOrDefault(actor => actor is not null) is { } actor
+            && FindActorBodyMeshComponent(actor, cache) is { } bodyComponent)
+        {
+            PropertyCollection componentProperties = GetPropertiesIncludingArchetypes(bodyComponent, cache);
+            Matrix4x4 componentLocalTransform = ComposeDialogueActorComponentLocalTransform(actor,
+                isBodyComponent: true, componentProperties);
+            return ResolveActorOriginFromStageSlot(slotOrigin, componentLocalTransform);
+        }
+
+        return slotOrigin;
+    }
+
+    /// <summary>
+    /// Stage attachment bones describe the visible component transform. Convert that transform back to the
+    /// owning actor transform instead of applying a package-specific height adjustment.
+    /// </summary>
+    internal static CameraOrigin ResolveActorOriginFromStageSlot(CameraOrigin slotOrigin,
+        Matrix4x4 componentLocalTransform)
+    {
+        if (!Matrix4x4.Invert(componentLocalTransform, out Matrix4x4 componentToActor))
         {
             return slotOrigin;
         }
 
-        Vector3 location = slotOrigin.Location;
-        location.Z += PlayerStageBoneActorZOffset;
-        return new CameraOrigin(location, slotOrigin.Rotation);
+        Matrix4x4 slotTransform = ActorUtils.ComposeLocalToWorld(slotOrigin.Location,
+            Rotator.FromDegreesVector(slotOrigin.Rotation), Vector3.One);
+        (Vector3 translation, _, Rotator rotation) = (componentToActor * slotTransform).UnrealDecompose();
+        return new CameraOrigin(translation, rotation.GetDegreesVector());
+    }
+
+    internal static Matrix4x4 ComposeDialogueActorComponentLocalTransform(ExportEntry sourceActor,
+        bool isBodyComponent, PropertyCollection componentProperties)
+    {
+        Vector3 translation = componentProperties.GetProp<StructProperty>("Translation") is { } translationProperty
+            ? CommonStructs.GetVector3(translationProperty)
+            : Vector3.Zero;
+        if (isBodyComponent && translation == Vector3.Zero && sourceActor.IsA("SFXStuntActor"))
+        {
+            // SFXStuntActor::OnTeleport maintains its skeletal component at this pawn-relative pivot.
+            translation = new Vector3(0, 0, StuntActorBodyMeshRelativeZ);
+        }
+        Rotator rotation = componentProperties.GetProp<StructProperty>("Rotation") is { } rotationProperty
+            ? CommonStructs.GetRotator(rotationProperty)
+            : new Rotator(0, 0, 0);
+        Vector3 scale3D = componentProperties.GetProp<StructProperty>("Scale3D") is { } scaleProperty
+            ? CommonStructs.GetVector3(scaleProperty)
+            : Vector3.One;
+        float scale = componentProperties.GetProp<FloatProperty>("Scale")?.Value ?? 1f;
+        return ActorUtils.ComposeLocalToWorld(translation, rotation, scale * scale3D);
+    }
+
+    private static ExportEntry FindActorBodyMeshComponent(ExportEntry actor, PackageCache cache)
+    {
+        string[] propertyNames = ["BodyMesh", "SkeletalMeshComponent", "Mesh"];
+        var visited = new HashSet<ExportEntry>();
+        for (ExportEntry current = actor; current is not null && visited.Add(current);
+             current = ResolveExport(current.Archetype, cache))
+        {
+            PropertyCollection properties = current.GetProperties();
+            foreach (string propertyName in propertyNames)
+            {
+                ObjectProperty componentProperty = properties.GetProp<ObjectProperty>(propertyName);
+                if (componentProperty?.Value != 0
+                    && ResolveExport(componentProperty.ResolveToEntry(current.FileRef), cache) is { } component)
+                {
+                    return component;
+                }
+            }
+        }
+        return null;
     }
 
     private static IReadOnlyDictionary<string, IReadOnlyList<ExportEntry>> ResolveLinkedActorBindings(
