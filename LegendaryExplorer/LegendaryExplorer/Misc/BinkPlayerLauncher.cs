@@ -1,4 +1,5 @@
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -111,6 +112,35 @@ internal static class BinkPlayerLauncher
 
         startInfo.ArgumentList.Add(moviePath);
         return startInfo;
+    }
+
+    public static ProcessStartInfo CreateEmbeddedStartInfo(string executablePath, string moviePath)
+    {
+        ProcessStartInfo startInfo = CreateStartInfo(executablePath, moviePath);
+        // RAD's /I2 mode creates a client-only player window. LEX also strips window styles
+        // after launch, but requesting the native borderless mode avoids a one-pixel light rim.
+        startInfo.ArgumentList.Add("/I2");
+        return startInfo;
+    }
+
+    public static bool TryGetBink2Duration(ReadOnlySpan<byte> header, out TimeSpan duration)
+    {
+        duration = TimeSpan.Zero;
+        if (header.Length < 36 || header[0] != 'K' || header[1] != 'B' || header[2] != '2')
+        {
+            return false;
+        }
+
+        uint frameCount = BinaryPrimitives.ReadUInt32LittleEndian(header[8..12]);
+        uint frameRateNumerator = BinaryPrimitives.ReadUInt32LittleEndian(header[28..32]);
+        uint frameRateDivisor = BinaryPrimitives.ReadUInt32LittleEndian(header[32..36]);
+        if (frameCount == 0 || frameRateNumerator == 0 || frameRateDivisor == 0)
+        {
+            return false;
+        }
+
+        duration = TimeSpan.FromSeconds(frameCount * (double)frameRateDivisor / frameRateNumerator);
+        return true;
     }
 
     private static bool IsSupportedExecutable(string path)

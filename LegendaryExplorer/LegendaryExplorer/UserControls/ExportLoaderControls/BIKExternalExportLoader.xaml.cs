@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Threading;
 using LegendaryExplorer.Dialogs;
 using LegendaryExplorer.Misc;
 using LegendaryExplorer.Misc.AppSettings;
@@ -22,6 +23,7 @@ using LegendaryExplorerCore.Unreal.BinaryConverters;
 using LibVLCSharp.Shared;
 using Microsoft.Win32;
 using Microsoft.WindowsAPICodePack.Dialogs;
+using Forms = System.Windows.Forms;
 using Path = System.IO.Path;
 using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
 
@@ -67,9 +69,51 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 }
             }
         }
-        public string Bink2PlaybackStatus => ExternalPlayerSupportsBink2
-            ? "Bink 2 playback opens in the configured external Bink player."
-            : "Bink 2 playback requires a current RAD Video Tools player. Configure RADVideo64.exe or Bink2ForUnreal.exe in Settings > Export Loaders.";
+        private EmbeddedBinkPlayerHost _embeddedBinkPlayer;
+        private string _bink2PlaybackMoviePath;
+        private bool _bink2PlaybackMovieIsTemporary;
+        private bool _embeddedPlayerIsRunning;
+        private string _bink2PlaybackError;
+        private readonly Stopwatch _bink2PlaybackClock = new();
+        private DispatcherTimer _bink2TimelineTimer;
+        private TimeSpan _bink2Duration;
+        private double _bink2PlaybackBaseSeconds;
+        private double _bink2PlaybackPosition;
+        private bool _bink2IsPaused;
+        private bool _bink2ScrubberIsChanging;
+        public bool Bink2PlaybackFailed => _bink2PlaybackError != null;
+        public double Bink2PlaybackPosition
+        {
+            get => _bink2PlaybackPosition;
+            set
+            {
+                if (SetProperty(ref _bink2PlaybackPosition, Math.Clamp(value, 0, 1)))
+                {
+                    OnPropertyChanged(nameof(Bink2PlaybackTimeText));
+                }
+            }
+        }
+        public string Bink2PlaybackTimeText => $"{FormatPlaybackTime(TimeSpan.FromTicks((long)(_bink2Duration.Ticks * Bink2PlaybackPosition)))} / {FormatPlaybackTime(_bink2Duration)}";
+        public bool CanSeekBink2 => !IsBink1 && _bink2Duration > TimeSpan.Zero && _embeddedBinkPlayer?.CanControl == true;
+        public string Bink2PlaybackStatus
+        {
+            get
+            {
+                if (!ExternalPlayerSupportsBink2)
+                {
+                    return "Bink 2 playback requires a current RAD Video Tools player. Configure RADVideo64.exe or Bink2ForUnreal.exe in Settings > Export Loaders.";
+                }
+
+                if (_bink2PlaybackError != null)
+                {
+                    return _bink2PlaybackError;
+                }
+
+                return _embeddedPlayerIsRunning
+                    ? $"Bink 2 is {(_bink2IsPaused ? "paused" : "playing")} in the embedded RAD viewer."
+                    : "Press Play to start Bink 2 in the embedded viewer.";
+            }
+        }
         private bool _isexternallyCached;
         public bool IsExternallyCached { get => _isexternallyCached; set => SetProperty(ref _isexternallyCached, value); }
         private bool _islocallyCached;
@@ -110,15 +154,22 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         {
             return IsBink1 && IsVLCPlaying;
         }
+        private bool CanPauseMoviePlayer()
+        {
+            return IsBink1 ? IsVLCPlaying : CurrentLoadedExport != null && _embeddedBinkPlayer?.CanControl == true;
+        }
+        private bool CanStopMoviePlayer()
+        {
+            return IsBink1 ? IsVLCPlaying : CurrentLoadedExport != null && _embeddedBinkPlayer?.IsRunning == true;
+        }
         private bool IsMovieStopped()
         {
             return CurrentLoadedExport != null && (IsBink1 ? !IsVLCPlaying : ExternalPlayerSupportsBink2);
         }
         private bool CanOpenInBinkPlayer()
         {
-            return RADIsInstalled && CurrentLoadedExport != null && (IsBink1 || ExternalPlayerSupportsBink2);
+            return RADIsInstalled && CurrentLoadedExport != null && IsBink1;
         }
-
         public bool ViewerModeOnly
         {
             get => (bool)GetValue(ViewerModeOnlyProperty);
@@ -142,6 +193,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 {
                     OnPropertyChanged(nameof(BinkVersion));
                     OnPropertyChanged(nameof(Bink2PlaybackStatus));
+                    OnPropertyChanged(nameof(CanSeekBink2));
+                    CommandManager.InvalidateRequerySuggested();
                 }
             }
         }
@@ -176,6 +229,23 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             LoadCommands();
             InitializeComponent();
 
+            var bink2Viewport = new Forms.Panel
+            {
+                BackColor = System.Drawing.Color.Black,
+                Dock = Forms.DockStyle.Fill
+            };
+            bink2PlayerFormsHost.Child = bink2Viewport;
+            _embeddedBinkPlayer = new EmbeddedBinkPlayerHost(bink2Viewport);
+            _embeddedBinkPlayer.PlayerAttached += EmbeddedBinkPlayer_PlayerAttached;
+            _embeddedBinkPlayer.PlayerExited += EmbeddedBinkPlayer_PlayerExited;
+            _embeddedBinkPlayer.EmbeddingFailed += EmbeddedBinkPlayer_EmbeddingFailed;
+
+            _bink2TimelineTimer = new DispatcherTimer(DispatcherPriority.Background)
+            {
+                Interval = TimeSpan.FromMilliseconds(100)
+            };
+            _bink2TimelineTimer.Tick += Bink2TimelineTimer_Tick;
+
             libvlc = new LibVLC();
             mediaPlayer = new MediaPlayer(libvlc);
 
@@ -206,6 +276,36 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         {
             IsVLCPlaying = true;
             Debug.WriteLine("BikMoviePlayer Started");
+        }
+
+        private void EmbeddedBinkPlayer_PlayerAttached(object sender, EventArgs e)
+        {
+            _embeddedPlayerIsRunning = true;
+            _bink2PlaybackError = null;
+            OnPropertyChanged(nameof(CanSeekBink2));
+            OnPropertyChanged(nameof(Bink2PlaybackFailed));
+            OnPropertyChanged(nameof(Bink2PlaybackStatus));
+            CommandManager.InvalidateRequerySuggested();
+        }
+
+        private void EmbeddedBinkPlayer_PlayerExited(object sender, EventArgs e)
+        {
+            _embeddedPlayerIsRunning = false;
+            ResetBink2Timeline(clearDuration: false);
+            OnPropertyChanged(nameof(CanSeekBink2));
+            OnPropertyChanged(nameof(Bink2PlaybackStatus));
+            CommandManager.InvalidateRequerySuggested();
+        }
+
+        private void EmbeddedBinkPlayer_EmbeddingFailed(Exception exception)
+        {
+            _embeddedPlayerIsRunning = false;
+            ResetBink2Timeline(clearDuration: false);
+            _bink2PlaybackError = "The Bink player could not be embedded in the LEX viewport: " + exception.Message;
+            OnPropertyChanged(nameof(CanSeekBink2));
+            OnPropertyChanged(nameof(Bink2PlaybackFailed));
+            OnPropertyChanged(nameof(Bink2PlaybackStatus));
+            Debug.WriteLine(_bink2PlaybackError);
         }
 
         public BIKExternalExportLoader(bool autoplayPopout, bool showcontrols = false) : base("BIKExternal")
@@ -241,9 +341,9 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             OpenFileInRADCommand = new GenericCommand(OpenExportInRAD, CanOpenInBinkPlayer);
             ImportBikFileCommand = new GenericCommand(ImportBikFileAction, IsExportable);
             PlayBikCommand = new GenericCommand(PlayExport, IsMovieStopped);
-            PauseVLCCommand = new GenericCommand(PauseMoviePlayer, IsMoviePlaying);
+            PauseVLCCommand = new GenericCommand(PauseMoviePlayer, CanPauseMoviePlayer);
             RewindVLCCommand = new GenericCommand(RewindMoviePlayer, IsMoviePlaying);
-            StopVLCCommand = new GenericCommand(StopMoviePlayer, IsMoviePlaying);
+            StopVLCCommand = new GenericCommand(StopMoviePlayer, CanStopMoviePlayer);
             ExtractBikCommand = new GenericCommand(SaveBikToFile, IsExportable);
         }
         public override bool CanParse(ExportEntry exportEntry) => parsableClasses.Contains(exportEntry.ClassName) && !exportEntry.IsDefaultObject;
@@ -255,6 +355,10 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         public override void LoadExport(ExportEntry exportEntry)
         {
+            if (!ReferenceEquals(CurrentLoadedExport, exportEntry))
+            {
+                ClearEmbeddedBinkPlayback();
+            }
             GetRADInstallationStatus();
             MovieCRC = 0; //reset
             IsBink1 = false;
@@ -312,6 +416,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         }
         public override void UnloadExport()
         {
+            ClearEmbeddedBinkPlayback();
             MovieCRC = 0;
             IsBink1 = false;
             mediaPlayer.Stop();
@@ -342,6 +447,13 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         {
             UnloadExport();
 
+            if (_bink2TimelineTimer != null)
+            {
+                _bink2TimelineTimer.Stop();
+                _bink2TimelineTimer.Tick -= Bink2TimelineTimer_Tick;
+                _bink2TimelineTimer = null;
+            }
+
             vlcVideoView.Loaded -= VideoView_Loaded;
             TextureCacheComboBox.SelectionChanged -= TextureCacheComboBox_SelectionChanged;
 
@@ -349,6 +461,14 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             mediaPlayer.Stopped -= OnStopped;
             mediaPlayer.EncounteredError -= OnEncounteredError;
             mediaPlayer.EndReached -= MediaEndReached;
+            if (_embeddedBinkPlayer != null)
+            {
+                _embeddedBinkPlayer.PlayerAttached -= EmbeddedBinkPlayer_PlayerAttached;
+                _embeddedBinkPlayer.PlayerExited -= EmbeddedBinkPlayer_PlayerExited;
+                _embeddedBinkPlayer.EmbeddingFailed -= EmbeddedBinkPlayer_EmbeddingFailed;
+                _embeddedBinkPlayer.Dispose();
+                _embeddedBinkPlayer = null;
+            }
             mediaPlayer?.Dispose();
             libvlc?.Dispose();
         }
@@ -408,7 +528,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             try
             {
                 string moviePath;
-                if(IsExternalFile)
+                if (IsExternalFile)
                 {
                     string bikName = BikFileName + ".bik";
                     string packageDirectory = Path.GetDirectoryName(CurrentLoadedExport.FileRef.FilePath);
@@ -438,7 +558,9 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 }
 
                 if (!File.Exists(moviePath))
+                {
                     MessageBox.Show("bik movie not found.");
+                }
                 else
                 {
                     Process process = Process.Start(BinkPlayerLauncher.CreateStartInfo(RADExecutableLocation, moviePath));
@@ -468,6 +590,126 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             }
         }
 
+        private void PlayExportInEmbeddedBinkPlayer()
+        {
+            try
+            {
+                if (_embeddedBinkPlayer.IsRunning)
+                {
+                    if (Bink2PlaybackPosition >= 0.999)
+                    {
+                        _embeddedBinkPlayer.StopPlayback();
+                        _embeddedPlayerIsRunning = false;
+                    }
+                    else if (_bink2IsPaused && _embeddedBinkPlayer.TogglePause())
+                    {
+                        _bink2IsPaused = false;
+                        _bink2PlaybackClock.Restart();
+                        _bink2TimelineTimer.Start();
+                        OnPropertyChanged(nameof(Bink2PlaybackStatus));
+                        CommandManager.InvalidateRequerySuggested();
+                        return;
+                    }
+                    else
+                    {
+                        _embeddedBinkPlayer.FocusPlayer();
+                        return;
+                    }
+                }
+
+                string moviePath = GetOrCreateBink2PlaybackMoviePath();
+                if (!File.Exists(moviePath))
+                {
+                    MessageBox.Show("bik movie not found.");
+                    return;
+                }
+
+                ConfigureBink2Timeline(moviePath);
+                _bink2PlaybackError = null;
+                _embeddedPlayerIsRunning = true;
+                _bink2IsPaused = false;
+                _bink2PlaybackBaseSeconds = 0;
+                Bink2PlaybackPosition = 0;
+                _bink2PlaybackClock.Restart();
+                _bink2TimelineTimer.Start();
+                OnPropertyChanged(nameof(Bink2PlaybackFailed));
+                OnPropertyChanged(nameof(Bink2PlaybackStatus));
+                OnPropertyChanged(nameof(CanSeekBink2));
+                CommandManager.InvalidateRequerySuggested();
+                _embeddedBinkPlayer.Start(BinkPlayerLauncher.CreateEmbeddedStartInfo(RADExecutableLocation, moviePath));
+            }
+            catch (Exception ex)
+            {
+                _embeddedPlayerIsRunning = false;
+                ResetBink2Timeline(clearDuration: false);
+                _bink2PlaybackError = "Error launching the embedded Bink player: " + ex.Message;
+                OnPropertyChanged(nameof(CanSeekBink2));
+                OnPropertyChanged(nameof(Bink2PlaybackFailed));
+                OnPropertyChanged(nameof(Bink2PlaybackStatus));
+                CommandManager.InvalidateRequerySuggested();
+                Debug.WriteLine(_bink2PlaybackError + "\n" + ex.FlattenException());
+            }
+        }
+
+        private string GetOrCreateBink2PlaybackMoviePath()
+        {
+            if (_bink2PlaybackMoviePath != null && File.Exists(_bink2PlaybackMoviePath))
+            {
+                return _bink2PlaybackMoviePath;
+            }
+
+            if (IsExternalFile)
+            {
+                string bikName = BikFileName + ".bik";
+                string packageDirectory = Path.GetDirectoryName(CurrentLoadedExport.FileRef.FilePath);
+                string bioGameDirectory = packageDirectory == null ? null : Path.GetDirectoryName(packageDirectory);
+                _bink2PlaybackMoviePath = bioGameDirectory == null ? null : Path.Combine(bioGameDirectory, "Movies", bikName);
+                if (!File.Exists(_bink2PlaybackMoviePath))
+                {
+                    string rootPath = MEDirectories.GetDefaultGamePath(CurrentLoadedExport.Game);
+                    _bink2PlaybackMoviePath = rootPath != null && Directory.Exists(rootPath)
+                        ? Directory.EnumerateFiles(rootPath, bikName, SearchOption.AllDirectories).FirstOrDefault()
+                        : null;
+                }
+                _bink2PlaybackMovieIsTemporary = false;
+            }
+            else
+            {
+                byte[] data = GetMovieBytes();
+                if (data == null)
+                {
+                    return null;
+                }
+
+                string playbackDirectory = Path.Combine(Path.GetTempPath(), "LegendaryExplorer", "BinkPlayback");
+                Directory.CreateDirectory(playbackDirectory);
+                _bink2PlaybackMoviePath = Path.Combine(playbackDirectory, $"{Guid.NewGuid():N}.bik");
+                File.WriteAllBytes(_bink2PlaybackMoviePath, data);
+                _bink2PlaybackMovieIsTemporary = true;
+            }
+
+            return _bink2PlaybackMoviePath;
+        }
+
+        private void ClearEmbeddedBinkPlayback()
+        {
+            _embeddedBinkPlayer?.Stop();
+            if (_bink2PlaybackMovieIsTemporary)
+            {
+                DeleteTemporaryPlaybackFile(_bink2PlaybackMoviePath);
+            }
+
+            _bink2PlaybackMoviePath = null;
+            _bink2PlaybackMovieIsTemporary = false;
+            _embeddedPlayerIsRunning = false;
+            _bink2PlaybackError = null;
+            ResetBink2Timeline(clearDuration: true);
+            OnPropertyChanged(nameof(CanSeekBink2));
+            OnPropertyChanged(nameof(Bink2PlaybackFailed));
+            OnPropertyChanged(nameof(Bink2PlaybackStatus));
+            CommandManager.InvalidateRequerySuggested();
+        }
+
         private static void DeleteTemporaryPlaybackFile(string moviePath)
         {
             if (moviePath == null)
@@ -493,7 +735,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             }
             else
             {
-                OpenExportInRAD();
+                PlayExportInEmbeddedBinkPlayer();
             }
         }
 
@@ -514,13 +756,49 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         private void PauseMoviePlayer()
         {
-            IsVLCPlaying = false;
-            mediaPlayer.Pause();
+            if (IsBink1)
+            {
+                IsVLCPlaying = false;
+                mediaPlayer.Pause();
+                return;
+            }
+
+            if (!_embeddedBinkPlayer.TogglePause())
+            {
+                return;
+            }
+
+            if (_bink2IsPaused)
+            {
+                _bink2IsPaused = false;
+                _bink2PlaybackClock.Restart();
+                _bink2TimelineTimer.Start();
+            }
+            else
+            {
+                _bink2PlaybackBaseSeconds = GetBink2PlaybackSeconds();
+                _bink2PlaybackClock.Reset();
+                _bink2IsPaused = true;
+            }
+
+            OnPropertyChanged(nameof(Bink2PlaybackStatus));
+            CommandManager.InvalidateRequerySuggested();
         }
         private void RewindMoviePlayer() => mediaPlayer.Position = 0;
 
         private void StopMoviePlayer()
         {
+            if (!IsBink1)
+            {
+                _embeddedBinkPlayer.StopPlayback();
+                _embeddedPlayerIsRunning = false;
+                ResetBink2Timeline(clearDuration: false);
+                OnPropertyChanged(nameof(CanSeekBink2));
+                OnPropertyChanged(nameof(Bink2PlaybackStatus));
+                CommandManager.InvalidateRequerySuggested();
+                return;
+            }
+
             mediaPlayer.Stop();
             var bik = mediaPlayer.Media;
             if (bik != null)
@@ -528,6 +806,105 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 mediaPlayer.Media = null;
                 bik.Dispose();
             }
+        }
+
+        private void ConfigureBink2Timeline(string moviePath)
+        {
+            Span<byte> header = stackalloc byte[36];
+            using var stream = new FileStream(moviePath, FileMode.Open, FileAccess.Read, FileShare.Read);
+            int bytesRead = stream.Read(header);
+            _bink2Duration = BinkPlayerLauncher.TryGetBink2Duration(header[..bytesRead], out TimeSpan duration)
+                ? duration
+                : TimeSpan.Zero;
+            OnPropertyChanged(nameof(Bink2PlaybackTimeText));
+            OnPropertyChanged(nameof(CanSeekBink2));
+        }
+
+        private void Bink2TimelineTimer_Tick(object sender, EventArgs e)
+        {
+            if (!_embeddedPlayerIsRunning || _bink2IsPaused || _bink2ScrubberIsChanging || _bink2Duration <= TimeSpan.Zero)
+            {
+                return;
+            }
+
+            double playbackSeconds = Math.Min(GetBink2PlaybackSeconds(), _bink2Duration.TotalSeconds);
+            Bink2PlaybackPosition = playbackSeconds / _bink2Duration.TotalSeconds;
+            if (playbackSeconds >= _bink2Duration.TotalSeconds)
+            {
+                _bink2PlaybackBaseSeconds = playbackSeconds;
+                _bink2PlaybackClock.Reset();
+                _bink2TimelineTimer.Stop();
+            }
+        }
+
+        private double GetBink2PlaybackSeconds()
+            => _bink2PlaybackBaseSeconds + (_bink2IsPaused ? 0 : _bink2PlaybackClock.Elapsed.TotalSeconds);
+
+        private void ResetBink2Timeline(bool clearDuration)
+        {
+            _bink2TimelineTimer?.Stop();
+            _bink2PlaybackClock.Reset();
+            _bink2PlaybackBaseSeconds = 0;
+            _bink2IsPaused = false;
+            _bink2ScrubberIsChanging = false;
+            Bink2PlaybackPosition = 0;
+            if (clearDuration)
+            {
+                _bink2Duration = TimeSpan.Zero;
+                OnPropertyChanged(nameof(Bink2PlaybackTimeText));
+            }
+        }
+
+        private void Bink2Scrubber_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            if (!IsBink1)
+            {
+                _bink2ScrubberIsChanging = true;
+            }
+        }
+
+        private void Bink2Scrubber_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+        {
+            if (!IsBink1)
+            {
+                _bink2ScrubberIsChanging = false;
+                CommitBink2Seek();
+            }
+        }
+
+        private void Bink2Scrubber_PreviewKeyUp(object sender, KeyEventArgs e)
+        {
+            if (!IsBink1)
+            {
+                CommitBink2Seek();
+            }
+        }
+
+        private void CommitBink2Seek()
+        {
+            if (_bink2Duration <= TimeSpan.Zero || !_embeddedBinkPlayer.Seek(Bink2PlaybackPosition))
+            {
+                return;
+            }
+
+            _bink2PlaybackBaseSeconds = Bink2PlaybackPosition * _bink2Duration.TotalSeconds;
+            if (!_bink2IsPaused)
+            {
+                _bink2PlaybackClock.Restart();
+                _bink2TimelineTimer.Start();
+            }
+        }
+
+        private static string FormatPlaybackTime(TimeSpan time)
+        {
+            if (time <= TimeSpan.Zero)
+            {
+                return "0:00";
+            }
+
+            return time.TotalHours >= 1
+                ? time.ToString(@"h\:mm\:ss")
+                : time.ToString(@"m\:ss");
         }
 
         private byte[] GetMovieBytes()
