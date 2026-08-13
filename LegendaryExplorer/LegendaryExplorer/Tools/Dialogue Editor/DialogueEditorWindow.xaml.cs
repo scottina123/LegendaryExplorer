@@ -1608,7 +1608,7 @@ namespace LegendaryExplorer.DialogueEditor
             {
                 MessageBox.Show(this,
                     "Blank BioConversation generation is available only for ME3 and LE3 packages.",
-                    "Generate blank BioConversation",
+                    "Generate Blank BioConversation",
                     MessageBoxButton.OK,
                     MessageBoxImage.Warning);
                 return;
@@ -1628,7 +1628,7 @@ namespace LegendaryExplorer.DialogueEditor
             {
                 MessageBox.Show(this,
                     $"A top-level package named '{topPackageName}' already exists. Choose a new name to avoid modifying existing assets.",
-                    "Generate blank BioConversation",
+                    "Generate Blank BioConversation",
                     MessageBoxButton.OK,
                     MessageBoxImage.Warning);
                 return;
@@ -1654,7 +1654,7 @@ namespace LegendaryExplorer.DialogueEditor
                 Conversations_ListBox.SelectedItem = conversation;
                 MessageBox.Show(this,
                     $"Created '{bioConversation.InstancedFullPath}' with blank player, owner, and non-speaker FaceFX assets.",
-                    "Generate blank BioConversation",
+                    "Generate Blank BioConversation",
                     MessageBoxButton.OK,
                     MessageBoxImage.Information);
             }
@@ -1662,7 +1662,7 @@ namespace LegendaryExplorer.DialogueEditor
             {
                 MessageBox.Show(this,
                     ex.FlattenException(),
-                    "Generate blank BioConversation",
+                    "Generate Blank BioConversation",
                     MessageBoxButton.OK,
                     MessageBoxImage.Error);
             }

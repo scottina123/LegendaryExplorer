@@ -760,7 +760,7 @@
                     <DockPanel Grid.Row="0" Grid.Column="0"
                                Visibility="{Binding Pcc, Converter={StaticResource NullVisibilityConverter}}">
                         <Button DockPanel.Dock="Top" Margin="2" Padding="4,2"
-                                Content="Generate blank BioConversation"
+                                Content="Generate Blank BioConversation"
                                 Command="{Binding GenerateBlankBioConversationCommand}"
                                 ToolTip="Create a blank BioConversation and its player, owner, and non-speaker FaceFX assets" />
                         <ListBox Name="Conversations_ListBox"
