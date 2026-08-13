@@ -184,8 +184,9 @@ public partial class GesturePreviewExportLoader : ExportLoaderControl
     private static void AddStartingPose(ExportEntry track, IReadOnlyList<ExportEntry> dynamicAnimSets,
         ICollection<GestureAnimationItem> result, PackageCache packageCache)
     {
-        var setName = track.GetProperty<NameProperty>("nmStartingPoseSet")?.Value ?? "None";
-        var animationName = track.GetProperty<NameProperty>("nmStartingPoseAnim")?.Value ?? "None";
+        PropertyCollection trackProperties = track.GetCondensedProperties();
+        var setName = trackProperties.GetProp<NameProperty>("nmStartingPoseSet")?.Value ?? "None";
+        var animationName = trackProperties.GetProp<NameProperty>("nmStartingPoseAnim")?.Value ?? "None";
         if (IsNone(animationName))
         {
             return;
@@ -193,7 +194,7 @@ public partial class GesturePreviewExportLoader : ExportLoaderControl
 
         var settings = new GesturePlaybackSettings
         {
-            StartOffset = Math.Max(0, track.GetProperty<FloatProperty>("m_fStartPoseOffset")?.Value ?? 0),
+            StartOffset = Math.Max(0, trackProperties.GetProp<FloatProperty>("m_fStartPoseOffset")?.Value ?? 0),
         };
         result.Add(CreateAnimationItem(null, 0, -1, 0, "Starting Pose", setName, animationName, dynamicAnimSets, packageCache, settings));
     }

@@ -145,6 +145,121 @@ public class AnimationTests
     }
 
     [TestMethod]
+    public void DialogueOverlayPreservesSeatedBasePoseLowerBody()
+    {
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("SeatedGestureLayerTest.pcc", MEGame.LE3);
+        var skeletalMesh = new SkeletalMesh
+        {
+            RefSkeleton =
+            [
+                CreateBone("root", 0),
+                CreateBone("pelvis", 0),
+                CreateBone("LowerBack", 1),
+                CreateBone("head", 2),
+                CreateBone("leg", 1),
+            ],
+        };
+        Quaternion seatedLegRotation = Quaternion.CreateFromAxisAngle(Vector3.UnitY, MathF.PI / 2);
+        AnimSequence seatedBase = CreateAnimation(package, "SeatedBase",
+            ["root", "pelvis", "LowerBack", "head", "leg"],
+        [
+            CreateTrack(Quaternion.Identity),
+            CreateTrack(Quaternion.Identity),
+            CreateTrack(Quaternion.Identity),
+            CreateTrack(Quaternion.Identity),
+            CreateTrack(seatedLegRotation),
+        ]);
+        AnimSequence standingGesture = CreateAnimation(package, "StandingGesture",
+            ["root", "pelvis", "LowerBack", "head", "leg"],
+        [
+            CreateTrack(Quaternion.Identity),
+            CreateTrack(Quaternion.Identity),
+            CreateTrack(Quaternion.Identity),
+            CreateTrack(Quaternion.Identity, Quaternion.CreateFromAxisAngle(Vector3.UnitX, MathF.PI / 2)),
+            CreateTrack(Quaternion.Identity, Quaternion.CreateFromAxisAngle(Vector3.UnitZ, MathF.PI / 2)),
+        ]);
+
+        var seatedPlayer = new AnimSequencePlayer(skeletalMesh);
+        seatedPlayer.SetAnimation(seatedBase);
+        seatedPlayer.SetCurrentTime(0.5f);
+        seatedPlayer.ComputeSkinningMatrices();
+
+        var layeredPlayer = new AnimSequencePlayer(skeletalMesh);
+        layeredPlayer.SetAnimationTimeline(
+        [
+            new AnimSequencePlayer.ScheduledAnimationClip
+            {
+                Animation = seatedBase,
+                StartTime = 0,
+                EndTime = 1,
+                AnimationStartTime = 0,
+                AnimationEndTime = 1,
+                IsBaseLayer = true,
+            },
+            new AnimSequencePlayer.ScheduledAnimationClip
+            {
+                Animation = standingGesture,
+                StartTime = 0,
+                EndTime = 1,
+                AnimationStartTime = 0,
+                AnimationEndTime = 1,
+                UseMotionBoneMask = true,
+            },
+        ]);
+        layeredPlayer.SetCurrentTime(0.5f);
+        layeredPlayer.ComputeSkinningMatrices();
+
+        AssertMatrixEqual(seatedPlayer.BoneComponentSpaceTransforms[4],
+            layeredPlayer.BoneComponentSpaceTransforms[4]);
+        Assert.AreNotEqual(seatedPlayer.BoneComponentSpaceTransforms[3],
+            layeredPlayer.BoneComponentSpaceTransforms[3]);
+    }
+
+    [TestMethod]
+    public void DelayedGestureCanHoldItsFirstFrameAsThePreRollBasePose()
+    {
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("GesturePreRollTest.pcc", MEGame.LE3);
+        var skeletalMesh = new SkeletalMesh
+        {
+            RefSkeleton =
+            [
+                CreateBone("root", 0),
+                CreateBone("body", 0),
+            ],
+        };
+        Quaternion seatedRotation = Quaternion.CreateFromAxisAngle(Vector3.UnitY, MathF.PI / 2);
+        AnimSequence seatedPose = CreateAnimation(package, "SeatedPose", ["root", "body"],
+        [
+            CreateTrack(Quaternion.Identity),
+            CreateTrack(seatedRotation),
+        ]);
+
+        var expectedPlayer = new AnimSequencePlayer(skeletalMesh);
+        expectedPlayer.SetAnimation(seatedPose);
+        expectedPlayer.SetCurrentTime(0);
+        expectedPlayer.ComputeSkinningMatrices();
+
+        var player = new AnimSequencePlayer(skeletalMesh);
+        player.SetAnimationTimeline(
+        [
+            new AnimSequencePlayer.ScheduledAnimationClip
+            {
+                Animation = seatedPose,
+                StartTime = 1,
+                EndTime = 2,
+                AnimationStartTime = 0,
+                AnimationEndTime = 1,
+                HoldBeforeStart = true,
+            },
+        ]);
+        player.SetCurrentTime(0);
+        player.ComputeSkinningMatrices();
+
+        AssertMatrixEqual(expectedPlayer.BoneComponentSpaceTransforms[1],
+            player.BoneComponentSpaceTransforms[1]);
+    }
+
+    [TestMethod]
     public void ConversationTimelineExtractsRootTranslationAndKeepsSkeletalRootAnchored()
     {
         using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("RootNormalizationTest.pcc", MEGame.LE3);

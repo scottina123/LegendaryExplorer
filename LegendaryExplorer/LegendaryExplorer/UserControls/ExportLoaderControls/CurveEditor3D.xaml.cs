@@ -678,6 +678,19 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                     });
                 }
             }
+            // A starting-pose reference can resolve without producing a usable base clip (for
+            // example when its inherited continuation time is at the sequence end). In that case,
+            // hold the first authored full-body pose until its key so the actor never falls back to
+            // the skeletal bind pose during the node's pre-roll.
+            bool hasBasePoseAtTimelineStart = scheduledClips.Any(clip => clip.IsBaseLayer
+                                                                         && clip.StartTime <= 0
+                                                                         && clip.EndTime > 0);
+            AnimationPreviewControl.AnimationTimelineClip preRollClip = !hasBasePoseAtTimelineStart
+                ? timelineClips.Where(clip => clip.AnimationExport is not null && clip.StartTime > 0)
+                    .OrderByDescending(clip => clip.IsBaseLayer)
+                    .ThenBy(clip => clip.StartTime)
+                    .FirstOrDefault()
+                : null;
             foreach (AnimationPreviewControl.AnimationTimelineClip clip in timelineClips)
             {
                 if (clip.AnimationExport is null)
@@ -700,6 +713,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                     Weight = clip.Weight,
                     Loop = clip.Loop,
                     IsBaseLayer = clip.IsBaseLayer,
+                    HoldBeforeStart = ReferenceEquals(clip, preRollClip) && clip.StartTime > 0,
                     // Matinee locomotion is supplied by the TrackGesture starting pose while
                     // BioGestureData entries layer head/body gestures over it. Head gestures still
                     // contain constant tracks for the rest of the skeleton; treating those as a
