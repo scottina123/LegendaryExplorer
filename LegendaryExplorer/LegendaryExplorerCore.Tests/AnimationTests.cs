@@ -168,13 +168,20 @@ public class AnimationTests
                 },
             ],
         };
+        Quaternion authoredRootYaw = Quaternion.CreateFromAxisAngle(Vector3.UnitZ, MathF.PI / 2);
         AnimSequence authoredPose = CreateAnimation(package, "AuthoredPose", ["Root"],
-            [CreateTranslationTrack(new Vector3(150, 0, 0), new Vector3(170, 0, 0))], useTranslation: true);
+            [new AnimTrack
+            {
+                Positions = [new Vector3(150, 0, 0), new Vector3(170, 0, 0)],
+                Rotations = [authoredRootYaw],
+            }], useTranslation: true);
         var player = new AnimSequencePlayer(skeletalMesh);
         player.SetAnimation(authoredPose);
         player.SetCurrentTime(0);
         player.ComputeSkinningMatrices();
         Assert.AreEqual(150, player.BoneComponentSpaceTransforms[1].Translation.X, 0.001f);
+        Matrix4x4 expectedAnchoredRoot = player.BoneComponentSpaceTransforms[1];
+        expectedAnchoredRoot.Translation = new Vector3(10, 0, 0);
         player.SetAnimationTimeline(
         [
             new AnimSequencePlayer.ScheduledAnimationClip
@@ -192,11 +199,13 @@ public class AnimationTests
         player.SetCurrentTime(0);
         player.ComputeSkinningMatrices();
         Assert.AreEqual(10, player.BoneComponentSpaceTransforms[1].Translation.X, 0.001f);
+        AssertMatrixEqual(expectedAnchoredRoot, player.BoneComponentSpaceTransforms[1]);
         Assert.AreEqual(0, player.ExtractedRootMotionTranslation.X, 0.001f);
 
         player.SetCurrentTime(0.5f);
         player.ComputeSkinningMatrices();
         Assert.AreEqual(10, player.BoneComponentSpaceTransforms[1].Translation.X, 0.001f);
+        AssertMatrixEqual(expectedAnchoredRoot, player.BoneComponentSpaceTransforms[1]);
         Assert.AreEqual(10, player.ExtractedRootMotionTranslation.X, 0.001f);
     }
 

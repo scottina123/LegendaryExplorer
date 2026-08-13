@@ -29,10 +29,15 @@ public class CurveEditor3DModelCacheTests
     }
 
     [TestMethod]
-    public void GestureRootTranslationIsNotExtractedForSingleKeyActorAnchor()
+    public void GestureRootTranslationIsExtractedForOffStageSingleKeyActorAnchor()
     {
+        Assert.IsTrue(CurveEditor3D.ShouldExtractDialogueGestureRootTranslation(
+            isConversationPreview: true, movementKeyCount: 1, oneKeyTrackOwnsLocomotion: true));
+        Assert.IsTrue(CurveEditor3D.ShouldExtractDialogueGestureRootTranslation(
+            isConversationPreview: true, movementKeyCount: 1, isCacheEvaluation: false,
+            oneKeyTrackOwnsLocomotion: true));
         Assert.IsFalse(CurveEditor3D.ShouldExtractDialogueGestureRootTranslation(
-            isConversationPreview: true, movementKeyCount: 1));
+            isConversationPreview: true, movementKeyCount: 1, oneKeyTrackOwnsLocomotion: false));
     }
 
     [TestMethod]
@@ -97,6 +102,65 @@ public class CurveEditor3DModelCacheTests
         Assert.AreEqual(225, moved.Location.Y, 0.001f);
         Assert.AreEqual(300, moved.Location.Z, 0.001f);
         Assert.AreEqual(inherited.Rotation, moved.Rotation);
+    }
+
+    [TestMethod]
+    public void StageAttachedPlayerRootMotionAlignsItsAuthoredAxesToItsSlot()
+    {
+        var track = new CameraOrigin(new Vector3(21671.81f, -6342.2065f, 1696),
+            new Vector3(0, 0, -161.47705f));
+        var playerSlot = new CameraOrigin(new Vector3(20982.588f, -6657.2593f, 1702.0001f),
+            new Vector3(0, 0, -133.15979f));
+        var authoredRootDelta = new Vector3(-203.01079f, -237.88031f, -9.859883f);
+
+        Assert.IsTrue(CurveEditor3D.IsStageAttachedPlayerTrackDisplaced(track, playerSlot));
+
+        float yawOffset = CurveEditor3D.CalculateStageAttachedRootMotionYawOffset(track, playerSlot,
+            authoredRootDelta);
+        Vector3 alignedRootDelta = CurveEditor3D.RotateDialogueGestureRootMotion(authoredRootDelta, yawOffset);
+        CameraOrigin moved = CurveEditor3D.ApplyDialogueGestureRootMotion(track, alignedRootDelta);
+        var targetDirection = new Vector2(playerSlot.Location.X - track.Location.X,
+            playerSlot.Location.Y - track.Location.Y);
+        var movementDirection = new Vector2(moved.Location.X - track.Location.X,
+            moved.Location.Y - track.Location.Y);
+
+        float normalizedCross = (targetDirection.X * movementDirection.Y
+                                 - targetDirection.Y * movementDirection.X)
+                                / (targetDirection.Length() * movementDirection.Length());
+        Assert.AreEqual(0f, normalizedCross, 0.0001f);
+        Assert.IsTrue(Vector2.Dot(targetDirection, movementDirection) > 0f);
+
+        CameraOrigin faced = CurveEditor3D.ApplyDialogueGestureRootMotionFacing(moved, 180f);
+        Assert.AreEqual(moved.Location, faced.Location);
+        Assert.AreEqual(18.52295f, faced.Rotation.Z, 0.0001f);
+    }
+
+    [TestMethod]
+    public void PlayerTrackAlreadyOnItsStageSlotDoesNotOwnGestureLocomotion()
+    {
+        var dockPlayerTrack = new CameraOrigin(new Vector3(-16058.323f, 7772.323f, -170311.8f),
+            new Vector3(0, 0, -140.00977f));
+        var dockPlayerSlot = new CameraOrigin(new Vector3(-16058.323f, 7772.323f, -170303f),
+            new Vector3(0, 0, -139.99878f));
+
+        Assert.IsFalse(CurveEditor3D.IsStageAttachedPlayerTrackDisplaced(dockPlayerTrack, dockPlayerSlot));
+        Assert.IsFalse(CurveEditor3D.ShouldExtractDialogueGestureRootTranslation(
+            isConversationPreview: true, movementKeyCount: 1,
+            oneKeyTrackOwnsLocomotion: CurveEditor3D.IsStageAttachedPlayerTrackDisplaced(
+                dockPlayerTrack, dockPlayerSlot)));
+    }
+
+    [TestMethod]
+    public void StageAttachedPlayerRootMotionKeepsAnAlreadyAlignedForwardDelta()
+    {
+        var track = new CameraOrigin(Vector3.Zero, Vector3.Zero);
+        var playerSlot = new CameraOrigin(new Vector3(500, 0, 0), Vector3.Zero);
+
+        Vector3 rootDelta = new(100, 0, 0);
+        float yawOffset = CurveEditor3D.CalculateStageAttachedRootMotionYawOffset(track, playerSlot, rootDelta);
+
+        Assert.AreEqual(0f, yawOffset, 0.0001f);
+        Assert.AreEqual(rootDelta, CurveEditor3D.RotateDialogueGestureRootMotion(rootDelta, yawOffset));
     }
 
     [ClassInitialize]

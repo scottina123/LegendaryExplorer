@@ -607,10 +607,12 @@ public class AnimSequencePlayer : AnimPlayer
             && Matrix4x4.Decompose(blendedLocalPose[_rootMotionBoneIndex], out _, out Quaternion rootRotation,
                 out _))
         {
-            // UE3 extracts root motion into the owning actor. Leaving it on the skeletal Root makes
-            // each BioGestureData AnimSequence restart from its own authored coordinates, producing
+            // UE3 extracts root translation into the owning actor. Leaving it on the skeletal Root
+            // makes each BioGestureData slice restart from its own authored coordinates, producing
             // a visible snap at clip boundaries. Keep the bone at the mesh reference position; the
             // conversation preview applies ExtractedRootMotionTranslation to the actor transform.
+            // Root rotation remains authored pose data: walk-out/strafe animations use it to turn
+            // the body independently of the TrackMove displacement direction.
             blendedLocalPose[_rootMotionBoneIndex] = Matrix4x4.CreateFromQuaternion(rootRotation)
                                                       * Matrix4x4.CreateTranslation(
                                                           _bones[_rootMotionBoneIndex].Position);

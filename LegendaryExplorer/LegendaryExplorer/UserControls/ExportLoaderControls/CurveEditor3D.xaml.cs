@@ -203,6 +203,10 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             new(StringComparer.OrdinalIgnoreCase);
         public Dictionary<string, CameraOrigin> ActorOriginOverrides { get; } =
             new(StringComparer.OrdinalIgnoreCase);
+        public Dictionary<string, float> ActorRootMotionYawOffsets { get; } =
+            new(StringComparer.OrdinalIgnoreCase);
+        public Dictionary<string, float> ActorRootMotionFacingYawOffsets { get; } =
+            new(StringComparer.OrdinalIgnoreCase);
         public Dictionary<string, string> StartLookAtTargets { get; } =
             new(StringComparer.OrdinalIgnoreCase);
         public Dictionary<string, string> EndLookAtTargets { get; } =
@@ -4683,6 +4687,8 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             DialogueSegmentRuntime runtime = dialogueRuntimeCache[segment];
             runtime.StartActorGestureStates.Clear();
             runtime.EndActorGestureStates.Clear();
+            runtime.ActorRootMotionYawOffsets.Clear();
+            runtime.ActorRootMotionFacingYawOffsets.Clear();
             IReadOnlyDictionary<string, CameraOrigin> inheritedOrigins = segment.Parent is not null
                 && dialogueRuntimeCache.TryGetValue(segment.Parent, out DialogueSegmentRuntime parentRuntime)
                 ? parentRuntime.EndActorOrigins
@@ -4751,14 +4757,25 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                         // Only a genuine movement spline may transfer gesture motion into the
                         // actor transform inherited by the following dialogue node.
                         extractRootTranslation: ShouldExtractDialogueGestureRootTranslation(
-                            isDialogueConversationPreview, movementKeyCount),
+                            isDialogueConversationPreview, movementKeyCount,
+                            oneKeyTrackOwnsLocomotion: IsStageAttachedOneKeyPlayerLocomotion(actor,
+                                trackMove, resolved[actor])),
                         startingPoseTimeOverride: startingPoseTimeOverride);
                     Vector3 rootMotion = movementTrackEndTime is float trackEndTime
                         ? animationState.EvaluateExtractedRootMotionDelta(trackEndTime, segment.Duration)
                         : animationState.EvaluateExtractedRootMotion(segment.Duration);
                     if (rootMotion != Vector3.Zero)
                     {
-                        resolved[actor] = ApplyDialogueGestureRootMotion(resolved[actor], rootMotion);
+                        float rootMotionYawOffset = ResolveStageAttachedRootMotionYawOffset(actor, trackMove,
+                            resolved[actor], rootMotion);
+                        float rootMotionFacingYawOffset = ResolveStageAttachedRootMotionFacingYawOffset(actor,
+                            trackMove, resolved[actor], rootMotion);
+                        runtime.ActorRootMotionYawOffsets[actor.ActorTag] = rootMotionYawOffset;
+                        runtime.ActorRootMotionFacingYawOffsets[actor.ActorTag] = rootMotionFacingYawOffset;
+                        resolved[actor] = ApplyDialogueGestureRootMotion(resolved[actor],
+                            RotateDialogueGestureRootMotion(rootMotion, rootMotionYawOffset));
+                        resolved[actor] = ApplyDialogueGestureRootMotionFacing(resolved[actor],
+                            rootMotionFacingYawOffset);
                     }
                     if (animationState.CaptureGesturePose() is { } pose)
                     {
@@ -4994,6 +5011,8 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             DialogueSegmentRuntime runtime = dialogueRuntimeCache[segment];
             runtime.StartActorOrigins.Clear();
             runtime.EndActorOrigins.Clear();
+            runtime.ActorRootMotionYawOffsets.Clear();
+            runtime.ActorRootMotionFacingYawOffsets.Clear();
             foreach (PreviewActorConfiguration actor in previewActors)
             {
                 runtime.StartActorOrigins[actor.ActorTag] = inheritedOrigins.GetValueOrDefault(actor.ActorTag,
@@ -5036,13 +5055,23 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                         previewActorGesturePackageCache, segment.Duration, gesture,
                         maskDialogueOverlayStaticBones: true,
                         extractRootTranslation: ShouldExtractDialogueGestureRootTranslation(
-                            isDialogueConversationPreview, movementKeyCount),
+                            isDialogueConversationPreview, movementKeyCount,
+                            oneKeyTrackOwnsLocomotion: IsStageAttachedOneKeyPlayerLocomotion(actor,
+                                trackMove, resolved[actor])),
                         startingPoseTimeOverride: startingPoseTimeOverride);
                     Vector3 rootMotion = movementTrackEndTime is float trackEndTime
                         ? animationState.EvaluateExtractedRootMotionDelta(trackEndTime, segment.Duration)
                         : animationState.EvaluateExtractedRootMotion(segment.Duration);
+                    float rootMotionYawOffset = ResolveStageAttachedRootMotionYawOffset(actor, trackMove,
+                        resolved[actor], rootMotion);
+                    float rootMotionFacingYawOffset = ResolveStageAttachedRootMotionFacingYawOffset(actor,
+                        trackMove, resolved[actor], rootMotion);
+                    runtime.ActorRootMotionYawOffsets[actor.ActorTag] = rootMotionYawOffset;
+                    runtime.ActorRootMotionFacingYawOffsets[actor.ActorTag] = rootMotionFacingYawOffset;
                     resolved[actor] = ApplyDialogueGestureRootMotion(resolved[actor],
-                        rootMotion);
+                        RotateDialogueGestureRootMotion(rootMotion, rootMotionYawOffset));
+                    resolved[actor] = ApplyDialogueGestureRootMotionFacing(resolved[actor],
+                        rootMotionFacingYawOffset);
                 }
             }
             foreach (PreviewActorConfiguration actor in previewActors)
@@ -9449,6 +9478,10 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                     extractedRootMotion = state.TrackMove?.Model?.Keyframes is { Count: > 0 } movementKeys
                         ? animationState.EvaluateExtractedRootMotionDelta(movementKeys[^1].Time, time)
                         : animationState.EvaluateExtractedRootMotion(time);
+                    float rootMotionYawOffset = activeDialogueSegmentRuntime?.ActorRootMotionYawOffsets
+                        .GetValueOrDefault(state.Actor.ActorTag) ?? 0f;
+                    extractedRootMotion = RotateDialogueGestureRootMotion(extractedRootMotion,
+                        rootMotionYawOffset);
                 }
             }
 
@@ -9464,6 +9497,10 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                 resolvedOrigins[state] = ApplyDialogueGestureRootMotion(state.OriginalOrigin,
                     extractedRootMotion);
             }
+            float rootMotionFacingYawOffset = activeDialogueSegmentRuntime?.ActorRootMotionFacingYawOffsets
+                .GetValueOrDefault(state.Actor.ActorTag) ?? 0f;
+            resolvedOrigins[state] = ApplyDialogueGestureRootMotionFacing(resolvedOrigins[state],
+                rootMotionFacingYawOffset);
         }
         Dictionary<PreviewActorConfiguration, CameraOrigin> actorOrigins = resolvedOrigins
             .ToDictionary(pair => pair.Key.Actor, pair => pair.Value);
@@ -10918,34 +10955,76 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             return;
         }
 
-        int movementKeyCount = previewActorTrackAssignments.TryGetValue(actor,
-                                   out TrackMovePlaybackOption movementTrack)
-            ? movementTrack?.Model?.Keyframes?.Count ?? 0
-            : 0;
+        previewActorTrackAssignments.TryGetValue(actor, out TrackMovePlaybackOption movementTrack);
+        int movementKeyCount = movementTrack?.Model?.Keyframes?.Count ?? 0;
         animationState.SetTimeline(gesture.StartingPose, gesture.Timeline, previewActorGesturePackageCache,
             playbackDuration ?? activeDialogueSegmentRuntime?.Segment.Duration, gesture,
             maskDialogueOverlayStaticBones: isDialogueConversationPreview,
-            // Keep authored locomotion on the skeletal Root during visible playback. Constant
-            // TrackMove segments such as R3 deliberately pair a held actor anchor with a walking
-            // gesture, then resynchronize the actor at the next key. Normalizing that Root here
-            // freezes the walk and applying only the post-track delta moves it from the wrong
-            // origin. Cache evaluation separately extracts the final persistent displacement.
+            // Multi-key TrackMoves own their visible spline locomotion. A one-key TrackMove is
+            // different: dialogue Matinees pair that anchor with sliced locomotion gestures, so
+            // their authored Root must be normalized and applied as an actor-space delta instead
+            // of leaving each clip's absolute Root coordinates on the mesh.
             extractRootTranslation: ShouldExtractDialogueGestureRootTranslation(isDialogueConversationPreview,
-                movementKeyCount, isCacheEvaluation: false),
+                movementKeyCount, isCacheEvaluation: false,
+                oneKeyTrackOwnsLocomotion: IsStageAttachedOneKeyPlayerLocomotion(actor, movementTrack)),
             startingPoseTimeOverride: startingPoseTimeOverride);
         UpdatePreviewActorSkinning(actor);
     }
 
     internal static bool ShouldExtractDialogueGestureRootTranslation(bool isConversationPreview,
-        int movementKeyCount, bool isCacheEvaluation = true)
+        int movementKeyCount, bool isCacheEvaluation = true, bool oneKeyTrackOwnsLocomotion = false)
     {
-        // Only a multi-key TrackMove establishes an actor-space locomotion path. Its gesture root
-        // may continue that motion after the final spline key. Without a TrackMove, keep motion on
-        // the skeletal Root so it cannot displace the pawn inherited by the next dialogue node. A
-        // one-key TrackMove is an authored anchor and likewise must not accumulate gesture motion.
-        // Visible playback retains the Root on the skeleton because constant TrackMove segments
-        // use that local translation to travel between their authored synchronization keys.
-        return isConversationPreview && isCacheEvaluation && movementKeyCount > 1;
+        // A multi-key TrackMove supplies the visible spline path; hidden cache evaluation extracts
+        // only the gesture motion that continues after its final key. A one-key TrackMove instead
+        // supplies an actor anchor. Some shipped conversations (for example Cerberus Miranda E1)
+        // build the entire walk from successive slices of one root-moving gesture. Extracting in
+        // both visible and cache evaluation keeps those slices relative to their authored starts
+        // and carries the resulting actor transform forward without absolute skeletal-Root drift.
+        // With no TrackMove, keep motion on the skeletal Root so it cannot alter inherited actor
+        // placement merely because a gesture contains incidental translation.
+        return isConversationPreview
+               && (movementKeyCount == 1 && oneKeyTrackOwnsLocomotion
+                   || isCacheEvaluation && movementKeyCount > 1);
+    }
+
+    private bool IsStageAttachedOneKeyPlayerLocomotion(PreviewActorConfiguration actor,
+        TrackMovePlaybackOption trackMove)
+    {
+        if (trackMove?.Model?.Keyframes is not { Count: 1 } keys)
+        {
+            return false;
+        }
+
+        CameraOrigin originalOrigin = activeDialogueSegmentRuntime?.StartActorOrigins
+            .GetValueOrDefault(actor.ActorTag, actor.Origin) ?? actor.Origin;
+        var state = new PreviewActorPlaybackState
+        {
+            Actor = actor,
+            TrackMove = trackMove,
+            OriginalOrigin = originalOrigin,
+            MoveFrame = GetTrackMoveFrame(trackMove),
+        };
+        CameraOrigin trackOrigin = ResolveActorTrackOrigin(state, EvaluateTrackMove(trackMove, keys[0].Time));
+        return IsStageAttachedOneKeyPlayerLocomotion(actor, trackMove, trackOrigin);
+    }
+
+    private bool IsStageAttachedOneKeyPlayerLocomotion(PreviewActorConfiguration actor,
+        TrackMovePlaybackOption trackMove, CameraOrigin trackOrigin) =>
+        string.Equals(actor?.ActorTag, "Player", StringComparison.OrdinalIgnoreCase)
+        && trackMove?.Model?.Keyframes is { Count: 1 }
+        && dialogueNodePreview?.StageContext?.ActorOrigins.TryGetValue("Player",
+            out CameraOrigin stageAttachment) == true
+        && IsStageAttachedPlayerTrackDisplaced(trackOrigin, stageAttachment);
+
+    internal static bool IsStageAttachedPlayerTrackDisplaced(CameraOrigin trackOrigin,
+        CameraOrigin stageAttachment)
+    {
+        // Stage Player origins contain the pawn-height correction while TrackMoves contain the mesh
+        // height, so only compare the authored floor-plane placement. Treat sub-centimetre deltas as
+        // serialization noise rather than an instruction to extract gesture locomotion.
+        var displacement = new Vector2(stageAttachment.Location.X - trackOrigin.Location.X,
+            stageAttachment.Location.Y - trackOrigin.Location.Y);
+        return displacement.LengthSquared() > 0.0001f;
     }
 
     internal static CameraOrigin ApplyDialogueGestureRootMotion(CameraOrigin origin, Vector3 localTranslation)
@@ -10958,6 +11037,90 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         Matrix4x4 actorRotation = Rotator.FromDegreesVector(origin.Rotation).ToRotationMatrix();
         Vector3 worldTranslation = Vector3.TransformNormal(localTranslation, actorRotation);
         return new CameraOrigin(origin.Location + worldTranslation, origin.Rotation);
+    }
+
+    private float ResolveStageAttachedRootMotionYawOffset(PreviewActorConfiguration actor,
+        TrackMovePlaybackOption trackMove, CameraOrigin trackOrigin, Vector3 localTranslation)
+    {
+        if (localTranslation == Vector3.Zero
+            || !string.Equals(actor?.ActorTag, "Player", StringComparison.OrdinalIgnoreCase)
+            || trackMove?.Model?.Keyframes is not { Count: 1 }
+            || dialogueNodePreview?.StageContext?.ActorOrigins.TryGetValue("Player",
+                out CameraOrigin stageAttachment) != true
+            || !IsStageAttachedPlayerTrackDisplaced(trackOrigin, stageAttachment))
+        {
+            return 0f;
+        }
+
+        // SeqVar_Player has no concrete actor export, but StartConversation still binds the live
+        // pawn to a stage node. A one-key Player TrackMove commonly places that pawn offstage and
+        // lets a root-moving gesture carry it toward the bound node. The authored skeletal Root
+        // axes need not match the TrackMove/stage axes, so align the complete endpoint displacement
+        // to that node once. Playback reuses this stable yaw for every frame, preserving the shape
+        // of the authored path without changing direction midway through the gesture.
+        return CalculateStageAttachedRootMotionYawOffset(trackOrigin, stageAttachment, localTranslation);
+    }
+
+    private float ResolveStageAttachedRootMotionFacingYawOffset(PreviewActorConfiguration actor,
+        TrackMovePlaybackOption trackMove, CameraOrigin trackOrigin, Vector3 localTranslation)
+    {
+        // Male Shepard's stage-attached pawn and the authored locomotion Root use opposite facing
+        // hemispheres. Apply this after translation is resolved so it changes only the rendered
+        // pawn facing and cannot rotate the already stage-aligned displacement vector.
+        return localTranslation != Vector3.Zero
+               && string.Equals(actor?.ActorTag, "Player", StringComparison.OrdinalIgnoreCase)
+               && trackMove?.Model?.Keyframes is { Count: 1 }
+               && dialogueNodePreview?.StageContext?.ActorOrigins.TryGetValue("Player",
+                   out CameraOrigin stageAttachment) == true
+               && IsStageAttachedPlayerTrackDisplaced(trackOrigin, stageAttachment)
+            ? 180f
+            : 0f;
+    }
+
+    internal static float CalculateStageAttachedRootMotionYawOffset(CameraOrigin trackOrigin,
+        CameraOrigin stageAttachment, Vector3 localTranslation)
+    {
+        var localMovement = new Vector2(localTranslation.X, localTranslation.Y);
+        var targetMovement = new Vector2(stageAttachment.Location.X - trackOrigin.Location.X,
+            stageAttachment.Location.Y - trackOrigin.Location.Y);
+        if (localMovement.LengthSquared() <= 0.000001f || targetMovement.LengthSquared() <= 0.000001f)
+        {
+            return 0f;
+        }
+
+        Matrix4x4 actorRotation = Rotator.FromDegreesVector(trackOrigin.Rotation).ToRotationMatrix();
+        Vector3 worldMovement = Vector3.TransformNormal(localTranslation, actorRotation);
+        float worldMovementYaw = MathF.Atan2(worldMovement.Y, worldMovement.X) * 180f / MathF.PI;
+        float targetYaw = MathF.Atan2(targetMovement.Y, targetMovement.X) * 180f / MathF.PI;
+        float yawOffset = (targetYaw - worldMovementYaw + 180f) % 360f;
+        if (yawOffset < 0f)
+        {
+            yawOffset += 360f;
+        }
+        return yawOffset - 180f;
+    }
+
+    internal static Vector3 RotateDialogueGestureRootMotion(Vector3 localTranslation, float yawOffset)
+    {
+        if (localTranslation == Vector3.Zero || MathF.Abs(yawOffset) <= 0.000001f)
+        {
+            return localTranslation;
+        }
+
+        return Vector3.TransformNormal(localTranslation,
+            Matrix4x4.CreateRotationZ(yawOffset * MathF.PI / 180f));
+    }
+
+    internal static CameraOrigin ApplyDialogueGestureRootMotionFacing(CameraOrigin origin, float yawOffset)
+    {
+        if (MathF.Abs(yawOffset) <= 0.000001f)
+        {
+            return origin;
+        }
+
+        Vector3 rotation = origin.Rotation;
+        rotation.Z = (float)NormalizeAngle(rotation.Z + yawOffset);
+        return new CameraOrigin(origin.Location, rotation);
     }
 
     private void UpdatePreviewActorGestureStatus()
