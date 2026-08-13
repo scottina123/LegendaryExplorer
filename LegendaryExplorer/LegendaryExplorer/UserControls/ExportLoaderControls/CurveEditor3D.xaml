@@ -204,6 +204,30 @@
                                Text="0.00 / 0.00" MinWidth="92" TextAlignment="Right"/>
                 </Grid>
 
+                <Border x:Name="DialogueSceneShopPanel" DockPanel.Dock="Top" Margin="0,0,0,6" Padding="6,4"
+                        BorderBrush="#FFE6A23C" BorderThickness="1" CornerRadius="2" Visibility="Collapsed">
+                    <DockPanel>
+                        <TextBlock DockPanel.Dock="Left" Text="SceneShop path" FontWeight="SemiBold"
+                                   VerticalAlignment="Center" Margin="0,0,10,0"/>
+                        <ItemsControl ItemsSource="{Binding ActiveDialogueSceneShopChoices}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate><WrapPanel Orientation="Horizontal"/></ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,12,0">
+                                        <TextBlock Text="{Binding DisplayLabel}" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                                        <ComboBox ItemsSource="{Binding Options}" SelectedItem="{Binding SelectedOption, Mode=TwoWay}"
+                                                  DisplayMemberPath="DisplayName" MinWidth="155" MaxWidth="280"
+                                                  SelectionChanged="DialogueSceneShopComboBox_SelectionChanged"
+                                                  ToolTip="Choose the authored SceneShop branch used by this node. Returning to this divergence asks for the choice again."/>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </DockPanel>
+                </Border>
+
                 <ScrollViewer x:Name="DialogueTimelineTreeScrollViewer"
                               HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"
                               CanContentScroll="False" Focusable="False">
@@ -286,6 +310,11 @@
                                             <Setter Property="Opacity" Value="0.9"/>
                                         </DataTrigger>
                                         <DataTrigger Binding="{Binding IsAwaitingBranchChoice}" Value="True">
+                                            <Setter Property="BorderBrush" Value="#FFFFC13D"/>
+                                            <Setter Property="BorderThickness" Value="4"/>
+                                            <Setter Property="Opacity" Value="1"/>
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding IsAwaitingSceneShopChoice}" Value="True">
                                             <Setter Property="BorderBrush" Value="#FFFFC13D"/>
                                             <Setter Property="BorderThickness" Value="4"/>
                                             <Setter Property="Opacity" Value="1"/>

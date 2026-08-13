@@ -15,7 +15,7 @@ namespace LegendaryExplorer.Tools.InterpEditor;
 
 public static class SavedDialogueCachePresetManager
 {
-    private const int CurrentVersion = 12;
+    private const int CurrentVersion = 14;
     public static string StorageDirectory => Path.Combine(AppDirectories.AppDataFolder, "DialogueConversationCaches");
 
     public static IReadOnlyList<DialogueCachePreset> LoadAll()
@@ -111,6 +111,16 @@ public static class SavedDialogueCachePresetManager
                     mesh.MaterialOverrides ??= [];
                 }
             }
+            foreach (DialogueCacheNodePreset node in preset.Nodes)
+            {
+                node.SceneShopSelections ??= [];
+                node.SceneShopVariants ??= [];
+                foreach (DialogueCacheNodePreset variant in node.SceneShopVariants)
+                {
+                    variant.SceneShopSelections ??= [];
+                    variant.SceneShopVariants = [];
+                }
+            }
             preset.CacheFilePath = path;
             return preset;
         }
@@ -186,6 +196,8 @@ public sealed class DialogueCacheNodePreset
     public int NodeIndex { get; set; }
     public int LineStrRef { get; set; }
     public List<PackageExportReference> InterpDatas { get; set; } = [];
+    public List<PackageExportReference> SceneShopSelections { get; set; } = [];
+    public List<DialogueCacheNodePreset> SceneShopVariants { get; set; } = [];
     public PackageExportReference PrimaryTrackMove { get; set; }
     public List<DialogueTrackMoveCache> TrackMoves { get; set; } = [];
     public List<PackageExportReference> ExtraTrackMoves { get; set; } = [];

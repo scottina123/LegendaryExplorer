@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
 using System.Threading.Tasks;
 using LegendaryExplorer.Tools.InterpEditor;
@@ -179,6 +181,35 @@ public class CurveEditor3DModelCacheTests
             isConversationPreview: true, movementKeyCount: 1,
             oneKeyTrackOwnsLocomotion: CurveEditor3D.IsStageAttachedPlayerTrackDisplaced(
                 dockPlayerTrack, dockPlayerSlot)));
+    }
+
+    [TestMethod]
+    public void InitialOffStagePlayerTrackMayUseItsBoundStageSlotAsRootMotionDestination()
+    {
+        var track = new CameraOrigin(new Vector3(21671.81f, -6342.2065f, 1696),
+            new Vector3(0, 0, -161.47705f));
+        var playerSlot = new CameraOrigin(new Vector3(20982.588f, -6657.2593f, 1702.0001f),
+            new Vector3(0, 0, -133.15979f));
+        var inherited = new CameraOrigin(playerSlot.Location with { Z = playerSlot.Location.Z + 88f },
+            playerSlot.Rotation);
+
+        Assert.IsTrue(CurveEditor3D.ShouldAlignStageAttachedPlayerRootMotion(track, playerSlot, inherited));
+    }
+
+    [TestMethod]
+    public void LaterDockPlayerAnchorDoesNotWalkBackTowardOriginalStageSlot()
+    {
+        var dockE9Track = new CameraOrigin(new Vector3(-14659.821f, 8792.842f, -170309f), Vector3.Zero);
+        var initialPlayerSlot = new CameraOrigin(new Vector3(-16058.323f, 7772.323f, -170303f),
+            new Vector3(0, 0, -139.99878f));
+        var inheritedFromE8 = new CameraOrigin(new Vector3(-14994.821f, 8815.842f, -170309f), Vector3.Zero);
+
+        Assert.IsFalse(CurveEditor3D.ShouldAlignStageAttachedPlayerRootMotion(
+            dockE9Track, initialPlayerSlot, inheritedFromE8));
+        Assert.IsFalse(CurveEditor3D.ShouldExtractDialogueGestureRootTranslation(
+            isConversationPreview: true, movementKeyCount: 1,
+            oneKeyTrackOwnsLocomotion: CurveEditor3D.ShouldAlignStageAttachedPlayerRootMotion(
+                dockE9Track, initialPlayerSlot, inheritedFromE8)));
     }
 
     [TestMethod]
@@ -449,6 +480,12 @@ public class CurveEditor3DModelCacheTests
         using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("StrictPlayerTrackGroupTest.pcc", MEGame.LE3);
         ExportEntry playerGroup = package.CreateExport("InterpGroup_0", "InterpGroup", indexed: false);
         playerGroup.WriteProperty(new NameProperty("Player", "GroupName"));
+        ExportEntry duplicatePlayerGroup = package.CreateExport("InterpGroup_3", "InterpGroup", indexed: false);
+        duplicatePlayerGroup.WriteProperties(new PropertyCollection
+        {
+            new NameProperty("Player0", "GroupName"),
+            new NameProperty("Player", "m_nmSFXFindActor"),
+        });
         ExportEntry cameraGroup = package.CreateExport("InterpGroup_1", "InterpGroup", indexed: false);
         cameraGroup.WriteProperties(new PropertyCollection
         {
@@ -463,9 +500,124 @@ public class CurveEditor3DModelCacheTests
         });
 
         Assert.IsTrue(CurveEditor3D.IsEligibleActorTrackGroup(playerGroup, "player"));
+        Assert.IsTrue(CurveEditor3D.IsEligibleActorTrackGroup(duplicatePlayerGroup, "player"));
         Assert.IsFalse(CurveEditor3D.IsEligibleActorTrackGroup(cameraGroup, "player"));
         Assert.IsFalse(CurveEditor3D.IsEligibleActorTrackGroup(ownerGroup, "player"));
         Assert.IsTrue(CurveEditor3D.IsEligibleActorTrackGroup(ownerGroup, "owner"));
+    }
+
+    [TestMethod]
+    public void SceneShopBranchRequiresExplicitSelectionAndRetainsSharedGroups()
+    {
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("SceneShopSelectionTest.pcc", MEGame.LE3);
+        ExportEntry sequence = package.CreateExport("Node_Data_Sequence", "Sequence", indexed: false);
+        ExportEntry variable = package.CreateExport("SeqVar_Bool_0", "SeqVar_Bool", sequence, indexed: false);
+        variable.WriteProperty(new NameProperty("MirandaAlive", "VarName"));
+        ExportEntry interp = package.CreateExport("InterpData_0", "InterpData", sequence, indexed: false);
+        ExportEntry sharedGroup = package.CreateExport("InterpGroup_Shared", "InterpGroup", interp, indexed: false);
+        ExportEntry aliveScene = package.CreateExport("SFXSceneGroup_0", "SFXSceneGroup", interp, indexed: false);
+        ExportEntry alivePlayer = package.CreateExport("InterpGroup_0", "InterpGroup", interp, indexed: false);
+        ExportEntry deadScene = package.CreateExport("SFXSceneGroup_1", "SFXSceneGroup", interp, indexed: false);
+        ExportEntry deadPlayer = package.CreateExport("InterpGroup_1", "InterpGroup", interp, indexed: false);
+        aliveScene.WriteProperty(new NameProperty("Miranda_Alive", "GroupName"));
+        alivePlayer.WriteProperty(new NameProperty("Player", "GroupName"));
+        deadScene.WriteProperty(new NameProperty("Miranda_Dead", "GroupName"));
+        deadPlayer.WriteProperty(new NameProperty("Player0", "GroupName"));
+        interp.WriteProperty(new ArrayProperty<ObjectProperty>("InterpGroups")
+        {
+            new(sharedGroup.UIndex), new(aliveScene.UIndex), new(alivePlayer.UIndex),
+            new(deadScene.UIndex), new(deadPlayer.UIndex),
+        });
+
+        ExportEntry gameData = package.CreateExport("SFXSceneShopGameData_0", "SFXSceneShopGameData", interp,
+            indexed: false);
+        ExportEntry start = package.CreateExport("SFXSceneShopNodeStart_0", "SFXSceneShopNodeStart", gameData,
+            indexed: false);
+        ExportEntry check = package.CreateExport("SFXSceneShopNodeKisVarCheck_0", "SFXSceneShopNodeKisVarCheck",
+            gameData, indexed: false);
+        ExportEntry aliveNode = package.CreateExport("SFXSceneShopNodeScene_0", "SFXSceneShopNodeScene", gameData,
+            indexed: false);
+        ExportEntry deadNode = package.CreateExport("SFXSceneShopNodeScene_1", "SFXSceneShopNodeScene", gameData,
+            indexed: false);
+        start.WriteProperty(CreateSceneShopOutputPins(("Out", check)));
+        check.WriteProperties(new PropertyCollection
+        {
+            new NameProperty("MirandaAlive", "m_nmKismetBoolVarName"),
+            CreateSceneShopOutputPins(("True", aliveNode), ("False", deadNode)),
+        });
+        aliveNode.WriteProperty(new ObjectProperty(aliveScene.UIndex, "m_pLinkedScene"));
+        deadNode.WriteProperty(new ObjectProperty(deadScene.UIndex, "m_pLinkedScene"));
+        gameData.WriteProperty(new ArrayProperty<ObjectProperty>("m_aNodes")
+        {
+            new(start.UIndex), new(check.UIndex), new(aliveNode.UIndex), new(deadNode.UIndex),
+        });
+
+        CollectionAssert.AreEqual(new[] { sharedGroup },
+            CurveEditor3D.GetActiveInterpGroups(interp, selectedSceneGroup: null).ToArray());
+        CollectionAssert.AreEqual(new[] { sharedGroup, deadPlayer },
+            CurveEditor3D.GetActiveInterpGroups(interp, deadScene).ToArray());
+        variable.WriteProperty(new IntProperty(1, "bValue"));
+        CollectionAssert.AreEqual(new[] { sharedGroup, deadPlayer },
+            CurveEditor3D.GetActiveInterpGroups(interp, deadScene).ToArray(),
+            "Changing the serialized Kismet default must not replace the editor's retained branch choice.");
+        CollectionAssert.AreEqual(new[] { sharedGroup, alivePlayer },
+            CurveEditor3D.GetActiveInterpGroups(interp, aliveScene).ToArray());
+    }
+
+    [TestMethod]
+    public void SceneShopChoiceStopsTimelineAtTheFirstUnresolvedNode()
+    {
+        Assert.AreEqual(4.5f,
+            CurveEditor3D.ResolveDialogueTimelineEndForSceneShop(24f, [11f, 4.5f, 18f]));
+        Assert.AreEqual(24f,
+            CurveEditor3D.ResolveDialogueTimelineEndForSceneShop(24f, []));
+    }
+
+    [TestMethod]
+    public void SceneShopCacheBuildExpandsEveryAuthoredPathCombination()
+    {
+        IReadOnlyList<Dictionary<int, int>> variants =
+            CurveEditor3D.ExpandDialogueSceneShopSelectionVariants([
+                (120, (IReadOnlyList<int>)[201, 202]),
+                (121, (IReadOnlyList<int>)[301, 302, 303]),
+            ]);
+
+        Assert.AreEqual(6, variants.Count);
+        CollectionAssert.AreEquivalent(new[] { 201, 202 },
+            variants.Select(variant => variant[120]).Distinct().ToArray());
+        CollectionAssert.AreEquivalent(new[] { 301, 302, 303 },
+            variants.Select(variant => variant[121]).Distinct().ToArray());
+        Assert.AreEqual(6, variants.Select(variant => $"{variant[120]}:{variant[121]}")
+            .Distinct().Count());
+    }
+
+    [TestMethod]
+    public void DialogueCachePresetSerializesEverySceneShopRuntimeVariant()
+    {
+        var node = new DialogueCacheNodePreset
+        {
+            IsReply = false,
+            NodeIndex = 2,
+            SceneShopVariants =
+            [
+                new DialogueCacheNodePreset
+                {
+                    SceneShopSelections = [new PackageExportReference { UIndex = 201 }],
+                },
+                new DialogueCacheNodePreset
+                {
+                    SceneShopSelections = [new PackageExportReference { UIndex = 202 }],
+                },
+            ],
+        };
+
+        DialogueCacheNodePreset restored = JsonConvert.DeserializeObject<DialogueCacheNodePreset>(
+            JsonConvert.SerializeObject(node));
+
+        Assert.IsNotNull(restored);
+        Assert.AreEqual(2, restored.SceneShopVariants.Count);
+        CollectionAssert.AreEquivalent(new[] { 201, 202 }, restored.SceneShopVariants
+            .Select(variant => variant.SceneShopSelections.Single().UIndex).ToArray());
     }
 
     [TestMethod]
@@ -635,6 +787,24 @@ public class CurveEditor3DModelCacheTests
                 new NameProperty("None", "GroupName"), new FloatProperty(time, "Time")));
         }
         return new StructProperty("InterpLookupTrack", new PropertyCollection { lookupPoints }, "LookupTrack");
+    }
+
+    private static ArrayProperty<StructProperty> CreateSceneShopOutputPins(
+        params (string Name, ExportEntry Target)[] outputs)
+    {
+        var pins = new ArrayProperty<StructProperty>("m_aOutputPins");
+        foreach ((string name, ExportEntry target) in outputs)
+        {
+            pins.Add(new StructProperty("SFXSceneShopPin", false,
+                new StrProperty(name, "sLinkName"),
+                new ArrayProperty<StructProperty>("aLinks")
+                {
+                    new StructProperty("SFXSceneShopLink", false,
+                        new ObjectProperty(target.UIndex, "pLinkedNode"),
+                        new IntProperty(0, "nLinkedIndex")),
+                }));
+        }
+        return pins;
     }
 
     private static ExportEntry CreateFaceOnlyVoInterp(IMEPackage package, string name, params float[] keyTimes)

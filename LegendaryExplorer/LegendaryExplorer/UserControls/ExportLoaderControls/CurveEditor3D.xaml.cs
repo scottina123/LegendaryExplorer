@@ -116,6 +116,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         private bool isOnActivePath;
         private bool isVisited;
         private bool isAwaitingBranchChoice;
+        private bool isAwaitingSceneShopChoice;
         private bool isAvailableBranch;
         private IReadOnlyList<DialogueBranchOption> branchOptions = [];
 
@@ -172,6 +173,11 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         {
             get => isAwaitingBranchChoice;
             set => SetProperty(ref isAwaitingBranchChoice, value);
+        }
+        public bool IsAwaitingSceneShopChoice
+        {
+            get => isAwaitingSceneShopChoice;
+            set => SetProperty(ref isAwaitingSceneShopChoice, value);
         }
         public bool IsAvailableBranch
         {
@@ -823,6 +829,30 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         }
     }
 
+    public sealed class DialogueSceneShopOption
+    {
+        public ExportEntry SceneGroup { get; init; }
+        public string DisplayName { get; init; }
+    }
+
+    public sealed class DialogueSceneShopChoice : NotifyPropertyChangedBase
+    {
+        private DialogueSceneShopOption selectedOption;
+
+        public DialogueTimelineSegment Segment { get; init; }
+        public ExportEntry InterpData { get; init; }
+        public string DisplayLabel { get; init; }
+        public IReadOnlyList<DialogueSceneShopOption> Options { get; init; } = [];
+        public DialogueSceneShopOption SelectedOption
+        {
+            get => selectedOption;
+            set => SetProperty(ref selectedOption, value);
+        }
+    }
+
+    private readonly record struct DialogueSceneShopSelectionKey(
+        DialogueNodeReference SegmentReference, int InterpDataUIndex);
+
     internal static Matrix4x4 ComposeDialogueFaceFxLocal(Matrix4x4 gestureLocal,
         Matrix4x4 faceReferenceLocal, Matrix4x4 faceAnimatedLocal) =>
         Matrix4x4.Invert(faceReferenceLocal, out Matrix4x4 inverseFaceReference)
@@ -992,7 +1022,15 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     private readonly Dictionary<DialogueNodeReference, DialogueTimelineSegment> dialogueTimelineSegmentsByReference = [];
     private readonly ObservableCollection<DialogueBranchOption> dialogueBranchOptions = [];
     private readonly Dictionary<string, DialogueNodeReference> dialogueBranchSelections = new(StringComparer.Ordinal);
+    private readonly ObservableCollection<DialogueSceneShopChoice> activeDialogueSceneShopChoices = [];
+    private readonly Dictionary<DialogueTimelineSegment, IReadOnlyList<DialogueSceneShopChoice>>
+        dialogueSceneShopChoicesBySegment = [];
+    private readonly Dictionary<DialogueSceneShopSelectionKey, DialogueSceneShopChoice>
+        dialogueSceneShopChoicesByInterpData = [];
+    private readonly Dictionary<DialogueSceneShopSelectionKey, int> dialogueSceneShopSelections = [];
     private readonly Dictionary<DialogueTimelineSegment, DialogueSegmentRuntime> dialogueRuntimeCache = [];
+    private readonly Dictionary<DialogueTimelineSegment, Dictionary<string, DialogueSegmentRuntime>>
+        dialogueSceneShopRuntimeCache = [];
     private readonly Dictionary<DialogueNodeExtended, IReadOnlyList<ExportEntry>> dialogueNodeInterpDataCache = [];
     private IMEPackage dialoguePreviewWorkingPackage;
     private IMEPackage dialoguePreviewSourcePackage;
@@ -1001,6 +1039,8 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     private int dialogueWorkingCommittedImportCount;
     private int dialogueWorkingCommittedExportCount;
     private bool suppressDialoguePackageEditTracking;
+    private bool updatingDialogueSceneShopControls;
+    private DialogueTimelineSegment dialogueSceneShopContextSegment;
     private DialogueCachePreset loadedDialogueCachePreset;
     private DialogueTimelineSegment dialogueTimelineStartSegment;
     private double dialogueTimelineTreeWidth = 230;
@@ -1077,6 +1117,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     public IEnumerable<DialogueTimelineSegment> DialogueTimelineSegments => dialogueTimelineSegments;
     public IEnumerable<DialogueTimelineEdge> DialogueTimelineEdges => dialogueTimelineEdges;
     public IEnumerable<DialogueBranchOption> DialogueBranchOptions => dialogueBranchOptions;
+    public IEnumerable<DialogueSceneShopChoice> ActiveDialogueSceneShopChoices => activeDialogueSceneShopChoices;
     public double DialogueTimelineTreeWidth
     {
         get => dialogueTimelineTreeWidth;
@@ -1171,8 +1212,17 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             return null;
         }
 
-        List<ExportEntry> groups = GetReferencedExports(interpData, "InterpGroups").ToList();
-        ExportEntry directorTrack = FindDirectorTracks(interpData).FirstOrDefault();
+        return FindDialoguePreviewTrackMove(interpData, GetAllInterpPlaybackGroups(interpData));
+    }
+
+    private ExportEntry FindSelectedDialoguePreviewTrackMove(ExportEntry interpData) =>
+        FindDialoguePreviewTrackMove(interpData, GetSelectedInterpGroups(interpData));
+
+    private static ExportEntry FindDialoguePreviewTrackMove(ExportEntry interpData,
+        IReadOnlyList<ExportEntry> groups)
+    {
+        ExportEntry directorTrack = groups.SelectMany(group => GetReferencedExports(group, "InterpTracks"))
+            .FirstOrDefault(track => track.ClassName == "InterpTrackDirector");
         if (directorTrack is not null)
         {
             HashSet<string> directedGroups = directorTrack
@@ -1228,6 +1278,10 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         ArgumentNullException.ThrowIfNull(henchmanAssignments);
         ReleaseTrackAnchorStageContext();
         dialogueBranchSelections.Clear();
+        dialogueSceneShopSelections.Clear();
+        dialogueSceneShopChoicesBySegment.Clear();
+        dialogueSceneShopChoicesByInterpData.Clear();
+        activeDialogueSceneShopChoices.Clear();
         loadedDialogueCachePreset = null;
         isDialogueConversationPreview = conversationPreview;
         dialogueNodeInterpDataCache.Clear();
@@ -1395,7 +1449,11 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         dialogueTimelineSegmentsByReference.Clear();
         dialogueBranchOptions.Clear();
         dialogueRuntimeCache.Clear();
+        dialogueSceneShopRuntimeCache.Clear();
         dialogueNodeInterpDataCache.Clear();
+        dialogueSceneShopChoicesBySegment.Clear();
+        dialogueSceneShopChoicesByInterpData.Clear();
+        activeDialogueSceneShopChoices.Clear();
         activeDialogueSegmentRuntime = null;
         dialogueTimelineStartSegment = null;
         if (dialogueNodePreview?.Conversation is not { } conversation || startNode is null)
@@ -1459,8 +1517,95 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         int maxDepth = dialogueTimelineSegments.Max(segment => segment.TreeDepth);
         DialogueTimelineTreeWidth = maxDepth * horizontalSpacing + 250;
         DialogueTimelineTreeHeight = largestColumn * verticalSpacing + 2;
+        BuildDialogueSceneShopChoices();
+        UpdateActiveDialogueSceneShopChoices(dialogueTimelineStartSegment);
         RefreshDialogueTimelineActivePath();
         UpdateDialogueTimelineControls();
+    }
+
+    private void BuildDialogueSceneShopChoices()
+    {
+        dialogueSceneShopChoicesBySegment.Clear();
+        dialogueSceneShopChoicesByInterpData.Clear();
+        foreach (DialogueTimelineSegment segment in dialogueTimelineSegments)
+        {
+            var segmentChoices = new List<DialogueSceneShopChoice>();
+            foreach (ExportEntry interpData in GetDialogueNodeInterpDatas(segment.Node))
+            {
+                IReadOnlyList<ExportEntry> sceneGroups = GetSceneShopGroups(interpData);
+                if (sceneGroups.Count == 0)
+                {
+                    continue;
+                }
+
+                DialogueSceneShopSelectionKey selectionKey = GetDialogueSceneShopSelectionKey(segment, interpData);
+                if (!dialogueSceneShopChoicesByInterpData.TryGetValue(selectionKey,
+                        out DialogueSceneShopChoice choice))
+                {
+                    IReadOnlyList<DialogueSceneShopOption> options = sceneGroups.Select(sceneGroup =>
+                        new DialogueSceneShopOption
+                        {
+                            SceneGroup = sceneGroup,
+                            DisplayName = GetInterpGroupName(sceneGroup),
+                        }).ToArray();
+                    choice = new DialogueSceneShopChoice
+                    {
+                        Segment = segment,
+                        InterpData = interpData,
+                        DisplayLabel = GetSceneShopChoiceLabel(interpData),
+                        Options = options,
+                        SelectedOption = dialogueSceneShopSelections.TryGetValue(selectionKey,
+                            out int selectedSceneUIndex)
+                            ? options.FirstOrDefault(option => option.SceneGroup.UIndex == selectedSceneUIndex)
+                            : null,
+                    };
+                    dialogueSceneShopChoicesByInterpData[selectionKey] = choice;
+                }
+                segmentChoices.Add(choice);
+            }
+            if (segmentChoices.Count > 0)
+            {
+                dialogueSceneShopChoicesBySegment[segment] = segmentChoices;
+            }
+        }
+    }
+
+    private static string GetSceneShopChoiceLabel(ExportEntry interpData)
+    {
+        ExportEntry gameData = interpData?.GetChildren().OfType<ExportEntry>()
+            .FirstOrDefault(child => child.IsA("SFXSceneShopGameData"));
+        string[] variableNames = GetReferencedExports(gameData, "m_aNodes")
+            .Where(node => node.IsA("SFXSceneShopNodeKisVarCheck"))
+            .Select(node => node.GetProperty<NameProperty>("m_nmKismetBoolVarName")?.Value.Instanced)
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        return variableNames.Length > 0 ? string.Join(" / ", variableNames) : interpData.ObjectName.Instanced;
+    }
+
+    private void UpdateActiveDialogueSceneShopChoices(DialogueTimelineSegment segment)
+    {
+        updatingDialogueSceneShopControls = true;
+        try
+        {
+            activeDialogueSceneShopChoices.Clear();
+            if (segment is not null
+                && dialogueSceneShopChoicesBySegment.TryGetValue(segment,
+                    out IReadOnlyList<DialogueSceneShopChoice> choices))
+            {
+                foreach (DialogueSceneShopChoice choice in choices)
+                {
+                    activeDialogueSceneShopChoices.Add(choice);
+                }
+            }
+            DialogueSceneShopPanel.Visibility = activeDialogueSceneShopChoices.Count > 0
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+        }
+        finally
+        {
+            updatingDialogueSceneShopControls = false;
+        }
     }
 
     private DialogueTimelineSegment CreateDialogueTimelineSegment(ConversationExtended conversation,
@@ -1482,6 +1627,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         {
             segment.IsOnActivePath = false;
             segment.IsAwaitingBranchChoice = false;
+            segment.IsAwaitingSceneShopChoice = false;
             segment.IsAvailableBranch = false;
             foreach (DialogueBranchOption branch in segment.BranchOptions)
             {
@@ -1535,8 +1681,174 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             current = next.TargetSegment;
         }
 
+        UpdateDialogueSceneShopAwaitingStates();
         ReprojectDialogueActivePathActorOrigins();
     }
+
+    private bool HasUnresolvedDialogueSceneShopChoice(DialogueTimelineSegment segment) =>
+        segment is not null
+        && dialogueSceneShopChoicesBySegment.TryGetValue(segment,
+            out IReadOnlyList<DialogueSceneShopChoice> choices)
+        && choices.Any(choice => choice.SelectedOption is null);
+
+    private DialogueTimelineSegment GetPendingDialogueSceneShopSegment() =>
+        dialogueTimelineActivePath.FirstOrDefault(HasUnresolvedDialogueSceneShopChoice);
+
+    private void UpdateDialogueSceneShopAwaitingStates()
+    {
+        foreach (DialogueTimelineSegment segment in dialogueTimelineSegments)
+        {
+            segment.IsAwaitingSceneShopChoice = false;
+        }
+        if (GetPendingDialogueSceneShopSegment() is { } pending)
+        {
+            pending.IsAwaitingSceneShopChoice = true;
+        }
+    }
+
+    private static DialogueSceneShopSelectionKey GetDialogueSceneShopSelectionKey(
+        DialogueTimelineSegment segment, ExportEntry interpData) =>
+        new(segment.Reference, interpData.UIndex);
+
+    private IReadOnlyList<Dictionary<int, int>> GetDialogueSceneShopSelectionVariants(
+        DialogueTimelineSegment segment)
+    {
+        if (!dialogueSceneShopChoicesBySegment.TryGetValue(segment,
+                out IReadOnlyList<DialogueSceneShopChoice> choices) || choices.Count == 0)
+        {
+            return [new Dictionary<int, int>()];
+        }
+
+        return ExpandDialogueSceneShopSelectionVariants(choices
+            .DistinctBy(choice => choice.InterpData.UIndex)
+            .Select(choice => (choice.InterpData.UIndex,
+                (IReadOnlyList<int>)choice.Options.Select(option => option.SceneGroup.UIndex).ToArray())));
+    }
+
+    internal static IReadOnlyList<Dictionary<int, int>> ExpandDialogueSceneShopSelectionVariants(
+        IEnumerable<(int InterpDataUIndex, IReadOnlyList<int> SceneGroupUIndexes)> choices)
+    {
+        var variants = new List<Dictionary<int, int>> { new() };
+        foreach ((int interpDataUIndex, IReadOnlyList<int> sceneGroupUIndexes) in choices)
+        {
+            variants = variants.SelectMany(existing => sceneGroupUIndexes.Select(sceneGroupUIndex =>
+            {
+                var variant = new Dictionary<int, int>(existing)
+                {
+                    [interpDataUIndex] = sceneGroupUIndex,
+                };
+                return variant;
+            })).ToList();
+        }
+        return variants;
+    }
+
+    private static string GetDialogueSceneShopRuntimeKey(IEnumerable<KeyValuePair<int, int>> selections) =>
+        string.Join("|", selections.OrderBy(pair => pair.Key)
+            .Select(pair => $"{pair.Key}:{pair.Value}"));
+
+    private static Dictionary<int, int> ParseDialogueSceneShopRuntimeKey(string key) =>
+        string.IsNullOrEmpty(key)
+            ? []
+            : key.Split('|').Select(part => part.Split(':'))
+                .ToDictionary(parts => int.Parse(parts[0], CultureInfo.InvariantCulture),
+                    parts => int.Parse(parts[1], CultureInfo.InvariantCulture));
+
+    private string GetDialogueSceneShopRuntimeKey(DialogueTimelineSegment segment)
+        => GetDialogueSceneShopRuntimeKey(segment, dialogueSceneShopSelections);
+
+    private string GetDialogueSceneShopRuntimeKey(DialogueTimelineSegment segment,
+        IReadOnlyDictionary<DialogueSceneShopSelectionKey, int> activeSelections)
+    {
+        if (!dialogueSceneShopChoicesBySegment.TryGetValue(segment,
+                out IReadOnlyList<DialogueSceneShopChoice> choices) || choices.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        var selections = new Dictionary<int, int>();
+        foreach (DialogueSceneShopChoice choice in choices.DistinctBy(choice => choice.InterpData.UIndex))
+        {
+            if (!activeSelections.TryGetValue(
+                    GetDialogueSceneShopSelectionKey(segment, choice.InterpData), out int sceneUIndex))
+            {
+                return null;
+            }
+            selections[choice.InterpData.UIndex] = sceneUIndex;
+        }
+        return GetDialogueSceneShopRuntimeKey(selections);
+    }
+
+    private bool SelectCachedDialogueSceneShopRuntime(DialogueTimelineSegment segment)
+    {
+        string key = GetDialogueSceneShopRuntimeKey(segment);
+        if (key is null || !dialogueSceneShopRuntimeCache.TryGetValue(segment,
+                out Dictionary<string, DialogueSegmentRuntime> variants)
+            || !variants.TryGetValue(key, out DialogueSegmentRuntime runtime))
+        {
+            return false;
+        }
+
+        dialogueRuntimeCache[segment] = runtime;
+        return true;
+    }
+
+    private bool ClearDialogueSceneShopSelectionsFrom(DialogueTimelineSegment segment)
+    {
+        if (segment is null)
+        {
+            return false;
+        }
+
+        bool changed = false;
+        var pending = new Queue<DialogueTimelineSegment>();
+        var visited = new HashSet<DialogueNodeReference>();
+        var clearedChoices = new HashSet<DialogueSceneShopChoice>();
+        pending.Enqueue(segment);
+        while (pending.Count > 0)
+        {
+            DialogueTimelineSegment current = pending.Dequeue();
+            if (!visited.Add(current.Reference))
+            {
+                continue;
+            }
+            if (dialogueSceneShopChoicesBySegment.TryGetValue(current,
+                    out IReadOnlyList<DialogueSceneShopChoice> choices))
+            {
+                foreach (DialogueSceneShopChoice choice in choices.Where(clearedChoices.Add))
+                {
+                    changed |= dialogueSceneShopSelections.Remove(
+                        GetDialogueSceneShopSelectionKey(current, choice.InterpData));
+                    updatingDialogueSceneShopControls = true;
+                    try
+                    {
+                        choice.SelectedOption = null;
+                    }
+                    finally
+                    {
+                        updatingDialogueSceneShopControls = false;
+                    }
+                }
+            }
+            foreach (DialogueBranchOption branch in current.BranchOptions)
+            {
+                if (branch.TargetSegment is not null)
+                {
+                    pending.Enqueue(branch.TargetSegment);
+                }
+            }
+        }
+
+        if (changed)
+        {
+            UpdateDialogueSceneShopAwaitingStates();
+        }
+        return changed;
+    }
+
+    internal static float ResolveDialogueTimelineEndForSceneShop(float authoredEnd,
+        IEnumerable<float> unresolvedSceneStartTimes) =>
+        MathF.Min(authoredEnd, unresolvedSceneStartTimes.DefaultIfEmpty(authoredEnd).Min());
 
     private bool SelectDialogueTimelinePathTo(DialogueTimelineSegment target)
     {
@@ -1680,7 +1992,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
     internal static float GetLastFaceOnlyVoKeyTime(IEnumerable<ExportEntry> interpDatas) =>
         interpDatas.Where(interpData => interpData is not null)
-            .SelectMany(interpData => GetReferencedExports(interpData, "InterpGroups"))
+            .SelectMany(GetAllInterpPlaybackGroups)
             .SelectMany(group => GetReferencedExports(group, "InterpTracks"))
             .Where(track => track.IsA("SFXInterpTrackPlayFaceOnlyVO"))
             .SelectMany(track => track.GetProperty<ArrayProperty<StructProperty>>("m_aTrackKeys")?.AsEnumerable()
@@ -1692,7 +2004,8 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     private float GetDialogueNodeVoStartTime(DialogueNodeExtended node)
     {
         float[] starts = GetDialogueNodeInterpDatas(node)
-            .Select(GetDialoguePreviewVoStartTime)
+            .Select(interpData => GetDialoguePreviewVoStartTime(interpData,
+                GetSelectedSceneShopGroup(interpData)))
             .Where(start => start > 0)
             .ToArray();
         return starts.Length > 0 ? starts.Min() : 0;
@@ -1878,10 +2191,12 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         _ => category
     };
 
-    private static float GetDialoguePreviewVoStartTime(ExportEntry interpData)
+    private static float GetDialoguePreviewVoStartTime(ExportEntry interpData,
+        ExportEntry selectedSceneGroup = null)
     {
-        ExportEntry voTrack = GetReferencedExports(interpData, "InterpGroups")
-            .Where(group => GetInterpGroupName(group).Equals("Conversation", StringComparison.OrdinalIgnoreCase))
+        ExportEntry voTrack = GetActiveInterpGroups(interpData, selectedSceneGroup)
+            .Where(group => GetCanonicalInterpGroupName(group)
+                .Equals("Conversation", StringComparison.OrdinalIgnoreCase))
             .SelectMany(group => GetReferencedExports(group, "InterpTracks"))
             .FirstOrDefault(track => track.ClassName == "BioEvtSysTrackVOElements");
         return voTrack?.GetProperty<ArrayProperty<StructProperty>>("m_aTrackKeys")
@@ -1917,7 +2232,10 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             .DistinctBy(group => (group.FileRef, group.UIndex))
             .ToArray();
         var cameraGroupNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (ExportEntry directorTrack in interpDatas.SelectMany(FindDirectorTracks))
+        foreach (ExportEntry directorTrack in interpDatas
+                     .SelectMany(GetAllInterpPlaybackGroups)
+                     .SelectMany(group => GetReferencedExports(group, "InterpTracks"))
+                     .Where(track => track.ClassName == "InterpTrackDirector"))
         {
             foreach (StructProperty cut in directorTrack.GetProperty<ArrayProperty<StructProperty>>("CutTrack")
                          ?? Enumerable.Empty<StructProperty>())
@@ -3001,7 +3319,8 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             previewActorGesturePackageCache.ReleasePackages();
         }
 
-        foreach (ExportEntry gestureTrack in FindGestureTracksInInterpData(interpData))
+        foreach (ExportEntry gestureTrack in FindGestureTracksInInterpData(interpData,
+                     GetSelectedSceneShopGroup(interpData)))
         {
             List<GesturePreviewExportLoader.GestureAnimationItem> animations = GesturePreviewExportLoader
                 .BuildAnimationTimeline(gestureTrack, previewActorGesturePackageCache);
@@ -3055,7 +3374,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         {
             Dictionary<string, TrackMovePlaybackOption> cameraOptionsByGroup = new(StringComparer.OrdinalIgnoreCase);
             Dictionary<string, ExportEntry> groupsByName = new(StringComparer.OrdinalIgnoreCase);
-            foreach (ExportEntry group in GetReferencedExports(interpData, "InterpGroups"))
+            foreach (ExportEntry group in GetSelectedInterpGroups(interpData))
             {
                 string groupName = GetInterpGroupName(group);
                 groupsByName.TryAdd(groupName, group);
@@ -3095,7 +3414,8 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                 }
             }
 
-            foreach (ExportEntry directorTrack in FindDirectorTracks(interpData))
+            foreach (ExportEntry directorTrack in FindDirectorTracks(interpData,
+                         GetSelectedSceneShopGroup(interpData)))
             {
                 List<DirectorCameraCut> cuts = BuildDirectorCameraCuts(directorTrack, cameraOptionsByGroup,
                     groupsByName);
@@ -3376,7 +3696,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     internal static bool IsEligibleActorTrackGroup(ExportEntry group, string actorTag)
         => !string.Equals(actorTag, "player", StringComparison.OrdinalIgnoreCase)
            || group is not null
-           && GetInterpGroupName(group).Equals("Player", StringComparison.OrdinalIgnoreCase);
+           && GetCanonicalInterpGroupName(group).Equals("Player", StringComparison.OrdinalIgnoreCase);
 
     private static ExportEntry FindOwningInterpData(ExportEntry track)
         => track?.Parent is ExportEntry interpGroup && interpGroup.Parent is ExportEntry interpData ? interpData : null;
@@ -3398,8 +3718,88 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         }
     }
 
+    private static IReadOnlyList<ExportEntry> GetAllInterpPlaybackGroups(ExportEntry interpData) =>
+        GetReferencedExports(interpData, "InterpGroups")
+            .Where(group => !group.IsA("SFXSceneGroup"))
+            .ToArray();
+
+    internal static IReadOnlyList<ExportEntry> GetActiveInterpGroups(ExportEntry interpData,
+        ExportEntry selectedSceneGroup)
+    {
+        List<ExportEntry> groups = GetReferencedExports(interpData, "InterpGroups").ToList();
+        IReadOnlyList<ExportEntry> sceneGroups = groups.Where(group => group.IsA("SFXSceneGroup")).ToArray();
+        if (sceneGroups.Count == 0)
+        {
+            return groups;
+        }
+
+        ExportEntry activeScene = selectedSceneGroup is not null
+                                  && sceneGroups.Any(scene => IsSameExport(scene, selectedSceneGroup))
+            ? selectedSceneGroup
+            : null;
+
+        var activeGroups = new List<ExportEntry>();
+        ExportEntry currentScene = null;
+        foreach (ExportEntry group in groups)
+        {
+            if (group.IsA("SFXSceneGroup"))
+            {
+                currentScene = group;
+                continue;
+            }
+            // Groups preceding the first scene marker are shared. Once a marker is encountered,
+            // only the branch selected by the authored SceneShop graph is active in-game.
+            if (currentScene is null || IsSameExport(currentScene, activeScene))
+            {
+                activeGroups.Add(group);
+            }
+        }
+        return activeGroups;
+    }
+
+    private static IReadOnlyList<ExportEntry> GetSceneShopGroups(ExportEntry interpData) =>
+        GetReferencedExports(interpData, "InterpGroups")
+            .Where(group => group.IsA("SFXSceneGroup"))
+            .ToArray();
+
+    private DialogueTimelineSegment GetDialogueSceneShopContextSegment() =>
+        dialogueSceneShopContextSegment
+        ?? dialogueTimelineSegments.FirstOrDefault(segment =>
+            ReferenceEquals(segment.Node, dialogueNodePreview?.Node))
+        ?? activeDialogueTimelineSegment;
+
+    private ExportEntry GetSelectedSceneShopGroup(ExportEntry interpData,
+        DialogueTimelineSegment segment = null)
+    {
+        segment ??= GetDialogueSceneShopContextSegment();
+        if (interpData is null || segment is null
+                               || !dialogueSceneShopSelections.TryGetValue(
+                                   GetDialogueSceneShopSelectionKey(segment, interpData),
+                out int sceneUIndex))
+        {
+            return null;
+        }
+        return interpData.FileRef.TryGetUExport(sceneUIndex, out ExportEntry sceneGroup)
+            ? sceneGroup
+            : null;
+    }
+
+    private IReadOnlyList<ExportEntry> GetSelectedInterpGroups(ExportEntry interpData) =>
+        GetActiveInterpGroups(interpData, GetSelectedSceneShopGroup(interpData));
+
     private static string GetInterpGroupName(ExportEntry group)
         => group.GetProperty<NameProperty>("GroupName")?.Value.Instanced ?? group.ObjectName.Instanced;
+
+    private static string GetCanonicalInterpGroupName(ExportEntry group)
+    {
+        string groupName = GetInterpGroupName(group);
+        int suffixStart = groupName.Length;
+        while (suffixStart > 0 && char.IsDigit(groupName[suffixStart - 1]))
+        {
+            suffixStart--;
+        }
+        return suffixStart < groupName.Length ? groupName[..suffixStart] : groupName;
+    }
 
     private CurveEditor3DFovModel LoadCameraFovModel(ExportEntry group,
         IDictionary<int, CurveEditor3DFovModel> fovModelsByExport)
@@ -3426,9 +3826,10 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         return fovModel;
     }
 
-    private static IEnumerable<ExportEntry> FindDirectorTracks(ExportEntry interpData)
+    private static IEnumerable<ExportEntry> FindDirectorTracks(ExportEntry interpData,
+        ExportEntry selectedSceneGroup = null)
     {
-        foreach (ExportEntry group in GetReferencedExports(interpData, "InterpGroups"))
+        foreach (ExportEntry group in GetActiveInterpGroups(interpData, selectedSceneGroup))
         {
             foreach (ExportEntry track in GetReferencedExports(group, "InterpTracks"))
             {
@@ -3450,7 +3851,8 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             return [];
         }
 
-        ExportEntry switchCameraTrack = FindSwitchCameraTrack(FindOwningInterpData(directorTrack));
+        ExportEntry switchCameraTrack = FindSwitchCameraTrack(FindOwningInterpData(directorTrack),
+            GetSelectedSceneShopGroup(FindOwningInterpData(directorTrack)));
 
         return cutTrack
             .Select(cut => new
@@ -3503,9 +3905,10 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         float viewport) =>
         placed ?? authored ?? cached ?? viewport;
 
-    private static ExportEntry FindSwitchCameraTrack(ExportEntry interpData) =>
-        GetReferencedExports(interpData, "InterpGroups")
-            .Where(group => GetInterpGroupName(group).Equals("Conversation", StringComparison.OrdinalIgnoreCase))
+    private static ExportEntry FindSwitchCameraTrack(ExportEntry interpData, ExportEntry selectedSceneGroup = null) =>
+        GetActiveInterpGroups(interpData, selectedSceneGroup)
+            .Where(group => GetCanonicalInterpGroupName(group)
+                .Equals("Conversation", StringComparison.OrdinalIgnoreCase))
             .SelectMany(group => GetReferencedExports(group, "InterpTracks"))
             .FirstOrDefault(track => track.IsA("BioEvtSysTrackSwitchCamera"));
 
@@ -3595,7 +3998,8 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         return keyIndex;
     }
 
-    private static IEnumerable<ExportEntry> FindGestureTracksInInterpData(ExportEntry interpData)
+    private static IEnumerable<ExportEntry> FindGestureTracksInInterpData(ExportEntry interpData,
+        ExportEntry selectedSceneGroup = null)
     {
         if (interpData is null)
         {
@@ -3608,9 +4012,15 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             yield break;
         }
 
+        HashSet<int> activeGroupIndexes = GetActiveInterpGroups(interpData, selectedSceneGroup)
+            .Select(group => group.UIndex).ToHashSet();
         foreach (ObjectProperty groupRef in groupRefs)
         {
             if (groupRef.ResolveToExport(interpData.FileRef, null) is not ExportEntry group)
+            {
+                continue;
+            }
+            if (!activeGroupIndexes.Contains(group.UIndex))
             {
                 continue;
             }
@@ -3731,6 +4141,8 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                     {
                         return;
                     }
+                    bool hasUnresolvedSceneShopChoices = dialogueSceneShopChoicesByInterpData.Values
+                        .Any(choice => choice.SelectedOption is null);
                     if (!cacheReady && !string.IsNullOrWhiteSpace(dialogueNodePreview.NewCacheLabel))
                     {
                         try
@@ -3742,6 +4154,10 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                         {
                             SceneStatus = $"The conversation cache is ready but could not be saved: {exception.Message}";
                         }
+                    }
+                    else if (hasUnresolvedSceneShopChoices)
+                    {
+                        SceneStatus = "Choose each SceneShop path when playback reaches its dialogue node.";
                     }
                     ShowDialogueConversationPreviewUi();
                 }
@@ -3836,7 +4252,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         foreach (ExportEntry interpData in nodes.SelectMany(GetDialogueNodeInterpDatas)
                      .DistinctBy(interpData => (interpData.FileRef, interpData.UIndex)))
         {
-            foreach (ExportEntry group in GetReferencedExports(interpData, "InterpGroups"))
+            foreach (ExportEntry group in GetSelectedInterpGroups(interpData))
             {
                 string actorTag = GetCameraActorTag(group);
                 if (string.IsNullOrWhiteSpace(actorTag)
@@ -3949,6 +4365,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
         PauseDialogueTimeline();
         dialogueRuntimeCache.Clear();
+        dialogueSceneShopRuntimeCache.Clear();
         buildingDialogueRuntimeCache = true;
         suppressDialogueCacheEditTracking = true;
         loadingDialogueTimelineSegment = true;
@@ -3958,47 +4375,58 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         SceneViewer.Visibility = Visibility.Hidden;
         ActorPlaybackTrackZCheckBox.IsChecked = true;
         bool completed = false;
+        Dictionary<DialogueSceneShopSelectionKey, int> originalSceneShopSelections =
+            dialogueSceneShopSelections.ToDictionary();
         try
         {
             for (int index = 0; index < dialogueTimelineSegments.Count; index++)
             {
                 DialogueTimelineSegment segment = dialogueTimelineSegments[index];
-                DialogueCacheLoadingText.Text =
-                    $"Caching {segment.NodeLabel} ({index + 1:N0} of {dialogueTimelineSegments.Count:N0})...";
-                await Dispatcher.Yield(DispatcherPriority.Background);
-
-                dialogueNodePreview = dialogueNodePreview with
+                IReadOnlyList<Dictionary<int, int>> selectionVariants =
+                    GetDialogueSceneShopSelectionVariants(segment);
+                var runtimeVariants = new Dictionary<string, DialogueSegmentRuntime>(StringComparer.Ordinal);
+                for (int variantIndex = 0; variantIndex < selectionVariants.Count; variantIndex++)
                 {
-                    Node = segment.Node,
-                    VoStartTime = GetDialogueNodeVoStartTime(segment.Node)
-                };
-                IReadOnlyList<ExportEntry> interpDatas = GetDialogueNodeInterpDatas(segment.Node);
-                var interpRuntimes = new List<DialogueSegmentRuntime>();
-                foreach (ExportEntry interpData in interpDatas.DefaultIfEmpty())
-                {
-                    ExportEntry trackMove = FindDialoguePreviewTrackMove(interpData);
-                    if (trackMove is not null)
+                    Dictionary<int, int> selectionVariant = selectionVariants[variantIndex];
+                    DialogueCacheLoadingText.Text = selectionVariants.Count == 1
+                        ? $"Caching {segment.NodeLabel} ({index + 1:N0} of {dialogueTimelineSegments.Count:N0})..."
+                        : $"Caching {segment.NodeLabel} SceneShop path {variantIndex + 1:N0} of {selectionVariants.Count:N0} "
+                          + $"({index + 1:N0} of {dialogueTimelineSegments.Count:N0} nodes)...";
+                    await Dispatcher.Yield(DispatcherPriority.Background);
+
+                    if (dialogueSceneShopChoicesBySegment.TryGetValue(segment,
+                            out IReadOnlyList<DialogueSceneShopChoice> choices))
                     {
-                        LoadExport(trackMove);
+                        foreach (DialogueSceneShopChoice choice in choices)
+                        {
+                            dialogueSceneShopSelections.Remove(
+                                GetDialogueSceneShopSelectionKey(segment, choice.InterpData));
+                        }
                     }
-                    else
+                    foreach ((int interpDataUIndex, int sceneGroupUIndex) in selectionVariant)
                     {
-                        ResetTrackPlaybackOptionsForCachedNode();
-                        RefreshMulticamPlaybackOptions(null, interpData);
-                        RefreshAvailableGestureTracksForInterpData(interpData);
+                        dialogueSceneShopSelections[new DialogueSceneShopSelectionKey(segment.Reference,
+                            interpDataUIndex)] = sceneGroupUIndex;
                     }
 
-                    bool hasCameraPlayback = availableDirectorTracks.Any(option =>
-                        option.DirectorTrack is not null && option.Cuts.Count > 0);
-                    ConfigureDialoguePreviewPlayback(configureTrackPlayback: trackMove is not null || hasCameraPlayback,
-                        interpDataOverride: interpData);
-                    interpRuntimes.Add(CaptureDialogueSegmentRuntime(segment));
+                    string runtimeKey = GetDialogueSceneShopRuntimeKey(selectionVariant);
+                    runtimeVariants[runtimeKey] = BuildDialogueSegmentRuntime(segment);
                 }
-                DialogueSegmentRuntime runtime = MergeDialogueSegmentRuntimes(segment, interpRuntimes);
-                RepairMissingActorAssignments(runtime);
-                dialogueRuntimeCache[segment] = runtime;
+
+                dialogueSceneShopRuntimeCache[segment] = runtimeVariants;
+                string selectedKey = GetDialogueSceneShopRuntimeKey(segment, originalSceneShopSelections);
+                dialogueRuntimeCache[segment] = selectedKey is not null
+                                                && runtimeVariants.TryGetValue(selectedKey,
+                                                    out DialogueSegmentRuntime selectedRuntime)
+                    ? selectedRuntime
+                    : runtimeVariants.Values.First();
             }
 
+            dialogueSceneShopSelections.Clear();
+            foreach ((DialogueSceneShopSelectionKey selectionKey, int sceneGroupUIndex) in originalSceneShopSelections)
+            {
+                dialogueSceneShopSelections[selectionKey] = sceneGroupUIndex;
+            }
             BuildDialogueRuntimeActorSnapshots();
             activeDialogueTimelineSegment = null;
             activeDialogueSegmentRuntime = null;
@@ -4009,6 +4437,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         catch (Exception exception)
         {
             dialogueRuntimeCache.Clear();
+            dialogueSceneShopRuntimeCache.Clear();
             activeDialogueTimelineSegment = null;
             activeDialogueSegmentRuntime = null;
             DialogueCacheLoadingText.Text = $"Unable to cache the conversation: {exception.Message}";
@@ -4017,6 +4446,11 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         }
         finally
         {
+            dialogueSceneShopSelections.Clear();
+            foreach ((DialogueSceneShopSelectionKey selectionKey, int sceneGroupUIndex) in originalSceneShopSelections)
+            {
+                dialogueSceneShopSelections[selectionKey] = sceneGroupUIndex;
+            }
             loadingDialogueTimelineSegment = false;
             buildingDialogueRuntimeCache = false;
             suppressDialogueCacheEditTracking = false;
@@ -4080,7 +4514,6 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         {
             throw new InvalidOperationException("The entire conversation cache must be ready before it can be saved.");
         }
-
         string sourcePath = conversationExport.FileRef.FilePath;
         var sourceInfo = new FileInfo(sourcePath);
         var preset = new DialogueCachePreset
@@ -4103,22 +4536,44 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                 pair => pair.Value, StringComparer.OrdinalIgnoreCase),
             Actors = previewActors.Where(actor => actor.Construction is not null)
                 .Select(actor => actor.Construction).ToList(),
-            Nodes = dialogueTimelineSegments.Select(CaptureDialogueCacheNode).ToList(),
+            Nodes = dialogueTimelineSegments.Select(segment => CaptureDialogueCacheNode(segment)).ToList(),
         };
         loadedDialogueCachePreset = SavedDialogueCachePresetManager.Save(preset);
         SceneStatus = $"Saved dialogue cache preset '{loadedDialogueCachePreset.Label}'.";
         return loadedDialogueCachePreset;
     }
 
-    private DialogueCacheNodePreset CaptureDialogueCacheNode(DialogueTimelineSegment segment)
+    private DialogueCacheNodePreset CaptureDialogueCacheNode(DialogueTimelineSegment segment,
+        DialogueSegmentRuntime runtime = null, IReadOnlyDictionary<int, int> sceneShopSelections = null,
+        bool includeSceneShopVariants = true)
     {
-        DialogueSegmentRuntime runtime = dialogueRuntimeCache[segment];
+        runtime ??= dialogueRuntimeCache[segment];
+        List<PackageExportReference> capturedSceneShopSelections = sceneShopSelections is null
+            ? GetDialogueNodeInterpDatas(segment.Node)
+                .Select(interpData => GetSelectedSceneShopGroup(interpData, segment))
+                .Where(sceneGroup => sceneGroup is not null)
+                .Select(CreateExportReference)
+                .ToList()
+            : sceneShopSelections.Values
+                .Select(sceneUIndex => dialoguePreviewWorkingPackage.TryGetUExport(sceneUIndex,
+                    out ExportEntry sceneGroup) ? sceneGroup : null)
+                .Where(sceneGroup => sceneGroup is not null)
+                .Select(CreateExportReference)
+                .ToList();
         return new DialogueCacheNodePreset
         {
             IsReply = segment.Reference.IsReply,
             NodeIndex = segment.Reference.Index,
             LineStrRef = segment.Node.LineStrRef,
             InterpDatas = GetDialogueNodeInterpDatas(segment.Node).Select(CreateExportReference).ToList(),
+            SceneShopSelections = capturedSceneShopSelections,
+            SceneShopVariants = includeSceneShopVariants
+                                && dialogueSceneShopChoicesBySegment.ContainsKey(segment)
+                                && dialogueSceneShopRuntimeCache.TryGetValue(segment,
+                                    out Dictionary<string, DialogueSegmentRuntime> variants)
+                ? variants.Select(pair => CaptureDialogueCacheNode(segment, pair.Value,
+                    ParseDialogueSceneShopRuntimeKey(pair.Key), includeSceneShopVariants: false)).ToList()
+                : [],
             PrimaryTrackMove = CreateExportReference(runtime.PrimaryTrackMove?.TrackMove),
             TrackMoves = runtime.TrackMoves.Where(option => option.TrackMove is not null)
                 .Select(option => new DialogueTrackMoveCache
@@ -4273,6 +4728,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
         PauseDialogueTimeline();
         dialogueRuntimeCache.Clear();
+        dialogueSceneShopRuntimeCache.Clear();
         dialogueNodeInterpDataCache.Clear();
         buildingDialogueRuntimeCache = true;
         suppressDialogueCacheEditTracking = true;
@@ -4292,15 +4748,59 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                 IReadOnlyList<ExportEntry> interpDatas = nodePreset.InterpDatas
                     .Select(reference => ResolveExportReference(reference, required: true)).ToArray();
                 dialogueNodeInterpDataCache[segment.Node] = interpDatas;
-                dialogueNodePreview = dialogueNodePreview with
+                IReadOnlyList<DialogueCacheNodePreset> cachedVariants = nodePreset.SceneShopVariants is { Count: > 0 }
+                    ? nodePreset.SceneShopVariants
+                    : [nodePreset];
+                var runtimeVariants = new Dictionary<string, DialogueSegmentRuntime>(StringComparer.Ordinal);
+                foreach (DialogueCacheNodePreset cachedVariant in cachedVariants)
                 {
-                    Node = segment.Node,
-                    VoStartTime = interpDatas.Select(GetDialoguePreviewVoStartTime).Where(time => time > 0)
-                        .DefaultIfEmpty(0).Min(),
-                };
-                dialogueRuntimeCache[segment] = RestoreDialogueCacheNode(segment, nodePreset);
+                    foreach (ExportEntry interpData in interpDatas)
+                    {
+                        dialogueSceneShopSelections.Remove(
+                            GetDialogueSceneShopSelectionKey(segment, interpData));
+                    }
+                    var selections = new Dictionary<int, int>();
+                    foreach (PackageExportReference selectionReference in cachedVariant.SceneShopSelections ?? [])
+                    {
+                        ExportEntry sceneGroup = ResolveExportReference(selectionReference, required: true);
+                        ExportEntry interpData = interpDatas.FirstOrDefault(candidate =>
+                            GetSceneShopGroups(candidate).Any(scene => IsSameExport(scene, sceneGroup)));
+                        if (interpData is null)
+                        {
+                            throw new InvalidDataException($"{segment.NodeLabel} has a SceneShop selection that no longer belongs to its InterpData.");
+                        }
+                        selections[interpData.UIndex] = sceneGroup.UIndex;
+                        dialogueSceneShopSelections[GetDialogueSceneShopSelectionKey(segment, interpData)] =
+                            sceneGroup.UIndex;
+                    }
+                    dialogueNodePreview = dialogueNodePreview with
+                    {
+                        Node = segment.Node,
+                        VoStartTime = interpDatas.Select(interpData => GetDialoguePreviewVoStartTime(interpData,
+                                GetSelectedSceneShopGroup(interpData, segment))).Where(time => time > 0)
+                            .DefaultIfEmpty(0).Min(),
+                    };
+                    runtimeVariants[GetDialogueSceneShopRuntimeKey(selections)] =
+                        RestoreDialogueCacheNode(segment, cachedVariant);
+                }
+                dialogueSceneShopRuntimeCache[segment] = runtimeVariants;
+                dialogueRuntimeCache[segment] = runtimeVariants.Values.First();
             }
 
+            dialogueSceneShopSelections.Clear();
+            updatingDialogueSceneShopControls = true;
+            try
+            {
+                foreach (DialogueSceneShopChoice choice in dialogueSceneShopChoicesByInterpData.Values)
+                {
+                    choice.SelectedOption = null;
+                }
+            }
+            finally
+            {
+                updatingDialogueSceneShopControls = false;
+            }
+            UpdateDialogueSceneShopAwaitingStates();
             // Actor assignments are revalidated while each node is restored (for example, old
             // presets may have cached Owner or Player against a camera TrackMove). Start/end origins are
             // derived state, so serialized snapshots based on an invalid assignment must not be
@@ -4327,6 +4827,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                                           or JsonException)
         {
             dialogueRuntimeCache.Clear();
+            dialogueSceneShopRuntimeCache.Clear();
             dialogueNodeInterpDataCache.Clear();
             activeDialogueTimelineSegment = null;
             activeDialogueSegmentRuntime = null;
@@ -5083,6 +5584,8 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                 if (runtime.ActorGestureAssignments.TryGetValue(actor.ActorTag, out GestureTrackOption gesture)
                     && previewActorAnimationStates.TryGetValue(actor, out PreviewActorAnimationState animationState))
                 {
+                    bool stageAttachedOneKeyPlayerLocomotion = IsStageAttachedOneKeyPlayerLocomotion(actor,
+                        trackMove, start, resolved[actor]);
                     float? startingPoseTimeOverride = ResolveStartingPoseContinuationTime(gesture,
                         runtime.StartActorGestureStates.GetValueOrDefault(actor.ActorTag));
                     animationState.SetTimeline(gesture.StartingPose, gesture.Timeline,
@@ -5092,18 +5595,17 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                         // actor transform inherited by the following dialogue node.
                         extractRootTranslation: ShouldExtractDialogueGestureRootTranslation(
                             isDialogueConversationPreview, movementKeyCount,
-                            oneKeyTrackOwnsLocomotion: IsStageAttachedOneKeyPlayerLocomotion(actor,
-                                trackMove, resolved[actor])),
+                            oneKeyTrackOwnsLocomotion: stageAttachedOneKeyPlayerLocomotion),
                         startingPoseTimeOverride: startingPoseTimeOverride);
                     Vector3 rootMotion = movementTrackEndTime is float trackEndTime
                         ? animationState.EvaluateExtractedRootMotionDelta(trackEndTime, segment.Duration)
                         : animationState.EvaluateExtractedRootMotion(segment.Duration);
                     if (rootMotion != Vector3.Zero)
                     {
-                        float rootMotionYawOffset = ResolveStageAttachedRootMotionYawOffset(actor, trackMove,
-                            resolved[actor], rootMotion);
-                        float rootMotionFacingYawOffset = ResolveStageAttachedRootMotionFacingYawOffset(actor,
-                            trackMove, resolved[actor], rootMotion);
+                        float rootMotionYawOffset = ResolveStageAttachedRootMotionYawOffset(resolved[actor],
+                            rootMotion, stageAttachedOneKeyPlayerLocomotion);
+                        float rootMotionFacingYawOffset = ResolveStageAttachedRootMotionFacingYawOffset(rootMotion,
+                            stageAttachedOneKeyPlayerLocomotion);
                         runtime.ActorRootMotionYawOffsets[actor.ActorTag] = rootMotionYawOffset;
                         runtime.ActorRootMotionFacingYawOffsets[actor.ActorTag] = rootMotionFacingYawOffset;
                         resolved[actor] = ApplyDialogueGestureRootMotion(resolved[actor],
@@ -5383,6 +5885,8 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                 if (runtime.ActorGestureAssignments.TryGetValue(actor.ActorTag, out GestureTrackOption gesture)
                     && previewActorAnimationStates.TryGetValue(actor, out PreviewActorAnimationState animationState))
                 {
+                    bool stageAttachedOneKeyPlayerLocomotion = IsStageAttachedOneKeyPlayerLocomotion(actor,
+                        trackMove, start, resolved[actor]);
                     float? startingPoseTimeOverride = ResolveStartingPoseContinuationTime(gesture,
                         runtime.StartActorGestureStates.GetValueOrDefault(actor.ActorTag));
                     animationState.SetTimeline(gesture.StartingPose, gesture.Timeline,
@@ -5390,16 +5894,15 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                         maskDialogueOverlayStaticBones: true,
                         extractRootTranslation: ShouldExtractDialogueGestureRootTranslation(
                             isDialogueConversationPreview, movementKeyCount,
-                            oneKeyTrackOwnsLocomotion: IsStageAttachedOneKeyPlayerLocomotion(actor,
-                                trackMove, resolved[actor])),
+                            oneKeyTrackOwnsLocomotion: stageAttachedOneKeyPlayerLocomotion),
                         startingPoseTimeOverride: startingPoseTimeOverride);
                     Vector3 rootMotion = movementTrackEndTime is float trackEndTime
                         ? animationState.EvaluateExtractedRootMotionDelta(trackEndTime, segment.Duration)
                         : animationState.EvaluateExtractedRootMotion(segment.Duration);
-                    float rootMotionYawOffset = ResolveStageAttachedRootMotionYawOffset(actor, trackMove,
-                        resolved[actor], rootMotion);
-                    float rootMotionFacingYawOffset = ResolveStageAttachedRootMotionFacingYawOffset(actor,
-                        trackMove, resolved[actor], rootMotion);
+                    float rootMotionYawOffset = ResolveStageAttachedRootMotionYawOffset(resolved[actor], rootMotion,
+                        stageAttachedOneKeyPlayerLocomotion);
+                    float rootMotionFacingYawOffset = ResolveStageAttachedRootMotionFacingYawOffset(rootMotion,
+                        stageAttachedOneKeyPlayerLocomotion);
                     runtime.ActorRootMotionYawOffsets[actor.ActorTag] = rootMotionYawOffset;
                     runtime.ActorRootMotionFacingYawOffsets[actor.ActorTag] = rootMotionFacingYawOffset;
                     resolved[actor] = ApplyDialogueGestureRootMotion(resolved[actor],
@@ -5526,7 +6029,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             return;
         }
 
-        foreach (ExportEntry group in GetReferencedExports(interpData, "InterpGroups"))
+        foreach (ExportEntry group in GetSelectedInterpGroups(interpData))
         {
             foreach (ExportEntry track in GetReferencedExports(group, "InterpTracks")
                          .Where(candidate => candidate.IsA("SFXInterpTrackPlayFaceOnlyVO")))
@@ -5913,7 +6416,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             return;
         }
 
-        foreach (ExportEntry group in GetReferencedExports(interpData, "InterpGroups"))
+        foreach (ExportEntry group in GetSelectedInterpGroups(interpData))
         {
             PreviewActorConfiguration groupActor = previewActors
                 .Select(candidate => new { Actor = candidate, Score = GetActorGroupMatchScore(group, candidate.ActorTag) })
@@ -6236,6 +6739,49 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                 continue;
             }
             SetDialogueActorConstruction(actor, construction);
+        }
+    }
+
+    private DialogueSegmentRuntime BuildDialogueSegmentRuntime(DialogueTimelineSegment segment)
+    {
+        DialogueTimelineSegment previousContext = dialogueSceneShopContextSegment;
+        dialogueSceneShopContextSegment = segment;
+        try
+        {
+            dialogueNodePreview = dialogueNodePreview with
+            {
+                Node = segment.Node,
+                VoStartTime = GetDialogueNodeVoStartTime(segment.Node)
+            };
+            IReadOnlyList<ExportEntry> interpDatas = GetDialogueNodeInterpDatas(segment.Node);
+            var interpRuntimes = new List<DialogueSegmentRuntime>();
+            foreach (ExportEntry interpData in interpDatas.DefaultIfEmpty())
+            {
+                ExportEntry trackMove = FindSelectedDialoguePreviewTrackMove(interpData);
+                if (trackMove is not null)
+                {
+                    LoadExport(trackMove);
+                }
+                else
+                {
+                    ResetTrackPlaybackOptionsForCachedNode();
+                    RefreshMulticamPlaybackOptions(null, interpData);
+                    RefreshAvailableGestureTracksForInterpData(interpData);
+                }
+
+                bool hasCameraPlayback = availableDirectorTracks.Any(option =>
+                    option.DirectorTrack is not null && option.Cuts.Count > 0);
+                ConfigureDialoguePreviewPlayback(configureTrackPlayback: trackMove is not null || hasCameraPlayback,
+                    interpDataOverride: interpData);
+                interpRuntimes.Add(CaptureDialogueSegmentRuntime(segment));
+            }
+            DialogueSegmentRuntime runtime = MergeDialogueSegmentRuntimes(segment, interpRuntimes);
+            RepairMissingActorAssignments(runtime);
+            return runtime;
+        }
+        finally
+        {
+            dialogueSceneShopContextSegment = previousContext;
         }
     }
 
@@ -8625,7 +9171,9 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         }
 
         float endTime = GetDialogueTimelineEndTime();
-        if (endTime <= 0 || dialogueTimelineCurrentTime >= endTime && dialogueBranchOptions.Count > 0)
+        if (endTime <= 0 || dialogueTimelineCurrentTime >= endTime
+                         && (dialogueBranchOptions.Count > 0
+                             || GetPendingDialogueSceneShopSegment() is not null))
         {
             return;
         }
@@ -8681,6 +9229,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             return;
         }
         PauseDialogueTimeline();
+        ClearDialogueSceneShopSelectionsFrom(node);
         ForceCachedDialogueSegmentReactivation(node);
         StartDialogueTimelinePlaybackAt(node.StartTime, reconstruct: true);
     }
@@ -8707,7 +9256,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                 continue;
             }
 
-            foreach (DialogueSegmentRuntime runtime in dialogueRuntimeCache.Values)
+            foreach (DialogueSegmentRuntime runtime in GetAllCachedDialogueRuntimes())
             {
                 bool belongsToNode = GetDialogueNodeInterpDatas(runtime.Segment.Node).Any(interpData =>
                     changedExport == interpData || changedExport.IsDescendantOf(interpData));
@@ -8742,6 +9291,11 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                || dialoguePreviewWorkingPackage.Imports.Any(entry => entry.EntryHasPendingChanges)
                || dialoguePreviewWorkingPackage.Exports.Any(entry => entry.EntryHasPendingChanges);
     }
+
+    private IEnumerable<DialogueSegmentRuntime> GetAllCachedDialogueRuntimes() =>
+        dialogueSceneShopRuntimeCache.Values.SelectMany(variants => variants.Values)
+            .Concat(dialogueRuntimeCache.Values)
+            .Distinct();
 
     private bool CommitDialogueWorkingPackageChanges(out int changedEntryCount, out string error)
     {
@@ -8852,7 +9406,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                 export.HeaderChanged = false;
                 export.EntryHasPendingChanges = false;
             }
-            foreach (DialogueSegmentRuntime runtime in dialogueRuntimeCache.Values)
+            foreach (DialogueSegmentRuntime runtime in GetAllCachedDialogueRuntimes())
             {
                 runtime.HasPendingPackageChanges = false;
             }
@@ -8910,7 +9464,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             return;
         }
 
-        DialogueSegmentRuntime[] pendingRuntimes = dialogueRuntimeCache.Values
+        DialogueSegmentRuntime[] pendingRuntimes = GetAllCachedDialogueRuntimes()
             .Where(runtime => runtime.HasPendingChanges).ToArray();
         if (pendingRuntimes.Length == 0)
         {
@@ -9005,7 +9559,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             : "Commit Node";
         if (DialogueCacheCommitAllButton is not null)
         {
-            bool hasPendingCacheChanges = dialogueRuntimeCache.Values.Any(runtime => runtime.HasPendingChanges);
+            bool hasPendingCacheChanges = GetAllCachedDialogueRuntimes().Any(runtime => runtime.HasPendingChanges);
             DialogueCacheCommitAllButton.Visibility = isDialogueConversationPreview
                 ? Visibility.Visible
                 : Visibility.Collapsed;
@@ -9046,6 +9600,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         if (!updatingDialogueTimelineSelection
             && sender is ListBox { SelectedItem: DialogueTimelineSegment segment })
         {
+            UpdateActiveDialogueSceneShopChoices(segment);
             PlayDialogueTimelineSegmentFromStart(segment);
         }
     }
@@ -9062,8 +9617,86 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         updatingDialogueTimelineSelection = true;
         timelineList.SelectedItem = segment;
         updatingDialogueTimelineSelection = false;
+        UpdateActiveDialogueSceneShopChoices(segment);
         PlayDialogueTimelineSegmentFromStart(segment);
         e.Handled = true;
+    }
+
+    private void DialogueSceneShopComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (updatingDialogueSceneShopControls
+            || sender is not ComboBox { DataContext: DialogueSceneShopChoice choice } comboBox)
+        {
+            return;
+        }
+
+        DialogueSceneShopOption selectedOption = comboBox.SelectedItem as DialogueSceneShopOption;
+        int selectedSceneUIndex = selectedOption?.SceneGroup?.UIndex ?? 0;
+        DialogueSceneShopSelectionKey selectionKey =
+            GetDialogueSceneShopSelectionKey(choice.Segment, choice.InterpData);
+        int previousSceneUIndex = dialogueSceneShopSelections.GetValueOrDefault(selectionKey);
+        if (selectedSceneUIndex == previousSceneUIndex)
+        {
+            return;
+        }
+
+        if (selectedSceneUIndex == 0)
+        {
+            dialogueSceneShopSelections.Remove(selectionKey);
+        }
+        else
+        {
+            dialogueSceneShopSelections[selectionKey] = selectedSceneUIndex;
+        }
+
+        IReadOnlyList<DialogueTimelineSegment> affectedSegments = [choice.Segment];
+        DialogueTimelineSegment awaitingSegment = affectedSegments
+            .FirstOrDefault(segment => segment.IsAwaitingSceneShopChoice);
+        bool playNodeAfterSelection = awaitingSegment is not null
+                                      && !HasUnresolvedDialogueSceneShopChoice(awaitingSegment);
+        UpdateDialogueSceneShopAwaitingStates();
+        if (affectedSegments.Where(segment => !HasUnresolvedDialogueSceneShopChoice(segment))
+            .Any(segment => !SelectCachedDialogueSceneShopRuntime(segment)))
+        {
+            updatingDialogueSceneShopControls = true;
+            try
+            {
+                choice.SelectedOption = choice.Options.FirstOrDefault(option =>
+                    option.SceneGroup.UIndex == previousSceneUIndex);
+                if (previousSceneUIndex == 0)
+                {
+                    dialogueSceneShopSelections.Remove(selectionKey);
+                }
+                else
+                {
+                    dialogueSceneShopSelections[selectionKey] = previousSceneUIndex;
+                }
+            }
+            finally
+            {
+                updatingDialogueSceneShopControls = false;
+            }
+            dialogueAuthoredCameraDefaults.Clear();
+            IndexDialogueAuthoredCameraDefaults();
+            UpdateDialogueSceneShopAwaitingStates();
+            return;
+        }
+
+        // All branch-specific playback data was constructed with the initial cache. Selection only
+        // switches to one of those runtimes and projects its inherited state through the active path.
+        BuildDialogueRuntimeActorSnapshots();
+        activeDialogueTimelineSegment = null;
+        activeDialogueSegmentRuntime = null;
+        ResetDialogueTimelineActorGestures();
+        SceneStatus = $"SceneShop path selected for {string.Join(", ", affectedSegments.Select(segment => segment.NodeLabel))}.";
+        if (playNodeAfterSelection)
+        {
+            StartDialogueTimelinePlaybackAt(awaitingSegment.StartTime, reconstruct: true);
+        }
+        else
+        {
+            ApplyDialogueTimelineAtTime(dialogueTimelineCurrentTime, reconstruct: true);
+        }
     }
 
     private void PlayDialogueTimelineSegmentFromStart(DialogueTimelineSegment segment)
@@ -9078,6 +9711,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             // Clicking an off-path node is itself the new explicit choice, so only its downstream
             // choices are cleared before selecting the route to it.
             ClearDialogueBranchSelectionsFrom(segment);
+            ClearDialogueSceneShopSelectionsFrom(segment);
         }
         if (selectedDifferentBranch && !SelectDialogueTimelinePathTo(segment))
         {
@@ -9114,15 +9748,42 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         bool movingBackward = globalTime < dialogueTimelineCurrentTime - 0.0001f;
         float endTime = GetDialogueTimelineEndTime();
         globalTime = Math.Clamp(globalTime, 0, endTime);
-        DialogueTimelineSegment target = dialogueTimelineActivePath
-            .FirstOrDefault(segment => globalTime < segment.EndTime)
-            ?? dialogueTimelineActivePath[^1];
-        if (movingBackward && ClearDialogueBranchSelectionsFrom(target))
+        DialogueTimelineSegment pendingSceneShop = GetPendingDialogueSceneShopSegment();
+        bool waitingForSceneShop = pendingSceneShop is not null
+                                   && globalTime >= pendingSceneShop.StartTime - 0.0001f;
+        DialogueTimelineSegment target = waitingForSceneShop
+            ? dialogueTimelineActivePath.TakeWhile(segment => segment.StartTime < pendingSceneShop.StartTime)
+                .LastOrDefault()
+            : dialogueTimelineActivePath.FirstOrDefault(segment => globalTime < segment.EndTime)
+              ?? dialogueTimelineActivePath[^1];
+        if (movingBackward && target is not null)
         {
-            endTime = GetDialogueTimelineEndTime();
-            globalTime = Math.Clamp(globalTime, 0, endTime);
+            bool choicesCleared = ClearDialogueBranchSelectionsFrom(target);
+            choicesCleared |= ClearDialogueSceneShopSelectionsFrom(target);
+            if (choicesCleared)
+            {
+                endTime = GetDialogueTimelineEndTime();
+                globalTime = Math.Clamp(globalTime, 0, endTime);
+                pendingSceneShop = GetPendingDialogueSceneShopSegment();
+                waitingForSceneShop = pendingSceneShop is not null
+                                      && globalTime >= pendingSceneShop.StartTime - 0.0001f;
+                target = waitingForSceneShop
+                    ? dialogueTimelineActivePath.TakeWhile(segment =>
+                            segment.StartTime < pendingSceneShop.StartTime)
+                        .LastOrDefault()
+                    : dialogueTimelineActivePath.FirstOrDefault(segment => globalTime < segment.EndTime)
+                      ?? dialogueTimelineActivePath[^1];
+            }
         }
-
+        if (waitingForSceneShop && target is null)
+        {
+            PauseDialogueTimeline();
+            dialogueTimelineCurrentTime = pendingSceneShop.StartTime;
+            SceneStatus = $"Choose a SceneShop path before {pendingSceneShop.NodeLabel} can play.";
+            UpdateDialogueTimelineControls();
+            SceneViewer?.MarkRenderDirty();
+            return;
+        }
         bool useCachedRuntime = isDialogueConversationPreview && dialogueRuntimeCache.Count > 0;
         if (reconstruct && useCachedRuntime)
         {
@@ -9155,9 +9816,16 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         }
 
         ActivateDialogueTimelineSegment(target);
-        float localTime = Math.Clamp(globalTime - target.StartTime, 0, target.Duration);
-        ApplyPlaybackAtTime(localTime, playAudio: isPlayingDialogueTimeline);
+        float localTime = waitingForSceneShop
+            ? target.Duration
+            : Math.Clamp(globalTime - target.StartTime, 0, target.Duration);
+        ApplyPlaybackAtTime(localTime, playAudio: isPlayingDialogueTimeline && !waitingForSceneShop);
         dialogueTimelineCurrentTime = globalTime;
+        if (waitingForSceneShop)
+        {
+            PauseDialogueTimeline();
+            SceneStatus = $"Choose a SceneShop path before {pendingSceneShop.NodeLabel} can play.";
+        }
         UpdateDialogueTimelineControls();
         SceneViewer?.MarkRenderDirty();
     }
@@ -9195,9 +9863,10 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         dialogueNodePreview = dialogueNodePreview with
         {
             Node = segment.Node,
-            VoStartTime = GetDialoguePreviewVoStartTime(segment.Node.InterpData)
+            VoStartTime = GetDialoguePreviewVoStartTime(segment.Node.InterpData,
+                GetSelectedSceneShopGroup(segment.Node.InterpData))
         };
-        ExportEntry trackMove = FindDialoguePreviewTrackMove(segment.Node.InterpData);
+        ExportEntry trackMove = FindSelectedDialoguePreviewTrackMove(segment.Node.InterpData);
         if (trackMove is not null)
         {
             loadingDialogueTimelineSegment = true;
@@ -9451,7 +10120,13 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         SceneViewer?.MarkRenderDirty();
     }
 
-    private float GetDialogueTimelineEndTime() => dialogueTimelineActivePath.LastOrDefault()?.EndTime ?? 0;
+    private float GetDialogueTimelineEndTime()
+    {
+        float authoredEnd = dialogueTimelineActivePath.LastOrDefault()?.EndTime ?? 0;
+        return ResolveDialogueTimelineEndForSceneShop(authoredEnd,
+            dialogueTimelineActivePath.Where(HasUnresolvedDialogueSceneShopChoice)
+                .Select(segment => segment.StartTime));
+    }
 
     private void UpdateDialogueTimelineControls()
     {
@@ -9468,7 +10143,12 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         timeText.Text = $"{dialogueTimelineCurrentTime:0.00} / {endTime:0.00}";
         if (FindName("DialogueTimelineListBox") is ListBox timelineList)
         {
-            DialogueTimelineSegment currentSegment = activeDialogueTimelineSegment is not null
+            DialogueTimelineSegment pendingSceneShop = GetPendingDialogueSceneShopSegment();
+            bool waitingForSceneShop = pendingSceneShop is not null
+                                       && dialogueTimelineCurrentTime >= pendingSceneShop.StartTime - 0.0001f;
+            DialogueTimelineSegment currentSegment = waitingForSceneShop
+                ? pendingSceneShop
+                : activeDialogueTimelineSegment is not null
                                                      && dialogueTimelineActivePath.Contains(activeDialogueTimelineSegment)
                 ? activeDialogueTimelineSegment
                 : dialogueTimelineActivePath.FirstOrDefault(segment =>
@@ -9490,6 +10170,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                 }, DispatcherPriority.Background);
             }
             updatingDialogueTimelineSelection = false;
+            UpdateActiveDialogueSceneShopChoices(currentSegment);
         }
     }
 
@@ -11329,16 +12010,33 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             MoveFrame = GetTrackMoveFrame(trackMove),
         };
         CameraOrigin trackOrigin = ResolveActorTrackOrigin(state, EvaluateTrackMove(trackMove, keys[0].Time));
-        return IsStageAttachedOneKeyPlayerLocomotion(actor, trackMove, trackOrigin);
+        return IsStageAttachedOneKeyPlayerLocomotion(actor, trackMove, originalOrigin, trackOrigin);
     }
 
     private bool IsStageAttachedOneKeyPlayerLocomotion(PreviewActorConfiguration actor,
-        TrackMovePlaybackOption trackMove, CameraOrigin trackOrigin) =>
+        TrackMovePlaybackOption trackMove, CameraOrigin inheritedOrigin, CameraOrigin trackOrigin) =>
         string.Equals(actor?.ActorTag, "Player", StringComparison.OrdinalIgnoreCase)
         && trackMove?.Model?.Keyframes is { Count: 1 }
         && dialogueNodePreview?.StageContext?.ActorOrigins.TryGetValue("Player",
             out CameraOrigin stageAttachment) == true
-        && IsStageAttachedPlayerTrackDisplaced(trackOrigin, stageAttachment);
+        && ShouldAlignStageAttachedPlayerRootMotion(trackOrigin, stageAttachment, inheritedOrigin);
+
+    internal static bool ShouldAlignStageAttachedPlayerRootMotion(CameraOrigin trackOrigin,
+        CameraOrigin stageAttachment, CameraOrigin inheritedOrigin)
+    {
+        // StartConversation initially binds Player to the stage slot. A displaced one-key TrackMove
+        // may then pair with a root-moving gesture to walk that pawn into the bound slot. Only apply
+        // this correction while the inherited pawn is still on that slot: later dialogue nodes can
+        // use legitimate one-key anchors after a preceding TrackMove has moved the pawn elsewhere.
+        if (!IsStageAttachedPlayerTrackDisplaced(trackOrigin, stageAttachment))
+        {
+            return false;
+        }
+
+        var inheritedStageOffset = new Vector2(inheritedOrigin.Location.X - stageAttachment.Location.X,
+            inheritedOrigin.Location.Y - stageAttachment.Location.Y);
+        return inheritedStageOffset.LengthSquared() <= 0.0001f;
+    }
 
     internal static bool IsStageAttachedPlayerTrackDisplaced(CameraOrigin trackOrigin,
         CameraOrigin stageAttachment)
@@ -11363,15 +12061,13 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         return new CameraOrigin(origin.Location + worldTranslation, origin.Rotation);
     }
 
-    private float ResolveStageAttachedRootMotionYawOffset(PreviewActorConfiguration actor,
-        TrackMovePlaybackOption trackMove, CameraOrigin trackOrigin, Vector3 localTranslation)
+    private float ResolveStageAttachedRootMotionYawOffset(CameraOrigin trackOrigin, Vector3 localTranslation,
+        bool stageAttachedOneKeyPlayerLocomotion)
     {
         if (localTranslation == Vector3.Zero
-            || !string.Equals(actor?.ActorTag, "Player", StringComparison.OrdinalIgnoreCase)
-            || trackMove?.Model?.Keyframes is not { Count: 1 }
+            || !stageAttachedOneKeyPlayerLocomotion
             || dialogueNodePreview?.StageContext?.ActorOrigins.TryGetValue("Player",
-                out CameraOrigin stageAttachment) != true
-            || !IsStageAttachedPlayerTrackDisplaced(trackOrigin, stageAttachment))
+                out CameraOrigin stageAttachment) != true)
         {
             return 0f;
         }
@@ -11385,18 +12081,13 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         return CalculateStageAttachedRootMotionYawOffset(trackOrigin, stageAttachment, localTranslation);
     }
 
-    private float ResolveStageAttachedRootMotionFacingYawOffset(PreviewActorConfiguration actor,
-        TrackMovePlaybackOption trackMove, CameraOrigin trackOrigin, Vector3 localTranslation)
+    private static float ResolveStageAttachedRootMotionFacingYawOffset(Vector3 localTranslation,
+        bool stageAttachedOneKeyPlayerLocomotion)
     {
         // Male Shepard's stage-attached pawn and the authored locomotion Root use opposite facing
         // hemispheres. Apply this after translation is resolved so it changes only the rendered
         // pawn facing and cannot rotate the already stage-aligned displacement vector.
-        return localTranslation != Vector3.Zero
-               && string.Equals(actor?.ActorTag, "Player", StringComparison.OrdinalIgnoreCase)
-               && trackMove?.Model?.Keyframes is { Count: 1 }
-               && dialogueNodePreview?.StageContext?.ActorOrigins.TryGetValue("Player",
-                   out CameraOrigin stageAttachment) == true
-               && IsStageAttachedPlayerTrackDisplaced(trackOrigin, stageAttachment)
+        return localTranslation != Vector3.Zero && stageAttachedOneKeyPlayerLocomotion
             ? 180f
             : 0f;
     }
