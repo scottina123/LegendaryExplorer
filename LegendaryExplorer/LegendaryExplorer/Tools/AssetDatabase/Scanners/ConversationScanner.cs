@@ -84,7 +84,11 @@ namespace LegendaryExplorer.Tools.AssetDatabase.Scanners
                     }
                 }
 
-                var newConv = new Conversation(e.Export.ObjectName.Instanced, IsAmbient, new FileKeyExportPair(e.FileKey, e.Export.UIndex));
+                var stageDirections = GetStageDirections(e.Properties);
+                var newConv = new Conversation(e.Export.ObjectName.Instanced,
+                                               IsAmbient,
+                                               new FileKeyExportPair(e.FileKey, e.Export.UIndex),
+                                               stageDirections: stageDirections);
                 db.GeneratedConvo.AddOrUpdate(GetConversationLookupKey(e.Export.ObjectName.Instanced),
                                              _ => newConv,
                                              (_, existing) =>
@@ -92,9 +96,29 @@ namespace LegendaryExplorer.Tools.AssetDatabase.Scanners
                                                  existing.ConvName = newConv.ConvName;
                                                  existing.IsAmbient = newConv.IsAmbient;
                                                  existing.ConvFile = newConv.ConvFile;
+                                                 existing.StageDirections = newConv.StageDirections;
                                                  return existing;
                                              });
             }
+        }
+
+        internal static List<ConversationStageDirection> GetStageDirections(PropertyCollection properties)
+        {
+            var stageDirections = new List<ConversationStageDirection>();
+            var stageDirectionProperties = properties.GetProp<ArrayProperty<StructProperty>>("m_aStageDirections");
+            if (stageDirectionProperties == null)
+            {
+                return stageDirections;
+            }
+
+            foreach (var stageDirection in stageDirectionProperties)
+            {
+                int strRef = stageDirection.GetProp<StringRefProperty>("srStrRef")?.Value ?? 0;
+                string text = stageDirection.GetProp<StrProperty>("sText")?.Value;
+                stageDirections.Add(new ConversationStageDirection(strRef, text));
+            }
+
+            return stageDirections;
         }
 
         private static void ScanConversationOwnerMetadata(ExportScanInfo e, ConcurrentAssetDB db)

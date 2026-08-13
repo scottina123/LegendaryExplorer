@@ -680,7 +680,9 @@ namespace LegendaryExplorer.Tools.AssetDatabase
 
         public string OwnerFriendlyName { get; set; }
 
-        public Conversation(string ConvName, bool IsAmbient, FileKeyExportPair ConvFile, string packageName = null, int conversationExportIndex = 0, int ownerObjectRef = 0, string ownerFriendlyName = null)
+        public List<ConversationStageDirection> StageDirections { get; set; } = new();
+
+        public Conversation(string ConvName, bool IsAmbient, FileKeyExportPair ConvFile, string packageName = null, int conversationExportIndex = 0, int ownerObjectRef = 0, string ownerFriendlyName = null, IEnumerable<ConversationStageDirection> stageDirections = null)
         {
             this.ConvName = ConvName;
             this.IsAmbient = IsAmbient;
@@ -689,10 +691,19 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             ConversationExportIndex = conversationExportIndex;
             OwnerObjectRef = ownerObjectRef;
             OwnerFriendlyName = ownerFriendlyName;
+            if (stageDirections != null)
+            {
+                StageDirections.AddRange(stageDirections);
+            }
         }
 
         public Conversation()
         { }
+    }
+
+    public sealed record ConversationStageDirection(int StrRef, string Text)
+    {
+        public ConversationStageDirection() : this(default, default) { }
     }
 
     public sealed record FileKeyExportPair(int FileKey, int UIndex) : IAssetUsage

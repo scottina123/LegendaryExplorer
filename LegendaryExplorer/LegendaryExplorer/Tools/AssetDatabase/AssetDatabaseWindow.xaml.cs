@@ -293,8 +293,8 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         }
 
         #region Declarations
-        // v18.0: Index tagged exports and PersistentLevel/Sequence objects that reference their tags.
-        public const string dbCurrentBuild = "18.0";
+        // v19.0: Index BioConversation stage directions for every game.
+        public const string dbCurrentBuild = "19.0";
 
         private int previousView { get; set; }
         private readonly ConditionalWeakTable<ConvoLine, LineUsageExpansionState> _lineUsageExpansionStates = new();
