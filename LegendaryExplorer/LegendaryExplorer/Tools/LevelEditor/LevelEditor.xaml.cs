@@ -2158,6 +2158,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
     public ICommand AddFileCommand { get; set; }
     public ICommand SaveAllCommand { get; set; }
     public ICommand SaveAsCommand { get; set; }
+    public ICommand CaptureViewportCommand { get; set; }
     public ICommand SaveSingleFileCommand { get; set; }
     public ICommand CloseFileCommand { get; set; }
     public ICommand ToggleTranslateCommand { get; set; }
@@ -2187,6 +2188,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         AddFileCommand = new GenericCommand(AddFile);
         SaveAllCommand = new GenericCommand(SaveAllFiles, PackageIsLoaded);
         SaveAsCommand = new GenericCommand(SaveFileAs, PackageIsLoaded);
+        CaptureViewportCommand = new GenericCommand(CaptureViewport, PackageIsLoaded);
         SaveSingleFileCommand = new RelayCommand(SaveSingleFileExecute, _ => PackageIsLoaded());
         CloseFileCommand = new RelayCommand(CloseFileExecute);
         ToggleTranslateCommand = new GenericCommand(() => { RenderContext.TransformWidget.Mode = EWidgetMode.Translate; CurrentModeName = "Translate"; }, PackageIsLoaded);
@@ -2230,6 +2232,34 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
             () => ActiveFile is { IsReadOnly: false } && Game.IsGame3() && !IsBusy);
         GenerateStaticLightingCommand = new GenericCommand(GenerateStaticLighting,
             () => OpenFiles.Any(file => file.IncludeInLightmass && !file.IsReadOnly) && !IsBusy);
+    }
+
+    private void CaptureViewport()
+    {
+        var dialog = new SaveFileDialog
+        {
+            AddExtension = true,
+            DefaultExt = ".png",
+            FileName = $"LevelEditorScreenshot_{DateTime.Now:yyyyMMdd_HHmmss}.png",
+            Filter = "PNG image|*.png"
+        };
+
+        if (DirectoryMemory.ShowDialog(dialog) != true)
+        {
+            return;
+        }
+
+        System.Windows.Media.Imaging.BitmapSource screenshot = SceneViewer.CaptureBitmap();
+        if (screenshot is null)
+        {
+            MessageBox.Show(this, "The viewport is not ready to capture.", "Capture Viewport", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
+        encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(screenshot));
+        using FileStream stream = File.Create(dialog.FileName);
+        encoder.Save(stream);
     }
 
     private void SnapActorToCamera()

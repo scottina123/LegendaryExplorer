@@ -3,6 +3,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Windows;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using System.Windows.Controls;
 using System.Windows.Input;
 using FontAwesome5;
@@ -384,6 +385,57 @@ public sealed class SceneRenderControl : ContentControl, IDisposable, INotifyPro
 
     public int RenderWidth => (int)RenderSize.Width;
     public int RenderHeight => (int)RenderSize.Height;
+
+    public unsafe BitmapSource CaptureBitmap()
+    {
+        if (Context?.Backbuffer is null)
+        {
+            return null;
+        }
+
+        Texture2DDescription description = Context.Backbuffer.Description;
+        description.BindFlags = BindFlags.None;
+        description.CpuAccessFlags = CpuAccessFlags.Read;
+        description.OptionFlags = ResourceOptionFlags.None;
+        description.Usage = ResourceUsage.Staging;
+
+        using var stagingTexture = new Texture2D(Context.Device, description);
+        Context.ImmediateContext.CopyResource(Context.Backbuffer, stagingTexture);
+
+        int stride = description.Width * 4;
+        byte[] pixels = new byte[stride * description.Height];
+        SharpDX.DataBox mapped = Context.ImmediateContext.MapSubresource(stagingTexture, 0, MapMode.Read, SharpDX.Direct3D11.MapFlags.None);
+        try
+        {
+            fixed (byte* destination = pixels)
+            {
+                for (int y = 0; y < description.Height; y++)
+                {
+                    System.Buffer.MemoryCopy(
+                        (mapped.DataPointer + y * mapped.RowPitch).ToPointer(),
+                        destination + y * stride,
+                        stride,
+                        stride);
+                }
+            }
+        }
+        finally
+        {
+            Context.ImmediateContext.UnmapSubresource(stagingTexture, 0);
+        }
+
+        BitmapSource bitmap = BitmapSource.Create(
+            description.Width,
+            description.Height,
+            96,
+            96,
+            PixelFormats.Bgra32,
+            null,
+            pixels,
+            stride);
+        bitmap.Freeze();
+        return bitmap;
+    }
 
     /// <summary>
     /// Signals that the scene has changed and a new frame must be rendered.
