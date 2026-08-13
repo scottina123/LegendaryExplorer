@@ -997,6 +997,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     private IMEPackage dialoguePreviewFaceFxPackage;
     private StageConversationContext trackAnchorStageContext;
     private ConversationExtended trackAnchorConversation;
+    private DialogueNodeExtended trackAnchorDialogueNode;
     private readonly Dictionary<PreviewActorConfiguration, FaceFXAnimSet> dialoguePreviewFaceFxAnimSets = [];
     private readonly ObservableCollection<GestureTrackOption> availableGestureTracks = [];
     private readonly Dictionary<PreviewActorConfiguration, GestureTrackOption> previewActorGestureAssignments = [];
@@ -1105,6 +1106,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     private DirectorPlaybackOption selectedDirectorPlayback;
     private TrackMovePlaybackOption primaryTrackMove;
     private DialogueNodePreviewConfiguration dialogueNodePreview;
+    private DialogueNodePreviewConfiguration generatedDialogueActorConfiguration;
     private bool isDialogueConversationPreview;
     private CurveEditor3DModel registeredKeyframeModel;
     private CurveEditor3DFovModel registeredFovModel;
@@ -1175,6 +1177,9 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
     private string SavedPreviewActorsPath => Path.Combine(AppDirectories.AppDataFolder,
         $"CurveEditor3DPreviewActors_{previewActorGame}.json");
+
+    private DialogueNodePreviewConfiguration ActiveDialogueActorConfiguration =>
+        dialogueNodePreview ?? generatedDialogueActorConfiguration;
 
     private CurveEditor3DModel ActiveModel => ActiveTrackMoveOption?.Model ?? model;
 
@@ -1347,6 +1352,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         DialoguePreviewActorPanel.Width = 260;
         DialogueTimelinePanel.Visibility = Visibility.Collapsed;
         PreviewEditorPanel.Visibility = conversationPreview ? Visibility.Collapsed : Visibility.Visible;
+        GenerateDialogueSceneActorsButton.Visibility = Visibility.Collapsed;
         DialogueNodeCommitButton.Visibility = conversationPreview ? Visibility.Visible : Visibility.Collapsed;
         DialogueCacheCommitAllButton.Visibility = conversationPreview ? Visibility.Visible : Visibility.Collapsed;
         DialogueCacheSaveButton.Visibility = conversationPreview ? Visibility.Visible : Visibility.Collapsed;
@@ -2075,7 +2081,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             return cached;
         }
 
-        cached = ResolveDialogueNodeInterpDatas(dialogueNodePreview?.Conversation, node);
+        cached = ResolveDialogueNodeInterpDatas(ActiveDialogueActorConfiguration?.Conversation, node);
         if (dialoguePreviewWorkingPackage is not null)
         {
             cached = cached.Select(MapDialogueExportToWorkingPackage)
@@ -2495,6 +2501,74 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             }
         }
         return result;
+    }
+
+    internal static IReadOnlyList<DialogueNodePreviewActor> BuildDialoguePreviewActors(
+        ConversationExtended conversation, DialogueNodeExtended startNode,
+        StageConversationContext stageContext, IReadOnlyDictionary<string, string> henchmanAssignments,
+        bool conversationPreview)
+    {
+        IReadOnlyList<DialogueNodeExtended> previewNodes = GetDialoguePreviewNodes(
+            conversation, startNode, conversationPreview);
+        IReadOnlyList<DialoguePreviewActorIdentity> actorIdentities = MergeDialoguePreviewActorIdentities(
+            ApplyDialoguePreviewHenchmanAssignments(
+                GetDialoguePreviewActorIdentities(conversation, previewNodes), henchmanAssignments),
+            stageContext.ActorOrigins);
+        string[] actorTags = actorIdentities.Select(identity => identity.ActorTag).ToArray();
+        var actorOrigins = new Dictionary<string, CameraOrigin>(StringComparer.OrdinalIgnoreCase);
+        var context = new CameraActorAnchorContext(conversation, startNode, actorTags);
+        ActorSceneStatePath bestPath = CameraActorSceneStateResolver.ResolvePaths(context, actorTags,
+                stageContext.StageOrigin)
+            .OrderByDescending(path => actorTags.Count(path.ActorTransforms.ContainsKey))
+            .ThenBy(path => path.PathId, StringComparer.Ordinal)
+            .FirstOrDefault();
+        if (bestPath is not null)
+        {
+            foreach ((string actorTag, ResolvedActorTransform transform) in bestPath.ActorTransforms)
+            {
+                actorOrigins[actorTag] = new CameraOrigin(transform.Location, transform.Rotation);
+            }
+        }
+
+        return actorIdentities.Select((identity, index) =>
+        {
+            bool isHenchman = IsDialoguePreviewHenchmanTag(identity.ActorTag);
+            bool foundOrigin = false;
+            CameraOrigin origin = default;
+            if (isHenchman)
+            {
+                foundOrigin = stageContext.ActorOrigins.TryGetValue(identity.ActorTag, out origin);
+                foreach (string alias in identity.Aliases)
+                {
+                    if (foundOrigin) break;
+                    foundOrigin = stageContext.ActorOrigins.TryGetValue(alias, out origin);
+                }
+            }
+            if (!foundOrigin)
+            {
+                foundOrigin = actorOrigins.TryGetValue(identity.ActorTag, out origin);
+            }
+            foreach (string alias in identity.Aliases)
+            {
+                if (foundOrigin) break;
+                foundOrigin = actorOrigins.TryGetValue(alias, out origin);
+            }
+            if (!foundOrigin)
+            {
+                foundOrigin = stageContext.ActorOrigins.TryGetValue(identity.ActorTag, out origin);
+            }
+            foreach (string alias in identity.Aliases)
+            {
+                if (foundOrigin) break;
+                foundOrigin = stageContext.ActorOrigins.TryGetValue(alias, out origin);
+            }
+            if (!foundOrigin)
+            {
+                origin = new CameraOrigin(stageContext.StageOrigin.Location + new Vector3(0, index * 100, 0),
+                    stageContext.StageOrigin.Rotation);
+            }
+            return new DialogueNodePreviewActor(identity.ActorTag, origin, identity.Aliases);
+        }).ToArray();
     }
 
     public static IReadOnlyList<DialoguePreviewHenchmanSlot> GetDialoguePreviewHenchmanSlots(
@@ -3233,6 +3307,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             hasSnappedInitialCamera = true;
         }
         CurrentExportName = $"{exportEntry.UIndex}: {exportEntry.InstancedFullPath}";
+        GenerateDialogueSceneActorsButton.IsEnabled = true;
         SceneStatus = $"{model.Keyframes.Count} trajectory keyframe(s); {levelPaths.Count} level backdrop file(s).";
         UpdatePlaybackButton();
         SceneViewer?.MarkRenderDirty();
@@ -3258,6 +3333,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         FovTrackPanel.Visibility = Visibility.Collapsed;
         CurrentLoadedExport = null;
         CurrentExportName = null;
+        GenerateDialogueSceneActorsButton.IsEnabled = false;
         previewActorGestureAssignments.Clear();
         previewActorTrackAssignments.Clear();
         availableGestureTracks.Clear();
@@ -3306,6 +3382,8 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         dialoguePreviewFaceFxPackage = null;
         DisposeDialoguePackageEditor();
         dialogueNodePreview?.StageContext.Dispose();
+        generatedDialogueActorConfiguration?.StageContext.Dispose();
+        generatedDialogueActorConfiguration = null;
         SceneViewer.Dispose();
     }
 
@@ -3322,9 +3400,218 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             out trackAnchorStageContext, out _);
     }
 
-    internal void ConfigureTrackAnchorConversation(ConversationExtended conversation)
+    internal void ConfigureTrackAnchorConversation(ConversationExtended conversation,
+        DialogueNodeExtended dialogueNode = null)
     {
         trackAnchorConversation = conversation;
+        trackAnchorDialogueNode = dialogueNode;
+    }
+
+    private async void GenerateDialogueSceneActors_Click(object sender, RoutedEventArgs e)
+    {
+        if (CurrentLoadedExport is null || dialogueNodePreview is not null)
+        {
+            return;
+        }
+
+        GenerateDialogueSceneActorsButton.IsEnabled = false;
+        StageConversationContext stageContext = null;
+        try
+        {
+            (ConversationExtended Conversation, DialogueNodeExtended Node)? scene =
+                ResolveCurrentDialogueScene();
+            if (scene is null)
+            {
+                return;
+            }
+
+            var options = new DialoguePreviewLevelPicker(CurrentLoadedExport.Game, scene.Value.Conversation,
+                scene.Value.Node, includeCache: false)
+            {
+                Owner = Window.GetWindow(this),
+            };
+            if (options.ShowDialog() != true)
+            {
+                return;
+            }
+
+            ExportEntry interpData = FindOwningInterpData(CurrentLoadedExport);
+            if (!StageBoneOriginResolver.TrySelectContext(Window.GetWindow(this), CurrentLoadedExport.FileRef,
+                    interpData, scene.Value.Conversation, out stageContext, out string stageMessage))
+            {
+                MessageBox.Show(Window.GetWindow(this), stageMessage, "Conversation Stage Unavailable",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            IReadOnlyList<DialogueNodePreviewActor> actors = BuildDialoguePreviewActors(
+                scene.Value.Conversation, scene.Value.Node, stageContext, options.HenchmanAssignments,
+                conversationPreview: false);
+            Task generation = GenerateDialogueSceneActorsAsync(scene.Value.Conversation, scene.Value.Node, actors,
+                options.SelectedLevelPaths, stageContext, options.PlayerSelection,
+                options.HenchmanAssignments);
+            stageContext = null; // Ownership transferred to generatedDialogueActorConfiguration.
+            await generation.ConfigureAwait(true);
+        }
+        catch (Exception exception)
+        {
+            MessageBox.Show(Window.GetWindow(this), $"Unable to generate scene actors:\n{exception.Message}",
+                "Scene Actor Generation", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+        finally
+        {
+            stageContext?.Dispose();
+            GenerateDialogueSceneActorsButton.IsEnabled = CurrentLoadedExport is not null;
+        }
+    }
+
+    private (ConversationExtended Conversation, DialogueNodeExtended Node)? ResolveCurrentDialogueScene()
+    {
+        ExportEntry interpData = FindOwningInterpData(CurrentLoadedExport);
+        if (interpData is null)
+        {
+            MessageBox.Show(Window.GetWindow(this),
+                "The selected TrackMove is not contained in an InterpData scene.",
+                "Scene Actors Unavailable", MessageBoxButton.OK, MessageBoxImage.Information);
+            return null;
+        }
+
+        if (trackAnchorConversation is not null && trackAnchorDialogueNode is not null
+            && ResolveDialogueNodeInterpDatas(trackAnchorConversation, trackAnchorDialogueNode)
+                .Any(candidate => IsSameExport(candidate, interpData)))
+        {
+            return (trackAnchorConversation, trackAnchorDialogueNode);
+        }
+
+        var conversations = new List<ConversationExtended>();
+        if (trackAnchorConversation is not null)
+        {
+            conversations.Add(trackAnchorConversation);
+        }
+        conversations.AddRange(CurrentLoadedExport.FileRef.Exports
+            .Where(export => export.ClassName == "BioConversation")
+            .Where(export => conversations.All(existing => !IsSameExport(existing.Export, export)))
+            .Select(export => new ConversationExtended(export)));
+
+        var matches = new List<(ConversationExtended Conversation, DialogueNodeExtended Node)>();
+        Exception parseError = null;
+        foreach (ConversationExtended conversation in conversations)
+        {
+            try
+            {
+                if (!conversation.IsParsed)
+                {
+                    if (conversation.EntryList.Count == 0 && conversation.ReplyList.Count == 0)
+                    {
+                        conversation.LoadConversation(detailedParse: true);
+                    }
+                    else
+                    {
+                        conversation.ParseSequence();
+                        conversation.DetailedParse();
+                    }
+                }
+                matches.AddRange(conversation.EntryList.Concat(conversation.ReplyList)
+                    .Where(node => ResolveDialogueNodeInterpDatas(conversation, node)
+                        .Any(candidate => IsSameExport(candidate, interpData)))
+                    .Select(node => (conversation, node)));
+            }
+            catch (Exception exception)
+            {
+                parseError ??= exception;
+            }
+        }
+
+        matches = matches.DistinctBy(match =>
+                (match.Conversation.Export.FileRef, match.Conversation.Export.UIndex,
+                    match.Node.IsReply, match.Node.NodeCount))
+            .ToList();
+        if (matches.Count == 0)
+        {
+            string details = parseError is null ? string.Empty : $"\n\n{parseError.Message}";
+            MessageBox.Show(Window.GetWindow(this),
+                "No BioConversation dialogue node referencing this InterpData could be found."
+                + details, "Scene Actors Unavailable", MessageBoxButton.OK, MessageBoxImage.Information);
+            return null;
+        }
+        if (matches.Count == 1)
+        {
+            return matches[0];
+        }
+
+        var choices = new Dictionary<string, (ConversationExtended Conversation, DialogueNodeExtended Node)>(
+            StringComparer.Ordinal);
+        foreach ((ConversationExtended conversation, DialogueNodeExtended node) in matches)
+        {
+            string nodeLabel = $"{(node.IsReply ? 'R' : 'E')}{node.NodeCount}";
+            string line = string.IsNullOrWhiteSpace(node.Line) || node.Line == "No data"
+                ? $"StrRef {node.LineStrRef}"
+                : node.Line;
+            string baseLabel = $"{conversation.ConvName} - {nodeLabel}: {line}";
+            string label = baseLabel;
+            for (int suffix = 2; choices.ContainsKey(label); suffix++)
+            {
+                label = $"{baseLabel} ({suffix})";
+            }
+            choices[label] = (conversation, node);
+        }
+        string selection = StringSelectorDialog.GetValue(this,
+            "Choose the dialogue node whose scene actors should be generated:",
+            "Select Dialogue Scene", choices.Keys);
+        return string.IsNullOrWhiteSpace(selection) ? null : choices[selection];
+    }
+
+    private async Task GenerateDialogueSceneActorsAsync(ConversationExtended conversation,
+        DialogueNodeExtended node, IReadOnlyList<DialogueNodePreviewActor> actors,
+        IReadOnlyList<string> selectedLevelPaths, StageConversationContext stageContext,
+        DialoguePreviewPlayerSelection playerSelection,
+        IReadOnlyDictionary<string, string> henchmanAssignments)
+    {
+        // Scene generation is a replacement operation by design: never merge with manually
+        // configured or previously generated actors.
+        ClearPreviewActors(releaseGeneratedConfiguration: true);
+        ReleaseTrackAnchorStageContext();
+        generatedDialogueActorConfiguration = new DialogueNodePreviewConfiguration(
+            conversation, node, actors, selectedLevelPaths, stageContext, playerSelection,
+            henchmanAssignments, CachePreset: null, NewCacheLabel: null, VoStartTime: 0);
+        dialogueResolvedExportCache.Clear();
+        BuildDialoguePreviewActorTagAliases(actors, stageContext);
+        InitializeDialoguePreviewActors(generatedDialogueActorConfiguration);
+        dialoguePreviewCameraActors.Clear();
+        dialoguePreviewCameraActors.AddRange(availableTrackMoves
+            .Where(IsCameraMovementTrack)
+            .DistinctBy(option => (option.TrackMove.FileRef, option.TrackMove.UIndex)));
+        AssignDialoguePreviewTrackMoves();
+        ActorPlaybackTrackZCheckBox.IsChecked = true;
+        ActorPlaybackTrackZCheckBox.IsEnabled = false;
+        SetPreviewActorStatus($"Generating {previewActors.Count} scene actor(s)...");
+        await InitializePreviewActorModelsAsync().ConfigureAwait(true);
+        AssignGeneratedDialogueActorGestures(generatedDialogueActorConfiguration);
+        SceneViewer.MarkRenderDirty();
+    }
+
+    private void AssignGeneratedDialogueActorGestures(DialogueNodePreviewConfiguration configuration)
+    {
+        previewActorGestureAssignments.Clear();
+        if (configuration?.Node.IgnoreBodyGesture == true)
+        {
+            return;
+        }
+        foreach (PreviewActorConfiguration actor in previewActors)
+        {
+            GestureTrackOption gesture = availableGestureTracks
+                .Select(option => new { Option = option, Score = GetGestureActorMatchScore(option, actor.ActorTag) })
+                .Where(candidate => candidate.Score > 0)
+                .OrderByDescending(candidate => candidate.Score)
+                .Select(candidate => candidate.Option)
+                .FirstOrDefault();
+            if (gesture is not null)
+            {
+                previewActorGestureAssignments[actor] = gesture;
+                ApplyAssignedGestureToActor(actor);
+            }
+        }
+        PreviewActorGestureComboBox.Items.Refresh();
     }
 
     private static bool HasAnchorObjectTrack(ExportEntry trackMove)
@@ -4072,9 +4359,11 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         out ResolvedSwitchCamera camera)
     {
         camera = null;
-        StageConversationContext stageContext = dialogueNodePreview?.StageContext ?? trackAnchorStageContext;
-        IReadOnlyDictionary<string, CameraOrigin> stageNodes = dialogueNodePreview?.StageContext.StageNodeOrigins
-                                                               ?? trackAnchorStageContext?.StageNodeOrigins;
+        StageConversationContext stageContext = ActiveDialogueActorConfiguration?.StageContext
+                                                ?? trackAnchorStageContext;
+        IReadOnlyDictionary<string, CameraOrigin> stageNodes =
+            ActiveDialogueActorConfiguration?.StageContext.StageNodeOrigins
+            ?? trackAnchorStageContext?.StageNodeOrigins;
         ArrayProperty<StructProperty> cameraKeys = switchCameraTrack?
             .GetProperty<ArrayProperty<StructProperty>>("m_aCameras");
         ArrayProperty<StructProperty> trackKeys = switchCameraTrack?
@@ -4237,18 +4526,19 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                 CancellationToken.None).ConfigureAwait(true);
             previewActorMeshes = meshes;
 
-            if (dialogueNodePreview is not null)
+            DialogueNodePreviewConfiguration actorConfiguration = ActiveDialogueActorConfiguration;
+            if (actorConfiguration is not null)
             {
                 // Loading the first backdrop resets the Level Editor render caches. Do it before
                 // constructing actor materials so their compiled shaders and textures remain live.
-                await LoadDialoguePreviewLevelsAsync().ConfigureAwait(true);
+                await LoadDialoguePreviewLevelsAsync(actorConfiguration).ConfigureAwait(true);
                 ResolveDialoguePreviewActorConstructions();
             }
 
             for (int actorIndex = 0; actorIndex < previewActors.Count; actorIndex++)
             {
                 PreviewActorConfiguration actor = previewActors[actorIndex];
-                HashSet<PreviewActorModelComponent> loadedConstruction = dialogueNodePreview is not null
+                HashSet<PreviewActorModelComponent> loadedConstruction = actorConfiguration is not null
                     ? LoadCachedActorConstruction(actorIndex, actor)
                     : [];
                 foreach (PreviewActorModelComponent component in Enum.GetValues<PreviewActorModelComponent>())
@@ -4264,7 +4554,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                         continue;
                     }
                     MeshRecord configuredMesh = FindConfiguredPreviewActorMesh(meshes, actor, component);
-                    MeshRecord mesh = dialogueNodePreview is not null
+                    MeshRecord mesh = actorConfiguration is not null
                         ? configuredMesh
                         : actor.BaseGameModelsOnly
                             ? configuredMesh
@@ -4325,7 +4615,9 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             }
             SetPreviewActorStatus(meshes.Count == 0
                 ? $"The {game} Asset Database contains no skeletal meshes."
-                : $"{meshes.Count:N0} skeletal actor models available.");
+                : generatedDialogueActorConfiguration is not null && dialogueNodePreview is null
+                    ? $"Generated {previewActors.Count} scene actor(s); {meshes.Count:N0} skeletal models available."
+                    : $"{meshes.Count:N0} skeletal actor models available.");
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException)
         {
@@ -4333,9 +4625,9 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         }
     }
 
-    private async Task LoadDialoguePreviewLevelsAsync()
+    private async Task LoadDialoguePreviewLevelsAsync(DialogueNodePreviewConfiguration configuration)
     {
-        string[] paths = dialogueNodePreview.LevelPaths.Where(File.Exists).ToArray();
+        string[] paths = configuration.LevelPaths.Where(File.Exists).ToArray();
         for (int index = 0; index < paths.Length; index++)
         {
             await LoadLevelAsync(paths[index], replace: index == 0).ConfigureAwait(true);
@@ -4357,7 +4649,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         dialogueLookAtTargets.Clear();
 
         IEnumerable<IMEPackage> packages = levelPackages;
-        if (dialogueNodePreview?.Conversation?.Export?.FileRef is { } conversationPackage
+        if (ActiveDialogueActorConfiguration?.Conversation?.Export?.FileRef is { } conversationPackage
             && levelPackages.All(package => !ReferenceEquals(package, conversationPackage)))
         {
             packages = packages.Append(conversationPackage);
@@ -4403,8 +4695,8 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         // Cam_1/Cam_2 are persistent runtime cameras and commonly have no placed export. A preview
         // may start on a stub before that actor has moved on the selected path, so seed it from the
         // first real camera curve authored for the same tag instead of from an unrelated actor curve.
-        IEnumerable<DialogueNodeExtended> nodes = dialogueNodePreview?.Conversation?.EntryList
-            .Concat(dialogueNodePreview.Conversation.ReplyList) ?? [];
+        IEnumerable<DialogueNodeExtended> nodes = ActiveDialogueActorConfiguration?.Conversation?.EntryList
+            .Concat(ActiveDialogueActorConfiguration.Conversation.ReplyList) ?? [];
         foreach (ExportEntry interpData in nodes.SelectMany(GetDialogueNodeInterpDatas)
                      .DistinctBy(interpData => (interpData.FileRef, interpData.UIndex)))
         {
@@ -5354,10 +5646,10 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         {
             package = dialoguePreviewWorkingPackage;
         }
-        else if (string.Equals(dialogueNodePreview?.Conversation?.Export?.FileRef?.FilePath,
+        else if (string.Equals(ActiveDialogueActorConfiguration?.Conversation?.Export?.FileRef?.FilePath,
                      reference.PackagePath, StringComparison.OrdinalIgnoreCase))
         {
-            package = dialogueNodePreview.Conversation.Export.FileRef;
+            package = ActiveDialogueActorConfiguration.Conversation.Export.FileRef;
         }
         else
         {
@@ -7016,7 +7308,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
     private ExportEntry FindLinkedDialoguePreviewActor(string actorTag)
     {
-        if (dialogueNodePreview?.StageContext?.ActorBindings is not { } bindings)
+        if (ActiveDialogueActorConfiguration?.StageContext?.ActorBindings is not { } bindings)
         {
             return null;
         }
@@ -7573,7 +7865,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             try
             {
                 LoadPreviewActorModel(actorIndex, component, meshExport);
-                if (dialogueNodePreview is not null && actorIndex < previewActors.Count)
+                if (ActiveDialogueActorConfiguration is not null && actorIndex < previewActors.Count)
                 {
                     PreviewActorConfiguration actor = previewActors[actorIndex];
                     actor.Construction ??= new DialogueActorConstructionCache { ActorTag = actor.ActorTag };
@@ -7606,6 +7898,14 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         }
 
         SavePreviewActorLayout();
+        if (generatedDialogueActorConfiguration is not null)
+        {
+            generatedDialogueActorConfiguration.StageContext.Dispose();
+            generatedDialogueActorConfiguration = null;
+            dialoguePreviewActorTagAliases.Clear();
+            dialogueResolvedExportCache.Clear();
+            ActorPlaybackTrackZCheckBox.IsEnabled = true;
+        }
         ClearPreviewActorModels();
         previewActors.Clear();
         previewActorGestureAssignments.Clear();
@@ -7628,19 +7928,20 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         _ = InitializePreviewActorModelsAsync();
     }
 
-    private void InitializeDialoguePreviewActors()
+    private void InitializeDialoguePreviewActors(DialogueNodePreviewConfiguration configuration = null)
     {
-        Dictionary<string, DialogueActorConstructionCache> cachedConstructions = dialogueNodePreview.CachePreset?.Actors
+        configuration ??= dialogueNodePreview;
+        Dictionary<string, DialogueActorConstructionCache> cachedConstructions = configuration.CachePreset?.Actors
             .Where(actor => !string.IsNullOrWhiteSpace(actor.ActorTag))
             .ToDictionary(actor => actor.ActorTag, StringComparer.OrdinalIgnoreCase) ?? [];
-        foreach (DialogueNodePreviewActor previewActor in dialogueNodePreview.Actors
+        foreach (DialogueNodePreviewActor previewActor in configuration.Actors
                      .Where(actor => !string.IsNullOrWhiteSpace(actor.ActorTag))
                      .DistinctBy(actor => actor.ActorTag, StringComparer.OrdinalIgnoreCase))
         {
             bool isPlayer = string.Equals(previewActor.ActorTag, "player", StringComparison.OrdinalIgnoreCase);
-            DialoguePreviewPlayerSelection player = dialogueNodePreview.PlayerSelection;
+            DialoguePreviewPlayerSelection player = configuration.PlayerSelection;
             cachedConstructions.TryGetValue(previewActor.ActorTag, out DialogueActorConstructionCache construction);
-            if (isPlayer && dialogueNodePreview.CachePreset?.PlayerGender != player.Gender)
+            if (isPlayer && configuration.CachePreset?.PlayerGender != player.Gender)
             {
                 construction = null;
             }
@@ -7835,7 +8136,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
     private void SavePreviewActorLayout()
     {
-        if (previewActorGame == MEGame.Unknown || dialogueNodePreview is not null)
+        if (previewActorGame == MEGame.Unknown || ActiveDialogueActorConfiguration is not null)
         {
             return;
         }
@@ -7908,6 +8209,13 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
     private void ClearPreviewActors_Click(object sender, RoutedEventArgs e)
     {
+        ClearPreviewActors(releaseGeneratedConfiguration: true);
+        SetPreviewActorStatus("Preview actors cleared.");
+        SavePreviewActorLayout();
+    }
+
+    private void ClearPreviewActors(bool releaseGeneratedConfiguration)
+    {
         if (isPlayingActor)
         {
             StopPlayback();
@@ -7919,8 +8227,14 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         RenumberPreviewActors();
         PreviewActorListBox.SelectedIndex = -1;
         RefreshKeyframeTrackMoveTabs();
-        SetPreviewActorStatus("Preview actors cleared.");
-        SavePreviewActorLayout();
+        if (releaseGeneratedConfiguration && generatedDialogueActorConfiguration is not null)
+        {
+            generatedDialogueActorConfiguration.StageContext.Dispose();
+            generatedDialogueActorConfiguration = null;
+            dialoguePreviewActorTagAliases.Clear();
+            dialogueResolvedExportCache.Clear();
+            ActorPlaybackTrackZCheckBox.IsEnabled = true;
+        }
     }
 
     private void RenumberPreviewActors()
@@ -10603,7 +10917,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         ?? EInterpTrackMoveFrame.IMF_World;
 
     private CameraOrigin? TrackAnchorOrigin =>
-        dialogueNodePreview?.StageContext.StageOrigin ?? trackAnchorStageContext?.StageOrigin;
+        ActiveDialogueActorConfiguration?.StageContext.StageOrigin ?? trackAnchorStageContext?.StageOrigin;
 
     private CameraOrigin ResolveAnchorObjectTrackOrigin(CameraOrigin trackOrigin)
         => TrackAnchorOrigin is { } anchor
@@ -10657,7 +10971,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             // BodyMesh was moved down by 88 units (see SFXStuntActor.OnTeleport in SFXGame.pcc).
             location.Z -= PreviewBodyMeshRelativeZ;
         }
-        if (!ShouldUseActorTrackZ(dialogueNodePreview is not null,
+        if (!ShouldUseActorTrackZ(ActiveDialogueActorConfiguration is not null,
                 ActorPlaybackTrackZCheckBox.IsChecked == true))
         {
             location.Z = state.OriginalOrigin.Location.Z;

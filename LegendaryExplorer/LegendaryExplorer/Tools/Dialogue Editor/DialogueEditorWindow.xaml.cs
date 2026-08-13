@@ -4749,7 +4749,7 @@ namespace LegendaryExplorer.DialogueEditor
             }
             else if (InterpDataEditorTabControl.SelectedItem == InterpData_CurveEditor3DTab)
             {
-                InterpData_CurveEditor3D.ConfigureTrackAnchorConversation(SelectedConv);
+                InterpData_CurveEditor3D.ConfigureTrackAnchorConversation(SelectedConv, SelectedDialogueNode);
                 InterpData_CurveEditor3D.LoadExport(export);
             }
             else
@@ -5859,71 +5859,8 @@ namespace LegendaryExplorer.DialogueEditor
             DialogueNodeExtended startNode,
             StageConversationContext stageContext,
             IReadOnlyDictionary<string, string> henchmanAssignments,
-            bool conversationPreview)
-        {
-            IReadOnlyList<DialogueNodeExtended> previewNodes = CurveEditor3D.GetDialoguePreviewNodes(
-                conversation, startNode, conversationPreview);
-            IReadOnlyList<CurveEditor3D.DialoguePreviewActorIdentity> actorIdentities =
-                CurveEditor3D.MergeDialoguePreviewActorIdentities(
-                    CurveEditor3D.ApplyDialoguePreviewHenchmanAssignments(
-                        CurveEditor3D.GetDialoguePreviewActorIdentities(conversation, previewNodes),
-                        henchmanAssignments), stageContext.ActorOrigins);
-            string[] actorTags = actorIdentities.Select(identity => identity.ActorTag).ToArray();
-            var actorOrigins = new Dictionary<string, CameraOrigin>(StringComparer.OrdinalIgnoreCase);
-            var context = new CameraActorAnchorContext(conversation, startNode, actorTags);
-            ActorSceneStatePath bestPath = CameraActorSceneStateResolver.ResolvePaths(context, actorTags,
-                    stageContext.StageOrigin)
-                .OrderByDescending(path => actorTags.Count(path.ActorTransforms.ContainsKey))
-                .ThenBy(path => path.PathId, StringComparer.Ordinal)
-                .FirstOrDefault();
-            if (bestPath is not null)
-            {
-                foreach ((string actorTag, ResolvedActorTransform transform) in bestPath.ActorTransforms)
-                {
-                    actorOrigins[actorTag] = new CameraOrigin(transform.Location, transform.Rotation);
-                }
-            }
-
-            return actorIdentities.Select((identity, index) =>
-            {
-                bool isHenchman = CurveEditor3D.IsDialoguePreviewHenchmanTag(identity.ActorTag);
-                bool foundOrigin = false;
-                CameraOrigin origin = default;
-                if (isHenchman)
-                {
-                    foundOrigin = stageContext.ActorOrigins.TryGetValue(identity.ActorTag, out origin);
-                    foreach (string alias in identity.Aliases)
-                    {
-                        if (foundOrigin) break;
-                        foundOrigin = stageContext.ActorOrigins.TryGetValue(alias, out origin);
-                    }
-                }
-                if (!foundOrigin)
-                {
-                    foundOrigin = actorOrigins.TryGetValue(identity.ActorTag, out origin);
-                }
-                foreach (string alias in identity.Aliases)
-                {
-                    if (foundOrigin) break;
-                    foundOrigin = actorOrigins.TryGetValue(alias, out origin);
-                }
-                if (!foundOrigin)
-                {
-                    foundOrigin = stageContext.ActorOrigins.TryGetValue(identity.ActorTag, out origin);
-                }
-                foreach (string alias in identity.Aliases)
-                {
-                    if (foundOrigin) break;
-                    foundOrigin = stageContext.ActorOrigins.TryGetValue(alias, out origin);
-                }
-                if (!foundOrigin)
-                {
-                    origin = new CameraOrigin(stageContext.StageOrigin.Location + new Vector3(0, index * 100, 0),
-                        stageContext.StageOrigin.Rotation);
-                }
-                return new CurveEditor3D.DialogueNodePreviewActor(identity.ActorTag, origin, identity.Aliases);
-            }).ToList();
-        }
+            bool conversationPreview) => CurveEditor3D.BuildDialoguePreviewActors(conversation, startNode,
+            stageContext, henchmanAssignments, conversationPreview).ToList();
 
         private void Conversations_CloneTopLevelPackage_Click(object sender, RoutedEventArgs e)
         {
