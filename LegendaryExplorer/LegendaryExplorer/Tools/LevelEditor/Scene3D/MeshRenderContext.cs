@@ -149,6 +149,13 @@ public class MeshRenderContext : RenderContext
     protected Texture2D HitBuffer;
     protected RenderTargetView HitBufferView;
     private Texture2D PixelReadbackTexture;
+    private Texture2D StaticSceneColorCache;
+    private Texture2D StaticSceneDepthCache;
+    private Matrix4x4 staticSceneCacheViewProjection;
+    private long staticSceneCacheKey;
+    private bool staticSceneCacheValid;
+    private bool evaluatingStaticSceneCache;
+    private bool staticSceneCacheRejected;
 
     protected D2D.RenderTarget RenderTarget2D;
     private DW.TextFormat statsTextFormat;
@@ -816,6 +823,108 @@ public class MeshRenderContext : RenderContext
     }
 
     /// <summary>
+    /// Starts evaluating whether the level backdrop rendered by the caller is safe to retain on the GPU.
+    /// Materials with time-varying uniforms can reject the candidate while they render.
+    /// </summary>
+    public void BeginStaticSceneCacheCandidate()
+    {
+        evaluatingStaticSceneCache = true;
+        staticSceneCacheRejected = false;
+    }
+
+    internal void RejectStaticSceneCache()
+    {
+        if (evaluatingStaticSceneCache)
+        {
+            staticSceneCacheRejected = true;
+        }
+    }
+
+    /// <summary>
+    /// Restores a previously captured static color/depth backdrop entirely on the GPU.
+    /// </summary>
+    public bool TryRestoreStaticSceneCache(long sceneKey)
+    {
+        evaluatingStaticSceneCache = false;
+        if (!staticSceneCacheValid || StaticSceneColorCache is null || StaticSceneDepthCache is null
+            || sceneKey != staticSceneCacheKey
+            || staticSceneCacheViewProjection != Camera.ViewProjectionMatrix)
+        {
+            return false;
+        }
+
+        CopyStaticSceneResources(StaticSceneColorCache, Backbuffer, StaticSceneDepthCache, DepthBuffer);
+        return true;
+    }
+
+    /// <summary>
+    /// Captures the just-rendered static backdrop. The copies are asynchronous D3D11 commands and do not
+    /// transfer pixels through system memory.
+    /// </summary>
+    public bool CaptureStaticSceneCache(long sceneKey)
+    {
+        evaluatingStaticSceneCache = false;
+        if (staticSceneCacheRejected || Backbuffer is null || DepthBuffer is null)
+        {
+            InvalidateStaticSceneCache();
+            return false;
+        }
+
+        EnsureStaticSceneCacheResources();
+        CopyStaticSceneResources(Backbuffer, StaticSceneColorCache, DepthBuffer, StaticSceneDepthCache);
+        staticSceneCacheKey = sceneKey;
+        staticSceneCacheViewProjection = Camera.ViewProjectionMatrix;
+        staticSceneCacheValid = true;
+        return true;
+    }
+
+    public void InvalidateStaticSceneCache()
+    {
+        evaluatingStaticSceneCache = false;
+        staticSceneCacheRejected = false;
+        staticSceneCacheValid = false;
+    }
+
+    private void EnsureStaticSceneCacheResources()
+    {
+        if (StaticSceneColorCache is not null && StaticSceneDepthCache is not null)
+        {
+            return;
+        }
+
+        Texture2DDescription colorDescription = Backbuffer.Description;
+        colorDescription.BindFlags = BindFlags.None;
+        colorDescription.CpuAccessFlags = CpuAccessFlags.None;
+        colorDescription.OptionFlags = ResourceOptionFlags.None;
+        colorDescription.Usage = ResourceUsage.Default;
+        StaticSceneColorCache = new Texture2D(Device, colorDescription);
+
+        Texture2DDescription depthDescription = DepthBuffer.Description;
+        depthDescription.BindFlags = BindFlags.None;
+        depthDescription.CpuAccessFlags = CpuAccessFlags.None;
+        depthDescription.OptionFlags = ResourceOptionFlags.None;
+        depthDescription.Usage = ResourceUsage.Default;
+        StaticSceneDepthCache = new Texture2D(Device, depthDescription);
+    }
+
+    private void CopyStaticSceneResources(Texture2D colorSource, Texture2D colorDestination,
+        Texture2D depthSource, Texture2D depthDestination)
+    {
+        // Temporarily unbind the live targets so debug and strict drivers accept them as copy sources or
+        // destinations. Restore the exact MRT layout before any actor or overlay rendering resumes.
+        ImmediateContext.OutputMerger.SetRenderTargets((RenderTargetView)null);
+        try
+        {
+            ImmediateContext.CopyResource(colorSource, colorDestination);
+            ImmediateContext.CopyResource(depthSource, depthDestination);
+        }
+        finally
+        {
+            ImmediateContext.OutputMerger.SetRenderTargets(DepthBufferView, BackbufferView, HitBufferView);
+        }
+    }
+
+    /// <summary>
     /// Reads the average color of the 3x3 backbuffer region centered on a pixel.
     /// Used by live material parameter picking.
     /// </summary>
@@ -874,6 +983,11 @@ public class MeshRenderContext : RenderContext
     public override void DisposeSizeDependentResources()
     {
         ImmediateContext.OutputMerger.SetRenderTargets((RenderTargetView)null);
+        StaticSceneColorCache?.Dispose();
+        StaticSceneColorCache = null;
+        StaticSceneDepthCache?.Dispose();
+        StaticSceneDepthCache = null;
+        InvalidateStaticSceneCache();
         PixelReadbackTexture?.Dispose();
         PixelReadbackTexture = null;
         BackbufferView.Dispose();

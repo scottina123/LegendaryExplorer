@@ -372,17 +372,64 @@ public class AnimationTests
         player.SetCurrentTime(0.5f);
         player.ComputeSkinningMatrices();
         Assert.AreEqual(10, player.ExtractedRootMotionTranslation.X, 0.001f);
+        Assert.AreEqual(player.ExtractedRootMotionTranslation.X,
+            player.EvaluateExtractedRootMotionTranslation(0.5f).X, 0.001f);
         Assert.AreEqual(10, player.BoneComponentSpaceTransforms[1].Translation.X, 0.001f);
 
         player.SetCurrentTime(1.5f);
         player.ComputeSkinningMatrices();
         Assert.AreEqual(35, player.ExtractedRootMotionTranslation.X, 0.001f);
+        Assert.AreEqual(player.ExtractedRootMotionTranslation.X,
+            player.EvaluateExtractedRootMotionTranslation(1.5f).X, 0.001f);
         Assert.AreEqual(10, player.BoneComponentSpaceTransforms[1].Translation.X, 0.001f);
 
         player.SetCurrentTime(2);
         player.ComputeSkinningMatrices();
         Assert.AreEqual(50, player.ExtractedRootMotionTranslation.X, 0.001f);
+        Assert.AreEqual(player.ExtractedRootMotionTranslation.X,
+            player.EvaluateExtractedRootMotionTranslation(2).X, 0.001f);
         Assert.AreEqual(10, player.BoneComponentSpaceTransforms[1].Translation.X, 0.001f);
+    }
+
+    [TestMethod]
+    public void ScheduledAnimationFramesReuseScratchBuffersWithoutAllocating()
+    {
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("AnimationAllocationTest.pcc", MEGame.LE3);
+        var skeletalMesh = new SkeletalMesh
+        {
+            RefSkeleton = [CreateBone("root", 0), CreateBone("body", 0), CreateBone("head", 1)],
+        };
+        AnimSequence animation = CreateAnimation(package, "Gesture", ["root", "body", "head"],
+        [
+            CreateTrack(Quaternion.Identity),
+            CreateTrack(Quaternion.Identity, Quaternion.CreateFromAxisAngle(Vector3.UnitY, MathF.PI / 4)),
+            CreateTrack(Quaternion.Identity, Quaternion.CreateFromAxisAngle(Vector3.UnitX, MathF.PI / 4)),
+        ]);
+        var player = new AnimSequencePlayer(skeletalMesh);
+        player.SetAnimationTimeline(
+        [
+            new AnimSequencePlayer.ScheduledAnimationClip
+            {
+                Animation = animation,
+                StartTime = 0,
+                EndTime = 1,
+                AnimationStartTime = 0,
+                AnimationEndTime = 1,
+                IsBaseLayer = true,
+            },
+        ]);
+        player.SetCurrentTime(0);
+        player.ComputeSkinningMatrices();
+
+        long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+        for (int frame = 0; frame < 120; frame++)
+        {
+            player.SetCurrentTime(frame / 120f);
+            player.ComputeSkinningMatrices();
+        }
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
+
+        Assert.AreEqual(0, allocated, "Per-frame pose evaluation should not create garbage-collection pressure.");
     }
 
     [TestMethod]

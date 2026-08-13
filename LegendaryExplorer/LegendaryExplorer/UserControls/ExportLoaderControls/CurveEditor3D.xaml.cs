@@ -2,10 +2,12 @@ using System;
 using System.Collections.ObjectModel;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
@@ -370,13 +372,18 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             public ModelPreview<LEVertex> Model { get; init; }
             public SkinnedMeshRenderer Renderer { get; init; }
             public Matrix4x4? LocalTransform { get; init; }
-            public void Dispose() => Model?.Dispose();
+            public void Dispose()
+            {
+                // Release the UAV before its model disposes the vertex buffer it references.
+                Renderer?.Dispose();
+                Model?.Dispose();
+            }
         }
 
         private readonly Dictionary<string, Component> components = new(StringComparer.OrdinalIgnoreCase);
         public ModelPreview<LEVertex> Body => components.Values
             .FirstOrDefault(component => component.Kind == PreviewActorModelComponent.Body)?.Model;
-        public IEnumerable<Component> Components => components.Values;
+        public IReadOnlyCollection<Component> Components => components.Values;
 
         public void Set(PreviewActorModelComponent component, ModelPreview<LEVertex> model,
             SkinnedMeshRenderer renderer, string slotName = null, Matrix4x4? localTransform = null)
@@ -443,6 +450,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         {
             private Matrix4x4[] heldGestureComponentPose;
             private readonly int lookAtBoneIndex;
+            private bool poseDirty = true;
 
             public AnimSequencePlayer GesturePlayer { get; }
             public FaceFxPlayer FaceFxPlayer { get; }
@@ -469,6 +477,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
             public override void SetCurrentTime(float time)
             {
+                poseDirty = true;
                 CurrentTime = time;
                 if (!HoldGesturePose)
                 {
@@ -484,6 +493,11 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
             public override Matrix4x4[] ComputeSkinningMatrices()
             {
+                if (!poseDirty)
+                {
+                    return _skinningMatrices;
+                }
+
                 bool hasGesture = GesturePlayer.HasAnimation;
                 bool hasHeldGesture = !hasGesture && heldGestureComponentPose is not null;
                 bool hasFaceFx = FaceFxPlayer.HasAnimation;
@@ -524,13 +538,21 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                     _boneComponentSpace[index] = componentTransform;
                     _skinningMatrices[index] = _inverseBindPose[index] * _boneComponentSpace[index];
                 }
+                poseDirty = false;
                 return _skinningMatrices;
             }
 
             public void SetLookAtTargetComponent(Vector3? target)
             {
+                if (LookAtTargetComponent == target)
+                {
+                    return;
+                }
                 LookAtTargetComponent = target;
+                poseDirty = true;
             }
+
+            public void InvalidatePose() => poseDirty = true;
 
             public Vector3? GetLookAtAnchorComponent()
             {
@@ -584,11 +606,13 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                     ? null
                     : (Matrix4x4[])componentPose.Clone();
                 HoldGesturePose = heldGestureComponentPose is not null;
+                poseDirty = true;
             }
 
             public void ClearHeldGesturePose()
             {
                 heldGestureComponentPose = null;
+                poseDirty = true;
             }
 
             private Matrix4x4 GetLocalTransform(Matrix4x4[] componentPose, int boneIndex)
@@ -614,8 +638,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         public Vector3 EvaluateExtractedRootMotion(float time)
         {
             SetTime(time);
-            Player.GesturePlayer.ComputeSkinningMatrices();
-            return Player.GesturePlayer.ExtractedRootMotionTranslation;
+            return Player.GesturePlayer.EvaluateExtractedRootMotionTranslation(time);
         }
 
         public Vector3 EvaluateExtractedRootMotionDelta(float startTime, float endTime)
@@ -628,8 +651,9 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                 return Vector3.Zero;
             }
 
-            Vector3 start = EvaluateExtractedRootMotion(startTime);
-            Vector3 end = EvaluateExtractedRootMotion(endTime);
+            SetTime(endTime);
+            Vector3 start = Player.GesturePlayer.EvaluateExtractedRootMotionTranslation(startTime);
+            Vector3 end = Player.GesturePlayer.EvaluateExtractedRootMotionTranslation(endTime);
             return end - start;
         }
 
@@ -743,6 +767,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             {
                 Player.GesturePlayer.SetAnimationTimeline(scheduledClips, packageCache);
             }
+            Player.InvalidatePose();
             Renderer.NeedsUpdate = true;
         }
 
@@ -752,6 +777,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             Player.FaceFxPlayer.AnimSet = animSet;
             Player.FaceFxPlayer.SetFaceFXLine(line);
             Player.FaceFxTimelineOffset = timelineOffset;
+            Player.InvalidatePose();
             Renderer.NeedsUpdate = true;
         }
 
@@ -761,6 +787,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             Player.FaceFxPlayer.AnimSet = null;
             Player.FaceFxPlayer.FxActor = asset;
             Player.FaceFxTimelineOffset = 0;
+            Player.InvalidatePose();
             Renderer.NeedsUpdate = true;
         }
 
@@ -770,6 +797,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             Player.FaceFxPlayer.AnimSet = null;
             Player.FaceFxPlayer.FxActor = null;
             Player.FaceFxTimelineOffset = 0;
+            Player.InvalidatePose();
             Renderer.NeedsUpdate = true;
         }
 
@@ -788,6 +816,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             Player.LoopStandaloneGesture = false;
             Player.HoldGesturePose = false;
             Player.SetLookAtTargetComponent(null);
+            Player.InvalidatePose();
             Renderer.NeedsUpdate = true;
         }
 
@@ -947,6 +976,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
     private const float PreviewBodyMeshRelativeZ = StageBoneOriginResolver.StuntActorBodyMeshRelativeZ;
     internal const float ConversationSwitchCameraFovDegrees = 52.9f;
+    private const int PlaybackUiFramesPerSecond = 20;
     private static readonly RenderPass[] RenderPasses = [RenderPass.Base, RenderPass.Hair];
     private static readonly object sessionLevelPathsLock = new();
     private static readonly List<string> sessionLevelPaths = [];
@@ -955,6 +985,10 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     private readonly CurveEditor3DModel model = new();
     private readonly List<IMEPackage> levelPackages = [];
     private readonly List<ActorProxy> levelActors = [];
+    private readonly List<(ActorProxy Actor, Vector3 HitTestId, BoxSphereBounds Bounds)> visibleBackdropActors = [];
+    private bool hasBackdropCacheCandidate;
+    private long lastBackdropCacheSceneKey;
+    private Matrix4x4 lastBackdropCacheViewProjection;
     private readonly List<string> levelPaths = [];
     private readonly ObservableCollection<PreviewActorConfiguration> previewActors = [];
     private readonly List<ActorModelSet> previewActorModels = [];
@@ -970,6 +1004,9 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     private readonly Dictionary<string, HashSet<string>> dialoguePreviewActorTagAliases =
         new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<PreviewActorConfiguration, TrackMovePlaybackOption> previewActorTrackAssignments = [];
+    private readonly Dictionary<PreviewActorPlaybackState, CameraOrigin> resolvedActorOriginsScratch = [];
+    private readonly Dictionary<PreviewActorConfiguration, CameraOrigin> actorOriginsScratch = [];
+    private readonly Dictionary<PreviewActorConfiguration, CameraOrigin> finalActorOriginsScratch = [];
     private readonly List<TrackMovePlaybackOption> availableTrackMoves = [];
     private readonly ObservableCollection<TrackMovePlaybackOption> availableExtraTrackMoves = [];
     private readonly ObservableCollection<DirectorPlaybackOption> availableDirectorTracks = [];
@@ -1034,6 +1071,8 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     private readonly Dictionary<DialogueTimelineSegment, Dictionary<string, DialogueSegmentRuntime>>
         dialogueSceneShopRuntimeCache = [];
     private readonly Dictionary<DialogueNodeExtended, IReadOnlyList<ExportEntry>> dialogueNodeInterpDataCache = [];
+    private readonly Dictionary<string, ExportEntry> dialogueResolvedExportCache =
+        new(StringComparer.OrdinalIgnoreCase);
     private IMEPackage dialoguePreviewWorkingPackage;
     private IMEPackage dialoguePreviewSourcePackage;
     private PackageEditorWindow dialoguePackageEditor;
@@ -1043,6 +1082,9 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     private bool suppressDialoguePackageEditTracking;
     private bool updatingDialogueSceneShopControls;
     private DialogueTimelineSegment dialogueSceneShopContextSegment;
+    private DialogueTimelineSegment displayedDialogueSceneShopSegment;
+    private long lastPlaybackUiRefreshTimestamp;
+    private long lastDialogueTimelineUiRefreshTimestamp;
     private DialogueCachePreset loadedDialogueCachePreset;
     private DialogueTimelineSegment dialogueTimelineStartSegment;
     private double dialogueTimelineTreeWidth = 230;
@@ -1284,6 +1326,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         dialogueSceneShopChoicesBySegment.Clear();
         dialogueSceneShopChoicesByInterpData.Clear();
         activeDialogueSceneShopChoices.Clear();
+        displayedDialogueSceneShopSegment = null;
         loadedDialogueCachePreset = null;
         isDialogueConversationPreview = conversationPreview;
         dialogueNodeInterpDataCache.Clear();
@@ -1453,9 +1496,11 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         dialogueRuntimeCache.Clear();
         dialogueSceneShopRuntimeCache.Clear();
         dialogueNodeInterpDataCache.Clear();
+        dialogueResolvedExportCache.Clear();
         dialogueSceneShopChoicesBySegment.Clear();
         dialogueSceneShopChoicesByInterpData.Clear();
         activeDialogueSceneShopChoices.Clear();
+        displayedDialogueSceneShopSegment = null;
         activeDialogueSegmentRuntime = null;
         dialogueTimelineStartSegment = null;
         if (dialogueNodePreview?.Conversation is not { } conversation || startNode is null)
@@ -1587,6 +1632,12 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
     private void UpdateActiveDialogueSceneShopChoices(DialogueTimelineSegment segment)
     {
+        if (ReferenceEquals(displayedDialogueSceneShopSegment, segment))
+        {
+            return;
+        }
+
+        displayedDialogueSceneShopSegment = segment;
         updatingDialogueSceneShopControls = true;
         try
         {
@@ -4588,10 +4639,11 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             return false;
         }
 
-        return dialogueTimelineSegments.All(segment => preset.Nodes.Any(node =>
-            node.IsReply == segment.Reference.IsReply
-            && node.NodeIndex == segment.Reference.Index
-            && node.LineStrRef == segment.Node.LineStrRef));
+        HashSet<(bool IsReply, int NodeIndex, int LineStrRef)> cachedNodes = preset.Nodes
+            .Select(node => (node.IsReply, node.NodeIndex, node.LineStrRef))
+            .ToHashSet();
+        return dialogueTimelineSegments.All(segment => cachedNodes.Contains((
+            segment.Reference.IsReply, segment.Reference.Index, segment.Node.LineStrRef)));
     }
 
     private static bool DialogueCachePathsEqual(string left, string right)
@@ -4835,6 +4887,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         dialogueRuntimeCache.Clear();
         dialogueSceneShopRuntimeCache.Clear();
         dialogueNodeInterpDataCache.Clear();
+        dialogueResolvedExportCache.Clear();
         buildingDialogueRuntimeCache = true;
         suppressDialogueCacheEditTracking = true;
         loadingDialogueTimelineSegment = true;
@@ -4846,13 +4899,28 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         try
         {
             LoadDialoguePreviewFaceFxAssets();
+            var nodePresets = new Dictionary<DialogueNodeReference, DialogueCacheNodePreset>();
+            foreach (DialogueCacheNodePreset node in preset.Nodes)
+            {
+                if (!nodePresets.TryAdd(new DialogueNodeReference(node.IsReply, node.NodeIndex), node))
+                {
+                    throw new InvalidDataException("The saved cache contains duplicate dialogue nodes.");
+                }
+            }
             foreach (DialogueTimelineSegment segment in dialogueTimelineSegments)
             {
-                DialogueCacheNodePreset nodePreset = preset.Nodes.Single(node =>
-                    node.IsReply == segment.Reference.IsReply && node.NodeIndex == segment.Reference.Index);
+                if (!nodePresets.TryGetValue(segment.Reference, out DialogueCacheNodePreset nodePreset))
+                {
+                    throw new InvalidDataException($"{segment.NodeLabel} is missing from the saved cache.");
+                }
                 IReadOnlyList<ExportEntry> interpDatas = nodePreset.InterpDatas
                     .Select(reference => ResolveExportReference(reference, required: true)).ToArray();
                 dialogueNodeInterpDataCache[segment.Node] = interpDatas;
+                var sceneShopGroups = new Dictionary<ExportEntry, IReadOnlyList<ExportEntry>>();
+                foreach (ExportEntry interpData in interpDatas)
+                {
+                    sceneShopGroups.TryAdd(interpData, GetSceneShopGroups(interpData).ToArray());
+                }
                 IReadOnlyList<DialogueCacheNodePreset> cachedVariants = nodePreset.SceneShopVariants is { Count: > 0 }
                     ? nodePreset.SceneShopVariants
                     : [nodePreset];
@@ -4869,7 +4937,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                     {
                         ExportEntry sceneGroup = ResolveExportReference(selectionReference, required: true);
                         ExportEntry interpData = interpDatas.FirstOrDefault(candidate =>
-                            GetSceneShopGroups(candidate).Any(scene => IsSameExport(scene, sceneGroup)));
+                            sceneShopGroups[candidate].Any(scene => IsSameExport(scene, sceneGroup)));
                         if (interpData is null)
                         {
                             throw new InvalidDataException($"{segment.NodeLabel} has a SceneShop selection that no longer belongs to its InterpData.");
@@ -5274,11 +5342,35 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             return null;
         }
 
-        IMEPackage package = new[] { dialoguePreviewWorkingPackage, dialogueNodePreview.Conversation.Export.FileRef }
-            .Where(candidate => candidate is not null)
-            .Concat(levelPackages)
-            .FirstOrDefault(candidate => string.Equals(candidate.FilePath, reference.PackagePath,
-                StringComparison.OrdinalIgnoreCase));
+        string referenceKey = GetExportReferenceKey(reference);
+        if (dialogueResolvedExportCache.TryGetValue(referenceKey, out ExportEntry cachedExport))
+        {
+            return cachedExport;
+        }
+
+        IMEPackage package = null;
+        if (string.Equals(dialoguePreviewWorkingPackage?.FilePath, reference.PackagePath,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            package = dialoguePreviewWorkingPackage;
+        }
+        else if (string.Equals(dialogueNodePreview?.Conversation?.Export?.FileRef?.FilePath,
+                     reference.PackagePath, StringComparison.OrdinalIgnoreCase))
+        {
+            package = dialogueNodePreview.Conversation.Export.FileRef;
+        }
+        else
+        {
+            for (int index = 0; index < levelPackages.Count; index++)
+            {
+                if (string.Equals(levelPackages[index].FilePath, reference.PackagePath,
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    package = levelPackages[index];
+                    break;
+                }
+            }
+        }
         package ??= previewActorGesturePackageCache.GetCachedPackage(reference.PackagePath);
         if (package is null || !package.IsUExport(reference.UIndex))
         {
@@ -5302,6 +5394,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             }
             return null;
         }
+        dialogueResolvedExportCache[referenceKey] = export;
         return export;
     }
 
@@ -9186,6 +9279,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         isPlayingActor = false;
         playbackActors.Clear();
         isPlayingMove = true;
+        lastPlaybackUiRefreshTimestamp = 0;
         RenderContext.ForceContinuousRendering = true;
         ApplyCameraAtTime(playbackStartTime);
         SceneViewer.Focus();
@@ -9251,6 +9345,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         playbackCurrentTime = playbackStartTime;
         isPlayingActor = true;
         isPlayingMove = true;
+        lastPlaybackUiRefreshTimestamp = 0;
         RenderContext.ForceContinuousRendering = true;
         ApplyActorsAtTime(playbackStartTime);
         dialoguePreviewAudioStarted = false;
@@ -9330,6 +9425,8 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         }
         suppressTrackVisualizationForCameraPreview = false;
         isPlayingDialogueTimeline = true;
+        lastPlaybackUiRefreshTimestamp = 0;
+        lastDialogueTimelineUiRefreshTimestamp = 0;
         if (FindName("DialogueTimelinePlayButton") is Button playButton)
         {
             playButton.Content = "Pause";
@@ -10253,6 +10350,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         FaceOnlyVoSoundpanel.StopPlaying();
         dialoguePreviewAudioStarted = false;
         faceOnlyVoAudioStarted = false;
+        UpdateDialogueTimelineControls();
         SceneViewer?.MarkRenderDirty();
     }
 
@@ -10264,8 +10362,27 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                 .Select(segment => segment.StartTime));
     }
 
+    private static bool ShouldRefreshPlaybackUi(ref long lastRefreshTimestamp, bool force = false)
+    {
+        long timestamp = Stopwatch.GetTimestamp();
+        if (!force && lastRefreshTimestamp != 0
+                   && timestamp - lastRefreshTimestamp < Stopwatch.Frequency / PlaybackUiFramesPerSecond)
+        {
+            return false;
+        }
+
+        lastRefreshTimestamp = timestamp;
+        return true;
+    }
+
     private void UpdateDialogueTimelineControls()
     {
+        if (!ShouldRefreshPlaybackUi(ref lastDialogueTimelineUiRefreshTimestamp,
+                force: !isPlayingDialogueTimeline))
+        {
+            return;
+        }
+
         if (FindName("DialogueTimelineSlider") is not Slider slider
             || FindName("DialogueTimelineTimeText") is not TextBlock timeText)
         {
@@ -10646,12 +10763,16 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     {
         ApplyPlaybackViewportCameraAtTime(time);
         RenderContext.Camera.FocusDepth = 0f;
-        PlaybackKeyframeStatus = GetPlaybackKeyframeStatus(time);
-        string playbackMode = playDirectorMulticam ? "director multicam" : "camera";
-        SceneStatus = $"Playing {playbackMode} at InVal {time:0.###} / {playbackEndTime:0.###}; {levelPaths.Count} level backdrop file(s).";
         UpdateAdditionalCameraPlayback(time);
-        UpdateCameraPositionText();
-        UpdateCameraRotationText();
+        if (ShouldRefreshPlaybackUi(ref lastPlaybackUiRefreshTimestamp,
+                force: !isPlayingMove && !isPlayingDialogueTimeline))
+        {
+            PlaybackKeyframeStatus = GetPlaybackKeyframeStatus(time);
+            string playbackMode = playDirectorMulticam ? "director multicam" : "camera";
+            SceneStatus = $"Playing {playbackMode} at InVal {time:0.###} / {playbackEndTime:0.###}; {levelPaths.Count} level backdrop file(s).";
+            UpdateCameraPositionText();
+            UpdateCameraRotationText();
+        }
         SceneViewer.MarkRenderDirty();
     }
 
@@ -10661,8 +10782,15 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         {
             return;
         }
+        bool refreshPlaybackUi = ShouldRefreshPlaybackUi(ref lastPlaybackUiRefreshTimestamp,
+            force: !isPlayingMove && !isPlayingDialogueTimeline);
 
-        var resolvedOrigins = new Dictionary<PreviewActorPlaybackState, CameraOrigin>();
+        Dictionary<PreviewActorPlaybackState, CameraOrigin> resolvedOrigins = resolvedActorOriginsScratch;
+        Dictionary<PreviewActorConfiguration, CameraOrigin> actorOrigins = actorOriginsScratch;
+        Dictionary<PreviewActorConfiguration, CameraOrigin> finalActorOrigins = finalActorOriginsScratch;
+        resolvedOrigins.Clear();
+        actorOrigins.Clear();
+        finalActorOrigins.Clear();
         foreach (PreviewActorPlaybackState state in playbackActors)
         {
             Vector3 extractedRootMotion = Vector3.Zero;
@@ -10705,10 +10833,8 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                 .GetValueOrDefault(state.Actor.ActorTag) ?? 0f;
             resolvedOrigins[state] = ApplyDialogueGestureRootMotionFacing(resolvedOrigins[state],
                 rootMotionFacingYawOffset);
+            actorOrigins[state.Actor] = resolvedOrigins[state];
         }
-        Dictionary<PreviewActorConfiguration, CameraOrigin> actorOrigins = resolvedOrigins
-            .ToDictionary(pair => pair.Key.Actor, pair => pair.Value);
-        var finalActorOrigins = new Dictionary<PreviewActorConfiguration, CameraOrigin>();
         foreach (PreviewActorPlaybackState state in playbackActors)
         {
             CameraOrigin origin = ApplyTrackLookAtRotation(state.TrackMove, resolvedOrigins[state], time, resolvedOrigins);
@@ -10719,7 +10845,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         foreach (PreviewActorPlaybackState state in playbackActors)
         {
             state.Actor.Origin = finalActorOrigins[state.Actor];
-            if (ReferenceEquals(selectedPreviewActor, state.Actor))
+            if (refreshPlaybackUi && ReferenceEquals(selectedPreviewActor, state.Actor))
             {
                 updatingPreviewActorControls = true;
                 SetPreviewActorOriginFields(state.Actor.Origin);
@@ -10729,13 +10855,19 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             if (previewActorAnimationStates.TryGetValue(state.Actor, out PreviewActorAnimationState animationState))
             {
                 ApplyPreviewActorLookAt(state.Actor, time, finalActorOrigins, animationState);
-                UpdatePreviewActorSkinning(state.Actor);
             }
         }
         ApplyActorPlaybackCameraAtTime(time);
-        PlaybackKeyframeStatus = GetPlaybackKeyframeStatus(time);
-        string cameraMode = playDirectorMulticam ? " with director multicam" : playExtraTrackMove ? " with extra camera" : string.Empty;
-        SceneStatus = $"Playing {playbackActors.Count} actor(s){cameraMode} at InVal {time:0.###} / {playbackEndTime:0.###}; {levelPaths.Count} level backdrop file(s).";
+        if (refreshPlaybackUi)
+        {
+            UpdateCameraPositionText();
+            UpdateCameraRotationText();
+            PlaybackKeyframeStatus = GetPlaybackKeyframeStatus(time);
+            string cameraMode = playDirectorMulticam
+                ? " with director multicam"
+                : playExtraTrackMove ? " with extra camera" : string.Empty;
+            SceneStatus = $"Playing {playbackActors.Count} actor(s){cameraMode} at InVal {time:0.###} / {playbackEndTime:0.###}; {levelPaths.Count} level backdrop file(s).";
+        }
         SceneViewer.MarkRenderDirty();
     }
 
@@ -10837,8 +10969,6 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         }
 
         RenderContext.Camera.FocusDepth = 0f;
-        UpdateCameraPositionText();
-        UpdateCameraRotationText();
     }
 
     private string GetPlaybackKeyframeStatus(float time)
@@ -11187,21 +11317,71 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
     private void RenderScene(object sender, EventArgs e)
     {
-        foreach (RenderPass pass in RenderPasses)
+        visibleBackdropActors.Clear();
+        MeshRenderContext.BoundsVisibilityTester visibility = RenderContext.CreateBoundsVisibilityTester();
+        foreach (ActorProxy actor in RenderContext.DrawList_3D)
         {
-            foreach (ActorProxy actor in RenderContext.DrawList_3D)
-            {
-                if (actor is EmitterActorProxy) continue;
-                if (actor is SFXPointOfInterestProxy) continue;
-                if (actor.IsVolume && !ShowVolumes) continue;
-                if (actor.IsVolumetricMesh && !ShowVolumetrics) continue;
-                int hitId = actor.HitID;
-                RenderContext.CurrentHitTestId = new Vector3((hitId & 0xFF) / 255f, ((hitId >> 8) & 0xFF) / 255f, ((hitId >> 16) & 0xFF) / 255f);
-                actor.Render(RenderContext, pass);
-            }
+            if (actor is EmitterActorProxy or SFXPointOfInterestProxy) continue;
+            if (actor.IsVolume && !ShowVolumes) continue;
+            if (actor.IsVolumetricMesh && !ShowVolumetrics) continue;
+            BoxSphereBounds bounds = RenderContext.GetActorBounds(actor);
+            if (!visibility.IsVisible(bounds)) continue;
+
+            int hitId = actor.HitID;
+            visibleBackdropActors.Add((actor, new Vector3(
+                (hitId & 0xFF) / 255f,
+                ((hitId >> 8) & 0xFF) / 255f,
+                ((hitId >> 16) & 0xFF) / 255f), bounds));
         }
 
         bool trackPlaybackActive = isPlayingMove || isPlayingActor || isPlayingDialogueTimeline;
+        bool canCacheBackdrop = trackPlaybackActive && visibleBackdropActors.Count > 0;
+        long backdropSceneKey = canCacheBackdrop ? ComputeBackdropSceneKey() : 0;
+        bool restoredBackdrop = canCacheBackdrop
+                                && RenderContext.TryRestoreStaticSceneCache(backdropSceneKey);
+        if (!restoredBackdrop)
+        {
+            if (canCacheBackdrop)
+            {
+                RenderContext.BeginStaticSceneCacheCandidate();
+            }
+
+            foreach (RenderPass pass in RenderPasses)
+            {
+                foreach ((ActorProxy actor, Vector3 hitTestId, _) in visibleBackdropActors)
+                {
+                    RenderContext.CurrentHitTestId = hitTestId;
+                    actor.Render(RenderContext, pass);
+                }
+            }
+
+            if (canCacheBackdrop)
+            {
+                Matrix4x4 viewProjection = RenderContext.Camera.ViewProjectionMatrix;
+                bool cameraAndSceneStable = hasBackdropCacheCandidate
+                                            && lastBackdropCacheSceneKey == backdropSceneKey
+                                            && lastBackdropCacheViewProjection == viewProjection;
+                if (cameraAndSceneStable)
+                {
+                    RenderContext.CaptureStaticSceneCache(backdropSceneKey);
+                }
+                else
+                {
+                    // Do not pay for full-surface copies while a camera track is moving. Capture only after
+                    // the camera and visible backdrop have remained identical for consecutive frames.
+                    RenderContext.InvalidateStaticSceneCache();
+                }
+                hasBackdropCacheCandidate = true;
+                lastBackdropCacheSceneKey = backdropSceneKey;
+                lastBackdropCacheViewProjection = viewProjection;
+            }
+            else
+            {
+                RenderContext.InvalidateStaticSceneCache();
+                hasBackdropCacheCandidate = false;
+            }
+        }
+
         if (ShouldDrawTrackVisualization(trackPlaybackActive, CameraFramingMode,
                 suppressTrackVisualizationForCameraPreview, AreActiveTrackKeysVisible))
         {
@@ -11213,6 +11393,27 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         }
         RenderPreviewActors();
         RenderContext.DrawUI();
+    }
+
+    private long ComputeBackdropSceneKey()
+    {
+        var hash = new HashCode();
+        hash.Add(ShowVolumes);
+        hash.Add(ShowVolumetrics);
+        hash.Add((int)RenderContext.RenderFlags);
+        hash.Add(RenderContext.BackgroundColor);
+        hash.Add(RenderContext.UseSrgbColorManagement);
+        hash.Add(RenderContext.StaticSceneRevision);
+        hash.Add(RenderContext.DrawList_3D.Count);
+        foreach ((ActorProxy actor, _, BoxSphereBounds bounds) in visibleBackdropActors)
+        {
+            hash.Add(RuntimeHelpers.GetHashCode(actor));
+            hash.Add(actor.HitID);
+            hash.Add(bounds.Origin);
+            hash.Add(bounds.BoxExtent);
+            hash.Add(bounds.SphereRadius);
+        }
+        return hash.ToHashCode();
     }
 
     internal static bool ShouldDrawTrackVisualization(bool trackPlaybackActive, bool cameraFramingMode,
@@ -11635,6 +11836,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             package.Dispose();
         }
         levelPackages.Clear();
+        dialogueResolvedExportCache.Clear();
         levelPaths.Clear();
         dialoguePlacedCameras.Clear();
         dialogueAuthoredCameraDefaults.Clear();

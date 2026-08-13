@@ -32,6 +32,7 @@ public class MaterialRenderProxy : MaterialInstanceConstantLevelEditor, ILiveMat
     public bool UseHairPass;
     public bool IsUnlit;
     public bool IsHumanLashMaterial;
+    public bool HasFrameDependentUniforms { get; private set; }
     private readonly Dictionary<string, float> ScalarParameterValues = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, LinearColor> VectorParameterValues = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, string> TextureParameterValues = new(StringComparer.OrdinalIgnoreCase);
@@ -306,6 +307,14 @@ public class MaterialRenderProxy : MaterialInstanceConstantLevelEditor, ILiveMat
             VertexVectorExpressions = ShaderMap.UniformVertexVectorExpressions ?? [];
             VertexScalarExpressions = ShaderMap.UniformVertexScalarExpressions ?? [];
         }
+
+        HasFrameDependentUniforms = VertexScalarExpressions
+                                        .Concat(VertexVectorExpressions)
+                                        .Concat(PixelScalarExpressions)
+                                        .Concat(PixelVectorExpressions)
+                                        .Concat(Pixel2DTextureExpressions)
+                                        .Concat(PixelCubeTextureExpressions)
+                                        .Any(expression => !expression.IsNotFrameDependent);
 
         foreach (MaterialUniformExpression expression in VertexScalarExpressions
                      .Concat(VertexVectorExpressions)

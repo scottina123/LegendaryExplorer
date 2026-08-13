@@ -22,6 +22,7 @@ public class Mesh<TVertex> : IDisposable where TVertex : IVertexBase
     private SharpDX.Direct3D11.Buffer indexBuffer;
     private SharedMeshData<TVertex> sharedData;
     private bool verticesAreUnique;
+    private bool gpuWritableVertexBuffer;
     public SharpDX.Direct3D11.Buffer VertexBuffer => sharedData?.VertexBuffer ?? vertexBuffer;
     public SharpDX.Direct3D11.Buffer IndexBuffer => sharedData?.IndexBuffer ?? indexBuffer;
 
@@ -73,6 +74,7 @@ public class Mesh<TVertex> : IDisposable where TVertex : IVertexBase
     public void RebuildBuffer(Device device)
     {
         DetachSharedData();
+        gpuWritableVertexBuffer = false;
         // Dispose all the old stuff
         vertexBuffer?.Dispose();
         indexBuffer?.Dispose();
@@ -127,36 +129,122 @@ public class Mesh<TVertex> : IDisposable where TVertex : IVertexBase
     {
         if (!_isDynamic || Vertices.Count == 0) return;
 
-        if (sharedData is not null)
+        if (sharedData is not null || gpuWritableVertexBuffer)
         {
+            bool wasShared = sharedData is not null;
             DetachSharedData();
-            indexBuffer = SharpDX.Direct3D11.Buffer.Create(context.Device, BindFlags.IndexBuffer, Triangles.ToArray());
-            vertexBuffer = new SharpDX.Direct3D11.Buffer(context.Device, new BufferDescription(
+            if (wasShared)
+            {
+                indexBuffer = SharpDX.Direct3D11.Buffer.Create(context.Device, BindFlags.IndexBuffer,
+                    Triangles.ToArray());
+            }
+
+            var cpuWritableBuffer = new SharpDX.Direct3D11.Buffer(context.Device, new BufferDescription(
                 TVertex.Stride * Vertices.Count,
                 ResourceUsage.Dynamic,
                 BindFlags.VertexBuffer,
                 CpuAccessFlags.Write,
                 ResourceOptionFlags.None,
                 TVertex.Stride));
+            vertexBuffer?.Dispose();
+            vertexBuffer = cpuWritableBuffer;
+            gpuWritableVertexBuffer = false;
         }
 
         int stride = TVertex.Stride;
         int floatsPerVertex = stride / 4;
 
-        var dataBox = context.MapSubresource(vertexBuffer, 0, MapMode.WriteDiscard, SharpDX.Direct3D11.MapFlags.None);
-        var dest = new Span<float>((void*)dataBox.DataPointer, Vertices.Count * floatsPerVertex);
-
+        // Calculate bounds before mapping so the D3D resource remains mapped only for the short
+        // bulk copy. Holding a dynamic buffer mapped while serializing every field of every vertex
+        // can serialize the render thread with the driver on animated dialogue meshes.
+        Span<TVertex> vertices = CollectionsMarshal.AsSpan(Vertices);
         Box boundingBox = new();
-        for (int vi = 0, fi = 0; vi < Vertices.Count; vi++, fi += floatsPerVertex)
+        foreach (ref readonly TVertex vertex in vertices)
         {
-            TVertex v = Vertices[vi];
-            boundingBox.Add(v.Position);
-            v.ToFloats(dest[fi..]);
+            boundingBox.Add(vertex.Position);
+        }
+
+        var dataBox = context.MapSubresource(vertexBuffer, 0, MapMode.WriteDiscard, SharpDX.Direct3D11.MapFlags.None);
+        if (!RuntimeHelpers.IsReferenceOrContainsReferences<TVertex>()
+            && Unsafe.SizeOf<TVertex>() == stride)
+        {
+            ref TVertex firstVertex = ref MemoryMarshal.GetReference(vertices);
+            ReadOnlySpan<byte> sourceBytes = MemoryMarshal.CreateReadOnlySpan(
+                ref Unsafe.As<TVertex, byte>(ref firstVertex), vertices.Length * stride);
+            sourceBytes.CopyTo(new Span<byte>((void*)dataBox.DataPointer, sourceBytes.Length));
+        }
+        else
+        {
+            var destination = new Span<float>((void*)dataBox.DataPointer, Vertices.Count * floatsPerVertex);
+            for (int vertexIndex = 0, floatIndex = 0; vertexIndex < Vertices.Count;
+                 vertexIndex++, floatIndex += floatsPerVertex)
+            {
+                Vertices[vertexIndex].ToFloats(destination[floatIndex..]);
+            }
         }
         context.UnmapSubresource(vertexBuffer, 0);
 
         BaseBounds = new BoxSphereBounds(boundingBox);
         TransformedBounds = BaseBounds.TransformBy(localToWorld);
+    }
+
+    /// <summary>
+    /// Replaces this mesh's vertex buffer with a default-usage raw buffer that can be written by a
+    /// compute shader and consumed directly by the existing vertex factory. This is deliberately
+    /// opt-in: normal meshes retain their smaller immutable or CPU-writable buffers.
+    /// </summary>
+    internal bool EnableGpuVertexWrites(Device device)
+    {
+        if (Vertices.Count == 0)
+        {
+            return false;
+        }
+        if (gpuWritableVertexBuffer)
+        {
+            return true;
+        }
+
+        int stride = TVertex.Stride;
+        int floatsPerVertex = stride / sizeof(float);
+        float[] vertexData = new float[floatsPerVertex * Vertices.Count];
+        Span<float> vertexDataSpan = vertexData;
+        for (int vertexIndex = 0, floatIndex = 0;
+             vertexIndex < Vertices.Count;
+             vertexIndex++, floatIndex += floatsPerVertex)
+        {
+            Vertices[vertexIndex].ToFloats(vertexDataSpan[floatIndex..]);
+        }
+
+        var description = new BufferDescription
+        {
+            SizeInBytes = stride * Vertices.Count,
+            Usage = ResourceUsage.Default,
+            BindFlags = BindFlags.VertexBuffer | BindFlags.UnorderedAccess,
+            CpuAccessFlags = CpuAccessFlags.None,
+            OptionFlags = ResourceOptionFlags.BufferAllowRawViews,
+            StructureByteStride = 0,
+        };
+        using var stream = SharpDX.DataStream.Create(vertexData, true, true);
+        var replacement = new SharpDX.Direct3D11.Buffer(device, stream, description);
+
+        bool wasShared = sharedData is not null;
+        EnsureUniqueVertices();
+        DetachSharedData();
+        if (wasShared)
+        {
+            indexBuffer = SharpDX.Direct3D11.Buffer.Create(device, BindFlags.IndexBuffer, Triangles.ToArray());
+        }
+
+        if (ReferenceEquals(vertexBuffer, _dynamicVertexBuffer))
+        {
+            _dynamicVertexBuffer = null;
+            _dynamicVertexCapacity = 0;
+        }
+        vertexBuffer?.Dispose();
+        vertexBuffer = replacement;
+        gpuWritableVertexBuffer = true;
+        _isDynamic = true;
+        return true;
     }
 
     /// <summary>
@@ -199,6 +287,7 @@ public class Mesh<TVertex> : IDisposable where TVertex : IVertexBase
             // Switch the mesh to use the dynamic buffer
             vertexBuffer?.Dispose();
             vertexBuffer = _dynamicVertexBuffer;
+            gpuWritableVertexBuffer = false;
         }
 
         // Reuse scratch array

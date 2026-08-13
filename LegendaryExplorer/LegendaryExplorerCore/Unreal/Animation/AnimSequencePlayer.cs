@@ -63,6 +63,14 @@ public class AnimSequencePlayer : AnimPlayer
     private float _scheduledEndTime;
     private Matrix4x4[] _scheduledBasePose;
     private Matrix4x4[] _scheduledLocalPose;
+    private Matrix4x4[] _scheduledBlendedLocalPose;
+    private Matrix4x4[] _scheduledClipLocalPose;
+    private float[] _scheduledOverlayWeights;
+    private float[] _scheduledAccumulatedWeights;
+    private readonly List<(ScheduledAnimationClipState State, float Weight, bool HeldBeforeStart)>
+        _scheduledActiveClips = [];
+    private readonly List<ScheduledAnimationClipState> _scheduledRootMotionClips = [];
+    private bool _scheduledNormalizesRootTranslation;
     private readonly int _rootMotionBoneIndex;
 
     public AnimSequencePlayer(SkeletalMesh skeletalMesh) : base(skeletalMesh)
@@ -134,6 +142,9 @@ public class AnimSequencePlayer : AnimPlayer
         _scheduledLocalPose = null;
         _scheduledStartTime = 0;
         _scheduledEndTime = 0;
+        _scheduledNormalizesRootTranslation = false;
+        _scheduledRootMotionClips.Clear();
+        _scheduledActiveClips.Clear();
         ExtractedRootMotionTranslation = Vector3.Zero;
         _animSequence = animSequence;
         CurrentTime = 0;
@@ -200,6 +211,8 @@ public class AnimSequencePlayer : AnimPlayer
         _blendFromComponentSpace = null;
         _crossfadeDuration = 0;
         _scheduledClips = [];
+        _scheduledRootMotionClips.Clear();
+        _scheduledActiveClips.Clear();
 
         foreach (ScheduledAnimationClip clip in clips.Where(clip =>
                      clip.Animation != null && clip.EndTime > clip.StartTime && clip.AnimationEndTime > clip.AnimationStartTime))
@@ -228,6 +241,21 @@ public class AnimSequencePlayer : AnimPlayer
             });
         }
 
+        _scheduledRootMotionClips.AddRange(_scheduledClips
+            .Where(state => state.Clip.NormalizeRootTranslation && state.HasAnimatedRootTranslation)
+            .OrderBy(state => state.Clip.StartTime));
+        if (_scheduledActiveClips.Capacity < _scheduledClips.Count)
+        {
+            _scheduledActiveClips.Capacity = _scheduledClips.Count;
+        }
+        _scheduledNormalizesRootTranslation = _rootMotionBoneIndex >= 0
+                                               && _scheduledClips.Any(state =>
+                                                   state.Clip.NormalizeRootTranslation);
+        _scheduledBlendedLocalPose ??= new Matrix4x4[_bones.Length];
+        _scheduledClipLocalPose ??= new Matrix4x4[_bones.Length];
+        _scheduledOverlayWeights ??= new float[_bones.Length];
+        _scheduledAccumulatedWeights ??= new float[_bones.Length];
+
         if (_scheduledClips.Count == 0)
         {
             _scheduledClips = null;
@@ -235,6 +263,8 @@ public class AnimSequencePlayer : AnimPlayer
             _scheduledLocalPose = null;
             _scheduledStartTime = 0;
             _scheduledEndTime = 0;
+            _scheduledNormalizesRootTranslation = false;
+            _scheduledRootMotionClips.Clear();
             ExtractedRootMotionTranslation = Vector3.Zero;
             CurrentTime = 0;
         }
@@ -490,9 +520,7 @@ public class AnimSequencePlayer : AnimPlayer
 
     private Matrix4x4[] ComputeScheduledSkinningMatrices()
     {
-        bool normalizeRootTranslation = _rootMotionBoneIndex >= 0
-                                        && _scheduledClips.Any(state => state.Clip.NormalizeRootTranslation);
-        List<(ScheduledAnimationClipState State, float Weight, bool HeldBeforeStart)> activeClips = [];
+        _scheduledActiveClips.Clear();
         foreach (ScheduledAnimationClipState state in _scheduledClips)
         {
             ScheduledAnimationClip clip = state.Clip;
@@ -535,11 +563,11 @@ public class AnimSequencePlayer : AnimPlayer
             }
             if (weight > 0)
             {
-                activeClips.Add((state, weight, heldBeforeStart));
+                _scheduledActiveClips.Add((state, weight, heldBeforeStart));
             }
         }
 
-        if (activeClips.Count == 0 && !normalizeRootTranslation)
+        if (_scheduledActiveClips.Count == 0 && !_scheduledNormalizesRootTranslation)
         {
             if (_scheduledBasePose is not null)
             {
@@ -552,8 +580,8 @@ public class AnimSequencePlayer : AnimPlayer
             return _skinningMatrices;
         }
 
-        var blendedLocalPose = new Matrix4x4[_bones.Length];
-        var clipLocalPose = new Matrix4x4[_bones.Length];
+        Matrix4x4[] blendedLocalPose = _scheduledBlendedLocalPose;
+        Matrix4x4[] clipLocalPose = _scheduledClipLocalPose;
         if (_scheduledLocalPose is not null)
         {
             Array.Copy(_scheduledLocalPose, blendedLocalPose, blendedLocalPose.Length);
@@ -561,9 +589,12 @@ public class AnimSequencePlayer : AnimPlayer
 
         // Pose animations establish the continuously evaluated base layer. This is how gesture
         // tracks can keep a walk cycle running while dialogue gestures animate the upper body.
-        foreach ((ScheduledAnimationClipState state, float weight, bool heldBeforeStart) in activeClips
-                     .Where(activeClip => activeClip.State.Clip.IsBaseLayer || activeClip.HeldBeforeStart))
+        foreach ((ScheduledAnimationClipState state, float weight, bool heldBeforeStart) in _scheduledActiveClips)
         {
+            if (!state.Clip.IsBaseLayer && !heldBeforeStart)
+            {
+                continue;
+            }
             ConvertComponentToLocalPose(state.Player._boneComponentSpace, clipLocalPose);
             float alpha = Math.Clamp(weight, 0, 1);
             for (int boneIndex = 0; boneIndex < _bones.Length; boneIndex++)
@@ -578,24 +609,24 @@ public class AnimSequencePlayer : AnimPlayer
             }
         }
 
-        List<(ScheduledAnimationClipState State, float Weight, bool HeldBeforeStart)> overlayClips = activeClips
-            .Where(activeClip => !activeClip.State.Clip.IsBaseLayer && !activeClip.HeldBeforeStart)
-            .ToList();
-        var overlayWeights = new float[_bones.Length];
-        foreach ((ScheduledAnimationClipState state, float weight, _) in overlayClips)
+        Array.Clear(_scheduledOverlayWeights);
+        foreach ((ScheduledAnimationClipState state, float weight, bool heldBeforeStart) in _scheduledActiveClips)
         {
+            if (state.Clip.IsBaseLayer || heldBeforeStart)
+            {
+                continue;
+            }
             for (int boneIndex = 0; boneIndex < _bones.Length; boneIndex++)
             {
                 if (state.BoneMask[boneIndex])
                 {
-                    overlayWeights[boneIndex] += weight;
+                    _scheduledOverlayWeights[boneIndex] += weight;
                 }
             }
         }
-        var accumulatedWeights = new float[_bones.Length];
         for (int boneIndex = 0; boneIndex < _bones.Length; boneIndex++)
         {
-            accumulatedWeights[boneIndex] = Math.Max(0, 1 - overlayWeights[boneIndex]);
+            _scheduledAccumulatedWeights[boneIndex] = Math.Max(0, 1 - _scheduledOverlayWeights[boneIndex]);
         }
 
         Vector3 rootBasePosition = Vector3.Zero;
@@ -608,9 +639,14 @@ public class AnimSequencePlayer : AnimPlayer
             dominantRootMotion = 0;
         }
 
-        for (int clipIndex = 0; clipIndex < overlayClips.Count; clipIndex++)
+        for (int clipIndex = 0; clipIndex < _scheduledActiveClips.Count; clipIndex++)
         {
-            (ScheduledAnimationClipState state, float weight, _) = overlayClips[clipIndex];
+            (ScheduledAnimationClipState state, float weight, bool heldBeforeStart) =
+                _scheduledActiveClips[clipIndex];
+            if (state.Clip.IsBaseLayer || heldBeforeStart)
+            {
+                continue;
+            }
             ConvertComponentToLocalPose(state.Player._boneComponentSpace, clipLocalPose);
             for (int boneIndex = 0; boneIndex < _bones.Length; boneIndex++)
             {
@@ -619,7 +655,7 @@ public class AnimSequencePlayer : AnimPlayer
                     continue;
                 }
 
-                float accumulatedWeight = accumulatedWeights[boneIndex];
+                float accumulatedWeight = _scheduledAccumulatedWeights[boneIndex];
                 float alpha = accumulatedWeight <= 0
                     ? 1
                     : Math.Clamp(weight / (accumulatedWeight + weight), 0, 1);
@@ -645,14 +681,14 @@ public class AnimSequencePlayer : AnimPlayer
                     }
                     blendedLocalPose[boneIndex] = Matrix4x4.CreateFromQuaternion(rotation) * Matrix4x4.CreateTranslation(position);
                 }
-                accumulatedWeights[boneIndex] += weight;
+                _scheduledAccumulatedWeights[boneIndex] += weight;
             }
         }
 
-        ExtractedRootMotionTranslation = normalizeRootTranslation
+        ExtractedRootMotionTranslation = _scheduledNormalizesRootTranslation
             ? ComputeExtractedRootMotionTranslation(CurrentTime)
             : Vector3.Zero;
-        if (normalizeRootTranslation
+        if (_scheduledNormalizesRootTranslation
             && Matrix4x4.Decompose(blendedLocalPose[_rootMotionBoneIndex], out _, out Quaternion rootRotation,
                 out _))
         {
@@ -679,6 +715,15 @@ public class AnimSequencePlayer : AnimPlayer
         return _skinningMatrices;
     }
 
+    /// <summary>
+    /// Evaluates normalized scheduled root translation without evaluating and blending the full
+    /// skeleton. Dialogue playback uses this for actor movement before the pose is skinned once.
+    /// </summary>
+    public Vector3 EvaluateExtractedRootMotionTranslation(float timelineTime) =>
+        _scheduledNormalizesRootTranslation
+            ? ComputeExtractedRootMotionTranslation(timelineTime)
+            : Vector3.Zero;
+
     private Vector3 ComputeExtractedRootMotionTranslation(float timelineTime)
     {
         Vector3 translation = Vector3.Zero;
@@ -686,14 +731,9 @@ public class AnimSequencePlayer : AnimPlayer
         // gesture with authored Root translation takes ownership from the older gesture at its
         // start time. Keep the older displacement already travelled, then continue from the new
         // clip's authored root curve. Constant-root pose/head clips do not interrupt locomotion.
-        List<ScheduledAnimationClipState> rootMotionClips = _scheduledClips
-            .Where(state => state.Clip.NormalizeRootTranslation && state.HasAnimatedRootTranslation)
-            .OrderBy(state => state.Clip.StartTime)
-            .ToList();
-
-        for (int clipIndex = 0; clipIndex < rootMotionClips.Count; clipIndex++)
+        for (int clipIndex = 0; clipIndex < _scheduledRootMotionClips.Count; clipIndex++)
         {
-            ScheduledAnimationClipState state = rootMotionClips[clipIndex];
+            ScheduledAnimationClipState state = _scheduledRootMotionClips[clipIndex];
             ScheduledAnimationClip clip = state.Clip;
             if (timelineTime <= clip.StartTime)
             {
@@ -701,9 +741,10 @@ public class AnimSequencePlayer : AnimPlayer
             }
 
             float ownershipEndTime = clip.EndTime;
-            if (clipIndex + 1 < rootMotionClips.Count)
+            if (clipIndex + 1 < _scheduledRootMotionClips.Count)
             {
-                ownershipEndTime = Math.Min(ownershipEndTime, rootMotionClips[clipIndex + 1].Clip.StartTime);
+                ownershipEndTime = Math.Min(ownershipEndTime,
+                    _scheduledRootMotionClips[clipIndex + 1].Clip.StartTime);
             }
             if (ownershipEndTime <= clip.StartTime)
             {

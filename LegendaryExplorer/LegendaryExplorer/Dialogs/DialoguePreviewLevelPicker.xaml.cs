@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -21,6 +22,7 @@ public partial class DialoguePreviewLevelPicker : TrackingNotifyPropertyChangedW
 {
     private bool restoringCacheOptions;
     private readonly List<DialogueCachePreset> compatibleCachePresets = [];
+    private DialogueCachePreset selectedCachePreset;
 
     public sealed record HenchmanChoice(string ActorTag, string DisplayName);
 
@@ -46,7 +48,7 @@ public partial class DialoguePreviewLevelPicker : TrackingNotifyPropertyChangedW
             StringComparer.OrdinalIgnoreCase);
     public DialogueCachePreset SelectedCachePreset => CacheGroupBox.Visibility == Visibility.Visible
                                                       && UseSelectedCacheRadio.IsChecked == true
-        ? CachePresetList.SelectedItem as DialogueCachePreset
+        ? selectedCachePreset
         : null;
     public string NewCacheLabel => CacheGroupBox.Visibility == Visibility.Visible
                                    && BuildNewCacheRadio.IsChecked == true
@@ -105,7 +107,7 @@ public partial class DialoguePreviewLevelPicker : TrackingNotifyPropertyChangedW
             return;
         }
 
-        compatibleCachePresets.AddRange(SavedDialogueCachePresetManager.LoadAll()
+        compatibleCachePresets.AddRange(SavedDialogueCachePresetManager.LoadHeaders()
             .Where(preset => IsCacheIdentityCompatible(preset, conversation, startNode)
                              && HasCompatibleHenchmanAssignments(preset)));
         RefreshCachePresetList();
@@ -265,6 +267,7 @@ public partial class DialoguePreviewLevelPicker : TrackingNotifyPropertyChangedW
 
     private void CachePresetList_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
+        selectedCachePreset = null;
         DeleteCachePresetButton.IsEnabled = CachePresetList.SelectedItem is DialogueCachePreset;
         if (CachePresetList.SelectedItem is not DialogueCachePreset preset)
         {
@@ -273,7 +276,8 @@ public partial class DialoguePreviewLevelPicker : TrackingNotifyPropertyChangedW
                 : "No compatible cache presets match the search.";
             return;
         }
-        CacheDetailsText.Text = $"{preset.SavedDisplay} — {preset.Nodes.Count} node(s), "
+        string nodeCount = preset.CachedNodeCount >= 0 ? $"{preset.NodeCount} node(s), " : string.Empty;
+        CacheDetailsText.Text = $"{preset.SavedDisplay} — {nodeCount}"
                                 + $"{preset.LevelPaths.Count} remembered level(s)";
         restoringCacheOptions = true;
         try
@@ -366,7 +370,7 @@ public partial class DialoguePreviewLevelPicker : TrackingNotifyPropertyChangedW
         NewCacheLabelTextBox.IsEnabled = build && SaveNewCacheCheckBox.IsChecked == true;
     }
 
-    private void Confirm_Click(object sender, RoutedEventArgs e)
+    private async void Confirm_Click(object sender, RoutedEventArgs e)
     {
         if (HenchmanSlots.Any(slot => string.IsNullOrWhiteSpace(slot.SelectedHenchmanTag)))
         {
@@ -374,10 +378,36 @@ public partial class DialoguePreviewLevelPicker : TrackingNotifyPropertyChangedW
                 "Squad Assignment Required", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
-        if (CacheGroupBox.Visibility == Visibility.Visible
-            && UseSelectedCacheRadio.IsChecked == true && SelectedCachePreset is null)
+        if (CacheGroupBox.Visibility == Visibility.Visible && UseSelectedCacheRadio.IsChecked == true)
         {
-            return;
+            if (CachePresetList.SelectedItem is not DialogueCachePreset header)
+            {
+                return;
+            }
+
+            LoadPreviewButton.IsEnabled = false;
+            CacheGroupBox.IsEnabled = false;
+            CacheDetailsText.Text = $"Loading '{header.Label}'...";
+            try
+            {
+                selectedCachePreset = await Task.Run(() => SavedDialogueCachePresetManager.Load(header));
+            }
+            finally
+            {
+                LoadPreviewButton.IsEnabled = true;
+                CacheGroupBox.IsEnabled = true;
+            }
+            if (!IsVisible)
+            {
+                return;
+            }
+            if (selectedCachePreset is null)
+            {
+                MessageBox.Show(this, "The selected cache could not be read. It may have been moved or damaged.",
+                    "Load Dialogue Cache", MessageBoxButton.OK, MessageBoxImage.Error);
+                CachePresetList_SelectionChanged(CachePresetList, null);
+                return;
+            }
         }
         DialogResult = true;
     }

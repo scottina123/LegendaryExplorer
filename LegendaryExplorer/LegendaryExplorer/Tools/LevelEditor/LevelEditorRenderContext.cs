@@ -78,6 +78,7 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
     private int lightIconRevision;
     private int emitterIconRevision;
     private int pointOfInterestIconRevision;
+    private int staticSceneRevision;
     private bool hasPendingViewportClick;
     private MouseButtons pendingViewportClickButton;
     private int pendingViewportClickX;
@@ -89,6 +90,7 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
     internal int LightIconRevision => Volatile.Read(ref lightIconRevision);
     internal int EmitterIconRevision => Volatile.Read(ref emitterIconRevision);
     internal int PointOfInterestIconRevision => Volatile.Read(ref pointOfInterestIconRevision);
+    internal int StaticSceneRevision => Volatile.Read(ref staticSceneRevision);
 
     public bool ForceContinuousRendering { get; set; }
     public override bool RenderOnUnhandledMouseMove => false;
@@ -222,6 +224,7 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
                 // Resource preparation may create D3D11 device resources, but it must not use the immediate
                 // context. The render thread is the sole owner of that context.
                 component.PrepareRenderResources();
+                Interlocked.Increment(ref staticSceneRevision);
                 if (component is PrimitiveComponentProxy primitiveComponent)
                 {
                     actorBoundsCache.TryRemove(primitiveComponent.Actor, out _);
@@ -339,6 +342,7 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
         }
 
         actorBoundsCache.TryRemove(actor, out _);
+        Interlocked.Increment(ref staticSceneRevision);
         pendingActorVisualInvalidations.TryAdd(actor, 0);
         if (actor.HasLightSettings && CanAffectSceneLight(e.PropertyName))
         {
@@ -766,6 +770,7 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
     public void LoadActors(IList<ActorProxy> actors)
     {
         DrawList_3D.AddRange(actors);
+        if (actors.Count > 0) Interlocked.Increment(ref staticSceneRevision);
         bool lightsChanged = false;
         bool emittersChanged = false;
         bool pointsOfInterestChanged = false;
@@ -967,6 +972,7 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
 
     public void UnloadLevel()
     {
+        Interlocked.Increment(ref staticSceneRevision);
         StopRenderResourceWorker();
         EmptyCaches();
         HitProxies.Reset();
@@ -1025,6 +1031,7 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
     {
         if (DrawList_3D.Remove(actor))
         {
+            Interlocked.Increment(ref staticSceneRevision);
             RemoveQueuedRenderResources(actor);
             actor.PropertyChanged -= Actor_PropertyChanged;
             RemoveSceneLight(actor);
@@ -1040,6 +1047,7 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
     {
         if (!DrawList_3D.Contains(actor))
         {
+            Interlocked.Increment(ref staticSceneRevision);
             DrawList_3D.Add(actor);
             actor.HitID = HitProxies.Add(actor);
             actor.PropertyChanged += Actor_PropertyChanged;

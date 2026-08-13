@@ -360,7 +360,7 @@ public sealed class SceneRenderControl : ContentControl, IDisposable, INotifyPro
     private RenderContext _context;
     private Action _onImageRendered;
     private bool _captureNextFrame;
-    private long _lastRenderRequestTimestamp;
+    private long _nextRenderRequestTimestamp;
 
     /// <summary>
     /// Maximum number of frames submitted per second. Zero leaves the control uncapped.
@@ -546,15 +546,26 @@ public sealed class SceneRenderControl : ContentControl, IDisposable, INotifyPro
             if (_renderDirty || isActivelyUpdating || hasBackgroundWork)
             {
                 long timestamp = Stopwatch.GetTimestamp();
-                if (MaximumFramesPerSecond > 0
-                    && _lastRenderRequestTimestamp != 0
-                    && timestamp - _lastRenderRequestTimestamp
-                    < Stopwatch.Frequency / MaximumFramesPerSecond)
+                if (MaximumFramesPerSecond > 0)
                 {
-                    return;
-                }
+                    long frameInterval = Math.Max(1,
+                        (long)(Stopwatch.Frequency / MaximumFramesPerSecond));
+                    long schedulingTolerance = frameInterval / 20;
+                    if (_nextRenderRequestTimestamp != 0
+                        && timestamp + schedulingTolerance < _nextRenderRequestTimestamp)
+                    {
+                        return;
+                    }
 
-                _lastRenderRequestTimestamp = timestamp;
+                    // Advance a stable deadline instead of restarting the interval at the callback.
+                    // CompositionTarget can arrive fractionally before a nominal 60 Hz boundary;
+                    // restarting there causes the next callback to be rejected and quantizes 60 FPS
+                    // playback down to 30 (and then 15 under load).
+                    _nextRenderRequestTimestamp = _nextRenderRequestTimestamp == 0
+                        ? timestamp + frameInterval
+                        : _nextRenderRequestTimestamp
+                          + ((timestamp - _nextRenderRequestTimestamp) / frameInterval + 1) * frameInterval;
+                }
                 if (hasBackgroundWork && Context.ProcessBackgroundWork())
                 {
                     _renderDirty = true;
@@ -641,7 +652,7 @@ public sealed class SceneRenderControl : ContentControl, IDisposable, INotifyPro
         {
             // Loading and hidden-tab time is not simulation time. Reset both clocks so the resumed frame is
             // immediately eligible and starts with a zero/short timestep instead of a multi-second catch-up.
-            _lastRenderRequestTimestamp = 0;
+            _nextRenderRequestTimestamp = 0;
             Stopwatch.Restart();
             _renderDirty = true;
         }

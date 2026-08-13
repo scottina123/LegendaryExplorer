@@ -1,4 +1,6 @@
+using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Numerics;
 using System.Threading.Tasks;
@@ -16,6 +18,45 @@ namespace LegendaryExplorer.Tests.UserControls.InterpTrackMove3D;
 [TestClass]
 public class CurveEditor3DModelCacheTests
 {
+    [TestMethod]
+    public void DialogueCacheHeaderLoadsWithoutMaterializingRuntimePayloads()
+    {
+        string path = Path.Combine(Path.GetTempPath(), $"DialogueCacheHeader_{Guid.NewGuid():N}.json");
+        var preset = new DialogueCachePreset
+        {
+            Version = 14,
+            Id = Guid.NewGuid(),
+            Label = "Fast header",
+            SourceFilePath = @"C:\Games\BioD_Test.pcc",
+            PccName = "BioD_Test.pcc",
+            DialogueName = "TestConversation",
+            CachedNodeCount = 1,
+            LevelPaths = [@"C:\Games\BioA_Test.pcc"],
+            HenchmanAssignments = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["hench_00"] = "hench_garrus",
+            },
+            Nodes = [new DialogueCacheNodePreset { NodeIndex = 3, LineStrRef = 1234 }],
+        };
+        try
+        {
+            File.WriteAllText(path, JsonConvert.SerializeObject(preset));
+
+            DialogueCachePreset header = SavedDialogueCachePresetManager.TryReadHeader(path);
+
+            Assert.IsNotNull(header);
+            Assert.IsTrue(header.IsMetadataOnly);
+            Assert.AreEqual(preset.Id, header.Id);
+            Assert.AreEqual(1, header.NodeCount);
+            Assert.AreEqual(0, header.Nodes.Count);
+            Assert.AreEqual("hench_garrus", header.HenchmanAssignments["hench_00"]);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
     [TestMethod]
     public void StageSlotInvertsTheBoundActorsBodyComponentPivot()
     {

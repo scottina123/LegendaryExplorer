@@ -16,6 +16,7 @@ namespace LegendaryExplorer.Tools.InterpEditor;
 public static class SavedDialogueCachePresetManager
 {
     private const int CurrentVersion = 14;
+    private const int JsonBufferSize = 64 * 1024;
     public static string StorageDirectory => Path.Combine(AppDirectories.AppDataFolder, "DialogueConversationCaches");
 
     public static IReadOnlyList<DialogueCachePreset> LoadAll()
@@ -43,6 +44,52 @@ public static class SavedDialogueCachePresetManager
         }
     }
 
+    /// <summary>
+    /// Reads only the small header at the beginning of each cache file. Actor construction and
+    /// per-node playback data can be several megabytes and are loaded only after a preset is chosen.
+    /// </summary>
+    public static IReadOnlyList<DialogueCachePreset> LoadHeaders()
+    {
+        try
+        {
+            if (!Directory.Exists(StorageDirectory))
+            {
+                return [];
+            }
+
+            return Directory.EnumerateFiles(StorageDirectory, "*.json", SearchOption.TopDirectoryOnly)
+                .Select(TryReadHeader)
+                .Where(preset => preset is not null)
+                .OrderByDescending(preset => preset.SavedUtc)
+                .ToArray();
+        }
+        catch (IOException)
+        {
+            return [];
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return [];
+        }
+    }
+
+    /// <summary>
+    /// Loads the complete cache represented by a metadata-only header. Complete presets are returned
+    /// unchanged so callers can use this at the selection boundary without special casing.
+    /// </summary>
+    public static DialogueCachePreset Load(DialogueCachePreset preset)
+    {
+        if (preset is null || !preset.IsMetadataOnly)
+        {
+            return preset;
+        }
+
+        string path = string.IsNullOrWhiteSpace(preset.CacheFilePath)
+            ? Path.Combine(StorageDirectory, $"{preset.Id:N}.json")
+            : preset.CacheFilePath;
+        return TryRead(path);
+    }
+
     public static DialogueCachePreset Save(DialogueCachePreset preset)
     {
         ArgumentNullException.ThrowIfNull(preset);
@@ -58,12 +105,20 @@ public static class SavedDialogueCachePresetManager
         preset.Version = CurrentVersion;
         preset.Label = preset.Label.Trim();
         preset.SavedUtc = DateTime.UtcNow;
+        preset.CachedNodeCount = preset.Nodes.Count;
         Directory.CreateDirectory(StorageDirectory);
         string path = Path.Combine(StorageDirectory, $"{preset.Id:N}.json");
         string temporaryPath = path + ".tmp";
-        File.WriteAllText(temporaryPath, JsonConvert.SerializeObject(preset, Formatting.Indented));
+        using (var stream = new FileStream(temporaryPath, FileMode.Create, FileAccess.Write, FileShare.None,
+                   JsonBufferSize, FileOptions.SequentialScan))
+        using (var textWriter = new StreamWriter(stream, new System.Text.UTF8Encoding(false), JsonBufferSize))
+        using (var jsonWriter = new JsonTextWriter(textWriter) { Formatting = Formatting.Indented })
+        {
+            JsonSerializer.CreateDefault().Serialize(jsonWriter, preset);
+        }
         File.Move(temporaryPath, path, true);
         preset.CacheFilePath = path;
+        preset.IsMetadataOnly = false;
         return preset;
     }
 
@@ -94,7 +149,14 @@ public static class SavedDialogueCachePresetManager
     {
         try
         {
-            DialogueCachePreset preset = JsonConvert.DeserializeObject<DialogueCachePreset>(File.ReadAllText(path));
+            DialogueCachePreset preset;
+            using (var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read,
+                       JsonBufferSize, FileOptions.SequentialScan))
+            using (var textReader = new StreamReader(stream, System.Text.Encoding.UTF8, true, JsonBufferSize))
+            using (var jsonReader = new JsonTextReader(textReader))
+            {
+                preset = JsonSerializer.CreateDefault().Deserialize<DialogueCachePreset>(jsonReader);
+            }
             if (preset is null || preset.Version != CurrentVersion || preset.Id == Guid.Empty
                 || string.IsNullOrWhiteSpace(preset.Label) || preset.Nodes is not { Count: > 0 })
             {
@@ -121,8 +183,133 @@ public static class SavedDialogueCachePresetManager
                     variant.SceneShopVariants = [];
                 }
             }
+            preset.CachedNodeCount = preset.Nodes.Count;
             preset.CacheFilePath = path;
+            preset.IsMetadataOnly = false;
             return preset;
+        }
+        catch (IOException)
+        {
+            return null;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    internal static DialogueCachePreset TryReadHeader(string path)
+    {
+        try
+        {
+            using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read,
+                JsonBufferSize, FileOptions.SequentialScan);
+            using var textReader = new StreamReader(stream, System.Text.Encoding.UTF8, true, JsonBufferSize);
+            using var reader = new JsonTextReader(textReader);
+            JsonSerializer serializer = JsonSerializer.CreateDefault();
+            var preset = new DialogueCachePreset
+            {
+                CachedNodeCount = -1,
+                CacheFilePath = path,
+                IsMetadataOnly = true,
+            };
+
+            if (!reader.Read() || reader.TokenType != JsonToken.StartObject)
+            {
+                return null;
+            }
+
+            while (reader.Read() && reader.TokenType != JsonToken.EndObject)
+            {
+                if (reader.TokenType != JsonToken.PropertyName)
+                {
+                    continue;
+                }
+
+                string propertyName = (string)reader.Value;
+                if (!reader.Read())
+                {
+                    return null;
+                }
+
+                // Saved caches serialize these large properties after all compatibility metadata.
+                // Stop here rather than scanning megabytes of vertex, curve, and gesture snapshots.
+                if (propertyName is nameof(DialogueCachePreset.Actors) or nameof(DialogueCachePreset.Nodes))
+                {
+                    break;
+                }
+
+                switch (propertyName)
+                {
+                    case nameof(DialogueCachePreset.Version):
+                        preset.Version = serializer.Deserialize<int>(reader);
+                        break;
+                    case nameof(DialogueCachePreset.Id):
+                        preset.Id = serializer.Deserialize<Guid>(reader);
+                        break;
+                    case nameof(DialogueCachePreset.Label):
+                        preset.Label = serializer.Deserialize<string>(reader);
+                        break;
+                    case nameof(DialogueCachePreset.SourceFilePath):
+                        preset.SourceFilePath = serializer.Deserialize<string>(reader);
+                        break;
+                    case nameof(DialogueCachePreset.PccName):
+                        preset.PccName = serializer.Deserialize<string>(reader);
+                        break;
+                    case nameof(DialogueCachePreset.DialogueName):
+                        preset.DialogueName = serializer.Deserialize<string>(reader);
+                        break;
+                    case nameof(DialogueCachePreset.DialogueExportPath):
+                        preset.DialogueExportPath = serializer.Deserialize<string>(reader);
+                        break;
+                    case nameof(DialogueCachePreset.DialogueUIndex):
+                        preset.DialogueUIndex = serializer.Deserialize<int>(reader);
+                        break;
+                    case nameof(DialogueCachePreset.Game):
+                        preset.Game = serializer.Deserialize<MEGame>(reader);
+                        break;
+                    case nameof(DialogueCachePreset.SavedUtc):
+                        preset.SavedUtc = serializer.Deserialize<DateTime>(reader);
+                        break;
+                    case nameof(DialogueCachePreset.SourceLastWriteUtc):
+                        preset.SourceLastWriteUtc = serializer.Deserialize<DateTime>(reader);
+                        break;
+                    case nameof(DialogueCachePreset.SourceFileSize):
+                        preset.SourceFileSize = serializer.Deserialize<long>(reader);
+                        break;
+                    case nameof(DialogueCachePreset.StartNodeIsReply):
+                        preset.StartNodeIsReply = serializer.Deserialize<bool>(reader);
+                        break;
+                    case nameof(DialogueCachePreset.StartNodeIndex):
+                        preset.StartNodeIndex = serializer.Deserialize<int>(reader);
+                        break;
+                    case nameof(DialogueCachePreset.PlayerGender):
+                        preset.PlayerGender = serializer.Deserialize<CurveEditor3D.DialoguePreviewPlayerGender>(reader);
+                        break;
+                    case nameof(DialogueCachePreset.CachedNodeCount):
+                        preset.CachedNodeCount = serializer.Deserialize<int>(reader);
+                        break;
+                    case nameof(DialogueCachePreset.LevelPaths):
+                        preset.LevelPaths = serializer.Deserialize<List<string>>(reader) ?? [];
+                        break;
+                    case nameof(DialogueCachePreset.HenchmanAssignments):
+                        preset.HenchmanAssignments = serializer.Deserialize<Dictionary<string, string>>(reader)
+                                                     ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                        break;
+                    default:
+                        reader.Skip();
+                        break;
+                }
+            }
+
+            return preset.Version == CurrentVersion && preset.Id != Guid.Empty
+                   && !string.IsNullOrWhiteSpace(preset.Label)
+                ? preset
+                : null;
         }
         catch (IOException)
         {
@@ -156,6 +343,7 @@ public sealed class DialogueCachePreset
     public bool StartNodeIsReply { get; set; }
     public int StartNodeIndex { get; set; }
     public CurveEditor3D.DialoguePreviewPlayerGender PlayerGender { get; set; }
+    public int CachedNodeCount { get; set; }
     public List<string> LevelPaths { get; set; } = [];
     public Dictionary<string, string> HenchmanAssignments { get; set; } =
         new(StringComparer.OrdinalIgnoreCase);
@@ -165,9 +353,13 @@ public sealed class DialogueCachePreset
     [JsonIgnore]
     public string CacheFilePath { get; set; }
     [JsonIgnore]
+    public bool IsMetadataOnly { get; set; }
+    [JsonIgnore]
+    public int NodeCount => Nodes is { Count: > 0 } ? Nodes.Count : Math.Max(0, CachedNodeCount);
+    [JsonIgnore]
     public string SavedDisplay => SavedUtc.ToLocalTime().ToString("g");
     [JsonIgnore]
-    public string Details => $"{PccName}  |  {DialogueName}  |  {Nodes.Count} node(s)  |  {LevelPaths.Count} level(s)";
+    public string Details => $"{PccName}  |  {DialogueName}  |  {NodeCount} node(s)  |  {LevelPaths.Count} level(s)";
 }
 
 public sealed class DialogueActorConstructionCache

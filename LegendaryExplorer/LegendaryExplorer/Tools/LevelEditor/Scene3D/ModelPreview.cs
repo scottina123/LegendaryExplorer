@@ -392,6 +392,12 @@ internal class LEShaderPreviewMaterial : ModelPreviewMaterial<LEVertex>
             {
                 return;
             }
+            if (material.HasFrameDependentUniforms)
+            {
+                // Never freeze authored scrolling, flipbook, or time-driven backdrop materials merely to
+                // improve playback speed. The context will render this backdrop normally every frame.
+                context.RejectStaticSceneCache();
+            }
             // Human lashes use a materially different unlit/translucent constant layout. Meshplorer keeps
             // them on a separate effect so their constants cannot corrupt the eye material drawn afterward.
             LEEffect effect = material.IsHumanLashMaterial ? context.HumanLashEffect : context.LEEffect;

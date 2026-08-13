@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -15,6 +16,9 @@ public partial class DialogueCachePresetDialog : Window
     private readonly Func<string, DialogueCachePreset> saveCurrent;
     private readonly Func<DialogueCachePreset, bool> canLoad;
     private List<DialogueCachePreset> presets;
+    private readonly Dictionary<Guid, DialogueCachePreset> loadedPresets = [];
+    private readonly Dictionary<Guid, Task<DialogueCachePreset>> presetLoadTasks = [];
+    private int selectionLoadVersion;
 
     public DialogueCachePreset SelectedPreset { get; private set; }
 
@@ -26,7 +30,7 @@ public partial class DialogueCachePresetDialog : Window
         this.saveCurrent = saveCurrent;
         this.canLoad = canLoad;
         SaveCurrentButton.IsEnabled = saveCurrent is not null;
-        presets = SavedDialogueCachePresetManager.LoadAll().ToList();
+        presets = SavedDialogueCachePresetManager.LoadHeaders().ToList();
         RefreshItems();
         SearchTextBox.Focus();
     }
@@ -59,23 +63,60 @@ public partial class DialogueCachePresetDialog : Window
             : filtered.FirstOrDefault();
     }
 
-    private void PresetListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    private async void PresetListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
+        int loadVersion = ++selectionLoadVersion;
         DialogueCachePreset preset = PresetListBox.SelectedItem as DialogueCachePreset;
         bool selected = preset is not null;
         DeleteButton.IsEnabled = selected;
-        LoadButton.IsEnabled = selected && (canLoad?.Invoke(preset) ?? false);
+        LoadButton.IsEnabled = false;
         SourcePathTextBlock.Text = preset?.SourceFilePath ?? "Select a cache preset to see its source file.";
         DialogueTextBlock.Text = preset is null
             ? string.Empty
-            : $"{preset.DialogueName} ({preset.Nodes.Count} cached node(s))";
+            : preset.CachedNodeCount >= 0
+                ? $"{preset.DialogueName} ({preset.NodeCount} cached node(s))"
+                : preset.DialogueName;
         SavedTextBlock.Text = preset is null
             ? string.Empty
             : $"{preset.SavedDisplay}  |  PCC timestamp: {preset.SourceLastWriteUtc.ToLocalTime():g}";
         CachePathTextBlock.Text = preset?.CacheFilePath ?? string.Empty;
-        if (selected && !LoadButton.IsEnabled)
+        if (!selected)
+        {
+            return;
+        }
+
+        StatusTextBlock.Text = $"Loading '{preset.Label}' details...";
+        DialogueCachePreset loaded = loadedPresets.GetValueOrDefault(preset.Id);
+        if (loaded is null)
+        {
+            if (!presetLoadTasks.TryGetValue(preset.Id, out Task<DialogueCachePreset> loadTask))
+            {
+                loadTask = Task.Run(() => SavedDialogueCachePresetManager.Load(preset));
+                presetLoadTasks[preset.Id] = loadTask;
+            }
+            loaded = await loadTask;
+        }
+        if (!IsVisible || loadVersion != selectionLoadVersion
+                       || !ReferenceEquals(PresetListBox.SelectedItem, preset))
+        {
+            return;
+        }
+        if (loaded is null)
+        {
+            StatusTextBlock.Text = "This cache file could not be read.";
+            return;
+        }
+
+        loadedPresets[preset.Id] = loaded;
+        DialogueTextBlock.Text = $"{loaded.DialogueName} ({loaded.NodeCount} cached node(s))";
+        LoadButton.IsEnabled = canLoad?.Invoke(loaded) ?? false;
+        if (!LoadButton.IsEnabled)
         {
             StatusTextBlock.Text = "This preset belongs to a different PCC, dialogue, or starting node.";
+        }
+        else
+        {
+            StatusTextBlock.Text = $"Ready to load '{loaded.Label}'.";
         }
     }
 
@@ -94,7 +135,8 @@ public partial class DialogueCachePresetDialog : Window
             {
                 return;
             }
-            presets = SavedDialogueCachePresetManager.LoadAll().ToList();
+            loadedPresets[preset.Id] = preset;
+            presets = SavedDialogueCachePresetManager.LoadHeaders().ToList();
             DialogueCachePreset saved = presets.FirstOrDefault(item => item.Id == preset.Id);
             RefreshItems(saved);
             StatusTextBlock.Text = $"Saved '{preset.Label}'.";
@@ -122,6 +164,8 @@ public partial class DialogueCachePresetDialog : Window
         try
         {
             SavedDialogueCachePresetManager.Delete(preset);
+            loadedPresets.Remove(preset.Id);
+            presetLoadTasks.Remove(preset.Id);
             presets.Remove(preset);
             RefreshItems();
         }
@@ -137,11 +181,12 @@ public partial class DialogueCachePresetDialog : Window
     private void LoadButton_Click(object sender, RoutedEventArgs e)
     {
         if (PresetListBox.SelectedItem is not DialogueCachePreset preset
-            || !(canLoad?.Invoke(preset) ?? false))
+            || !loadedPresets.TryGetValue(preset.Id, out DialogueCachePreset loaded)
+            || !(canLoad?.Invoke(loaded) ?? false))
         {
             return;
         }
-        SelectedPreset = preset;
+        SelectedPreset = loaded;
         DialogResult = true;
     }
 
