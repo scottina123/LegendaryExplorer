@@ -247,6 +247,12 @@
                                       IsChecked="{Binding Path=(settings:Settings.Interpreter_ShowLinearColorWheel)}"/>
                             <TextBlock>Properties: Show LinearColor picker</TextBlock>
                         </StackPanel>
+                        <TextBlock Margin="5,5,0,0">Bink player path (RADVideo64.exe or Bink2ForUnreal.exe):</TextBlock>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,5" Tag="BIKExternal_BinkPlayerPath">
+                            <TextBox Width="450" x:Name="BIKExternal_BinkPlayerPath" Margin="5,0,0,0" TextChanged="Setting_OnTextChanged"
+                                     Text="{Binding Path=(settings:Settings.BIKExternal_BinkPlayerPath)}"/>
+                            <Button Click="FileBrowse_Click" Margin="5,0" Tag="*.exe">Browse</Button>
+                        </StackPanel>
                                       </StackPanel>
                 </ScrollViewer>
             </TabItem>

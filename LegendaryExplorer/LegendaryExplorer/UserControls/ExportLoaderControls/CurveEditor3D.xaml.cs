@@ -1950,8 +1950,11 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                         StringComparison.OrdinalIgnoreCase))
                     .Distinct(StringComparer.OrdinalIgnoreCase)
                     .ToArray();
-                string canonicalTag = trackActors.FirstOrDefault() ?? groupActor ?? groupName;
-                Add(canonicalTag, trackActors.Append(groupActor).Append(groupName).ToArray());
+                foreach (DialoguePreviewActorIdentity groupIdentity in GetDialogueGroupActorIdentities(
+                             groupName, groupActor, trackActors, cameraGroupNames))
+                {
+                    Add(groupIdentity.ActorTag, groupIdentity.Aliases.ToArray());
+                }
             }
         }
 
@@ -1975,6 +1978,39 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                 .ThenBy(alias => alias, StringComparer.OrdinalIgnoreCase)
                 .First();
             identities.Add(new DialoguePreviewActorIdentity(preferredTag, aliases.ToArray()));
+        }
+        return identities;
+    }
+
+    internal static IReadOnlyList<DialoguePreviewActorIdentity> GetDialogueGroupActorIdentities(
+        string groupName, string groupActor, IEnumerable<string> trackActors,
+        IReadOnlySet<string> directorCameraGroups = null)
+    {
+        var identities = new List<DialoguePreviewActorIdentity>();
+        string authoritativeGroupActor = ShouldCreateDialogueActor(groupActor, directorCameraGroups)
+            ? groupActor
+            : null;
+        if (authoritativeGroupActor is not null)
+        {
+            string[] aliases = ShouldCreateDialogueActor(groupName, directorCameraGroups)
+                ? [authoritativeGroupActor, groupName]
+                : [authoritativeGroupActor];
+            identities.Add(new DialoguePreviewActorIdentity(authoritativeGroupActor,
+                aliases.Distinct(StringComparer.OrdinalIgnoreCase).ToArray()));
+        }
+
+        foreach (string trackActor in trackActors ?? [])
+        {
+            if (!ShouldCreateDialogueActor(trackActor, directorCameraGroups)
+                || trackActor.Equals(authoritativeGroupActor, StringComparison.OrdinalIgnoreCase)
+                || identities.Any(identity => identity.ActorTag.Equals(trackActor,
+                    StringComparison.OrdinalIgnoreCase)))
+            {
+                continue;
+            }
+            // Tracks in one Matinee group can target several different actors. Those targets are
+            // distinct identities; only m_nmSFXFindActor on the group establishes a group-name alias.
+            identities.Add(new DialoguePreviewActorIdentity(trackActor, [trackActor]));
         }
         return identities;
     }
@@ -5760,6 +5796,21 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                 continue;
             }
 
+            ExportEntry linkedSourceActor = FindLinkedDialoguePreviewActor(actor.ActorTag);
+            if (linkedSourceActor is not null)
+            {
+                IReadOnlyList<TaggedDialoguePreviewActor> linkedFallbackActors =
+                    FindTaggedDialoguePreviewActors(actor.ActorTag);
+                DialogueActorConstructionCache linkedConstruction = BuildDialogueActorConstruction(
+                    actor.ActorTag, linkedSourceActor);
+                SupplementDialogueActorHeadAndHair(linkedConstruction, linkedSourceActor, linkedFallbackActors);
+                if (linkedConstruction.Meshes.Count > 0)
+                {
+                    SetDialogueActorConstruction(actor, linkedConstruction);
+                    continue;
+                }
+            }
+
             if (actor.Construction?.Meshes.Count > 0
                 && actor.Construction.Meshes.All(mesh =>
                     ResolveExportReference(mesh.MeshExport, required: false)?.ClassName == "SkeletalMesh"))
@@ -5807,12 +5858,35 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             {
                 continue;
             }
-            actor.Construction = construction;
-            actor.ModelName = GetCachedActorModelName(construction, PreviewActorModelComponent.Body);
-            actor.HeadModelName = GetCachedActorModelName(construction, PreviewActorModelComponent.Head);
-            actor.HairModelName = GetCachedActorModelName(construction, PreviewActorModelComponent.Hair);
-            actor.FaceFxAssetName = construction.FaceFxAsset?.InstancedFullPath?.Split('.').LastOrDefault();
+            SetDialogueActorConstruction(actor, construction);
         }
+    }
+
+    private ExportEntry FindLinkedDialoguePreviewActor(string actorTag)
+    {
+        if (dialogueNodePreview?.StageContext?.ActorBindings is not { } bindings)
+        {
+            return null;
+        }
+
+        IEnumerable<string> aliases = dialoguePreviewActorTagAliases.GetValueOrDefault(actorTag)
+            ?? [actorTag];
+        return aliases.Prepend(actorTag)
+            .Where(alias => !string.IsNullOrWhiteSpace(alias))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .SelectMany(alias => bindings.GetValueOrDefault(alias) ?? [])
+            .DistinctBy(candidate => (candidate.FileRef, candidate.UIndex))
+            .FirstOrDefault(candidate => ActorProxy.CanCreate(candidate) && ActorHasPreviewSkeletalMesh(candidate));
+    }
+
+    private static void SetDialogueActorConstruction(PreviewActorConfiguration actor,
+        DialogueActorConstructionCache construction)
+    {
+        actor.Construction = construction;
+        actor.ModelName = GetCachedActorModelName(construction, PreviewActorModelComponent.Body);
+        actor.HeadModelName = GetCachedActorModelName(construction, PreviewActorModelComponent.Head);
+        actor.HairModelName = GetCachedActorModelName(construction, PreviewActorModelComponent.Hair);
+        actor.FaceFxAssetName = construction.FaceFxAsset?.InstancedFullPath?.Split('.').LastOrDefault();
     }
 
     private IReadOnlyList<TaggedDialoguePreviewActor> FindTaggedDialoguePreviewActors(string actorTag)

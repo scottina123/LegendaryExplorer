@@ -100,6 +100,38 @@ public class InterpTrackMoveTransformTests
     }
 
     [TestMethod]
+    public void DialogueGroupActorDoesNotAbsorbOtherTrackTargets()
+    {
+        IReadOnlyList<CurveEditor3D.DialoguePreviewActorIdentity> identities =
+            CurveEditor3D.GetDialogueGroupActorIdentities("Player", "Player",
+                ["Player", "global_miranda", "global_oriana"]);
+
+        Assert.HasCount(3, identities);
+        CurveEditor3D.DialoguePreviewActorIdentity player = identities.Single(identity =>
+            identity.ActorTag.Equals("Player", StringComparison.OrdinalIgnoreCase));
+        CollectionAssert.DoesNotContain(player.Aliases.ToArray(), "global_miranda");
+        CollectionAssert.DoesNotContain(player.Aliases.ToArray(), "global_oriana");
+        Assert.IsTrue(identities.Any(identity => identity.ActorTag.Equals("global_miranda",
+            StringComparison.OrdinalIgnoreCase)));
+        Assert.IsTrue(identities.Any(identity => identity.ActorTag.Equals("global_oriana",
+            StringComparison.OrdinalIgnoreCase)));
+    }
+
+    [TestMethod]
+    public void DialogueGroupNameAliasesOnlyItsAuthoritativeActor()
+    {
+        IReadOnlyList<CurveEditor3D.DialoguePreviewActorIdentity> identities =
+            CurveEditor3D.GetDialogueGroupActorIdentities("Father", "cermir_miranda_father",
+                ["Owner", "global_oriana"]);
+
+        CurveEditor3D.DialoguePreviewActorIdentity father = identities.Single(identity =>
+            identity.ActorTag.Equals("cermir_miranda_father", StringComparison.OrdinalIgnoreCase));
+        CollectionAssert.Contains(father.Aliases.ToArray(), "Father");
+        CollectionAssert.DoesNotContain(father.Aliases.ToArray(), "Owner");
+        CollectionAssert.DoesNotContain(father.Aliases.ToArray(), "global_oriana");
+    }
+
+    [TestMethod]
     public void DialogueCameraNameDetectionMatchesCamAnywhere()
     {
         Assert.IsTrue(CurveEditor3D.IsDialogueCameraName("CamActor"));

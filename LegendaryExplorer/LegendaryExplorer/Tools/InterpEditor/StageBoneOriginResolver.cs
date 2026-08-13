@@ -5,6 +5,7 @@ using System.Linq;
 using System.Numerics;
 using System.Windows;
 using LegendaryExplorer.Dialogs;
+using LegendaryExplorer.Tools.LevelEditor;
 using LegendaryExplorerCore.Dialogue;
 using LegendaryExplorerCore.GameFilesystem;
 using LegendaryExplorerCore.Kismet;
@@ -40,12 +41,14 @@ internal sealed class StageConversationContext : IDisposable
     public IReadOnlyDictionary<string, CameraOrigin> StageNodeOrigins { get; }
     public IReadOnlyDictionary<string, StageCameraDefinition> StageCameras { get; }
     public IReadOnlyDictionary<string, CameraOrigin> ActorOrigins { get; }
+    public IReadOnlyDictionary<string, IReadOnlyList<ExportEntry>> ActorBindings { get; }
     public IReadOnlyDictionary<string, string> VariableLinkSubtitles { get; }
 
     public StageConversationContext(IMEPackage mainPackage, bool ownsMainPackage, ExportEntry startConversation,
         ExportEntry stage, CameraOrigin stageOrigin, IReadOnlyDictionary<string, CameraOrigin> stageNodeOrigins,
         IReadOnlyDictionary<string, StageCameraDefinition> stageCameras,
         IReadOnlyDictionary<string, CameraOrigin> actorOrigins,
+        IReadOnlyDictionary<string, IReadOnlyList<ExportEntry>> actorBindings,
         IReadOnlyDictionary<string, string> variableLinkSubtitles)
     {
         MainPackage = mainPackage;
@@ -56,6 +59,7 @@ internal sealed class StageConversationContext : IDisposable
         StageNodeOrigins = stageNodeOrigins;
         StageCameras = stageCameras;
         ActorOrigins = actorOrigins;
+        ActorBindings = actorBindings;
         VariableLinkSubtitles = variableLinkSubtitles;
     }
 
@@ -192,10 +196,14 @@ internal static class StageBoneOriginResolver
                 stageOrigin, cache);
             IReadOnlyDictionary<string, StageCameraDefinition> stageCameras = ResolveStageCameras(
                 selectedStage.Stage, stageBones, stageOrigin, cache);
+            List<VarLinkInfo> startConversationLinks = KismetHelper.GetVariableLinks(
+                selectedStage.StartConversation.GetProperties(), mainPackage);
             IReadOnlyDictionary<string, CameraOrigin> actorOrigins = ResolveLinkedActorOrigins(stageNodeOrigins,
-                KismetHelper.GetVariableLinks(selectedStage.StartConversation.GetProperties(), mainPackage), cache);
+                startConversationLinks, cache);
+            IReadOnlyDictionary<string, IReadOnlyList<ExportEntry>> actorBindings = ResolveLinkedActorBindings(
+                startConversationLinks, cache);
             context = new StageConversationContext(mainPackage, ownsMainPackage, selectedStage.StartConversation,
-                selectedStage.Stage, stageOrigin, stageNodeOrigins, stageCameras, actorOrigins,
+                selectedStage.Stage, stageOrigin, stageNodeOrigins, stageCameras, actorOrigins, actorBindings,
                 selectedStage.VariableLinkSubtitles);
             mainPackage = null;
             return true;
@@ -489,6 +497,58 @@ internal static class StageBoneOriginResolver
         Vector3 location = slotOrigin.Location;
         location.Z += PlayerStageBoneActorZOffset;
         return new CameraOrigin(location, slotOrigin.Rotation);
+    }
+
+    private static IReadOnlyDictionary<string, IReadOnlyList<ExportEntry>> ResolveLinkedActorBindings(
+        IEnumerable<VarLinkInfo> variableLinks, PackageCache cache)
+    {
+        var bindings = new Dictionary<string, List<ExportEntry>>(StringComparer.OrdinalIgnoreCase);
+        foreach (VarLinkInfo variableLink in variableLinks.Where(link =>
+                     !string.IsNullOrWhiteSpace(link.LinkDesc)
+                     && !link.LinkDesc.Equals("Stage", StringComparison.OrdinalIgnoreCase)))
+        {
+            foreach (IEntry linkedNode in variableLink.LinkedNodes)
+            {
+                ExportEntry variable = ResolveSequenceVariable(linkedNode, cache);
+                if (variable is null)
+                {
+                    continue;
+                }
+
+                ObjectProperty objectValue = GetPropertiesIncludingArchetypes(variable, cache)
+                    .GetProp<ObjectProperty>("ObjValue");
+                ExportEntry actor = objectValue is null
+                    ? null
+                    : ResolveExport(objectValue.ResolveToEntry(variable.FileRef), cache);
+                if (actor is null || !ActorProxy.CanCreate(actor))
+                {
+                    continue;
+                }
+
+                AddBinding(variableLink.LinkDesc, actor);
+                AddBinding(ResolveLinkedActorTag(variable, cache), actor);
+            }
+        }
+        return bindings.ToDictionary(pair => pair.Key,
+            pair => (IReadOnlyList<ExportEntry>)pair.Value,
+            StringComparer.OrdinalIgnoreCase);
+
+        void AddBinding(string key, ExportEntry actor)
+        {
+            if (string.IsNullOrWhiteSpace(key) || key.Equals("None", StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+            if (!bindings.TryGetValue(key, out List<ExportEntry> actors))
+            {
+                actors = [];
+                bindings.Add(key, actors);
+            }
+            if (!actors.Contains(actor))
+            {
+                actors.Add(actor);
+            }
+        }
     }
 
     private static bool LinksReferToSameVariable(VarLinkInfo first, VarLinkInfo second, PackageCache cache)

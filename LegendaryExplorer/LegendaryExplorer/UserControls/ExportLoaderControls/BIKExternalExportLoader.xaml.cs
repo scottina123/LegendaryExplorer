@@ -9,6 +9,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using LegendaryExplorer.Dialogs;
 using LegendaryExplorer.Misc;
+using LegendaryExplorer.Misc.AppSettings;
 using LegendaryExplorer.SharedUI;
 using LegendaryExplorer.SharedUI.Controls;
 using LegendaryExplorerCore.GameFilesystem;
@@ -38,7 +39,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         public MediaPlayer mediaPlayer;
         public ICommand OpenFileInRADCommand { get; private set; }
         public ICommand ImportBikFileCommand { get; private set; }
-        public ICommand PlayBikInVLCCommand { get; private set; }
+        public ICommand PlayBikCommand { get; private set; }
         public ICommand PauseVLCCommand { get; private set; }
         public ICommand StopVLCCommand { get; private set; }
         public ICommand RewindVLCCommand { get; private set; }
@@ -50,9 +51,25 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             {
                 SetProperty(ref _radIsInstalled, value);
                 OnPropertyChanged(nameof(RADNotInstalled));
+                OnPropertyChanged(nameof(Bink2PlaybackStatus));
             }
         }
         public bool RADNotInstalled => !RADIsInstalled;
+        private bool _externalPlayerSupportsBink2;
+        public bool ExternalPlayerSupportsBink2
+        {
+            get => _externalPlayerSupportsBink2;
+            private set
+            {
+                if (SetProperty(ref _externalPlayerSupportsBink2, value))
+                {
+                    OnPropertyChanged(nameof(Bink2PlaybackStatus));
+                }
+            }
+        }
+        public string Bink2PlaybackStatus => ExternalPlayerSupportsBink2
+            ? "Bink 2 playback opens in the configured external Bink player."
+            : "Bink 2 playback requires a current RAD Video Tools player. Configure RADVideo64.exe or Bink2ForUnreal.exe in Settings > Export Loaders.";
         private bool _isexternallyCached;
         public bool IsExternallyCached { get => _isexternallyCached; set => SetProperty(ref _isexternallyCached, value); }
         private bool _islocallyCached;
@@ -95,7 +112,11 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         }
         private bool IsMovieStopped()
         {
-            return IsBink1 && !IsVLCPlaying;
+            return CurrentLoadedExport != null && (IsBink1 ? !IsVLCPlaying : ExternalPlayerSupportsBink2);
+        }
+        private bool CanOpenInBinkPlayer()
+        {
+            return RADIsInstalled && CurrentLoadedExport != null && (IsBink1 || ExternalPlayerSupportsBink2);
         }
 
         public bool ViewerModeOnly
@@ -120,6 +141,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 if (SetProperty(ref _isBink1, value))
                 {
                     OnPropertyChanged(nameof(BinkVersion));
+                    OnPropertyChanged(nameof(Bink2PlaybackStatus));
                 }
             }
         }
@@ -200,31 +222,25 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         }
         private void GetRADInstallationStatus()
         {
-            if (RADIsInstalled) return;
             try
             {
-                using RegistryKey key = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\WOW6432Node\RAD Game Tools\RADVideo\");
-                if (key?.GetValue("InstallDir") is string InstallDir)
-                {
-                    RADExecutableLocation = Path.Combine(InstallDir, "binkplay.exe");
-                    RADIsInstalled = true;
-                    return;
-                }
+                RADExecutableLocation = BinkPlayerLauncher.FindExecutable(Settings.BIKExternal_BinkPlayerPath);
+                RADIsInstalled = RADExecutableLocation != null;
+                ExternalPlayerSupportsBink2 = BinkPlayerLauncher.SupportsBink2(RADExecutableLocation);
             }
             catch
             {
-                // ignored
+                RADIsInstalled = false;
+                ExternalPlayerSupportsBink2 = false;
+                RADExecutableLocation = null;
             }
-
-            RADIsInstalled = false;
-            RADExecutableLocation = null;
         }
 
         private void LoadCommands()
         {
-            OpenFileInRADCommand = new GenericCommand(OpenExportInRAD, () => RADIsInstalled);
+            OpenFileInRADCommand = new GenericCommand(OpenExportInRAD, CanOpenInBinkPlayer);
             ImportBikFileCommand = new GenericCommand(ImportBikFileAction, IsExportable);
-            PlayBikInVLCCommand = new GenericCommand(PlayExportInVLC, IsMovieStopped);
+            PlayBikCommand = new GenericCommand(PlayExport, IsMovieStopped);
             PauseVLCCommand = new GenericCommand(PauseMoviePlayer, IsMoviePlaying);
             RewindVLCCommand = new GenericCommand(RewindMoviePlayer, IsMoviePlaying);
             StopVLCCommand = new GenericCommand(StopMoviePlayer, IsMoviePlaying);
@@ -239,6 +255,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         public override void LoadExport(ExportEntry exportEntry)
         {
+            GetRADInstallationStatus();
             MovieCRC = 0; //reset
             IsBink1 = false;
             Loading_text.Visibility = Visibility.Visible;
@@ -289,15 +306,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     mediaPlayer.Media = null;
                     bik.Dispose();
                 }
-                if (IsBink1)
-                {
-                    video_Panel.IsEnabled = true;
-                }
-                else
-                {
-                    Unsupported_Text.Visibility = Visibility.Visible;
-                    video_Panel.IsEnabled = false;
-                }
+                video_Panel.IsEnabled = IsBink1 || ExternalPlayerSupportsBink2;
+                Unsupported_Text.Visibility = IsBink1 ? Visibility.Collapsed : Visibility.Visible;
             });
         }
         public override void UnloadExport()
@@ -394,47 +404,96 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         #region Playback
         private void OpenExportInRAD()
         {
+            string temporaryMoviePath = null;
             try
             {
                 string moviePath;
                 if(IsExternalFile)
                 {
                     string bikName = BikFileName + ".bik";
-                    moviePath = Path.GetDirectoryName(Path.GetDirectoryName(CurrentLoadedExport.FileRef.FilePath));
-                    moviePath = Path.Combine(moviePath, "Movies", bikName);
+                    string packageDirectory = Path.GetDirectoryName(CurrentLoadedExport.FileRef.FilePath);
+                    string bioGameDirectory = packageDirectory == null ? null : Path.GetDirectoryName(packageDirectory);
+                    moviePath = bioGameDirectory == null ? null : Path.Combine(bioGameDirectory, "Movies", bikName);
                     if (!File.Exists(moviePath))
                     {
                         string rootPath = MEDirectories.GetDefaultGamePath(CurrentLoadedExport.Game);
-                        moviePath = Directory.GetFiles(rootPath, bikName, SearchOption.AllDirectories).FirstOrDefault();
+                        moviePath = rootPath != null && Directory.Exists(rootPath)
+                            ? Directory.EnumerateFiles(rootPath, bikName, SearchOption.AllDirectories).FirstOrDefault()
+                            : null;
                     }
                 }
                 else
                 {
                     byte[] data = GetMovieBytes();
-                    moviePath = Path.Combine(Path.GetTempPath(), CurrentLoadedExport.FullPath + ".bik");
+                    if (data == null)
+                    {
+                        return;
+                    }
 
-                    File.WriteAllBytes(moviePath, data);
+                    string playbackDirectory = Path.Combine(Path.GetTempPath(), "LegendaryExplorer", "BinkPlayback");
+                    Directory.CreateDirectory(playbackDirectory);
+                    temporaryMoviePath = Path.Combine(playbackDirectory, $"{Guid.NewGuid():N}.bik");
+                    File.WriteAllBytes(temporaryMoviePath, data);
+                    moviePath = temporaryMoviePath;
                 }
 
                 if (!File.Exists(moviePath))
                     MessageBox.Show("bik movie not found.");
                 else
                 {
-                    var process = new Process
+                    Process process = Process.Start(BinkPlayerLauncher.CreateStartInfo(RADExecutableLocation, moviePath));
+                    if (process == null)
                     {
-                        StartInfo =
-                    {
-                        FileName = RADExecutableLocation,
-                        Arguments = $"\"{moviePath}\" /P"
+                        DeleteTemporaryPlaybackFile(temporaryMoviePath);
+                        return;
                     }
-                    };
-                    process.Start();
+
+                    if (temporaryMoviePath != null)
+                    {
+                        string moviePathToDelete = temporaryMoviePath;
+                        process.EnableRaisingEvents = true;
+                        process.Exited += (_, _) =>
+                        {
+                            DeleteTemporaryPlaybackFile(moviePathToDelete);
+                            process.Dispose();
+                        };
+                    }
                 }
             }
             catch (Exception ex)
             {
-                Debug.WriteLine("Error launching RADTools: " + ex.FlattenException());
-                MessageBox.Show("Error launching RADTools:\n\n" + ex.FlattenException());
+                DeleteTemporaryPlaybackFile(temporaryMoviePath);
+                Debug.WriteLine("Error launching Bink player: " + ex.FlattenException());
+                MessageBox.Show("Error launching Bink player:\n\n" + ex.FlattenException());
+            }
+        }
+
+        private static void DeleteTemporaryPlaybackFile(string moviePath)
+        {
+            if (moviePath == null)
+            {
+                return;
+            }
+
+            try
+            {
+                File.Delete(moviePath);
+            }
+            catch
+            {
+                // The OS will eventually clean its temporary directory if the player still has the file open.
+            }
+        }
+
+        private void PlayExport()
+        {
+            if (IsBink1)
+            {
+                PlayExportInVLC();
+            }
+            else
+            {
+                OpenExportInRAD();
             }
         }
 
@@ -1073,7 +1132,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             var dlg = MessageBox.Show("Open the RAD Tools website?", "Warning", MessageBoxButton.YesNo);
             if (dlg == MessageBoxResult.No)
                 return;
-            HyperlinkExtensions.OpenURL("http://www.radgametools.com/bnkdown.htm");
+            HyperlinkExtensions.OpenURL("https://www.radgametools.com/bnkdown.htm");
         }
         private void DownloadVLC_Click(object sender, RoutedEventArgs e)
         {
