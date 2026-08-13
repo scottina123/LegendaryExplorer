@@ -823,7 +823,8 @@ namespace LegendaryExplorer.DialogueEditor
                 return;
             }
 
-            var options = new DialoguePreviewLevelPicker(Pcc.Game, null, null, includeCache: false) { Owner = this };
+            var options = new DialoguePreviewLevelPicker(Pcc.Game, SelectedConv, SelectedDialogueNode,
+                includeCache: false) { Owner = this };
             if (options.ShowDialog() != true)
             {
                 return;
@@ -838,10 +839,11 @@ namespace LegendaryExplorer.DialogueEditor
             }
 
             List<CurveEditor3D.DialogueNodePreviewActor> actors = BuildDialogueConversationPreviewActors(
-                SelectedConv, SelectedDialogueNode, stageContext);
+                SelectedConv, SelectedDialogueNode, stageContext, options.HenchmanAssignments,
+                conversationPreview: false);
             var preview = new CurveEditor3D();
             preview.ConfigureDialogueNodePreview(SelectedConv, SelectedDialogueNode, actors,
-                options.SelectedLevelPaths, stageContext, options.PlayerSelection);
+                options.SelectedLevelPaths, stageContext, options.PlayerSelection, options.HenchmanAssignments);
             var window = new ExportLoaderHostedWindow(preview, previewTrackMove)
             {
                 Owner = this,
@@ -5826,7 +5828,8 @@ namespace LegendaryExplorer.DialogueEditor
             }
 
             List<CurveEditor3D.DialogueNodePreviewActor> actors = BuildDialogueConversationPreviewActors(
-                SelectedConv, startNode, stageContext);
+                SelectedConv, startNode, stageContext, options.HenchmanAssignments,
+                conversationPreview: true);
             ExportEntry previewTrackMove = CurveEditor3D.FindDialoguePreviewTrackMove(startNode.InterpData)
                 ?? SelectedConv.EntryList.Concat(SelectedConv.ReplyList)
                     .Select(node => CurveEditor3D.FindDialoguePreviewTrackMove(node.InterpData))
@@ -5842,7 +5845,7 @@ namespace LegendaryExplorer.DialogueEditor
             var preview = new CurveEditor3D();
             preview.ConfigureDialogueConversationPreview(SelectedConv, startNode, actors,
                 options.SelectedLevelPaths, stageContext, options.PlayerSelection,
-                options.SelectedCachePreset, options.NewCacheLabel);
+                options.HenchmanAssignments, options.SelectedCachePreset, options.NewCacheLabel);
             var window = new ExportLoaderHostedWindow(preview, previewTrackMove)
             {
                 Owner = this,
@@ -5854,11 +5857,17 @@ namespace LegendaryExplorer.DialogueEditor
         private List<CurveEditor3D.DialogueNodePreviewActor> BuildDialogueConversationPreviewActors(
             ConversationExtended conversation,
             DialogueNodeExtended startNode,
-            StageConversationContext stageContext)
+            StageConversationContext stageContext,
+            IReadOnlyDictionary<string, string> henchmanAssignments,
+            bool conversationPreview)
         {
+            IReadOnlyList<DialogueNodeExtended> previewNodes = CurveEditor3D.GetDialoguePreviewNodes(
+                conversation, startNode, conversationPreview);
             IReadOnlyList<CurveEditor3D.DialoguePreviewActorIdentity> actorIdentities =
                 CurveEditor3D.MergeDialoguePreviewActorIdentities(
-                    CurveEditor3D.GetDialoguePreviewActorIdentities(conversation), stageContext.ActorOrigins);
+                    CurveEditor3D.ApplyDialoguePreviewHenchmanAssignments(
+                        CurveEditor3D.GetDialoguePreviewActorIdentities(conversation, previewNodes),
+                        henchmanAssignments), stageContext.ActorOrigins);
             string[] actorTags = actorIdentities.Select(identity => identity.ActorTag).ToArray();
             var actorOrigins = new Dictionary<string, CameraOrigin>(StringComparer.OrdinalIgnoreCase);
             var context = new CameraActorAnchorContext(conversation, startNode, actorTags);
@@ -5877,7 +5886,22 @@ namespace LegendaryExplorer.DialogueEditor
 
             return actorIdentities.Select((identity, index) =>
             {
-                bool foundOrigin = actorOrigins.TryGetValue(identity.ActorTag, out CameraOrigin origin);
+                bool isHenchman = CurveEditor3D.IsDialoguePreviewHenchmanTag(identity.ActorTag);
+                bool foundOrigin = false;
+                CameraOrigin origin = default;
+                if (isHenchman)
+                {
+                    foundOrigin = stageContext.ActorOrigins.TryGetValue(identity.ActorTag, out origin);
+                    foreach (string alias in identity.Aliases)
+                    {
+                        if (foundOrigin) break;
+                        foundOrigin = stageContext.ActorOrigins.TryGetValue(alias, out origin);
+                    }
+                }
+                if (!foundOrigin)
+                {
+                    foundOrigin = actorOrigins.TryGetValue(identity.ActorTag, out origin);
+                }
                 foreach (string alias in identity.Aliases)
                 {
                     if (foundOrigin) break;

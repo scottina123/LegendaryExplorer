@@ -1,6 +1,7 @@
 using System;
 using System.Collections.ObjectModel;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Windows;
@@ -21,6 +22,15 @@ public partial class DialoguePreviewLevelPicker : TrackingNotifyPropertyChangedW
     private bool restoringCacheOptions;
     private readonly List<DialogueCachePreset> compatibleCachePresets = [];
 
+    public sealed record HenchmanChoice(string ActorTag, string DisplayName);
+
+    public sealed class HenchmanSlotSelection
+    {
+        public CurveEditor3D.DialoguePreviewHenchmanSlot Slot { get; init; }
+        public IReadOnlyList<HenchmanChoice> Choices { get; init; }
+        public string SelectedHenchmanTag { get; set; }
+    }
+
     private sealed record RecentLevelSetItem(string DisplayName, IReadOnlyList<string> FilePaths)
     {
         public string FileCountText => $"{FilePaths.Count} package{(FilePaths.Count == 1 ? string.Empty : "s")}";
@@ -28,7 +38,12 @@ public partial class DialoguePreviewLevelPicker : TrackingNotifyPropertyChangedW
     }
 
     public ObservableCollection<string> SelectedFiles { get; } = [];
+    public ObservableCollection<HenchmanSlotSelection> HenchmanSlots { get; } = [];
     public IReadOnlyList<string> SelectedLevelPaths => SelectedFiles.ToArray();
+    public IReadOnlyDictionary<string, string> HenchmanAssignments => HenchmanSlots
+        .Where(slot => !string.IsNullOrWhiteSpace(slot.SelectedHenchmanTag))
+        .ToDictionary(slot => slot.Slot.SlotTag, slot => slot.SelectedHenchmanTag,
+            StringComparer.OrdinalIgnoreCase);
     public DialogueCachePreset SelectedCachePreset => CacheGroupBox.Visibility == Visibility.Visible
                                                       && UseSelectedCacheRadio.IsChecked == true
         ? CachePresetList.SelectedItem as DialogueCachePreset
@@ -58,6 +73,23 @@ public partial class DialoguePreviewLevelPicker : TrackingNotifyPropertyChangedW
         DialogueNodeExtended startNode, bool includeCache) : base("Dialogue Preview Options", false)
     {
         InitializeComponent();
+        HenchmanChoice[] henchmanChoices = CurveEditor3D.GetDialoguePreviewHenchmanTags()
+            .Select(tag => new HenchmanChoice(tag, GetHenchmanDisplayName(tag)))
+            .ToArray();
+        foreach (CurveEditor3D.DialoguePreviewHenchmanSlot slot in
+                 CurveEditor3D.GetDialoguePreviewHenchmanSlots(conversation, startNode, includeCache))
+        {
+            HenchmanSlots.Add(new HenchmanSlotSelection
+            {
+                Slot = slot,
+                Choices = henchmanChoices,
+            });
+        }
+        HenchmanGroupBox.Visibility = HenchmanSlots.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        if (HenchmanSlots.Count == 0)
+        {
+            Height = 720;
+        }
         RecentSetsList.ItemsSource = CurveEditor3D.GetDialoguePreviewRecentLevelSets()
             .Select(set => new RecentLevelSetItem(set.DisplayName, set.FilePaths))
             .ToArray();
@@ -65,7 +97,7 @@ public partial class DialoguePreviewLevelPicker : TrackingNotifyPropertyChangedW
         CacheRow.Height = includeCache ? new GridLength(190) : new GridLength(0);
         if (!includeCache)
         {
-            Height = 520;
+            Height = HenchmanSlots.Count > 0 ? 650 : 520;
             MinHeight = 400;
         }
         if (!includeCache || conversation?.Export is null || startNode is null)
@@ -74,7 +106,8 @@ public partial class DialoguePreviewLevelPicker : TrackingNotifyPropertyChangedW
         }
 
         compatibleCachePresets.AddRange(SavedDialogueCachePresetManager.LoadAll()
-            .Where(preset => IsCacheIdentityCompatible(preset, conversation, startNode)));
+            .Where(preset => IsCacheIdentityCompatible(preset, conversation, startNode)
+                             && HasCompatibleHenchmanAssignments(preset)));
         RefreshCachePresetList();
         NewCacheLabelTextBox.Text = conversation.ConvName;
         if (compatibleCachePresets.Count > 0)
@@ -87,6 +120,19 @@ public partial class DialoguePreviewLevelPicker : TrackingNotifyPropertyChangedW
             BuildNewCacheRadio.IsChecked = true;
         }
     }
+
+    private static string GetHenchmanDisplayName(string actorTag)
+    {
+        string name = actorTag.StartsWith("hench_", StringComparison.OrdinalIgnoreCase)
+            ? actorTag["hench_".Length..]
+            : actorTag;
+        return CultureInfo.CurrentCulture.TextInfo.ToTitleCase(name.Replace('_', ' '));
+    }
+
+    private bool HasCompatibleHenchmanAssignments(DialogueCachePreset preset) => HenchmanSlots.All(slot =>
+        preset.HenchmanAssignments?.TryGetValue(slot.Slot.SlotTag, out string henchmanTag) == true
+        && CurveEditor3D.GetDialoguePreviewHenchmanTags().Contains(henchmanTag,
+            StringComparer.OrdinalIgnoreCase));
 
     private void CacheSearchTextBox_TextChanged(object sender, TextChangedEventArgs e) =>
         RefreshCachePresetList();
@@ -235,6 +281,11 @@ public partial class DialoguePreviewLevelPicker : TrackingNotifyPropertyChangedW
             PlayerGenderComboBox.SelectedIndex = preset.PlayerGender == CurveEditor3D.DialoguePreviewPlayerGender.Male
                 ? 1
                 : 0;
+            foreach (HenchmanSlotSelection slot in HenchmanSlots)
+            {
+                slot.SelectedHenchmanTag = preset.HenchmanAssignments.GetValueOrDefault(slot.Slot.SlotTag);
+            }
+            HenchmanItemsControl.Items.Refresh();
             SelectedFiles.Clear();
             AddPaths(preset.LevelPaths);
             UseSelectedCacheRadio.IsChecked = true;
@@ -285,6 +336,24 @@ public partial class DialoguePreviewLevelPicker : TrackingNotifyPropertyChangedW
         CacheDetailsText.Text = "The player changed, so a new cache will be built using the remembered levels.";
     }
 
+    private void HenchmanComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (restoringCacheOptions || UseSelectedCacheRadio?.IsChecked != true
+                                  || CachePresetList?.SelectedItem is not DialogueCachePreset preset)
+        {
+            return;
+        }
+        bool matchesPreset = HenchmanSlots.All(slot =>
+            preset.HenchmanAssignments.TryGetValue(slot.Slot.SlotTag, out string cachedTag)
+            && string.Equals(cachedTag, slot.SelectedHenchmanTag, StringComparison.OrdinalIgnoreCase));
+        if (!matchesPreset)
+        {
+            BuildNewCacheRadio.IsChecked = true;
+            CacheDetailsText.Text =
+                "The squad assignment changed, so a new cache will be built using the remembered levels.";
+        }
+    }
+
     private void CacheChoice_Changed(object sender, RoutedEventArgs e)
     {
         if (SaveNewCacheCheckBox is null || NewCacheLabelTextBox is null)
@@ -299,6 +368,12 @@ public partial class DialoguePreviewLevelPicker : TrackingNotifyPropertyChangedW
 
     private void Confirm_Click(object sender, RoutedEventArgs e)
     {
+        if (HenchmanSlots.Any(slot => string.IsNullOrWhiteSpace(slot.SelectedHenchmanTag)))
+        {
+            MessageBox.Show(this, "Choose a squadmate for every detected henchman slot.",
+                "Squad Assignment Required", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
         if (CacheGroupBox.Visibility == Visibility.Visible
             && UseSelectedCacheRadio.IsChecked == true && SelectedCachePreset is null)
         {

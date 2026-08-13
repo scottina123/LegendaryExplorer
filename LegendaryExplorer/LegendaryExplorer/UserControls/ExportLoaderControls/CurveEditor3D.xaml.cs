@@ -67,6 +67,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     public sealed record DialogueNodePreviewActor(string ActorTag, CameraOrigin Origin,
         IReadOnlyList<string> Aliases = null);
     internal sealed record DialoguePreviewActorIdentity(string ActorTag, IReadOnlyList<string> Aliases);
+    public sealed record DialoguePreviewHenchmanSlot(string SlotTag, string Description);
     public sealed record DialoguePreviewRecentLevelSet(string DisplayName, IReadOnlyList<string> FilePaths);
     public sealed record DialoguePreviewPlayerSelection(
         DialoguePreviewPlayerGender Gender,
@@ -104,6 +105,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         IReadOnlyList<string> LevelPaths,
         StageConversationContext StageContext,
         DialoguePreviewPlayerSelection PlayerSelection,
+        IReadOnlyDictionary<string, string> HenchmanAssignments,
         DialogueCachePreset CachePreset,
         string NewCacheLabel,
         float VoStartTime);
@@ -1193,21 +1195,24 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
     internal void ConfigureDialogueNodePreview(ConversationExtended conversation, DialogueNodeExtended node,
         IReadOnlyList<DialogueNodePreviewActor> actors, IReadOnlyList<string> levelPaths,
-        StageConversationContext stageContext, DialoguePreviewPlayerSelection playerSelection) =>
+        StageConversationContext stageContext, DialoguePreviewPlayerSelection playerSelection,
+        IReadOnlyDictionary<string, string> henchmanAssignments) =>
         ConfigureDialoguePreview(conversation, node, actors, levelPaths, stageContext, playerSelection,
-            cachePreset: null, newCacheLabel: null, conversationPreview: false);
+            henchmanAssignments, cachePreset: null, newCacheLabel: null, conversationPreview: false);
 
     internal void ConfigureDialogueConversationPreview(ConversationExtended conversation, DialogueNodeExtended startNode,
         IReadOnlyList<DialogueNodePreviewActor> actors, IReadOnlyList<string> levelPaths,
         StageConversationContext stageContext, DialoguePreviewPlayerSelection playerSelection,
-        DialogueCachePreset cachePreset, string newCacheLabel) =>
+        IReadOnlyDictionary<string, string> henchmanAssignments, DialogueCachePreset cachePreset,
+        string newCacheLabel) =>
         ConfigureDialoguePreview(conversation, startNode, actors, levelPaths, stageContext, playerSelection,
-            cachePreset, newCacheLabel, conversationPreview: true);
+            henchmanAssignments, cachePreset, newCacheLabel, conversationPreview: true);
 
     private void ConfigureDialoguePreview(ConversationExtended conversation, DialogueNodeExtended startNode,
         IReadOnlyList<DialogueNodePreviewActor> actors, IReadOnlyList<string> levelPaths,
         StageConversationContext stageContext, DialoguePreviewPlayerSelection playerSelection,
-        DialogueCachePreset cachePreset, string newCacheLabel, bool conversationPreview)
+        IReadOnlyDictionary<string, string> henchmanAssignments, DialogueCachePreset cachePreset,
+        string newCacheLabel, bool conversationPreview)
     {
         ArgumentNullException.ThrowIfNull(conversation);
         ArgumentNullException.ThrowIfNull(startNode);
@@ -1215,6 +1220,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         ArgumentNullException.ThrowIfNull(levelPaths);
         ArgumentNullException.ThrowIfNull(stageContext);
         ArgumentNullException.ThrowIfNull(playerSelection);
+        ArgumentNullException.ThrowIfNull(henchmanAssignments);
         ReleaseTrackAnchorStageContext();
         dialogueBranchSelections.Clear();
         loadedDialogueCachePreset = null;
@@ -1226,7 +1232,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             InitializeDialogueWorkingPackage(conversation.Export.FileRef, startNode.InterpData?.UIndex ?? 0);
         }
         dialogueNodePreview = new DialogueNodePreviewConfiguration(conversation, startNode, actors, levelPaths, stageContext,
-            playerSelection, cachePreset, newCacheLabel, 0);
+            playerSelection, henchmanAssignments, cachePreset, newCacheLabel, 0);
         BuildDialoguePreviewActorTagAliases(actors, stageContext);
         dialogueNodePreview = dialogueNodePreview with { VoStartTime = GetDialogueNodeVoStartTime(startNode) };
         BuildDialogueTimeline(startNode);
@@ -1885,14 +1891,19 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         GetDialoguePreviewActorIdentities(conversation).Select(identity => identity.ActorTag).ToArray();
 
     internal static IReadOnlyList<DialoguePreviewActorIdentity> GetDialoguePreviewActorIdentities(
-        ConversationExtended conversation)
+        ConversationExtended conversation) => conversation is null
+        ? []
+        : GetDialoguePreviewActorIdentities(conversation, conversation.EntryList.Concat(conversation.ReplyList));
+
+    internal static IReadOnlyList<DialoguePreviewActorIdentity> GetDialoguePreviewActorIdentities(
+        ConversationExtended conversation, IEnumerable<DialogueNodeExtended> nodes)
     {
         if (conversation is null)
         {
             return [];
         }
 
-        ExportEntry[] interpDatas = conversation.EntryList.Concat(conversation.ReplyList)
+        ExportEntry[] interpDatas = (nodes ?? [])
             .SelectMany(node => ResolveDialogueNodeInterpDatas(conversation, node))
             .DistinctBy(interp => (interp.FileRef, interp.UIndex))
             .ToArray();
@@ -2033,6 +2044,307 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         return identities;
     }
 
+    public static IReadOnlyList<string> GetDialoguePreviewHenchmanTags() =>
+    [
+        "hench_liara",
+        "hench_ashley",
+        "hench_kaidan",
+        "hench_marine",
+        "hench_edi",
+        "hench_garrus",
+        "hench_tali",
+        "hench_prothean",
+        "hench_miranda",
+        "hench_jack",
+        "hench_wrex",
+        "hench_grunt",
+        "hench_aria",
+        "hench_nyreen",
+        "hench_samara",
+        "hench_zaeed",
+        "hench_kasumi",
+        "hench_jacob",
+    ];
+
+    internal static bool IsDialoguePreviewHenchmanTag(string actorTag) =>
+        GetDialoguePreviewHenchmanTags().Contains(actorTag, StringComparer.OrdinalIgnoreCase);
+
+    internal static IReadOnlyList<DialogueNodeExtended> GetDialoguePreviewNodes(
+        ConversationExtended conversation, DialogueNodeExtended startNode, bool conversationPreview)
+    {
+        if (conversation is null || startNode is null)
+        {
+            return [];
+        }
+        if (!conversationPreview)
+        {
+            return [startNode];
+        }
+
+        var result = new List<DialogueNodeExtended>();
+        var pending = new Queue<DialogueNodeExtended>();
+        var visited = new HashSet<(bool IsReply, int Index)>();
+        pending.Enqueue(startNode);
+        while (pending.Count > 0 && visited.Count < 2048)
+        {
+            DialogueNodeExtended node = pending.Dequeue();
+            int index = node.IsReply ? conversation.ReplyList.IndexOf(node) : conversation.EntryList.IndexOf(node);
+            if (index < 0 || !visited.Add((node.IsReply, index)))
+            {
+                continue;
+            }
+            result.Add(node);
+            if (node.IsReply)
+            {
+                foreach (IntProperty reference in node.NodeProp.GetProp<ArrayProperty<IntProperty>>("EntryList")
+                             ?? Enumerable.Empty<IntProperty>())
+                {
+                    if (reference.Value >= 0 && reference.Value < conversation.EntryList.Count)
+                    {
+                        pending.Enqueue(conversation.EntryList[reference.Value]);
+                    }
+                }
+            }
+            else
+            {
+                foreach (StructProperty link in node.NodeProp.GetProp<ArrayProperty<StructProperty>>("ReplyListNew")
+                             ?? Enumerable.Empty<StructProperty>())
+                {
+                    int replyIndex = link.GetProp<IntProperty>("nIndex")?.Value ?? -1;
+                    if (replyIndex >= 0 && replyIndex < conversation.ReplyList.Count)
+                    {
+                        pending.Enqueue(conversation.ReplyList[replyIndex]);
+                    }
+                }
+            }
+        }
+        return result;
+    }
+
+    public static IReadOnlyList<DialoguePreviewHenchmanSlot> GetDialoguePreviewHenchmanSlots(
+        ConversationExtended conversation, DialogueNodeExtended startNode, bool conversationPreview)
+    {
+        if (conversation?.Export is null || startNode is null)
+        {
+            return [];
+        }
+
+        IReadOnlyList<DialogueNodeExtended> nodes = GetDialoguePreviewNodes(conversation, startNode,
+            conversationPreview);
+        var directSlots = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var nodeSlots = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (ExportEntry group in nodes.SelectMany(node => ResolveDialogueNodeInterpDatas(conversation, node))
+                     .SelectMany(interpData => GetReferencedExports(interpData, "InterpGroups"))
+                     .DistinctBy(group => (group.FileRef, group.UIndex)))
+        {
+            PropertyCollection groupProperties = group.GetCondensedProperties();
+            string findActorMode = groupProperties.GetProp<EnumProperty>("m_eSFXFindActorMode")?.Value.Name;
+            IEnumerable<string> actorTags = new[]
+                {
+                    groupProperties.GetProp<NameProperty>("m_nmSFXFindActor")?.Value.Instanced,
+                    groupProperties.GetProp<NameProperty>("GroupName")?.Value.Instanced
+                    ?? group.ObjectName.Instanced,
+                }
+                .Where(tag => !string.IsNullOrWhiteSpace(tag));
+            foreach (string actorTag in actorTags)
+            {
+                if (IsDirectDialogueHenchmanSlot(actorTag))
+                {
+                    directSlots.Add(GetCanonicalDialogueHenchmanSlotTag(actorTag));
+                }
+                else if (string.Equals(findActorMode, "FindActorByNode", StringComparison.OrdinalIgnoreCase)
+                         && IsDialogueNodeSlotTag(actorTag))
+                {
+                    nodeSlots.Add(GetCanonicalDialogueNodeSlotTag(actorTag));
+                }
+            }
+        }
+
+        Dictionary<string, string> resolvedNodeSlots = FindDialogueHenchmanNodeSlots(conversation, nodeSlots);
+        return directSlots.Select(slot => new DialoguePreviewHenchmanSlot(slot,
+                slot.Equals("Hench_Big", StringComparison.OrdinalIgnoreCase)
+                    ? "Large squadmate slot"
+                    : "Small squadmate slot"))
+            .Concat(resolvedNodeSlots.Select(pair => new DialoguePreviewHenchmanSlot(pair.Key, pair.Value)))
+            .OrderBy(slot => GetDialogueHenchmanSlotSortKey(slot.SlotTag))
+            .ThenBy(slot => slot.SlotTag, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    internal static IReadOnlyList<DialoguePreviewActorIdentity> ApplyDialoguePreviewHenchmanAssignments(
+        IEnumerable<DialoguePreviewActorIdentity> identities,
+        IReadOnlyDictionary<string, string> assignments)
+    {
+        var transformed = new List<DialoguePreviewActorIdentity>();
+        foreach (DialoguePreviewActorIdentity identity in identities ?? [])
+        {
+            var aliases = new HashSet<string>(identity.Aliases ?? [], StringComparer.OrdinalIgnoreCase)
+            {
+                identity.ActorTag,
+            };
+            KeyValuePair<string, string> assignment = assignments?
+                .FirstOrDefault(pair => aliases.Contains(pair.Key)) ?? default;
+            bool hasAssignment = !string.IsNullOrWhiteSpace(assignment.Key)
+                                 && !string.IsNullOrWhiteSpace(assignment.Value);
+            string actorTag = hasAssignment ? assignment.Value : identity.ActorTag;
+            if (hasAssignment)
+            {
+                aliases.Add(assignment.Key);
+                aliases.Add(assignment.Value);
+            }
+            transformed.Add(new DialoguePreviewActorIdentity(actorTag, aliases.ToArray()));
+        }
+
+        var merged = new List<DialoguePreviewActorIdentity>();
+        foreach (IGrouping<string, DialoguePreviewActorIdentity> actorGroup in transformed.GroupBy(
+                     identity => identity.ActorTag, StringComparer.OrdinalIgnoreCase))
+        {
+            var aliases = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (DialoguePreviewActorIdentity identity in actorGroup)
+            {
+                aliases.UnionWith(identity.Aliases);
+            }
+            aliases.Add(actorGroup.Key);
+            merged.Add(new DialoguePreviewActorIdentity(actorGroup.Key, aliases.ToArray()));
+        }
+        return merged;
+    }
+
+    private static Dictionary<string, string> FindDialogueHenchmanNodeSlots(
+        ConversationExtended conversation, IReadOnlySet<string> requiredNodeSlots)
+    {
+        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (requiredNodeSlots.Count == 0)
+        {
+            return result;
+        }
+
+        var inspectedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        InspectPackage(conversation.Export.FileRef);
+        if (conversation.Sequence is ExportEntry sequence)
+        {
+            InspectPackage(sequence.FileRef);
+        }
+
+        string conversationPath = conversation.Export.FileRef.FilePath;
+        string fileNameWithoutExtension = Path.GetFileNameWithoutExtension(conversationPath);
+        int locIndex = fileNameWithoutExtension?.LastIndexOf("_LOC_", StringComparison.OrdinalIgnoreCase) ?? -1;
+        if (locIndex > 0 && !string.IsNullOrWhiteSpace(conversationPath))
+        {
+            string basePath = Path.Combine(Path.GetDirectoryName(conversationPath) ?? string.Empty,
+                fileNameWithoutExtension[..locIndex] + Path.GetExtension(conversationPath));
+            if (File.Exists(basePath) && inspectedPaths.Add(Path.GetFullPath(basePath)))
+            {
+                try
+                {
+                    using IMEPackage package = MEPackageHandler.OpenMEPackage(basePath);
+                    InspectPackage(package, trackPath: false);
+                }
+                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException
+                                                  or InvalidDataException)
+                {
+                    // Squad-slot discovery is best effort. Direct Hench_Big/Hench_Small tags still work.
+                }
+            }
+        }
+        return result;
+
+        void InspectPackage(IMEPackage package, bool trackPath = true)
+        {
+            if (package is null)
+            {
+                return;
+            }
+            if (trackPath && !string.IsNullOrWhiteSpace(package.FilePath)
+                          && !inspectedPaths.Add(Path.GetFullPath(package.FilePath)))
+            {
+                return;
+            }
+            foreach (ExportEntry startConversation in package.Exports.Where(export =>
+                         export.ClassName is "BioSeqAct_StartConversation" or "SFXSeqAct_StartConversation"
+                             or "SFXSeqAct_StartAmbientConv"))
+            {
+                int conversationIndex = startConversation.GetProperty<ObjectProperty>("Conv")?.Value ?? 0;
+                if (package.GetEntry(conversationIndex)?.ObjectName.Instanced
+                    .Equals(conversation.Export.ObjectName.Instanced, StringComparison.OrdinalIgnoreCase) != true)
+                {
+                    continue;
+                }
+                foreach (StructProperty variableLink in startConversation
+                             .GetProperty<ArrayProperty<StructProperty>>("VariableLinks")
+                         ?? Enumerable.Empty<StructProperty>())
+                {
+                    string linkDescription = variableLink.GetProp<StrProperty>("LinkDesc")?.Value;
+                    string slotTag = GetCanonicalDialogueNodeSlotTag(linkDescription);
+                    if (!requiredNodeSlots.Contains(slotTag))
+                    {
+                        continue;
+                    }
+                    foreach (ObjectProperty linkedVariable in variableLink
+                                 .GetProp<ArrayProperty<ObjectProperty>>("LinkedVariables")
+                             ?? Enumerable.Empty<ObjectProperty>())
+                    {
+                        if (package.TryGetUExport(linkedVariable.Value, out ExportEntry variable)
+                            && variable.ClassName.EndsWith("SeqVar_Hench", StringComparison.OrdinalIgnoreCase))
+                        {
+                            result[slotTag] = DescribeDialogueHenchmanVariable(variable);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private static string DescribeDialogueHenchmanVariable(ExportEntry variable)
+    {
+        if (variable.GetProperty<BoolProperty>("m_bBiggest")?.Value == true)
+        {
+            return "Squad node (large squadmate)";
+        }
+        if (variable.GetProperty<BoolProperty>("m_bSmallest")?.Value == true)
+        {
+            return "Squad node (small squadmate)";
+        }
+        if (variable.GetProperty<BoolProperty>("m_bFirst")?.Value == true)
+        {
+            return "Squad node (first squadmate)";
+        }
+        if (variable.GetProperty<BoolProperty>("m_bSecond")?.Value == true)
+        {
+            return "Squad node (second squadmate)";
+        }
+        if (variable.GetProperty<ArrayProperty<NameProperty>>("m_aRealPriorities") is { Count: > 0 })
+        {
+            return "Squad node (priority-selected squadmate)";
+        }
+        return "Squad node";
+    }
+
+    private static bool IsDirectDialogueHenchmanSlot(string actorTag) =>
+        actorTag?.Equals("Hench_Big", StringComparison.OrdinalIgnoreCase) == true
+        || actorTag?.Equals("Hench_Small", StringComparison.OrdinalIgnoreCase) == true;
+
+    private static string GetCanonicalDialogueHenchmanSlotTag(string actorTag) =>
+        actorTag?.Equals("Hench_Big", StringComparison.OrdinalIgnoreCase) == true ? "Hench_Big" : "Hench_Small";
+
+    private static bool IsDialogueNodeSlotTag(string actorTag) =>
+        actorTag?.StartsWith("Node", StringComparison.OrdinalIgnoreCase) == true
+        && int.TryParse(actorTag.AsSpan(4), out int nodeNumber) && nodeNumber > 0;
+
+    private static string GetCanonicalDialogueNodeSlotTag(string actorTag) =>
+        IsDialogueNodeSlotTag(actorTag)
+            ? $"Node{int.Parse(actorTag.AsSpan(4), CultureInfo.InvariantCulture)}"
+            : string.Empty;
+
+    private static int GetDialogueHenchmanSlotSortKey(string slotTag) => slotTag switch
+    {
+        "Hench_Small" => 0,
+        "Hench_Big" => 1,
+        _ when IsDialogueNodeSlotTag(slotTag) => 10 + int.Parse(slotTag.AsSpan(4), CultureInfo.InvariantCulture),
+        _ => int.MaxValue,
+    };
+
     internal static bool IsDialogueCameraName(string name) =>
         name?.Contains("cam", StringComparison.OrdinalIgnoreCase) == true;
 
@@ -2089,7 +2401,8 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         tag.Equals("Player", StringComparison.OrdinalIgnoreCase) ? 0
         : tag.Equals("Owner", StringComparison.OrdinalIgnoreCase) ? 1
         : tag.StartsWith("Global_", StringComparison.OrdinalIgnoreCase) ? 2
-        : 3;
+        : IsDialoguePreviewHenchmanTag(tag) ? 3
+        : 4;
 
     public static IReadOnlyList<string> GetDialoguePreviewFaceFxAssetNames(MEGame game)
     {
@@ -3781,6 +4094,8 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             PlayerGender = dialogueNodePreview.PlayerSelection.Gender,
             LevelPaths = dialogueNodePreview.LevelPaths.Select(Path.GetFullPath)
                 .Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
+            HenchmanAssignments = dialogueNodePreview.HenchmanAssignments.ToDictionary(pair => pair.Key,
+                pair => pair.Value, StringComparer.OrdinalIgnoreCase),
             Actors = previewActors.Where(actor => actor.Construction is not null)
                 .Select(actor => actor.Construction).ToList(),
             Nodes = dialogueTimelineSegments.Select(CaptureDialogueCacheNode).ToList(),
@@ -5854,7 +6169,19 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                 }
             }
 
+            bool isHenchman = IsDialoguePreviewHenchmanTag(actor.ActorTag);
+            IReadOnlyList<TaggedDialoguePreviewActor> prioritizedHenchmanActors = isHenchman
+                ? FindTaggedDialoguePreviewActors(actor.ActorTag)
+                : null;
+            ExportEntry cachedSourceActor = ResolveExportReference(actor.Construction?.SourceActor, required: false);
+            ExportEntry preferredHenchmanActor = prioritizedHenchmanActors?.FirstOrDefault()?.Actor;
+            bool shouldReplaceCachedHenchmanActor = preferredHenchmanActor is not null
+                                                    && (cachedSourceActor is null
+                                                        || GetDialogueHenchmanActorTypePriority(preferredHenchmanActor.ClassName)
+                                                        < GetDialogueHenchmanActorTypePriority(cachedSourceActor.ClassName));
+
             if (actor.Construction?.Meshes.Count > 0
+                && !shouldReplaceCachedHenchmanActor
                 && actor.Construction.Meshes.All(mesh =>
                     ResolveExportReference(mesh.MeshExport, required: false)?.ClassName == "SkeletalMesh"))
             {
@@ -5863,7 +6190,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                 // property directly on the pawn. Repair that construction without rebuilding or
                 // replacing its cached meshes.
                 if (actor.Construction.FaceFxAsset is null
-                    && ResolveExportReference(actor.Construction.SourceActor, required: false) is { } cachedSourceActor)
+                    && cachedSourceActor is not null)
                 {
                     IEnumerable<ExportEntry> cachedRelatedExports = actor.Construction.Meshes
                         .SelectMany(mesh => new[]
@@ -5882,9 +6209,11 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                 continue;
             }
 
-            IReadOnlyList<TaggedDialoguePreviewActor> taggedActors = FindTaggedDialoguePreviewActors(actor.ActorTag);
-            ExportEntry sourceActor = ResolveExportReference(actor.Construction?.SourceActor, required: false)
-                                      ?? taggedActors.FirstOrDefault()?.Actor;
+            IReadOnlyList<TaggedDialoguePreviewActor> taggedActors = prioritizedHenchmanActors
+                                                                      ?? FindTaggedDialoguePreviewActors(actor.ActorTag);
+            ExportEntry sourceActor = shouldReplaceCachedHenchmanActor
+                ? preferredHenchmanActor
+                : cachedSourceActor ?? taggedActors.FirstOrDefault()?.Actor;
             if (sourceActor is null)
             {
                 actor.Construction = null;
@@ -5912,14 +6241,22 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             return null;
         }
 
-        IEnumerable<string> aliases = dialoguePreviewActorTagAliases.GetValueOrDefault(actorTag)
-            ?? [actorTag];
+        IEnumerable<string> aliases = IsDialoguePreviewHenchmanTag(actorTag)
+            ? [actorTag]
+            : dialoguePreviewActorTagAliases.GetValueOrDefault(actorTag) ?? [actorTag];
         return aliases.Prepend(actorTag)
             .Where(alias => !string.IsNullOrWhiteSpace(alias))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .SelectMany(alias => bindings.GetValueOrDefault(alias) ?? [])
             .DistinctBy(candidate => (candidate.FileRef, candidate.UIndex))
-            .FirstOrDefault(candidate => ActorProxy.CanCreate(candidate) && ActorHasPreviewSkeletalMesh(candidate));
+            .Where(candidate => ActorProxy.CanCreate(candidate) && ActorHasPreviewSkeletalMesh(candidate))
+            .OrderBy(candidate => IsDialoguePreviewHenchmanTag(actorTag)
+                ? GetDialogueHenchmanActorTypePriority(candidate.ClassName)
+                : 0)
+            .ThenBy(candidate => IsDialoguePreviewHenchmanTag(actorTag)
+                ? GetDialogueHenchmanActorClassPriority(candidate.ClassName)
+                : 0)
+            .FirstOrDefault();
     }
 
     private static void SetDialogueActorConstruction(PreviewActorConfiguration actor,
@@ -5941,7 +6278,13 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
         IEnumerable<string> searchTags = dialoguePreviewActorTagAliases.GetValueOrDefault(actorTag)
             ?? [actorTag];
-        TagUsage[] usages = searchTags
+        if (IsDialoguePreviewHenchmanTag(actorTag))
+        {
+            // NodeN and Hench_Big/Hench_Small remain playback aliases, but they are not
+            // construction sources. The selected real squadmate tag alone chooses the pawn.
+            searchTags = [actorTag];
+        }
+        IEnumerable<TagUsage> candidateUsages = searchTags
             .Where(tag => !string.IsNullOrWhiteSpace(tag)
                           && !tag.Equals("player", StringComparison.OrdinalIgnoreCase)
                           && !tag.Equals("owner", StringComparison.OrdinalIgnoreCase))
@@ -5950,8 +6293,11 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             .SelectMany(tag => previewAssetDatabase.Tags
                 .Where(record => record.Tag.Equals(tag, StringComparison.OrdinalIgnoreCase))
                 .SelectMany(record => record.Usages))
-            .DistinctBy(usage => (usage.FileKey, usage.UIndex))
-            .OrderBy(GetDialogueActorUsagePriority)
+            .DistinctBy(usage => (usage.FileKey, usage.UIndex));
+        IOrderedEnumerable<TagUsage> orderedUsages = IsDialoguePreviewHenchmanTag(actorTag)
+            ? candidateUsages.OrderBy(GetDialogueHenchmanActorUsagePriority)
+            : candidateUsages.OrderBy(GetDialogueActorUsagePriority);
+        TagUsage[] usages = orderedUsages
             .ThenBy(usage => usage.FileKey)
             .ThenBy(usage => usage.UIndex)
             .ToArray();
@@ -6093,10 +6439,41 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         return 50;
     }
 
+    internal static int GetDialogueHenchmanActorClassPriority(string className)
+    {
+        if (string.IsNullOrWhiteSpace(className)) return 100;
+        if (className.Contains("BioPawn", StringComparison.OrdinalIgnoreCase)) return 0;
+        if (className.Contains("SFXPawn", StringComparison.OrdinalIgnoreCase)) return 1;
+        if (className.EndsWith("Pawn", StringComparison.OrdinalIgnoreCase)) return 2;
+        if (className.Contains("StuntActor", StringComparison.OrdinalIgnoreCase)) return 3;
+        if (className.Contains("SFXSkeletalMeshActor", StringComparison.OrdinalIgnoreCase)) return 4;
+        if (className.Contains("SkeletalMeshActor", StringComparison.OrdinalIgnoreCase)) return 5;
+        return 50;
+    }
+
+    internal static int GetDialogueHenchmanActorTypePriority(string className)
+    {
+        if (string.IsNullOrWhiteSpace(className)) return 100;
+        if (className.Contains("BioPawn", StringComparison.OrdinalIgnoreCase)
+            || className.Contains("SFXPawn", StringComparison.OrdinalIgnoreCase)
+            || className.EndsWith("Pawn", StringComparison.OrdinalIgnoreCase)) return 0;
+        if (className.Contains("StuntActor", StringComparison.OrdinalIgnoreCase)) return 1;
+        if (className.Contains("SkeletalMeshActor", StringComparison.OrdinalIgnoreCase)) return 2;
+        return 50;
+    }
+
     internal static (int Mod, int Dlc, int Class, int Context) GetDialogueActorUsagePriority(TagUsage usage) =>
         (usage.IsInMod ? 1 : 0,
             usage.IsInDLC ? 1 : 0,
             GetDialogueActorClassPriority(usage.ClassName),
+            usage.Context == TagUsageContext.TaggedObject ? 0 : 1);
+
+    internal static (int Type, int Mod, int Dlc, int Class, int Context) GetDialogueHenchmanActorUsagePriority(
+        TagUsage usage) =>
+        (GetDialogueHenchmanActorTypePriority(usage.ClassName),
+            usage.IsInMod ? 1 : 0,
+            usage.IsInDLC ? 1 : 0,
+            GetDialogueHenchmanActorClassPriority(usage.ClassName),
             usage.Context == TagUsageContext.TaggedObject ? 0 : 1);
 
     private DialogueActorConstructionCache BuildDialogueActorConstruction(string actorTag, ExportEntry sourceActor)

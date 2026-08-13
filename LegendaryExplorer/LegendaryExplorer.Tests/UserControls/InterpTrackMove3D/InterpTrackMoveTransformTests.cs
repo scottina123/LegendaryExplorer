@@ -55,6 +55,75 @@ public class InterpTrackMoveTransformTests
     }
 
     [TestMethod]
+    public void DialogueHenchmanLookupAlwaysPrioritizesPawnsBeforeStuntActors()
+    {
+        var vanillaBioPawn = new TagUsage(0, 1, false, false, "BioPawn", "BioPawn",
+            TagUsageContext.TaggedObject, "Tag");
+        var vanillaSfxPawn = new TagUsage(1, 1, false, false, "SFXPawn", "SFXPawn_Player",
+            TagUsageContext.TaggedObject, "Tag");
+        var vanillaStunt = new TagUsage(2, 1, false, false, "Stunt", "SFXStuntActor",
+            TagUsageContext.TaggedObject, "Tag");
+        var dlcBioPawn = new TagUsage(3, 1, true, false, "DlcBioPawn", "BioPawn",
+            TagUsageContext.TaggedObject, "Tag");
+
+        Assert.IsTrue(CurveEditor3D.GetDialogueHenchmanActorUsagePriority(vanillaBioPawn)
+            .CompareTo(CurveEditor3D.GetDialogueHenchmanActorUsagePriority(vanillaSfxPawn)) < 0);
+        Assert.IsTrue(CurveEditor3D.GetDialogueHenchmanActorUsagePriority(vanillaSfxPawn)
+            .CompareTo(CurveEditor3D.GetDialogueHenchmanActorUsagePriority(vanillaStunt)) < 0);
+        Assert.IsTrue(CurveEditor3D.GetDialogueHenchmanActorUsagePriority(dlcBioPawn)
+            .CompareTo(CurveEditor3D.GetDialogueHenchmanActorUsagePriority(vanillaStunt)) < 0);
+        Assert.IsTrue(CurveEditor3D.GetDialogueHenchmanActorUsagePriority(vanillaBioPawn)
+            .CompareTo(CurveEditor3D.GetDialogueHenchmanActorUsagePriority(dlcBioPawn)) < 0);
+    }
+
+    [TestMethod]
+    public void DialogueHenchmanChoicesContainEverySupportedUniqueLe3Tag()
+    {
+        IReadOnlyList<string> choices = CurveEditor3D.GetDialoguePreviewHenchmanTags();
+
+        Assert.HasCount(18, choices);
+        Assert.HasCount(choices.Count, choices.Distinct(StringComparer.OrdinalIgnoreCase));
+        CollectionAssert.IsSubsetOf(new[]
+        {
+            "hench_liara", "hench_ashley", "hench_kaidan", "hench_marine", "hench_edi",
+            "hench_garrus", "hench_tali", "hench_prothean", "hench_miranda", "hench_jack",
+            "hench_wrex", "hench_grunt", "hench_aria", "hench_nyreen", "hench_samara",
+            "hench_zaeed", "hench_kasumi", "hench_jacob",
+        }, choices.ToArray());
+    }
+
+    [TestMethod]
+    public void DialogueHenchmanAssignmentsReplacePlaceholdersAndPreserveEveryTrackAlias()
+    {
+        CurveEditor3D.DialoguePreviewActorIdentity[] identities =
+        [
+            new("Hench_Big", ["Hench_Big", "Hench_2"]),
+            new("Node3", ["Node3", "Hench1"]),
+            new("Hench_Small", ["Hench_Small", "Hench_1"]),
+        ];
+        var assignments = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["Hench_Big"] = "hench_garrus",
+            ["Node3"] = "hench_tali",
+            ["Hench_Small"] = "hench_tali",
+        };
+
+        IReadOnlyList<CurveEditor3D.DialoguePreviewActorIdentity> assigned =
+            CurveEditor3D.ApplyDialoguePreviewHenchmanAssignments(identities, assignments);
+
+        CurveEditor3D.DialoguePreviewActorIdentity garrus = assigned.Single(actor =>
+            actor.ActorTag.Equals("hench_garrus", StringComparison.OrdinalIgnoreCase));
+        CurveEditor3D.DialoguePreviewActorIdentity tali = assigned.Single(actor =>
+            actor.ActorTag.Equals("hench_tali", StringComparison.OrdinalIgnoreCase));
+        CollectionAssert.Contains(garrus.Aliases.ToArray(), "Hench_Big");
+        CollectionAssert.Contains(garrus.Aliases.ToArray(), "Hench_2");
+        CollectionAssert.Contains(tali.Aliases.ToArray(), "Node3");
+        CollectionAssert.Contains(tali.Aliases.ToArray(), "Hench1");
+        CollectionAssert.Contains(tali.Aliases.ToArray(), "Hench_Small");
+        CollectionAssert.Contains(tali.Aliases.ToArray(), "Hench_1");
+    }
+
+    [TestMethod]
     public void DialogueOwnerUsesLinkedStageActorTagAsAnAlias()
     {
         var ownerOrigin = new CameraOrigin(new Vector3(-16000, 7800, -170250), new Vector3(0, 0, 180));

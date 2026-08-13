@@ -101,6 +101,7 @@ public static class SavedDialogueCachePresetManager
                 return null;
             }
             preset.LevelPaths ??= [];
+            preset.HenchmanAssignments ??= new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             preset.Actors ??= [];
             foreach (DialogueActorConstructionCache actor in preset.Actors)
             {
@@ -146,6 +147,8 @@ public sealed class DialogueCachePreset
     public int StartNodeIndex { get; set; }
     public CurveEditor3D.DialoguePreviewPlayerGender PlayerGender { get; set; }
     public List<string> LevelPaths { get; set; } = [];
+    public Dictionary<string, string> HenchmanAssignments { get; set; } =
+        new(StringComparer.OrdinalIgnoreCase);
     public List<DialogueActorConstructionCache> Actors { get; set; } = [];
     public List<DialogueCacheNodePreset> Nodes { get; set; } = [];
 

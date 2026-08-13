@@ -463,6 +463,13 @@ internal static class StageBoneOriginResolver
                     continue;
                 }
 
+                if (variable.ClassName.EndsWith("SeqVar_Hench", StringComparison.OrdinalIgnoreCase))
+                {
+                    // A hench variable deliberately has no fixed actor tag. Preserve its
+                    // StartConversation NodeN slot so the selected squadmate can use the authored
+                    // stage bone through its retained NodeN alias.
+                    origins[variableLink.LinkDesc] = slotOrigin;
+                }
                 string actorTag = ResolveLinkedActorTag(variable, cache);
                 if (!string.IsNullOrWhiteSpace(actorTag))
                 {
