@@ -361,12 +361,34 @@ public sealed class SceneRenderControl : ContentControl, IDisposable, INotifyPro
     private RenderContext _context;
     private Action _onImageRendered;
     private bool _captureNextFrame;
+    private bool _isMouseInputEnabled = true;
     private long _nextRenderRequestTimestamp;
 
     /// <summary>
     /// Maximum number of frames submitted per second. Zero leaves the control uncapped.
     /// </summary>
     public double MaximumFramesPerSecond { get; set; }
+
+    /// <summary>
+    /// Controls whether mouse input is forwarded to the render context.
+    /// Disabling input also clears any navigation or transform drag already in progress.
+    /// </summary>
+    public bool IsMouseInputEnabled
+    {
+        get => _isMouseInputEnabled;
+        set
+        {
+            if (SetProperty(ref _isMouseInputEnabled, value) && !value)
+            {
+                if (IsMouseCaptured)
+                {
+                    ReleaseMouseCapture();
+                }
+                Context?.LostMouseFocus();
+                _renderDirty = true;
+            }
+        }
+    }
 
     public RenderContext Context
     {
@@ -717,6 +739,12 @@ public sealed class SceneRenderControl : ContentControl, IDisposable, INotifyPro
     #region Input Events
     private void SceneRenderControlWPF_PreviewMouseDown(object sender, MouseButtonEventArgs e)
     {
+        if (!IsMouseInputEnabled)
+        {
+            e.Handled = true;
+            return;
+        }
+
         Focus();
         MouseButtons buttons;
         if (e.ChangedButton == MouseButton.Left)
@@ -734,6 +762,12 @@ public sealed class SceneRenderControl : ContentControl, IDisposable, INotifyPro
 
     private void SceneRenderControlWPF_PreviewMouseUp(object sender, MouseButtonEventArgs e)
     {
+        if (!IsMouseInputEnabled)
+        {
+            e.Handled = true;
+            return;
+        }
+
         MouseButtons buttons;
         if (e.ChangedButton == MouseButton.Left)
             buttons = MouseButtons.Left;
@@ -750,6 +784,12 @@ public sealed class SceneRenderControl : ContentControl, IDisposable, INotifyPro
 
     private void SceneRenderControlWPF_PreviewMouseMove(object sender, MouseEventArgs e)
     {
+        if (!IsMouseInputEnabled)
+        {
+            e.Handled = true;
+            return;
+        }
+
         Point position = e.GetPosition(this);
         bool handled = Context.MouseMove((int)position.X, (int)position.Y);
         e.Handled = handled;
@@ -761,6 +801,12 @@ public sealed class SceneRenderControl : ContentControl, IDisposable, INotifyPro
 
     private void SceneRenderControlWPF_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
     {
+        if (!IsMouseInputEnabled)
+        {
+            e.Handled = true;
+            return;
+        }
+
         e.Handled = Context.MouseScroll(e.Delta);
         _renderDirty = true;
     }

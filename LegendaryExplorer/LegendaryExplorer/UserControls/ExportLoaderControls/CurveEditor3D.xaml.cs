@@ -1217,6 +1217,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             UseGameShaderMeshPreviews = true,
             UseGameShaderStaticMeshPreviews = false,
             UseSrgbColorManagement = true,
+            ShowCameraPositionInStatsOverlay = false,
         };
         backgroundColor = LevelEditor.GetThemeDefaultBackgroundColor();
         RenderContext.BackgroundColor = backgroundColor;
@@ -1388,12 +1389,27 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         dialoguePackageEditor.LoadPackage(dialoguePreviewWorkingPackage, initialUIndex);
         dialoguePackageEditor.SetEmbeddedTreeScope([]);
         FrameworkElement workspace = dialoguePackageEditor.PackageEditorWorkspace;
+        workspace.Loaded += DialoguePackageEditorWorkspace_Loaded;
         if (workspace.Parent is Panel parent)
         {
             parent.Children.Remove(workspace);
         }
         workspace.DataContext = dialoguePackageEditor;
         DialoguePackageEditorHost.Content = workspace;
+    }
+
+    private void DialoguePackageEditorWorkspace_Loaded(object sender, RoutedEventArgs e)
+    {
+        if (dialoguePackageEditor is null || sender is not FrameworkElement workspace
+                                            || Window.GetWindow(workspace) is not { } hostWindow
+                                            || ReferenceEquals(hostWindow, dialoguePackageEditor))
+        {
+            return;
+        }
+
+        // PackageEditorWindow remains alive as the controller for its rehosted workspace. Make the visible
+        // preview its native owner so every popup or dialog created by Package Editor stays above this host.
+        dialoguePackageEditor.Owner = hostWindow;
     }
 
     private void DisposeDialoguePackageEditor()
@@ -1410,6 +1426,8 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         }
         if (dialoguePackageEditor is not null)
         {
+            dialoguePackageEditor.PackageEditorWorkspace.Loaded -= DialoguePackageEditorWorkspace_Loaded;
+            dialoguePackageEditor.Owner = null;
             dialoguePackageEditor.PropertyChanged -= DialoguePackageEditor_PropertyChanged;
             if (workingPackage is not null && ReferenceEquals(dialoguePackageEditor.Pcc, workingPackage))
             {
@@ -2932,6 +2950,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             }
 
             suppressTrackVisualizationForCameraPreview = false;
+            SceneViewer.IsMouseInputEnabled = !value;
             if (value)
             {
                 RenderContext.TransformWidget.Attach = null;

@@ -846,7 +846,6 @@ namespace LegendaryExplorer.DialogueEditor
                 options.SelectedLevelPaths, stageContext, options.PlayerSelection, options.HenchmanAssignments);
             var window = new ExportLoaderHostedWindow(preview, previewTrackMove)
             {
-                Owner = this,
                 Title = $"Dialogue Node Preview - {(SelectedDialogueNode.IsReply ? "Reply" : "Entry")} {SelectedDialogueNode.NodeCount}",
             };
             window.Show();
@@ -5848,7 +5847,6 @@ namespace LegendaryExplorer.DialogueEditor
                 options.HenchmanAssignments, options.SelectedCachePreset, options.NewCacheLabel);
             var window = new ExportLoaderHostedWindow(preview, previewTrackMove)
             {
-                Owner = this,
                 Title = $"Dialogue Conversation Preview - {SelectedConv.Export.ObjectName.Instanced} - {(startNode.IsReply ? "R" : "E")}{startNode.NodeCount}"
             };
             window.Show();

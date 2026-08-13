@@ -227,6 +227,7 @@ public class MeshRenderContext : RenderContext
     private float FPS;
     private long fpsWindowStartTimestamp;
     private uint fpsWindowStartFrame;
+    public bool ShowCameraPositionInStatsOverlay { get; set; } = true;
     public string ErrorText;
 
     private static RawColor4 GetStatsTextColor()
@@ -595,7 +596,10 @@ public class MeshRenderContext : RenderContext
                 {
                     var size = RenderTarget2D.Size;
                     statsTextBrush.Color = GetStatsTextColor();
-                    RenderTarget2D.DrawText($"{FPS} fps\n{Camera.Position}", statsTextFormat, new RawRectangleF(0, 0, size.Width, size.Height), statsTextBrush);
+                    string statsText = ShowCameraPositionInStatsOverlay
+                        ? $"{FPS} fps\n{Camera.Position}"
+                        : $"{FPS} fps";
+                    RenderTarget2D.DrawText(statsText, statsTextFormat, new RawRectangleF(0, 0, size.Width, size.Height), statsTextBrush);
                 }
 
                 foreach (ref readonly var label in CollectionsMarshal.AsSpan(ScreenLabels))

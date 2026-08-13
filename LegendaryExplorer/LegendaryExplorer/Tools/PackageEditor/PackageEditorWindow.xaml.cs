@@ -874,7 +874,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
 
         private void CreateTexture()
         {
-            var tc = new TextureCreatorDialog(this, Pcc, SelectedItem?.Entry);
+            var tc = new TextureCreatorDialog(InteractionOwner, Pcc, SelectedItem?.Entry);
 
             tc.ShowDialog();
 
@@ -894,7 +894,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
                 FileName = $"{Pcc.FileNameNoExtension}_Props.uc",
                 CheckFileExists = true
             };
-            if (DirectoryMemory.ShowDialog(d) is not true) return;
+            if (DirectoryMemory.ShowDialog(d, InteractionOwner) is not true) return;
             var fileName = d.FileName;
             SetBusy("Applying property edits");
             Task.Run(() =>
@@ -948,7 +948,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
                                 Filter = "unrealscript file|*.uc",
                                 FileName = $"{Pcc.FileNameNoExtension}_Props.uc"
                             };
-                            if (DirectoryMemory.ShowDialog(d) == true)
+                            if (DirectoryMemory.ShowDialog(d, InteractionOwner) == true)
                             {
                                 File.WriteAllText(d.FileName, src);
                             }
@@ -1238,7 +1238,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
 
         private void EditLECLData()
         {
-            new LECLDataEditorWindow(this, Pcc).ShowDialog();
+            new LECLDataEditorWindow(InteractionOwner, Pcc).ShowDialog();
         }
 
         private void CreatePackageExport()
@@ -1666,78 +1666,91 @@ namespace LegendaryExplorer.Tools.PackageEditor
         {
             if (obj is string toolName && TryGetSelectedExport(out ExportEntry exp))
             {
-                switch (toolName)
-                {
-                    case "SequenceEditor":
-                        if (TryGetSequenceEditorTargetExport(exp, out var sequenceTarget))
-                        {
-                            new Sequence_Editor.SequenceEditorWPF(sequenceTarget).Show();
-                        }
-                        break;
-                    case "InterpViewer":
-                        if (Timeline.CanParseStatic(exp))
-                        {
-                            var p = new InterpEditor.InterpEditorWindow();
-                            p.Show();
-                            p.LoadFile(Pcc.FilePath);
-                            if (exp.ObjectName == "InterpData")
-                            {
-                                p.SelectedInterpData = exp;
-                            }
-                        }
-                        break;
-                    case "Soundplorer":
-                        if (Soundpanel.CanParseStatic(exp))
-                        {
-                            new Soundplorer.SoundplorerWPF(exp).Show();
-                        }
-                        break;
-                    case "FaceFXEditor":
-                        if (exp.ClassName == "FaceFXAnimSet")
-                        {
-                            new FaceFXEditor.FaceFXEditorWindow(exp).Show();
-                        }
-                        break;
-                    case "DialogueEditor":
-                        if (exp.ClassName == "BioConversation")
-                        {
-                            new DialogueEditorWindow(exp).Show();
-                        }
-                        break;
-                    case "PathfindingEditor":
-                        if (PathfindingEditor.PathfindingEditorWindow.CanParseStatic(exp))
-                        {
-                            var pf = new PathfindingEditor.PathfindingEditorWindow(exp);
-                            pf.Show();
-                        }
-                        break;
-                    case "Meshplorer":
-                        if (MeshRenderer.CanParseStatic(exp))
-                        {
-                            new Meshplorer.MeshplorerWindow(exp).Show();
-                        }
-                        break;
-                    case "PlotEditor":
-                        PlotEditorWindow.OpenExportInPlotEditor(exp);
-                        break;
-                    case "WwiseEditor":
-                        if (exp.ClassName == "WwiseBank")
-                        {
-                            var w = new WwiseEditor.WwiseEditorWindow(exp);
-                            w.Show();
-                        }
-                        break;
-                    case "LevelEditor":
-                        new LevelEditor.LevelEditor(exp).Show();
-                        break;
-                    case "SFXGalaxyEditor":
-                        if (TryGetSFXGalaxyEditorTargetExport(exp, out var galaxyMapTarget))
-                        {
-                            new LegendaryExplorer.Tools.SFXGalaxyEditor.SFXGalaxyEditorWindow(galaxyMapTarget).Show();
-                        }
-                        break;
-                }
+                // When this workspace is embedded in another window, this command is normally invoked from a
+                // ContextMenu popup. Let the popup close and release mouse capture before creating the new tool;
+                // otherwise its window can be placed behind the host preview while the popup blocks input.
+                Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle,
+                    new Action(() => OpenExportInAfterMenuClosed(toolName, exp)));
             }
+        }
+
+        private void OpenExportInAfterMenuClosed(string toolName, ExportEntry exp)
+        {
+            switch (toolName)
+            {
+                case "SequenceEditor":
+                    if (TryGetSequenceEditorTargetExport(exp, out var sequenceTarget))
+                    {
+                        ShowAndActivateTool(new Sequence_Editor.SequenceEditorWPF(sequenceTarget));
+                    }
+                    break;
+                case "InterpViewer":
+                    if (Timeline.CanParseStatic(exp))
+                    {
+                        var p = new InterpEditor.InterpEditorWindow();
+                        ShowAndActivateTool(p);
+                        p.LoadFile(Pcc.FilePath);
+                        if (exp.ObjectName == "InterpData")
+                        {
+                            p.SelectedInterpData = exp;
+                        }
+                    }
+                    break;
+                case "Soundplorer":
+                    if (Soundpanel.CanParseStatic(exp))
+                    {
+                        ShowAndActivateTool(new Soundplorer.SoundplorerWPF(exp));
+                    }
+                    break;
+                case "FaceFXEditor":
+                    if (exp.ClassName == "FaceFXAnimSet")
+                    {
+                        ShowAndActivateTool(new FaceFXEditor.FaceFXEditorWindow(exp));
+                    }
+                    break;
+                case "DialogueEditor":
+                    if (exp.ClassName == "BioConversation")
+                    {
+                        ShowAndActivateTool(new DialogueEditorWindow(exp));
+                    }
+                    break;
+                case "PathfindingEditor":
+                    if (PathfindingEditor.PathfindingEditorWindow.CanParseStatic(exp))
+                    {
+                        ShowAndActivateTool(new PathfindingEditor.PathfindingEditorWindow(exp));
+                    }
+                    break;
+                case "Meshplorer":
+                    if (MeshRenderer.CanParseStatic(exp))
+                    {
+                        ShowAndActivateTool(new Meshplorer.MeshplorerWindow(exp));
+                    }
+                    break;
+                case "PlotEditor":
+                    PlotEditorWindow.OpenExportInPlotEditor(exp);
+                    break;
+                case "WwiseEditor":
+                    if (exp.ClassName == "WwiseBank")
+                    {
+                        ShowAndActivateTool(new WwiseEditor.WwiseEditorWindow(exp));
+                    }
+                    break;
+                case "LevelEditor":
+                    ShowAndActivateTool(new LevelEditor.LevelEditor(exp));
+                    break;
+                case "SFXGalaxyEditor":
+                    if (TryGetSFXGalaxyEditorTargetExport(exp, out var galaxyMapTarget))
+                    {
+                        ShowAndActivateTool(new LegendaryExplorer.Tools.SFXGalaxyEditor.SFXGalaxyEditorWindow(galaxyMapTarget));
+                    }
+                    break;
+            }
+        }
+
+        private static void ShowAndActivateTool(Window toolWindow)
+        {
+            toolWindow.Show();
+            toolWindow.Activate();
         }
 
         private static bool TryGetSFXGalaxyEditorTargetExport(ExportEntry export, [NotNullWhen(true)] out ExportEntry? galaxyMapTarget)
@@ -1825,10 +1838,12 @@ namespace LegendaryExplorer.Tools.PackageEditor
         {
             if (TryGetSelectedExport(out ExportEntry exp) && exp.ClassName is "BioEvtSysTrackGesture" or "SFXModule_Gestures" or "SFXSkeletalMeshActor" or "SFXSeqAct_SetAmbientPerformance")
             {
-                var dialog = new Dialogs.GestureAnimationImporterDialog(exp, this);
+                var dialog = new Dialogs.GestureAnimationImporterDialog(exp, InteractionOwner);
                 dialog.ShowDialog();
             }
         }
+
+        private Window InteractionOwner => Window.GetWindow(PackageEditorWorkspace) ?? Owner ?? this;
 
         private void AddGestureTrackFavorite()
         {
@@ -1842,7 +1857,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
         {
             if (TryGetSelectedExport(out ExportEntry exp) && exp.ClassName == "InterpTrackMove")
             {
-                var dialog = new ShiftInterpTrackDialog();
+                var dialog = new ShiftInterpTrackDialog { Owner = InteractionOwner };
                 if (dialog.ShowDialog() == true)
                 {
                     PackageEditorExperimentsM.ShiftInterpTrackMove(exp, dialog.Parameters);
@@ -1872,7 +1887,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
         {
             if (TryGetSelectedExport(out ExportEntry packageExp) && packageExp.ClassName == "Package")
             {
-                var dialog = new ShiftInterpTrackDialog();
+                var dialog = new ShiftInterpTrackDialog { Owner = InteractionOwner };
                 if (dialog.ShowDialog() == true)
                 {
                     var interpTrackMoves = Pcc.Exports.Where(x =>
@@ -1897,7 +1912,10 @@ namespace LegendaryExplorer.Tools.PackageEditor
         {
             if (TryGetSelectedExport(out ExportEntry levelExp) && levelExp.ClassName == "Level")
             {
-                var dialog = new ShiftInterpTrackDialog(false, false, "Shift Level Actors");
+                var dialog = new ShiftInterpTrackDialog(false, false, "Shift Level Actors")
+                {
+                    Owner = InteractionOwner
+                };
                 if (dialog.ShowDialog() == true)
                 {
                     PackageEditorExperimentsM.ShiftLevelActors(levelExp, dialog.Parameters);
@@ -1909,7 +1927,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
         {
             if (TryGetSelectedExport(out ExportEntry interpDataExp) && interpDataExp.ClassName == "InterpData")
             {
-                var dialog = new ShiftInterpTrackDialog();
+                var dialog = new ShiftInterpTrackDialog { Owner = InteractionOwner };
                 if (dialog.ShowDialog() == true)
                 {
                     var interpTrackMoves = Pcc.Exports.Where(x =>
@@ -1934,7 +1952,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
         {
             if (TryGetSelectedExport(out ExportEntry exp) && exp.ClassName == "InterpData")
             {
-                var dialog = new BulkInterpEditorDialog(this, exp);
+                var dialog = new BulkInterpEditorDialog(InteractionOwner, exp);
                 dialog.ShowDialog();
             }
         }
@@ -1968,7 +1986,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
         {
             var dialog = new ShiftInterpTrackDialog(includeTimeOffset: true, includeAnchorObjectMoves: false, title, includeSpatialOffsets: false)
             {
-                Owner = this
+                Owner = InteractionOwner
             };
 
             if (dialog.ShowDialog() == true)
@@ -2080,7 +2098,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
                     EnsurePathExists = true,
                     Title = "Select output folder"
                 };
-                if (DirectoryMemory.ShowDialog(m, this) == CommonFileDialogResult.Ok)
+                if (DirectoryMemory.ShowDialog(m, InteractionOwner) == CommonFileDialogResult.Ok)
                 {
                     string dir = m.FileName;
                     Stopwatch stopwatch = Stopwatch.StartNew(); //creates and start the instance of Stopwatch
@@ -2114,7 +2132,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
                     EnsurePathExists = true,
                     Title = "Select folder of GFX/SWF files to import"
                 };
-                if (DirectoryMemory.ShowDialog(m, this) == CommonFileDialogResult.Ok)
+                if (DirectoryMemory.ShowDialog(m, InteractionOwner) == CommonFileDialogResult.Ok)
                 {
                     var bw = new BackgroundWorker();
                     bw.RunWorkerAsync(m.FileName);
@@ -2432,7 +2450,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
             }
 
             var d = new SaveFileDialog { Filter = fileFilter, CustomPlaces = AppDirectories.GameCustomPlaces };
-            if (DirectoryMemory.ShowDialog(d) == true)
+            if (DirectoryMemory.ShowDialog(d, InteractionOwner) == true)
             {
                 await Pcc.SaveAsync(d.FileName);
                 MessageBox.Show("Done");
@@ -2480,7 +2498,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
         private void OpenFile()
         {
             var d = AppDirectories.GetOpenPackageDialog();
-            if (DirectoryMemory.ShowDialog(d) == true)
+            if (DirectoryMemory.ShowDialog(d, InteractionOwner) == true)
             {
 #if !DEBUG
                 try
@@ -2502,7 +2520,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
 
         private void NewFile()
         {
-            var gameDialog = new NewPackageGameDialog(this, "Create new package file", false);
+            var gameDialog = new NewPackageGameDialog(InteractionOwner, "Create new package file", false);
             if (gameDialog.ShowDialog() == true)
             {
                 MEGame game = gameDialog.SelectedGame;
@@ -2517,7 +2535,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
                     },
                     CustomPlaces = AppDirectories.GameCustomPlaces,
                 };
-                if (DirectoryMemory.ShowDialog(dlg) == true)
+                if (DirectoryMemory.ShowDialog(dlg, InteractionOwner) == true)
                 {
                     MEPackageHandler.CreateAndSavePackage(dlg.FileName, game);
                     LoadFile(dlg.FileName);
@@ -2527,7 +2545,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
 
         private void NewLevelFile()
         {
-            var gameDialog = new NewPackageGameDialog(this, "Create new level file", true);
+            var gameDialog = new NewPackageGameDialog(InteractionOwner, "Create new level file", true);
             if (gameDialog.ShowDialog() == true)
             {
                 MEGame game = gameDialog.SelectedGame;
@@ -2541,7 +2559,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
                 if (game == MEGame.ME1)
                     dlg.Filter = GameFileFilters.ME1SaveFileFilter;
 
-                if (DirectoryMemory.ShowDialog(dlg) == true)
+                if (DirectoryMemory.ShowDialog(dlg, InteractionOwner) == true)
                 {
                     (string TopPackageName, string ConversationName)? blankConversationNames = null;
                     if (gameDialog.CreateBlankConversation)
@@ -4350,7 +4368,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
                                         FileName = exp.FullPath + ".swf",
                                         Filter = "*.swf|*.swf"
                                     };
-                                    if (DirectoryMemory.ShowDialog(d) == true)
+                                    if (DirectoryMemory.ShowDialog(d, InteractionOwner) == true)
                                     {
                                         File.WriteAllBytes(d.FileName, data);
                                         MessageBox.Show("Done");
@@ -4377,7 +4395,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
                                 FileName = exp.FullPath + ".xml",
                                 Filter = $"*{extension}|*{extension}"
                             };
-                            if (DirectoryMemory.ShowDialog(d) == true)
+                            if (DirectoryMemory.ShowDialog(d, InteractionOwner) == true)
                             {
                                 var exportingTalk = new ME1TalkFile(exp);
                                 exportingTalk.SaveToXML(d.FileName);
@@ -4401,7 +4419,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
                                 IsFolderPicker = true
                             };
 
-                            if (DirectoryMemory.ShowDialog(d) == CommonFileDialogResult.Ok)
+                            if (DirectoryMemory.ShowDialog(d, InteractionOwner) == CommonFileDialogResult.Ok)
                             {
                                 // todo: Change to ISACTBankPair?
 
@@ -4449,7 +4467,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
                                 Title = "Select output folder for ICB/Stripped ISB",
                                 IsFolderPicker = true
                             };
-                            if (DirectoryMemory.ShowDialog(d) == CommonFileDialogResult.Ok)
+                            if (DirectoryMemory.ShowDialog(d, InteractionOwner) == CommonFileDialogResult.Ok)
                             {
                                 // ICB
                                 var outDir = d.FileName;
@@ -4483,7 +4501,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
                                 FileName = exp.FullPath + ".fxa",
                                 Filter = "*.fxa|*.fxa"
                             };
-                            if (DirectoryMemory.ShowDialog(d) == true)
+                            if (DirectoryMemory.ShowDialog(d, InteractionOwner) == true)
                             {
                                 var data = new MemoryStream(exp.GetBinaryData());
                                 data.Skip(0x4);
@@ -4502,7 +4520,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
                                 FileName = exp.FullPath + ".bnk",
                                 Filter = "*.bnk|*.bnk"
                             };
-                            if (DirectoryMemory.ShowDialog(wdiag) == true)
+                            if (DirectoryMemory.ShowDialog(wdiag, InteractionOwner) == true)
                             {
                                 var data = new MemoryStream(exp.GetBinaryData());
                                 if (exp.Game.IsGame3())
@@ -4537,7 +4555,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
                                 FileName = exp.InstancedFullPath + ".phys",
                                 Filter = "*.phys|*.phys"
                             };
-                            if (DirectoryMemory.ShowDialog(saveDiag) == true)
+                            if (DirectoryMemory.ShowDialog(saveDiag, InteractionOwner) == true)
                             {
                                 File.WriteAllBytes(saveDiag.FileName, cachedConv.CachedPhysBrushData.CachedConvexElements[0].ConvexElementData);
                                 MessageBox.Show("Done");
@@ -4997,12 +5015,12 @@ namespace LegendaryExplorer.Tools.PackageEditor
                 Title = "Select destination folder containing PCC files"
             };
 
-            if (DirectoryMemory.ShowDialog(dlg, this) != CommonFileDialogResult.Ok)
+            if (DirectoryMemory.ShowDialog(dlg, InteractionOwner) != CommonFileDialogResult.Ok)
                 return;
 
             string targetFolder = dlg.FileName;
 
-            var filterDlg = new Dialogs.CloneTreeFileFilterDialog(this);
+            var filterDlg = new Dialogs.CloneTreeFileFilterDialog(InteractionOwner);
             if (filterDlg.ShowDialog() != true)
                 return;
 
@@ -5491,7 +5509,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
                 FileName = export.ObjectName.Instanced + ".bin",
                 CustomPlaces = AppDirectories.GameCustomPlaces
             };
-            if (DirectoryMemory.ShowDialog(d) == true)
+            if (DirectoryMemory.ShowDialog(d, InteractionOwner) == true)
             {
                 byte[] data = File.ReadAllBytes(d.FileName);
                 if (binaryOnly)
@@ -5523,7 +5541,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
                 Filter = "*.bin|*.bin",
                 FileName = export.ObjectName.Instanced + ".bin"
             };
-            if (DirectoryMemory.ShowDialog(d) == true)
+            if (DirectoryMemory.ShowDialog(d, InteractionOwner) == true)
             {
                 File.WriteAllBytes(d.FileName, binaryOnly ? export.GetBinaryData() : export.Data);
                 MessageBox.Show("Done.");
@@ -6805,7 +6823,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
                         }
                         catch (Exception e)
                         {
-                            new ExceptionHandlerDialog(e).ShowDialog();
+                            new ExceptionHandlerDialog(e) { Owner = InteractionOwner }.ShowDialog();
                         }
                     }
 
@@ -7097,7 +7115,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
             {
                 if (IsLoaded && ReferenceEquals(searchPackage, Pcc))
                 {
-                    new ExceptionHandlerDialog(exception) { Owner = this }.ShowDialog();
+                    new ExceptionHandlerDialog(exception) { Owner = InteractionOwner }.ShowDialog();
                 }
             }
             finally
@@ -8024,40 +8042,46 @@ namespace LegendaryExplorer.Tools.PackageEditor
         private void OpenIn_Clicked(object sender, RoutedEventArgs e)
         {
             var myValue = (string)((MenuItem)sender).Tag;
+            Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle,
+                new Action(() => OpenInAfterMenuClosed(myValue)));
+        }
+
+        private void OpenInAfterMenuClosed(string myValue)
+        {
             switch (myValue)
             {
                 case "SequenceEditor":
                     var seqEditor = new Sequence_Editor.SequenceEditorWPF(Pcc);
-                    seqEditor.Show();
+                    ShowAndActivateTool(seqEditor);
                     break;
                 case "FaceFXEditor":
                     var facefxEditor = new FaceFXEditor.FaceFXEditorWindow();
                     facefxEditor.LoadFile(Pcc.FilePath);
-                    facefxEditor.Show();
+                    ShowAndActivateTool(facefxEditor);
                     break;
                 case "SoundplorerWPF":
                     var soundplorerWPF = new Soundplorer.SoundplorerWPF();
                     soundplorerWPF.LoadFile(Pcc.FilePath);
-                    soundplorerWPF.Show();
+                    ShowAndActivateTool(soundplorerWPF);
                     break;
                 case "DialogueEditor":
                     var dialogueEditorWPF = new DialogueEditorWindow();
                     dialogueEditorWPF.LoadFile(Pcc.FilePath);
-                    dialogueEditorWPF.Show();
+                    ShowAndActivateTool(dialogueEditorWPF);
                     break;
                 case "PathfindingEditor":
                     var pathEditor = new PathfindingEditor.PathfindingEditorWindow(Pcc);
-                    pathEditor.Show();
+                    ShowAndActivateTool(pathEditor);
                     break;
                 case "LevelEditor":
                     var levelEditor = new LevelEditor.LevelEditor();
-                    levelEditor.Show();
+                    ShowAndActivateTool(levelEditor);
                     _ = levelEditor.LoadFileAsync(Pcc.FilePath);
                     break;
                 case "Meshplorer":
                     var meshplorer = new MeshplorerWindow();
                     meshplorer.LoadFile(Pcc.FilePath);
-                    meshplorer.Show();
+                    ShowAndActivateTool(meshplorer);
                     break;
 
             }
