@@ -197,6 +197,53 @@ public class CurveEditor3DModelCacheTests
     }
 
     [TestMethod]
+    public void AlignedPlayerLocomotionContinuesOnlyAcrossTheSameAuthoredGesture()
+    {
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage(
+            "PlayerLocomotionContinuationTest.pcc", MEGame.LE3);
+        ExportEntry walk = package.CreateExport("WalkOutOfCover", "AnimSequence", indexed: false);
+        ExportEntry otherWalk = package.CreateExport("LongWalkForward", "AnimSequence", indexed: false);
+
+        bool sharesWalk = CurveEditor3D.HaveMatchingDialogueGestureAnimation([walk], [walk]);
+        bool changesWalk = CurveEditor3D.HaveMatchingDialogueGestureAnimation([walk], [otherWalk]);
+
+        Assert.IsTrue(CurveEditor3D.ShouldInheritPlayerRootMotionAlignment(
+            "Player", previousAligned: true, sharesGestureAnimation: sharesWalk));
+        Assert.IsFalse(CurveEditor3D.ShouldInheritPlayerRootMotionAlignment(
+            "Player", previousAligned: true, sharesGestureAnimation: changesWalk));
+        Assert.IsFalse(CurveEditor3D.ShouldInheritPlayerRootMotionAlignment(
+            "Owner", previousAligned: true, sharesGestureAnimation: sharesWalk));
+    }
+
+    [TestMethod]
+    public void MergeNodeUsesThePrecedingGestureFromTheSelectedRoute()
+    {
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage(
+            "PlayerLocomotionMergeTest.pcc", MEGame.LE3);
+        ExportEntry walk = package.CreateExport("WalkOutOfCover", "AnimSequence", indexed: false);
+        var e1Route = new List<(IReadOnlyList<ExportEntry> Animations, bool IsAligned, float YawOffset,
+            float FacingYawOffset)>
+        {
+            ([walk], true, 27f, 180f)
+        };
+
+        Assert.IsTrue(CurveEditor3D.TryResolvePlayerRootMotionAlignmentFromPrecedingGestures(
+            "Player", [walk], e1Route, out float yawOffset, out float facingYawOffset));
+        Assert.AreEqual(27f, yawOffset);
+        Assert.AreEqual(180f, facingYawOffset);
+
+        Assert.IsFalse(CurveEditor3D.TryResolvePlayerRootMotionAlignmentFromPrecedingGestures(
+            "Player", [walk], [], out _, out _));
+    }
+
+    [TestMethod]
+    public void LaterDockWalkDoesNotAcquireAnAlignmentItsPreviousGestureNeverHad()
+    {
+        Assert.IsFalse(CurveEditor3D.ShouldInheritPlayerRootMotionAlignment(
+            "Player", previousAligned: false, sharesGestureAnimation: true));
+    }
+
+    [TestMethod]
     public void LaterDockPlayerAnchorDoesNotWalkBackTowardOriginalStageSlot()
     {
         var dockE9Track = new CameraOrigin(new Vector3(-14659.821f, 8792.842f, -170309f), Vector3.Zero);

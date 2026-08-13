@@ -215,6 +215,8 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             new(StringComparer.OrdinalIgnoreCase);
         public Dictionary<string, float> ActorRootMotionFacingYawOffsets { get; } =
             new(StringComparer.OrdinalIgnoreCase);
+        public HashSet<string> AlignedPlayerRootMotionActors { get; } =
+            new(StringComparer.OrdinalIgnoreCase);
         public Dictionary<string, string> StartLookAtTargets { get; } =
             new(StringComparer.OrdinalIgnoreCase);
         public Dictionary<string, string> EndLookAtTargets { get; } =
@@ -3681,6 +3683,109 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                 startingPose.AnimationDuration, 1, loop: true));
     }
 
+    private bool TryResolveInheritedPlayerRootMotionAlignment(string actorTag, GestureTrackOption gesture,
+        IEnumerable<DialogueSegmentRuntime> precedingRuntimes, out float yawOffset, out float facingYawOffset)
+    {
+        yawOffset = 0;
+        facingYawOffset = 0;
+        if (!string.Equals(actorTag, "Player", StringComparison.OrdinalIgnoreCase) || gesture is null)
+        {
+            return false;
+        }
+
+        ExportEntry[] currentAnimations = GetDialogueGestureAnimations(gesture);
+        if (currentAnimations.Length == 0)
+        {
+            return false;
+        }
+
+        // A no-data reply may sit between two parts of the same locomotion gesture. Walk backward
+        // through the route that was actually selected, but stop at the first authored Player
+        // gesture: a different animation starts a new movement context and must not inherit an
+        // older stage correction. This cannot use DialogueTimelineSegment.Parent because merge
+        // nodes such as CerMir E2 have more than one valid incoming route.
+        IEnumerable<(IReadOnlyList<ExportEntry> Animations, bool IsAligned, float YawOffset,
+            float FacingYawOffset)> precedingGestureStates =
+            (precedingRuntimes ?? Enumerable.Empty<DialogueSegmentRuntime>()).Reverse()
+            .Where(runtime => runtime.ActorGestureAssignments.ContainsKey(actorTag))
+            .Select(runtime =>
+            {
+                GestureTrackOption precedingGesture = runtime.ActorGestureAssignments[actorTag];
+                return ((IReadOnlyList<ExportEntry>)GetDialogueGestureAnimations(precedingGesture),
+                    runtime.AlignedPlayerRootMotionActors.Contains(actorTag),
+                    runtime.ActorRootMotionYawOffsets.GetValueOrDefault(actorTag),
+                    runtime.ActorRootMotionFacingYawOffsets.GetValueOrDefault(actorTag));
+            });
+        return TryResolvePlayerRootMotionAlignmentFromPrecedingGestures(actorTag, currentAnimations,
+            precedingGestureStates, out yawOffset, out facingYawOffset);
+    }
+
+    private IEnumerable<DialogueSegmentRuntime> GetStructuralDialoguePredecessorRuntimes(
+        DialogueTimelineSegment segment)
+    {
+        var predecessors = new Stack<DialogueSegmentRuntime>();
+        for (DialogueTimelineSegment ancestor = segment?.Parent; ancestor is not null; ancestor = ancestor.Parent)
+        {
+            if (dialogueRuntimeCache.TryGetValue(ancestor, out DialogueSegmentRuntime runtime))
+            {
+                predecessors.Push(runtime);
+            }
+        }
+        return predecessors;
+    }
+
+    private static ExportEntry[] GetDialogueGestureAnimations(GestureTrackOption gesture) =>
+        gesture?.Timeline.Where(clip => clip.AnimationExport is not null)
+            .Select(clip => clip.AnimationExport)
+            .DistinctBy(animation => (animation.FileRef, animation.UIndex))
+            .ToArray() ?? [];
+
+    internal static bool HaveMatchingDialogueGestureAnimation(IEnumerable<ExportEntry> left,
+        IEnumerable<ExportEntry> right)
+    {
+        ExportEntry leftAnimation = left?.FirstOrDefault(animation => animation is not null);
+        ExportEntry rightAnimation = right?.FirstOrDefault(animation => animation is not null);
+        return IsSameAnimationExport(leftAnimation, rightAnimation);
+    }
+
+    internal static bool ShouldInheritPlayerRootMotionAlignment(string actorTag, bool previousAligned,
+        bool sharesGestureAnimation) =>
+        string.Equals(actorTag, "Player", StringComparison.OrdinalIgnoreCase)
+        && previousAligned
+        && sharesGestureAnimation;
+
+    internal static bool TryResolvePlayerRootMotionAlignmentFromPrecedingGestures(string actorTag,
+        IReadOnlyList<ExportEntry> currentAnimations,
+        IEnumerable<(IReadOnlyList<ExportEntry> Animations, bool IsAligned, float YawOffset,
+            float FacingYawOffset)> precedingGestureStates,
+        out float yawOffset, out float facingYawOffset)
+    {
+        yawOffset = 0;
+        facingYawOffset = 0;
+        if (!string.Equals(actorTag, "Player", StringComparison.OrdinalIgnoreCase)
+            || currentAnimations is null || currentAnimations.Count == 0)
+        {
+            return false;
+        }
+
+        // The input is nearest-first. Its first entry is therefore the last authored Player
+        // gesture on the selected route; do not jump across a different movement gesture.
+        foreach ((IReadOnlyList<ExportEntry> animations, bool isAligned, float priorYawOffset,
+                     float priorFacingYawOffset) in precedingGestureStates ?? [])
+        {
+            bool sharesAnimation = HaveMatchingDialogueGestureAnimation(currentAnimations, animations);
+            if (!ShouldInheritPlayerRootMotionAlignment(actorTag, isAligned, sharesAnimation))
+            {
+                return false;
+            }
+
+            yawOffset = priorYawOffset;
+            facingYawOffset = priorFacingYawOffset;
+            return true;
+        }
+        return false;
+    }
+
     internal static bool IsEligibleActorTrackMove(ExportEntry trackMove, IEnumerable<ExportEntry> cameraTrackMoves)
         => trackMove is not null
            && (cameraTrackMoves is null
@@ -5524,6 +5629,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             runtime.EndActorGestureStates.Clear();
             runtime.ActorRootMotionYawOffsets.Clear();
             runtime.ActorRootMotionFacingYawOffsets.Clear();
+            runtime.AlignedPlayerRootMotionActors.Clear();
             IReadOnlyDictionary<string, CameraOrigin> inheritedOrigins = segment.Parent is not null
                 && dialogueRuntimeCache.TryGetValue(segment.Parent, out DialogueSegmentRuntime parentRuntime)
                 ? parentRuntime.EndActorOrigins
@@ -5586,6 +5692,16 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                 {
                     bool stageAttachedOneKeyPlayerLocomotion = IsStageAttachedOneKeyPlayerLocomotion(actor,
                         trackMove, start, resolved[actor]);
+                    bool inheritedAlignedPlayerLocomotion = TryResolveInheritedPlayerRootMotionAlignment(
+                        actor.ActorTag, gesture, GetStructuralDialoguePredecessorRuntimes(segment),
+                        out float inheritedRootMotionYawOffset,
+                        out float inheritedRootMotionFacingYawOffset);
+                    bool alignedPlayerLocomotion = stageAttachedOneKeyPlayerLocomotion
+                                                   || inheritedAlignedPlayerLocomotion;
+                    if (alignedPlayerLocomotion)
+                    {
+                        runtime.AlignedPlayerRootMotionActors.Add(actor.ActorTag);
+                    }
                     float? startingPoseTimeOverride = ResolveStartingPoseContinuationTime(gesture,
                         runtime.StartActorGestureStates.GetValueOrDefault(actor.ActorTag));
                     animationState.SetTimeline(gesture.StartingPose, gesture.Timeline,
@@ -5595,17 +5711,21 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                         // actor transform inherited by the following dialogue node.
                         extractRootTranslation: ShouldExtractDialogueGestureRootTranslation(
                             isDialogueConversationPreview, movementKeyCount,
-                            oneKeyTrackOwnsLocomotion: stageAttachedOneKeyPlayerLocomotion),
+                            oneKeyTrackOwnsLocomotion: movementKeyCount == 1 && alignedPlayerLocomotion),
                         startingPoseTimeOverride: startingPoseTimeOverride);
                     Vector3 rootMotion = movementTrackEndTime is float trackEndTime
                         ? animationState.EvaluateExtractedRootMotionDelta(trackEndTime, segment.Duration)
                         : animationState.EvaluateExtractedRootMotion(segment.Duration);
-                    if (rootMotion != Vector3.Zero)
+                    if (rootMotion != Vector3.Zero || alignedPlayerLocomotion)
                     {
-                        float rootMotionYawOffset = ResolveStageAttachedRootMotionYawOffset(resolved[actor],
-                            rootMotion, stageAttachedOneKeyPlayerLocomotion);
-                        float rootMotionFacingYawOffset = ResolveStageAttachedRootMotionFacingYawOffset(rootMotion,
-                            stageAttachedOneKeyPlayerLocomotion);
+                        float rootMotionYawOffset = inheritedAlignedPlayerLocomotion
+                            ? inheritedRootMotionYawOffset
+                            : ResolveStageAttachedRootMotionYawOffset(resolved[actor], rootMotion,
+                                stageAttachedOneKeyPlayerLocomotion);
+                        float rootMotionFacingYawOffset = inheritedAlignedPlayerLocomotion
+                            ? inheritedRootMotionFacingYawOffset
+                            : ResolveStageAttachedRootMotionFacingYawOffset(rootMotion,
+                                stageAttachedOneKeyPlayerLocomotion);
                         runtime.ActorRootMotionYawOffsets[actor.ActorTag] = rootMotionYawOffset;
                         runtime.ActorRootMotionFacingYawOffsets[actor.ActorTag] = rootMotionFacingYawOffset;
                         resolved[actor] = ApplyDialogueGestureRootMotion(resolved[actor],
@@ -5842,6 +5962,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
         IReadOnlyDictionary<string, CameraOrigin> inheritedOrigins = dialogueNodePreview.Actors
             .ToDictionary(actor => actor.ActorTag, actor => actor.Origin, StringComparer.OrdinalIgnoreCase);
+        var precedingActiveRuntimes = new List<DialogueSegmentRuntime>();
         foreach (DialogueTimelineSegment segment in dialogueTimelineActivePath)
         {
             DialogueSegmentRuntime runtime = dialogueRuntimeCache[segment];
@@ -5849,6 +5970,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             runtime.EndActorOrigins.Clear();
             runtime.ActorRootMotionYawOffsets.Clear();
             runtime.ActorRootMotionFacingYawOffsets.Clear();
+            runtime.AlignedPlayerRootMotionActors.Clear();
             foreach (PreviewActorConfiguration actor in previewActors)
             {
                 runtime.StartActorOrigins[actor.ActorTag] = inheritedOrigins.GetValueOrDefault(actor.ActorTag,
@@ -5887,6 +6009,15 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                 {
                     bool stageAttachedOneKeyPlayerLocomotion = IsStageAttachedOneKeyPlayerLocomotion(actor,
                         trackMove, start, resolved[actor]);
+                    bool inheritedAlignedPlayerLocomotion = TryResolveInheritedPlayerRootMotionAlignment(
+                        actor.ActorTag, gesture, precedingActiveRuntimes, out float inheritedRootMotionYawOffset,
+                        out float inheritedRootMotionFacingYawOffset);
+                    bool alignedPlayerLocomotion = stageAttachedOneKeyPlayerLocomotion
+                                                   || inheritedAlignedPlayerLocomotion;
+                    if (alignedPlayerLocomotion)
+                    {
+                        runtime.AlignedPlayerRootMotionActors.Add(actor.ActorTag);
+                    }
                     float? startingPoseTimeOverride = ResolveStartingPoseContinuationTime(gesture,
                         runtime.StartActorGestureStates.GetValueOrDefault(actor.ActorTag));
                     animationState.SetTimeline(gesture.StartingPose, gesture.Timeline,
@@ -5894,15 +6025,19 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                         maskDialogueOverlayStaticBones: true,
                         extractRootTranslation: ShouldExtractDialogueGestureRootTranslation(
                             isDialogueConversationPreview, movementKeyCount,
-                            oneKeyTrackOwnsLocomotion: stageAttachedOneKeyPlayerLocomotion),
+                            oneKeyTrackOwnsLocomotion: movementKeyCount == 1 && alignedPlayerLocomotion),
                         startingPoseTimeOverride: startingPoseTimeOverride);
                     Vector3 rootMotion = movementTrackEndTime is float trackEndTime
                         ? animationState.EvaluateExtractedRootMotionDelta(trackEndTime, segment.Duration)
                         : animationState.EvaluateExtractedRootMotion(segment.Duration);
-                    float rootMotionYawOffset = ResolveStageAttachedRootMotionYawOffset(resolved[actor], rootMotion,
-                        stageAttachedOneKeyPlayerLocomotion);
-                    float rootMotionFacingYawOffset = ResolveStageAttachedRootMotionFacingYawOffset(rootMotion,
-                        stageAttachedOneKeyPlayerLocomotion);
+                    float rootMotionYawOffset = inheritedAlignedPlayerLocomotion
+                        ? inheritedRootMotionYawOffset
+                        : ResolveStageAttachedRootMotionYawOffset(resolved[actor], rootMotion,
+                            stageAttachedOneKeyPlayerLocomotion);
+                    float rootMotionFacingYawOffset = inheritedAlignedPlayerLocomotion
+                        ? inheritedRootMotionFacingYawOffset
+                        : ResolveStageAttachedRootMotionFacingYawOffset(rootMotion,
+                            stageAttachedOneKeyPlayerLocomotion);
                     runtime.ActorRootMotionYawOffsets[actor.ActorTag] = rootMotionYawOffset;
                     runtime.ActorRootMotionFacingYawOffsets[actor.ActorTag] = rootMotionFacingYawOffset;
                     resolved[actor] = ApplyDialogueGestureRootMotion(resolved[actor],
@@ -5920,6 +6055,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                     previewActorAnimationStates.GetValueOrDefault(actor));
             }
             inheritedOrigins = runtime.EndActorOrigins;
+            precedingActiveRuntimes.Add(runtime);
         }
         ReprojectDialogueActivePathLookAtStates();
         ReprojectDialogueActivePathCameraStates();
@@ -11962,6 +12098,8 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
         previewActorTrackAssignments.TryGetValue(actor, out TrackMovePlaybackOption movementTrack);
         int movementKeyCount = movementTrack?.Model?.Keyframes?.Count ?? 0;
+        bool cachedAlignedPlayerLocomotion = activeDialogueSegmentRuntime?.AlignedPlayerRootMotionActors
+            .Contains(actor.ActorTag) == true;
         animationState.SetTimeline(gesture.StartingPose, gesture.Timeline, previewActorGesturePackageCache,
             playbackDuration ?? activeDialogueSegmentRuntime?.Segment.Duration, gesture,
             maskDialogueOverlayStaticBones: isDialogueConversationPreview,
@@ -11971,7 +12109,9 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             // of leaving each clip's absolute Root coordinates on the mesh.
             extractRootTranslation: ShouldExtractDialogueGestureRootTranslation(isDialogueConversationPreview,
                 movementKeyCount, isCacheEvaluation: false,
-                oneKeyTrackOwnsLocomotion: IsStageAttachedOneKeyPlayerLocomotion(actor, movementTrack)),
+                oneKeyTrackOwnsLocomotion: movementKeyCount == 1
+                                            && (IsStageAttachedOneKeyPlayerLocomotion(actor, movementTrack)
+                                                || cachedAlignedPlayerLocomotion)),
             startingPoseTimeOverride: startingPoseTimeOverride);
         UpdatePreviewActorSkinning(actor);
     }
