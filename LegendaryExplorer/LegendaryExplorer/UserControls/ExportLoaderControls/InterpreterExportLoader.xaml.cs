@@ -1914,7 +1914,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 .Select(name => name.Instanced)
                 .ToList();
             string toolTip = stageSpecificCameraNamesResolved
-                ? "Stage bones resolved from the BioStage in the matching non-localized PCC."
+                ? "Camera-list bones resolved from the BioStage in the matching non-localized PCC."
                 : stageSpecificCameraNamesResolutionMessage ?? "The matching BioStage bones could not be resolved.";
 
             foreach (UPropertyTreeViewEntry cameraNameNode in cameraNameNodes)
@@ -3413,7 +3413,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                             Value_ComboBox.SelectedIndex = stageBoneNames.FindIndex(name =>
                                 name.Equals(np.Value.Instanced, StringComparison.OrdinalIgnoreCase));
                             Value_ComboBox.ToolTip = stageSpecificCameraNamesResolved
-                                ? "Stage bones resolved from the BioStage in the matching non-localized PCC."
+                                ? "Camera-list bones resolved from the BioStage in the matching non-localized PCC."
                                 : stageSpecificCameraNamesResolutionMessage ??
                                   "The matching BioStage bones could not be resolved.";
                         }
@@ -3490,7 +3490,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     using (context)
                     {
                         var names = new List<NameReference> { new("None") };
-                        foreach (string boneName in context.StageNodeOrigins.Keys)
+                        foreach (string boneName in context.StageCameras.Keys)
                         {
                             NameReference name = NameReference.FromInstancedString(boneName);
                             if (!names.Contains(name))
@@ -3504,7 +3504,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                         if (!stageSpecificCameraNamesResolved)
                         {
                             stageSpecificCameraNamesResolutionMessage =
-                                $"No RefSkeleton bones were resolved from '{context.Stage.InstancedFullPath}'.";
+                                $"No camera-list entries matching RefSkeleton bones were resolved from '{context.Stage.InstancedFullPath}'.";
                         }
                     }
                 }
