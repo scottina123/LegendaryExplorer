@@ -41,28 +41,14 @@ namespace LegendaryExplorer.Audio
             }
 
             var extension = Path.GetExtension(sourcePath);
-            if (extension.Equals(".wav", StringComparison.OrdinalIgnoreCase))
-            {
-                if (!Path.GetFullPath(sourcePath).Equals(Path.GetFullPath(destinationPath), StringComparison.OrdinalIgnoreCase))
-                {
-                    File.Copy(sourcePath, destinationPath, true);
-                }
-                return;
-            }
-
-            if (!extension.Equals(".mp3", StringComparison.OrdinalIgnoreCase))
+            if (!extension.Equals(".wav", StringComparison.OrdinalIgnoreCase) &&
+                !extension.Equals(".mp3", StringComparison.OrdinalIgnoreCase))
             {
                 throw new NotSupportedException($"Unsupported audio input format '{extension}'. Only WAV and MP3 files are supported.");
             }
 
-            using var mp3Reader = new Mp3FileReader(sourcePath);
-            if (mp3Reader.WaveFormat.Encoding != WaveFormatEncoding.Pcm || mp3Reader.WaveFormat.BitsPerSample != 16)
-            {
-                throw new InvalidDataException(
-                    $"The MP3 decoder produced unsupported audio format '{mp3Reader.WaveFormat}'. Expected 16-bit PCM.");
-            }
-
-            WaveFileWriter.CreateWaveFile(destinationPath, mp3Reader);
+            using var reader = new AudioFileReader(sourcePath);
+            WaveFileWriter.CreateWaveFile16(destinationPath, reader);
         }
 
         public static float GetDurationSeconds(string filePath)

@@ -1386,6 +1386,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         private bool CanReplaceAudio(object obj)
         {
+            if (CurrentLoadedISACTEntry != null && HostingControl is SoundplorerWPF soundplorer)
+                return File.Exists(soundplorer.LoadedISBFilePath);
             if (CurrentLoadedExport == null) return false;
             if (CurrentLoadedExport.IsDefaultObject) return false;
             if (CurrentLoadedExport.ClassName == "WwiseStream")
@@ -1411,6 +1413,11 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         private async void ReplaceAudio(object obj)
         {
+            if (CurrentLoadedISACTEntry != null)
+            {
+                await ReplaceExternalISBSample();
+                return;
+            }
             if (CurrentLoadedExport == null) return;
             if (CurrentLoadedExport.ClassName == "WwiseStream")
             {
@@ -1426,6 +1433,137 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             {
                 ReplaceEmbeddedSoundNodeWave();
             }
+        }
+
+        private async Task ReplaceExternalISBSample()
+        {
+            if (CurrentLoadedISACTEntry == null || HostingControl is not SoundplorerWPF soundplorer ||
+                !File.Exists(soundplorer.LoadedISBFilePath))
+                return;
+
+            var audioDialog = new OpenFileDialog
+            {
+                Title = $"Replace {CurrentLoadedISACTEntry.TitleInfo.Value}",
+                Filter = AudioInputConverter.OpenFileDialogFilter,
+                CustomPlaces = AppDirectories.GameCustomPlaces
+            };
+            if (DirectoryMemory.ShowDialog(audioDialog, Window.GetWindow(this)) != true)
+                return;
+
+            string packagePath = null;
+            MessageBoxResult updatePackage = MessageBox.Show(
+                "A replacement changes compressed sizes and external ISB offsets. The matching BioSoundNodeWaveStreamingData should also be refreshed.\n\nSelect the package containing it now?",
+                "Refresh LE1 streaming metadata", MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
+            if (updatePackage == MessageBoxResult.Cancel)
+                return;
+            if (updatePackage == MessageBoxResult.Yes)
+            {
+                var packageDialog = new OpenFileDialog
+                {
+                    Title = "Select the package containing BioSoundNodeWaveStreamingData",
+                    Filter = "Unreal package (*.pcc;*.upk)|*.pcc;*.upk",
+                    CustomPlaces = AppDirectories.GameCustomPlaces
+                };
+                if (DirectoryMemory.ShowDialog(packageDialog, Window.GetWindow(this)) != true)
+                    return;
+                packagePath = packageDialog.FileName;
+            }
+
+            IntBankChunk sampleIndexChunk = CurrentLoadedISACTEntry.GetChunk("indx") as IntBankChunk;
+            if (sampleIndexChunk is null)
+            {
+                MessageBox.Show("The selected ISACT sample has no resource index.", "Cannot replace sample",
+                    MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
+
+            string normalizedWave = Path.Combine(Path.GetTempPath(), $"LEX_ISACTReplaceInput_{Guid.NewGuid():N}.wav");
+            try
+            {
+                AudioInputConverter.ConvertToPcmWave(audioDialog.FileName, normalizedWave);
+                using (var waveReader = new WaveFileReader(normalizedWave))
+                {
+                    if (waveReader.WaveFormat.Channels is not (1 or 2))
+                        throw new InvalidDataException("ISACT dialogue audio must be mono or stereo.");
+                }
+
+                string bankBuilderPath = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),
+                    "ISACT", "ISACT SDK", "Win", "Bin", "BankBuilder.exe");
+                if (!File.Exists(bankBuilderPath))
+                {
+                    var builderDialog = new OpenFileDialog
+                    {
+                        Title = "Select BankBuilder.exe",
+                        Filter = "BankBuilder.exe|BankBuilder.exe|Executable (*.exe)|*.exe"
+                    };
+                    if (DirectoryMemory.ShowDialog(builderDialog, Window.GetWindow(this)) != true)
+                        return;
+                    bankBuilderPath = builderDialog.FileName;
+                }
+
+                FreeAudioResources();
+                HostingControl.IsBusy = true;
+                HostingControl.BusyText = "Compiling and replacing ISACT sample";
+                var result = await ISACTDialogueBankBuilder.ReplaceFinalBankSampleFromWave(
+                    soundplorer.LoadedISBFilePath, sampleIndexChunk.Value, normalizedWave,
+                    soundplorer.LoadedISBFilePath, bankBuilderPath);
+
+                if (packagePath is not null)
+                    await Task.Run(() => RefreshExternalISBMetadata(packagePath, result.ISBPath));
+
+                soundplorer.ReloadLoadedISB();
+                string packageMessage = packagePath is null
+                    ? "\n\nThe ISB was updated, but the package metadata was not. Refresh its BSNWSD before testing in game."
+                    : "\n\nThe matching BSNWSD metadata was also refreshed.";
+                MessageBox.Show($"Replaced sample {result.SampleIndex}: {result.SampleName}{packageMessage}",
+                    "ISACT sample replaced", MessageBoxButton.OK,
+                    packagePath is null ? MessageBoxImage.Warning : MessageBoxImage.Information);
+            }
+            catch (Exception exception)
+            {
+                MessageBox.Show(exception.Message, "ISACT replacement failed", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+            finally
+            {
+                HostingControl.IsBusy = false;
+                if (File.Exists(normalizedWave)) File.Delete(normalizedWave);
+            }
+        }
+
+        private static void RefreshExternalISBMetadata(string packagePath, string isbPath)
+        {
+            string isbTitle;
+            using (var stream = File.OpenRead(isbPath))
+            {
+                var bank = new ISACTBank(stream);
+                isbTitle = bank.BankChunks.OfType<TitleBankChunk>().FirstOrDefault()?.Value
+                    ?? throw new InvalidDataException("The updated ISB has no bank title.");
+            }
+
+            using IMEPackage package = MEPackageHandler.OpenMEPackage(packagePath, forceLoadFromDisk: true);
+            if (package.Game != MEGame.LE1)
+                throw new InvalidDataException("The streaming-data package must be an LE1 package.");
+            var matches = package.Exports.Where(export => export.ClassName == "BioSoundNodeWaveStreamingData")
+                .Where(export =>
+                {
+                    try
+                    {
+                        string embeddedTitle = export.GetBinaryData<BioSoundNodeWaveStreamingData>().BankPair.ISBBank
+                            .BankChunks.OfType<TitleBankChunk>().FirstOrDefault()?.Value;
+                        return embeddedTitle?.Equals(isbTitle, StringComparison.OrdinalIgnoreCase) == true;
+                    }
+                    catch
+                    {
+                        return false;
+                    }
+                }).ToList();
+            if (matches.Count != 1)
+                throw new InvalidDataException(
+                    $"Expected exactly one BSNWSD for '{isbTitle}' in the selected package, but found {matches.Count}.");
+
+            ISACTHelper.RefreshStreamingDataSampleBank(matches[0], isbPath);
+            package.Save();
         }
 
         private void ReplaceEmbeddedSoundNodeWave()

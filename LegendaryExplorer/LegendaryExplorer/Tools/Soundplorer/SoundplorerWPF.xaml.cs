@@ -44,6 +44,7 @@ namespace LegendaryExplorer.Tools.Soundplorer
     public partial class SoundplorerWPF : WPFBase, IBusyUIHost, IRecents
     {
         private string LoadedISBFile;
+        public string LoadedISBFilePath => LoadedISBFile;
         private string LoadedAFCFile;
         BackgroundWorker backgroundScanner;
         public ObservableCollectionExtended<object> BindedItemsList { get; set; } = new();
@@ -939,6 +940,18 @@ namespace LegendaryExplorer.Tools.Soundplorer
         {
             SetWwisePathDialog swpd = new ();
             swpd.ShowDialog();
+        }
+
+        public void ReloadLoadedISB() => LoadISB();
+
+        private void BuildISACTBanks_Clicked(object sender, RoutedEventArgs e)
+        {
+            new ISACTBankBuilderDialog(ISACTBankBuildMode.Build, this).ShowDialog();
+        }
+
+        private void RebuildISACTBanks_Clicked(object sender, RoutedEventArgs e)
+        {
+            new ISACTBankBuilderDialog(ISACTBankBuildMode.Rebuild, this).ShowDialog();
         }
 
         private void ExtractAllAudio_Clicked(object sender, RoutedEventArgs e)
