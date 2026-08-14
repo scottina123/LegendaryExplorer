@@ -5802,6 +5802,21 @@ namespace LegendaryExplorer.DialogueEditor
             }
         }
 
+        private void PreviewDialogueConversationFromStart_Click(object sender, RoutedEventArgs e)
+        {
+            DStart selectedStart = SelectedObjects.OfType<DStart>().FirstOrDefault();
+            if (SelectedConv is null || selectedStart is null
+                                     || selectedStart.StartNumber < 0
+                                     || selectedStart.StartNumber >= SelectedConv.EntryList.Count)
+            {
+                MessageBox.Show(this, "The selected start node does not link to a valid dialogue entry.",
+                    "Conversation Preview Unavailable", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            OpenDialogueConversationPreview(SelectedConv.EntryList[selectedStart.StartNumber]);
+        }
+
         private void OpenDialogueConversationPreview(DialogueNodeExtended startNode)
         {
             if (SelectedConv is null || startNode is null)

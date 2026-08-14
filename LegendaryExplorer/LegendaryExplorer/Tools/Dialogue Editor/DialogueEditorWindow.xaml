@@ -31,6 +31,11 @@
         <ContextMenu x:Key="startnodeContextMenu" Closed="ContextMenu_Closed">
             <MenuItem Header="Add new start node" Command="{Binding StartAddCommand}" CommandParameter="Add" ToolTip="Create a new start node"/>
             <MenuItem Header="Edit" Command="{Binding StartEditCommand}" CommandParameter="Edit" ToolTip="Edit which dialogue entry this node connects to."/>
+            <Separator />
+            <MenuItem Header="Preview Conversation from This Start in 3D..."
+                      Click="PreviewDialogueConversationFromStart_Click"
+                      ToolTip="Open the stateful multi-node conversation preview beginning at this start node"/>
+            <Separator />
             <MenuItem Header="Remove start node" Command="{Binding StartDeleteCommand}" ToolTip="Delete this start node"/>
         </ContextMenu>
         <ContextMenu x:Key="graphBackgroundContextMenu" Closed="ContextMenu_Closed">
