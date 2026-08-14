@@ -1107,6 +1107,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     private IMEPackage dialoguePreviewWorkingPackage;
     private IMEPackage dialoguePreviewSourcePackage;
     private PackageEditorWindow dialoguePackageEditor;
+    private readonly List<IMEPackage> dialoguePackagesAwaitingTreeReplacement = [];
     private int dialogueWorkingCommittedNameCount;
     private int dialogueWorkingCommittedImportCount;
     private int dialogueWorkingCommittedExportCount;
@@ -1489,6 +1490,11 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             dialoguePackageEditor.Close();
             dialoguePackageEditor = null;
         }
+        foreach (IMEPackage pendingPackage in dialoguePackagesAwaitingTreeReplacement)
+        {
+            pendingPackage.Dispose();
+        }
+        dialoguePackagesAwaitingTreeReplacement.Clear();
         workingPackage?.Dispose();
         dialoguePreviewWorkingPackage = null;
         dialoguePreviewSourcePackage = null;
@@ -1677,9 +1683,11 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         }
 
         DialogueWorkingMemoryUndoButton.IsEnabled = !applyingDialogueWorkingMemoryHistory
+                                                     && dialoguePackageEditor?.IsBusy != true
                                                      && (dialogueWorkingMemoryHistoryIndex > 0
                                                          || dialogueWorkingMemoryCapturePending);
         DialogueWorkingMemoryRedoButton.IsEnabled = !applyingDialogueWorkingMemoryHistory
+                                                     && dialoguePackageEditor?.IsBusy != true
                                                      && !dialogueWorkingMemoryCapturePending
                                                      && dialogueWorkingMemoryHistoryIndex >= 0
                                                      && dialogueWorkingMemoryHistoryIndex + 1
@@ -1868,8 +1876,8 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             restoredPackage.IsMemoryPackage = true;
             restoredPackage.WeakUsers.Add(this);
             dialoguePreviewWorkingPackage = restoredPackage;
-            dialoguePackageEditor.LoadPackage(restoredPackage, packageEditorSelection);
-            dialoguePackageEditor.SetEmbeddedTreeScope([]);
+            dialoguePackageEditor.LoadPackage(restoredPackage, packageEditorSelection,
+                preserveExistingTreeUntilLoaded: true);
 
             dialogueRuntimeCache.Clear();
             dialogueSceneShopRuntimeCache.Clear();
@@ -1877,7 +1885,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             dialogueResolvedExportCache.Clear();
             pendingDialogueWorkingPackageNodeRefreshes.Clear();
             BuildDialogueSceneShopChoices();
-            oldPackage.Dispose();
+            dialoguePackagesAwaitingTreeReplacement.Add(oldPackage);
             return Task.FromResult(true);
         }
         catch (Exception exception) when (exception is IOException or InvalidDataException
@@ -1886,8 +1894,8 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             restoredPackage.WeakUsers.Remove(this);
             oldPackage.WeakUsers.Add(this);
             dialoguePreviewWorkingPackage = oldPackage;
-            dialoguePackageEditor.LoadPackage(oldPackage, packageEditorSelection);
-            dialoguePackageEditor.SetEmbeddedTreeScope([]);
+            dialoguePackageEditor.LoadPackage(oldPackage, packageEditorSelection,
+                preserveExistingTreeUntilLoaded: true);
             restoredPackage.Dispose();
             MessageBox.Show(Window.GetWindow(this),
                 $"The requested history state could not restore its package structure:\n{exception.Message}",
@@ -2067,7 +2075,13 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             && ReferenceEquals(sender, dialoguePackageEditor)
             && dialoguePackageEditor.IsBusy == false)
         {
+            foreach (IMEPackage replacedPackage in dialoguePackagesAwaitingTreeReplacement)
+            {
+                replacedPackage.Dispose();
+            }
+            dialoguePackagesAwaitingTreeReplacement.Clear();
             NavigateDialoguePackageEditorToActiveNode();
+            UpdateDialogueWorkingMemoryHistoryButtons();
         }
     }
 
@@ -2106,6 +2120,12 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             .SelectMany(root => root.FlattenTree())
             .Where(node => node.Entry is ExportEntry export && export.UIndex == scopedInterpDataUIndex)
             .ToList();
+        if (scopedRoots.Count == 0)
+        {
+            // Keep the currently displayed embedded tree while Package Editor applies batched
+            // updates or constructs a replacement package tree in the background.
+            return;
+        }
         HashSet<int> scopedUIndexes = scopedRoots
             .SelectMany(root => root.FlattenTree())
             .Select(node => node.UIndex)

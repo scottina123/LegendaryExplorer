@@ -5850,13 +5850,16 @@ namespace LegendaryExplorer.Tools.PackageEditor
         /// <param name="package"></param>
         /// <param name="goToIndex"></param>
         /// <param name="goToEntry"></param>
-        public void LoadPackage(IMEPackage package, int goToIndex = 0, string goToEntry = null)
+        /// <param name="preserveExistingTreeUntilLoaded"></param>
+        public void LoadPackage(IMEPackage package, int goToIndex = 0, string goToEntry = null,
+            bool preserveExistingTreeUntilLoaded = false)
         {
             // Todo: Maybe prompt if there are pending changes to the current package?
             var packageFilePath = package.FilePath;
             try
             {
-                preloadPackage(Path.GetFileName(packageFilePath), 0); // Package is already loaded.
+                preloadPackage(Path.GetFileName(packageFilePath), 0,
+                    preserveExistingTreeUntilLoaded); // Package is already loaded.
                 RegisterPackage(package);
                 _selectedItem = null; // We change the backing data so we don't fire off a tree event since it checks if Pcc is null.
                 if (goToIndex == 0 && !string.IsNullOrWhiteSpace(goToEntry))
@@ -5949,7 +5952,8 @@ namespace LegendaryExplorer.Tools.PackageEditor
         /// </summary>
         /// <param name="loadingName"></param>
         /// <param name="loadingSize"></param>
-        private void preloadPackage(string loadingName, long loadingSize)
+        private void preloadPackage(string loadingName, long loadingSize,
+            bool preserveExistingTreeUntilLoaded = false)
         {
             CancelEntrySearch();
             CancelStringRefSearch();
@@ -5969,7 +5973,10 @@ namespace LegendaryExplorer.Tools.PackageEditor
             Intro_Tab.Visibility = Visibility.Visible;
             Intro_Tab.IsSelected = true;
 
-            ResetTreeView();
+            if (!preserveExistingTreeUntilLoaded)
+            {
+                ResetTreeView();
+            }
             NamesList.ClearEx();
             SelectedClassSearch = null;
             BackwardsEntries.ClearEx();
