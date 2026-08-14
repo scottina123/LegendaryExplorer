@@ -46,6 +46,8 @@ using LegendaryExplorerCore.Unreal.ObjectInfo;
 using LegendaryExplorerCore.UnrealScript;
 using static LegendaryExplorer.UserControls.ExportLoaderControls.EntryMetadataExportLoader;
 using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
+using StageBoneOriginResolver = LegendaryExplorer.Tools.InterpEditor.StageBoneOriginResolver;
+using StageConversationContext = LegendaryExplorer.Tools.InterpEditor.StageConversationContext;
 
 namespace LegendaryExplorer.UserControls.ExportLoaderControls
 {
@@ -184,6 +186,10 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         private TextBox ObjectValueDisplayTextBox => (TextBox)FindName("Value_ObjectDisplay_TextBox");
         private Button ObjectValuePickButton => (Button)FindName("Value_ObjectPick_Button");
         private List<object> CurrentObjectPropertyChoices { get; set; } = [];
+        private bool stageSpecificCameraNamesResolved;
+        private bool stageSpecificCameraNamesResolutionAttempted;
+        private IReadOnlyList<NameReference> stageSpecificCameraNames = [];
+        private string stageSpecificCameraNamesResolutionMessage;
 
         /// <summary>
         /// Reference to the package that the property we copied from is from
@@ -1699,6 +1705,10 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             pendingPropertyDataReload?.Abort();
             pendingPropertyDataReload = null;
             CancelPendingPropertyTreeRestores();
+            stageSpecificCameraNamesResolved = false;
+            stageSpecificCameraNamesResolutionAttempted = false;
+            stageSpecificCameraNames = [];
+            stageSpecificCameraNamesResolutionMessage = null;
             EditorSetElements.ForEach(x => x.Visibility = Visibility.Collapsed);
             Set_Button.Visibility = Visibility.Collapsed;
             //EditorSet_Separator.Visibility = Visibility.Collapsed;
@@ -1781,6 +1791,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                         GenerateUPropertyTreeForProperty(prop, topLevelTree, CurrentLoadedExport, UseAssetDatabaseOwnerFriendlyNames, PropertyChangedHandler: OnUPropertyTreeViewEntry_PropertyChanged, PropertyUpdatedHandler: OnUPropertyTreeViewEntry_PropertyUpdated);
                     }
                     ApplyBioEvtSysTrackPropActionChoices(topLevelTree);
+                    ApplySwitchCameraStageBoneChoices(topLevelTree);
                     MergeLinkedTrackRows(topLevelTree);
                     RestoreExpandedNodePaths(topLevelTree);
                 }
@@ -1880,6 +1891,36 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 {
                     clientEffectNode.ShowClientEffectPicker = true;
                 }
+            }
+        }
+
+        private void ApplySwitchCameraStageBoneChoices(UPropertyTreeViewEntry topLevelTree)
+        {
+            if (CurrentLoadedExport?.IsA("BioEvtSysTrackSwitchCamera") != true)
+            {
+                return;
+            }
+
+            List<UPropertyTreeViewEntry> cameraNameNodes = topLevelTree.FlattenTree()
+                .Where(node => node.Property is NameProperty { Name.Name: "nmStageSpecificCam" })
+                .ToList();
+            if (cameraNameNodes.Count == 0)
+            {
+                return;
+            }
+
+            IReadOnlyList<string> stageBoneNames = GetStageSpecificCameraNames(
+                    (NameProperty)cameraNameNodes[0].Property)
+                .Select(name => name.Instanced)
+                .ToList();
+            string toolTip = stageSpecificCameraNamesResolved
+                ? "Stage bones resolved from the BioStage in the matching non-localized PCC."
+                : stageSpecificCameraNamesResolutionMessage ?? "The matching BioStage bones could not be resolved.";
+
+            foreach (UPropertyTreeViewEntry cameraNameNode in cameraNameNodes)
+            {
+                cameraNameNode.InlineStageBoneNameChoices = stageBoneNames;
+                cameraNameNode.InlineStageBoneNameToolTip = toolTip;
             }
         }
 
@@ -3289,6 +3330,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         {
             UpdateEditorSelection(newSelectedItem);
             SelectedItem = newSelectedItem;
+            Value_ComboBox.ToolTip = "Value for this property";
             //list of visible elements for editing
             var SupportedEditorSetElements = new List<FrameworkElement>();
             if (newSelectedItem?.Property != null)
@@ -3361,23 +3403,41 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                         SupportedEditorSetElements.Add(NameIndex_TextBox);
                         break;
                     case NameProperty np:
-                        TextSearch.SetTextPath(Value_ComboBox, "Name");
-                        Value_ComboBox.IsEditable = true;
-
-                        if (ParentNameList == null)
+                        if (IsStageSpecificCameraNameProperty(np))
                         {
-                            Value_ComboBox.ItemsSource = Pcc.Names.Select((nr, i) => new IndexedName(i, nr)).ToList();
+                            List<string> stageBoneNames = GetStageSpecificCameraNames(np)
+                                .Select(name => name.Instanced)
+                                .ToList();
+                            Value_ComboBox.IsEditable = false;
+                            Value_ComboBox.ItemsSource = stageBoneNames;
+                            Value_ComboBox.SelectedIndex = stageBoneNames.FindIndex(name =>
+                                name.Equals(np.Value.Instanced, StringComparison.OrdinalIgnoreCase));
+                            Value_ComboBox.ToolTip = stageSpecificCameraNamesResolved
+                                ? "Stage bones resolved from the BioStage in the matching non-localized PCC."
+                                : stageSpecificCameraNamesResolutionMessage ??
+                                  "The matching BioStage bones could not be resolved.";
                         }
                         else
                         {
-                            Value_ComboBox.ItemsSource = ParentNameList;
+                            TextSearch.SetTextPath(Value_ComboBox, "Name");
+                            Value_ComboBox.IsEditable = true;
+
+                            if (ParentNameList == null)
+                            {
+                                Value_ComboBox.ItemsSource = Pcc.Names.Select((nr, i) => new IndexedName(i, nr)).ToList();
+                            }
+                            else
+                            {
+                                Value_ComboBox.ItemsSource = ParentNameList;
+                            }
+                            Value_ComboBox.SelectedIndex = Pcc.findName(np.Value.Name);
+                            NameIndex_TextBox.Text = np.Value.Number.ToString();
+
+                            SupportedEditorSetElements.Add(NameIndexPrefix_TextBlock);
+                            SupportedEditorSetElements.Add(NameIndex_TextBox);
                         }
-                        Value_ComboBox.SelectedIndex = Pcc.findName(np.Value.Name);
-                        NameIndex_TextBox.Text = np.Value.Number.ToString();
 
                         SupportedEditorSetElements.Add(Value_ComboBox);
-                        SupportedEditorSetElements.Add(NameIndexPrefix_TextBlock);
-                        SupportedEditorSetElements.Add(NameIndex_TextBox);
                         break;
                     case EnumProperty ep:
                         {
@@ -3412,6 +3472,57 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             {
                 fe.Visibility = SupportedEditorSetElements.Contains(fe) ? Visibility.Visible : Visibility.Collapsed;
             }
+        }
+
+        private bool IsStageSpecificCameraNameProperty(NameProperty property) =>
+            CurrentLoadedExport?.IsA("BioEvtSysTrackSwitchCamera") == true
+            && property.Name == "nmStageSpecificCam";
+
+        private IReadOnlyList<NameReference> GetStageSpecificCameraNames(NameProperty currentProperty)
+        {
+            if (!stageSpecificCameraNamesResolutionAttempted)
+            {
+                stageSpecificCameraNamesResolutionAttempted = true;
+                if (StageBoneOriginResolver.TrySelectContext(Window.GetWindow(this), Pcc, CurrentLoadedExport, null,
+                        out StageConversationContext context, out stageSpecificCameraNamesResolutionMessage,
+                        "the switch-camera track"))
+                {
+                    using (context)
+                    {
+                        var names = new List<NameReference> { new("None") };
+                        foreach (string boneName in context.StageNodeOrigins.Keys)
+                        {
+                            NameReference name = NameReference.FromInstancedString(boneName);
+                            if (!names.Contains(name))
+                            {
+                                names.Add(name);
+                            }
+                        }
+
+                        stageSpecificCameraNames = names;
+                        stageSpecificCameraNamesResolved = names.Count > 1;
+                        if (!stageSpecificCameraNamesResolved)
+                        {
+                            stageSpecificCameraNamesResolutionMessage =
+                                $"No RefSkeleton bones were resolved from '{context.Stage.InstancedFullPath}'.";
+                        }
+                    }
+                }
+            }
+
+            var choices = stageSpecificCameraNames.ToList();
+            if (!stageSpecificCameraNamesResolved)
+            {
+                if (choices.Count == 0)
+                {
+                    choices.Add(new NameReference("None"));
+                }
+                if (!choices.Contains(currentProperty.Value))
+                {
+                    choices.Add(currentProperty.Value);
+                }
+            }
+            return choices;
         }
 
         private void UpdateEditorSelection(UPropertyTreeViewEntry selectedItem)
@@ -4263,6 +4374,28 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                         break;
                     case NameProperty namep:
                         {
+                            if (IsStageSpecificCameraNameProperty(namep))
+                            {
+                                if (Value_ComboBox.SelectedItem is not string selectedBoneName)
+                                {
+                                    break;
+                                }
+
+                                NameReference selectedBone = NameReference.FromInstancedString(selectedBoneName);
+                                if (Pcc.findName(selectedBone.Name) == -1)
+                                {
+                                    Pcc.FindNameOrAdd(selectedBone.Name);
+                                    Dispatcher.Invoke(new Action(() => { }), DispatcherPriority.ContextIdle, null);
+                                }
+
+                                if (namep.Value != selectedBone)
+                                {
+                                    namep.Value = selectedBone;
+                                    updated = true;
+                                }
+                                break;
+                            }
+
                             //get string
                             string input = Value_ComboBox.Text;
                             var index = Pcc.findName(input);
@@ -6450,7 +6583,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             ? parameterArray.Name.Name
             : null;
         public bool ShowMaterialParameterNamePicker => MaterialParameterArrayName is not null;
-        public bool ShowStandardNamePicker => !ShowMaterialParameterNamePicker;
+        public bool ShowStageBoneNamePicker => InlineStageBoneNameChoices is { Count: > 0 };
+        public bool ShowStandardNamePicker => !ShowMaterialParameterNamePicker && !ShowStageBoneNamePicker;
         public bool ShowEnumInlineEditor => IsEnumProperty;
         public bool ShowParsedValue => Property is not ObjectProperty && !string.IsNullOrWhiteSpace(ParsedValue);
 
@@ -6531,6 +6665,27 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         public IReadOnlyList<IndexedName> InlineNameChoicesOverride { get; set; }
         public IReadOnlyList<IndexedName> InlineNameChoices => InlineNameChoicesOverride ?? (_inlineNameChoices ??= AttachedExport?.FileRef?.Names?.Select((nr, i) => new IndexedName(i, nr)).ToList());
 
+        private IReadOnlyList<string> _inlineStageBoneNameChoices;
+        public IReadOnlyList<string> InlineStageBoneNameChoices
+        {
+            get => _inlineStageBoneNameChoices;
+            set
+            {
+                if (SetProperty(ref _inlineStageBoneNameChoices, value))
+                {
+                    OnPropertyChanged(nameof(ShowStageBoneNamePicker));
+                    OnPropertyChanged(nameof(ShowStandardNamePicker));
+                }
+            }
+        }
+
+        private string _inlineStageBoneNameToolTip;
+        public string InlineStageBoneNameToolTip
+        {
+            get => _inlineStageBoneNameToolTip;
+            set => SetProperty(ref _inlineStageBoneNameToolTip, value);
+        }
+
         private IReadOnlyList<NameReference> _inlineEnumChoices;
         public IReadOnlyList<NameReference> InlineEnumChoices => _inlineEnumChoices ??= Property is EnumProperty enumProperty && AttachedExport is not null
             ? GlobalUnrealObjectInfo.GetEnumValues(AttachedExport.Game, enumProperty.EnumType, true)
@@ -6599,6 +6754,23 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             set => SetProperty(ref _inlineNameIndexValue, value);
         }
 
+        private string _inlineStageBoneNameValue;
+        public string InlineStageBoneNameValue
+        {
+            get => _inlineStageBoneNameValue ?? (Property as NameProperty)?.Value.Instanced ?? "None";
+            set
+            {
+                if (!SetProperty(ref _inlineStageBoneNameValue, value) || string.IsNullOrWhiteSpace(value))
+                {
+                    return;
+                }
+
+                NameReference name = NameReference.FromInstancedString(value);
+                InlineNameValue = name.Name;
+                InlineNameIndexValue = name.Number.ToString(CultureInfo.InvariantCulture);
+            }
+        }
+
         private NameReference? _inlineEnumValue;
         public NameReference InlineEnumValue
         {
@@ -6640,8 +6812,10 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
             _inlineNameValue = nameProperty.Value.Name;
             _inlineNameIndexValue = nameProperty.Value.Number.ToString();
+            _inlineStageBoneNameValue = nameProperty.Value.Instanced;
             OnPropertyChanged(nameof(InlineNameValue));
             OnPropertyChanged(nameof(InlineNameIndexValue));
+            OnPropertyChanged(nameof(InlineStageBoneNameValue));
         }
 
         public bool TryGetInlineIntValue(out int value)

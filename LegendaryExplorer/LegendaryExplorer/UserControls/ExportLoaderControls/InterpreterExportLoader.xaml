@@ -314,6 +314,25 @@
                                                     </ItemsPanelTemplate>
                                                 </ComboBox.ItemsPanel>
                                             </ComboBox>
+                                            <ComboBox MinWidth="180"
+                                                      Visibility="{Binding ShowStageBoneNamePicker, Converter={StaticResource BoolToVisibilityConverter}}"
+                                                      IsEditable="False"
+                                                      IsTextSearchEnabled="True"
+                                                      ScrollViewer.CanContentScroll="True"
+                                                      VirtualizingPanel.IsVirtualizing="True"
+                                                      VirtualizingPanel.VirtualizationMode="Recycling"
+                                                      ItemsSource="{Binding InlineStageBoneNameChoices}"
+                                                      SelectedItem="{Binding InlineStageBoneNameValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                      ToolTip="{Binding InlineStageBoneNameToolTip}"
+                                                      Tag="{Binding}"
+                                                      KeyDown="InlineEditor_KeyDown">
+                                                <ComboBox.ItemsPanel>
+                                                    <ItemsPanelTemplate>
+                                                        <VirtualizingStackPanel />
+                                                    </ItemsPanelTemplate>
+                                                </ComboBox.ItemsPanel>
+                                            </ComboBox>
+                                            <Button Margin="5,0,0,0" Padding="6,0" Content="&#x2713;" Tag="{Binding}" Click="InlineEditorConfirmButton_Click" Visibility="{Binding ShowStageBoneNamePicker, Converter={StaticResource BoolToVisibilityConverter}}"/>
                                             <Button MinWidth="140"
                                                     Padding="8,0"
                                                     HorizontalContentAlignment="Left"
