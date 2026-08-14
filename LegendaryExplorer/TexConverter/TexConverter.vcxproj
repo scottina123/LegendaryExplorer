@@ -181,6 +181,15 @@
       <PrecompiledHeaderFile Condition="'$(Configuration)|$(Platform)'=='WinRelease|x64'">DirectXTex/DirectXTexP.h</PrecompiledHeaderFile>
       <PrecompiledHeaderFile Condition="'$(Configuration)|$(Platform)'=='WinAzureRelease|x64'">DirectXTex/DirectXTexP.h</PrecompiledHeaderFile>
     </ClCompile>
+    <ClCompile Include="BcEncoder.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <WarningLevel>Level4</WarningLevel>
+    </ClCompile>
+    <ClCompile Include="bc7enc\bc7enc.c">
+      <CompileAs>CompileAsC</CompileAs>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <WarningLevel>Level4</WarningLevel>
+    </ClCompile>
     <CLInclude Include="DirectXTex\BC.h" />
     <ClCompile Include="DirectXTex\BC.cpp" />
     <ClCompile Include="DirectXTex\BC4BC5.cpp" />
@@ -214,6 +223,10 @@
     </ClCompile>
     <ClCompile Include="DirectXTex\DirectXTexWIC.cpp" />
     <ClInclude Include="TexConverter.h" />
+    <ClInclude Include="BcEncoder.h" />
+    <ClInclude Include="bc7enc\bc7enc.h" />
+    <ClInclude Include="bc7enc\rgbcx.h" />
+    <ClInclude Include="bc7enc\rgbcx_table4.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="DirectXTex\Shaders\BC6HEncode.hlsl">
@@ -225,6 +238,7 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="DirectXTex\Shaders\CompileShaders.cmd" />
+    <None Include="bc7enc\README_LEX.md" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets" />

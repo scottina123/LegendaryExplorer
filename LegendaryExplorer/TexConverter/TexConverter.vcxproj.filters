@@ -63,6 +63,10 @@
     </ClCompile>
     <ClCompile Include="DLLMain.cpp" />
     <ClCompile Include="TexConverter.cpp" />
+    <ClCompile Include="BcEncoder.cpp" />
+    <ClCompile Include="bc7enc\bc7enc.c">
+      <Filter>bc7enc</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <CLInclude Include="DirectXTex\BC.h">
@@ -90,6 +94,16 @@
       <Filter>DirectXTex</Filter>
     </CLInclude>
     <ClInclude Include="TexConverter.h" />
+    <ClInclude Include="BcEncoder.h" />
+    <ClInclude Include="bc7enc\bc7enc.h">
+      <Filter>bc7enc</Filter>
+    </ClInclude>
+    <ClInclude Include="bc7enc\rgbcx.h">
+      <Filter>bc7enc</Filter>
+    </ClInclude>
+    <ClInclude Include="bc7enc\rgbcx_table4.h">
+      <Filter>bc7enc</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="DirectXTex\Shaders\BC6HEncode.hlsl">
@@ -101,6 +115,9 @@
     <None Include="DirectXTex\Shaders\CompileShaders.cmd">
       <Filter>DirectXTex\Shaders</Filter>
     </None>
+    <None Include="bc7enc\README_LEX.md">
+      <Filter>bc7enc</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="DirectXTex">
@@ -108,6 +125,9 @@
     </Filter>
     <Filter Include="DirectXTex\Shaders">
       <UniqueIdentifier>{f106ecea-0489-489c-891f-75029e9f9ee1}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="bc7enc">
+      <UniqueIdentifier>{C70DD884-6C91-4597-B4CF-0A5CC8F5DCE7}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
 </Project>

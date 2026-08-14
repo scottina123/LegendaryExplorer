@@ -1,6 +1,7 @@
 #include "DirectXTex/DirectXTexP.h"
 
 #include "TexConverter.h"
+#include "BcEncoder.h"
 
 #include "DirectXTex/DirectXTex.h"
 #include <locale>
@@ -52,6 +53,7 @@ const char* FindExtension(const char* filename) {
 
 HRESULT Initialize() {
 	HRESULT hr = S_OK;
+	InitializeBcEncoder();
 
 	hr = D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, 0, nullptr, 0, D3D11_SDK_VERSION, &D3DDevice, nullptr, nullptr);
 
@@ -111,9 +113,14 @@ HRESULT ConvertTexture(const TextureBuffer* inputBuffer, TextureBuffer* outputBu
 		if (DirectX::IsCompressed(outputBuffer->Format)) {
 			// Compression
 
-			if (outputBuffer->Format == DXGI_FORMAT_BC7_UNORM
-				|| outputBuffer->Format == DXGI_FORMAT_BC7_UNORM_SRGB
-				|| outputBuffer->Format == DXGI_FORMAT_BC6H_SF16
+			if (IsBcEncoderFormat(outputBuffer->Format)) {
+				hr = CompressWithBcEncoder(sourceImage, outputBuffer->Format, *outputBuffer->_ScratchImage);
+				if (hr == S_FALSE) {
+					// rgbcx intentionally does not support BC1 punch-through alpha.
+					hr = DirectX::Compress(sourceImage, outputBuffer->Format, DirectX::TEX_COMPRESS_FLAGS::TEX_COMPRESS_PARALLEL, 1.0f, *outputBuffer->_ScratchImage);
+				}
+			}
+			else if (outputBuffer->Format == DXGI_FORMAT_BC6H_SF16
 				|| outputBuffer->Format == DXGI_FORMAT_BC6H_UF16) {
 
 				hr = DirectX::Compress(D3DDevice, sourceImage, outputBuffer->Format, DirectX::TEX_COMPRESS_FLAGS::TEX_COMPRESS_DEFAULT, 1.0f, *outputBuffer->_ScratchImage);
