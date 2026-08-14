@@ -32,6 +32,12 @@ public enum StaticLightingBakeBackend
     NativeCpp
 }
 
+public enum StaticLightingTextureFormat
+{
+    DXT1,
+    ARGB
+}
+
 public readonly record struct StaticLightingBuildProgress(
     string Mode,
     string Phase,
@@ -90,6 +96,7 @@ public sealed class StaticLightingGenerationSettings
     public float DefaultLightSourceRadius { get; set; } = 16f;
     public float DirectionalSourceAngleDegrees { get; set; } = 0.5f;
     public string TextureCacheName { get; set; } = "";
+    public StaticLightingTextureFormat TextureFormat { get; set; } = StaticLightingTextureFormat.DXT1;
     public int WorkerThreads { get; set; }
     public int WorkTileSize { get; set; } = 16;
     /// <summary>The compute backend only; extraction, Unreal serialization, and package writes remain managed.</summary>
@@ -105,6 +112,8 @@ public sealed class StaticLightingGenerationSettings
             throw new ArgumentOutOfRangeException(nameof(MappingMode));
         if (!Enum.IsDefined(Backend))
             throw new ArgumentOutOfRangeException(nameof(Backend));
+        if (!Enum.IsDefined(TextureFormat))
+            throw new ArgumentOutOfRangeException(nameof(TextureFormat));
         if (TextureResolution is < 64 or > StaticLightingBaker.MaximumActorTextureResolution ||
             !BitOperations.IsPow2((uint)TextureResolution))
             throw new ArgumentOutOfRangeException(nameof(TextureResolution),

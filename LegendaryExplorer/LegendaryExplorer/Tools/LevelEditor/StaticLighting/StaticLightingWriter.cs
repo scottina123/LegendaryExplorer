@@ -89,7 +89,7 @@ public static class StaticLightingWriter
                     {
                         long lightMapStart = Stopwatch.GetTimestamp();
                         InstallTextureLightMapWithCacheGuid(componentBake, textureBake, cacheName, cachePath, cacheStream, cacheGuid,
-                            streamingTextures, ref lightMapTextures);
+                            settings.TextureFormat, streamingTextures, ref lightMapTextures);
                         lightMap2DSerializationTicks += Stopwatch.GetTimestamp() - lightMapStart;
                     }
                     else if (componentBake.Vertex is { } vertexBake)
@@ -285,6 +285,7 @@ public static class StaticLightingWriter
 
     private static void InstallTextureLightMap(StaticLightingComponentBake componentBake,
         StaticLightingTextureBake textureBake, string cacheName, string cachePath, Stream cacheStream,
+        StaticLightingTextureFormat textureFormat,
         List<(ExportEntry Texture, StaticLightingMeshTarget Target, int Resolution)> streamingTextures,
         ref int lightMapTextureCount)
     {
@@ -297,11 +298,12 @@ public static class StaticLightingWriter
             cacheStream.Position = originalPosition;
         }
         InstallTextureLightMapWithCacheGuid(componentBake, textureBake, cacheName, cachePath, cacheStream,
-            cacheGuid, streamingTextures, ref lightMapTextureCount);
+            cacheGuid, textureFormat, streamingTextures, ref lightMapTextureCount);
     }
 
     private static void InstallTextureLightMapWithCacheGuid(StaticLightingComponentBake componentBake,
         StaticLightingTextureBake textureBake, string cacheName, string cachePath, Stream cacheStream, Guid? cacheGuid,
+        StaticLightingTextureFormat textureFormat,
         List<(ExportEntry Texture, StaticLightingMeshTarget Target, int Resolution)> streamingTextures,
         ref int lightMapTextureCount)
     {
@@ -312,6 +314,12 @@ public static class StaticLightingWriter
         if (textureBake.CoefficientImages.Count != expectedCoefficientCount ||
             textureBake.ScaleVectors.Count != expectedCoefficientCount)
             throw new InvalidDataException($"Unexpected coefficient count for {package.Game} lightmap.");
+        PixelFormat destinationFormat = textureFormat switch
+        {
+            StaticLightingTextureFormat.DXT1 => PixelFormat.DXT1,
+            StaticLightingTextureFormat.ARGB => PixelFormat.ARGB,
+            _ => throw new ArgumentOutOfRangeException(nameof(textureFormat))
+        };
 
         var textures = new ExportEntry[expectedCoefficientCount];
         for (int coefficient = 0; coefficient < expectedCoefficientCount; coefficient++)
@@ -328,9 +336,7 @@ public static class StaticLightingWriter
             string name = $"LEX_Lightmass_{coefficientName}_{target.Component.UIndex}";
             textures[coefficient] = CreateOrUpdateTexture(package, name, "LightMapTexture2D", null,
                 textureBake.Resolution, textureBake.CoefficientImages[coefficient], PixelFormat.ARGB,
-                // LE3's base-game static lightmaps use DXT1. It is substantially faster to encode and
-                // append than BC7 while also matching the format expected by the stock lightmap assets.
-                PixelFormat.DXT1,
+                destinationFormat,
                 simple ? "TEXTUREGROUP_Lightmap" : "TEXTUREGROUP_Lightmap",
                 cacheName, cachePath, cacheStream, cacheGuid, simple, null);
             streamingTextures.Add((textures[coefficient], target, textureBake.Resolution));

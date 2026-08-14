@@ -63,6 +63,8 @@ public class StaticLightingTests
             new StaticLightingGenerationSettings { DefaultLightSourceRadius = -1f }.Validate());
         Assert.ThrowsExactly<ArgumentOutOfRangeException>(() =>
             new StaticLightingGenerationSettings { DirectionalSourceAngleDegrees = 11f }.Validate());
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() =>
+            new StaticLightingGenerationSettings { TextureFormat = (StaticLightingTextureFormat)int.MaxValue }.Validate());
     }
 
     [TestMethod]
@@ -1052,7 +1054,10 @@ public class StaticLightingTests
     }
 
     [TestMethod]
-    public void TextureWriter_PersistsLightMap2DInsteadOfVertexMapping()
+    [DataRow(StaticLightingTextureFormat.DXT1, "PF_DXT1")]
+    [DataRow(StaticLightingTextureFormat.ARGB, "PF_A8R8G8B8")]
+    public void TextureWriter_PersistsSelectedFormatAsLightMap2D(
+        StaticLightingTextureFormat textureFormat, string expectedEngineFormat)
     {
         using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("TextureWriter.pcc", MEGame.LE3);
         ExportEntry component = package.CreateExport("StaticMeshComponent_0", "StaticMeshComponent", null,
@@ -1093,9 +1098,9 @@ public class StaticLightingTests
                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
             Assert.IsNotNull(installMethod);
             object[] arguments =
-                [componentBake, textureBake, "LEX_TextureWriter", cachePath, cache, streamingTextures, 0];
+                [componentBake, textureBake, "LEX_TextureWriter", cachePath, cache, textureFormat, streamingTextures, 0];
             installMethod.Invoke(null, arguments);
-            int textureCount = (int)arguments[6];
+            int textureCount = (int)arguments[7];
 
             Assert.AreEqual(3, textureCount);
             StaticMeshComponent installed = component.GetBinaryData<StaticMeshComponent>();
@@ -1108,6 +1113,10 @@ public class StaticLightingTests
                 .GetBinaryData<StaticMeshComponent>().LODData[0].LightMap;
             Assert.IsInstanceOfType<LightMap_2D>(reopenedMap);
             Assert.AreEqual(ELightMapType.LMT_2D, reopenedMap.LightMapType);
+            int textureUIndex = ((LightMap_2D)reopenedMap).Texture1;
+            EnumProperty format = reopened.GetUExport(textureUIndex).GetProperty<EnumProperty>("Format");
+            Assert.IsNotNull(format);
+            Assert.AreEqual(expectedEngineFormat, format.Value.Name);
         }
         finally
         {

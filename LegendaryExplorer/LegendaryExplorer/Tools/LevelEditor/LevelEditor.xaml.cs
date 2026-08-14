@@ -319,6 +319,10 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
     public int LightmassResolution { get => _lightmassResolution; set => SetProperty(ref _lightmassResolution, value); }
     public IReadOnlyList<int> LightmassResolutions { get; } = [64, 128, 256, 512, 1024, 2048];
     private int _actorLightmassResolution = 64;
+    private StaticLightingTextureFormat _lightmassTextureFormat = StaticLightingTextureFormat.DXT1;
+    public StaticLightingTextureFormat LightmassTextureFormat { get => _lightmassTextureFormat; set => SetProperty(ref _lightmassTextureFormat, value); }
+    public IReadOnlyList<StaticLightingTextureFormat> LightmassTextureFormats { get; } =
+        [StaticLightingTextureFormat.DXT1, StaticLightingTextureFormat.ARGB];
     private float _lightmassAmbientIntensity = 0.12f;
     public float LightmassAmbientIntensity { get => _lightmassAmbientIntensity; set => SetProperty(ref _lightmassAmbientIntensity, value); }
     private float _lightmassShadowBias = 1f;
@@ -3674,6 +3678,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
             WorkerThreads = LightmassWorkerThreads,
             WorkTileSize = LightmassWorkTileSize,
             TextureCacheName = LightmassTextureCacheName,
+            TextureFormat = LightmassTextureFormat,
             Backend = LightmassBackend
         };
 
@@ -3716,6 +3721,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
                                   $"{settings.DefaultLightSourceRadius:F1} point/spot radius, " +
                                   $"{settings.DirectionalSourceAngleDegrees:F1}° directional angle.\n" +
                                   $"Bake workers: {settings.EffectiveWorkerThreads:N0}; UV/spatial work tile: {settings.WorkTileSize}×{settings.WorkTileSize}.\n\n" +
+                                  $"Lightmap texture format: {settings.TextureFormat}.\n" +
                                   $"Bake backend: {(settings.Backend == StaticLightingBakeBackend.NativeCpp ? "Native C++" : "C#")}.\n\n" +
                                   storageDescription + "\n\nThe packages remain unsaved until you use Save, but TFC data is appended during generation.";
             string dialogTitle = isSingleActor ? "Create Actor Lightmass" : "Create Lightmass";
