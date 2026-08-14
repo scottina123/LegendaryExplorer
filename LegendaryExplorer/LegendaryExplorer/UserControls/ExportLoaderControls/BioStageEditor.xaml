@@ -38,6 +38,11 @@
     <DockPanel>
         <WrapPanel DockPanel.Dock="Top">
             <ToolBar ToolBarTray.IsLocked="True" OverflowMode="Never">
+                <Button Content="Save Main PCC" Click="SaveMainPackage_Click"
+                        Visibility="{Binding LinkedMainPackageControlsVisibility}"
+                        ToolTip="{Binding LinkedMainPackagePath}"/>
+                <Separator Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}"
+                           Visibility="{Binding LinkedMainPackageControlsVisibility}"/>
                 <Button Content="Open Level" Click="OpenLevel_Click" ToolTip="Replace the level backdrop"/>
                 <Button Content="Add Level" Click="AddLevel_Click" ToolTip="Add another level file to the backdrop"/>
                 <Button Content="Unload Level" Click="UnloadLevel_Click" ToolTip="Unload all level backdrop files"/>

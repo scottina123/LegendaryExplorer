@@ -694,7 +694,7 @@
                     </TabItem>
                     <TabItem Name="BioStageEditor_Tab" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}">
                         <TabItem.Header>
-                            <TextBlock Text="BioStage" ToolTip="Edit stage cameras, actor transform, and RefSkeleton bones in 3D"/>
+                            <TextBlock Text="BioStage" ToolTip="Edit a BioStage directly or the linked main-PCC stage for a switch-camera track"/>
                         </TabItem.Header>
                         <exportLoaderControls:BioStageEditor x:Name="BioStageTab_BioStageEditor"/>
                     </TabItem>

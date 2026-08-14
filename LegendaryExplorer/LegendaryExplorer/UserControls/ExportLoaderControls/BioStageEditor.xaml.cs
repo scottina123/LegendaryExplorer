@@ -30,6 +30,8 @@ using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
 using BioStageBinary = LegendaryExplorerCore.Unreal.BinaryConverters.BioStage;
 using CoreColor = LegendaryExplorerCore.SharpDX.Color;
 using SkeletalMeshBinary = LegendaryExplorerCore.Unreal.BinaryConverters.SkeletalMesh;
+using StageBoneOriginResolver = LegendaryExplorer.Tools.InterpEditor.StageBoneOriginResolver;
+using StageConversationContext = LegendaryExplorer.Tools.InterpEditor.StageConversationContext;
 
 namespace LegendaryExplorer.UserControls.ExportLoaderControls;
 
@@ -366,6 +368,8 @@ public sealed partial class BioStageEditor : ExportLoaderControl, IActorEditorCo
     private BoneItem selectedBone;
 
     private BioStageBinary stageBinary;
+    private StageConversationContext linkedStageContext;
+    private ExportEntry sourceSwitchCameraExport;
     private ArrayProperty<StructProperty> cameraArray;
     private ExportEntry cameraPropertyOwner;
     private ExportEntry meshExport;
@@ -445,6 +449,16 @@ public sealed partial class BioStageEditor : ExportLoaderControl, IActorEditorCo
         get => stageMeshPath;
         private set => SetProperty(ref stageMeshPath, value);
     }
+
+    public bool IsEditingLinkedMainPackage => linkedStageContext is not null
+                                              && sourceSwitchCameraExport is not null
+                                              && !ReferenceEquals(linkedStageContext.MainPackage,
+                                                  sourceSwitchCameraExport.FileRef);
+
+    public string LinkedMainPackagePath => linkedStageContext?.MainPackage?.FilePath;
+    public Visibility LinkedMainPackageControlsVisibility => IsEditingLinkedMainPackage
+        ? Visibility.Visible
+        : Visibility.Collapsed;
 
     public CameraItem SelectedCamera
     {
@@ -600,8 +614,8 @@ public sealed partial class BioStageEditor : ExportLoaderControl, IActorEditorCo
         else RenderContext.RenderFlags &= ~flag;
     }
 
-    public override bool CanParse(ExportEntry exportEntry) =>
-        exportEntry?.ClassName == "BioStage" && exportEntry.Game.IsGame3();
+    public override bool CanParse(ExportEntry exportEntry) => exportEntry?.Game.IsGame3() == true
+        && (exportEntry.ClassName == "BioStage" || exportEntry.IsA("BioEvtSysTrackSwitchCamera"));
 
     public override void LoadExport(ExportEntry exportEntry)
     {
@@ -611,17 +625,52 @@ public sealed partial class BioStageEditor : ExportLoaderControl, IActorEditorCo
             return;
         }
 
+        if (exportEntry.IsA("BioEvtSysTrackSwitchCamera"))
+        {
+            if (linkedStageContext is not null
+                && sourceSwitchCameraExport?.FileRef == exportEntry.FileRef
+                && sourceSwitchCameraExport.UIndex == exportEntry.UIndex)
+            {
+                LoadStageExport(linkedStageContext.Stage, exportEntry);
+                return;
+            }
+
+            UnloadExport();
+            sourceSwitchCameraExport = exportEntry;
+            if (!StageBoneOriginResolver.TrySelectContext(Window.GetWindow(this), exportEntry.FileRef, exportEntry,
+                    null, out StageConversationContext context, out string message, "the switch-camera track"))
+            {
+                CurrentExportName = $"#{exportEntry.UIndex} {exportEntry.InstancedFullPath}";
+                SceneStatus = message ?? "The linked BioStage could not be resolved.";
+                NotifyLinkedPackageStateChanged();
+                return;
+            }
+
+            linkedStageContext = context;
+            NotifyLinkedPackageStateChanged();
+            LoadStageExport(context.Stage, exportEntry);
+            return;
+        }
+
+        UnloadExport();
+        LoadStageExport(exportEntry, null);
+    }
+
+    private void LoadStageExport(ExportEntry stageExport, ExportEntry switchCameraExport)
+    {
         FlushMeshWrite();
         UnregisterBones();
         DisposeStagePreview();
-        CurrentLoadedExport = exportEntry;
-        CurrentExportName = $"{exportEntry.UIndex}: {exportEntry.InstancedFullPath}";
-        stageBinary = ObjectBinary.From<BioStageBinary>(exportEntry) ?? BioStageBinary.Create();
-        cameraPropertyOwner = FindCameraPropertyOwner(exportEntry) ?? exportEntry;
+        CurrentLoadedExport = stageExport;
+        CurrentExportName = switchCameraExport is null
+            ? $"{stageExport.UIndex}: {stageExport.InstancedFullPath}"
+            : $"Main PCC: #{stageExport.UIndex} {stageExport.InstancedFullPath} (from switch camera #{switchCameraExport.UIndex})";
+        stageBinary = ObjectBinary.From<BioStageBinary>(stageExport) ?? BioStageBinary.Create();
+        cameraPropertyOwner = FindCameraPropertyOwner(stageExport) ?? stageExport;
         cameraArray = cameraPropertyOwner.GetProperty<ArrayProperty<StructProperty>>("m_aCameraList")
                       ?? new ArrayProperty<StructProperty>("m_aCameraList");
         LoadStageTransform();
-        meshExport = FindAttachedSkeletalMesh(exportEntry);
+        meshExport = FindAttachedSkeletalMesh(stageExport);
         meshBinary = meshExport is null ? null : ObjectBinary.From<SkeletalMeshBinary>(meshExport);
         StageMeshPath = meshExport is null
             ? "No attached SkeletalMesh found."
@@ -657,16 +706,83 @@ public sealed partial class BioStageEditor : ExportLoaderControl, IActorEditorCo
         CurrentExportName = null;
         StageMeshPath = "No attached SkeletalMesh found.";
         SceneViewer?.MarkRenderDirty();
+        ReleaseLinkedStageContext(promptToSave: true);
     }
 
     public override void PopOut()
     {
-        if (CurrentLoadedExport is null) return;
-        var window = new ExportLoaderHostedWindow(new BioStageEditor(), CurrentLoadedExport)
+        ExportEntry exportToLoad = sourceSwitchCameraExport ?? CurrentLoadedExport;
+        if (exportToLoad is null) return;
+        var window = new ExportLoaderHostedWindow(new BioStageEditor(), exportToLoad)
         {
-            Title = $"BioStage Editor - {CurrentLoadedExport.UIndex} {CurrentLoadedExport.InstancedFullPath}"
+            Title = $"BioStage Editor - {exportToLoad.UIndex} {exportToLoad.InstancedFullPath}"
         };
         window.Show();
+    }
+
+    private void NotifyLinkedPackageStateChanged()
+    {
+        OnPropertyChanged(nameof(IsEditingLinkedMainPackage));
+        OnPropertyChanged(nameof(LinkedMainPackagePath));
+        OnPropertyChanged(nameof(LinkedMainPackageControlsVisibility));
+    }
+
+    private void ReleaseLinkedStageContext(bool promptToSave)
+    {
+        StageConversationContext context = linkedStageContext;
+        bool isExternalPackage = IsEditingLinkedMainPackage;
+        if (context is null)
+        {
+            sourceSwitchCameraExport = null;
+            NotifyLinkedPackageStateChanged();
+            return;
+        }
+
+        if (promptToSave && isExternalPackage && context.MainPackage.IsModified)
+        {
+            MessageBoxResult result = MessageBox.Show(
+                $"{Path.GetFileName(context.MainPackage.FilePath)} has unsaved BioStage changes. Save the main PCC before closing this editor?",
+                "Unsaved main PCC changes",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning);
+            if (result == MessageBoxResult.Yes)
+            {
+                try
+                {
+                    context.MainPackage.Save();
+                }
+                catch (Exception exception)
+                {
+                    MessageBox.Show($"The main PCC could not be saved:\n\n{exception.Message}",
+                        "Main PCC save failed", MessageBoxButton.OK, MessageBoxImage.Error);
+                }
+            }
+        }
+
+        linkedStageContext = null;
+        sourceSwitchCameraExport = null;
+        context.Dispose();
+        NotifyLinkedPackageStateChanged();
+    }
+
+    private async void SaveMainPackage_Click(object sender, RoutedEventArgs e)
+    {
+        if (!IsEditingLinkedMainPackage || linkedStageContext?.MainPackage is not { } mainPackage)
+        {
+            return;
+        }
+
+        FlushMeshWrite();
+        try
+        {
+            await mainPackage.SaveAsync();
+            SceneStatus = $"Saved main PCC: {Path.GetFileName(mainPackage.FilePath)}";
+        }
+        catch (Exception exception)
+        {
+            MessageBox.Show($"The main PCC could not be saved:\n\n{exception.Message}",
+                "Main PCC save failed", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
     }
 
     public override void Dispose()

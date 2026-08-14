@@ -1909,10 +1909,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 return;
             }
 
-            IReadOnlyList<string> stageBoneNames = GetStageSpecificCameraNames(
-                    (NameProperty)cameraNameNodes[0].Property)
-                .Select(name => name.Instanced)
-                .ToList();
+            IReadOnlyList<NameReference> stageBoneNames = GetStageSpecificCameraNames(
+                (NameProperty)cameraNameNodes[0].Property);
             string toolTip = stageSpecificCameraNamesResolved
                 ? "Camera-list bones resolved from the BioStage in the matching non-localized PCC."
                 : stageSpecificCameraNamesResolutionMessage ?? "The matching BioStage bones could not be resolved.";
@@ -3405,17 +3403,19 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     case NameProperty np:
                         if (IsStageSpecificCameraNameProperty(np))
                         {
-                            List<string> stageBoneNames = GetStageSpecificCameraNames(np)
-                                .Select(name => name.Instanced)
-                                .ToList();
+                            List<NameReference> stageBoneNames = GetStageSpecificCameraNames(np).ToList();
+                            TextSearch.SetTextPath(Value_ComboBox, "Name");
                             Value_ComboBox.IsEditable = false;
                             Value_ComboBox.ItemsSource = stageBoneNames;
-                            Value_ComboBox.SelectedIndex = stageBoneNames.FindIndex(name =>
-                                name.Equals(np.Value.Instanced, StringComparison.OrdinalIgnoreCase));
+                            Value_ComboBox.SelectedIndex = stageBoneNames.IndexOf(np.Value);
+                            NameIndex_TextBox.Text = np.Value.Number.ToString(CultureInfo.InvariantCulture);
                             Value_ComboBox.ToolTip = stageSpecificCameraNamesResolved
                                 ? "Camera-list bones resolved from the BioStage in the matching non-localized PCC."
                                 : stageSpecificCameraNamesResolutionMessage ??
                                   "The matching BioStage bones could not be resolved.";
+
+                            SupportedEditorSetElements.Add(NameIndexPrefix_TextBlock);
+                            SupportedEditorSetElements.Add(NameIndex_TextBox);
                         }
                         else
                         {
@@ -3478,6 +3478,16 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             CurrentLoadedExport?.IsA("BioEvtSysTrackSwitchCamera") == true
             && property.Name == "nmStageSpecificCam";
 
+        private void Value_ComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (SelectedItem?.Property is NameProperty nameProperty
+                && IsStageSpecificCameraNameProperty(nameProperty)
+                && Value_ComboBox.SelectedItem is NameReference selectedBone)
+            {
+                NameIndex_TextBox.Text = selectedBone.Number.ToString(CultureInfo.InvariantCulture);
+            }
+        }
+
         private IReadOnlyList<NameReference> GetStageSpecificCameraNames(NameProperty currentProperty)
         {
             if (!stageSpecificCameraNamesResolutionAttempted)
@@ -3490,9 +3500,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     using (context)
                     {
                         var names = new List<NameReference> { new("None") };
-                        foreach (string boneName in context.StageCameras.Keys)
+                        foreach (NameReference name in context.StageCameraNames)
                         {
-                            NameReference name = NameReference.FromInstancedString(boneName);
                             if (!names.Contains(name))
                             {
                                 names.Add(name);
@@ -4376,21 +4385,28 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                         {
                             if (IsStageSpecificCameraNameProperty(namep))
                             {
-                                if (Value_ComboBox.SelectedItem is not string selectedBoneName)
+                                if (Value_ComboBox.SelectedItem is not NameReference selectedBone)
                                 {
                                     break;
                                 }
 
-                                NameReference selectedBone = NameReference.FromInstancedString(selectedBoneName);
+                                if (!int.TryParse(NameIndex_TextBox.Text, NumberStyles.Integer,
+                                        CultureInfo.InvariantCulture, out int instanceIndex)
+                                    || instanceIndex < 0)
+                                {
+                                    break;
+                                }
+
                                 if (Pcc.findName(selectedBone.Name) == -1)
                                 {
                                     Pcc.FindNameOrAdd(selectedBone.Name);
                                     Dispatcher.Invoke(new Action(() => { }), DispatcherPriority.ContextIdle, null);
                                 }
 
-                                if (namep.Value != selectedBone)
+                                var selectedValue = new NameReference(selectedBone.Name, instanceIndex);
+                                if (namep.Value != selectedValue)
                                 {
-                                    namep.Value = selectedBone;
+                                    namep.Value = selectedValue;
                                     updated = true;
                                 }
                                 break;
@@ -6665,8 +6681,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         public IReadOnlyList<IndexedName> InlineNameChoicesOverride { get; set; }
         public IReadOnlyList<IndexedName> InlineNameChoices => InlineNameChoicesOverride ?? (_inlineNameChoices ??= AttachedExport?.FileRef?.Names?.Select((nr, i) => new IndexedName(i, nr)).ToList());
 
-        private IReadOnlyList<string> _inlineStageBoneNameChoices;
-        public IReadOnlyList<string> InlineStageBoneNameChoices
+        private IReadOnlyList<NameReference> _inlineStageBoneNameChoices;
+        public IReadOnlyList<NameReference> InlineStageBoneNameChoices
         {
             get => _inlineStageBoneNameChoices;
             set
@@ -6754,20 +6770,19 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             set => SetProperty(ref _inlineNameIndexValue, value);
         }
 
-        private string _inlineStageBoneNameValue;
-        public string InlineStageBoneNameValue
+        private NameReference? _inlineStageBoneNameValue;
+        public NameReference InlineStageBoneNameValue
         {
-            get => _inlineStageBoneNameValue ?? (Property as NameProperty)?.Value.Instanced ?? "None";
+            get => _inlineStageBoneNameValue ?? (Property as NameProperty)?.Value ?? NameReference.None;
             set
             {
-                if (!SetProperty(ref _inlineStageBoneNameValue, value) || string.IsNullOrWhiteSpace(value))
+                if (!SetProperty(ref _inlineStageBoneNameValue, value))
                 {
                     return;
                 }
 
-                NameReference name = NameReference.FromInstancedString(value);
-                InlineNameValue = name.Name;
-                InlineNameIndexValue = name.Number.ToString(CultureInfo.InvariantCulture);
+                InlineNameValue = value.Name;
+                InlineNameIndexValue = value.Number.ToString(CultureInfo.InvariantCulture);
             }
         }
 
@@ -6812,7 +6827,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
             _inlineNameValue = nameProperty.Value.Name;
             _inlineNameIndexValue = nameProperty.Value.Number.ToString();
-            _inlineStageBoneNameValue = nameProperty.Value.Instanced;
+            _inlineStageBoneNameValue = nameProperty.Value;
             OnPropertyChanged(nameof(InlineNameValue));
             OnPropertyChanged(nameof(InlineNameIndexValue));
             OnPropertyChanged(nameof(InlineStageBoneNameValue));

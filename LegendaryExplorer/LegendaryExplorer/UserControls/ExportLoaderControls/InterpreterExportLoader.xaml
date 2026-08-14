@@ -98,6 +98,9 @@
                 <TextBlock Text="{Binding Path=Name, Mode=OneTime}" Margin="5,0,0,0"/>
             </StackPanel>
         </DataTemplate>
+        <DataTemplate DataType="{x:Type unreal:NameReference}">
+            <TextBlock Text="{Binding Path=Instanced, Mode=OneTime}"/>
+        </DataTemplate>
     </UserControl.Resources>
     <DockPanel Name="InterpreterWPF_DockPanel">
         <WrapPanel DockPanel.Dock="Top" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}">
@@ -180,6 +183,7 @@
                      IsEnabled="{Binding CurrentLoadedExport, Converter={StaticResource NullEnabledConverter}}" Margin="5,0,0,0" ToolBar.OverflowMode="Never"
                      Style="{DynamicResource {x:Static ToolBar.TextBoxStyleKey}}"/>
                 <ComboBox Name="Value_ComboBox" MinWidth="80" VerticalAlignment="Center" ToolTip="Value for this property" IsTextSearchEnabled="True" ToolBar.OverflowMode="Never"
+                          SelectionChanged="Value_ComboBox_SelectionChanged"
                           Style="{DynamicResource {x:Static ToolBar.ComboBoxStyleKey}}">
                     <ComboBox.ItemsPanel>
                         <ItemsPanelTemplate>
@@ -195,7 +199,7 @@
                         </DataTemplate>
                         <DataTemplate DataType="{x:Type unreal:NameReference}">
                             <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="{Binding Path=Instanced}" Margin="5,0,0,0"/>
+                                <TextBlock Text="{Binding Path=Name}" Margin="5,0,0,0"/>
                             </StackPanel>
                         </DataTemplate>
 
@@ -318,6 +322,7 @@
                                                       Visibility="{Binding ShowStageBoneNamePicker, Converter={StaticResource BoolToVisibilityConverter}}"
                                                       IsEditable="False"
                                                       IsTextSearchEnabled="True"
+                                                      TextSearch.TextPath="Name"
                                                       ScrollViewer.CanContentScroll="True"
                                                       VirtualizingPanel.IsVirtualizing="True"
                                                       VirtualizingPanel.VirtualizationMode="Recycling"
@@ -331,7 +336,14 @@
                                                         <VirtualizingStackPanel />
                                                     </ItemsPanelTemplate>
                                                 </ComboBox.ItemsPanel>
+                                                <ComboBox.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <TextBlock Text="{Binding Name}"/>
+                                                    </DataTemplate>
+                                                </ComboBox.ItemTemplate>
                                             </ComboBox>
+                                            <TextBlock Text="Index:" Margin="5,0,2,0" VerticalAlignment="Center" Visibility="{Binding ShowStageBoneNamePicker, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                                            <TextBox Width="40" Text="{Binding InlineNameIndexValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Tag="{Binding}" KeyDown="InlineEditor_KeyDown" Style="{StaticResource InlineEditorTextBoxStyle}" Visibility="{Binding ShowStageBoneNamePicker, Converter={StaticResource BoolToVisibilityConverter}}"/>
                                             <Button Margin="5,0,0,0" Padding="6,0" Content="&#x2713;" Tag="{Binding}" Click="InlineEditorConfirmButton_Click" Visibility="{Binding ShowStageBoneNamePicker, Converter={StaticResource BoolToVisibilityConverter}}"/>
                                             <Button MinWidth="140"
                                                     Padding="8,0"

@@ -42,6 +42,7 @@ internal sealed class StageConversationContext : IDisposable
     public CameraOrigin StageOrigin { get; }
     public IReadOnlyDictionary<string, CameraOrigin> StageNodeOrigins { get; }
     public IReadOnlyDictionary<string, StageCameraDefinition> StageCameras { get; }
+    public IReadOnlyList<NameReference> StageCameraNames { get; }
     public IReadOnlyDictionary<string, CameraOrigin> ActorOrigins { get; }
     public IReadOnlyDictionary<string, IReadOnlyList<ExportEntry>> ActorBindings { get; }
     public IReadOnlyDictionary<string, string> VariableLinkSubtitles { get; }
@@ -49,6 +50,7 @@ internal sealed class StageConversationContext : IDisposable
     public StageConversationContext(IMEPackage mainPackage, bool ownsMainPackage, ExportEntry startConversation,
         ExportEntry stage, CameraOrigin stageOrigin, IReadOnlyDictionary<string, CameraOrigin> stageNodeOrigins,
         IReadOnlyDictionary<string, StageCameraDefinition> stageCameras,
+        IReadOnlyList<NameReference> stageCameraNames,
         IReadOnlyDictionary<string, CameraOrigin> actorOrigins,
         IReadOnlyDictionary<string, IReadOnlyList<ExportEntry>> actorBindings,
         IReadOnlyDictionary<string, string> variableLinkSubtitles)
@@ -60,6 +62,7 @@ internal sealed class StageConversationContext : IDisposable
         StageOrigin = stageOrigin;
         StageNodeOrigins = stageNodeOrigins;
         StageCameras = stageCameras;
+        StageCameraNames = stageCameraNames;
         ActorOrigins = actorOrigins;
         ActorBindings = actorBindings;
         VariableLinkSubtitles = variableLinkSubtitles;
@@ -198,7 +201,7 @@ internal static class StageBoneOriginResolver
             IReadOnlyDictionary<string, CameraOrigin> stageNodeOrigins = ResolveStageNodeOrigins(stageBones,
                 stageOrigin, cache);
             IReadOnlyDictionary<string, StageCameraDefinition> stageCameras = ResolveStageCameras(
-                selectedStage.Stage, stageBones, stageOrigin, cache);
+                selectedStage.Stage, stageBones, stageOrigin, cache, out IReadOnlyList<NameReference> stageCameraNames);
             List<VarLinkInfo> startConversationLinks = KismetHelper.GetVariableLinks(
                 selectedStage.StartConversation.GetProperties(), mainPackage);
             IReadOnlyDictionary<string, IReadOnlyList<ExportEntry>> actorBindings = ResolveLinkedActorBindings(
@@ -206,7 +209,7 @@ internal static class StageBoneOriginResolver
             IReadOnlyDictionary<string, CameraOrigin> actorOrigins = ResolveLinkedActorOrigins(stageNodeOrigins,
                 startConversationLinks, actorBindings, cache);
             context = new StageConversationContext(mainPackage, ownsMainPackage, selectedStage.StartConversation,
-                selectedStage.Stage, stageOrigin, stageNodeOrigins, stageCameras, actorOrigins, actorBindings,
+                selectedStage.Stage, stageOrigin, stageNodeOrigins, stageCameras, stageCameraNames, actorOrigins, actorBindings,
                 selectedStage.VariableLinkSubtitles);
             mainPackage = null;
             return true;
@@ -307,9 +310,12 @@ internal static class StageBoneOriginResolver
             StringComparer.OrdinalIgnoreCase);
 
     private static IReadOnlyDictionary<string, StageCameraDefinition> ResolveStageCameras(ExportEntry stage,
-        IReadOnlyList<BoneOption> bones, CameraOrigin stageOrigin, PackageCache cache)
+        IReadOnlyList<BoneOption> bones, CameraOrigin stageOrigin, PackageCache cache,
+        out IReadOnlyList<NameReference> cameraNames)
     {
         var cameras = new Dictionary<string, StageCameraDefinition>(StringComparer.OrdinalIgnoreCase);
+        var resolvedCameraNames = new List<NameReference>();
+        cameraNames = resolvedCameraNames;
         if (!stage.Game.IsGame3())
         {
             return cameras;
@@ -319,8 +325,9 @@ internal static class StageBoneOriginResolver
                  ResolveStageCameraPropertyLayers(stage, cache).Values)
         {
             BoneOption bone = bones.FirstOrDefault(option =>
-                option.Bone.Name.Number == cameraName.Number
-                && string.Equals(option.Bone.Name.Name, cameraName.Name, StringComparison.OrdinalIgnoreCase));
+                option.Bone.Name == cameraName
+                || option.Bone.Name.Instanced.Equals(cameraName.Instanced,
+                    StringComparison.OrdinalIgnoreCase));
             if (bone is null)
             {
                 continue;
@@ -330,11 +337,16 @@ internal static class StageBoneOriginResolver
             StageCameraSettings settings = ResolveStageCameraSettings(propertyLayers);
             CameraOrigin origin = ApplyStageCameraOffsets(boneOrigin, settings.HeightDelta,
                 settings.PitchDelta, settings.YawDelta);
-            cameras[cameraName.Instanced] = new StageCameraDefinition(
+            NameReference boneName = bone.Bone.Name;
+            cameras[boneName.Instanced] = new StageCameraDefinition(
                 origin,
                 settings.FovDegrees,
                 settings.NearPlane,
                 settings.DisableHeightAdjustment);
+            if (!resolvedCameraNames.Contains(boneName))
+            {
+                resolvedCameraNames.Add(boneName);
+            }
         }
         return cameras;
     }
@@ -944,14 +956,13 @@ internal static class StageBoneOriginResolver
         }
 
         string baseFileName = Path.GetFileName(package.FilePath).StripUnrealLocalization();
-        string siblingPath = Path.Combine(Path.GetDirectoryName(package.FilePath)!, baseFileName);
-        if (File.Exists(siblingPath))
+        if (MELoadedFiles.TryGetHighestMountedFile(package.Game, baseFileName, out string mountedPath))
         {
-            return siblingPath;
+            return mountedPath;
         }
-        return MELoadedFiles.TryGetHighestMountedFile(package.Game, baseFileName, out string mountedPath)
-            ? mountedPath
-            : null;
+
+        string siblingPath = Path.Combine(Path.GetDirectoryName(package.FilePath)!, baseFileName);
+        return File.Exists(siblingPath) ? siblingPath : null;
     }
 
     private static bool PathsEqual(string first, string second) =>
