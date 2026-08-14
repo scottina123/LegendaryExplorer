@@ -22,6 +22,14 @@
                         <ContextMenu x:Name="RecentLevelsMenu" Opened="RecentLevelsMenu_Opened"/>
                     </Button.ContextMenu>
                 </Button>
+                <Separator x:Name="DialogueWorkingMemoryHistorySeparator" Visibility="Collapsed"
+                           Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" />
+                <Button x:Name="DialogueWorkingMemoryUndoButton" Content="Undo" Visibility="Collapsed"
+                        IsEnabled="False" Click="DialogueWorkingMemoryUndo_Click"
+                        ToolTip="Undo the last change in dialogue preview working memory"/>
+                <Button x:Name="DialogueWorkingMemoryRedoButton" Content="Redo" Visibility="Collapsed"
+                        IsEnabled="False" Click="DialogueWorkingMemoryRedo_Click"
+                        ToolTip="Redo the last undone change in dialogue preview working memory"/>
                 <Separator Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" />
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                     <TextBlock Text="Loc" Margin="0,0,6,0" VerticalAlignment="Center"/>

@@ -258,6 +258,27 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         IReadOnlyDictionary<string, (int TrackUIndex, int GroupUIndex)> ActorTrackAssignments,
         IReadOnlyDictionary<string, (int TrackUIndex, int GroupUIndex)> ActorGestureAssignments);
 
+    private sealed record DialogueWorkingMemoryRuntimeKey(DialogueNodeReference Node, string VariantKey);
+
+    private sealed record DialogueWorkingMemoryRuntimeSnapshot(
+        bool HasPendingPreviewChanges,
+        bool HasPendingPackageChanges,
+        IReadOnlyDictionary<string, CameraOrigin> ActorOriginOverrides,
+        IReadOnlyDictionary<string, (int TrackUIndex, int GroupUIndex)> ActorTrackAssignments,
+        IReadOnlyDictionary<string, (int TrackUIndex, int GroupUIndex)> ActorGestureAssignments,
+        IReadOnlyDictionary<int, CurveEditor3DModelSnapshot> TrackModels,
+        IReadOnlyDictionary<int, CurveEditor3DFovModelSnapshot> FovModels);
+
+    private sealed record DialogueWorkingMemorySnapshot(
+        byte[] PackageData,
+        long PackageRevision,
+        IReadOnlyDictionary<DialogueWorkingMemoryRuntimeKey, DialogueWorkingMemoryRuntimeSnapshot> Runtimes,
+        IReadOnlyDictionary<DialogueNodeReference, IReadOnlySet<int>> PendingNodeRefreshes,
+        IReadOnlySet<DialogueNodeReference> AffectedNodes,
+        IReadOnlySet<int> PendingImportHeaders,
+        IReadOnlySet<int> PendingExportHeaders,
+        IReadOnlySet<int> PendingExportData);
+
     private sealed record DialogueGesturePoseState(ExportEntry Animation, float AnimationTime);
 
     public sealed class DialogueBranchOption : NotifyPropertyChangedBase
@@ -1092,6 +1113,18 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     private bool suppressDialoguePackageEditTracking;
     private readonly Dictionary<DialogueTimelineSegment, HashSet<int>> pendingDialogueWorkingPackageNodeRefreshes = [];
     private bool refreshingDialogueWorkingPackageNodeRuntime;
+    private const int DialogueWorkingMemoryHistoryLimit = 20;
+    private readonly List<DialogueWorkingMemorySnapshot> dialogueWorkingMemoryHistory = [];
+    private readonly DispatcherTimer dialogueWorkingMemoryHistoryTimer;
+    private int dialogueWorkingMemoryHistoryIndex = -1;
+    private long dialogueWorkingMemoryPackageRevision;
+    private long dialogueWorkingMemoryNextPackageRevision;
+    private bool dialogueWorkingMemoryCapturePending;
+    private bool applyingDialogueWorkingMemoryHistory;
+    private readonly HashSet<DialogueNodeReference> dialogueWorkingMemoryPendingAffectedNodes = [];
+    private readonly HashSet<DialogueTimelineSegment> pendingDialogueWorkingMemoryDerivedRefreshes = [];
+    private IReadOnlyDictionary<DialogueWorkingMemoryRuntimeKey, DialogueWorkingMemoryRuntimeSnapshot>
+        deferredDialogueWorkingMemoryRuntimeSnapshots;
     private bool updatingDialogueSceneShopControls;
     private DialogueTimelineSegment dialogueSceneShopContextSegment;
     private DialogueTimelineSegment displayedDialogueSceneShopSegment;
@@ -1243,6 +1276,11 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         InterpModes = Enum.GetValues<EInterpCurveMode>();
         LoadCommands();
         InitializeComponent();
+        dialogueWorkingMemoryHistoryTimer = new DispatcherTimer(DispatcherPriority.Background)
+        {
+            Interval = TimeSpan.FromMilliseconds(350),
+        };
+        dialogueWorkingMemoryHistoryTimer.Tick += DialogueWorkingMemoryHistoryTimer_Tick;
         // Match Level Editor input scheduling so background resource preparation yields during interaction.
         PreviewMouseMove += (_, _) => RenderContext.NotifyUserActivity();
         PreviewMouseDown += (_, _) => RenderContext.NotifyUserActivity();
@@ -1369,6 +1407,9 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         DialogueCacheCommitAllButton.Visibility = conversationPreview ? Visibility.Visible : Visibility.Collapsed;
         DialogueCacheSaveButton.Visibility = conversationPreview ? Visibility.Visible : Visibility.Collapsed;
         DialogueCachePresetsButton.Visibility = conversationPreview ? Visibility.Visible : Visibility.Collapsed;
+        DialogueWorkingMemoryHistorySeparator.Visibility = conversationPreview ? Visibility.Visible : Visibility.Collapsed;
+        DialogueWorkingMemoryUndoButton.Visibility = conversationPreview ? Visibility.Visible : Visibility.Collapsed;
+        DialogueWorkingMemoryRedoButton.Visibility = conversationPreview ? Visibility.Visible : Visibility.Collapsed;
         DialogueCacheLoadingOverlay.Visibility = conversationPreview ? Visibility.Visible : Visibility.Collapsed;
         SceneViewer.Visibility = conversationPreview ? Visibility.Hidden : Visibility.Visible;
         PreviewActorModelSelectionPanel.Visibility = Visibility.Collapsed;
@@ -1425,6 +1466,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
     private void DisposeDialoguePackageEditor()
     {
+        ClearDialogueWorkingMemoryHistory();
         if (DialoguePackageEditorHost is not null)
         {
             DialoguePackageEditorHost.Content = null;
@@ -1456,6 +1498,567 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         suppressDialoguePackageEditTracking = false;
         pendingDialogueWorkingPackageNodeRefreshes.Clear();
         refreshingDialogueWorkingPackageNodeRuntime = false;
+    }
+
+    private void ClearDialogueWorkingMemoryHistory()
+    {
+        dialogueWorkingMemoryHistoryTimer?.Stop();
+        dialogueWorkingMemoryCapturePending = false;
+        dialogueWorkingMemoryHistory.Clear();
+        dialogueWorkingMemoryHistoryIndex = -1;
+        dialogueWorkingMemoryPackageRevision = 0;
+        dialogueWorkingMemoryNextPackageRevision = 0;
+        dialogueWorkingMemoryPendingAffectedNodes.Clear();
+        pendingDialogueWorkingMemoryDerivedRefreshes.Clear();
+        deferredDialogueWorkingMemoryRuntimeSnapshots = null;
+        UpdateDialogueWorkingMemoryHistoryButtons();
+    }
+
+    private void ResetDialogueWorkingMemoryHistory()
+    {
+        ClearDialogueWorkingMemoryHistory();
+        if (!isDialogueConversationPreview || dialoguePreviewWorkingPackage is null
+                                           || dialogueRuntimeCache.Count == 0)
+        {
+            return;
+        }
+
+        try
+        {
+            dialogueWorkingMemoryHistory.Add(CaptureDialogueWorkingMemorySnapshot());
+            dialogueWorkingMemoryHistoryIndex = 0;
+            dialogueWorkingMemoryPendingAffectedNodes.Clear();
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException
+                                                              or InvalidOperationException)
+        {
+            SceneStatus = $"Unable to initialize working-memory history: {exception.Message}";
+        }
+        UpdateDialogueWorkingMemoryHistoryButtons();
+    }
+
+    private DialogueWorkingMemorySnapshot CaptureDialogueWorkingMemorySnapshot()
+    {
+        byte[] packageData = dialogueWorkingMemoryHistoryIndex >= 0
+                             && dialogueWorkingMemoryHistoryIndex < dialogueWorkingMemoryHistory.Count
+                             && dialogueWorkingMemoryHistory[dialogueWorkingMemoryHistoryIndex].PackageRevision
+                             == dialogueWorkingMemoryPackageRevision
+            ? dialogueWorkingMemoryHistory[dialogueWorkingMemoryHistoryIndex].PackageData
+            : null;
+        if (packageData is null)
+        {
+            using MemoryStream packageStream = dialoguePreviewWorkingPackage.SaveToStream(false);
+            packageData = packageStream.ToArray();
+        }
+
+        var runtimes = dialogueWorkingMemoryHistoryIndex >= 0
+                       && dialogueWorkingMemoryHistoryIndex < dialogueWorkingMemoryHistory.Count
+            ? dialogueWorkingMemoryHistory[dialogueWorkingMemoryHistoryIndex].Runtimes.ToDictionary()
+            : new Dictionary<DialogueWorkingMemoryRuntimeKey, DialogueWorkingMemoryRuntimeSnapshot>();
+        IEnumerable<KeyValuePair<DialogueTimelineSegment, Dictionary<string, DialogueSegmentRuntime>>>
+            runtimeSources = runtimes.Count == 0 || dialogueWorkingMemoryPendingAffectedNodes.Count == 0
+                ? dialogueSceneShopRuntimeCache
+                : dialogueSceneShopRuntimeCache.Where(pair =>
+                    dialogueWorkingMemoryPendingAffectedNodes.Contains(pair.Key.Reference));
+        foreach ((DialogueTimelineSegment segment, Dictionary<string, DialogueSegmentRuntime> variants) in
+                 runtimeSources)
+        {
+            foreach ((string variantKey, DialogueSegmentRuntime runtime) in variants)
+            {
+                runtimes[new DialogueWorkingMemoryRuntimeKey(segment.Reference, variantKey)] =
+                    CaptureDialogueWorkingMemoryRuntime(runtime);
+            }
+        }
+
+        var pendingRefreshes = pendingDialogueWorkingPackageNodeRefreshes.ToDictionary(
+            pair => pair.Key.Reference,
+            pair => (IReadOnlySet<int>)pair.Value.ToHashSet());
+        return new DialogueWorkingMemorySnapshot(
+            packageData,
+            dialogueWorkingMemoryPackageRevision,
+            runtimes,
+            pendingRefreshes,
+            dialogueWorkingMemoryPendingAffectedNodes.ToHashSet(),
+            dialoguePreviewWorkingPackage.Imports.Where(entry => entry.HeaderChanged)
+                .Select(entry => entry.UIndex).ToHashSet(),
+            dialoguePreviewWorkingPackage.Exports.Where(entry => entry.HeaderChanged)
+                .Select(entry => entry.UIndex).ToHashSet(),
+            dialoguePreviewWorkingPackage.Exports.Where(entry => entry.DataChanged)
+                .Select(entry => entry.UIndex).ToHashSet());
+    }
+
+    private static DialogueWorkingMemoryRuntimeSnapshot CaptureDialogueWorkingMemoryRuntime(
+        DialogueSegmentRuntime runtime) => new(
+        runtime.HasPendingPreviewChanges,
+        runtime.HasPendingPackageChanges,
+        runtime.ActorOriginOverrides.ToDictionary(StringComparer.OrdinalIgnoreCase),
+        runtime.ActorTrackAssignments.ToDictionary(pair => pair.Key,
+            pair => (pair.Value.TrackMove.UIndex, pair.Value.Group?.UIndex ?? 0),
+            StringComparer.OrdinalIgnoreCase),
+        runtime.ActorGestureAssignments.ToDictionary(pair => pair.Key,
+            pair => (pair.Value.Track.UIndex, pair.Value.Group?.UIndex ?? 0),
+            StringComparer.OrdinalIgnoreCase),
+        runtime.TrackMoves.Select(option => option.Model).Where(model => model?.Export is not null)
+            .DistinctBy(model => model.Export.UIndex)
+            .ToDictionary(model => model.Export.UIndex, model => model.CreateCacheSnapshot()),
+        runtime.TrackMoves.Select(option => option.FovModel).Where(model => model?.Export is not null)
+            .DistinctBy(model => model.Export.UIndex)
+            .ToDictionary(model => model.Export.UIndex, model => model.CreateCacheSnapshot()));
+
+    private void ScheduleDialogueWorkingMemoryCapture()
+    {
+        if (!isDialogueConversationPreview || dialoguePreviewWorkingPackage is null
+                                           || dialogueWorkingMemoryHistoryIndex < 0
+                                           || applyingDialogueWorkingMemoryHistory
+                                           || suppressDialogueCacheEditTracking
+                                           || suppressDialoguePackageEditTracking)
+        {
+            return;
+        }
+
+        dialogueWorkingMemoryCapturePending = true;
+        if (activeDialogueTimelineSegment is not null)
+        {
+            dialogueWorkingMemoryPendingAffectedNodes.Add(activeDialogueTimelineSegment.Reference);
+        }
+        foreach (DialogueTimelineSegment segment in pendingDialogueWorkingPackageNodeRefreshes.Keys)
+        {
+            dialogueWorkingMemoryPendingAffectedNodes.Add(segment.Reference);
+        }
+        dialogueWorkingMemoryHistoryTimer.Stop();
+        dialogueWorkingMemoryHistoryTimer.Start();
+        UpdateDialogueWorkingMemoryHistoryButtons();
+    }
+
+    private void DialogueWorkingMemoryHistoryTimer_Tick(object sender, EventArgs e)
+    {
+        dialogueWorkingMemoryHistoryTimer.Stop();
+        CapturePendingDialogueWorkingMemoryHistory();
+    }
+
+    private void CapturePendingDialogueWorkingMemoryHistory()
+    {
+        if (!dialogueWorkingMemoryCapturePending || dialoguePreviewWorkingPackage is null
+                                                  || dialogueWorkingMemoryHistoryIndex < 0)
+        {
+            return;
+        }
+
+        dialogueWorkingMemoryCapturePending = false;
+        if (dialogueWorkingMemoryHistoryIndex + 1 < dialogueWorkingMemoryHistory.Count)
+        {
+            dialogueWorkingMemoryHistory.RemoveRange(dialogueWorkingMemoryHistoryIndex + 1,
+                dialogueWorkingMemoryHistory.Count - dialogueWorkingMemoryHistoryIndex - 1);
+        }
+        try
+        {
+            dialogueWorkingMemoryHistory.Add(CaptureDialogueWorkingMemorySnapshot());
+            dialogueWorkingMemoryHistoryIndex = dialogueWorkingMemoryHistory.Count - 1;
+            dialogueWorkingMemoryPendingAffectedNodes.Clear();
+            if (dialogueWorkingMemoryHistory.Count > DialogueWorkingMemoryHistoryLimit)
+            {
+                dialogueWorkingMemoryHistory.RemoveAt(0);
+                dialogueWorkingMemoryHistoryIndex--;
+            }
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException
+                                                              or InvalidOperationException)
+        {
+            SceneStatus = $"Unable to capture working-memory history: {exception.Message}";
+        }
+        UpdateDialogueWorkingMemoryHistoryButtons();
+    }
+
+    private void UpdateDialogueWorkingMemoryHistoryButtons()
+    {
+        if (DialogueWorkingMemoryUndoButton is null || DialogueWorkingMemoryRedoButton is null)
+        {
+            return;
+        }
+
+        DialogueWorkingMemoryUndoButton.IsEnabled = !applyingDialogueWorkingMemoryHistory
+                                                     && (dialogueWorkingMemoryHistoryIndex > 0
+                                                         || dialogueWorkingMemoryCapturePending);
+        DialogueWorkingMemoryRedoButton.IsEnabled = !applyingDialogueWorkingMemoryHistory
+                                                     && !dialogueWorkingMemoryCapturePending
+                                                     && dialogueWorkingMemoryHistoryIndex >= 0
+                                                     && dialogueWorkingMemoryHistoryIndex + 1
+                                                     < dialogueWorkingMemoryHistory.Count;
+    }
+
+    private async void DialogueWorkingMemoryUndo_Click(object sender, RoutedEventArgs e)
+    {
+        dialogueWorkingMemoryHistoryTimer.Stop();
+        CapturePendingDialogueWorkingMemoryHistory();
+        if (dialogueWorkingMemoryHistoryIndex <= 0)
+        {
+            return;
+        }
+
+        int targetIndex = dialogueWorkingMemoryHistoryIndex - 1;
+        IReadOnlySet<DialogueNodeReference> affectedNodes =
+            dialogueWorkingMemoryHistory[dialogueWorkingMemoryHistoryIndex].AffectedNodes;
+        if (await ApplyDialogueWorkingMemorySnapshotAsync(dialogueWorkingMemoryHistory[targetIndex], "Undid",
+                affectedNodes)
+                .ConfigureAwait(true))
+        {
+            dialogueWorkingMemoryHistoryIndex = targetIndex;
+        }
+        UpdateDialogueWorkingMemoryHistoryButtons();
+    }
+
+    private async void DialogueWorkingMemoryRedo_Click(object sender, RoutedEventArgs e)
+    {
+        if (dialogueWorkingMemoryCapturePending || dialogueWorkingMemoryHistoryIndex < 0
+                                                || dialogueWorkingMemoryHistoryIndex + 1
+                                                >= dialogueWorkingMemoryHistory.Count)
+        {
+            return;
+        }
+
+        int targetIndex = dialogueWorkingMemoryHistoryIndex + 1;
+        DialogueWorkingMemorySnapshot target = dialogueWorkingMemoryHistory[targetIndex];
+        if (await ApplyDialogueWorkingMemorySnapshotAsync(target, "Redid", target.AffectedNodes)
+                .ConfigureAwait(true))
+        {
+            dialogueWorkingMemoryHistoryIndex = targetIndex;
+        }
+        UpdateDialogueWorkingMemoryHistoryButtons();
+    }
+
+    private async Task<bool> ApplyDialogueWorkingMemorySnapshotAsync(DialogueWorkingMemorySnapshot snapshot,
+        string action, IReadOnlySet<DialogueNodeReference> affectedNodes)
+    {
+        if (snapshot is null || dialoguePreviewWorkingPackage is null || applyingDialogueWorkingMemoryHistory)
+        {
+            return false;
+        }
+
+        PauseDialogueTimeline();
+        float restoreTime = dialogueTimelineCurrentTime;
+        int packageEditorSelection = dialoguePackageEditor?.SelectedItem?.UIndex ?? 0;
+        bool previousPackageSuppression = suppressDialoguePackageEditTracking;
+        bool previousCacheSuppression = suppressDialogueCacheEditTracking;
+        applyingDialogueWorkingMemoryHistory = true;
+        suppressDialoguePackageEditTracking = true;
+        suppressDialogueCacheEditTracking = true;
+        UpdateDialogueWorkingMemoryHistoryButtons();
+        try
+        {
+            using var stream = new MemoryStream(snapshot.PackageData, writable: false);
+            IMEPackage snapshotPackage = MEPackageHandler.OpenMEPackageFromStream(stream,
+                dialoguePreviewWorkingPackage.FilePath, useSharedPackageCache: false);
+            bool packageStructureMatches = snapshotPackage.Names.Count == dialoguePreviewWorkingPackage.Names.Count
+                                           && snapshotPackage.Imports.Count == dialoguePreviewWorkingPackage.Imports.Count
+                                           && snapshotPackage.Exports.Count == dialoguePreviewWorkingPackage.Exports.Count;
+            bool replacedWorkingPackage = false;
+            IReadOnlySet<int> restoredExportIndexes = new HashSet<int>();
+            if (packageStructureMatches)
+            {
+                try
+                {
+                    restoredExportIndexes = ApplyDialogueWorkingPackageDataInPlace(snapshotPackage, snapshot);
+                }
+                finally
+                {
+                    snapshotPackage.Dispose();
+                }
+            }
+            else if (!await ReplaceDialogueWorkingPackageAsync(snapshotPackage, packageEditorSelection)
+                         .ConfigureAwait(true))
+            {
+                return false;
+            }
+            else
+            {
+                replacedWorkingPackage = true;
+            }
+
+            RestoreDialogueWorkingPackagePendingFlags(snapshot);
+            ApplyDialogueWorkingMemoryRuntimeSnapshots(snapshot, affectedNodes, replacedWorkingPackage);
+            RestoreDialogueWorkingMemoryPendingRefreshes(snapshot);
+            QueueDialogueWorkingMemoryRefreshForExports(restoredExportIndexes);
+            MarkDialogueWorkingMemoryDerivedSnapshotsDirty(affectedNodes);
+            dialogueWorkingMemoryPackageRevision = snapshot.PackageRevision;
+            DialoguePackageEditorTab.Header = HasDialogueWorkingPackageChanges()
+                ? "Package Editor *"
+                : "Package Editor";
+
+            activeDialogueTimelineSegment = null;
+            activeDialogueSegmentRuntime = null;
+            dialogueTimelineCurrentTime = restoreTime;
+            ApplyDialogueTimelineAtTime(restoreTime, reconstruct: true);
+            QueueDialoguePackageEditorScopeRefresh();
+            NavigateDialoguePackageEditorToActiveNode();
+            UpdateDialogueNodeCommitButton();
+            SceneStatus = $"{action} the last dialogue working-memory change.";
+
+            // Package notifications are batched for 50 ms. Keep history tracking suppressed until the
+            // Package Editor has consumed the restore notifications so they cannot become a new edit.
+            await Task.Delay(100).ConfigureAwait(true);
+            return true;
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException
+                                                              or InvalidOperationException)
+        {
+            MessageBox.Show(Window.GetWindow(this), $"Unable to restore dialogue working memory:\n{exception.Message}",
+                "Undo/Redo", MessageBoxButton.OK, MessageBoxImage.Error);
+            return false;
+        }
+        finally
+        {
+            suppressDialogueCacheEditTracking = previousCacheSuppression;
+            suppressDialoguePackageEditTracking = previousPackageSuppression;
+            applyingDialogueWorkingMemoryHistory = false;
+            UpdateDialogueWorkingMemoryHistoryButtons();
+        }
+    }
+
+    private IReadOnlySet<int> ApplyDialogueWorkingPackageDataInPlace(IMEPackage snapshotPackage,
+        DialogueWorkingMemorySnapshot snapshot)
+    {
+        IMEPackage workingPackage = dialoguePreviewWorkingPackage;
+        var restoredExportIndexes = new HashSet<int>();
+        for (int index = 0; index < workingPackage.Names.Count; index++)
+        {
+            if (!string.Equals(workingPackage.Names[index], snapshotPackage.Names[index], StringComparison.Ordinal))
+            {
+                workingPackage.replaceName(index, snapshotPackage.Names[index]);
+            }
+        }
+        for (int index = 0; index < workingPackage.Imports.Count; index++)
+        {
+            ImportEntry workingImport = workingPackage.Imports[index];
+            ImportEntry restoredImport = snapshotPackage.Imports[index];
+            if (!workingImport.Header.SequenceEqual(restoredImport.Header))
+            {
+                workingImport.Header = restoredImport.Header;
+            }
+            workingImport.HeaderChanged = snapshot.PendingImportHeaders.Contains(workingImport.UIndex);
+            workingImport.EntryHasPendingChanges = workingImport.HeaderChanged;
+        }
+        for (int index = 0; index < workingPackage.Exports.Count; index++)
+        {
+            ExportEntry workingExport = workingPackage.Exports[index];
+            ExportEntry restoredExport = snapshotPackage.Exports[index];
+            if (!workingExport.Header.SequenceEqual(restoredExport.Header))
+            {
+                workingExport.Header = restoredExport.Header;
+                restoredExportIndexes.Add(workingExport.UIndex);
+            }
+            if (!workingExport.Data.SequenceEqual(restoredExport.Data))
+            {
+                workingExport.Data = restoredExport.Data;
+                restoredExportIndexes.Add(workingExport.UIndex);
+            }
+            workingExport.HeaderChanged = snapshot.PendingExportHeaders.Contains(workingExport.UIndex);
+            workingExport.DataChanged = snapshot.PendingExportData.Contains(workingExport.UIndex);
+            workingExport.EntryHasPendingChanges = workingExport.HeaderChanged || workingExport.DataChanged;
+        }
+        return restoredExportIndexes;
+    }
+
+    private Task<bool> ReplaceDialogueWorkingPackageAsync(IMEPackage restoredPackage,
+        int packageEditorSelection)
+    {
+        IMEPackage oldPackage = dialoguePreviewWorkingPackage;
+        try
+        {
+            oldPackage.WeakUsers.Remove(this);
+            restoredPackage.IsMemoryPackage = true;
+            restoredPackage.WeakUsers.Add(this);
+            dialoguePreviewWorkingPackage = restoredPackage;
+            dialoguePackageEditor.LoadPackage(restoredPackage, packageEditorSelection);
+            dialoguePackageEditor.SetEmbeddedTreeScope([]);
+
+            dialogueRuntimeCache.Clear();
+            dialogueSceneShopRuntimeCache.Clear();
+            dialogueNodeInterpDataCache.Clear();
+            dialogueResolvedExportCache.Clear();
+            pendingDialogueWorkingPackageNodeRefreshes.Clear();
+            BuildDialogueSceneShopChoices();
+            oldPackage.Dispose();
+            return Task.FromResult(true);
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException
+                                                      or InvalidOperationException)
+        {
+            restoredPackage.WeakUsers.Remove(this);
+            oldPackage.WeakUsers.Add(this);
+            dialoguePreviewWorkingPackage = oldPackage;
+            dialoguePackageEditor.LoadPackage(oldPackage, packageEditorSelection);
+            dialoguePackageEditor.SetEmbeddedTreeScope([]);
+            restoredPackage.Dispose();
+            MessageBox.Show(Window.GetWindow(this),
+                $"The requested history state could not restore its package structure:\n{exception.Message}",
+                "Undo/Redo", MessageBoxButton.OK, MessageBoxImage.Error);
+            return Task.FromResult(false);
+        }
+    }
+
+    private void RestoreDialogueWorkingPackagePendingFlags(DialogueWorkingMemorySnapshot snapshot)
+    {
+        foreach (ImportEntry import in dialoguePreviewWorkingPackage.Imports)
+        {
+            import.HeaderChanged = snapshot.PendingImportHeaders.Contains(import.UIndex);
+            import.EntryHasPendingChanges = import.HeaderChanged;
+        }
+        foreach (ExportEntry export in dialoguePreviewWorkingPackage.Exports)
+        {
+            export.HeaderChanged = snapshot.PendingExportHeaders.Contains(export.UIndex);
+            export.DataChanged = snapshot.PendingExportData.Contains(export.UIndex);
+            export.EntryHasPendingChanges = export.HeaderChanged || export.DataChanged;
+        }
+    }
+
+    private void ApplyDialogueWorkingMemoryRuntimeSnapshots(DialogueWorkingMemorySnapshot snapshot,
+        IReadOnlySet<DialogueNodeReference> affectedNodes, bool deferAllSnapshots)
+    {
+        foreach ((DialogueWorkingMemoryRuntimeKey key, DialogueWorkingMemoryRuntimeSnapshot state) in snapshot.Runtimes)
+        {
+            if (!deferAllSnapshots && affectedNodes is { Count: > 0 } && !affectedNodes.Contains(key.Node))
+            {
+                continue;
+            }
+            if (!dialogueTimelineSegmentsByReference.TryGetValue(key.Node, out DialogueTimelineSegment segment)
+                || !dialogueSceneShopRuntimeCache.TryGetValue(segment,
+                    out Dictionary<string, DialogueSegmentRuntime> variants)
+                || !variants.TryGetValue(key.VariantKey, out DialogueSegmentRuntime runtime))
+            {
+                continue;
+            }
+            ApplyDialogueWorkingMemoryRuntimeSnapshot(runtime, state);
+        }
+        deferredDialogueWorkingMemoryRuntimeSnapshots = deferAllSnapshots
+                                                        || dialogueRuntimeCache.Count
+                                                        < dialogueTimelineSegments.Count
+            ? snapshot.Runtimes
+            : null;
+    }
+
+    private static void ApplyDialogueWorkingMemoryRuntimeSnapshot(DialogueSegmentRuntime runtime,
+        DialogueWorkingMemoryRuntimeSnapshot state)
+    {
+        runtime.HasPendingPreviewChanges = state.HasPendingPreviewChanges;
+        runtime.HasPendingPackageChanges = state.HasPendingPackageChanges;
+        runtime.ActorOriginOverrides.Clear();
+        foreach ((string actorTag, CameraOrigin origin) in state.ActorOriginOverrides)
+        {
+            runtime.ActorOriginOverrides[actorTag] = origin;
+        }
+
+        foreach (CurveEditor3DModel model in runtime.TrackMoves.Select(option => option.Model)
+                     .Where(model => model?.Export is not null).Distinct())
+        {
+            if (state.TrackModels.TryGetValue(model.Export.UIndex, out CurveEditor3DModelSnapshot modelState))
+            {
+                model.LoadCacheSnapshot(model.Export, modelState);
+            }
+        }
+        foreach (CurveEditor3DFovModel model in runtime.TrackMoves.Select(option => option.FovModel)
+                     .Where(model => model?.Export is not null).Distinct())
+        {
+            if (state.FovModels.TryGetValue(model.Export.UIndex, out CurveEditor3DFovModelSnapshot modelState))
+            {
+                model.LoadCacheSnapshot(model.Export, modelState);
+            }
+        }
+
+        runtime.ActorTrackAssignments.Clear();
+        foreach ((string actorTag, (int trackUIndex, int groupUIndex)) in state.ActorTrackAssignments)
+        {
+            TrackMovePlaybackOption assignment = runtime.TrackMoves.FirstOrDefault(option =>
+                option.TrackMove?.UIndex == trackUIndex
+                && (groupUIndex == 0 || option.Group?.UIndex == groupUIndex));
+            if (assignment is not null)
+            {
+                runtime.ActorTrackAssignments[actorTag] = assignment;
+            }
+        }
+        runtime.ActorGestureAssignments.Clear();
+        foreach ((string actorTag, (int trackUIndex, int groupUIndex)) in state.ActorGestureAssignments)
+        {
+            GestureTrackOption assignment = runtime.GestureTracks.FirstOrDefault(option =>
+                option.Track?.UIndex == trackUIndex
+                && (groupUIndex == 0 || option.Group?.UIndex == groupUIndex));
+            if (assignment is not null)
+            {
+                runtime.ActorGestureAssignments[actorTag] = assignment;
+            }
+        }
+    }
+
+    private void MarkDialogueWorkingMemoryDerivedSnapshotsDirty(
+        IReadOnlySet<DialogueNodeReference> affectedNodes)
+    {
+        if (affectedNodes is not { Count: > 0 })
+        {
+            return;
+        }
+        foreach (DialogueTimelineSegment segment in dialogueTimelineSegments)
+        {
+            for (DialogueTimelineSegment current = segment; current is not null; current = current.Parent)
+            {
+                if (affectedNodes.Contains(current.Reference))
+                {
+                    pendingDialogueWorkingMemoryDerivedRefreshes.Add(segment);
+                    break;
+                }
+            }
+        }
+    }
+
+    private void RestoreDialogueWorkingMemoryPendingRefreshes(DialogueWorkingMemorySnapshot snapshot)
+    {
+        pendingDialogueWorkingPackageNodeRefreshes.Clear();
+        foreach ((DialogueNodeReference reference, IReadOnlySet<int> changedExports) in snapshot.PendingNodeRefreshes)
+        {
+            if (dialogueTimelineSegmentsByReference.TryGetValue(reference, out DialogueTimelineSegment segment))
+            {
+                pendingDialogueWorkingPackageNodeRefreshes[segment] = changedExports.ToHashSet();
+            }
+        }
+    }
+
+    private void QueueDialogueWorkingMemoryRefreshForExports(IReadOnlySet<int> changedExportIndexes)
+    {
+        foreach (int exportIndex in changedExportIndexes)
+        {
+            if (!dialoguePreviewWorkingPackage.TryGetUExport(exportIndex, out ExportEntry changedExport))
+            {
+                continue;
+            }
+
+            bool queuedNode = false;
+            foreach (DialogueTimelineSegment segment in dialogueTimelineSegments)
+            {
+                if (!GetDialogueNodeInterpDatas(segment.Node).Any(interpData =>
+                        changedExport == interpData || changedExport.IsDescendantOf(interpData)))
+                {
+                    continue;
+                }
+
+                if (!pendingDialogueWorkingPackageNodeRefreshes.TryGetValue(segment,
+                        out HashSet<int> pendingExports))
+                {
+                    pendingExports = [];
+                    pendingDialogueWorkingPackageNodeRefreshes[segment] = pendingExports;
+                }
+                pendingExports.Add(exportIndex);
+                queuedNode = true;
+            }
+
+            if (!queuedNode && activeDialogueTimelineSegment is not null)
+            {
+                if (!pendingDialogueWorkingPackageNodeRefreshes.TryGetValue(activeDialogueTimelineSegment,
+                        out HashSet<int> pendingExports))
+                {
+                    pendingExports = [];
+                    pendingDialogueWorkingPackageNodeRefreshes[activeDialogueTimelineSegment] = pendingExports;
+                }
+                pendingExports.Add(exportIndex);
+            }
+        }
     }
 
     private void DialoguePackageEditor_PropertyChanged(object sender, PropertyChangedEventArgs e)
@@ -1871,6 +2474,10 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
     private bool SelectCachedDialogueSceneShopRuntime(DialogueTimelineSegment segment)
     {
+        if (!EnsureDialogueRuntimeCached(segment))
+        {
+            return false;
+        }
         string key = GetDialogueSceneShopRuntimeKey(segment);
         if (key is null || !dialogueSceneShopRuntimeCache.TryGetValue(segment,
                 out Dictionary<string, DialogueSegmentRuntime> variants)
@@ -4638,6 +5245,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                         SceneStatus = "Choose each SceneShop path when playback reaches its dialogue node.";
                     }
                     ShowDialogueConversationPreviewUi();
+                    ResetDialogueWorkingMemoryHistory();
                 }
                 else
                 {
@@ -6038,9 +6646,15 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         return null;
     }
 
-    private void BuildDialogueRuntimeActorSnapshots()
+    private void BuildDialogueRuntimeActorSnapshots(
+        IEnumerable<DialogueTimelineSegment> requestedSegments = null)
     {
-        foreach (DialogueTimelineSegment segment in dialogueTimelineSegments.OrderBy(segment => segment.TreeDepth))
+        IReadOnlyList<DialogueTimelineSegment> segments = (requestedSegments ?? dialogueTimelineSegments)
+            .Where(dialogueRuntimeCache.ContainsKey)
+            .Distinct()
+            .OrderBy(segment => segment.TreeDepth)
+            .ToArray();
+        foreach (DialogueTimelineSegment segment in segments)
         {
             DialogueSegmentRuntime runtime = dialogueRuntimeCache[segment];
             runtime.StartActorGestureStates.Clear();
@@ -6190,14 +6804,17 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             }
         }
 
-        BuildDialogueRuntimeLookAtSnapshots();
-        BuildDialogueRuntimeCameraSnapshots();
-        ReprojectDialogueActivePathActorOrigins();
+        BuildDialogueRuntimeLookAtSnapshots(segments);
+        BuildDialogueRuntimeCameraSnapshots(segments);
+        if (requestedSegments is null)
+        {
+            ReprojectDialogueActivePathActorOrigins();
+        }
     }
 
-    private void BuildDialogueRuntimeLookAtSnapshots()
+    private void BuildDialogueRuntimeLookAtSnapshots(IEnumerable<DialogueTimelineSegment> segments)
     {
-        foreach (DialogueTimelineSegment segment in dialogueTimelineSegments.OrderBy(segment => segment.TreeDepth))
+        foreach (DialogueTimelineSegment segment in segments)
         {
             DialogueSegmentRuntime runtime = dialogueRuntimeCache[segment];
             DialogueSegmentRuntime parentRuntime = segment.Parent is not null
@@ -6256,12 +6873,12 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             : null;
     }
 
-    private void BuildDialogueRuntimeCameraSnapshots()
+    private void BuildDialogueRuntimeCameraSnapshots(IEnumerable<DialogueTimelineSegment> segments)
     {
         // An empty camera group means "leave that camera actor where the previous Matinee left it."
         // Project camera state through the tree just like stunt-actor state so direct seeks and
         // linear playback agree, including intervening reply/no-data nodes.
-        foreach (DialogueTimelineSegment segment in dialogueTimelineSegments.OrderBy(segment => segment.TreeDepth))
+        foreach (DialogueTimelineSegment segment in segments)
         {
             DialogueSegmentRuntime runtime = dialogueRuntimeCache[segment];
             DialogueSegmentRuntime parentRuntime = segment.Parent is not null
@@ -9822,6 +10439,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             return;
         }
         if (!isDialogueConversationPreview || dialoguePreviewWorkingPackage is null
+                                            || applyingDialogueWorkingMemoryHistory
                                             || suppressDialoguePackageEditTracking
                                             || !HasDialogueWorkingPackageChanges())
         {
@@ -9856,6 +10474,8 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         DialoguePackageEditorTab.Header = "Package Editor *";
         PauseDialogueTimeline();
         UpdateDialogueNodeCommitButton();
+        dialogueWorkingMemoryPackageRevision = ++dialogueWorkingMemoryNextPackageRevision;
+        ScheduleDialogueWorkingMemoryCapture();
     }
 
     private void MarkDialogueWorkingPackageNodeDirty(DialogueTimelineSegment segment, int? changedExportIndex)
@@ -10031,7 +10651,8 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                                                  out DialogueSegmentRuntime selectedRuntime)
                 ? selectedRuntime
                 : refreshedVariants.Values.First();
-            BuildDialogueRuntimeActorSnapshots();
+            MarkDialogueWorkingMemoryDerivedSnapshotsDirty(
+                new HashSet<DialogueNodeReference> { segment.Reference });
             pendingDialogueWorkingPackageNodeRefreshes.Remove(segment);
             if (ReferenceEquals(activeDialogueTimelineSegment, segment))
             {
@@ -10056,6 +10677,121 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             suppressDialoguePackageEditTracking = previousPackageEditSuppression;
             refreshingDialogueWorkingPackageNodeRuntime = false;
             UpdateDialogueNodeCommitButton();
+        }
+    }
+
+    private bool EnsureDialogueRuntimeCached(DialogueTimelineSegment segment)
+    {
+        if (!isDialogueConversationPreview || segment is null)
+        {
+            return false;
+        }
+
+        var path = new Stack<DialogueTimelineSegment>();
+        for (DialogueTimelineSegment current = segment; current is not null; current = current.Parent)
+        {
+            path.Push(current);
+        }
+        DialogueTimelineSegment[] orderedPath = path.ToArray();
+        int firstRefreshIndex = Array.FindIndex(orderedPath,
+            pendingDialogueWorkingMemoryDerivedRefreshes.Contains);
+        for (int index = 0; index < orderedPath.Length; index++)
+        {
+            DialogueTimelineSegment pathSegment = orderedPath[index];
+            if (dialogueRuntimeCache.ContainsKey(pathSegment))
+            {
+                continue;
+            }
+            if (!BuildDialogueRuntimeCacheForSegment(pathSegment))
+            {
+                return false;
+            }
+            if (firstRefreshIndex < 0 || index < firstRefreshIndex)
+            {
+                firstRefreshIndex = index;
+            }
+        }
+
+        if (firstRefreshIndex >= 0)
+        {
+            DialogueTimelineSegment[] refreshPath = orderedPath[firstRefreshIndex..];
+            BuildDialogueRuntimeActorSnapshots(refreshPath);
+            pendingDialogueWorkingMemoryDerivedRefreshes.ExceptWith(refreshPath);
+        }
+        return dialogueRuntimeCache.ContainsKey(segment);
+    }
+
+    private bool BuildDialogueRuntimeCacheForSegment(DialogueTimelineSegment segment)
+    {
+        Dictionary<DialogueSceneShopSelectionKey, int> originalSceneShopSelections =
+            dialogueSceneShopSelections.ToDictionary();
+        bool previousPackageEditSuppression = suppressDialoguePackageEditTracking;
+        bool previousCacheEditSuppression = suppressDialogueCacheEditTracking;
+        bool previousTimelineLoading = loadingDialogueTimelineSegment;
+        try
+        {
+            suppressDialoguePackageEditTracking = true;
+            suppressDialogueCacheEditTracking = true;
+            loadingDialogueTimelineSegment = true;
+
+            IReadOnlyList<Dictionary<int, int>> selectionVariants =
+                GetDialogueSceneShopSelectionVariants(segment);
+            var runtimeVariants = new Dictionary<string, DialogueSegmentRuntime>(StringComparer.Ordinal);
+            foreach (Dictionary<int, int> selectionVariant in selectionVariants)
+            {
+                if (dialogueSceneShopChoicesBySegment.TryGetValue(segment,
+                        out IReadOnlyList<DialogueSceneShopChoice> choices))
+                {
+                    foreach (DialogueSceneShopChoice choice in choices)
+                    {
+                        dialogueSceneShopSelections.Remove(
+                            GetDialogueSceneShopSelectionKey(segment, choice.InterpData));
+                    }
+                }
+                foreach ((int interpDataUIndex, int sceneGroupUIndex) in selectionVariant)
+                {
+                    dialogueSceneShopSelections[new DialogueSceneShopSelectionKey(segment.Reference,
+                        interpDataUIndex)] = sceneGroupUIndex;
+                }
+
+                string runtimeKey = GetDialogueSceneShopRuntimeKey(selectionVariant);
+                DialogueSegmentRuntime runtime = BuildDialogueSegmentRuntime(segment);
+                if (deferredDialogueWorkingMemoryRuntimeSnapshots is not null
+                    && deferredDialogueWorkingMemoryRuntimeSnapshots.TryGetValue(
+                        new DialogueWorkingMemoryRuntimeKey(segment.Reference, runtimeKey),
+                        out DialogueWorkingMemoryRuntimeSnapshot state))
+                {
+                    ApplyDialogueWorkingMemoryRuntimeSnapshot(runtime, state);
+                }
+                runtimeVariants[runtimeKey] = runtime;
+            }
+
+            dialogueSceneShopRuntimeCache[segment] = runtimeVariants;
+            string selectedKey = GetDialogueSceneShopRuntimeKey(segment, originalSceneShopSelections);
+            dialogueRuntimeCache[segment] = selectedKey is not null
+                                             && runtimeVariants.TryGetValue(selectedKey,
+                                                 out DialogueSegmentRuntime selectedRuntime)
+                ? selectedRuntime
+                : runtimeVariants.Values.First();
+            pendingDialogueWorkingPackageNodeRefreshes.Remove(segment);
+            return true;
+        }
+        catch (Exception exception)
+        {
+            SceneStatus = $"Unable to load {segment.NodeLabel} from working memory: {exception.Message}";
+            return false;
+        }
+        finally
+        {
+            dialogueSceneShopSelections.Clear();
+            foreach ((DialogueSceneShopSelectionKey selectionKey, int sceneGroupUIndex) in
+                     originalSceneShopSelections)
+            {
+                dialogueSceneShopSelections[selectionKey] = sceneGroupUIndex;
+            }
+            loadingDialogueTimelineSegment = previousTimelineLoading;
+            suppressDialogueCacheEditTracking = previousCacheEditSuppression;
+            suppressDialoguePackageEditTracking = previousPackageEditSuppression;
         }
     }
 
@@ -10264,6 +11000,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         activeDialogueSegmentRuntime.HasPendingPreviewChanges = false;
         activeDialogueSegmentRuntime.HasPendingPackageChanges = false;
         UpdateDialogueNodeCommitButton();
+        ResetDialogueWorkingMemoryHistory();
         string saveStatus = packageSaved ? " The PCC was saved." : string.Empty;
         SceneStatus = (changedEntryCount > 0
             ? $"Committed cached edits for {activeDialogueSegmentRuntime.Segment.NodeLabel}, including {changedEntryCount} package entr{(changedEntryCount == 1 ? "y" : "ies")}."
@@ -10330,6 +11067,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             runtime.HasPendingPackageChanges = false;
         }
         UpdateDialogueNodeCommitButton();
+        ResetDialogueWorkingMemoryHistory();
         string saveStatus = packageSaved ? " The PCC was saved." : string.Empty;
         SceneStatus = (changedEntryCount > 0
             ? $"Committed the entire dialogue cache ({pendingRuntimes.Length} changed node(s), {changedEntryCount} package entr{(changedEntryCount == 1 ? "y" : "ies")}) to the PCC."
@@ -10366,6 +11104,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                 "Load Dialogue Cache", MessageBoxButton.OK, MessageBoxImage.Error);
             return;
         }
+        ResetDialogueWorkingMemoryHistory();
         StartDialogueTimelinePlaybackAt(0, reconstruct: true);
     }
 
@@ -10610,6 +11349,15 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             SceneViewer?.MarkRenderDirty();
             return;
         }
+        if (isDialogueConversationPreview && target is not null
+                                          && (reconstruct
+                                              || !dialogueRuntimeCache.ContainsKey(target)
+                                              || pendingDialogueWorkingPackageNodeRefreshes.ContainsKey(target)
+                                              || pendingDialogueWorkingMemoryDerivedRefreshes.Contains(target)))
+        {
+            RefreshDialogueWorkingPackageNodeRuntimeIfNeeded(target);
+            EnsureDialogueRuntimeCached(target);
+        }
         bool useCachedRuntime = isDialogueConversationPreview && dialogueRuntimeCache.Count > 0;
         if (reconstruct && useCachedRuntime)
         {
@@ -10659,6 +11407,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     private void ActivateDialogueTimelineSegment(DialogueTimelineSegment segment)
     {
         RefreshDialogueWorkingPackageNodeRuntimeIfNeeded(segment);
+        EnsureDialogueRuntimeCached(segment);
         if (ReferenceEquals(activeDialogueTimelineSegment, segment))
         {
             return;
@@ -11812,6 +12561,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         }
         PauseDialogueTimeline();
         UpdateDialogueNodeCommitButton();
+        ScheduleDialogueWorkingMemoryCapture();
     }
 
     private CameraOrigin? GetCameraPresetViewportOrigin()
@@ -12012,6 +12762,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         {
             PauseDialogueTimeline();
             UpdateDialogueNodeCommitButton();
+            ScheduleDialogueWorkingMemoryCapture();
         }
         StopPlayback();
         suppressTrackVisualizationForCameraPreview = false;
@@ -12031,6 +12782,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         {
             PauseDialogueTimeline();
             UpdateDialogueNodeCommitButton();
+            ScheduleDialogueWorkingMemoryCapture();
         }
         StopPlayback();
         suppressTrackVisualizationForCameraPreview = false;
@@ -13496,6 +14248,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         }
         activeDialogueSegmentRuntime.HasPendingPreviewChanges = true;
         UpdateDialogueNodeCommitButton();
+        ScheduleDialogueWorkingMemoryCapture();
     }
 
     private void UseSelectedKeyframeForPreviewActor_Click(object sender, RoutedEventArgs e)
