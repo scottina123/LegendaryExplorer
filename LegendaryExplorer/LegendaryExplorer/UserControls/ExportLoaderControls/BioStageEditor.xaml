@@ -1,0 +1,225 @@
+<exportLoaderControls:ExportLoaderControl x:Class="LegendaryExplorer.UserControls.ExportLoaderControls.BioStageEditor"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:xctk="http://schemas.xceed.com/wpf/xaml/toolkit"
+        xmlns:exportLoaderControls="clr-namespace:LegendaryExplorer.UserControls.ExportLoaderControls"
+        xmlns:scene3D="clr-namespace:LegendaryExplorer.Tools.LevelEditor.Scene3D"
+        mc:Ignorable="d"
+        d:DesignHeight="650" d:DesignWidth="1100"
+        DataContext="{Binding RelativeSource={RelativeSource Self}}"
+        Loaded="BioStageEditor_Loaded"
+        Unloaded="BioStageEditor_Unloaded">
+    <exportLoaderControls:ExportLoaderControl.Resources>
+        <DataTemplate x:Key="NumericEditorTemplate">
+            <Grid Margin="0,2">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="88"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="92"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="{Binding Label}" VerticalAlignment="Center" Margin="0,0,7,0"
+                           ToolTip="{Binding ToolTip}"/>
+                <Slider Grid.Column="1" Minimum="{Binding Minimum}" Maximum="{Binding Maximum}"
+                        Value="{Binding Value, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                        SmallChange="{Binding Increment}" LargeChange="{Binding LargeIncrement}"
+                        IsMoveToPointEnabled="True" IsEnabled="{Binding IsEditable}"
+                        ToolTip="{Binding ToolTip}"/>
+                <xctk:DoubleUpDown Grid.Column="2" Margin="6,0,0,0"
+                                   Value="{Binding Value, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                   Minimum="{Binding Minimum}" Maximum="{Binding Maximum}"
+                                   Increment="{Binding Increment}" FormatString="{Binding FormatString}"
+                                   IsEnabled="{Binding IsEditable}" ToolTip="{Binding ToolTip}"/>
+            </Grid>
+        </DataTemplate>
+    </exportLoaderControls:ExportLoaderControl.Resources>
+
+    <DockPanel>
+        <WrapPanel DockPanel.Dock="Top">
+            <ToolBar ToolBarTray.IsLocked="True" OverflowMode="Never">
+                <Button Content="Open Level" Click="OpenLevel_Click" ToolTip="Replace the level backdrop"/>
+                <Button Content="Add Level" Click="AddLevel_Click" ToolTip="Add another level file to the backdrop"/>
+                <Button Content="Unload Level" Click="UnloadLevel_Click" ToolTip="Unload all level backdrop files"/>
+                <Button x:Name="RecentLevelsButton" Content="Recent Levels" Click="RecentLevelsButton_Click"
+                        ToolTip="Open a recent level backdrop">
+                    <Button.ContextMenu>
+                        <ContextMenu x:Name="RecentLevelsMenu" Opened="RecentLevelsMenu_Opened"/>
+                    </Button.ContextMenu>
+                </Button>
+                <Separator Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}"/>
+                <RadioButton Content="Translate" GroupName="StageWidgetMode" IsChecked="True"
+                             Checked="TranslateMode_Checked" ToolTip="Move the selected RefSkeleton bone"/>
+                <RadioButton Content="Rotate" GroupName="StageWidgetMode"
+                             Checked="RotateMode_Checked" ToolTip="Rotate the selected RefSkeleton bone"/>
+                <CheckBox Content="Local gizmo" IsChecked="{Binding UseLocalCoordsForWidget}"
+                          Margin="8,0,0,0" ToolTip="Orient the gizmo to the selected bone"/>
+                <Separator Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}"/>
+                <CheckBox Content="Camera focus mode" IsChecked="{Binding CameraFocusMode}"
+                          FontWeight="SemiBold"
+                          ToolTip="View through the selected stage camera using its bone, offsets, and FOV"/>
+                <Button Content="Frame Camera" Click="FrameCamera_Click"
+                        ToolTip="View from the selected bone, applying its matching camera settings when present"/>
+                <Separator Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}"/>
+                <xctk:DropDownButton Content="View options" MaxDropDownHeight="220" CloseOnFocusLoss="False"
+                                     BorderBrush="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}">
+                    <xctk:DropDownButton.DropDownContent>
+                        <scene3D:SceneControlOptionsControl/>
+                    </xctk:DropDownButton.DropDownContent>
+                </xctk:DropDownButton>
+                <Separator Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}"/>
+                <TextBlock Text="{Binding CurrentExportName}" VerticalAlignment="Center" Margin="4,0"/>
+            </ToolBar>
+        </WrapPanel>
+
+        <StatusBar DockPanel.Dock="Bottom">
+            <TextBlock Text="{Binding SceneStatus}"/>
+        </StatusBar>
+
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="5"/>
+                <ColumnDefinition Width="430" MinWidth="360"/>
+            </Grid.ColumnDefinitions>
+
+            <scene3D:SceneRenderControl x:Name="SceneViewer" MaximumFramesPerSecond="60"/>
+            <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Stretch"/>
+
+            <TabControl x:Name="DetailsTabs" Grid.Column="2" Margin="7">
+                <TabItem Header="Stage Actor">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="7">
+                        <StackPanel>
+                            <TextBlock Text="Stage transform" FontSize="18" FontWeight="SemiBold"/>
+                            <TextBlock Text="Every numeric value has both a slider and an exact numeric editor."
+                                       TextWrapping="Wrap" Opacity="0.72" Margin="0,2,0,8"/>
+                            <ItemsControl ItemsSource="{Binding StageEditors}"
+                                          ItemTemplate="{StaticResource NumericEditorTemplate}"/>
+                            <Separator Margin="0,10"/>
+                            <TextBlock Text="Attached skeletal mesh" FontSize="16" FontWeight="SemiBold"/>
+                            <TextBlock Text="{Binding StageMeshPath}" TextWrapping="Wrap" Margin="0,3,0,5"/>
+                            <TextBlock Text="The stage is always drawn as wireframe; level backdrops keep their normal rendering."
+                                       TextWrapping="Wrap" Opacity="0.72"/>
+                            <Button Content="Frame Stage Mesh" HorizontalAlignment="Left" Padding="8,3"
+                                    Margin="0,8,0,0" Click="FocusStage_Click"/>
+                        </StackPanel>
+                    </ScrollViewer>
+                </TabItem>
+
+                <TabItem Header="Cameras">
+                    <Grid Margin="7">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="170"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+                        <WrapPanel Margin="0,0,0,5">
+                            <Button Content="Add Selected Bone" Padding="7,3" Margin="0,0,4,4"
+                                    Click="AddSelectedBoneToCameraList_Click"/>
+                            <Button Content="Clone Camera" Padding="7,3" Margin="0,0,4,4"
+                                    Click="CloneCamera_Click"/>
+                            <Button Content="Remove Camera" Padding="7,3" Margin="0,0,4,4"
+                                    Click="RemoveCamera_Click"/>
+                        </WrapPanel>
+                        <ListBox x:Name="CameraListBox" Grid.Row="1" ItemsSource="{Binding Cameras}"
+                                 SelectedItem="{Binding SelectedCamera, Mode=TwoWay}"
+                                 MouseDoubleClick="CameraListBox_MouseDoubleClick">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <DockPanel Margin="2">
+                                        <TextBlock DockPanel.Dock="Right" Text="{Binding SourceLabel}"
+                                                   Opacity="0.6" Margin="8,0,0,0"/>
+                                        <TextBlock Text="{Binding DisplayName}"/>
+                                    </DockPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                        <StackPanel Grid.Row="2" Margin="0,7,0,5" DataContext="{Binding SelectedCamera}">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBox x:Name="CameraNameTextBox" Text="{Binding NameText, Mode=TwoWay}"
+                                         ToolTip="Camera tag; must match a RefSkeleton bone"/>
+                                <Button Grid.Column="1" Content="Apply Name" Padding="7,2" Margin="5,0,0,0"
+                                        Click="ApplyCameraName_Click"/>
+                            </Grid>
+                            <CheckBox Content="Disable height adjustment"
+                                      IsChecked="{Binding DisableHeightAdjustment, Mode=TwoWay}"
+                                      Margin="0,5,0,0"/>
+                        </StackPanel>
+                        <ScrollViewer Grid.Row="3" VerticalScrollBarVisibility="Auto">
+                            <StackPanel DataContext="{Binding SelectedCamera}">
+                                <TextBlock Text="Camera values" FontSize="17" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                                <ItemsControl ItemsSource="{Binding Editors}"
+                                              ItemTemplate="{StaticResource NumericEditorTemplate}"/>
+                                <TextBlock Text="Camera focus mode uses the RefSkeleton bone plus these offsets."
+                                           TextWrapping="Wrap" Opacity="0.7" Margin="0,8,0,0"/>
+                            </StackPanel>
+                        </ScrollViewer>
+                    </Grid>
+                </TabItem>
+
+                <TabItem x:Name="RefSkeletonTab" Header="RefSkeleton">
+                    <Grid Margin="7">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="210"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+                        <WrapPanel Margin="0,0,0,5">
+                            <Button Content="Clone Bone" Padding="7,3" Margin="0,0,4,4" Click="CloneBone_Click"/>
+                            <Button Content="Remove Bone" Padding="7,3" Margin="0,0,4,4" Click="RemoveBone_Click"/>
+                            <Button Content="Add to Cameras" Padding="7,3" Margin="0,0,4,4"
+                                    Click="AddSelectedBoneToCameraList_Click"/>
+                        </WrapPanel>
+                        <ListBox x:Name="BoneListBox" Grid.Row="1" ItemsSource="{Binding Bones}"
+                                 SelectedItem="{Binding SelectedBone, Mode=TwoWay}"
+                                 PreviewMouseRightButtonDown="BoneListBox_PreviewMouseRightButtonDown"
+                                 MouseDoubleClick="BoneListBox_MouseDoubleClick">
+                            <ListBox.ContextMenu>
+                                <ContextMenu>
+                                    <MenuItem Header="Add to Camera List" Click="AddSelectedBoneToCameraList_Click"/>
+                                    <Separator/>
+                                    <MenuItem Header="Clone Bone" Click="CloneBone_Click"/>
+                                    <MenuItem Header="Remove Bone" Click="RemoveBone_Click"/>
+                                </ContextMenu>
+                            </ListBox.ContextMenu>
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <DockPanel Margin="2">
+                                        <TextBlock DockPanel.Dock="Right" Text="CAM" Foreground="#FF37B9FF"
+                                                   FontWeight="Bold" Margin="8,0,0,0"
+                                                   Visibility="{Binding CameraMarkerVisibility}"/>
+                                        <TextBlock Text="{Binding DisplayName}"/>
+                                    </DockPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                        <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" Margin="0,7,0,0">
+                            <StackPanel DataContext="{Binding SelectedBone}">
+                                <Grid Margin="0,0,0,5">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBox x:Name="BoneNameTextBox" Text="{Binding NameText, Mode=TwoWay}"/>
+                                    <Button Grid.Column="1" Content="Apply Name" Padding="7,2" Margin="5,0,0,0"
+                                            Click="ApplyBoneName_Click"/>
+                                </Grid>
+                                <TextBlock Text="Parent" FontWeight="SemiBold"/>
+                                <ComboBox ItemsSource="{Binding ParentOptions}" DisplayMemberPath="DisplayName"
+                                          SelectedValuePath="Index" SelectedValue="{Binding ParentIndex, Mode=TwoWay}"
+                                          Margin="0,2,0,6"/>
+                                <ItemsControl ItemsSource="{Binding Editors}"
+                                              ItemTemplate="{StaticResource NumericEditorTemplate}"/>
+                            </StackPanel>
+                        </ScrollViewer>
+                    </Grid>
+                </TabItem>
+            </TabControl>
+        </Grid>
+    </DockPanel>
+</exportLoaderControls:ExportLoaderControl>

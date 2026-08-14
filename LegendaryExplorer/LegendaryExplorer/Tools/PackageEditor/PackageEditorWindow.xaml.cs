@@ -5821,6 +5821,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
             ExportLoaders[ParticleSystemTab_ParticleSystemLoader] = ParticleSystem_Tab;
             ExportLoaders[ParticleModuleTab_ParticleModuleLoader] = ParticleModule_Tab;
             ExportLoaders[MeshRendererTab_MeshRenderer] = MeshRenderer_Tab;
+            ExportLoaders[BioStageTab_BioStageEditor] = BioStageEditor_Tab;
             ExportLoaders[MorphEditorTab_MorphEditor] = MorphEditor_Tab;
             ExportLoaders[JPEXLauncherTab_JPEXLauncher] = JPEXLauncher_Tab;
             ExportLoaders[TlkEditorTab_TlkEditor] = TlkEditor_Tab;

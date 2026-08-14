@@ -692,6 +692,12 @@
                         </TabItem.Header>
                         <exportLoaderControls:MeshRenderer x:Name="MeshRendererTab_MeshRenderer"/>
                     </TabItem>
+                    <TabItem Name="BioStageEditor_Tab" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}">
+                        <TabItem.Header>
+                            <TextBlock Text="BioStage" ToolTip="Edit stage cameras, actor transform, and RefSkeleton bones in 3D"/>
+                        </TabItem.Header>
+                        <exportLoaderControls:BioStageEditor x:Name="BioStageTab_BioStageEditor"/>
+                    </TabItem>
                     <TabItem Name="MorphEditor_Tab" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}">
                         <TabItem.Header>
                             <TextBlock Text="Morph Editor" ToolTip="Live-edit BioMorphFace geometry, skeleton, and material overrides for any Mass Effect game"/>
