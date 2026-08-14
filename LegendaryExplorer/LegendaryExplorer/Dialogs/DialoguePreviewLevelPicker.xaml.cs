@@ -72,9 +72,16 @@ public partial class DialoguePreviewLevelPicker : TrackingNotifyPropertyChangedW
     }
 
     public DialoguePreviewLevelPicker(MEGame game, ConversationExtended conversation,
-        DialogueNodeExtended startNode, bool includeCache) : base("Dialogue Preview Options", false)
+        DialogueNodeExtended startNode, bool includeCache,
+        bool requirePlayerGenderSelection = false) : base("Dialogue Preview Options", false)
     {
         InitializeComponent();
+        if (requirePlayerGenderSelection)
+        {
+            Title = "Scene Actor Generation Options";
+            PlayerGenderComboBox.SelectedIndex = -1;
+            LoadPreviewButton.Content = "Generate Actors";
+        }
         HenchmanChoice[] henchmanChoices = CurveEditor3D.GetDialoguePreviewHenchmanTags()
             .Select(tag => new HenchmanChoice(tag, GetHenchmanDisplayName(tag)))
             .ToArray();
@@ -372,6 +379,12 @@ public partial class DialoguePreviewLevelPicker : TrackingNotifyPropertyChangedW
 
     private async void Confirm_Click(object sender, RoutedEventArgs e)
     {
+        if (PlayerGenderComboBox.SelectedItem is not ComboBoxItem)
+        {
+            MessageBox.Show(this, "Choose whether the player actor should be male or female.",
+                "Player Gender Required", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
         if (HenchmanSlots.Any(slot => string.IsNullOrWhiteSpace(slot.SelectedHenchmanTag)))
         {
             MessageBox.Show(this, "Choose a squadmate for every detected henchman slot.",

@@ -3458,7 +3458,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             }
 
             var options = new DialoguePreviewLevelPicker(CurrentLoadedExport.Game, scene.Value.Conversation,
-                scene.Value.Node, includeCache: false)
+                scene.Value.Node, includeCache: false, requirePlayerGenderSelection: true)
             {
                 Owner = Window.GetWindow(this),
             };

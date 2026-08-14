@@ -20,7 +20,7 @@
 
         <GroupBox Grid.ColumnSpan="3" Header="Player actor" Margin="0,0,0,10">
             <DockPanel Margin="8">
-                <TextBlock DockPanel.Dock="Left" Text="Player:" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                <TextBlock DockPanel.Dock="Left" Text="Player gender:" VerticalAlignment="Center" Margin="0,0,10,0"/>
                 <ComboBox x:Name="PlayerGenderComboBox" Width="180" HorizontalAlignment="Left" SelectedIndex="0"
                           SelectionChanged="PlayerGenderComboBox_SelectionChanged">
                     <ComboBoxItem Content="Female" Tag="Female"/>
