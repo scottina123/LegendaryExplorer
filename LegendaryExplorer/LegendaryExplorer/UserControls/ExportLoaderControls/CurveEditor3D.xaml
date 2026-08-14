@@ -636,6 +636,14 @@
                               Content="Show selected camera track keys in viewport"
                               Margin="0,5,0,4" Checked="SelectedTrackKeyVisibility_Changed"
                               Unchecked="SelectedTrackKeyVisibility_Changed"/>
+                    <WrapPanel Margin="0,0,0,5">
+                        <Button x:Name="CreateCameraFovTrackButton" Content="Create FOV Track"
+                                Click="CreateCameraFovTrack_Click" Padding="7,3" Margin="0,0,4,4"
+                                ToolTip="Create the standard FOVAngle InterpTrackFloatProp in the selected camera group"/>
+                        <Button x:Name="CameraPresetButton" Content="Camera Presets..."
+                                Click="CameraPreset_Click" Padding="7,3" Margin="0,0,4,4"
+                                ToolTip="Browse and apply a camera preset to the selected camera TrackMove"/>
+                    </WrapPanel>
                     <ListBox x:Name="CameraTrackMoveTabs" Margin="0,4,0,8"
                              Background="Transparent" BorderThickness="0"
                              ScrollViewer.HorizontalScrollBarVisibility="Disabled"

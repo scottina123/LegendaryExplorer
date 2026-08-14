@@ -30,6 +30,7 @@ using LegendaryExplorer.UserControls.SharedToolControls;
 using LegendaryExplorerCore.GameFilesystem;
 using LegendaryExplorerCore.Dialogue;
 using LegendaryExplorerCore.Kismet;
+using LegendaryExplorerCore.Matinee;
 using LegendaryExplorerCore.Misc;
 using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.Packages.CloningImportingAndRelinking;
@@ -939,7 +940,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         public ExportEntry Group { get; init; }
         public ExportEntry TrackMove { get; init; }
         public CurveEditor3DModel Model { get; init; }
-        public CurveEditor3DFovModel FovModel { get; init; }
+        public CurveEditor3DFovModel FovModel { get; set; }
         public InterpCurveFloat FovTrack => FovModel?.Track;
         public bool DisableMovement => TrackMove?.GetProperty<BoolProperty>("bDisableMovement")?.Value == true;
         public bool UseQuaternionInterpolation => TrackMove?.GetProperty<BoolProperty>("bUseQuatInterpolation")?.Value == true;
@@ -11706,6 +11707,133 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         }
     }
 
+    private void CreateCameraFovTrack_Click(object sender, RoutedEventArgs e)
+    {
+        if (CameraTrackMoveTabs.SelectedItem is not TrackMovePlaybackOption
+            {
+                Group: { ClassName: "InterpGroup" } group,
+                FovModel: null
+            } selectedCamera)
+        {
+            return;
+        }
+
+        StopPlayback();
+        try
+        {
+            ExportEntry fovTrack = MatineeHelper.AddNewTrackToGroup(group, "InterpTrackFloatProp");
+            // Match MatineeHelper's existing Camera preset serialization exactly.
+            fovTrack.WriteProperty(new InterpCurveFloat().ToStructProperty(fovTrack.Game, "FloatTrack"));
+            fovTrack.WriteProperty(new StrProperty("FOVAngle", "TrackTitle"));
+            fovTrack.WriteProperty(new NameProperty("FOVAngle", "PropertyName"));
+
+            var fovModel = new CurveEditor3DFovModel
+            {
+                AutoCommit = selectedCamera.Model?.AutoCommit ?? true,
+            };
+            fovModel.Load(fovTrack);
+            fovModel.Changed += FovModel_Changed;
+            foreach (TrackMovePlaybackOption option in availableTrackMoves.Where(option =>
+                         IsSameExport(option.Group, group)))
+            {
+                option.FovModel = fovModel;
+            }
+
+            MarkActiveDialoguePackageEdit(fovTrack);
+            ActivateSelectedTrackMove();
+            SceneStatus = $"Created {fovTrack.UIndex}: FOVAngle (InterpTrackFloatProp) in {GetInterpGroupName(group)}.";
+        }
+        catch (Exception exception)
+        {
+            MessageBox.Show(Window.GetWindow(this), $"Unable to create the FOV track: {exception.Message}",
+                "Create FOV Track", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    private void CameraPreset_Click(object sender, RoutedEventArgs e)
+    {
+        if (CameraTrackMoveTabs.SelectedItem is not TrackMovePlaybackOption
+            {
+                TrackMove: { ClassName: "InterpTrackMove" } trackMove,
+                Model: { } trackModel
+            })
+        {
+            return;
+        }
+
+        StopPlayback();
+        float selectedTime = SelectedKeyframe?.Time ?? trackModel.Keyframes.FirstOrDefault()?.Time ?? 0f;
+        if (!trackModel.AutoCommit && trackModel.HasPendingChanges)
+        {
+            // The preset dialog uses the serialized TrackMove. Materialize this node's existing
+            // working-memory curve first so applying a preset cannot discard right-column edits.
+            trackModel.CommitChanges();
+        }
+
+        CameraActorAnchorContext actorAnchorContext = ActiveDialogueActorConfiguration is { } configuration
+            ? new CameraActorAnchorContext(configuration.Conversation, configuration.Node,
+                previewActors.Select(actor => actor.ActorTag).ToArray())
+            : null;
+        bool applied = CameraPresetDialog.GenerateForTrack(
+            Window.GetWindow(this),
+            trackMove,
+            selectedTime,
+            GetCameraPresetViewportOrigin,
+            PreviewCameraPreset,
+            actorAnchorContext);
+        if (!applied)
+        {
+            UpdateDialogueNodeCommitButton();
+            return;
+        }
+
+        trackModel.Load(trackMove);
+        MarkActiveDialoguePackageEdit(trackMove);
+        if (isDialogueConversationPreview)
+        {
+            BuildDialogueRuntimeActorSnapshots();
+        }
+        ActivateSelectedTrackMove();
+        SelectedKeyframe = trackModel.Keyframes.MinBy(keyframe => MathF.Abs(keyframe.Time - selectedTime));
+        SceneStatus = $"Applied a camera preset to {trackMove.InstancedFullPath}.";
+    }
+
+    private void MarkActiveDialoguePackageEdit(ExportEntry changedExport)
+    {
+        if (!isDialogueConversationPreview || activeDialogueTimelineSegment is null)
+        {
+            return;
+        }
+
+        MarkDialogueWorkingPackageNodeDirty(activeDialogueTimelineSegment, changedExport?.UIndex);
+        if (activeDialogueSegmentRuntime is not null)
+        {
+            activeDialogueSegmentRuntime.HasPendingPackageChanges = true;
+        }
+        PauseDialogueTimeline();
+        UpdateDialogueNodeCommitButton();
+    }
+
+    private CameraOrigin? GetCameraPresetViewportOrigin()
+    {
+        const float radiansToDegrees = 180f / MathF.PI;
+        return new CameraOrigin(RenderContext.Camera.Position,
+            new Vector3(RenderContext.Camera.Roll, RenderContext.Camera.Pitch, RenderContext.Camera.Yaw)
+            * radiansToDegrees);
+    }
+
+    private void PreviewCameraPreset(GeneratedCameraKey key)
+    {
+        const float degreesToRadians = MathF.PI / 180f;
+        RenderContext.Camera.Position = key.Location;
+        RenderContext.Camera.Roll = key.Rotation.X * degreesToRadians;
+        RenderContext.Camera.Pitch = key.Rotation.Y * degreesToRadians;
+        RenderContext.Camera.Yaw = key.Rotation.Z * degreesToRadians;
+        UpdateCameraPositionText();
+        UpdateCameraRotationText();
+        SceneViewer?.MarkRenderDirty();
+    }
+
     private void PreviewEditorCategoryTabs_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (ActorEditorTabContent is null)
@@ -11792,6 +11920,12 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                 CameraTrackKeyVisibilityCheckBox.IsEnabled = camera?.TrackMove is not null;
                 CameraTrackKeyVisibilityCheckBox.IsChecked = camera?.TrackMove is { } cameraTrack
                     && tracksWithVisibleKeys.Contains(GetTrackMoveEditingKey(cameraTrack));
+                CreateCameraFovTrackButton.IsEnabled = camera is
+                {
+                    Group.ClassName: "InterpGroup",
+                    FovModel: null
+                };
+                CameraPresetButton.IsEnabled = camera?.TrackMove?.ClassName == "InterpTrackMove";
             }
         }
         finally
