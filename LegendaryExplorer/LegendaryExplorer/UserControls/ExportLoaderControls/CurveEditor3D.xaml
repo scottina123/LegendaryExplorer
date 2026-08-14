@@ -458,8 +458,11 @@
                 <TabControl x:Name="PreviewEditorCategoryTabs" Margin="8,8,8,0" Height="32"
                             SelectionChanged="PreviewEditorCategoryTabs_SelectionChanged">
                     <TabItem Header="Actors" Tag="Actors" IsSelected="True"/>
-                    <TabItem Header="Character Movement" Tag="Characters"/>
-                    <TabItem Header="Cameras" Tag="Cameras"/>
+                    <TabItem Header="Movement" Tag="Characters" ToolTip="Character movement tracks"/>
+                    <TabItem x:Name="StageCameraEditorTab" Header="Stage Camera" Tag="StageCamera"
+                             IsEnabled="False" ToolTipService.ShowOnDisabled="True"
+                             ToolTip="Available when the active node has a switch-camera value that matches a BioStage camera-list bone."/>
+                    <TabItem Header="Tracks" Tag="Cameras" ToolTip="Camera movement tracks"/>
                 </TabControl>
                 <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="8">
                 <StackPanel>
@@ -638,6 +641,9 @@
                         </ListBox.ItemTemplate>
                     </ListBox>
                     </StackPanel>
+                    <Grid x:Name="StageCameraTabContent" Visibility="Collapsed">
+                        <ContentControl x:Name="DialogueStageCameraEditorHost"/>
+                    </Grid>
                     <StackPanel x:Name="CameraMovementTabContent" Visibility="Collapsed">
                     <TextBlock Text="Camera InterpTrackMove tracks" FontSize="18" FontWeight="SemiBold"/>
                     <CheckBox x:Name="CameraTrackKeyVisibilityCheckBox"

@@ -29,8 +29,10 @@ using Newtonsoft.Json;
 using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
 using BioStageBinary = LegendaryExplorerCore.Unreal.BinaryConverters.BioStage;
 using CoreColor = LegendaryExplorerCore.SharpDX.Color;
+using CameraOrigin = LegendaryExplorer.Tools.InterpEditor.CameraOrigin;
 using SkeletalMeshBinary = LegendaryExplorerCore.Unreal.BinaryConverters.SkeletalMesh;
 using StageBoneOriginResolver = LegendaryExplorer.Tools.InterpEditor.StageBoneOriginResolver;
+using StageCameraDefinition = LegendaryExplorer.Tools.InterpEditor.StageCameraDefinition;
 using StageConversationContext = LegendaryExplorer.Tools.InterpEditor.StageConversationContext;
 
 namespace LegendaryExplorer.UserControls.ExportLoaderControls;
@@ -370,6 +372,8 @@ public sealed partial class BioStageEditor : ExportLoaderControl, IActorEditorCo
     private BioStageBinary stageBinary;
     private StageConversationContext linkedStageContext;
     private ExportEntry sourceSwitchCameraExport;
+    private bool ownsLinkedStageContext;
+    private bool compactCameraMode;
     private ArrayProperty<StructProperty> cameraArray;
     private ExportEntry cameraPropertyOwner;
     private ExportEntry meshExport;
@@ -426,6 +430,8 @@ public sealed partial class BioStageEditor : ExportLoaderControl, IActorEditorCo
     public ObservableCollection<CameraItem> Cameras { get; } = [];
     public ObservableCollection<BoneItem> Bones { get; } = [];
 
+    internal event EventHandler StageDataChanged;
+
     public GenericCommand ToggleTranslateCommand { get; }
     public GenericCommand ToggleRotateCommand { get; }
     public GenericCommand ToggleScaleCommand { get; }
@@ -459,6 +465,19 @@ public sealed partial class BioStageEditor : ExportLoaderControl, IActorEditorCo
     public Visibility LinkedMainPackageControlsVisibility => IsEditingLinkedMainPackage
         ? Visibility.Visible
         : Visibility.Collapsed;
+
+    public bool CompactCameraMode
+    {
+        get => compactCameraMode;
+        set
+        {
+            if (!SetProperty(ref compactCameraMode, value)) return;
+            if (FullEditorLayout is not null)
+                FullEditorLayout.Visibility = value ? Visibility.Collapsed : Visibility.Visible;
+            if (CompactCameraLayout is not null)
+                CompactCameraLayout.Visibility = value ? Visibility.Visible : Visibility.Collapsed;
+        }
+    }
 
     public CameraItem SelectedCamera
     {
@@ -647,6 +666,7 @@ public sealed partial class BioStageEditor : ExportLoaderControl, IActorEditorCo
             }
 
             linkedStageContext = context;
+            ownsLinkedStageContext = true;
             NotifyLinkedPackageStateChanged();
             LoadStageExport(context.Stage, exportEntry);
             return;
@@ -654,6 +674,82 @@ public sealed partial class BioStageEditor : ExportLoaderControl, IActorEditorCo
 
         UnloadExport();
         LoadStageExport(exportEntry, null);
+    }
+
+    internal bool LoadLinkedStageCamera(ExportEntry switchCameraExport, StageConversationContext context,
+        NameReference cameraName)
+    {
+        if (switchCameraExport?.IsA("BioEvtSysTrackSwitchCamera") != true || context?.Stage is null)
+        {
+            return false;
+        }
+
+        if (!ReferenceEquals(linkedStageContext, context) || CurrentLoadedExport != context.Stage)
+        {
+            UnloadExport();
+            linkedStageContext = context;
+            ownsLinkedStageContext = false;
+            sourceSwitchCameraExport = switchCameraExport;
+            NotifyLinkedPackageStateChanged();
+            LoadStageExport(context.Stage, switchCameraExport);
+        }
+        else
+        {
+            sourceSwitchCameraExport = switchCameraExport;
+            NotifyLinkedPackageStateChanged();
+        }
+
+        return SelectStageCamera(cameraName);
+    }
+
+    internal bool SelectStageCamera(NameReference cameraName)
+    {
+        CameraItem camera = Cameras.FirstOrDefault(item => item.Name == cameraName)
+                            ?? Cameras.FirstOrDefault(item => item.Name.Instanced.Equals(
+                                cameraName.Instanced, StringComparison.OrdinalIgnoreCase));
+        if (camera is null || meshBinary?.RefSkeleton is null)
+        {
+            return false;
+        }
+
+        BoneItem bone = Bones.FirstOrDefault(item => meshBinary.RefSkeleton[item.Index].Name == camera.Name)
+                        ?? Bones.FirstOrDefault(item => meshBinary.RefSkeleton[item.Index].Name.Instanced.Equals(
+                            camera.Name.Instanced, StringComparison.OrdinalIgnoreCase));
+        if (bone is null)
+        {
+            return false;
+        }
+
+        SelectedCamera = camera;
+        SelectedBone = bone;
+        return true;
+    }
+
+    internal bool TryGetStageCameraDefinition(NameReference cameraName, out StageCameraDefinition camera)
+    {
+        camera = null;
+        if (meshBinary?.RefSkeleton is null)
+        {
+            return false;
+        }
+
+        CameraItem cameraSettings = Cameras.FirstOrDefault(item => item.Name == cameraName);
+        int boneIndex = Array.FindIndex(meshBinary.RefSkeleton, bone => bone.Name == cameraName);
+        if (cameraSettings is null || boneIndex < 0)
+        {
+            return false;
+        }
+
+        Matrix4x4 world = GetBoneWorldTransform(boneIndex);
+        var boneOrigin = new CameraOrigin(world.Translation,
+            GetBoneWorldRotation(boneIndex).GetDegreesVector());
+        CameraOrigin origin = StageBoneOriginResolver.ApplyStageCameraOffsets(boneOrigin,
+            cameraSettings.GetValue("Height delta"), cameraSettings.GetValue("Pitch delta"),
+            cameraSettings.GetValue("Yaw delta"));
+        float fov = cameraSettings.GetValue("FOV", 60);
+        camera = new StageCameraDefinition(origin, fov is > 0 and < 180 ? fov : null,
+            cameraSettings.GetValue("Near plane", 10), cameraSettings.DisableHeightAdjustment);
+        return true;
     }
 
     private void LoadStageExport(ExportEntry stageExport, ExportEntry switchCameraExport)
@@ -675,15 +771,21 @@ public sealed partial class BioStageEditor : ExportLoaderControl, IActorEditorCo
         StageMeshPath = meshExport is null
             ? "No attached SkeletalMesh found."
             : $"#{meshExport.UIndex} {meshExport.InstancedFullPath}";
-        BuildStagePreview();
+        if (!CompactCameraMode)
+        {
+            BuildStagePreview();
+        }
         RebuildCameras();
         RebuildBones();
         SceneStatus = meshBinary is null
             ? $"BioStage loaded; no editable RefSkeleton found; {levelPaths.Count} backdrop file(s)."
             : $"{Bones.Count} bone(s), {Cameras.Count} camera(s); {levelPaths.Count} backdrop file(s).";
-        SceneViewer.SetShouldRender(true);
+        SceneViewer.SetShouldRender(!CompactCameraMode);
         SceneViewer.MarkRenderDirty();
-        _ = RestoreSessionLevelsAsync();
+        if (!CompactCameraMode)
+        {
+            _ = RestoreSessionLevelsAsync();
+        }
     }
 
     public override void UnloadExport()
@@ -731,20 +833,25 @@ public sealed partial class BioStageEditor : ExportLoaderControl, IActorEditorCo
     {
         StageConversationContext context = linkedStageContext;
         bool isExternalPackage = IsEditingLinkedMainPackage;
+        bool disposeContext = ownsLinkedStageContext;
         if (context is null)
         {
             sourceSwitchCameraExport = null;
+            ownsLinkedStageContext = false;
             NotifyLinkedPackageStateChanged();
             return;
         }
 
         if (promptToSave && isExternalPackage && context.MainPackage.IsModified)
         {
-            MessageBoxResult result = MessageBox.Show(
-                $"{Path.GetFileName(context.MainPackage.FilePath)} has unsaved BioStage changes. Save the main PCC before closing this editor?",
-                "Unsaved main PCC changes",
-                MessageBoxButton.YesNo,
-                MessageBoxImage.Warning);
+            Window owner = Window.GetWindow(this);
+            owner?.RestoreAndBringToFront();
+            string message = $"{Path.GetFileName(context.MainPackage.FilePath)} has unsaved BioStage changes. Save the main PCC before closing this editor?";
+            MessageBoxResult result = owner is null
+                ? MessageBox.Show(message, "Unsaved main PCC changes", MessageBoxButton.YesNo,
+                    MessageBoxImage.Warning)
+                : MessageBox.Show(owner, message, "Unsaved main PCC changes", MessageBoxButton.YesNo,
+                    MessageBoxImage.Warning);
             if (result == MessageBoxResult.Yes)
             {
                 try
@@ -753,15 +860,23 @@ public sealed partial class BioStageEditor : ExportLoaderControl, IActorEditorCo
                 }
                 catch (Exception exception)
                 {
-                    MessageBox.Show($"The main PCC could not be saved:\n\n{exception.Message}",
-                        "Main PCC save failed", MessageBoxButton.OK, MessageBoxImage.Error);
+                    string error = $"The main PCC could not be saved:\n\n{exception.Message}";
+                    if (owner is null)
+                        MessageBox.Show(error, "Main PCC save failed", MessageBoxButton.OK, MessageBoxImage.Error);
+                    else
+                        MessageBox.Show(owner, error, "Main PCC save failed", MessageBoxButton.OK,
+                            MessageBoxImage.Error);
                 }
             }
         }
 
         linkedStageContext = null;
         sourceSwitchCameraExport = null;
-        context.Dispose();
+        ownsLinkedStageContext = false;
+        if (disposeContext)
+        {
+            context.Dispose();
+        }
         NotifyLinkedPackageStateChanged();
     }
 
@@ -871,6 +986,7 @@ public sealed partial class BioStageEditor : ExportLoaderControl, IActorEditorCo
         stagePreview?.UpdateLocalToWorld(GetStageTransform());
         if (CameraFocusMode) PreviewActiveCamera();
         SceneViewer?.MarkRenderDirty();
+        StageDataChanged?.Invoke(this, EventArgs.Empty);
     }
 
     private Matrix4x4 GetStageTransform() => ActorUtils.ComposeLocalToWorld(stageLocation,
@@ -1162,6 +1278,7 @@ public sealed partial class BioStageEditor : ExportLoaderControl, IActorEditorCo
         if (binaryChanged) CurrentLoadedExport.WriteBinary(stageBinary);
         SceneStatus = $"{Bones.Count} bone(s), {Cameras.Count} camera(s); camera list updated.";
         SceneViewer?.MarkRenderDirty();
+        StageDataChanged?.Invoke(this, EventArgs.Empty);
     }
 
     private static PropertyCollection CreateCameraProperties(bool includeTag, NameReference name,
@@ -1418,6 +1535,12 @@ public sealed partial class BioStageEditor : ExportLoaderControl, IActorEditorCo
     internal void OnBoneChanged(BoneItem item)
     {
         ScheduleMeshWrite();
+        // The embedded dialogue editor previews directly from the in-memory RefSkeleton. Do not wait for
+        // the deferred package write before telling its host that the slider changed.
+        if (compactCameraMode)
+        {
+            StageDataChanged?.Invoke(this, EventArgs.Empty);
+        }
         if (CameraFocusMode && (focusUsesSelectedBone && ReferenceEquals(item, SelectedBone)
                                 || !focusUsesSelectedBone && SelectedCamera is not null
                                 && meshBinary.RefSkeleton[item.Index].Name == SelectedCamera.Name))
@@ -1445,6 +1568,7 @@ public sealed partial class BioStageEditor : ExportLoaderControl, IActorEditorCo
         meshWritePending = false;
         meshExport.WriteBinary(meshBinary);
         SceneStatus = $"{Bones.Count} bone(s), {Cameras.Count} camera(s); RefSkeleton updated.";
+        StageDataChanged?.Invoke(this, EventArgs.Empty);
     }
 
     private void CloneBone_Click(object sender, RoutedEventArgs e)
@@ -1784,8 +1908,11 @@ public sealed partial class BioStageEditor : ExportLoaderControl, IActorEditorCo
     private void BioStageEditor_Loaded(object sender, RoutedEventArgs e)
     {
         AttachEvents();
-        SceneViewer.SetShouldRender(true);
-        _ = RestoreSessionLevelsAsync();
+        SceneViewer.SetShouldRender(!CompactCameraMode);
+        if (!CompactCameraMode)
+        {
+            _ = RestoreSessionLevelsAsync();
+        }
     }
 
     private void BioStageEditor_Unloaded(object sender, RoutedEventArgs e) => SceneViewer.SetShouldRender(false);

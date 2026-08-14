@@ -39,11 +39,11 @@ internal sealed class StageConversationContext : IDisposable
     public IMEPackage MainPackage { get; }
     public ExportEntry StartConversation { get; }
     public ExportEntry Stage { get; }
-    public CameraOrigin StageOrigin { get; }
-    public IReadOnlyDictionary<string, CameraOrigin> StageNodeOrigins { get; }
-    public IReadOnlyDictionary<string, StageCameraDefinition> StageCameras { get; }
-    public IReadOnlyList<NameReference> StageCameraNames { get; }
-    public IReadOnlyDictionary<string, CameraOrigin> ActorOrigins { get; }
+    public CameraOrigin StageOrigin { get; private set; }
+    public IReadOnlyDictionary<string, CameraOrigin> StageNodeOrigins { get; private set; }
+    public IReadOnlyDictionary<string, StageCameraDefinition> StageCameras { get; private set; }
+    public IReadOnlyList<NameReference> StageCameraNames { get; private set; }
+    public IReadOnlyDictionary<string, CameraOrigin> ActorOrigins { get; private set; }
     public IReadOnlyDictionary<string, IReadOnlyList<ExportEntry>> ActorBindings { get; }
     public IReadOnlyDictionary<string, string> VariableLinkSubtitles { get; }
 
@@ -66,6 +66,21 @@ internal sealed class StageConversationContext : IDisposable
         ActorOrigins = actorOrigins;
         ActorBindings = actorBindings;
         VariableLinkSubtitles = variableLinkSubtitles;
+    }
+
+    internal void RefreshStageData() => StageBoneOriginResolver.RefreshStageData(this);
+
+    internal void UpdateStageData(CameraOrigin stageOrigin,
+        IReadOnlyDictionary<string, CameraOrigin> stageNodeOrigins,
+        IReadOnlyDictionary<string, StageCameraDefinition> stageCameras,
+        IReadOnlyList<NameReference> stageCameraNames,
+        IReadOnlyDictionary<string, CameraOrigin> actorOrigins)
+    {
+        StageOrigin = stageOrigin;
+        StageNodeOrigins = stageNodeOrigins;
+        StageCameras = stageCameras;
+        StageCameraNames = stageCameraNames;
+        ActorOrigins = actorOrigins;
     }
 
     public void Dispose()
@@ -963,6 +978,31 @@ internal static class StageBoneOriginResolver
 
         string siblingPath = Path.Combine(Path.GetDirectoryName(package.FilePath)!, baseFileName);
         return File.Exists(siblingPath) ? siblingPath : null;
+    }
+
+    internal static void RefreshStageData(StageConversationContext context)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        using var cache = new PackageCache();
+        PropertyCollection stageProperties = GetPropertiesIncludingArchetypes(context.Stage, cache);
+        StructProperty locationProperty = stageProperties.GetProp<StructProperty>("location")
+                                           ?? stageProperties.GetProp<StructProperty>("Location");
+        StructProperty rotationProperty = stageProperties.GetProp<StructProperty>("Rotation");
+        Vector3 stageLocation = locationProperty is null ? Vector3.Zero : CommonStructs.GetVector3(locationProperty);
+        Vector3 stageRotation = rotationProperty is null
+            ? Vector3.Zero
+            : CommonStructs.GetRotator(rotationProperty).GetDegreesVector();
+        var stageOrigin = new CameraOrigin(stageLocation, stageRotation);
+        List<BoneOption> stageBones = FindBones(context.Stage, new Dictionary<string, string>(), cache);
+        IReadOnlyDictionary<string, CameraOrigin> stageNodeOrigins = ResolveStageNodeOrigins(stageBones,
+            stageOrigin, cache);
+        IReadOnlyDictionary<string, StageCameraDefinition> stageCameras = ResolveStageCameras(
+            context.Stage, stageBones, stageOrigin, cache, out IReadOnlyList<NameReference> stageCameraNames);
+        List<VarLinkInfo> startConversationLinks = KismetHelper.GetVariableLinks(
+            context.StartConversation.GetProperties(), context.MainPackage);
+        IReadOnlyDictionary<string, CameraOrigin> actorOrigins = ResolveLinkedActorOrigins(stageNodeOrigins,
+            startConversationLinks, context.ActorBindings, cache);
+        context.UpdateStageData(stageOrigin, stageNodeOrigins, stageCameras, stageCameraNames, actorOrigins);
     }
 
     private static bool PathsEqual(string first, string second) =>

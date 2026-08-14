@@ -35,7 +35,8 @@
         </DataTemplate>
     </exportLoaderControls:ExportLoaderControl.Resources>
 
-    <DockPanel>
+    <Grid>
+    <DockPanel x:Name="FullEditorLayout">
         <WrapPanel DockPanel.Dock="Top">
             <ToolBar ToolBarTray.IsLocked="True" OverflowMode="Never">
                 <Button Content="Save Main PCC" Click="SaveMainPackage_Click"
@@ -227,4 +228,39 @@
             </TabControl>
         </Grid>
     </DockPanel>
+
+    <ScrollViewer x:Name="CompactCameraLayout" Visibility="Collapsed"
+                  VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Margin="8">
+            <Button Content="Save Highest-Mounted Base PCC" Click="SaveMainPackage_Click"
+                    IsEnabled="{Binding IsEditingLinkedMainPackage}" Padding="8,4"
+                    ToolTip="{Binding LinkedMainPackagePath}" HorizontalAlignment="Stretch"/>
+            <TextBlock Text="{Binding LinkedMainPackagePath}" TextWrapping="Wrap" Opacity="0.7"
+                       Margin="0,4,0,10"/>
+
+            <TextBlock Text="Stage camera" FontSize="18" FontWeight="SemiBold"/>
+            <TextBlock Text="{Binding SelectedCamera.DisplayName}" FontWeight="SemiBold"
+                       Margin="0,3,0,0"/>
+            <TextBlock Text="The switch-camera name and raw instance index are matched to this camera-list bone."
+                       TextWrapping="Wrap" Opacity="0.7" Margin="0,2,0,7"/>
+            <CheckBox Content="Disable height adjustment"
+                      IsChecked="{Binding SelectedCamera.DisableHeightAdjustment, Mode=TwoWay}"
+                      Margin="0,0,0,5"/>
+            <ItemsControl ItemsSource="{Binding SelectedCamera.Editors}"
+                          ItemTemplate="{StaticResource NumericEditorTemplate}"/>
+
+            <Separator Margin="0,12,0,10"/>
+            <TextBlock Text="Camera bone" FontSize="18" FontWeight="SemiBold"/>
+            <TextBlock Text="{Binding SelectedBone.DisplayName}" FontWeight="SemiBold"
+                       Margin="0,3,0,0"/>
+            <TextBlock Text="Bone position and rotation establish the camera transform; camera values above are applied afterward."
+                       TextWrapping="Wrap" Opacity="0.7" Margin="0,2,0,7"/>
+            <ItemsControl ItemsSource="{Binding SelectedBone.Editors}"
+                          ItemTemplate="{StaticResource NumericEditorTemplate}"/>
+
+            <TextBlock Text="{Binding SceneStatus}" TextWrapping="Wrap" Opacity="0.72"
+                       Margin="0,10,0,0"/>
+        </StackPanel>
+    </ScrollViewer>
+    </Grid>
 </exportLoaderControls:ExportLoaderControl>

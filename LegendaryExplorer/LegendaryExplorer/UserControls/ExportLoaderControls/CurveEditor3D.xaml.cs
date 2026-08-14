@@ -1117,6 +1117,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     private const int DialogueWorkingMemoryHistoryLimit = 20;
     private readonly List<DialogueWorkingMemorySnapshot> dialogueWorkingMemoryHistory = [];
     private readonly DispatcherTimer dialogueWorkingMemoryHistoryTimer;
+    private readonly DispatcherTimer dialogueStageContextRefreshTimer;
     private int dialogueWorkingMemoryHistoryIndex = -1;
     private long dialogueWorkingMemoryPackageRevision;
     private long dialogueWorkingMemoryNextPackageRevision;
@@ -1152,6 +1153,9 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     private TrackMovePlaybackOption primaryTrackMove;
     private DialogueNodePreviewConfiguration dialogueNodePreview;
     private DialogueNodePreviewConfiguration generatedDialogueActorConfiguration;
+    private BioStageEditor dialogueStageCameraEditor;
+    private NameReference? dialogueStageCameraName;
+    private ExportEntry dialogueStageSwitchCameraTrack;
     private bool isDialogueConversationPreview;
     private CurveEditor3DModel registeredKeyframeModel;
     private CurveEditor3DFovModel registeredFovModel;
@@ -1282,6 +1286,11 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             Interval = TimeSpan.FromMilliseconds(350),
         };
         dialogueWorkingMemoryHistoryTimer.Tick += DialogueWorkingMemoryHistoryTimer_Tick;
+        dialogueStageContextRefreshTimer = new DispatcherTimer(DispatcherPriority.Background)
+        {
+            Interval = TimeSpan.FromMilliseconds(125),
+        };
+        dialogueStageContextRefreshTimer.Tick += DialogueStageContextRefreshTimer_Tick;
         // Match Level Editor input scheduling so background resource preparation yields during interaction.
         PreviewMouseMove += (_, _) => RenderContext.NotifyUserActivity();
         PreviewMouseDown += (_, _) => RenderContext.NotifyUserActivity();
@@ -1419,6 +1428,8 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         // editor's manual Z override must never be allowed to flatten dialogue playback.
         ActorPlaybackTrackZCheckBox.IsChecked = true;
         ActorPlaybackTrackZCheckBox.IsEnabled = false;
+        SetDialogueStageCameraEditorAvailability(false,
+            "No active switch-camera stage bone has been resolved yet.");
     }
 
     private void InitializeDialogueWorkingPackage(IMEPackage sourcePackage, int initialUIndex)
@@ -4007,6 +4018,8 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         primaryTrackMove = null;
         playExtraTrackMove = false;
         playDirectorMulticam = false;
+        SetDialogueStageCameraEditorAvailability(false,
+            "Available only while a dialogue preview node has a valid switch-camera stage bone.");
         UpdatePlaybackButton();
         SceneViewer?.MarkRenderDirty();
     }
@@ -4040,6 +4053,15 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         dialoguePreviewFaceFxPackage?.Dispose();
         dialoguePreviewFaceFxPackage = null;
         DisposeDialoguePackageEditor();
+        dialogueStageContextRefreshTimer.Stop();
+        dialogueStageContextRefreshTimer.Tick -= DialogueStageContextRefreshTimer_Tick;
+        if (dialogueStageCameraEditor is not null)
+        {
+            dialogueStageCameraEditor.StageDataChanged -= DialogueStageCameraEditor_StageDataChanged;
+            dialogueStageCameraEditor.Dispose();
+            dialogueStageCameraEditor = null;
+            DialogueStageCameraEditorHost.Content = null;
+        }
         dialogueNodePreview?.StageContext.Dispose();
         generatedDialogueActorConfiguration?.StageContext.Dispose();
         generatedDialogueActorConfiguration = null;
@@ -4243,6 +4265,8 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         AssignDialoguePreviewTrackMoves();
         ActorPlaybackTrackZCheckBox.IsChecked = true;
         ActorPlaybackTrackZCheckBox.IsEnabled = false;
+        SetDialogueStageCameraEditorAvailability(false,
+            "No active switch-camera stage bone has been resolved yet.");
         SetPreviewActorStatus($"Generating {previewActors.Count} scene actor(s)...");
         await InitializePreviewActorModelsAsync().ConfigureAwait(true);
         AssignGeneratedDialogueActorGestures(generatedDialogueActorConfiguration);
@@ -5013,6 +5037,186 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                 .Equals("Conversation", StringComparison.OrdinalIgnoreCase))
             .SelectMany(group => GetReferencedExports(group, "InterpTracks"))
             .FirstOrDefault(track => track.IsA("BioEvtSysTrackSwitchCamera"));
+
+    private void RefreshDialogueStageCameraEditor(DialogueNodeExtended node)
+    {
+        StageConversationContext context = ActiveDialogueActorConfiguration?.StageContext;
+        if (context is null || node is null
+                            || !TryFindDialogueStageCameraTarget(node, context,
+                                out ExportEntry switchCameraTrack, out NameReference cameraName))
+        {
+            SetDialogueStageCameraEditorAvailability(false,
+                "The active node has no switch-camera value matching a BioStage camera-list bone.");
+            return;
+        }
+
+        if (dialogueStageCameraEditor is null)
+        {
+            dialogueStageCameraEditor = new BioStageEditor { CompactCameraMode = true };
+            dialogueStageCameraEditor.StageDataChanged += DialogueStageCameraEditor_StageDataChanged;
+            DialogueStageCameraEditorHost.Content = dialogueStageCameraEditor;
+        }
+
+        if (dialogueStageCameraName == cameraName
+            && dialogueStageSwitchCameraTrack?.FileRef == switchCameraTrack.FileRef
+            && dialogueStageSwitchCameraTrack.UIndex == switchCameraTrack.UIndex)
+        {
+            SetDialogueStageCameraEditorAvailability(true,
+                $"Edit {cameraName.Instanced} in {Path.GetFileName(context.MainPackage.FilePath)} and save the highest-mounted base PCC.");
+            return;
+        }
+
+        bool loaded = dialogueStageCameraEditor.LoadLinkedStageCamera(switchCameraTrack, context, cameraName);
+        if (!loaded)
+        {
+            SetDialogueStageCameraEditorAvailability(false,
+                $"'{cameraName.Instanced}' is in the stage camera list, but its RefSkeleton bone could not be loaded.");
+            return;
+        }
+
+        dialogueStageSwitchCameraTrack = switchCameraTrack;
+        dialogueStageCameraName = cameraName;
+        SetDialogueStageCameraEditorAvailability(true,
+            $"Edit {cameraName.Instanced} in {Path.GetFileName(context.MainPackage.FilePath)} and save the highest-mounted base PCC.");
+    }
+
+    private bool TryFindDialogueStageCameraTarget(DialogueNodeExtended node, StageConversationContext context,
+        out ExportEntry switchCameraTrack, out NameReference cameraName)
+    {
+        switchCameraTrack = null;
+        cameraName = NameReference.None;
+        foreach (ExportEntry interpData in GetDialogueNodeInterpDatas(node))
+        {
+            ExportEntry candidateTrack = FindSwitchCameraTrack(interpData, GetSelectedSceneShopGroup(interpData));
+            ArrayProperty<StructProperty> cameras = candidateTrack?
+                .GetProperty<ArrayProperty<StructProperty>>("m_aCameras");
+            if (cameras is not { Count: > 0 })
+            {
+                continue;
+            }
+
+            var candidateIndexes = new List<int>();
+            ArrayProperty<StructProperty> trackKeys = candidateTrack
+                .GetProperty<ArrayProperty<StructProperty>>("m_aTrackKeys");
+            int keyCount = Math.Min(cameras.Count, trackKeys?.Count ?? 0);
+            if (keyCount > 0)
+            {
+                float localTime = ReferenceEquals(activeDialogueTimelineSegment?.Node, node)
+                    ? Math.Max(0, dialogueTimelineCurrentTime - activeDialogueTimelineSegment.StartTime)
+                    : 0;
+                float[] keyTimes = trackKeys.Take(keyCount)
+                    .Select(key => key.GetProp<FloatProperty>("fTime")?.Value ?? 0)
+                    .ToArray();
+                bool[] queuedKeys = cameras.Take(keyCount)
+                    .Select(key => key.GetProp<BoolProperty>("bUseForNextCamera")?.Value == true)
+                    .ToArray();
+                int activeIndex = GetSwitchCameraKeyIndex(keyTimes, queuedKeys, localTime,
+                    queued: false);
+                if (activeIndex >= 0)
+                {
+                    candidateIndexes.Add(activeIndex);
+                }
+            }
+            candidateIndexes.AddRange(Enumerable.Range(0, cameras.Count)
+                .Where(index => !candidateIndexes.Contains(index)));
+
+            foreach (int index in candidateIndexes)
+            {
+                NameReference candidateName = cameras[index]
+                    .GetProp<NameProperty>("nmStageSpecificCam")?.Value ?? NameReference.None;
+                if (candidateName == NameReference.None
+                    || !context.StageCameraNames.Contains(candidateName)
+                    || !context.StageCameras.ContainsKey(candidateName.Instanced))
+                {
+                    continue;
+                }
+
+                switchCameraTrack = candidateTrack;
+                cameraName = candidateName;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void SetDialogueStageCameraEditorAvailability(bool available, string toolTip)
+    {
+        if (StageCameraEditorTab is null || StageCameraTabContent is null)
+        {
+            return;
+        }
+
+        StageCameraEditorTab.IsEnabled = available;
+        StageCameraEditorTab.ToolTip = toolTip;
+        StageCameraTabContent.IsEnabled = available;
+        StageCameraTabContent.Opacity = available ? 1 : 0.45;
+        if (!available)
+        {
+            dialogueStageCameraName = null;
+            dialogueStageSwitchCameraTrack = null;
+        }
+    }
+
+    private void DialogueStageCameraEditor_StageDataChanged(object sender, EventArgs e)
+    {
+        // Slider changes already exist in the embedded editor's in-memory camera/bone model. Apply that
+        // model immediately; the timer remains responsible for the heavier shared-context reprojection.
+        PreviewActiveDialogueStageCamera();
+        dialogueStageContextRefreshTimer.Stop();
+        dialogueStageContextRefreshTimer.Start();
+    }
+
+    private void DialogueStageContextRefreshTimer_Tick(object sender, EventArgs e)
+    {
+        dialogueStageContextRefreshTimer.Stop();
+        StageConversationContext context = ActiveDialogueActorConfiguration?.StageContext;
+        if (context is null)
+        {
+            return;
+        }
+
+        try
+        {
+            context.RefreshStageData();
+            if (isDialogueConversationPreview && dialogueTimelineActivePath.Count > 0
+                                              && dialogueTimelineActivePath.All(dialogueRuntimeCache.ContainsKey))
+            {
+                ReprojectDialogueActivePathCameraStates();
+            }
+            RefreshDialogueStageCameraEditor(dialogueNodePreview?.Node);
+            PreviewActiveDialogueStageCamera();
+            SceneStatus = $"Updated stage camera in {Path.GetFileName(context.MainPackage.FilePath)}. Save the base PCC to keep the change.";
+        }
+        catch (Exception exception)
+        {
+            SceneStatus = $"Unable to refresh the edited stage camera: {exception.Message}";
+        }
+    }
+
+    private void PreviewActiveDialogueStageCamera()
+    {
+        StageConversationContext context = ActiveDialogueActorConfiguration?.StageContext;
+        if (dialogueStageCameraName is not { } cameraName)
+        {
+            return;
+        }
+
+        StageCameraDefinition camera;
+        if (dialogueStageCameraEditor is null
+            || !dialogueStageCameraEditor.TryGetStageCameraDefinition(cameraName, out camera))
+        {
+            if (context?.StageCameras.TryGetValue(cameraName.Instanced, out camera) != true)
+            {
+                return;
+            }
+        }
+
+        ApplySwitchCamera(new ResolvedSwitchCamera(camera.Origin,
+            camera.FovDegrees ?? ConversationSwitchCameraFovDegrees));
+        UpdateCameraPositionText();
+        UpdateCameraRotationText();
+        SceneViewer?.MarkRenderDirty();
+    }
 
     private bool TryResolveSwitchCamera(ExportEntry switchCameraTrack, float time, bool useForNextCamera,
         out ResolvedSwitchCamera camera)
@@ -11492,6 +11696,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         }
         segment.IsVisited = true;
         activeDialogueTimelineSegment = segment;
+        RefreshDialogueStageCameraEditor(segment.Node);
     }
 
     private void ActivateCachedDialogueRuntime(DialogueSegmentRuntime runtime,
@@ -11629,6 +11834,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             activeDialogueSegmentRuntime = runtime;
             activeDialogueTimelineSegment = runtime.Segment;
             runtime.Segment.IsVisited = true;
+            RefreshDialogueStageCameraEditor(runtime.Segment.Node);
             if (primaryTrackMove is not null)
             {
                 RefreshKeyframeTrackMoveTabs();
@@ -12616,10 +12822,13 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         CharacterMovementTabContent.Visibility = category == "Characters"
             ? Visibility.Visible
             : Visibility.Collapsed;
+        StageCameraTabContent.Visibility = category == "StageCamera"
+            ? Visibility.Visible
+            : Visibility.Collapsed;
         CameraMovementTabContent.Visibility = category == "Cameras"
             ? Visibility.Visible
             : Visibility.Collapsed;
-        if (category is "Characters" or "Cameras")
+        if (category is "Characters" or "StageCamera" or "Cameras")
         {
             PauseDialogueTimelineForTrackEditing();
         }
@@ -12627,6 +12836,10 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         if (category == "Actors")
         {
             SelectPreviewActor(PreviewActorListBox.SelectedIndex);
+        }
+        else if (category == "StageCamera")
+        {
+            PreviewActiveDialogueStageCamera();
         }
     }
 
