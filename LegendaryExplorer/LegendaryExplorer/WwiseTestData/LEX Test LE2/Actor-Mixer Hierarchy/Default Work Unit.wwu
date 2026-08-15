@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<WwiseDocument Type="WorkUnit" ID="{A952D7EB-E75F-42F5-9453-ABAD5C78B65B}" SchemaVersion="94">
+	<AudioObjects>
+		<WorkUnit Name="Default Work Unit" ID="{A952D7EB-E75F-42F5-9453-ABAD5C78B65B}" PersistMode="Standalone">
+			<ChildrenList>
+				<ActorMixer Name="Test_Audio" ID="{816F7CA0-29FD-4092-B1D4-6AD938BFB9BE}" ShortID="513950836">
+					<ReferenceList>
+						<Reference Name="Conversion">
+							<ObjectRef Name="Default Conversion Settings" ID="{6D1B890C-9826-4384-BF07-C15223E9FB56}" WorkUnitID="{D5426634-EA1D-4CAF-8C53-A7CE9A77982B}"/>
+						</Reference>
+						<Reference Name="OutputBus">
+							<ObjectRef Name="Conversation" ID="{403386C2-8194-4F14-91CD-45D699879802}" WorkUnitID="{124AB6D6-0A5E-4F07-B31E-EB2AD182B683}"/>
+						</Reference>
+					</ReferenceList>
+					<ChildrenList>
+						<Sound Name="VO_37250192_m" ID="{F619B042-71EB-42BF-992E-1393F60D5A22}" ShortID="661963705">
+							<ReferenceList>
+								<Reference Name="Conversion">
+									<ObjectRef Name="Default Conversion Settings" ID="{6D1B890C-9826-4384-BF07-C15223E9FB56}" WorkUnitID="{D5426634-EA1D-4CAF-8C53-A7CE9A77982B}"/>
+								</Reference>
+								<Reference Name="OutputBus">
+									<ObjectRef Name="Master Audio Bus" ID="{1514A4D8-1DA6-412A-A17E-75CA0C2149F3}" WorkUnitID="{124AB6D6-0A5E-4F07-B31E-EB2AD182B683}"/>
+								</Reference>
+							</ReferenceList>
+							<ChildrenList>
+								<AudioFileSource Name="VO_37250192_m" ID="{2F2D45C1-569D-44CD-A412-CF37F3998118}" ShortID="194050468">
+									<Language>SFX</Language>
+									<AudioFile>VO_37250192_m.wav</AudioFile>
+								</AudioFileSource>
+							</ChildrenList>
+							<ActiveSourceList>
+								<ActiveSource Name="VO_37250192_m" ID="{2F2D45C1-569D-44CD-A412-CF37F3998118}" Platform="Linked"/>
+							</ActiveSourceList>
+						</Sound>
+						<Sound Name="VO_37250193_m" ID="{F2B5B554-E1D8-474A-8711-EAA1050FC914}" ShortID="302545955">
+							<PropertyList>
+								<Property Name="IsLoopingEnabled" Type="bool" Value="True"/>
+							</PropertyList>
+							<ReferenceList>
+								<Reference Name="Conversion">
+									<ObjectRef Name="Default Conversion Settings" ID="{6D1B890C-9826-4384-BF07-C15223E9FB56}" WorkUnitID="{D5426634-EA1D-4CAF-8C53-A7CE9A77982B}"/>
+								</Reference>
+								<Reference Name="OutputBus">
+									<ObjectRef Name="Master Audio Bus" ID="{1514A4D8-1DA6-412A-A17E-75CA0C2149F3}" WorkUnitID="{124AB6D6-0A5E-4F07-B31E-EB2AD182B683}"/>
+								</Reference>
+							</ReferenceList>
+							<ChildrenList>
+								<AudioFileSource Name="VO_37250193_m" ID="{6697AA9F-048D-4A28-A5EF-7575BB94CA38}" ShortID="461437153">
+									<Language>SFX</Language>
+									<AudioFile>VO_37250193_m.wav</AudioFile>
+								</AudioFileSource>
+							</ChildrenList>
+							<ActiveSourceList>
+								<ActiveSource Name="VO_37250193_m" ID="{6697AA9F-048D-4A28-A5EF-7575BB94CA38}" Platform="Linked"/>
+							</ActiveSourceList>
+						</Sound>
+					</ChildrenList>
+				</ActorMixer>
+			</ChildrenList>
+		</WorkUnit>
+	</AudioObjects>
+</WwiseDocument>

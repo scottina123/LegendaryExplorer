@@ -3,6 +3,7 @@ using LegendaryExplorer.Dialogs;
 using LegendaryExplorer.Misc;
 using LegendaryExplorer.SharedUI;
 using LegendaryExplorer.Tools.TlkManagerNS;
+using LegendaryExplorer.UnrealExtensions;
 using LegendaryExplorer.UserControls.SharedToolControls;
 using LegendaryExplorer.UserControls.SharedToolControls.Curves;
 using LegendaryExplorerCore.Gammtek.Extensions;
@@ -442,71 +443,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         private ExportEntry FindVoiceStreamFromExport(FaceFXLineEntry selectedLine)
         {
-            if (CurrentLoadedExport?.Game.IsGame1() == true)
-                return FindSoundNodeWaveFromExport(CurrentLoadedExport, selectedLine);
-
-            if (CurrentLoadedExport != null && selectedLine.TLKID > 0)
-            {
-                var wwiseEventSearchName = $"VO_{selectedLine.TLKID:D6}_{(selectedLine.IsMale ? "m" : "f")}";
-                var wwiseStreamSearchName = $"{selectedLine.TLKID:D8}";
-                var wwiseStreamSearchNameGendered = $"{wwiseStreamSearchName}_{(selectedLine.IsMale ? "m" : "f")}";
-                var wwiseStreamSearchNamewithUnderscores = $"_{selectedLine.TLKID}_";
-                var wwiseStreamSearchNamewithUnderscoresGendered = $"{wwiseStreamSearchNamewithUnderscores}{(selectedLine.IsMale ? "m" : "f")}";
-                var wwiseEventExp = CurrentLoadedExport.FileRef.Exports.FirstOrDefault(x => x.ClassName == "WwiseEvent" && x.ObjectName.Name.Contains(wwiseEventSearchName, StringComparison.InvariantCultureIgnoreCase));
-                if (wwiseEventExp != null)
-                {
-                    ExportEntry possible;
-                    var wwiseEvent = ObjectBinary.From<WwiseEvent>(wwiseEventExp);
-                    if (wwiseEvent.Links != null)
-                    {
-                        foreach (var link in wwiseEvent.Links)
-                        {
-                            // Look through these exports instead of all exports (faster)
-                            var possibleExports = link.WwiseStreams.Where(x => CurrentLoadedExport.FileRef.IsUExport(x)).Select(x => CurrentLoadedExport.FileRef.GetUExport(x)).ToList();
-
-                            //Do gendered search first
-                            possible = possibleExports.FirstOrDefault(x => x.ObjectName.Name.Contains(wwiseStreamSearchNameGendered, StringComparison.InvariantCultureIgnoreCase));
-                            if (possible != null) return possible;
-
-                            //First fallback to lines without leading 00 and underscores as brackets
-                            possible = possibleExports.FirstOrDefault(x => x.ObjectName.Name.Contains(wwiseStreamSearchNamewithUnderscoresGendered, StringComparison.InvariantCultureIgnoreCase));
-                            if (possible != null) return possible;
-
-                            // Fallback to non-gendered search. Sometimes if line has same thing (e.g. nonplayer line) it'll just use male version as there's only one gender
-                            // Should only be one version for this TLK...
-                            possible = possibleExports.FirstOrDefault(x => x.ObjectName.Name.Contains(wwiseStreamSearchName, StringComparison.InvariantCultureIgnoreCase));
-                            if (possible != null) return possible;
-
-                            possible = possibleExports.FirstOrDefault(x => x.ObjectName.Name.Contains(wwiseStreamSearchNamewithUnderscores, StringComparison.InvariantCultureIgnoreCase));
-                            if (possible != null) return possible;
-
-                        }
-                    }
-                    else
-                    {
-                        // Look through all the exports I guess.
-                        var possibleExports = CurrentLoadedExport.FileRef.Exports.Where(x => x.ClassName == "WwiseStream").ToList();
-
-                        //Do gendered search first
-                        possible = possibleExports.FirstOrDefault(x => x.ObjectName.Name.Contains(wwiseStreamSearchNameGendered, StringComparison.InvariantCultureIgnoreCase));
-                        if (possible != null) return possible;
-
-                        //First fallback to lines without leading 00 and underscores as brackets
-                        possible = possibleExports.FirstOrDefault(x => x.ObjectName.Name.Contains(wwiseStreamSearchNamewithUnderscoresGendered, StringComparison.InvariantCultureIgnoreCase));
-                        if (possible != null) return possible;
-
-                        // Fallback to non-gendered search. Sometimes if line has same thing (e.g. nonplayer line) it'll just use male version as there's only one gender
-                        // Should only be one version for this TLK...
-                        possible = possibleExports.FirstOrDefault(x => x.ObjectName.Name.Contains(wwiseStreamSearchName, StringComparison.InvariantCultureIgnoreCase));
-                        if (possible != null)
-                            return possible;
-
-                        possible = possibleExports.FirstOrDefault(x => x.ObjectName.Name.Contains(wwiseStreamSearchNamewithUnderscores, StringComparison.InvariantCultureIgnoreCase));
-                        if (possible != null) return possible;
-                    }
-                }
-            }
-            return null;
+            return FindVoiceStreamFromExport(CurrentLoadedExport, selectedLine);
         }
 
         private void animationListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -1479,7 +1416,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         }
         private void SetEvent_Click(object sender, RoutedEventArgs e)
         {
-            string eventName = $"VO_{SelectedLineEntry.TLKID.ToString()}_{(SelectedLineEntry.IsMale ? "m" : "f")}_Play";
+            string soundName = $"VO_{SelectedLineEntry.TLKID}_{(SelectedLineEntry.IsMale ? "m" : "f")}";
+            string eventName = WwiseEventNaming.GetPlayEventName(Pcc.Game, soundName);
             string fxaParent = CurrentLoadedExport.ParentInstancedFullPath;
             var wwEvent = Pcc.Exports.FirstOrDefault(e => e.ObjectNameString == eventName && e.ParentInstancedFullPath.Contains(fxaParent));
             if(wwEvent == null)
@@ -2505,7 +2443,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     else
                     {
                         line.NameAsString = $"FXA_{tlkID}_{(isF ? 'F' : 'M')}";
-                        line.Path = $"{audioPackage}.VO_{tlkID}_{(isF ? 'f' : 'm')}_Play";
+                        string soundName = $"VO_{tlkID}_{(isF ? 'f' : 'm')}";
+                        line.Path = $"{audioPackage}.{WwiseEventNaming.GetPlayEventName(Pcc.Game, soundName)}";
                         line.ID = tlkID.ToString();
                     }
                     line.Index = lineIdx;
@@ -2731,7 +2670,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             else
             {
                 lineName = $"FXA_{tlkId}_{genderUpper}";
-                path = $"{audioPackage}.VO_{tlkId}_{genderLower}_Play";
+                string soundName = $"VO_{tlkId}_{genderLower}";
+                path = $"{audioPackage}.{WwiseEventNaming.GetPlayEventName(Pcc.Game, soundName)}";
                 id = tlkId.ToString(CultureInfo.InvariantCulture);
                 index = FaceFX.Lines.Count;
             }
@@ -2793,9 +2733,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         }
 
         /// <summary>
-        /// Adds FaceFX lines from WwiseEvents in a selected package folder.
-        /// Female WwiseEvents (containing "f_play") are only added to female FaceFX assets (ending in "_f").
-        /// Male WwiseEvents (containing "m_play") are only added to male FaceFX assets (ending in "_m").
+        /// Adds FaceFX lines from WwiseEvents in a selected package folder. Gender filtering
+        /// recognizes LE2's Play_*_f/m and LE3's *_f/m_Play conventions.
         /// </summary>
         private void AddAudioFromFolder()
         {
@@ -2837,18 +2776,20 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             List<ExportEntry> filteredEvents;
             if (isFemaleAsset)
             {
-                filteredEvents = wwiseEvents.Where(e => e.ObjectName.Name.Contains("f_play", StringComparison.OrdinalIgnoreCase) ||
-                                                         e.ObjectName.Name.Contains("f_Play", StringComparison.OrdinalIgnoreCase)).ToList();
+                filteredEvents = wwiseEvents
+                    .Where(e => WwiseEventNaming.IsPlayEventForGender(e.ObjectName.Name, true, e.Game))
+                    .ToList();
             }
             else
             {
-                filteredEvents = wwiseEvents.Where(e => e.ObjectName.Name.Contains("m_play", StringComparison.OrdinalIgnoreCase) ||
-                                                         e.ObjectName.Name.Contains("m_Play", StringComparison.OrdinalIgnoreCase)).ToList();
+                filteredEvents = wwiseEvents
+                    .Where(e => WwiseEventNaming.IsPlayEventForGender(e.ObjectName.Name, false, e.Game))
+                    .ToList();
             }
 
             if (filteredEvents.Count == 0)
             {
-                string genderType = isFemaleAsset ? "female (f_play)" : "male (m_play)";
+                string genderType = isFemaleAsset ? "female" : "male";
                 MessageBox.Show($"No {genderType} WwiseEvents found in the selected folder.", "No Matching Events", MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
             }
@@ -2873,7 +2814,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     continue; // Skip - already referenced
                 }
 
-                // Extract TLK ID from WwiseEvent name (e.g., "VO_123456_f_Play" -> 123456)
+                // Extract the TLK ID from either game's WwiseEvent naming convention.
                 string eventName = wwiseEvent.ObjectName.Name;
                 int tlkID = ExtractTlkIdFromWwiseEventName(eventName);
 
@@ -2951,7 +2892,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         /// <summary>
         /// Extracts the TLK ID from a WwiseEvent name.
-        /// Expected format: "VO_123456_f_Play" or similar patterns containing the numeric TLK ID.
+        /// Supports either game convention as long as the name contains the numeric TLK ID.
         /// </summary>
         private static int ExtractTlkIdFromWwiseEventName(string eventName)
         {
@@ -3269,7 +3210,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         /// <summary>
         /// Combined workflow: imports WAV files via Wwise (BulkAudioImportDialog), adds the
         /// resulting WwiseEvents as FaceFX lines, and then bulk-generates lip sync animations.
-        /// The audio package is created at the same level as the FaceFX asset.
+        /// LE2 stores the bank, events, and streams in the dialogue's paired _S package. LE3 keeps
+        /// its established audio/int package layout beside the FaceFX asset.
         /// </summary>
         private void ImportAudioAndGenerateFaceFX_Click(object sender, RoutedEventArgs e)
         {
@@ -3293,25 +3235,15 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 return;
             }
 
-            // Determine the parent of the FaceFX asset so "audio" is placed at the same level
-            var fxParent = CurrentLoadedExport.Parent;
-
-            // Build the instanced path for the audio package
-            string audioPackageName;
-            if (fxParent != null)
+            if (!TryGetOrCreateAudioImportPackage(out var audioFolderExport, out var streamingPackageName))
             {
-                // Ensure the audio package exists under the same parent
-                var audioExport = ExportCreator.CreatePackageExport(Pcc, "audio", fxParent);
-                ExportCreator.CreatePackageExport(Pcc, "int", audioExport);
-                audioPackageName = audioExport.InstancedFullPath;
-            }
-            else
-            {
-                audioPackageName = "audio";
+                return;
             }
 
             // Step 1: Show BulkAudioImportDialog to import WAV files
-            var importDialog = new BulkAudioImportDialog(Pcc, audioPackageName, "int")
+            var importDialog = new BulkAudioImportDialog(Pcc, audioFolderExport.InstancedFullPath,
+                bankStreamingAudioPackageName: streamingPackageName,
+                isDialogueBank: Pcc.Game == MEGame.LE2)
             {
                 Owner = Window.GetWindow(this)
             };
@@ -3319,15 +3251,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             if (importDialog.ShowDialog() != true)
                 return;
 
-            // Step 2: Find the audio package and add WwiseEvents as FaceFX lines
-            var audioFolderExport = Pcc.FindExport(audioPackageName, "Package") as ExportEntry;
-            if (audioFolderExport == null)
-            {
-                MessageBox.Show("Could not find the audio package after import. WwiseEvents were not linked.",
-                    "Error", MessageBoxButton.OK, MessageBoxImage.Warning);
-                return;
-            }
-
+            // Step 2: Add the newly imported WwiseEvents as FaceFX lines.
             int linesAdded = AddAudioFromFolderExport(audioFolderExport, isFemaleAsset);
             if (linesAdded == 0)
             {
@@ -3416,10 +3340,15 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         public void ImportAudioIntoMirroredFaceFXAssets()
         {
-            ImportAudioIntoMirroredFaceFXAssets_Click(this, new RoutedEventArgs());
+            RunImportAudioIntoMirroredFaceFXAssets();
         }
 
         private void ImportAudioIntoMirroredFaceFXAssets_Click(object sender, RoutedEventArgs e)
+        {
+            RunImportAudioIntoMirroredFaceFXAssets();
+        }
+
+        private void RunImportAudioIntoMirroredFaceFXAssets()
         {
             if (CurrentLoadedExport == null) return;
 
@@ -3442,11 +3371,13 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 return;
             }
 
-            var parent = CurrentLoadedExport.Parent;
-            var audioFolderExport = ExportCreator.CreatePackageExport(Pcc, "audio", parent);
-            ExportCreator.CreatePackageExport(Pcc, "int", audioFolderExport);
+            if (!TryGetOrCreateAudioImportPackage(out var audioFolderExport, out var streamingPackageName))
+            {
+                return;
+            }
 
-            var importDialog = new BulkAudioImportDialog(Pcc, audioFolderExport.InstancedFullPath, "int",
+            var importDialog = new BulkAudioImportDialog(Pcc, audioFolderExport.InstancedFullPath,
+                bankStreamingAudioPackageName: streamingPackageName,
                 isDialogueBank: true, generateGenderedEvents: true, allowFaceFxAssetCreation: false)
             {
                 Owner = Window.GetWindow(this)
@@ -3457,7 +3388,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 return;
             }
 
-            var importedEventNames = BuildImportedGenderedEventNameSet(importDialog.WavFiles);
+            var importedEventNames = BuildImportedGenderedEventNameSet(importDialog.WavFiles, Pcc.Game);
             if (importedEventNames.Count == 0)
             {
                 MessageBox.Show("No imported audio event names could be determined from the selected WAV files.",
@@ -3469,14 +3400,14 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             var femaleFaceFx = currentIsFemale ? FaceFX : new FaceFXAnimSetHandler(femaleExport);
             var maleFaceFx = !currentIsFemale ? FaceFX : new FaceFXAnimSetHandler(maleExport);
 
-            var newFemaleLines = AddAudioFromFolderExportToAsset(femaleExport, femaleFaceFx, audioFolderExport,
+            var femaleLines = AddAudioFromFolderExportToAsset(femaleExport, femaleFaceFx, audioFolderExport,
                 isFemaleAsset: true, updateCurrentUi: currentIsFemale, importedEventNames);
-            var newMaleLines = AddAudioFromFolderExportToAsset(maleExport, maleFaceFx, audioFolderExport,
+            var maleLines = AddAudioFromFolderExportToAsset(maleExport, maleFaceFx, audioFolderExport,
                 isFemaleAsset: false, updateCurrentUi: !currentIsFemale, importedEventNames);
 
-            if (newFemaleLines.Count == 0 && newMaleLines.Count == 0)
+            if (femaleLines.Count == 0 && maleLines.Count == 0)
             {
-                MessageBox.Show("No new FaceFX lines were added from the imported audio.", "No Lines Added",
+                MessageBox.Show("No matching FaceFX lines were found or added from the imported audio.", "No Lines Found",
                     MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
             }
@@ -3486,13 +3417,13 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 UpdateAnimListBox();
             }
 
-            var message = $"Imported audio and added new mirrored FaceFX lines.\n\nFemale lines added: {newFemaleLines.Count}\nMale lines added: {newMaleLines.Count}";
+            var message = $"Imported audio and prepared mirrored FaceFX lines.\n\nFemale lines ready: {femaleLines.Count}\nMale lines ready: {maleLines.Count}";
             if (MessageBox.Show($"{message}\n\nGenerate FaceFX animations for these new lines now?",
                     "Generate New FaceFX Lines", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes)
             {
-                var femaleResult = GenerateFaceFxForNewLines(femaleExport, femaleFaceFx, newFemaleLines,
+                var femaleResult = GenerateFaceFxForNewLines(femaleExport, femaleFaceFx, femaleLines,
                     isFemaleAsset: true, Tools.FaceFXEditor.AutoFaceFXGenerator.FaceFXSpecies.HumanFemale);
-                var maleResult = GenerateFaceFxForNewLines(maleExport, maleFaceFx, newMaleLines,
+                var maleResult = GenerateFaceFxForNewLines(maleExport, maleFaceFx, maleLines,
                     isFemaleAsset: false, Tools.FaceFXEditor.AutoFaceFXGenerator.FaceFXSpecies.HumanMale);
 
                 if (SelectedLineEntry != null)
@@ -3507,6 +3438,51 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             {
                 MessageBox.Show(message, "Audio Imported", MessageBoxButton.OK, MessageBoxImage.Information);
             }
+        }
+
+        /// <summary>
+        /// Selects the game-specific audio layout. LE2 uses the dialogue's sibling _S package;
+        /// LE3 preserves the original audio package with an int stream subpackage.
+        /// </summary>
+        private bool TryGetOrCreateAudioImportPackage(out ExportEntry audioPackage,
+            out string streamingPackageName)
+        {
+            streamingPackageName = null;
+            if (Pcc.Game == MEGame.LE2)
+            {
+                return TryGetOrCreateDialogueSoundPackage(out audioPackage);
+            }
+
+            audioPackage = ExportCreator.CreatePackageExport(Pcc, "audio", CurrentLoadedExport.Parent);
+            ExportCreator.CreatePackageExport(Pcc, "int", audioPackage);
+            streamingPackageName = "int";
+            return true;
+        }
+
+        private bool TryGetOrCreateDialogueSoundPackage(out ExportEntry soundPackage)
+        {
+            soundPackage = null;
+            IEntry dialoguePackage = CurrentLoadedExport?.Parent;
+            string soundPackageName = null;
+
+            while (dialoguePackage != null)
+            {
+                if (dialoguePackage.ClassName == "Package" &&
+                    DialogueAudioPackageNaming.TryGetSoundPackageName(dialoguePackage.ObjectName.Name,
+                        out soundPackageName))
+                {
+                    soundPackage = ExportCreator.CreatePackageExport(Pcc, soundPackageName,
+                        dialoguePackage.Parent);
+                    return true;
+                }
+
+                dialoguePackage = dialoguePackage.Parent;
+            }
+
+            MessageBox.Show(
+                "Could not find the owning dialogue _D package for this FaceFX asset. Audio was not imported because its paired _S package could not be determined.",
+                "Dialogue Sound Package Not Found", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return false;
         }
 
         private bool TryGetPairedFaceFxExports(out ExportEntry femaleExport, out ExportEntry maleExport)
@@ -3553,14 +3529,15 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 .OfType<ExportEntry>()
                 .Where(exp => exp.ClassName == "WwiseEvent")
                 .Where(exp => importedEventNames.Contains(exp.ObjectName.Name))
-                .Where(exp => exp.ObjectName.Name.Contains(isFemaleAsset ? "f_play" : "m_play", StringComparison.OrdinalIgnoreCase))
+                .Where(exp => WwiseEventNaming.IsPlayEventForGender(exp.ObjectName.Name, isFemaleAsset,
+                    exp.Game))
                 .OrderBy(exp => ExtractTlkIdFromWwiseEventName(exp.ObjectName.Name))
                 .ToList();
 
-            var addedLines = new List<FaceFXLineEntry>();
+            var affectedLines = new List<FaceFXLineEntry>();
             if (filteredEvents.Count == 0)
             {
-                return addedLines;
+                return affectedLines;
             }
 
             var props = faceFxExport.GetProperties();
@@ -3575,13 +3552,51 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
             foreach (var wwiseEvent in filteredEvents)
             {
-                if (existingReferences.Contains(wwiseEvent.UIndex))
+                int tlkID = ExtractTlkIdFromWwiseEventName(wwiseEvent.ObjectName.Name);
+                if (tlkID <= 0)
                 {
                     continue;
                 }
 
-                int tlkID = ExtractTlkIdFromWwiseEventName(wwiseEvent.ObjectName.Name);
-                if (tlkID <= 0 || existingTlkIds.Contains(tlkID))
+                int existingLinePosition = -1;
+                FaceFXLine existingLine = null;
+                for (int i = 0; i < faceFx.Lines.Count; i++)
+                {
+                    if (int.TryParse(faceFx.Lines[i].ID, out int existingTlkId) && existingTlkId == tlkID)
+                    {
+                        existingLinePosition = i;
+                        existingLine = faceFx.Lines[i];
+                        break;
+                    }
+                }
+
+                if (existingLine != null)
+                {
+                    // A previous import or dialogue setup may already have created this gender's
+                    // FaceFX line. Relink it to the newly imported event and include it in this
+                    // generation run instead of silently dropping that gender as a duplicate.
+                    int referenceIndex = existingLine.Index >= 0 ? existingLine.Index : existingLinePosition;
+                    existingLine.Index = referenceIndex;
+                    existingLine.Path = wwiseEvent.InstancedFullPath;
+                    while (referencedSoundCues.Count <= referenceIndex)
+                    {
+                        referencedSoundCues.Add(new ObjectProperty(0));
+                    }
+                    referencedSoundCues[referenceIndex] = new ObjectProperty(wwiseEvent.UIndex);
+                    existingReferences.Add(wwiseEvent.UIndex);
+
+                    var existingLineEntry = updateCurrentUi
+                        ? Lines.FirstOrDefault(entry => ReferenceEquals(entry.Line, existingLine) || entry.TLKID == tlkID)
+                        : null;
+                    existingLineEntry ??= new FaceFXLineEntry(existingLine);
+                    existingLineEntry.IsMale = !isFemaleAsset;
+                    existingLineEntry.TLKID = tlkID;
+                    existingLineEntry.TLKString = TLKManagerWPF.GlobalFindStrRefbyID(tlkID, Pcc);
+                    affectedLines.Add(existingLineEntry);
+                    continue;
+                }
+
+                if (existingReferences.Contains(wwiseEvent.UIndex) || existingTlkIds.Contains(tlkID))
                 {
                     continue;
                 }
@@ -3617,7 +3632,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     TLKID = tlkID,
                     TLKString = TLKManagerWPF.GlobalFindStrRefbyID(tlkID, Pcc)
                 };
-                addedLines.Add(lineEntry);
+                affectedLines.Add(lineEntry);
 
                 if (updateCurrentUi)
                 {
@@ -3627,21 +3642,21 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 lineIndex++;
             }
 
-            if (addedLines.Count > 0)
+            if (affectedLines.Count > 0)
             {
                 props.AddOrReplaceProp(referencedSoundCues);
                 faceFxExport.WriteProperties(props);
                 faceFxExport.WriteBinary(faceFx.Binary);
             }
 
-            return addedLines;
+            return affectedLines;
         }
 
-        private static HashSet<string> BuildImportedGenderedEventNameSet(IEnumerable<string> wavFiles)
+        private static HashSet<string> BuildImportedGenderedEventNameSet(IEnumerable<string> wavFiles, MEGame game)
         {
             var importedEventNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var wavFileList = wavFiles.ToList();
-            var pairedGenderBases = GetBasesWithBothGenderedInputs(wavFileList);
+            var pairedGenderBases = GetBasesWithBothGenderedInputs(wavFileList, game);
             foreach (var wavPath in wavFileList)
             {
                 var soundName = Path.GetFileNameWithoutExtension(wavPath);
@@ -3650,17 +3665,37 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     continue;
                 }
 
-                foreach (var genderedSoundName in GetGenderedNamesForInput(soundName, pairedGenderBases))
+                foreach (var genderedSoundName in GetGenderedNamesForInput(soundName, pairedGenderBases, game))
                 {
-                    importedEventNames.Add($"{genderedSoundName}_Play");
+                    importedEventNames.Add(WwiseEventNaming.GetPlayEventName(game, genderedSoundName));
                 }
             }
 
             return importedEventNames;
         }
 
-        private static string StripGenderSuffix(string soundName)
+        private static string NormalizeGenderedInputName(string soundName, MEGame game)
         {
+            if (game != MEGame.LE2)
+            {
+                return soundName;
+            }
+
+            if (soundName.StartsWith("Play_", StringComparison.OrdinalIgnoreCase))
+            {
+                soundName = soundName[5..];
+            }
+            if (soundName.EndsWith("_Play", StringComparison.OrdinalIgnoreCase))
+            {
+                soundName = soundName[..^5];
+            }
+
+            return soundName;
+        }
+
+        private static string StripGenderSuffix(string soundName, MEGame game)
+        {
+            soundName = NormalizeGenderedInputName(soundName, game);
             if (soundName.EndsWith("_m", StringComparison.OrdinalIgnoreCase) ||
                 soundName.EndsWith("_f", StringComparison.OrdinalIgnoreCase))
             {
@@ -3670,10 +3705,11 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             return soundName;
         }
 
-        private static IEnumerable<string> GetGenderedNamesForInput(string soundName, HashSet<string> pairedGenderBases)
+        private static IEnumerable<string> GetGenderedNamesForInput(string soundName,
+            HashSet<string> pairedGenderBases, MEGame game)
         {
-            var baseName = StripGenderSuffix(soundName);
-            if (pairedGenderBases.Contains(baseName) && TryGetGenderSuffix(soundName, out var genderSuffix))
+            var baseName = StripGenderSuffix(soundName, game);
+            if (pairedGenderBases.Contains(baseName) && TryGetGenderSuffix(soundName, game, out var genderSuffix))
             {
                 yield return $"{baseName}_{genderSuffix}";
                 yield break;
@@ -3683,19 +3719,19 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             yield return $"{baseName}_f";
         }
 
-        private static HashSet<string> GetBasesWithBothGenderedInputs(IEnumerable<string> wavFiles)
+        private static HashSet<string> GetBasesWithBothGenderedInputs(IEnumerable<string> wavFiles, MEGame game)
         {
             var genderedBases = new Dictionary<string, (bool HasMale, bool HasFemale)>(StringComparer.OrdinalIgnoreCase);
 
             foreach (var wavPath in wavFiles)
             {
                 var soundName = Path.GetFileNameWithoutExtension(wavPath);
-                if (string.IsNullOrWhiteSpace(soundName) || !TryGetGenderSuffix(soundName, out var genderSuffix))
+                if (string.IsNullOrWhiteSpace(soundName) || !TryGetGenderSuffix(soundName, game, out var genderSuffix))
                 {
                     continue;
                 }
 
-                var baseName = StripGenderSuffix(soundName);
+                var baseName = StripGenderSuffix(soundName, game);
                 genderedBases.TryGetValue(baseName, out var genders);
                 if (genderSuffix == "m")
                 {
@@ -3714,8 +3750,9 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
         }
 
-        private static bool TryGetGenderSuffix(string soundName, out string genderSuffix)
+        private static bool TryGetGenderSuffix(string soundName, MEGame game, out string genderSuffix)
         {
+            soundName = NormalizeGenderedInputName(soundName, game);
             if (soundName.EndsWith("_m", StringComparison.OrdinalIgnoreCase))
             {
                 genderSuffix = "m";
@@ -3822,40 +3859,62 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             if (faceFxExport?.Game.IsGame1() == true)
                 return FindSoundNodeWaveFromExport(faceFxExport, selectedLine);
 
-            if (faceFxExport != null && selectedLine.TLKID > 0)
+            if (faceFxExport == null || selectedLine == null || selectedLine.TLKID <= 0)
             {
-                var wwiseEventSearchName = $"VO_{selectedLine.TLKID:D6}_{(selectedLine.IsMale ? "m" : "f")}";
-                var wwiseStreamSearchName = $"{selectedLine.TLKID:D8}";
-                var wwiseStreamSearchNameGendered = $"{wwiseStreamSearchName}_{(selectedLine.IsMale ? "m" : "f")}";
-                var wwiseStreamSearchNamewithUnderscores = $"_{selectedLine.TLKID}_";
-                var wwiseStreamSearchNamewithUnderscoresGendered = $"{wwiseStreamSearchNamewithUnderscores}{(selectedLine.IsMale ? "m" : "f")}";
-                var wwiseEventExp = faceFxExport.FileRef.Exports.FirstOrDefault(x => x.ClassName == "WwiseEvent" && x.ObjectName.Name.Contains(wwiseEventSearchName, StringComparison.InvariantCultureIgnoreCase));
-                if (wwiseEventExp != null)
-                {
-                    var wwiseEvent = ObjectBinary.From<WwiseEvent>(wwiseEventExp);
-                    if (wwiseEvent.Links != null)
-                    {
-                        foreach (var link in wwiseEvent.Links)
-                        {
-                            var possibleExports = link.WwiseStreams.Where(x => faceFxExport.FileRef.IsUExport(x)).Select(x => faceFxExport.FileRef.GetUExport(x)).ToList();
-
-                            var possible = possibleExports.FirstOrDefault(x => x.ObjectName.Name.Contains(wwiseStreamSearchNameGendered, StringComparison.InvariantCultureIgnoreCase));
-                            if (possible != null) return possible;
-
-                            possible = possibleExports.FirstOrDefault(x => x.ObjectName.Name.Contains(wwiseStreamSearchNamewithUnderscoresGendered, StringComparison.InvariantCultureIgnoreCase));
-                            if (possible != null) return possible;
-
-                            possible = possibleExports.FirstOrDefault(x => x.ObjectName.Name.Contains(wwiseStreamSearchName, StringComparison.InvariantCultureIgnoreCase));
-                            if (possible != null) return possible;
-
-                            possible = possibleExports.FirstOrDefault(x => x.ObjectName.Name.Contains(wwiseStreamSearchNamewithUnderscores, StringComparison.InvariantCultureIgnoreCase));
-                            if (possible != null) return possible;
-                        }
-                    }
-                }
+                return null;
             }
 
-            return null;
+            string genderedSoundName = $"VO_{selectedLine.TLKID:D6}_{(selectedLine.IsMale ? "m" : "f")}";
+            string expectedEventName = WwiseEventNaming.GetPlayEventName(faceFxExport.Game, genderedSoundName);
+            var wwiseEventExport = faceFxExport.FileRef.Exports.FirstOrDefault(export =>
+                export.ClassName == "WwiseEvent" &&
+                export.ObjectName.Name.Equals(expectedEventName, StringComparison.OrdinalIgnoreCase));
+
+            // Imported packages may use a longer VO prefix or predate the centralized naming helper.
+            wwiseEventExport ??= faceFxExport.FileRef.Exports.FirstOrDefault(export =>
+                export.ClassName == "WwiseEvent" &&
+                WwiseEventNaming.IsPlayEventForGender(export.ObjectName.Name, !selectedLine.IsMale,
+                    faceFxExport.Game) &&
+                export.ObjectName.Name.Contains(selectedLine.TLKID.ToString(CultureInfo.InvariantCulture),
+                    StringComparison.OrdinalIgnoreCase));
+
+            List<ExportEntry> eventStreams = wwiseEventExport == null
+                ? []
+                : GetWwiseStreamsForEvent(faceFxExport.FileRef, wwiseEventExport);
+            var match = FindMatchingVoiceStream(eventStreams, selectedLine.TLKID, selectedLine.IsMale);
+            if (match != null)
+            {
+                return match;
+            }
+
+            // LE2 stores relationships in properties rather than LE3's binary links, and older
+            // imports may not have populated either representation. Search package streams as a
+            // compatibility fallback. Legacy embedded LE2 banks legitimately have no stream export;
+            // callers then use their existing text/duration fallback for FaceFX generation. New
+            // bulk imports are streamed and resolve through the event's References property above.
+            return FindMatchingVoiceStream(
+                faceFxExport.FileRef.Exports.Where(export => export.ClassName == "WwiseStream"),
+                selectedLine.TLKID, selectedLine.IsMale);
+        }
+
+        private static ExportEntry FindMatchingVoiceStream(IEnumerable<ExportEntry> possibleStreams, int tlkId,
+            bool isMale)
+        {
+            var streams = possibleStreams.ToList();
+            string numericName = $"{tlkId:D8}";
+            string gender = isMale ? "m" : "f";
+            string genderedName = $"{numericName}_{gender}";
+            string underscoredName = $"_{tlkId}_";
+            string genderedUnderscoredName = $"{underscoredName}{gender}";
+
+            return streams.FirstOrDefault(stream => stream.ObjectName.Name.Contains(genderedName,
+                       StringComparison.InvariantCultureIgnoreCase))
+                   ?? streams.FirstOrDefault(stream => stream.ObjectName.Name.Contains(genderedUnderscoredName,
+                       StringComparison.InvariantCultureIgnoreCase))
+                   ?? streams.FirstOrDefault(stream => stream.ObjectName.Name.Contains(numericName,
+                       StringComparison.InvariantCultureIgnoreCase))
+                   ?? streams.FirstOrDefault(stream => stream.ObjectName.Name.Contains(underscoredName,
+                       StringComparison.InvariantCultureIgnoreCase));
         }
 
         private static ExportEntry FindSoundNodeWaveFromExport(ExportEntry faceFxExport, FaceFXLineEntry selectedLine)
@@ -3913,13 +3972,13 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             if (isFemaleAsset)
             {
                 filteredEvents = wwiseEvents
-                    .Where(ev => ev.ObjectName.Name.Contains("f_play", StringComparison.OrdinalIgnoreCase))
+                    .Where(ev => WwiseEventNaming.IsPlayEventForGender(ev.ObjectName.Name, true, ev.Game))
                     .ToList();
             }
             else
             {
                 filteredEvents = wwiseEvents
-                    .Where(ev => ev.ObjectName.Name.Contains("m_play", StringComparison.OrdinalIgnoreCase))
+                    .Where(ev => WwiseEventNaming.IsPlayEventForGender(ev.ObjectName.Name, false, ev.Game))
                     .ToList();
             }
 

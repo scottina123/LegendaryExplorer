@@ -1301,7 +1301,7 @@ namespace LegendaryExplorer.Tools.PlotEditor
                     return;
                 }
 
-                var eventName = $"{audioBaseName}_Play";
+                var eventName = WwiseEventNaming.GetPlayEventName(package.Game, audioBaseName);
                 var eventPath = $"{audioPackageName}.{eventName}";
                 var wwiseEventExport = package.FindExport(eventPath, "WwiseEvent")
                     ?? package.Exports.FirstOrDefault(exp => exp.ClassName == "WwiseEvent" && exp.ObjectNameString.Equals(eventName, StringComparison.OrdinalIgnoreCase));

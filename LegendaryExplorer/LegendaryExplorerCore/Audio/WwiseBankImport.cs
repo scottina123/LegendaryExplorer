@@ -120,16 +120,28 @@ namespace LegendaryExplorerCore.Audio
                     .OrderBy(x => ExtractLargestNumber(x.Shortname))
                 : null;
 
-            // Check if bank exists as an import - we can't import in this scenario!
-            ImportEntry bankImport = package.Imports.FirstOrDefault(i => i.ObjectNameString == bankName);
+            string requestedBankPath = string.IsNullOrWhiteSpace(bankPackageName)
+                ? null
+                : $"{bankPackageName}.{bankName}";
+
+            // Check if the bank exists as an import in the requested scope. When no explicit
+            // package is supplied, retain the legacy name-only check.
+            ImportEntry bankImport = requestedBankPath != null
+                ? package.FindImport(requestedBankPath)
+                : package.Imports.FirstOrDefault(i => i.ObjectNameString == bankName);
             if(bankImport != null)
             {
                 return "Bank Import found with that name, process can only work with local banks. Terminated.";
             }
 
-            // Import the bank export - check if bank exits and use that (otherwise use standard wwise_bankname.wwise_bankname package layout)
-            ExportEntry bankExport = package.Exports.FirstOrDefault(x => x.ObjectNameString == bankName);
-            var parentPackage = bankExport?.Parent;
+            // An explicit package path is authoritative. This prevents a same-named bank under
+            // another package (for example an old _D.audio import) from stealing an _S import.
+            ExportEntry bankExport = requestedBankPath != null
+                ? package.FindExport(requestedBankPath, "WwiseBank")
+                : package.Exports.FirstOrDefault(x => x.ObjectNameString == bankName);
+            var parentPackage = requestedBankPath != null
+                ? package.FindEntry(bankPackageName)
+                : bankExport?.Parent;
             if (parentPackage == null)
             {
                 parentPackage = package.FindEntry(bankPackageName ?? bankName);
@@ -138,11 +150,12 @@ namespace LegendaryExplorerCore.Audio
                     // Create container
                     parentPackage = ExportCreator.CreatePackageExport(package, bankPackageName ?? bankName);
                 }
-                bankExport = package.FindExport($"{bankPackageName ?? bankName}.{bankName}");
-                if (bankExport == null)
-                {
-                    bankExport = ExportCreator.CreateExport(package, bankName, "WwiseBank", parentPackage, indexed: false);
-                }
+            }
+
+            bankExport ??= package.FindExport($"{parentPackage.InstancedFullPath}.{bankName}", "WwiseBank");
+            if (bankExport == null)
+            {
+                bankExport = ExportCreator.CreateExport(package, bankName, "WwiseBank", parentPackage, indexed: false);
             }
 
             bankExport.WriteProperty(new ObjectProperty(GetInitBankReference(package), "Parent"));
@@ -192,7 +205,8 @@ namespace LegendaryExplorerCore.Audio
                 foreach (var streamInfo in referencedStreamingAudio)
                 {
                     var exportName = GetExportNameFromShortname(streamInfo.Shortname);
-                    var streamExport = package.FindExport($"{parentPackage.InstancedFullPath}.{exportName}");
+                    var streamExport = package.FindExport($"{parentPackage.InstancedFullPath}.{exportName}",
+                        "WwiseStream");
                     bool newStreamExport = false;
                     if (streamExport == null)
                     {
@@ -268,11 +282,7 @@ namespace LegendaryExplorerCore.Audio
             parentPackage = bankExport.Parent; //Events go next to bank. Reset.
             foreach (var eventInfo in eventInfos)
             {
-                var eventExport = package.FindExport($"{parentPackage.InstancedFullPath}.{eventInfo.Name}"); 
-                if (eventExport == null)
-                {
-                    eventExport = ExportCreator.CreateExport(package, eventInfo.Name, "WwiseEvent", parentPackage, indexed: false);
-                }
+                var eventExport = FindOrCreateEventExport(package, parentPackage, eventInfo.Name);
 
                 PropertyCollection p = new PropertyCollection();
                 if (package.Game == MEGame.LE3)
@@ -363,6 +373,17 @@ namespace LegendaryExplorerCore.Audio
             }
 
             return null;
+        }
+
+        private static ExportEntry FindOrCreateEventExport(IMEPackage package, IEntry parentPackage,
+            string eventName)
+        {
+            // A WwiseStream may legitimately have the same name and parent. The class-specific
+            // lookup prevents that stream from being reused as the event export.
+            string eventPath = $"{parentPackage.InstancedFullPath}.{eventName}";
+            return package.FindExport(eventPath, "WwiseEvent")
+                   ?? ExportCreator.CreateExport(package, eventName, "WwiseEvent", parentPackage,
+                       indexed: false);
         }
 
         /// <summary>

@@ -1,0 +1,107 @@
+Audio Bus	ID	Name			Wwise Object Path	Notes
+	29437393	Sound Effects_02			\Default Work Unit\Master Audio Bus\Not Game Speed Affected\Sound Effects_02	
+	29437394	Sound Effects_01			\Default Work Unit\Master Audio Bus\Game Speed Affected\Non-Environmental\Ducked Bus_01\Sound Effects_01	
+	43619377	UnDucked Music			\Default Work Unit\Master Audio Bus\Game Speed Affected\Non-Environmental\UnDucked Bus_01\UnDucked Music	
+	162360538	UnDucked Bus			\Default Work Unit\Master Audio Bus\Game Speed Affected\Enviromental\UnDucked Bus	
+	247557814	Foley			\Default Work Unit\Master Audio Bus\Game Speed Affected\Enviromental\Ducked Bus\Sound Effects\Foley	For character movement sounds
+	314410997	Dialog_01			\Default Work Unit\Master Audio Bus\Game Speed Affected\Non-Environmental\Ducked Bus_01\Dialog_01	
+	314410998	Dialog_02			\Default Work Unit\Master Audio Bus\Not Game Speed Affected\Dialog_02	
+	373162680	Migrated			\Default Work Unit\Master Audio Bus\Game Speed Affected\Enviromental\Migrated	
+	445639444	Physics			\Default Work Unit\Master Audio Bus\Game Speed Affected\Enviromental\Ducked Bus\Sound Effects\Physics	For sounds utilising the physics audio system
+	482147313	Placeables			\Default Work Unit\Master Audio Bus\Game Speed Affected\Enviromental\Ducked Bus\Sound Effects\Placeables	
+	483506513	Ambiences - Streaming			\Default Work Unit\Master Audio Bus\Game Speed Affected\Enviromental\Ducked Bus\Sound Effects\Ambiences - Streaming	For static ambiences without reverb rendered in the file.
+	558955544	Ambient - Doesn't Duck Ambiences			\Default Work Unit\Master Audio Bus\Game Speed Affected\Enviromental\Ducked Bus\Dialog\Ambient - Doesn't Duck Ambiences	For ambient lines that shouldn't duck the environmental sounds, i.e. background chatter in nightclubs 
+	562669626	Ambiences - NonStreaming_01			\Default Work Unit\Master Audio Bus\Game Speed Affected\Non-Environmental\Ducked Bus_01\Sound Effects_01\Ambiences - NonStreaming_01	
+	799522714	Capture Buss			\Default Work Unit\Master Audio Bus\Game Speed Affected\Capture Buss	
+	926941449	Ambient-Ducked By Conversation VO			\Default Work Unit\Master Audio Bus\Game Speed Affected\Enviromental\Ducked Bus\Dialog\Ambient - Doesn't Duck Ambiences\Ambient-Ducked By Conversation VO	
+	971393558	Vehicles			\Default Work Unit\Master Audio Bus\Game Speed Affected\Enviromental\Ducked Bus\Sound Effects\Vehicles	
+	978636652	Sound Effects			\Default Work Unit\Master Audio Bus\Game Speed Affected\Enviromental\Ducked Bus\Sound Effects	For diegetic sound effects. Try to place sounds as low down the hierachy as possible in order to gain the most control of the mix.
+	999367376	Conversation			\Default Work Unit\Master Audio Bus\Game Speed Affected\Enviromental\Ducked Bus\Dialog\Conversation	
+	1151133664	Cine Design			\Default Work Unit\Master Audio Bus\Game Speed Affected\Enviromental\Ducked Bus\Sound Effects\Cine Design	
+	1185954776	Skipping Not Killed_01			\Default Work Unit\Master Audio Bus\Game Speed Affected\Non-Environmental\Ducked Bus_01\Sound Effects_01\Cine Design_01\Skipping Not Killed_01	
+	1235749641	Dialog			\Default Work Unit\Master Audio Bus\Game Speed Affected\Enviromental\Ducked Bus\Dialog	For diegetic dialog coming from the game world.
+	1327238132	Bullet Impacts			\Default Work Unit\Master Audio Bus\Game Speed Affected\Enviromental\Ducked Bus\Sound Effects\Bullet Impacts	
+	1399256650	SoundSet			\Default Work Unit\Master Audio Bus\Game Speed Affected\Enviromental\Ducked Bus\Dialog\SoundSet	
+	1469236284	GUI Sounds_01			\Default Work Unit\Master Audio Bus\Not Game Speed Affected\Sound Effects_02\GUI Sounds_01	
+	1527563101	Cine Anim			\Default Work Unit\Master Audio Bus\Game Speed Affected\Enviromental\Ducked Bus\Sound Effects\Cine Anim	
+	1599435063	Skipping Killed			\Default Work Unit\Master Audio Bus\Game Speed Affected\Enviromental\Ducked Bus\Sound Effects\Cine Design\Skipping Killed	
+	1641416883	Ducked Bus_01			\Default Work Unit\Master Audio Bus\Game Speed Affected\Non-Environmental\Ducked Bus_01	
+	1679731835	Skipping Killed_01			\Default Work Unit\Master Audio Bus\Game Speed Affected\Non-Environmental\Ducked Bus_01\Sound Effects_01\Cine Design_01\Skipping Killed_01	
+	1705936832	Particle Emitters			\Default Work Unit\Master Audio Bus\Game Speed Affected\Enviromental\Ducked Bus\Sound Effects\Particle Emitters	
+	1776564901	Music-Diegetic			\Default Work Unit\Master Audio Bus\Game Speed Affected\Enviromental\Ducked Bus\Music-Diegetic	For music that is emanating within the game world, will have the current reverb applied to it.
+	1850008150	Cine Design_01			\Default Work Unit\Master Audio Bus\Game Speed Affected\Non-Environmental\Ducked Bus_01\Sound Effects_01\Cine Design_01	
+	1856639151	Ducked Bus			\Default Work Unit\Master Audio Bus\Game Speed Affected\Enviromental\Ducked Bus	
+	1905986414	Ducked LFE			\Default Work Unit\Master Audio Bus\Game Speed Affected\Non-Environmental\Ducked Bus_01\Sound Effects_01\Ducked LFE	
+	1967907651	Powers			\Default Work Unit\Master Audio Bus\Game Speed Affected\Enviromental\Ducked Bus\Sound Effects\Powers	
+	1973439780	Music_01			\Default Work Unit\Master Audio Bus\Not Game Speed Affected\Music_01	
+	2041025885	Ambiences - Streaming_01			\Default Work Unit\Master Audio Bus\Game Speed Affected\Non-Environmental\Ducked Bus_01\Sound Effects_01\Ambiences - Streaming_01	
+	2098438804	Ambiences - NonStreaming			\Default Work Unit\Master Audio Bus\Game Speed Affected\Enviromental\Ducked Bus\Sound Effects\Ambiences - NonStreaming	
+	2101962433	Non-Environmental			\Default Work Unit\Master Audio Bus\Game Speed Affected\Non-Environmental	Non-diegetic bus: for all sounds that are not part of the environment. Sounds played through this bus will not have the current environmental reverb applied.
+	2473411096	UnDucked Bus_01			\Default Work Unit\Master Audio Bus\Game Speed Affected\Non-Environmental\UnDucked Bus_01	
+	2591076601	Cine Anim_01			\Default Work Unit\Master Audio Bus\Game Speed Affected\Non-Environmental\Ducked Bus_01\Sound Effects_01\Cine Anim_01	For cutscene audio that has reverb pre-rendered into the audio.
+	2628899032	Conversation - Critical			\Default Work Unit\Master Audio Bus\Game Speed Affected\Enviromental\Ducked Bus\Dialog\Conversation - Critical	
+	2824286453	Combat Ducking Control Bus			\Default Work Unit\Master Audio Bus\Combat Ducking Control Bus	
+	3043617976	Gunshots			\Default Work Unit\Master Audio Bus\Game Speed Affected\Enviromental\Ducked Bus\Sound Effects\Gunshots	
+	3100279778	Game Speed Affected			\Default Work Unit\Master Audio Bus\Game Speed Affected	When time is slowed down, such as when using certain powers, do you want the sound to be slowed down too? Usually you will want sounds to go here, for sync and continuity reasons.
+	3503476634	Skipping Not Killed			\Default Work Unit\Master Audio Bus\Game Speed Affected\Enviromental\Ducked Bus\Sound Effects\Cine Design\Skipping Not Killed	
+	3567116701	Creatures			\Default Work Unit\Master Audio Bus\Game Speed Affected\Enviromental\Ducked Bus\Sound Effects\Creatures	
+	3672010515	Cine Anim_01_NoAffectedByStopCineDesign			\Default Work Unit\Master Audio Bus\Game Speed Affected\Non-Environmental\Ducked Bus_01\Sound Effects_01\Cine Anim_01_NoAffectedByStopCineDesign	For cutscene audio that has reverb pre-rendered into the audio.
+	3803692087	Master Audio Bus			\Default Work Unit\Master Audio Bus	
+	3922907557	Enviromental			\Default Work Unit\Master Audio Bus\Game Speed Affected\Enviromental	Diegetic bus: for all sounds coming from the game environment. Technically speaking, sounds playing through this bus will have the current environmental reverb applied.
+	3991942870	Music			\Default Work Unit\Master Audio Bus\Game Speed Affected\Non-Environmental\Ducked Bus_01\Music	
+	4077770575	Ambient - Does Duck Ambiences			\Default Work Unit\Master Audio Bus\Game Speed Affected\Enviromental\Ducked Bus\Dialog\Ambient - Does Duck Ambiences	
+	4098492590	GUI Sounds			\Default Work Unit\Master Audio Bus\Game Speed Affected\Non-Environmental\UnDucked Bus_01\UnDucked Sound Effects\GUI Sounds	
+	4107557471	UnDucked Sound Effects			\Default Work Unit\Master Audio Bus\Game Speed Affected\Non-Environmental\UnDucked Bus_01\UnDucked Sound Effects	
+	4140127171	UnDucked LFE			\Default Work Unit\Master Audio Bus\Game Speed Affected\Non-Environmental\UnDucked Bus_01\UnDucked Sound Effects\UnDucked LFE	
+	4178777561	Not Game Speed Affected			\Default Work Unit\Master Audio Bus\Not Game Speed Affected	For sounds that shouldn't be affected by time slow down. Only place sounds here that should continue playing at normal speed, e.g. the sound causeing the slowdown effect. No environmental reverb is applied to these sounds.
+
+Auxiliary Bus	ID	Name			Wwise Object Path	Notes
+	294200045	ME2_Huge_Arena_OLD			\Default Work Unit\Master Audio Bus\Game Speed Affected\Enviromental\Migrated\ME2_Huge_Arena_OLD	
+	601457111	ME2_Small_Arena			\Default Work Unit\Master Audio Bus\Game Speed Affected\Enviromental\Migrated\ME2_Small_Arena	
+	621185425	ME2_CritPath1_Bubble			\Default Work Unit\Master Audio Bus\Game Speed Affected\Enviromental\Migrated\ME2_CritPath1_Bubble	
+	622872059	ME2_Normandy_Corridor_OLD			\Default Work Unit\Master Audio Bus\Game Speed Affected\Enviromental\Migrated\ME2_Normandy_Corridor_OLD	
+	920754605	ME2_OmgHub_Club_Dance			\Default Work Unit\Master Audio Bus\Game Speed Affected\Enviromental\Migrated\ME2_OmgHub_Club_Dance	
+	960642384	ME2_Shuttle_Interior			\Default Work Unit\Master Audio Bus\Game Speed Affected\Enviromental\Migrated\ME2_Shuttle_Interior	
+	1060002507	ME2_Normandy_Smallroom_Old			\Default Work Unit\Master Audio Bus\Game Speed Affected\Enviromental\Migrated\ME2_Normandy_Smallroom_Old	
+	1152253267	ME2_Large_Hall			\Default Work Unit\Master Audio Bus\Game Speed Affected\Enviromental\Migrated\ME2_Large_Hall	
+	1404755834	ME2_Exterior_OLD			\Default Work Unit\Master Audio Bus\Game Speed Affected\Enviromental\Migrated\ME2_Exterior_OLD	
+	1405823420	ME2_Illusive_Man_Room			\Default Work Unit\Master Audio Bus\Game Speed Affected\Enviromental\Migrated\ME2_Illusive_Man_Room	
+	1600132230	ME2_Normandy_Standard_OLD			\Default Work Unit\Master Audio Bus\Game Speed Affected\Enviromental\Migrated\ME2_Normandy_Standard_OLD	
+	1970525005	ME2_EndGame2_Cavern			\Default Work Unit\Master Audio Bus\Game Speed Affected\Enviromental\Migrated\ME2_EndGame2_Cavern	
+	2003940519	ME2_Corridor_Long_OLD			\Default Work Unit\Master Audio Bus\Game Speed Affected\Enviromental\Migrated\ME2_Corridor_Long_OLD	
+	2018659567	ME2_CritPath2_Cavern_OLD			\Default Work Unit\Master Audio Bus\Game Speed Affected\Enviromental\Migrated\ME2_CritPath2_Cavern_OLD	
+	2118720683	ME2_Huge_Arena			\Default Work Unit\Master Audio Bus\Game Speed Affected\Enviromental\Migrated\ME2_Huge_Arena	
+	2354640389	ME2_Large_Hall_OLD			\Default Work Unit\Master Audio Bus\Game Speed Affected\Enviromental\Migrated\ME2_Large_Hall_OLD	
+	2383084345	ME2_CritPath2_PodTunnel			\Default Work Unit\Master Audio Bus\Game Speed Affected\Enviromental\Migrated\ME2_CritPath2_PodTunnel	
+	2564883840	ME2_Exterior			\Default Work Unit\Master Audio Bus\Game Speed Affected\Enviromental\Migrated\ME2_Exterior	
+	2579716662	ME2_OmgHub_Club_Lounge			\Default Work Unit\Master Audio Bus\Game Speed Affected\Enviromental\Migrated\ME2_OmgHub_Club_Lounge	
+	2700250695	ME2_Large_Room			\Default Work Unit\Master Audio Bus\Game Speed Affected\Enviromental\Migrated\ME2_Large_Room	
+	2741142169	ME2_Normandy_Smallroom			\Default Work Unit\Master Audio Bus\Game Speed Affected\Enviromental\Migrated\ME2_Normandy_Smallroom	
+	2743930876	ME2_Normandy_Standard			\Default Work Unit\Master Audio Bus\Game Speed Affected\Enviromental\Migrated\ME2_Normandy_Standard	
+	2785854571	ME2_Small_Room			\Default Work Unit\Master Audio Bus\Game Speed Affected\Enviromental\Migrated\ME2_Small_Room	
+	2896160298	ME2_Shuttle_Interior_OLD			\Default Work Unit\Master Audio Bus\Game Speed Affected\Enviromental\Migrated\ME2_Shuttle_Interior_OLD	
+	2978306313	ME2_Large_Room_OLD			\Default Work Unit\Master Audio Bus\Game Speed Affected\Enviromental\Migrated\ME2_Large_Room_OLD	
+	3091751851	ME2_CritPath2_PodTunnel_OLD			\Default Work Unit\Master Audio Bus\Game Speed Affected\Enviromental\Migrated\ME2_CritPath2_PodTunnel_OLD	
+	3157779117	ME2_Small_Room_OLD			\Default Work Unit\Master Audio Bus\Game Speed Affected\Enviromental\Migrated\ME2_Small_Room_OLD	
+	3491775772	ME2_Corridor			\Default Work Unit\Master Audio Bus\Game Speed Affected\Enviromental\Migrated\ME2_Corridor	
+	3578388521	ME2_Normandy_Corridor			\Default Work Unit\Master Audio Bus\Game Speed Affected\Enviromental\Migrated\ME2_Normandy_Corridor	
+	3589193842	ME2_Canyon			\Default Work Unit\Master Audio Bus\Game Speed Affected\Enviromental\Migrated\ME2_Canyon	
+	3879378995	ME2_Cavern_OLD			\Default Work Unit\Master Audio Bus\Game Speed Affected\Enviromental\Migrated\ME2_Cavern_OLD	
+	3893364435	ME2_CritPath1_Bubble_OLD			\Default Work Unit\Master Audio Bus\Game Speed Affected\Enviromental\Migrated\ME2_CritPath1_Bubble_OLD	
+	3931148286	ME2_GUI_Reverb			\Default Work Unit\Master Audio Bus\Game Speed Affected\Enviromental\Migrated\ME2_GUI_Reverb	
+	4069844582	ME2_Corridor_OLD			\Default Work Unit\Master Audio Bus\Game Speed Affected\Enviromental\Migrated\ME2_Corridor_OLD	
+	4088048315	ME2_Medium_Room			\Default Work Unit\Master Audio Bus\Game Speed Affected\Enviromental\Migrated\ME2_Medium_Room	
+	4090788509	ME2_Medium_Room_OLD			\Default Work Unit\Master Audio Bus\Game Speed Affected\Enviromental\Migrated\ME2_Medium_Room_OLD	
+	4146039473	ME2_Cavern			\Default Work Unit\Master Audio Bus\Game Speed Affected\Enviromental\Migrated\ME2_Cavern	
+	4150365759	ME2_EndGame2_Cavern_OLD			\Default Work Unit\Master Audio Bus\Game Speed Affected\Enviromental\Migrated\ME2_EndGame2_Cavern_OLD	
+	4203752825	ME2_Small_Arena_OLD			\Default Work Unit\Master Audio Bus\Game Speed Affected\Enviromental\Migrated\ME2_Small_Arena_OLD	
+	4210700253	ME2_CritPath2_Cavern			\Default Work Unit\Master Audio Bus\Game Speed Affected\Enviromental\Migrated\ME2_CritPath2_Cavern	
+	4287310789	ME2_Corridor_Long			\Default Work Unit\Master Audio Bus\Game Speed Affected\Enviromental\Migrated\ME2_Corridor_Long	
+
+Effect plug-ins	ID	Name	Type				Notes
+	666587364	ME2_Huge_Arena_(Custom)	Wwise RoomVerb			
+
+Audio Devices	ID	Name	Type				Notes
+	2317455096	No_Output	No Output			
+	3859886410	System	System			
+

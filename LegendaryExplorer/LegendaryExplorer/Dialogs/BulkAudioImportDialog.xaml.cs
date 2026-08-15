@@ -44,11 +44,7 @@ namespace LegendaryExplorer.Dialogs
             public bool CreateStopEvent { get; set; }
         }
 
-        /// <summary>
-        /// Known ME3/LE3 Wwise output buses. Master Audio Bus is always available in the template.
-        /// Other buses will be injected into the template's Master-Mixer Hierarchy when selected.
-        /// </summary>
-        public List<string> OutputBuses { get; } = new()
+        private static readonly string[] Le3OutputBuses =
         {
             "Master Audio Bus",
             "Env-VO-Conversation",
@@ -93,13 +89,83 @@ namespace LegendaryExplorer.Dialogs
             "NonSlowdown-Dialog",
         };
 
-        public string SelectedOutputBus { get; set; } = "Env-VO-Conversation";
+        /// <summary>
+        /// LE2 bus names copied from the game hierarchy in the LEX Test LE2 authoring project.
+        /// Wwise derives the runtime bus ShortID from these exact names.
+        /// </summary>
+        private static readonly string[] Le2OutputBuses =
+        {
+            "Master Audio Bus",
+            "Game Speed Affected",
+            "Capture Buss",
+            "Enviromental",
+            "Migrated",
+            "UnDucked Bus",
+            "Ducked Bus",
+            "Dialog",
+            "Ambient - Does Duck Ambiences",
+            "Conversation",
+            "SoundSet",
+            "Ambient - Doesn't Duck Ambiences",
+            "Ambient-Ducked By Conversation VO",
+            "Conversation - Critical",
+            "Music-Diegetic",
+            "Sound Effects",
+            "Foley",
+            "Ambiences - Streaming",
+            "Physics",
+            "Particle Emitters",
+            "Gunshots",
+            "Bullet Impacts",
+            "Ambiences - NonStreaming",
+            "Creatures",
+            "Cine Design",
+            "Skipping Killed",
+            "Skipping Not Killed",
+            "Cine Anim",
+            "Vehicles",
+            "Powers",
+            "Placeables",
+            "Non-Environmental",
+            "UnDucked Bus_01",
+            "UnDucked Music",
+            "UnDucked Sound Effects",
+            "UnDucked LFE",
+            "GUI Sounds",
+            "Ducked Bus_01",
+            "Sound Effects_01",
+            "Ambiences - Streaming_01",
+            "Ambiences - NonStreaming_01",
+            "Cine Anim_01",
+            "Ducked LFE",
+            "Cine Design_01",
+            "Skipping Killed_01",
+            "Skipping Not Killed_01",
+            "Cine Anim_01_NoAffectedByStopCineDesign",
+            "Dialog_01",
+            "Music",
+            "Not Game Speed Affected",
+            "Sound Effects_02",
+            "GUI Sounds_01",
+            "Music_01",
+            "Dialog_02",
+            "Combat Ducking Control Bus",
+        };
+
+        /// <summary>
+        /// Output buses for the package's game. Non-master buses are injected into the temporary
+        /// Wwise project so the generated ActorMixer receives the game bus's name-derived ShortID.
+        /// </summary>
+        public List<string> OutputBuses { get; } = [];
+
+        public string SelectedOutputBus { get; set; }
 
         private readonly IMEPackage _package;
         private readonly string _bankPackageName;
         private readonly string _bankStreamingAudioPackageName;
         private readonly bool _allowFaceFxAssetCreation;
         private const string ConversationOutputBus = "Env-VO-Conversation";
+        private const string Le2ConversationOutputBus = "Conversation";
         private bool _syncFaceFxAssetNames = true;
         private bool _updatingFaceFxAssetNames;
 
@@ -117,23 +183,25 @@ namespace LegendaryExplorer.Dialogs
             _bankPackageName = bankPackageName;
             _bankStreamingAudioPackageName = bankStreamingAudioPackageName;
             _allowFaceFxAssetCreation = allowFaceFxAssetCreation;
+
+            bool isLe2 = _package.Game == MEGame.LE2;
+            OutputBuses.AddRange(isLe2 ? Le2OutputBuses : Le3OutputBuses);
+            SelectedOutputBus = isLe2 ? Le2ConversationOutputBus : ConversationOutputBus;
+
             InitializeComponent();
             DataContext = this;
             CustomWindowChrome.ApplyCustomChrome(this);
 
-            if (_package.Game != MEGame.LE3)
-            {
-                RadioEffectCheckBox.IsEnabled = false;
-                RadioEffectCheckBox.ToolTip = "The BioWare radio effect is only available for LE3 banks.";
-                QecEffectCheckBox.IsEnabled = false;
-                QecEffectCheckBox.ToolTip = "The QEC effect is only available for LE3 banks.";
-                HelmetEffectCheckBox.IsEnabled = false;
-                HelmetEffectCheckBox.ToolTip = "The helmet voice filter is only available for LE3 banks.";
-                DuckAudioCheckBox.IsEnabled = false;
-                DuckAudioCheckBox.ToolTip = "The shipped music ducking state is only available for LE3 banks.";
-                AttenuationCheckBox.IsEnabled = false;
-                AttenuationCheckBox.ToolTip = "The standard BioWare distance attenuation is only available for LE3 banks.";
-            }
+            Le2AudioTab.IsEnabled = isLe2;
+            Le3AudioTab.IsEnabled = _package.Game == MEGame.LE3;
+            GameAudioTabControl.SelectedItem = isLe2 ? Le2AudioTab : Le3AudioTab;
+
+            GenerateGenderedEventsCheckBox.ToolTip = isLe2
+                ? "Creates *_m_Play and *_f_Play event variants. A single LE2 Sound can back both variants."
+                : "Creates *_m_Play and *_f_Play event variants, each targeting its matching LE3 Sound.";
+            LoopAudioCheckBox.ToolTip = isLe2
+                ? "Enables the LE2-authored IsLoopingEnabled property on each streamed Sound."
+                : "Enables infinite looping on each streamed LE3 Sound.";
 
             UpdateOutputBusOptions();
 
@@ -402,11 +470,12 @@ namespace LegendaryExplorer.Dialogs
             var isDialogue = IsDialogueBankCheckBox.IsChecked == true;
             var generateGenderedEvents = GenerateGenderedEventsCheckBox.IsChecked == true;
             var loopAudio = LoopAudioCheckBox.IsChecked == true;
-            var applyRadioEffect = RadioEffectCheckBox.IsChecked == true;
-            var applyQecEffect = QecEffectCheckBox.IsChecked == true;
-            var applyHelmetEffect = HelmetEffectCheckBox.IsChecked == true;
-            var applyMusicDucking = DuckAudioCheckBox.IsChecked == true;
-            var applyStandardAttenuation = AttenuationCheckBox.IsChecked == true;
+            bool isLe3 = _package.Game == MEGame.LE3;
+            var applyRadioEffect = isLe3 && RadioEffectCheckBox.IsChecked == true;
+            var applyQecEffect = isLe3 && QecEffectCheckBox.IsChecked == true;
+            var applyHelmetEffect = isLe3 && HelmetEffectCheckBox.IsChecked == true;
+            var applyMusicDucking = isLe3 && DuckAudioCheckBox.IsChecked == true;
+            var applyStandardAttenuation = isLe3 && AttenuationCheckBox.IsChecked == true;
             var attenuationDistanceScale = AttenuationScaleSlider.Value / 100d;
             var createSharedStopEvent = CreateSharedStopEventCheckBox.IsChecked == true;
             var createFaceFxAssets = _allowFaceFxAssetCreation && CreateFaceFXAssetsCheckBox.IsChecked == true;
@@ -526,6 +595,7 @@ namespace LegendaryExplorer.Dialogs
                 var actorMixerWuId = actorMixerDoc.Root.Attribute("ID")?.Value;
                 var eventsWuId = eventsDoc.Root.Attribute("ID")?.Value;
                 var masterMixerWuId = masterMixerDoc.Root.Attribute("ID")?.Value;
+                var conversion = GetConversionReference(projectDir, _package.Game);
 
                 // Master Audio Bus is always present in the template
                 const string masterBusId = "{1514A4D8-1DA6-412A-A17E-75CA0C2149F3}";
@@ -544,13 +614,14 @@ namespace LegendaryExplorer.Dialogs
 
                 // 4. Build Actor-Mixer Hierarchy XML
                 var actorMixerId = $"{{{Guid.NewGuid()}}}";
-                var actorMixerXml = BuildActorMixerXml(actorMixerWuId, bankName, actorMixerId, wavFiles,
-                    volume, outputBusName, outputBusId, outputBusWuId, generateGenderedEvents, loopAudio);
+                var actorMixerXml = BuildActorMixerXml(_package.Game, actorMixerWuId, bankName, actorMixerId,
+                    wavFiles, volume, outputBusName, outputBusId, outputBusWuId, conversion,
+                    generateGenderedEvents, loopAudio);
                 File.WriteAllText(actorMixerPath, actorMixerXml);
 
                 // 5. Build Events XML
-                var eventsXml = BuildEventsXml(eventsWuId, actorMixerWuId, wavFiles, generateGenderedEvents,
-                    createSharedStopEvent, perAudioStopEventFiles);
+                var eventsXml = BuildEventsXml(_package.Game, eventsWuId, actorMixerWuId, wavFiles,
+                    generateGenderedEvents, createSharedStopEvent, perAudioStopEventFiles);
                 File.WriteAllText(eventsPath, eventsXml);
 
                 // 6. Build SoundBanks XML
@@ -561,9 +632,9 @@ namespace LegendaryExplorer.Dialogs
                 Dispatcher.Invoke(() => StatusTextBlock.Text = "Running WwiseCLI to generate soundbank...");
 
                 // 7. Enable required project settings:
-                //    - SoundBankGenerateEstimatedDuration: includes DurationMin/DurationMax in SoundbanksInfo.xml
-                //    - SoundBankGenerateContentTXT: generates BankName.txt required by WwiseBankImport for
-                //      dialogue banks to map stream IDs to their Wwise object names
+                //    - estimated duration data in SoundbanksInfo.xml
+                //    - the bank definition TXT used to map streamed media IDs to object names
+                //    - no external-source list (these Sounds reference Originals/SFX directly)
                 string projFile = Path.Combine(projectDir, "TemplateProject.wproj");
                 EnableProjectSettings(projFile);
 
@@ -645,10 +716,9 @@ namespace LegendaryExplorer.Dialogs
                     effectiveStreamingAudioPackageName = "int";
                 }
 
-                // 10. Import the bank into the package using existing WwiseBankImport
-                //     Place everything under a top-level "audio" folder:
-                //     - WwiseBank and WwiseEvents go directly under "audio"
-                //     - WwiseStreams go under "audio.int"
+                // 10. Import the bank into the requested package. WwiseBank and WwiseEvents go
+                //     directly under that package. WwiseStreams use the optional stream subfolder;
+                //     LE2 Dialogue/FaceFX workflows pass none so all three export types live in _S.
                 var importResult = WwiseBankImport.ImportBank(bnkPath, isDialogue, _package,
                     bankPackageName: effectiveBankPackageName, bankStreamingAudioPackageName: effectiveStreamingAudioPackageName);
 
@@ -770,6 +840,68 @@ namespace LegendaryExplorer.Dialogs
             using var output = new MemoryStream();
             WwiseBankParser.Serialize(bank, output);
             File.WriteAllBytes(bnkPath, output.ToArray());
+        }
+
+        private static (string Name, string Id, string WorkUnitId) GetConversionReference(string projectDir,
+            MEGame game)
+        {
+            if (game != MEGame.LE2)
+            {
+                // Factory "Vorbis Quality High" conversion used by the established LE3 path.
+                return ("Vorbis Quality High", "{53A9DE0F-3F4F-4B59-8614-3F9E3C7358FC}",
+                    "{F6B2880C-85E5-47FA-A126-645B5DFD9ACC}");
+            }
+
+            // LEX Test LE2 uses the project's Default Conversion Settings. Its WorkUnit ID is
+            // project-local, so resolve it from the extracted template instead of hard-coding it.
+            string conversionPath = Path.Combine(projectDir, "Conversion Settings", "Default Work Unit.wwu");
+            var conversionDoc = XDocument.Load(conversionPath);
+            var conversionElement = conversionDoc.Descendants("Conversion")
+                .FirstOrDefault(element => string.Equals(element.Attribute("Name")?.Value,
+                    "Default Conversion Settings", StringComparison.Ordinal));
+            string conversionId = conversionElement?.Attribute("ID")?.Value;
+            string conversionWuId = conversionDoc.Root?.Attribute("ID")?.Value;
+            if (string.IsNullOrWhiteSpace(conversionId) || string.IsNullOrWhiteSpace(conversionWuId))
+            {
+                throw new InvalidDataException(
+                    "The Wwise template does not contain the LE2 Default Conversion Settings reference.");
+            }
+
+            // Match the conversion authored in LEX Test LE2: Vorbis with channel count and sample
+            // rate inherited from the source. The shared LE2/LE3 template otherwise forces 24 kHz
+            // and enables two processing flags which are absent from the LE2 reference project.
+            var conversionProperties = conversionElement.Element("PropertyList");
+            if (conversionProperties != null)
+            {
+                var referenceValues = new Dictionary<string, string>(StringComparer.Ordinal)
+                {
+                    ["Channels"] = "4",
+                    ["LRMix"] = "0",
+                    ["MaxSampleRate"] = "0",
+                    ["MinSampleRate"] = "0",
+                    ["SampleRate"] = "0",
+                };
+
+                foreach (var property in conversionProperties.Elements("Property").ToList())
+                {
+                    string name = property.Attribute("Name")?.Value;
+                    if (name is "RemoveDCOffset" or "UseDither")
+                    {
+                        property.Remove();
+                    }
+                    else if (name != null && referenceValues.TryGetValue(name, out string value))
+                    {
+                        foreach (var valueElement in property.Descendants("Value"))
+                        {
+                            valueElement.Value = value;
+                        }
+                    }
+                }
+            }
+
+            conversionDoc.Save(conversionPath);
+
+            return ("Default Conversion Settings", conversionId, conversionWuId);
         }
 
         /// <summary>
@@ -902,41 +1034,39 @@ namespace LegendaryExplorer.Dialogs
         }
 
         /// <summary>
-        /// Builds the Actor-Mixer Hierarchy XML with an ActorMixer containing a Sound per WAV file,
-        /// each configured for streaming with Vorbis Quality High conversion.
-        /// When generateGenderedEvents is true, two Sound nodes are created per WAV file
-        /// (baseName_m and baseName_f), each with a unique ID but referencing the same WAV.
-        /// This is necessary because in Wwise, each event must target its own Sound node —
-        /// sharing a Sound between events breaks event completion tracking in the bank.
+        /// Builds the Actor-Mixer hierarchy. LE2 creates one streamed Sound per input using the
+        /// reference project's default conversion; LE3 creates its established streamed Sound
+        /// nodes, including separate gendered nodes when requested.
+        /// LE3 keeps its separate Sound targets for event-completion tracking.
         /// </summary>
-        private static string BuildActorMixerXml(string workUnitId, string bankName, string actorMixerId,
-            List<string> wavFiles, double volume, string outputBusName, string outputBusId, string outputBusWuId,
-            bool generateGenderedEvents, bool loopAudio)
+        private static string BuildActorMixerXml(MEGame game, string workUnitId, string bankName,
+            string actorMixerId, List<string> wavFiles, double volume, string outputBusName,
+            string outputBusId, string outputBusWuId,
+            (string Name, string Id, string WorkUnitId) conversion, bool generateGenderedEvents, bool loopAudio)
         {
-            // Factory "Vorbis Quality High" conversion setting (from Factory Conversion Settings.wwu in template)
-            const string vorbisHighId = "{53A9DE0F-3F4F-4B59-8614-3F9E3C7358FC}";
-            const string vorbisHighWuId = "{F6B2880C-85E5-47FA-A126-645B5DFD9ACC}";
             // Master Audio Bus from the template's Master-Mixer Hierarchy (used for individual Sound nodes)
             const string masterBusId = "{1514A4D8-1DA6-412A-A17E-75CA0C2149F3}";
 
             var volumeStr = volume.ToString(System.Globalization.CultureInfo.InvariantCulture);
 
             var sb = new System.Text.StringBuilder();
-            var pairedGenderBases = generateGenderedEvents ? GetBasesWithBothGenderedInputs(wavFiles) : [];
+            var pairedGenderBases = generateGenderedEvents ? GetBasesWithBothGenderedInputs(wavFiles, game) : [];
             foreach (var wavPath in wavFiles)
             {
                 var soundName = Path.GetFileNameWithoutExtension(wavPath);
 
-                if (generateGenderedEvents)
+                if (game == MEGame.LE3 && generateGenderedEvents)
                 {
-                    foreach (var genderedSoundName in GetGenderedNamesForInput(soundName, pairedGenderBases))
+                    foreach (var genderedSoundName in GetGenderedNamesForInput(soundName, pairedGenderBases, game))
                     {
-                        AppendSoundXml(sb, genderedSoundName, soundName, vorbisHighId, vorbisHighWuId, masterBusId, outputBusWuId, loopAudio);
+                        AppendSoundXml(sb, game, genderedSoundName, soundName, conversion, masterBusId,
+                            outputBusWuId, loopAudio);
                     }
                 }
                 else
                 {
-                    AppendSoundXml(sb, soundName, soundName, vorbisHighId, vorbisHighWuId, masterBusId, outputBusWuId, loopAudio);
+                    AppendSoundXml(sb, game, soundName, soundName, conversion, masterBusId, outputBusWuId,
+                        loopAudio);
                 }
             }
 
@@ -957,7 +1087,7 @@ namespace LegendaryExplorer.Dialogs
             xml.AppendLine("\t\t\t\t\t</PropertyList>");
             xml.AppendLine("\t\t\t\t\t<ReferenceList>");
             xml.AppendLine("\t\t\t\t\t\t<Reference Name=\"Conversion\">");
-            xml.AppendLine($"\t\t\t\t\t\t\t<ObjectRef Name=\"Vorbis Quality High\" ID=\"{vorbisHighId}\" WorkUnitID=\"{vorbisHighWuId}\"/>");
+            xml.AppendLine($"\t\t\t\t\t\t\t<ObjectRef Name=\"{conversion.Name}\" ID=\"{conversion.Id}\" WorkUnitID=\"{conversion.WorkUnitId}\"/>");
             xml.AppendLine("\t\t\t\t\t\t</Reference>");
             xml.AppendLine("\t\t\t\t\t\t<Reference Name=\"OutputBus\">");
             xml.AppendLine($"\t\t\t\t\t\t\t<ObjectRef Name=\"{outputBusName}\" ID=\"{outputBusId}\" WorkUnitID=\"{outputBusWuId}\"/>");
@@ -980,32 +1110,40 @@ namespace LegendaryExplorer.Dialogs
         /// <param name="sb">StringBuilder to append to.</param>
         /// <param name="soundName">Name for the Sound node (used for ID generation and Wwise object name).</param>
         /// <param name="wavFileName">Base name of the WAV file (without extension) this Sound references.</param>
-        /// <param name="vorbisHighId">Vorbis Quality High conversion ID.</param>
-        /// <param name="vorbisHighWuId">Vorbis Quality High WorkUnit ID.</param>
         /// <param name="masterBusId">Master Audio Bus ID.</param>
         /// <param name="outputBusWuId">Master-Mixer Hierarchy WorkUnit ID.</param>
-        private static void AppendSoundXml(System.Text.StringBuilder sb, string soundName, string wavFileName,
-            string vorbisHighId, string vorbisHighWuId, string masterBusId, string outputBusWuId, bool loopAudio)
+        private static void AppendSoundXml(System.Text.StringBuilder sb, MEGame game, string soundName,
+            string wavFileName, (string Name, string Id, string WorkUnitId) conversion, string masterBusId,
+            string outputBusWuId, bool loopAudio)
         {
             var soundId = $"{{{GenerateDeterministicGuid(soundName)}}}";
             var sourceId = $"{{{Guid.NewGuid()}}}";
 
             sb.AppendLine($"\t\t\t\t\t\t<Sound Name=\"{soundName}\" ID=\"{soundId}\" ShortID=\"{GenerateShortId(soundName)}\">");
-            sb.AppendLine("\t\t\t\t\t\t\t<PropertyList>");
-            sb.AppendLine("\t\t\t\t\t\t\t\t<Property Name=\"IsStreamingEnabled\" Type=\"bool\">");
-            sb.AppendLine("\t\t\t\t\t\t\t\t\t<ValueList>");
-            sb.AppendLine("\t\t\t\t\t\t\t\t\t\t<Value>True</Value>");
-            sb.AppendLine("\t\t\t\t\t\t\t\t\t</ValueList>");
-            sb.AppendLine("\t\t\t\t\t\t\t\t</Property>");
-            if (loopAudio)
+            if (game is MEGame.LE2 or MEGame.LE3 || loopAudio)
             {
-                sb.AppendLine("\t\t\t\t\t\t\t\t<Property Name=\"IsLoopingEnabled\" Type=\"bool\" Value=\"True\"/>");
-                sb.AppendLine("\t\t\t\t\t\t\t\t<Property Name=\"IsLoopingInfinite\" Type=\"bool\" Value=\"True\"/>");
+                sb.AppendLine("\t\t\t\t\t\t\t<PropertyList>");
+                if (game is MEGame.LE2 or MEGame.LE3)
+                {
+                    sb.AppendLine("\t\t\t\t\t\t\t\t<Property Name=\"IsStreamingEnabled\" Type=\"bool\">");
+                    sb.AppendLine("\t\t\t\t\t\t\t\t\t<ValueList>");
+                    sb.AppendLine("\t\t\t\t\t\t\t\t\t\t<Value>True</Value>");
+                    sb.AppendLine("\t\t\t\t\t\t\t\t\t</ValueList>");
+                    sb.AppendLine("\t\t\t\t\t\t\t\t</Property>");
+                }
+                if (loopAudio)
+                {
+                    sb.AppendLine("\t\t\t\t\t\t\t\t<Property Name=\"IsLoopingEnabled\" Type=\"bool\" Value=\"True\"/>");
+                    if (game == MEGame.LE3)
+                    {
+                        sb.AppendLine("\t\t\t\t\t\t\t\t<Property Name=\"IsLoopingInfinite\" Type=\"bool\" Value=\"True\"/>");
+                    }
+                }
+                sb.AppendLine("\t\t\t\t\t\t\t</PropertyList>");
             }
-            sb.AppendLine("\t\t\t\t\t\t\t</PropertyList>");
             sb.AppendLine("\t\t\t\t\t\t\t<ReferenceList>");
             sb.AppendLine("\t\t\t\t\t\t\t\t<Reference Name=\"Conversion\">");
-            sb.AppendLine($"\t\t\t\t\t\t\t\t\t<ObjectRef Name=\"Vorbis Quality High\" ID=\"{vorbisHighId}\" WorkUnitID=\"{vorbisHighWuId}\"/>");
+            sb.AppendLine($"\t\t\t\t\t\t\t\t\t<ObjectRef Name=\"{conversion.Name}\" ID=\"{conversion.Id}\" WorkUnitID=\"{conversion.WorkUnitId}\"/>");
             sb.AppendLine("\t\t\t\t\t\t\t\t</Reference>");
             sb.AppendLine("\t\t\t\t\t\t\t\t<Reference Name=\"OutputBus\">");
             sb.AppendLine($"\t\t\t\t\t\t\t\t\t<ObjectRef Name=\"Master Audio Bus\" ID=\"{masterBusId}\" WorkUnitID=\"{outputBusWuId}\"/>");
@@ -1024,21 +1162,19 @@ namespace LegendaryExplorer.Dialogs
         }
 
         /// <summary>
-        /// Builds the Events XML with Play events per Sound and optional Stop events.
-        /// When generateGenderedEvents is true, two events are created per audio input:
-        /// {baseName}_m_Play targeting the {baseName}_m Sound, and
-        /// {baseName}_f_Play targeting the {baseName}_f Sound.
-        /// Each event must target its own Sound node — sharing a Sound between events
-        /// breaks event completion tracking in the generated Wwise bank.
+        /// Builds game-native Play events and optional Stop events. LE2 permits both gender
+        /// events to target one streamed Sound; LE3 uses distinct streamed Sounds for generated
+        /// gender variants.
+        /// LE3's separate targets preserve event completion tracking in the generated bank.
         /// A per-audio Stop event targets every Sound generated from that input, while the shared
         /// Stop event targets every Sound generated by the import.
         /// </summary>
-        private static string BuildEventsXml(string workUnitId, string actorMixerWuId,
+        private static string BuildEventsXml(MEGame game, string workUnitId, string actorMixerWuId,
             List<string> wavFiles, bool generateGenderedEvents, bool createSharedStopEvent,
             HashSet<string> perAudioStopEventFiles)
         {
             var sb = new System.Text.StringBuilder();
-            var pairedGenderBases = generateGenderedEvents ? GetBasesWithBothGenderedInputs(wavFiles) : [];
+            var pairedGenderBases = generateGenderedEvents ? GetBasesWithBothGenderedInputs(wavFiles, game) : [];
             var sharedStopTargets = new List<(string SoundName, string SoundId)>();
             foreach (var wavPath in wavFiles)
             {
@@ -1047,23 +1183,32 @@ namespace LegendaryExplorer.Dialogs
 
                 if (generateGenderedEvents)
                 {
-                    foreach (var genderedSoundName in GetGenderedNamesForInput(soundName, pairedGenderBases))
+                    foreach (var genderedSoundName in GetGenderedNamesForInput(soundName, pairedGenderBases, game))
                     {
-                        var soundId = $"{{{GenerateDeterministicGuid(genderedSoundName)}}}";
-                        AppendEventXml(sb, $"{genderedSoundName}_Play", genderedSoundName, soundId, actorMixerWuId);
-                        soundTargets.Add((genderedSoundName, soundId));
+                        // LE2 creates both gendered Play events over the one streamed Sound from the
+                        // input file. LE3 retains a distinct streamed Sound for each event variant.
+                        string targetSoundName = game == MEGame.LE2 ? soundName : genderedSoundName;
+                        var soundId = $"{{{GenerateDeterministicGuid(targetSoundName)}}}";
+                        AppendEventXml(sb, WwiseEventNaming.GetPlayEventName(game, genderedSoundName),
+                            targetSoundName, soundId, actorMixerWuId);
+                        if (!soundTargets.Any(target => target.SoundId == soundId))
+                        {
+                            soundTargets.Add((targetSoundName, soundId));
+                        }
                     }
                 }
                 else
                 {
                     var soundId = $"{{{GenerateDeterministicGuid(soundName)}}}";
-                    AppendEventXml(sb, $"{soundName}_Play", soundName, soundId, actorMixerWuId);
+                    AppendEventXml(sb, WwiseEventNaming.GetPlayEventName(game, soundName), soundName, soundId,
+                        actorMixerWuId);
                     soundTargets.Add((soundName, soundId));
                 }
 
                 if (perAudioStopEventFiles.Contains(wavPath))
                 {
-                    AppendStopEventXml(sb, $"{soundName}_Stop", soundTargets, actorMixerWuId);
+                    AppendStopEventXml(sb, WwiseEventNaming.GetPerAudioStopEventName(game, soundName),
+                        soundTargets, actorMixerWuId);
                 }
 
                 sharedStopTargets.AddRange(soundTargets);
@@ -1149,8 +1294,28 @@ namespace LegendaryExplorer.Dialogs
         /// e.g. "VO_17250592_m" -> "VO_17250592", "VO_17250592_f" -> "VO_17250592",
         /// "VO_17250592" -> "VO_17250592" (no suffix, returned as-is).
         /// </summary>
-        private static string StripGenderSuffix(string soundName)
+        private static string NormalizeGenderedInputName(string soundName, MEGame game)
         {
+            if (game != MEGame.LE2)
+            {
+                return soundName;
+            }
+
+            if (soundName.StartsWith("Play_", StringComparison.OrdinalIgnoreCase))
+            {
+                soundName = soundName[5..];
+            }
+            if (soundName.EndsWith("_Play", StringComparison.OrdinalIgnoreCase))
+            {
+                soundName = soundName[..^5];
+            }
+
+            return soundName;
+        }
+
+        private static string StripGenderSuffix(string soundName, MEGame game)
+        {
+            soundName = NormalizeGenderedInputName(soundName, game);
             if (soundName.EndsWith("_m", StringComparison.OrdinalIgnoreCase) ||
                 soundName.EndsWith("_f", StringComparison.OrdinalIgnoreCase))
             {
@@ -1159,10 +1324,11 @@ namespace LegendaryExplorer.Dialogs
             return soundName;
         }
 
-        private static IEnumerable<string> GetGenderedNamesForInput(string soundName, HashSet<string> pairedGenderBases)
+        private static IEnumerable<string> GetGenderedNamesForInput(string soundName,
+            HashSet<string> pairedGenderBases, MEGame game)
         {
-            var baseName = StripGenderSuffix(soundName);
-            if (pairedGenderBases.Contains(baseName) && TryGetGenderSuffix(soundName, out var genderSuffix))
+            var baseName = StripGenderSuffix(soundName, game);
+            if (pairedGenderBases.Contains(baseName) && TryGetGenderSuffix(soundName, game, out var genderSuffix))
             {
                 yield return $"{baseName}_{genderSuffix}";
                 yield break;
@@ -1172,19 +1338,19 @@ namespace LegendaryExplorer.Dialogs
             yield return $"{baseName}_f";
         }
 
-        private static HashSet<string> GetBasesWithBothGenderedInputs(IEnumerable<string> wavFiles)
+        private static HashSet<string> GetBasesWithBothGenderedInputs(IEnumerable<string> wavFiles, MEGame game)
         {
             var genderedBases = new Dictionary<string, (bool HasMale, bool HasFemale)>(StringComparer.OrdinalIgnoreCase);
 
             foreach (var wavPath in wavFiles)
             {
                 var soundName = Path.GetFileNameWithoutExtension(wavPath);
-                if (string.IsNullOrWhiteSpace(soundName) || !TryGetGenderSuffix(soundName, out var genderSuffix))
+                if (string.IsNullOrWhiteSpace(soundName) || !TryGetGenderSuffix(soundName, game, out var genderSuffix))
                 {
                     continue;
                 }
 
-                var baseName = StripGenderSuffix(soundName);
+                var baseName = StripGenderSuffix(soundName, game);
                 genderedBases.TryGetValue(baseName, out var genders);
                 if (genderSuffix == "m")
                 {
@@ -1203,8 +1369,9 @@ namespace LegendaryExplorer.Dialogs
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
         }
 
-        private static bool TryGetGenderSuffix(string soundName, out string genderSuffix)
+        private static bool TryGetGenderSuffix(string soundName, MEGame game, out string genderSuffix)
         {
+            soundName = NormalizeGenderedInputName(soundName, game);
             if (soundName.EndsWith("_m", StringComparison.OrdinalIgnoreCase))
             {
                 genderSuffix = "m";
@@ -1281,29 +1448,48 @@ namespace LegendaryExplorer.Dialogs
         }
 
         /// <summary>
-        /// Enables required SoundBank generation settings in the Wwise project file (.wproj):
-        /// - SoundBankGenerateEstimatedDuration: includes DurationMin/DurationMax on events in
-        ///   the generated SoundbanksInfo.xml, used by WwiseBankImport to set DurationSeconds.
-        /// - SoundBankGenerateContentTXT: generates BankName.txt with Wwise object names mapped
-        ///   to stream IDs, required by WwiseBankImport for dialogue banks so events can be
-        ///   properly linked to their WwiseStream exports.
+        /// Enables the SoundBank metadata used by the importer and clears the external-source
+        /// input path. The template uses that path for standalone conversion jobs, but bulk bank
+        /// import references Originals/SFX directly and Wwise rejects a missing .wsources file.
         /// </summary>
         private static void EnableProjectSettings(string wprojPath)
         {
             var doc = XDocument.Load(wprojPath);
-            var propertyList = doc.Descendants("PropertyList").FirstOrDefault();
-            if (propertyList != null)
+
+            foreach (var property in doc.Descendants("Property"))
             {
-                propertyList.Add(new XElement("Property",
-                    new XAttribute("Name", "SoundBankGenerateEstimatedDuration"),
-                    new XAttribute("Type", "bool"),
-                    new XAttribute("Value", "True")));
-                propertyList.Add(new XElement("Property",
-                    new XAttribute("Name", "SoundBankGenerateContentTXT"),
-                    new XAttribute("Type", "bool"),
-                    new XAttribute("Value", "True")));
-                doc.Save(wprojPath);
+                string propertyName = property.Attribute("Name")?.Value;
+                if (propertyName is "SoundBankGenerateEstimatedDuration" or "SoundBankGenerateDefinitionFile")
+                {
+                    var values = property.Descendants("Value").ToList();
+                    if (values.Count == 0)
+                    {
+                        property.SetAttributeValue("Value", "True");
+                    }
+                    else
+                    {
+                        foreach (var value in values)
+                        {
+                            value.Value = "True";
+                        }
+                    }
+                }
             }
+
+            var projectPropertyList = doc.Descendants("Project").FirstOrDefault()?.Element("PropertyList");
+            var externalSourcesInput = projectPropertyList?.Elements("Property")
+                .FirstOrDefault(property => property.Attribute("Name")?.Value == "ExternalSourcesInputPath");
+            if (externalSourcesInput != null)
+            {
+                foreach (var value in externalSourcesInput.Descendants("Value"))
+                {
+                    value.Value = string.Empty;
+                }
+
+                externalSourcesInput.SetAttributeValue("Value", null);
+            }
+
+            doc.Save(wprojPath);
         }
 
         /// <summary>
@@ -1314,7 +1500,7 @@ namespace LegendaryExplorer.Dialogs
         private Dictionary<string, float> BuildEventDurationMap(List<string> wavFiles, bool generateGenderedEvents)
         {
             var map = new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase);
-            var pairedGenderBases = generateGenderedEvents ? GetBasesWithBothGenderedInputs(wavFiles) : [];
+            var pairedGenderBases = generateGenderedEvents ? GetBasesWithBothGenderedInputs(wavFiles, _package.Game) : [];
             foreach (var wavPath in wavFiles)
             {
                 var soundName = Path.GetFileNameWithoutExtension(wavPath);
@@ -1322,14 +1508,15 @@ namespace LegendaryExplorer.Dialogs
 
                 if (generateGenderedEvents)
                 {
-                    foreach (var genderedSoundName in GetGenderedNamesForInput(soundName, pairedGenderBases))
+                    foreach (var genderedSoundName in GetGenderedNamesForInput(soundName, pairedGenderBases,
+                                 _package.Game))
                     {
-                        map[$"{genderedSoundName}_Play"] = duration;
+                        map[WwiseEventNaming.GetPlayEventName(_package.Game, genderedSoundName)] = duration;
                     }
                 }
                 else
                 {
-                    map[$"{soundName}_Play"] = duration;
+                    map[WwiseEventNaming.GetPlayEventName(_package.Game, soundName)] = duration;
                 }
             }
             return map;
@@ -1443,7 +1630,8 @@ namespace LegendaryExplorer.Dialogs
             var filteredEvents = entryTree.FlattenTreeOf(folderExport, includeRoot: false)
                 .OfType<ExportEntry>()
                 .Where(exp => exp.ClassName == "WwiseEvent")
-                .Where(exp => exp.ObjectName.Name.Contains(isFemaleAsset ? "f_play" : "m_play", StringComparison.OrdinalIgnoreCase))
+                .Where(exp => WwiseEventNaming.IsPlayEventForGender(exp.ObjectName.Name, isFemaleAsset,
+                    _package.Game))
                 .OrderBy(exp => ExtractTlkNumber(exp.ObjectName.Name))
                 .ToList();
 

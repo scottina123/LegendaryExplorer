@@ -1,10 +1,11 @@
 <Window x:Class="LegendaryExplorer.Dialogs.BulkAudioImportDialog"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Bulk Audio Import (LE2/LE3)" Width="800" Height="890"
+        Title="Bulk Audio Import (LE2/LE3)" Width="800" Height="920"
         WindowStartupLocation="CenterOwner">
     <Grid Margin="10">
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
@@ -16,19 +17,76 @@
         <TextBlock Grid.Row="0" Text="Bulk import WAV or MP3 files into the current LE2/LE3 package via Wwise CLI."
                    TextWrapping="Wrap" Margin="0,0,0,8" Opacity="0.8"/>
 
-        <GroupBox Grid.Row="1" Header="Bank Settings" Padding="8" Margin="0,0,0,5">
+        <TabControl Grid.Row="1" x:Name="GameAudioTabControl" Margin="0,0,0,5">
+            <TabItem x:Name="Le2AudioTab" Header="LE2 Audio">
+                <Border Padding="10">
+                    <TextBlock TextWrapping="Wrap"
+                               Text="LE2 imports streamed audio into an AFC and creates *_Play/Stop_* events. Output buses, game-defined auxiliary sends, gendered events, per-audio stop events, a shared Stop event, and looping are available. LE3 effect presets are intentionally excluded."/>
+                </Border>
+            </TabItem>
+            <TabItem x:Name="Le3AudioTab" Header="LE3 Audio">
+                <Grid Margin="10,6">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <Label Grid.Row="0" Grid.Column="0" Content="Radio Effect:" VerticalAlignment="Center"/>
+                    <CheckBox Grid.Row="0" Grid.Column="1" x:Name="RadioEffectCheckBox" IsChecked="False" VerticalAlignment="Center" Margin="5,4"
+                              Checked="RadioEffectCheckBox_CheckedChanged" Unchecked="RadioEffectCheckBox_CheckedChanged"
+                              Content="Apply BioWare radio communication effect" ToolTip="Applies the exact BioWare FutzBox and Parametric EQ radio chain used in cit001_postbridge_lovei_b_dlg."/>
+                    <Label Grid.Row="1" Grid.Column="0" Content="QEC Effect:" VerticalAlignment="Center"/>
+                    <CheckBox Grid.Row="1" Grid.Column="1" x:Name="QecEffectCheckBox" IsChecked="False" VerticalAlignment="Center" Margin="5,4"
+                              Checked="QecEffectCheckBox_CheckedChanged" Unchecked="QecEffectCheckBox_CheckedChanged"
+                              Content="Apply Hackett QEC transmission effect"
+                              ToolTip="Applies the McDSP FutzBox and Wwise Flanger settings used for Admiral Hackett over the QEC."/>
+                    <Label Grid.Row="2" Grid.Column="0" Content="Helmet Effect:" VerticalAlignment="Center"/>
+                    <CheckBox Grid.Row="2" Grid.Column="1" x:Name="HelmetEffectCheckBox" IsChecked="False" VerticalAlignment="Center" Margin="5,4"
+                              Checked="HelmetEffectCheckBox_CheckedChanged" Unchecked="HelmetEffectCheckBox_CheckedChanged"
+                              Content="Filter player and henchman voices when helmets are equipped"
+                              ToolTip="Adds the LE3 helmet FutzBox and the Helmet RTPC (0xAA2B753F). RTPC value 0 bypasses the filter; value 1 enables it."/>
+                    <Label Grid.Row="3" Grid.Column="0" Content="Duck Audio:" VerticalAlignment="Center"/>
+                    <CheckBox Grid.Row="3" Grid.Column="1" x:Name="DuckAudioCheckBox" IsChecked="False" VerticalAlignment="Center" Margin="5,4"
+                              Content="Apply shipped LE3 music ducking state (-3 dB)"
+                              ToolTip="Adds the music Volume state used by wwise_cithub_streaming in BioSnd_CitHub. Available when an LE3 music output bus is selected."/>
+                    <Label Grid.Row="4" Grid.Column="0" Content="Attenuation:" VerticalAlignment="Top" Padding="5,8,5,5"/>
+                    <StackPanel Grid.Row="4" Grid.Column="1" Margin="5,4">
+                        <CheckBox x:Name="AttenuationCheckBox" IsChecked="False" VerticalAlignment="Center"
+                                  Content="Apply standard BioWare distance attenuation"
+                                  ToolTip="Adds the standard four-curve voice attenuation used in BioD_KroGar_300Tower_LOC_INT."/>
+                        <Grid Margin="20,4,0,0" IsEnabled="{Binding ElementName=AttenuationCheckBox, Path=IsChecked}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="105"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Distance scale:" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                            <Slider Grid.Column="1" x:Name="AttenuationScaleSlider" Minimum="10" Maximum="500" Value="100"
+                                    TickFrequency="25" SmallChange="5" LargeChange="25" Margin="0,0,8,0"
+                                    AutoToolTipPlacement="TopLeft" AutoToolTipPrecision="0"
+                                    ValueChanged="AttenuationScaleSlider_ValueChanged"
+                                    ToolTip="Scales every distance point in the preset together. 100% preserves the shipped curve, whose maximum distance is 70."/>
+                            <TextBlock Grid.Column="2" x:Name="AttenuationScaleValueTextBlock" Text="100% (70 max)"
+                                       VerticalAlignment="Center"/>
+                        </Grid>
+                    </StackPanel>
+                </Grid>
+            </TabItem>
+        </TabControl>
+
+        <GroupBox Grid.Row="2" Header="Bank Settings" Padding="8" Margin="0,0,0,5">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
                 <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
@@ -49,75 +107,32 @@
                 <ComboBox Grid.Row="2" Grid.Column="1" x:Name="OutputBusComboBox" IsEditable="False" Margin="5,2" Padding="4"
                           ItemsSource="{Binding OutputBuses}" SelectedItem="{Binding SelectedOutputBus}"
                           SelectionChanged="OutputBusComboBox_SelectionChanged"
-                          ToolTip="The Wwise output bus for the ActorMixer. Non-default buses will be injected into the template project automatically."/>
+                          ToolTip="The game-specific Wwise output bus for the ActorMixer. The selected bus is injected into the temporary project automatically."/>
                 <Label Grid.Row="3" Grid.Column="0" Content="Dialogue Bank:" VerticalAlignment="Center"/>
                 <CheckBox Grid.Row="3" Grid.Column="1" x:Name="IsDialogueBankCheckBox" IsChecked="True" VerticalAlignment="Center" Margin="5,4"
-                          Content="Audio filenames contain TLK refs (e.g. VO_123456_m)" ToolTip="When checked, events and stream links will be set up using the VO dialogue naming convention."/>
+                          Content="Audio filenames contain TLK refs (e.g. VO_123456_m)" ToolTip="When checked, Wwise object names are retained for dialogue and FaceFX matching."/>
                 <Label Grid.Row="4" Grid.Column="0" Content="Gendered Events:" VerticalAlignment="Center"/>
                 <CheckBox Grid.Row="4" Grid.Column="1" x:Name="GenerateGenderedEventsCheckBox" IsChecked="True" VerticalAlignment="Center" Margin="5,4"
-                          Content="Create both _m and _f event variants" ToolTip="When checked, two WwiseEvents are created per audio file (e.g. VO_123456_m_Play and VO_123456_f_Play), both pointing to the same audio. If the filename already ends with _m or _f, it will be replaced for each variant."/>
+                          Content="Create both _m and _f event variants"/>
                 <Label Grid.Row="5" Grid.Column="0" Content="Loop Audio:" VerticalAlignment="Center"/>
                 <CheckBox Grid.Row="5" Grid.Column="1" x:Name="LoopAudioCheckBox" IsChecked="False" VerticalAlignment="Center" Margin="5,4"
-                          Content="Loop imported audio infinitely" ToolTip="When checked, each Sound node will have looping enabled with an infinite loop count."/>
-                <Label Grid.Row="6" Grid.Column="0" Content="Radio Effect:" VerticalAlignment="Center"/>
-                <CheckBox Grid.Row="6" Grid.Column="1" x:Name="RadioEffectCheckBox" IsChecked="False" VerticalAlignment="Center" Margin="5,4"
-                          Checked="RadioEffectCheckBox_CheckedChanged" Unchecked="RadioEffectCheckBox_CheckedChanged"
-                          Content="Apply BioWare radio communication effect" ToolTip="When checked, applies the exact BioWare FutzBox and Parametric EQ radio chain used in cit001_postbridge_lovei_b_dlg. LE3 only."/>
-                <Label Grid.Row="7" Grid.Column="0" Content="QEC Effect:" VerticalAlignment="Center"/>
-                <CheckBox Grid.Row="7" Grid.Column="1" x:Name="QecEffectCheckBox" IsChecked="False" VerticalAlignment="Center" Margin="5,4"
-                          Checked="QecEffectCheckBox_CheckedChanged" Unchecked="QecEffectCheckBox_CheckedChanged"
-                          Content="Apply Hackett QEC transmission effect"
-                          ToolTip="When checked, applies the McDSP FutzBox and Wwise Flanger settings used for Admiral Hackett over the QEC. LE3 only."/>
-                <Label Grid.Row="8" Grid.Column="0" Content="Helmet Effect:" VerticalAlignment="Center"/>
-                <CheckBox Grid.Row="8" Grid.Column="1" x:Name="HelmetEffectCheckBox" IsChecked="False" VerticalAlignment="Center" Margin="5,4"
-                          Checked="HelmetEffectCheckBox_CheckedChanged" Unchecked="HelmetEffectCheckBox_CheckedChanged"
-                          Content="Filter player and henchman voices when helmets are equipped"
-                          ToolTip="Adds the LE3 helmet FutzBox and the Helmet RTPC (0xAA2B753F). RTPC value 0 bypasses the filter; value 1 enables it. LE3 only."/>
-                <Label Grid.Row="9" Grid.Column="0" Content="Duck Audio:" VerticalAlignment="Center"/>
-                <CheckBox Grid.Row="9" Grid.Column="1" x:Name="DuckAudioCheckBox" IsChecked="False" VerticalAlignment="Center" Margin="5,4"
-                          Content="Apply shipped LE3 music ducking state (-3 dB)"
-                          ToolTip="Adds the music Volume state used by wwise_cithub_streaming in BioSnd_CitHub. Available when an LE3 music output bus is selected."/>
-                <Label Grid.Row="10" Grid.Column="0" Content="Attenuation:" VerticalAlignment="Top" Padding="5,8,5,5"/>
-                <StackPanel Grid.Row="10" Grid.Column="1" Margin="5,4">
-                    <CheckBox x:Name="AttenuationCheckBox" IsChecked="False" VerticalAlignment="Center"
-                              Content="Apply standard BioWare distance attenuation"
-                              ToolTip="Adds the standard four-curve voice attenuation used in BioD_KroGar_300Tower_LOC_INT. Available for every LE3 output bus."/>
-                    <Grid Margin="20,4,0,0" IsEnabled="{Binding ElementName=AttenuationCheckBox, Path=IsChecked}">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto"/>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="105"/>
-                        </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="Distance scale:" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                        <Slider Grid.Column="1" x:Name="AttenuationScaleSlider" Minimum="10" Maximum="500" Value="100"
-                                TickFrequency="25" SmallChange="5" LargeChange="25" Margin="0,0,8,0"
-                                AutoToolTipPlacement="TopLeft" AutoToolTipPrecision="0"
-                                ValueChanged="AttenuationScaleSlider_ValueChanged"
-                                ToolTip="Scales every distance point in the preset together. 100% preserves the shipped curve, whose maximum distance is 70."/>
-                        <TextBlock Grid.Column="2" x:Name="AttenuationScaleValueTextBlock" Text="100% (70 max)"
-                                   VerticalAlignment="Center"/>
-                    </Grid>
-                </StackPanel>
-                <Label Grid.Row="11" Grid.Column="0" x:Name="CreateFaceFXAssetsLabel" Content="FaceFX Assets:" VerticalAlignment="Center"/>
-                <CheckBox Grid.Row="11" Grid.Column="1" x:Name="CreateFaceFXAssetsCheckBox" IsChecked="False" VerticalAlignment="Center" Margin="5,4"
+                          Content="Loop imported audio infinitely"/>
+                <Label Grid.Row="6" Grid.Column="0" x:Name="CreateFaceFXAssetsLabel" Content="FaceFX Assets:" VerticalAlignment="Center"/>
+                <CheckBox Grid.Row="6" Grid.Column="1" x:Name="CreateFaceFXAssetsCheckBox" IsChecked="False" VerticalAlignment="Center" Margin="5,4"
                           Content="Create male and female FaceFX assets and generate lines" ToolTip="When checked, imported audio is placed under the top folder's audio package, and matching male/female FaceFXAnimSet assets are created under the top folder."/>
-                <Label Grid.Row="12" Grid.Column="0" x:Name="TopFolderLabel" Content="Top Folder:" VerticalAlignment="Center"/>
-                <TextBox Grid.Row="12" Grid.Column="1" x:Name="TopFolderTextBox" Text="NewAudioImport" Padding="4" Margin="5,2" TextChanged="TopFolderTextBox_TextChanged"
+                <Label Grid.Row="7" Grid.Column="0" x:Name="TopFolderLabel" Content="Top Folder:" VerticalAlignment="Center"/>
+                <TextBox Grid.Row="7" Grid.Column="1" x:Name="TopFolderTextBox" Text="NewAudioImport" Padding="4" Margin="5,2" TextChanged="TopFolderTextBox_TextChanged"
                          ToolTip="Package folder to create at the top level. The audio folder will be created under this folder, and generated FaceFX assets will be created directly under this folder."/>
-                <Label Grid.Row="13" Grid.Column="0" x:Name="FemaleFaceFXAssetNameLabel" Content="Female FaceFX:" VerticalAlignment="Center"/>
-                <TextBox Grid.Row="13" Grid.Column="1" x:Name="FemaleFaceFXAssetNameTextBox" Text="NewAudioImport_F" Padding="4" Margin="5,2" TextChanged="FaceFXAssetNameTextBox_TextChanged"
+                <Label Grid.Row="8" Grid.Column="0" x:Name="FemaleFaceFXAssetNameLabel" Content="Female FaceFX:" VerticalAlignment="Center"/>
+                <TextBox Grid.Row="8" Grid.Column="1" x:Name="FemaleFaceFXAssetNameTextBox" Text="NewAudioImport_F" Padding="4" Margin="5,2" TextChanged="FaceFXAssetNameTextBox_TextChanged"
                          ToolTip="Name of the generated female FaceFXAnimSet asset under the top folder."/>
-                <Label Grid.Row="14" Grid.Column="0" x:Name="MaleFaceFXAssetNameLabel" Content="Male FaceFX:" VerticalAlignment="Center"/>
-                <TextBox Grid.Row="14" Grid.Column="1" x:Name="MaleFaceFXAssetNameTextBox" Text="NewAudioImport_M" Padding="4" Margin="5,2" TextChanged="FaceFXAssetNameTextBox_TextChanged"
+                <Label Grid.Row="9" Grid.Column="0" x:Name="MaleFaceFXAssetNameLabel" Content="Male FaceFX:" VerticalAlignment="Center"/>
+                <TextBox Grid.Row="9" Grid.Column="1" x:Name="MaleFaceFXAssetNameTextBox" Text="NewAudioImport_M" Padding="4" Margin="5,2" TextChanged="FaceFXAssetNameTextBox_TextChanged"
                          ToolTip="Name of the generated male FaceFXAnimSet asset under the top folder."/>
-                <Label Grid.Row="15" Grid.Column="0" Content="Shared Stop Event:" VerticalAlignment="Center"/>
-                <CheckBox Grid.Row="15" Grid.Column="1" x:Name="CreateSharedStopEventCheckBox" IsChecked="False" VerticalAlignment="Center" Margin="5,4"
-                          Content="Create one Stop event for all imported audio"
-                          ToolTip="Creates a WwiseEvent named Stop with one stop action for every generated Sound object in this import."/>
             </Grid>
         </GroupBox>
 
-        <ListBox Grid.Row="2" x:Name="WavFilesListBox" ItemsSource="{Binding WavFileItems}"
+        <ListBox Grid.Row="3" x:Name="WavFilesListBox" ItemsSource="{Binding WavFileItems}"
                  SelectionMode="Extended" Margin="0,0,0,5">
             <ListBox.ItemContainerStyle>
                 <Style TargetType="ListBoxItem">
@@ -135,21 +150,26 @@
                                    VerticalAlignment="Center" ToolTip="{Binding FilePath}" Margin="2,0,10,0"/>
                         <CheckBox Grid.Column="1" Content="Create stop event" IsChecked="{Binding CreateStopEvent}"
                                   VerticalAlignment="Center" Margin="5,2"
-                                  ToolTip="Creates one stop event for this audio input. If gendered events are enabled, it stops both generated variants."/>
+                                  ToolTip="Creates one stop event for this audio input. If gendered events are enabled, it stops every generated event variant for that input."/>
                     </Grid>
                 </DataTemplate>
             </ListBox.ItemTemplate>
         </ListBox>
 
-        <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="0,5,0,10">
-            <Button x:Name="AddFilesButton" Content="Add Audio Files..." Width="130" Height="28" Click="AddFilesButton_Click" Margin="0,0,5,0"/>
-            <Button x:Name="RemoveSelectedButton" Content="Remove Selected" Width="120" Height="28" Click="RemoveSelectedButton_Click" Margin="0,0,5,0"/>
-            <Button x:Name="ClearAllButton" Content="Clear All" Width="90" Height="28" Click="ClearAllButton_Click"/>
-        </StackPanel>
+        <DockPanel Grid.Row="4" Margin="0,5,0,10">
+            <StackPanel Orientation="Horizontal" DockPanel.Dock="Left">
+                <Button x:Name="AddFilesButton" Content="Add Audio Files..." Width="130" Height="28" Click="AddFilesButton_Click" Margin="0,0,5,0"/>
+                <Button x:Name="RemoveSelectedButton" Content="Remove Selected" Width="120" Height="28" Click="RemoveSelectedButton_Click" Margin="0,0,5,0"/>
+                <Button x:Name="ClearAllButton" Content="Clear All" Width="90" Height="28" Click="ClearAllButton_Click"/>
+            </StackPanel>
+            <CheckBox x:Name="CreateSharedStopEventCheckBox" Content="Create shared Stop event for all imported audio"
+                      IsChecked="False" VerticalAlignment="Center" HorizontalAlignment="Right"
+                      ToolTip="Creates one WwiseEvent named Stop with a stop action for every imported Sound object."/>
+        </DockPanel>
 
-        <TextBlock Grid.Row="4" x:Name="StatusTextBlock" Text="" TextWrapping="Wrap" Margin="0,0,0,5" Opacity="0.8"/>
+        <TextBlock Grid.Row="5" x:Name="StatusTextBlock" Text="" TextWrapping="Wrap" Margin="0,0,0,5" Opacity="0.8"/>
 
-        <StackPanel Grid.Row="5" Orientation="Horizontal" HorizontalAlignment="Right">
+        <StackPanel Grid.Row="6" Orientation="Horizontal" HorizontalAlignment="Right">
             <Button x:Name="ImportButton" Content="Import Audio" Width="110" Height="30" Click="ImportButton_Click" Margin="0,0,10,0"/>
             <Button x:Name="CancelButton" Content="Cancel" Width="80" Height="30" Click="CancelButton_Click" IsCancel="True"/>
         </StackPanel>

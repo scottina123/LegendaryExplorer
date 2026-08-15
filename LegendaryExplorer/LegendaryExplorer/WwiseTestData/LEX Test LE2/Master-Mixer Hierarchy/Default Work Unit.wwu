@@ -1,0 +1,763 @@
+<?xml version="1.0" encoding="utf-8"?>
+<WwiseDocument Type="WorkUnit" ID="{124AB6D6-0A5E-4F07-B31E-EB2AD182B683}" SchemaVersion="94">
+	<Busses>
+		<WorkUnit Name="Default Work Unit" ID="{124AB6D6-0A5E-4F07-B31E-EB2AD182B683}" PersistMode="Standalone">
+			<ChildrenList>
+				<Bus Name="Master Audio Bus" ID="{1514A4D8-1DA6-412A-A17E-75CA0C2149F3}">
+					<PropertyList>
+						<Property Name="MaxSoundPerInstance" Type="int16">
+							<ValueList>
+								<Value>200</Value>
+							</ValueList>
+						</Property>
+						<Property Name="UseMaxSoundPerInstance" Type="bool">
+							<ValueList>
+								<Value>True</Value>
+							</ValueList>
+						</Property>
+					</PropertyList>
+					<ReferenceList>
+						<Reference Name="AudioDevice">
+							<ObjectRef Name="System" ID="{482406FD-2FA9-4140-B76C-5BA5AE889EBE}" WorkUnitID="{B301F113-AEA5-43AA-BADB-335CD0718BBB}"/>
+						</Reference>
+					</ReferenceList>
+					<ChildrenList>
+						<Bus Name="Game Speed Affected" ID="{48373E7D-B683-4BCD-9AB3-7D77662E40BE}">
+							<Comment>When time is slowed down, such as when using certain powers, do you want the sound to be slowed down too? Usually you will want sounds to go here, for sync and continuity reasons.</Comment>
+							<ChildrenList>
+								<Bus Name="Capture Buss" ID="{0FF23F2E-B2D4-4214-BEEA-A483A89E8A5C}"/>
+								<Bus Name="Enviromental" ID="{1345CBFB-7ABE-430A-9C06-96F017D54206}">
+									<Comment>Diegetic bus: for all sounds coming from the game environment. Technically speaking, sounds playing through this bus will have the current environmental reverb applied.</Comment>
+									<ChildrenList>
+										<Bus Name="Migrated" ID="{C61C4BBA-51D4-4734-A832-99343DAB7C82}">
+											<PropertyList>
+												<Property Name="BusVolume" Type="Real64">
+													<ValueList>
+														<Value>-3</Value>
+													</ValueList>
+												</Property>
+											</PropertyList>
+											<ChildrenList>
+												<AuxBus Name="ME2_GUI_Reverb" ID="{216F5367-491A-4A3B-B645-63F6FBA531C0}">
+													<ReferenceList/>
+												</AuxBus>
+												<AuxBus Name="ME2_Cavern_OLD" ID="{A46AD044-D323-4F3E-AF6B-C4CD54A57C15}">
+													<ReferenceList/>
+												</AuxBus>
+												<AuxBus Name="ME2_Corridor_OLD" ID="{C467DAC6-4702-4668-B2AC-774784DA1863}">
+													<ReferenceList/>
+												</AuxBus>
+												<AuxBus Name="ME2_Exterior_OLD" ID="{6BE20D80-CB29-4F59-A793-A018F33EBB00}">
+													<ReferenceList/>
+												</AuxBus>
+												<AuxBus Name="ME2_Huge_Arena_OLD" ID="{DD2B856E-8DE7-448F-BD6F-5AECECFD2D32}">
+													<ReferenceList/>
+												</AuxBus>
+												<AuxBus Name="ME2_Large_Hall_OLD" ID="{383B18AD-793C-4DBA-9261-053E82D14F1D}">
+													<ReferenceList/>
+												</AuxBus>
+												<AuxBus Name="ME2_Large_Room_OLD" ID="{A876A440-2385-4DFA-A744-0C97A7915E41}">
+													<ReferenceList/>
+												</AuxBus>
+												<AuxBus Name="ME2_Medium_Room_OLD" ID="{C9E90319-32A4-48C4-A6E9-E576363C5E5E}">
+													<ReferenceList/>
+												</AuxBus>
+												<AuxBus Name="ME2_Normandy_Corridor_OLD" ID="{645421E3-B857-41CF-82BA-7D1D2240F970}">
+													<ReferenceList/>
+												</AuxBus>
+												<AuxBus Name="ME2_Normandy_Smallroom_Old" ID="{1872AD80-C59E-4D0B-BAFD-A6E07C7529C0}">
+													<ReferenceList/>
+												</AuxBus>
+												<AuxBus Name="ME2_Normandy_Standard_OLD" ID="{F50FC675-F59F-4CA9-A987-FC2DB5DC3916}">
+													<ReferenceList/>
+												</AuxBus>
+												<AuxBus Name="ME2_Shuttle_Interior_OLD" ID="{47DB747F-E86F-45B7-AB14-E51657854C7E}">
+													<ReferenceList/>
+												</AuxBus>
+												<AuxBus Name="ME2_Small_Arena_OLD" ID="{F44288CD-77A4-406E-B1DF-8710675AB302}">
+													<ReferenceList/>
+												</AuxBus>
+												<AuxBus Name="ME2_Small_Room_OLD" ID="{2955B1DE-FD72-40DF-839D-1BBC8E3877C8}">
+													<ReferenceList/>
+												</AuxBus>
+												<AuxBus Name="ME2_Corridor_Long_OLD" ID="{16CA8E22-1407-4013-9B9E-68FEA651EE47}">
+													<ReferenceList/>
+												</AuxBus>
+												<AuxBus Name="ME2_CritPath1_Bubble_OLD" ID="{62B1A0A9-1035-4F01-9A0A-60D2857FB083}">
+													<ReferenceList/>
+												</AuxBus>
+												<AuxBus Name="ME2_CritPath2_Cavern_OLD" ID="{12205A64-DBC1-4DFB-AE20-A4BDF8AE5AA6}">
+													<ReferenceList/>
+												</AuxBus>
+												<AuxBus Name="ME2_CritPath2_PodTunnel_OLD" ID="{7ECDE18D-9F59-4024-890A-76653D621685}">
+													<ReferenceList/>
+												</AuxBus>
+												<AuxBus Name="ME2_EndGame2_Cavern_OLD" ID="{FE01E11F-5338-4E94-82A2-BD1C8C24BFC6}">
+													<ReferenceList/>
+												</AuxBus>
+												<AuxBus Name="ME2_Cavern" ID="{0BDD123F-9E9C-487F-9540-6D6FE4FF2D1A}">
+													<ReferenceList/>
+												</AuxBus>
+												<AuxBus Name="ME2_Corridor" ID="{7C77EB00-34D5-4ADE-A504-52935306B788}">
+													<ReferenceList/>
+												</AuxBus>
+												<AuxBus Name="ME2_Exterior" ID="{E8B13F95-BD96-4387-94FD-47C332F3968A}">
+													<ReferenceList/>
+												</AuxBus>
+												<AuxBus Name="ME2_Huge_Arena" ID="{33F64A9C-F17E-4DA0-AF0A-AAB26F824710}">
+													<ReferenceList/>
+												</AuxBus>
+												<AuxBus Name="ME2_Large_Room" ID="{7058BF40-07A7-4C9D-AE66-F1ACA4B4B258}">
+													<ReferenceList/>
+												</AuxBus>
+												<AuxBus Name="ME2_Medium_Room" ID="{E19EE600-DCD6-4FA4-BA5A-30BAC1C029B2}">
+													<ReferenceList/>
+												</AuxBus>
+												<AuxBus Name="ME2_Normandy_Corridor" ID="{8C0C736B-A833-43E9-A0F5-87471BBB0A84}">
+													<ReferenceList/>
+												</AuxBus>
+												<AuxBus Name="ME2_Normandy_Smallroom" ID="{DB8DAF85-6832-48DD-A8CB-E1BD26C34B91}">
+													<ReferenceList/>
+												</AuxBus>
+												<AuxBus Name="ME2_Normandy_Standard" ID="{6833130C-BA11-4A18-909C-1344E0ABBDE3}">
+													<ReferenceList/>
+												</AuxBus>
+												<AuxBus Name="ME2_Shuttle_Interior" ID="{A0CB227D-C1C1-4262-89D8-745A9F80E6BD}">
+													<ReferenceList/>
+												</AuxBus>
+												<AuxBus Name="ME2_Small_Arena" ID="{9D9210A5-3ACF-489C-97B1-477CC903278E}">
+													<ReferenceList/>
+												</AuxBus>
+												<AuxBus Name="ME2_Large_Hall" ID="{8F727BB8-7A64-4023-9D8F-D5B7C6B0D33A}">
+													<ReferenceList/>
+												</AuxBus>
+												<AuxBus Name="ME2_Small_Room" ID="{1910E028-157A-443A-A680-AFEB9D7EF820}">
+													<ReferenceList/>
+												</AuxBus>
+												<AuxBus Name="ME2_Corridor_Long" ID="{EA9C380F-8572-4410-A77C-83E91BFE394C}">
+													<ReferenceList/>
+												</AuxBus>
+												<AuxBus Name="ME2_Canyon" ID="{2A8DE393-CB2B-46BA-8B50-B4BAD1D400D2}">
+													<ReferenceList/>
+												</AuxBus>
+												<AuxBus Name="ME2_CritPath1_Bubble" ID="{D7AADCDA-F140-4BD8-87DA-71DBA1B3F1EE}">
+													<ReferenceList/>
+												</AuxBus>
+												<AuxBus Name="ME2_CritPath2_Cavern" ID="{B150A7AE-E43A-4EB2-A772-40256E94FF18}">
+													<ReferenceList/>
+												</AuxBus>
+												<AuxBus Name="ME2_CritPath2_PodTunnel" ID="{7C7DECD1-4EC3-4AE1-94D4-6A7B7187AF07}">
+													<ReferenceList/>
+												</AuxBus>
+												<AuxBus Name="ME2_EndGame2_Cavern" ID="{8F5F008A-E4E1-4199-BDD8-DDE79B563E8A}">
+													<ReferenceList/>
+												</AuxBus>
+												<AuxBus Name="ME2_OmgHub_Club_Lounge" ID="{7C3AED62-F6E5-449F-B06A-2BE1CED14B9B}">
+													<ReferenceList/>
+												</AuxBus>
+												<AuxBus Name="ME2_OmgHub_Club_Dance" ID="{8095A1FF-C912-4D2F-BE2A-8FB31E5E6FA1}">
+													<ReferenceList/>
+												</AuxBus>
+												<AuxBus Name="ME2_Illusive_Man_Room" ID="{4501D450-46B2-4AB4-B06D-F361DBFD2B69}">
+													<ReferenceList/>
+												</AuxBus>
+											</ChildrenList>
+										</Bus>
+										<Bus Name="UnDucked Bus" ID="{1275EDCC-354C-4503-97A3-A3E023CB36DB}"/>
+										<Bus Name="Ducked Bus" ID="{B4F52ECD-D7BD-425E-A3BC-72625F88AE52}">
+											<ChildrenList>
+												<Bus Name="Dialog" ID="{7013B0C4-38E4-4242-9B82-B03B7935D5D8}">
+													<Comment>For diegetic dialog coming from the game world.</Comment>
+													<PropertyList>
+														<Property Name="BypassEffect0" Type="bool">
+															<ValueList>
+																<Value>True</Value>
+															</ValueList>
+														</Property>
+														<Property Name="MaxSoundPerInstance" Type="int16">
+															<ValueList>
+																<Value>2</Value>
+															</ValueList>
+														</Property>
+													</PropertyList>
+													<ReferenceList>
+														<Reference Name="Effect0">
+															<Custom CreatedFrom="{EC792BE9-AA4E-4549-8A8A-631107FEE81F}">
+																<Effect Name="ME2_Huge_Arena_(Custom)" ID="{3CB5858E-E491-4E10-924A-47C985344982}" ShortID="666587364" PluginName="Wwise RoomVerb" CompanyID="0" PluginID="118" PluginType="3">
+																	<PropertyList>
+																		<Property Name="DecayTime" Type="Real32" Value="10"/>
+																		<Property Name="Density" Type="Real32" Value="45"/>
+																		<Property Name="ERFrontBackDelay" Type="Real32" Value="100"/>
+																		<Property Name="ERLevel" Type="Real32" Value="0"/>
+																		<Property Name="ERPattern" Type="int32" Value="9"/>
+																		<Property Name="Filter3Gain" Type="Real32" Value="-24"/>
+																		<Property Name="HFDamping" Type="Real32" Value="5"/>
+																		<Property Name="PreDelay" Type="Real32" Value="200"/>
+																		<Property Name="ReverbLevel" Type="Real32" Value="0"/>
+																	</PropertyList>
+																</Effect>
+															</Custom>
+														</Reference>
+													</ReferenceList>
+													<ChildrenList>
+														<Bus Name="Ambient - Does Duck Ambiences" ID="{DD454EAC-8AB6-4AC5-9FCF-8323E03FCFCA}">
+															<PropertyList>
+																<Property Name="RecoveryTime" Type="Real64" Value="0"/>
+															</PropertyList>
+															<DuckingList>
+																<DuckItem>
+																	<BusRef Name="Music" ID="{AC6D2928-15A8-44B8-886D-4CB73097C7D3}"/>
+																	<DuckingParam>
+																		<Volume>-3</Volume>
+																		<FadeInTime>2</FadeInTime>
+																		<FadeOutTime>0.100000001490116</FadeOutTime>
+																		<FadeCurve>FadeLinear</FadeCurve>
+																		<TargetProp>BusVolume</TargetProp>
+																	</DuckingParam>
+																</DuckItem>
+																<DuckItem>
+																	<BusRef Name="Ambiences - NonStreaming" ID="{9E38548E-5B62-41DC-B811-7E1A1A30AAE0}"/>
+																	<DuckingParam>
+																		<Volume>-3</Volume>
+																		<FadeInTime>2</FadeInTime>
+																		<FadeOutTime>0.100000001490116</FadeOutTime>
+																		<FadeCurve>FadeLinear</FadeCurve>
+																	</DuckingParam>
+																</DuckItem>
+																<DuckItem>
+																	<BusRef Name="Ambiences - Streaming" ID="{2C43D15B-EEC8-48EB-A34D-9FCDEF811E51}"/>
+																	<DuckingParam>
+																		<Volume>-3</Volume>
+																		<FadeInTime>2</FadeInTime>
+																		<FadeOutTime>0.100000001490116</FadeOutTime>
+																		<FadeCurve>FadeLinear</FadeCurve>
+																	</DuckingParam>
+																</DuckItem>
+																<DuckItem>
+																	<BusRef Name="Particle Emitters" ID="{76A24208-38CD-4B19-A809-8BD5323C822C}"/>
+																	<DuckingParam>
+																		<Volume>-3</Volume>
+																		<FadeInTime>2</FadeInTime>
+																		<FadeOutTime>0.100000001490116</FadeOutTime>
+																		<FadeCurve>FadeLinear</FadeCurve>
+																	</DuckingParam>
+																</DuckItem>
+																<DuckItem>
+																	<BusRef Name="Ambiences - NonStreaming_01" ID="{85026D33-D5FA-4CED-B03B-AE680D175F4E}"/>
+																	<DuckingParam>
+																		<Volume>-3</Volume>
+																		<FadeInTime>2</FadeInTime>
+																		<FadeOutTime>0.100000001490116</FadeOutTime>
+																		<FadeCurve>FadeLinear</FadeCurve>
+																		<TargetProp>BusVolume</TargetProp>
+																	</DuckingParam>
+																</DuckItem>
+																<DuckItem>
+																	<BusRef Name="Ambiences - Streaming_01" ID="{D934BD25-5199-4AE7-A6E3-45646E146127}"/>
+																	<DuckingParam>
+																		<Volume>-3</Volume>
+																		<FadeInTime>2</FadeInTime>
+																		<FadeOutTime>0.100000001490116</FadeOutTime>
+																		<FadeCurve>FadeLinear</FadeCurve>
+																		<TargetProp>BusVolume</TargetProp>
+																	</DuckingParam>
+																</DuckItem>
+																<DuckItem>
+																	<BusRef Name="Music-Diegetic" ID="{FDF5F24F-6A66-49D2-AEB5-5D8B8C3CFAB9}"/>
+																	<DuckingParam>
+																		<Volume>-3</Volume>
+																		<FadeInTime>2</FadeInTime>
+																		<FadeOutTime>0.100000001490116</FadeOutTime>
+																		<FadeCurve>FadeLinear</FadeCurve>
+																	</DuckingParam>
+																</DuckItem>
+															</DuckingList>
+														</Bus>
+														<Bus Name="Conversation" ID="{403386C2-8194-4F14-91CD-45D699879802}">
+															<DuckingList>
+																<DuckItem>
+																	<BusRef Name="Music-Diegetic" ID="{FDF5F24F-6A66-49D2-AEB5-5D8B8C3CFAB9}"/>
+																	<DuckingParam>
+																		<Volume>-6</Volume>
+																		<FadeInTime>10</FadeInTime>
+																		<FadeOutTime>0.200000002980232</FadeOutTime>
+																		<FadeCurve>FadeLinear</FadeCurve>
+																	</DuckingParam>
+																</DuckItem>
+																<DuckItem>
+																	<BusRef Name="Music" ID="{AC6D2928-15A8-44B8-886D-4CB73097C7D3}"/>
+																	<DuckingParam>
+																		<Volume>-4</Volume>
+																		<FadeInTime>10</FadeInTime>
+																		<FadeOutTime>0.200000002980232</FadeOutTime>
+																		<FadeCurve>FadeLinear</FadeCurve>
+																		<TargetProp>BusVolume</TargetProp>
+																	</DuckingParam>
+																</DuckItem>
+																<DuckItem>
+																	<BusRef Name="Ambient-Ducked By Conversation VO" ID="{53E850A1-8B29-4221-8F9E-27B324F572FF}"/>
+																	<DuckingParam>
+																		<Volume>-9</Volume>
+																		<FadeInTime>10</FadeInTime>
+																		<FadeOutTime>0.200000002980232</FadeOutTime>
+																		<FadeCurve>FadeLinear</FadeCurve>
+																	</DuckingParam>
+																</DuckItem>
+																<DuckItem>
+																	<BusRef Name="Ambiences - NonStreaming" ID="{9E38548E-5B62-41DC-B811-7E1A1A30AAE0}"/>
+																	<DuckingParam>
+																		<Volume>-6</Volume>
+																		<FadeInTime>10</FadeInTime>
+																		<FadeOutTime>0.200000002980232</FadeOutTime>
+																		<FadeCurve>FadeLinear</FadeCurve>
+																	</DuckingParam>
+																</DuckItem>
+																<DuckItem>
+																	<BusRef Name="Ambiences - Streaming" ID="{2C43D15B-EEC8-48EB-A34D-9FCDEF811E51}"/>
+																	<DuckingParam>
+																		<Volume>-6</Volume>
+																		<FadeInTime>10</FadeInTime>
+																		<FadeOutTime>0.200000002980232</FadeOutTime>
+																		<FadeCurve>FadeLinear</FadeCurve>
+																	</DuckingParam>
+																</DuckItem>
+																<DuckItem>
+																	<BusRef Name="Particle Emitters" ID="{76A24208-38CD-4B19-A809-8BD5323C822C}"/>
+																	<DuckingParam>
+																		<Volume>-6</Volume>
+																		<FadeInTime>10</FadeInTime>
+																		<FadeOutTime>0.200000002980232</FadeOutTime>
+																		<FadeCurve>FadeLinear</FadeCurve>
+																	</DuckingParam>
+																</DuckItem>
+																<DuckItem>
+																	<BusRef Name="Ambiences - NonStreaming_01" ID="{85026D33-D5FA-4CED-B03B-AE680D175F4E}"/>
+																	<DuckingParam>
+																		<Volume>-6</Volume>
+																		<FadeInTime>10</FadeInTime>
+																		<FadeOutTime>0.200000002980232</FadeOutTime>
+																		<FadeCurve>FadeLinear</FadeCurve>
+																		<TargetProp>BusVolume</TargetProp>
+																	</DuckingParam>
+																</DuckItem>
+																<DuckItem>
+																	<BusRef Name="Ambiences - Streaming_01" ID="{D934BD25-5199-4AE7-A6E3-45646E146127}"/>
+																	<DuckingParam>
+																		<Volume>-6</Volume>
+																		<FadeInTime>10</FadeInTime>
+																		<FadeOutTime>0.200000002980232</FadeOutTime>
+																		<FadeCurve>FadeLinear</FadeCurve>
+																		<TargetProp>BusVolume</TargetProp>
+																	</DuckingParam>
+																</DuckItem>
+																<DuckItem>
+																	<BusRef Name="Placeables" ID="{C32B81C6-472A-4C26-8F12-EA528144D47A}"/>
+																	<DuckingParam>
+																		<Volume>-6</Volume>
+																		<FadeInTime>10</FadeInTime>
+																		<FadeOutTime>0.200000002980232</FadeOutTime>
+																		<FadeCurve>FadeLinear</FadeCurve>
+																	</DuckingParam>
+																</DuckItem>
+															</DuckingList>
+														</Bus>
+														<Bus Name="SoundSet" ID="{109CC5F5-82E7-46E9-92A9-BDBB2D9AF2BD}">
+															<PropertyList>
+																<Property Name="RecoveryTime" Type="Real64" Value="0"/>
+															</PropertyList>
+															<DuckingList>
+																<DuckItem>
+																	<BusRef Name="Sound Effects_01" ID="{C9F69EB4-DB71-4122-BE6D-2F5B9FA07644}"/>
+																	<DuckingParam>
+																		<Volume>-3</Volume>
+																		<FadeInTime>1</FadeInTime>
+																		<FadeOutTime>0.100000001490116</FadeOutTime>
+																		<FadeCurve>FadeLinear</FadeCurve>
+																		<TargetProp>BusVolume</TargetProp>
+																	</DuckingParam>
+																</DuckItem>
+																<DuckItem>
+																	<BusRef Name="Sound Effects" ID="{A8E5C88D-FFA0-4514-B815-074AA649FE96}"/>
+																	<DuckingParam>
+																		<Volume>-3</Volume>
+																		<FadeInTime>1</FadeInTime>
+																		<FadeOutTime>0.100000001490116</FadeOutTime>
+																		<FadeCurve>FadeLinear</FadeCurve>
+																	</DuckingParam>
+																</DuckItem>
+															</DuckingList>
+														</Bus>
+														<Bus Name="Ambient - Doesn't Duck Ambiences" ID="{868906AC-1F90-46A5-BE2D-50C2406020A2}">
+															<Comment>For ambient lines that shouldn't duck the environmental sounds, i.e. background chatter in nightclubs
+</Comment>
+															<ChildrenList>
+																<Bus Name="Ambient-Ducked By Conversation VO" ID="{53E850A1-8B29-4221-8F9E-27B324F572FF}"/>
+															</ChildrenList>
+														</Bus>
+														<Bus Name="Conversation - Critical" ID="{2FA5B4AA-3E8D-498F-8490-59EF75665A85}">
+															<PropertyList>
+																<Property Name="MaxDuckVolume" Type="Real64" Value="-6"/>
+																<Property Name="RecoveryTime" Type="Real64" Value="0"/>
+															</PropertyList>
+															<DuckingList>
+																<DuckItem>
+																	<BusRef Name="Sound Effects" ID="{A8E5C88D-FFA0-4514-B815-074AA649FE96}"/>
+																	<DuckingParam>
+																		<Volume>-10</Volume>
+																		<FadeInTime>3</FadeInTime>
+																		<FadeOutTime>0.200000002980232</FadeOutTime>
+																		<FadeCurve>FadeLog3</FadeCurve>
+																	</DuckingParam>
+																</DuckItem>
+																<DuckItem>
+																	<BusRef Name="Ambiences - NonStreaming_01" ID="{85026D33-D5FA-4CED-B03B-AE680D175F4E}"/>
+																	<DuckingParam>
+																		<Volume>-8</Volume>
+																		<FadeInTime>3</FadeInTime>
+																		<FadeOutTime>0.200000002980232</FadeOutTime>
+																		<FadeCurve>FadeLog2</FadeCurve>
+																		<TargetProp>BusVolume</TargetProp>
+																	</DuckingParam>
+																</DuckItem>
+																<DuckItem>
+																	<BusRef Name="Ambiences - Streaming_01" ID="{D934BD25-5199-4AE7-A6E3-45646E146127}"/>
+																	<DuckingParam>
+																		<Volume>-8</Volume>
+																		<FadeInTime>3</FadeInTime>
+																		<FadeOutTime>0.200000002980232</FadeOutTime>
+																		<FadeCurve>FadeLog2</FadeCurve>
+																		<TargetProp>BusVolume</TargetProp>
+																	</DuckingParam>
+																</DuckItem>
+																<DuckItem>
+																	<BusRef Name="Music" ID="{AC6D2928-15A8-44B8-886D-4CB73097C7D3}"/>
+																	<DuckingParam>
+																		<Volume>-8</Volume>
+																		<FadeInTime>3</FadeInTime>
+																		<FadeOutTime>0.200000002980232</FadeOutTime>
+																		<FadeCurve>FadeLog2</FadeCurve>
+																		<TargetProp>BusVolume</TargetProp>
+																	</DuckingParam>
+																</DuckItem>
+																<DuckItem>
+																	<BusRef Name="Music-Diegetic" ID="{FDF5F24F-6A66-49D2-AEB5-5D8B8C3CFAB9}"/>
+																	<DuckingParam>
+																		<Volume>-8</Volume>
+																		<FadeInTime>3</FadeInTime>
+																		<FadeOutTime>0.200000002980232</FadeOutTime>
+																		<FadeCurve>FadeLog2</FadeCurve>
+																	</DuckingParam>
+																</DuckItem>
+																<DuckItem>
+																	<BusRef Name="Ambient-Ducked By Conversation VO" ID="{53E850A1-8B29-4221-8F9E-27B324F572FF}"/>
+																	<DuckingParam>
+																		<Volume>-10</Volume>
+																		<FadeInTime>3</FadeInTime>
+																		<FadeOutTime>0.200000002980232</FadeOutTime>
+																		<FadeCurve>FadeLinear</FadeCurve>
+																	</DuckingParam>
+																</DuckItem>
+															</DuckingList>
+														</Bus>
+													</ChildrenList>
+												</Bus>
+												<Bus Name="Music-Diegetic" ID="{FDF5F24F-6A66-49D2-AEB5-5D8B8C3CFAB9}">
+													<Comment>For music that is emanating within the game world, will have the current reverb applied to it.</Comment>
+												</Bus>
+												<Bus Name="Sound Effects" ID="{A8E5C88D-FFA0-4514-B815-074AA649FE96}">
+													<Comment>For diegetic sound effects. Try to place sounds as low down the hierachy as possible in order to gain the most control of the mix.</Comment>
+													<ChildrenList>
+														<Bus Name="Foley" ID="{66AF64F8-AF76-4518-B77B-7187B2A99990}">
+															<Comment>For character movement sounds</Comment>
+														</Bus>
+														<Bus Name="Ambiences - Streaming" ID="{2C43D15B-EEC8-48EB-A34D-9FCDEF811E51}">
+															<Comment>For static ambiences without reverb rendered in the file.</Comment>
+															<PropertyList>
+																<Property Name="IgnoreParentMaxSoundInstance" Type="bool" Value="True"/>
+																<Property Name="MaxDuckVolume" Type="Real64" Value="-6"/>
+																<Property Name="MaxSoundPerInstance" Type="int16">
+																	<ValueList>
+																		<Value>2</Value>
+																	</ValueList>
+																</Property>
+																<Property Name="UseMaxSoundPerInstance" Type="bool">
+																	<ValueList>
+																		<Value>True</Value>
+																	</ValueList>
+																</Property>
+															</PropertyList>
+														</Bus>
+														<Bus Name="Physics" ID="{8F9311CB-9A5C-4D0E-8750-3D7771539326}">
+															<Comment>For sounds utilising the physics audio system</Comment>
+															<PropertyList>
+																<Property Name="IgnoreParentMaxSoundInstance" Type="bool" Value="True"/>
+																<Property Name="MaxReachedBehavior" Type="int16" Value="1"/>
+																<Property Name="MaxSoundPerInstance" Type="int16">
+																	<ValueList>
+																		<Value>6</Value>
+																	</ValueList>
+																</Property>
+																<Property Name="UseMaxSoundPerInstance" Type="bool">
+																	<ValueList>
+																		<Value>True</Value>
+																	</ValueList>
+																</Property>
+															</PropertyList>
+														</Bus>
+														<Bus Name="Particle Emitters" ID="{76A24208-38CD-4B19-A809-8BD5323C822C}">
+															<PropertyList>
+																<Property Name="MaxSoundPerInstance" Type="int16">
+																	<ValueList>
+																		<Value>4</Value>
+																	</ValueList>
+																</Property>
+															</PropertyList>
+														</Bus>
+														<Bus Name="Gunshots" ID="{A78BA122-2C1D-4E36-ADFC-119D1E924B4B}">
+															<PropertyList>
+																<Property Name="IgnoreParentMaxSoundInstance" Type="bool" Value="True"/>
+																<Property Name="MaxSoundPerInstance" Type="int16">
+																	<ValueList>
+																		<Value>30</Value>
+																	</ValueList>
+																</Property>
+																<Property Name="UseMaxSoundPerInstance" Type="bool">
+																	<ValueList>
+																		<Value>True</Value>
+																	</ValueList>
+																</Property>
+															</PropertyList>
+														</Bus>
+														<Bus Name="Bullet Impacts" ID="{CBC3C8B3-880F-4898-B631-7EBBC81C897C}"/>
+														<Bus Name="Ambiences - NonStreaming" ID="{9E38548E-5B62-41DC-B811-7E1A1A30AAE0}">
+															<PropertyList>
+																<Property Name="MaxDuckVolume" Type="Real64" Value="-6"/>
+															</PropertyList>
+														</Bus>
+														<Bus Name="Creatures" ID="{9E524C4D-5DE5-4B25-9A35-2A1684DDB06A}"/>
+														<Bus Name="Cine Design" ID="{824E1B92-9A1E-4EB5-84D0-9ECCF19CBA15}">
+															<ChildrenList>
+																<Bus Name="Skipping Killed" ID="{7E9CD6EB-B3C5-49CA-9194-C51B7B6D2710}"/>
+																<Bus Name="Skipping Not Killed" ID="{6FAF533D-D37E-461A-839C-1664FD3398F7}"/>
+															</ChildrenList>
+														</Bus>
+														<Bus Name="Cine Anim" ID="{3E51C27E-B755-454C-B842-CF57341D2CB2}"/>
+														<Bus Name="Vehicles" ID="{BF1F9AE4-C7BB-4DEB-A382-B1112CF2C59F}"/>
+														<Bus Name="Powers" ID="{FBD4D3E4-E7AB-4EDE-AC80-BF5FC7EEE9BA}"/>
+														<Bus Name="Placeables" ID="{C32B81C6-472A-4C26-8F12-EA528144D47A}"/>
+													</ChildrenList>
+												</Bus>
+											</ChildrenList>
+										</Bus>
+									</ChildrenList>
+								</Bus>
+								<Bus Name="Non-Environmental" ID="{6DF14AAD-CF8B-4BF9-8829-428419C0ECB5}">
+									<Comment>Non-diegetic bus: for all sounds that are not part of the environment. Sounds played through this bus will not have the current environmental reverb applied.</Comment>
+									<ChildrenList>
+										<Bus Name="UnDucked Bus_01" ID="{2060A20E-8178-4FC4-97A6-B35AD983EC64}">
+											<ChildrenList>
+												<Bus Name="UnDucked Music" ID="{0F7A3573-F809-45D5-ABE6-7D84C0243BB9}"/>
+												<Bus Name="UnDucked Sound Effects" ID="{3DDB0D2E-ED84-4CDE-8F72-67E33493E4F7}">
+													<ChildrenList>
+														<Bus Name="UnDucked LFE" ID="{09873DDE-FD5B-44D2-A573-9331E34EC5DE}"/>
+														<Bus Name="GUI Sounds" ID="{1FDD4061-0AA5-4F74-8E76-4F628581B85D}"/>
+													</ChildrenList>
+												</Bus>
+											</ChildrenList>
+										</Bus>
+										<Bus Name="Ducked Bus_01" ID="{D5586812-BE35-49B9-BE3F-2EE8BB82B702}">
+											<ChildrenList>
+												<Bus Name="Sound Effects_01" ID="{C9F69EB4-DB71-4122-BE6D-2F5B9FA07644}">
+													<ChildrenList>
+														<Bus Name="Ambiences - Streaming_01" ID="{D934BD25-5199-4AE7-A6E3-45646E146127}">
+															<PropertyList>
+																<Property Name="MaxDuckVolume" Type="Real64" Value="-6"/>
+															</PropertyList>
+														</Bus>
+														<Bus Name="Ambiences - NonStreaming_01" ID="{85026D33-D5FA-4CED-B03B-AE680D175F4E}">
+															<PropertyList>
+																<Property Name="MaxDuckVolume" Type="Real64" Value="-6"/>
+															</PropertyList>
+														</Bus>
+														<Bus Name="Cine Anim_01" ID="{0C36EAFD-0C4F-4812-92E6-45490E3A0DA7}">
+															<Comment>For cutscene audio that has reverb pre-rendered into the audio.</Comment>
+														</Bus>
+														<Bus Name="Ducked LFE" ID="{E4F93C6F-C44B-407E-A337-4EEF796585AF}"/>
+														<Bus Name="Cine Design_01" ID="{40EF2916-E3BF-473C-A02E-12F3A4325C3E}">
+															<ChildrenList>
+																<Bus Name="Skipping Killed_01" ID="{37286B8E-39EA-4496-AC6B-3BB622E8E581}"/>
+																<Bus Name="Skipping Not Killed_01" ID="{90533EBC-0A16-424A-BBA2-EB4445954B89}"/>
+															</ChildrenList>
+														</Bus>
+														<Bus Name="Cine Anim_01_NoAffectedByStopCineDesign" ID="{B4C4F9BD-C09A-4AFD-B036-99E53C930B89}">
+															<Comment>For cutscene audio that has reverb pre-rendered into the audio.</Comment>
+														</Bus>
+													</ChildrenList>
+												</Bus>
+												<Bus Name="Dialog_01" ID="{EA0FDE97-12D1-4846-8972-1FE57905B781}">
+													<PropertyList>
+														<Property Name="IgnoreParentMaxSoundInstance" Type="bool" Value="True"/>
+														<Property Name="MaxSoundPerInstance" Type="int16">
+															<ValueList>
+																<Value>2</Value>
+															</ValueList>
+														</Property>
+														<Property Name="RecoveryTime" Type="Real64" Value="0.5"/>
+														<Property Name="UseMaxSoundPerInstance" Type="bool">
+															<ValueList>
+																<Value>True</Value>
+															</ValueList>
+														</Property>
+													</PropertyList>
+													<DuckingList>
+														<DuckItem>
+															<BusRef Name="Creatures" ID="{9E524C4D-5DE5-4B25-9A35-2A1684DDB06A}"/>
+															<DuckingParam>
+																<Volume>-2</Volume>
+																<FadeInTime>0.5</FadeInTime>
+																<FadeOutTime>0.5</FadeOutTime>
+																<FadeCurve>FadeLinear</FadeCurve>
+															</DuckingParam>
+														</DuckItem>
+														<DuckItem>
+															<BusRef Name="Sound Effects" ID="{A8E5C88D-FFA0-4514-B815-074AA649FE96}"/>
+															<DuckingParam>
+																<Volume>-2</Volume>
+																<FadeInTime>0.5</FadeInTime>
+																<FadeOutTime>0.5</FadeOutTime>
+																<FadeCurve>FadeLinear</FadeCurve>
+															</DuckingParam>
+														</DuckItem>
+														<DuckItem>
+															<BusRef Name="Cine Anim_01" ID="{0C36EAFD-0C4F-4812-92E6-45490E3A0DA7}"/>
+															<DuckingParam>
+																<Volume>-2</Volume>
+																<FadeInTime>0.5</FadeInTime>
+																<FadeOutTime>0.5</FadeOutTime>
+																<FadeCurve>FadeLinear</FadeCurve>
+																<TargetProp>BusVolume</TargetProp>
+															</DuckingParam>
+														</DuckItem>
+														<DuckItem>
+															<BusRef Name="Sound Effects_01" ID="{C9F69EB4-DB71-4122-BE6D-2F5B9FA07644}"/>
+															<DuckingParam>
+																<Volume>-2</Volume>
+																<FadeInTime>0.5</FadeInTime>
+																<FadeOutTime>0.5</FadeOutTime>
+																<FadeCurve>FadeLinear</FadeCurve>
+																<TargetProp>BusVolume</TargetProp>
+															</DuckingParam>
+														</DuckItem>
+														<DuckItem>
+															<BusRef Name="Music" ID="{AC6D2928-15A8-44B8-886D-4CB73097C7D3}"/>
+															<DuckingParam>
+																<Volume>-2</Volume>
+																<FadeInTime>0.5</FadeInTime>
+																<FadeOutTime>0.5</FadeOutTime>
+																<FadeCurve>FadeLinear</FadeCurve>
+																<TargetProp>BusVolume</TargetProp>
+															</DuckingParam>
+														</DuckItem>
+														<DuckItem>
+															<BusRef Name="Music-Diegetic" ID="{FDF5F24F-6A66-49D2-AEB5-5D8B8C3CFAB9}"/>
+															<DuckingParam>
+																<Volume>-2</Volume>
+																<FadeInTime>0.5</FadeInTime>
+																<FadeOutTime>0.5</FadeOutTime>
+																<FadeCurve>FadeLinear</FadeCurve>
+															</DuckingParam>
+														</DuckItem>
+													</DuckingList>
+												</Bus>
+												<Bus Name="Music" ID="{AC6D2928-15A8-44B8-886D-4CB73097C7D3}">
+													<PropertyList>
+														<Property Name="UsedForBackgroundMusic" Type="bool" Value="True"/>
+													</PropertyList>
+												</Bus>
+											</ChildrenList>
+										</Bus>
+									</ChildrenList>
+								</Bus>
+							</ChildrenList>
+						</Bus>
+						<Bus Name="Not Game Speed Affected" ID="{3C34B514-4124-4496-A326-A2344C44AD96}">
+							<Comment>For sounds that shouldn't be affected by time slow down. Only place sounds here that should continue playing at normal speed, e.g. the sound causeing the slowdown effect. No environmental reverb is applied to these sounds.</Comment>
+							<ChildrenList>
+								<Bus Name="Sound Effects_02" ID="{E0CAD1EB-76CD-4E00-9D26-7117929F5523}">
+									<ChildrenList>
+										<Bus Name="GUI Sounds_01" ID="{EA80E39C-6649-4E7E-9AE7-4B8AA4C33645}">
+											<ReferenceList/>
+										</Bus>
+									</ChildrenList>
+								</Bus>
+								<Bus Name="Music_01" ID="{D02E2C1A-9822-4597-AE28-A775AB79A25F}"/>
+								<Bus Name="Dialog_02" ID="{581554D2-584F-45A3-82AE-69DAF2E5A52B}">
+									<PropertyList>
+										<Property Name="MaxDuckVolume" Type="Real64" Value="-6"/>
+									</PropertyList>
+									<DuckingList>
+										<DuckItem>
+											<BusRef Name="Enviromental" ID="{1345CBFB-7ABE-430A-9C06-96F017D54206}"/>
+											<DuckingParam>
+												<Volume>-6</Volume>
+												<FadeInTime>6</FadeInTime>
+												<FadeOutTime>0.100000001490116</FadeOutTime>
+												<FadeCurve>FadeLog2</FadeCurve>
+											</DuckingParam>
+										</DuckItem>
+									</DuckingList>
+								</Bus>
+							</ChildrenList>
+						</Bus>
+						<Bus Name="Combat Ducking Control Bus" ID="{FD10B630-8796-4670-BFEF-C188BAF52896}">
+							<PropertyList>
+								<Property Name="MaxDuckVolume" Type="Real64" Value="-6"/>
+								<Property Name="RecoveryTime" Type="Real64" Value="0.1"/>
+							</PropertyList>
+							<DuckingList>
+								<DuckItem>
+									<BusRef Name="Ambiences - NonStreaming" ID="{9E38548E-5B62-41DC-B811-7E1A1A30AAE0}"/>
+									<DuckingParam>
+										<Volume>-6</Volume>
+										<FadeInTime>15</FadeInTime>
+										<FadeOutTime>0</FadeOutTime>
+										<FadeCurve>FadeLog3</FadeCurve>
+									</DuckingParam>
+								</DuckItem>
+								<DuckItem>
+									<BusRef Name="Ambiences - Streaming" ID="{2C43D15B-EEC8-48EB-A34D-9FCDEF811E51}"/>
+									<DuckingParam>
+										<Volume>-6</Volume>
+										<FadeInTime>15</FadeInTime>
+										<FadeOutTime>0</FadeOutTime>
+										<FadeCurve>FadeLog3</FadeCurve>
+									</DuckingParam>
+								</DuckItem>
+								<DuckItem>
+									<BusRef Name="Ambiences - NonStreaming_01" ID="{85026D33-D5FA-4CED-B03B-AE680D175F4E}"/>
+									<DuckingParam>
+										<Volume>-6</Volume>
+										<FadeInTime>15</FadeInTime>
+										<FadeOutTime>0</FadeOutTime>
+										<FadeCurve>FadeLog3</FadeCurve>
+										<TargetProp>BusVolume</TargetProp>
+									</DuckingParam>
+								</DuckItem>
+								<DuckItem>
+									<BusRef Name="Ambiences - Streaming_01" ID="{D934BD25-5199-4AE7-A6E3-45646E146127}"/>
+									<DuckingParam>
+										<Volume>-6</Volume>
+										<FadeInTime>15</FadeInTime>
+										<FadeOutTime>0</FadeOutTime>
+										<FadeCurve>FadeLog3</FadeCurve>
+										<TargetProp>BusVolume</TargetProp>
+									</DuckingParam>
+								</DuckItem>
+							</DuckingList>
+						</Bus>
+					</ChildrenList>
+				</Bus>
+			</ChildrenList>
+		</WorkUnit>
+	</Busses>
+</WwiseDocument>

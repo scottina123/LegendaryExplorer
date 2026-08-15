@@ -3,9 +3,14 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Threading.Tasks;
 using System.Xml.Linq;
 using BinarySerialization;
 using LegendaryExplorer.Dialogs;
+using LegendaryExplorer.UnrealExtensions;
+using LegendaryExplorer.UserControls.ExportLoaderControls;
+using LegendaryExplorerCore;
+using LegendaryExplorerCore.Audio;
 using LegendaryExplorerCore.Packages;
 using ME3Tweaks.Wwiser;
 using ME3Tweaks.Wwiser.Model.Hierarchy;
@@ -40,6 +45,9 @@ public class BulkAudioImportDialogTests
         "EJ4AAAAIu3cHAxBuAIsAAAAAAAAAAADgEkYAAAAAAQAAAAAAlkMAAAAAAQQAAAAAAPBBAAAAAAAAAAAAAQAAAAAAekQAAAAAAAAAAAAAAPjBAGAuRQAAekQAAAAAAAAgwgAAIEEBEgAAAAAAyEIAAACgwQAAoMLNzMw9AAAgQQAAIEEACAAAAAQAAAAAAAAAAAAAAAAAoEAAAMhCAAAAAAAAAA==";
     private const string BioWareRadioEqHirc =
         "EL0AAAC6gDNGAwBpADgAAAAEAAAAAAAAAACA/EMAAIA/AQYAAAAAAAAAAMDNRAAAQEAABQAAAAAAwMEAQJxGAACAPwEAAAAAAQADAKhWFSkAAQE2GTELAgIAAAAAAGNk/74EAAAAAEAcRvXYb78EAAAAqFYVKQABDNVnOioAAgAAAAAAAGBqRgAAAAAAQBxGAIC7RAQAAACoVhUpAAECWsrmPgACAAAAAAAAAKBBBAAAAABAHEYAAPpEBAAAAAAAAAA=";
+
+    [ClassInitialize]
+    public static void Initialize(TestContext _) => LegendaryExplorerCoreLib.InitLib(TaskScheduler.Default);
 
     [TestMethod]
     public void ConversationOutputBusDefaultsToHelmetEffectOnlyForLe3()
@@ -536,8 +544,149 @@ public class BulkAudioImportDialogTests
             .Any(property => property.Attribute("Name")?.Value == "ActionType"));
     }
 
+    [TestMethod]
+    public void BuildsLe2GenderedPlayAndStopEventsOverOneStreamedSound()
+    {
+        var wavPath = @"C:\Audio\Voice.wav";
+        var document = BuildEventsXml(
+            [wavPath],
+            generateGenderedEvents: true,
+            createSharedStopEvent: true,
+            perAudioStopEventFiles: new HashSet<string>([wavPath], StringComparer.OrdinalIgnoreCase),
+            game: MEGame.LE2);
+
+        CollectionAssert.AreEqual(
+            new[] { "Voice_m_Play", "Voice_f_Play", "Stop_Voice", "Stop" },
+            document.Descendants("Event").Select(GetName).ToArray());
+
+        CollectionAssert.AreEqual(
+            new[] { "Voice", "Voice" },
+            document.Descendants("Event")
+                .Where(element => GetName(element).EndsWith("_Play", StringComparison.Ordinal))
+                .Select(element => element.Descendants("ObjectRef").Single().Attribute("Name")?.Value)
+                .ToArray());
+        AssertStopEvent(document, "Stop_Voice", "Voice");
+        AssertStopEvent(document, "Stop", "Voice");
+    }
+
+    [TestMethod]
+    public void NormalizesLe2EventStyleWavNameBeforeCreatingGenderedEvents()
+    {
+        var wavPath = @"C:\Audio\VO_1850000_m_Play.wav";
+        var document = BuildEventsXml(
+            [wavPath],
+            generateGenderedEvents: true,
+            createSharedStopEvent: false,
+            perAudioStopEventFiles: new HashSet<string>([wavPath], StringComparer.OrdinalIgnoreCase),
+            game: MEGame.LE2);
+
+        CollectionAssert.AreEqual(
+            new[] { "VO_1850000_m_Play", "VO_1850000_f_Play", "Stop_VO_1850000_m" },
+            document.Descendants("Event").Select(GetName).ToArray());
+
+        CollectionAssert.AreEqual(
+            new[] { "VO_1850000_m_Play", "VO_1850000_m_Play" },
+            document.Descendants("Event")
+                .Where(element => GetName(element) is "VO_1850000_m_Play" or "VO_1850000_f_Play")
+                .Select(element => element.Descendants("ObjectRef").Single().Attribute("Name")?.Value)
+                .ToArray());
+    }
+
+    [TestMethod]
+    public void BuildsLe2FaceFxImportNamesForBothGenderVariants()
+    {
+        var method = typeof(FaceFXAnimSetEditorControl).GetMethod(
+            "BuildImportedGenderedEventNameSet", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.IsNotNull(method);
+
+        var wavFiles = new[] { @"C:\Audio\VO_1850000_m_Play.mp3" };
+        var bothGenders = method.Invoke(null, [wavFiles, MEGame.LE2]) as HashSet<string>;
+
+        CollectionAssert.AreEquivalent(
+            new[] { "VO_1850000_m_Play", "VO_1850000_f_Play" },
+            bothGenders?.ToArray());
+    }
+
+    [TestMethod]
+    public void CreatesWwiseEventAlongsideSameNamedWwiseStream()
+    {
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("SameNameAudio.pcc", MEGame.LE2);
+        var parent = ExportCreator.CreatePackageExport(package, "audio");
+        var stream = ExportCreator.CreateExport(package, "VO_1850000_m_Play", "WwiseStream", parent,
+            indexed: false);
+
+        var method = typeof(WwiseBankImport).GetMethod("FindOrCreateEventExport",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.IsNotNull(method);
+        var wwiseEvent = method.Invoke(null, [package, parent, "VO_1850000_m_Play"]) as ExportEntry;
+
+        Assert.IsNotNull(wwiseEvent);
+        Assert.AreEqual("WwiseEvent", wwiseEvent.ClassName);
+        Assert.AreEqual(stream.InstancedFullPath, wwiseEvent.InstancedFullPath);
+        Assert.AreSame(stream, package.FindExport(stream.InstancedFullPath, "WwiseStream"));
+        Assert.AreSame(wwiseEvent, package.FindExport(wwiseEvent.InstancedFullPath, "WwiseEvent"));
+    }
+
+    [TestMethod]
+    public void BuildsLe2StreamedLoopingSoundWithAuxSendsAndSelectedOutputBus()
+    {
+        var document = BuildActorMixerXml(MEGame.LE2, [@"C:\Audio\Voice.wav"],
+            generateGenderedEvents: true, loopAudio: true);
+        var sounds = document.Descendants("Sound").ToList();
+        Assert.HasCount(1, sounds);
+        Assert.AreEqual("Voice", GetName(sounds[0]));
+        Assert.IsTrue(document.Descendants("Property")
+            .Any(property => property.Attribute("Name")?.Value == "IsStreamingEnabled" &&
+                             property.Descendants("Value").Any(value => value.Value == "True")));
+        Assert.IsTrue(document.Descendants("Property")
+            .Any(property => property.Attribute("Name")?.Value == "IsLoopingEnabled"));
+        Assert.IsFalse(document.Descendants("Property")
+            .Any(property => property.Attribute("Name")?.Value == "IsLoopingInfinite"));
+        Assert.IsTrue(document.Descendants("Property")
+            .Any(property => property.Attribute("Name")?.Value == "UseGameAuxSends" &&
+                             property.Attribute("Value")?.Value == "True"));
+
+        var actorMixer = document.Descendants("ActorMixer").Single();
+        Assert.AreEqual("Conversation", actorMixer.Element("ReferenceList")
+            ?.Elements("Reference")
+            .Single(reference => reference.Attribute("Name")?.Value == "OutputBus")
+            .Element("ObjectRef")?.Attribute("Name")?.Value);
+        Assert.IsTrue(document.Descendants("Reference")
+            .Where(reference => reference.Attribute("Name")?.Value == "Conversion")
+            .All(reference => reference.Element("ObjectRef")?.Attribute("Name")?.Value ==
+                              "Default Conversion Settings"));
+    }
+
+    [TestMethod]
+    public void RecognizesGenderedPlayEventNames()
+    {
+        Assert.AreEqual("VO_123_m_Play", WwiseEventNaming.GetPlayEventName(MEGame.LE2, "VO_123_m"));
+        Assert.AreEqual("VO_123_m_Play", WwiseEventNaming.GetPlayEventName(MEGame.LE2, "VO_123_m_Play"));
+        Assert.AreEqual("VO_123_m_Play", WwiseEventNaming.GetPlayEventName(MEGame.LE3, "VO_123_m"));
+        Assert.AreEqual("Stop_VO_123", WwiseEventNaming.GetPerAudioStopEventName(MEGame.LE2, "VO_123"));
+        Assert.AreEqual("VO_123_Stop", WwiseEventNaming.GetPerAudioStopEventName(MEGame.LE3, "VO_123"));
+        Assert.IsTrue(WwiseEventNaming.IsPlayEventForGender("VO_123_f_Play", true, MEGame.LE2));
+        Assert.IsFalse(WwiseEventNaming.IsPlayEventForGender("Play_VO_123_f", true, MEGame.LE2));
+        Assert.IsTrue(WwiseEventNaming.IsPlayEventForGender("VO_123_m_Play", false, MEGame.LE3));
+        Assert.IsFalse(WwiseEventNaming.IsPlayEventForGender("Play_VO_123_m", false, MEGame.LE3));
+    }
+
+    [TestMethod]
+    public void ResolvesDialogueSoundPackageSibling()
+    {
+        Assert.IsTrue(DialogueAudioPackageNaming.TryGetSoundPackageName(
+            "norvx_relationship_00_h_D", out var soundPackageName));
+        Assert.AreEqual("norvx_relationship_00_h_S", soundPackageName);
+        Assert.IsTrue(DialogueAudioPackageNaming.TryGetSoundPackageName(
+            "BioD_Test_d", out soundPackageName));
+        Assert.AreEqual("BioD_Test_S", soundPackageName);
+        Assert.IsFalse(DialogueAudioPackageNaming.TryGetSoundPackageName(
+            "norvx_relationship_00_h_S", out soundPackageName));
+        Assert.IsNull(soundPackageName);
+    }
+
     private static XDocument BuildEventsXml(List<string> wavFiles, bool generateGenderedEvents,
-        bool createSharedStopEvent, HashSet<string> perAudioStopEventFiles)
+        bool createSharedStopEvent, HashSet<string> perAudioStopEventFiles, MEGame game = MEGame.LE3)
     {
         var method = typeof(BulkAudioImportDialog).GetMethod(
             "BuildEventsXml",
@@ -545,7 +694,37 @@ public class BulkAudioImportDialogTests
         Assert.IsNotNull(method);
 
         var xml = method.Invoke(null,
-            [EventsWorkUnitId, ActorMixerWorkUnitId, wavFiles, generateGenderedEvents, createSharedStopEvent, perAudioStopEventFiles]) as string;
+            [game, EventsWorkUnitId, ActorMixerWorkUnitId, wavFiles, generateGenderedEvents, createSharedStopEvent, perAudioStopEventFiles]) as string;
+        Assert.IsNotNull(xml);
+        return XDocument.Parse(xml);
+    }
+
+    private static XDocument BuildActorMixerXml(MEGame game, List<string> wavFiles,
+        bool generateGenderedEvents, bool loopAudio = false)
+    {
+        var method = typeof(BulkAudioImportDialog).GetMethod(
+            "BuildActorMixerXml",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.IsNotNull(method);
+
+        var conversion = (Name: "Default Conversion Settings",
+            Id: "{33333333-3333-3333-3333-333333333333}",
+            WorkUnitId: "{44444444-4444-4444-4444-444444444444}");
+        var xml = method.Invoke(null,
+        [
+            game,
+            ActorMixerWorkUnitId,
+            "TestBank",
+            "{55555555-5555-5555-5555-555555555555}",
+            wavFiles,
+            0d,
+            "Conversation",
+            "{66666666-6666-6666-6666-666666666666}",
+            "{77777777-7777-7777-7777-777777777777}",
+            conversion,
+            generateGenderedEvents,
+            loopAudio,
+        ]) as string;
         Assert.IsNotNull(xml);
         return XDocument.Parse(xml);
     }
