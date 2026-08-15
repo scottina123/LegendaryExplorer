@@ -21,6 +21,10 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
         }
 
         public string LineCountText { get; }
+        public string TargetAssetText { get; }
+        public Visibility TargetAssetVisibility => string.IsNullOrWhiteSpace(TargetAssetText)
+            ? Visibility.Collapsed
+            : Visibility.Visible;
 
         // Species selection
         public List<string> AvailableSpecies { get; }
@@ -64,9 +68,13 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
         public bool Confirmed { get; private set; }
 
         public BulkFaceFXGenerationDialog(int lineCount, Window owner = null, FaceFXSpecies? defaultSpecies = null,
-            MEGame game = MEGame.LE3)
+            MEGame game = MEGame.LE3, ExportEntry targetFaceFxExport = null)
         {
             LineCountText = $"Generate FaceFX for {lineCount} lines";
+            if (targetFaceFxExport != null)
+            {
+                TargetAssetText = $"#{targetFaceFxExport.UIndex} {targetFaceFxExport.ObjectNameString}";
+            }
             AvailableSpecies = FaceFXSpeciesCatalog.GetForGame(game)
                 .Select(FaceFXSpeciesCatalog.GetDisplayName)
                 .ToList();

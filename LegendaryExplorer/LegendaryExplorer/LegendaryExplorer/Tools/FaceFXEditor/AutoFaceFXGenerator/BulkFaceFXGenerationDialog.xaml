@@ -5,7 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
         Title="Bulk FaceFX Generation"
-        Height="390" Width="400"
+        Height="430" Width="440"
         WindowStartupLocation="CenterOwner"
         ResizeMode="NoResize"
         d:DataContext="{d:DesignInstance Type={x:Type local:BulkFaceFXGenerationDialog}, IsDesignTimeCreatable=False}"
@@ -33,6 +33,11 @@
 
         <!-- Main Content -->
         <StackPanel Grid.Row="1" Margin="15">
+            <StackPanel Margin="0,0,0,12" Visibility="{Binding TargetAssetVisibility}">
+                <TextBlock Text="Target FaceFX asset:" FontSize="12" Opacity="0.8"/>
+                <TextBlock Text="{Binding TargetAssetText}" FontWeight="SemiBold" TextWrapping="Wrap"
+                           Margin="0,2,0,0"/>
+            </StackPanel>
             <TextBlock Text="{Binding LineCountText}" FontWeight="SemiBold" Margin="0,0,0,10"/>
             
             <StackPanel Orientation="Horizontal" Margin="0,5">

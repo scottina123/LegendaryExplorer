@@ -1686,7 +1686,7 @@ namespace LegendaryExplorer.Dialogs
             var faceFx = faceFxExport.GetBinaryData<FaceFXAnimSet>();
             AddAudioFromFolderExport(faceFxExport, faceFx, audioFolderExport, isFemaleAsset);
 
-            var options = GetBulkFaceFxGenerationOptions(faceFxExport.ObjectNameString, faceFx.Lines.Count, species, isFemaleAsset);
+            var options = GetBulkFaceFxGenerationOptions(faceFxExport, faceFx.Lines.Count, species, isFemaleAsset);
             if (options != null)
             {
                 GenerateFaceFxForAllLines(faceFxExport, faceFx, isFemaleAsset, options);
@@ -1695,7 +1695,8 @@ namespace LegendaryExplorer.Dialogs
             faceFxExport.WriteBinary(faceFx);
         }
 
-        private FaceFXGenerationOptions GetBulkFaceFxGenerationOptions(string assetName, int lineCount, FaceFXSpecies defaultSpecies, bool isFemaleAsset)
+        private FaceFXGenerationOptions GetBulkFaceFxGenerationOptions(ExportEntry faceFxExport, int lineCount,
+            FaceFXSpecies defaultSpecies, bool isFemaleAsset)
         {
             if (lineCount == 0)
             {
@@ -1705,10 +1706,11 @@ namespace LegendaryExplorer.Dialogs
             FaceFXGenerationOptions options = null;
             Dispatcher.Invoke(() =>
             {
-                StatusTextBlock.Text = $"Configure FaceFX generation for {assetName}...";
-                var bulkDialog = new BulkFaceFXGenerationDialog(lineCount, this, defaultSpecies, _package.Game)
+                StatusTextBlock.Text = $"Configure FaceFX generation for {faceFxExport.ObjectNameString}...";
+                var bulkDialog = new BulkFaceFXGenerationDialog(lineCount, this, defaultSpecies, _package.Game,
+                    faceFxExport)
                 {
-                    Title = $"Bulk FaceFX Generation - {assetName}"
+                    Title = $"Bulk FaceFX Generation - #{faceFxExport.UIndex} {faceFxExport.ObjectNameString}"
                 };
 
                 if (bulkDialog.ShowDialog() == true && bulkDialog.Confirmed)

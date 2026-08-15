@@ -2958,7 +2958,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
             // Show bulk generation options dialog
             var bulkDialog = new Tools.FaceFXEditor.AutoFaceFXGenerator.BulkFaceFXGenerationDialog(
-                Lines.Count, Window.GetWindow(this), game: CurrentLoadedExport.Game);
+                Lines.Count, Window.GetWindow(this), game: CurrentLoadedExport.Game,
+                targetFaceFxExport: CurrentLoadedExport);
             if (bulkDialog.ShowDialog() != true || !bulkDialog.Confirmed)
                 return;
 
@@ -3262,7 +3263,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
             // Step 3: Bulk generate FaceFX for all lines
             var bulkDialog = new Tools.FaceFXEditor.AutoFaceFXGenerator.BulkFaceFXGenerationDialog(
-                Lines.Count, Window.GetWindow(this), game: CurrentLoadedExport.Game);
+                Lines.Count, Window.GetWindow(this), game: CurrentLoadedExport.Game,
+                targetFaceFxExport: CurrentLoadedExport);
             if (bulkDialog.ShowDialog() != true || !bulkDialog.Confirmed)
                 return;
 
@@ -3778,9 +3780,9 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             }
 
             var bulkDialog = new Tools.FaceFXEditor.AutoFaceFXGenerator.BulkFaceFXGenerationDialog(newLines.Count,
-                Window.GetWindow(this), defaultSpecies, faceFxExport.Game)
+                Window.GetWindow(this), defaultSpecies, faceFxExport.Game, faceFxExport)
             {
-                Title = $"Bulk FaceFX Generation - {faceFxExport.ObjectNameString}"
+                Title = $"Bulk FaceFX Generation - #{faceFxExport.UIndex} {faceFxExport.ObjectNameString}"
             };
 
             if (bulkDialog.ShowDialog() != true || !bulkDialog.Confirmed)
