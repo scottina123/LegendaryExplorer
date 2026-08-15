@@ -17,7 +17,7 @@
         Drop="Window_Drop"
         AllowDrop="True"
         Icon="pack://application:,,,/Tools/Icons/16x16/SFXGalaxyEditor_Icon_16.ico"
-        Title="SFXGalaxy Editor (LE3)" Height="900" Width="1750" MinHeight="650" MinWidth="1050">
+        Title="SFXGalaxy Editor" Height="900" Width="1750" MinHeight="650" MinWidth="1050">
     <Window.Resources>
         <converters:NullVisibilityConverter x:Key="NullVisibilityConverter" />
         <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
@@ -43,7 +43,8 @@
         <DockPanel>
             <Menu DockPanel.Dock="Top">
                 <MenuItem Header="_File" Padding="4">
-                    <MenuItem Header="Open highest-mounted LE3 galaxy map pair" Click="OpenVanilla_Click" />
+                    <MenuItem Header="Open highest-mounted LE2 galaxy map files" Click="OpenHighestMountedLE2_Click" />
+                    <MenuItem Header="Open highest-mounted LE3 galaxy map pair" Click="OpenHighestMountedLE3_Click" />
                     <MenuItem Header="_Open package…" Command="{Binding OpenCommand}" InputGestureText="Ctrl+O" />
                     <MenuItem Header="_Save" Command="{Binding SaveCommand}" InputGestureText="Ctrl+S" />
                     <MenuItem Header="Save _as…" Command="{Binding SaveAsCommand}" InputGestureText="Ctrl+Shift+S" />
@@ -59,11 +60,15 @@
                     <MenuItem Header="Planet" Click="AddPlanet_Click" />
                     <MenuItem Header="Asteroid belt" Click="AddAsteroidBelt_Click" />
                     <MenuItem Header="Anomaly / object" Click="AddAnomaly_Click" />
-                    <MenuItem Header="Mass relay" Click="AddMassRelay_Click" />
-                    <MenuItem Header="Fuel depot" Click="AddFuelDepot_Click" />
-                    <MenuItem Header="Reaper" Click="AddReaper_Click" />
+                    <MenuItem Header="Mass relay" Click="AddMassRelay_Click"
+                              Visibility="{Binding SupportsLE3ObjectTypes, Converter={StaticResource BoolToVisibilityConverter}}" />
+                    <MenuItem Header="Fuel depot" Click="AddFuelDepot_Click"
+                              Visibility="{Binding SupportsLE3ObjectTypes, Converter={StaticResource BoolToVisibilityConverter}}" />
+                    <MenuItem Header="Reaper" Click="AddReaper_Click"
+                              Visibility="{Binding SupportsLE3ObjectTypes, Converter={StaticResource BoolToVisibilityConverter}}" />
                     <MenuItem Header="Scannable planet feature" Click="AddFeature_Click" />
-                    <MenuItem Header="War asset" Click="AddWarAsset_Click" />
+                    <MenuItem Header="War asset" Click="AddWarAsset_Click"
+                              Visibility="{Binding SupportsLE3ObjectTypes, Converter={StaticResource BoolToVisibilityConverter}}" />
                     <Separator />
                     <MenuItem Header="Clone selected" Command="{Binding DuplicateCommand}" />
                     <MenuItem Header="Delete selected…" Command="{Binding DeleteCommand}" InputGestureText="Delete" />
@@ -94,8 +99,11 @@
                     <StackPanel Grid.Column="0" Margin="60" VerticalAlignment="Center">
                         <TextBlock Text="SFXGalaxy Editor" FontSize="25" FontWeight="SemiBold" />
                         <TextBlock Margin="0,12,0,0" TextWrapping="Wrap"
-                                   Text="Open the highest-mounted BioD_Nor_203aGalaxyMap.pcc and BioD_Nor_203CIC.pcc together. The viewport edits the former, synchronizes its SFXGalaxy hierarchy into the latter, and uses BioA_Nor_203aGalaxyMap.pcc for the galaxy background." />
-                        <Button Margin="0,20,0,0" Padding="14,8" HorizontalAlignment="Left" Content="Open highest-mounted LE3 galaxy map pair" Click="OpenVanilla_Click" />
+                                   Text="Choose a game to load its highest-mounted galaxy map files. LE2 loads BioD_Nor_103aGalaxyMap.pcc with the required 103b map-object package and 103a art package. LE3 retains synchronized editing of BioD_Nor_203aGalaxyMap.pcc and BioD_Nor_203CIC.pcc with its 203a art package." />
+                        <StackPanel Margin="0,20,0,0" Orientation="Horizontal">
+                            <Button Padding="14,8" Content="Open highest-mounted LE2 galaxy map files" Click="OpenHighestMountedLE2_Click" />
+                            <Button Margin="10,0,0,0" Padding="14,8" Content="Open highest-mounted LE3 galaxy map pair" Click="OpenHighestMountedLE3_Click" />
+                        </StackPanel>
                     </StackPanel>
                     <sharedToolControls:RecentsControl x:Name="RecentsController" Grid.Column="1" Margin="50" />
                 </Grid>
@@ -165,7 +173,7 @@
                             <TextBox Padding="4,2" IsReadOnly="True" Text="{Binding AuthoritativePackagePath, Mode=OneWay}" ToolTip="{Binding AuthoritativePackagePath}" />
                         </DockPanel>
                         <DockPanel Grid.Row="2" Margin="8,0,8,4" LastChildFill="True">
-                            <TextBlock Width="105" Margin="0,0,7,0" VerticalAlignment="Center" Foreground="Gray" Text="Synced companion:" />
+                            <TextBlock Width="105" Margin="0,0,7,0" VerticalAlignment="Center" Foreground="Gray" Text="{Binding SecondaryPackageLabel}" />
                             <TextBox Padding="4,2" IsReadOnly="True" Text="{Binding CompanionPackagePath, Mode=OneWay}" ToolTip="{Binding CompanionSyncStatus}" />
                         </DockPanel>
                         <DockPanel Grid.Row="3" Margin="8,0,8,4" LastChildFill="True">

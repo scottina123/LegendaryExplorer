@@ -43,18 +43,32 @@ using Texture2DMipInfo = LegendaryExplorerCore.Unreal.Classes.Texture2DMipInfo;
 namespace LegendaryExplorer.Tools.SFXGalaxyEditor;
 
 /// <summary>
-/// LE3 editor for the SFXGalaxy object hierarchy stored in BioD_Nor_203aGalaxyMap.pcc.
+/// LE2/LE3 editor for the SFXGalaxy object hierarchy stored in the Normandy galaxy map packages.
 /// The viewport is intentionally package-data-driven and does not depend on the legacy galaxy map tool.
 /// </summary>
 public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
 {
     private const int MapExtent = 1024;
-    private const string VanillaGalaxyMapFile = "BioD_Nor_203aGalaxyMap.pcc";
-    private const string CompanionGalaxyMapFile = "BioD_Nor_203CIC.pcc";
-    private const string GalaxyArtFile = "BioA_Nor_203aGalaxyMap.pcc";
+    private const string LE2GalaxyMapFile = "BioD_Nor_103aGalaxyMap.pcc";
+    private const string LE2GalaxyMapObjectsFile = "BioD_Nor_103bGalaxyMapObjs.pcc";
+    private const string LE2GalaxyArtFile = "BioA_Nor_103aGalaxyMap.pcc";
+    private const string LE3GalaxyMapFile = "BioD_Nor_203aGalaxyMap.pcc";
+    private const string LE3CompanionGalaxyMapFile = "BioD_Nor_203CIC.pcc";
+    private const string LE3GalaxyArtFile = "BioA_Nor_203aGalaxyMap.pcc";
     private const string GalaxyTexturePath = "BIOA_GalaxyMap_T.galaxy";
     private const string PlanetMeshPath = "BIOA_GalaxyMap_S.Planet";
     private const string CloudMeshPath = "BIOA_GalaxyMap_S.CloudMask";
+
+    private sealed record GalaxyMapPackageSet(MEGame Game, string GalaxyMapFile, string SecondaryFile,
+        string GalaxyArtFile, bool SynchronizesSecondary)
+    {
+        public string GameLabel => Game == MEGame.LE2 ? "LE2" : "LE3";
+    }
+
+    private static readonly GalaxyMapPackageSet LE2PackageSet = new(MEGame.LE2, LE2GalaxyMapFile,
+        LE2GalaxyMapObjectsFile, LE2GalaxyArtFile, SynchronizesSecondary: false);
+    private static readonly GalaxyMapPackageSet LE3PackageSet = new(MEGame.LE3, LE3GalaxyMapFile,
+        LE3CompanionGalaxyMapFile, LE3GalaxyArtFile, SynchronizesSecondary: true);
 
     private readonly Dictionary<int, SFXGalaxyNode> _nodesByUIndex = [];
     private readonly Dictionary<int, string> _tlkCache = [];
@@ -69,7 +83,9 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
     private bool _handledInitialLoad;
     private bool _suppressPackageRefresh;
     private bool _refreshQueued;
+    private GalaxyMapPackageSet _packageSet;
     private IMEPackage _companionPcc;
+    private IMEPackage _supportPcc;
     private bool _companionNeedsFullSync;
     private readonly HashSet<int> _pendingCompanionSyncUIndexes = [];
     private bool _pendingCompanionFullSync;
@@ -78,10 +94,14 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
     private IMEPackage _galaxyArtPcc;
 
     public string AuthoritativePackagePath => Pcc?.FilePath ?? string.Empty;
-    public string CompanionPackagePath => _companionPcc?.FilePath ?? string.Empty;
+    public string CompanionPackagePath => _companionPcc?.FilePath ?? _supportPcc?.FilePath ?? string.Empty;
+    public string SecondaryPackageLabel => _packageSet?.SynchronizesSecondary == true
+        ? "Synced companion:"
+        : "Map objects:";
     public string GalaxyArtPackagePath => _galaxyArtPackagePath ?? string.Empty;
+    public bool SupportsLE3ObjectTypes => Pcc?.Game == MEGame.LE3;
 
-    private string _companionSyncStatus = "Companion package not loaded.";
+    private string _companionSyncStatus = "Secondary package not loaded.";
     public string CompanionSyncStatus
     {
         get => _companionSyncStatus;
@@ -203,7 +223,7 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
         }
     }
 
-    private string _statusText = "Open an LE3 galaxy map package to begin.";
+    private string _statusText = "Choose LE2 or LE3 highest-mounted galaxy map files to begin.";
     public string StatusText
     {
         get => _statusText;
@@ -234,11 +254,11 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
 
     public string Toolname => "SFXGalaxyEditorLE3";
 
-    public SFXGalaxyEditorWindow() : base("SFXGalaxy Editor (LE3)")
+    public SFXGalaxyEditorWindow() : base("SFXGalaxy Editor")
     {
         OpenCommand = new GenericCommand(OpenPackage);
-        SaveCommand = new GenericCommand(SavePackage, () => Pcc is not null && _companionPcc is not null);
-        SaveAsCommand = new GenericCommand(SavePackageAs, () => Pcc is not null && _companionPcc is not null);
+        SaveCommand = new GenericCommand(SavePackage, CanSavePackageSet);
+        SaveAsCommand = new GenericCommand(SavePackageAs, CanSavePackageSet);
         BackCommand = new GenericCommand(NavigateBack, () => CurrentNode?.Parent is not null);
         NavigateIntoCommand = new GenericCommand(NavigateIntoSelected, () => CanEnter(SelectedNode));
         FocusSearchCommand = new GenericCommand(() => SearchBox?.Focus(), () => Pcc is not null);
@@ -269,7 +289,10 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
     }
 
     public static bool CanOpenExport(ExportEntry export) =>
-        TryGetGalaxyObject(export, out _) && export.Game == MEGame.LE3;
+        TryGetGalaxyObject(export, out _) && export.Game is MEGame.LE2 or MEGame.LE3;
+
+    private bool CanSavePackageSet() => Pcc is not null && _packageSet is not null
+        && (_packageSet.SynchronizesSecondary ? _companionPcc is not null : _supportPcc is not null);
 
     public static bool TryGetGalaxyObject(ExportEntry export, [NotNullWhen(true)] out ExportEntry galaxyObject)
     {
@@ -322,10 +345,6 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
                 return;
             }
 
-            if (Pcc is null)
-            {
-                OpenHighestMountedGalaxyMap(showErrors: true);
-            }
             Activate();
         }));
     }
@@ -353,7 +372,7 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
         SearchResults.ClearEx();
         EditableExports.ClearEx();
         UnloadVisualAssets();
-        UnloadCompanionPackage();
+        UnloadSecondaryPackages();
         UnLoadMEPackage();
     }
 
@@ -366,50 +385,67 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
         }
     }
 
-    private void OpenVanilla_Click(object sender, RoutedEventArgs e)
+    private void OpenHighestMountedLE2_Click(object sender, RoutedEventArgs e)
     {
-        OpenHighestMountedGalaxyMap(showErrors: true);
+        OpenHighestMountedGalaxyMap(MEGame.LE2, showErrors: true);
     }
 
-    private void OpenHighestMountedGalaxyMap(bool showErrors)
+    private void OpenHighestMountedLE3_Click(object sender, RoutedEventArgs e)
     {
-        if (TryResolveHighestMountedPair(showErrors, out string galaxyMapPath, out string companionPath, out string galaxyArtPath))
+        OpenHighestMountedGalaxyMap(MEGame.LE3, showErrors: true);
+    }
+
+    private void OpenHighestMountedGalaxyMap(MEGame game, bool showErrors)
+    {
+        if (TryResolveHighestMountedPackageSet(game, showErrors, out GalaxyMapPackageSet packageSet,
+                out string galaxyMapPath, out string secondaryPath, out string galaxyArtPath))
         {
-            LoadPackagePair(galaxyMapPath, companionPath, galaxyArtPath);
+            LoadPackageSet(packageSet, galaxyMapPath, secondaryPath, galaxyArtPath);
         }
     }
 
-    private bool TryResolveHighestMountedPair(bool showErrors, out string galaxyMapPath, out string companionPath,
+    private bool TryResolveHighestMountedPackageSet(MEGame game, bool showErrors,
+        out GalaxyMapPackageSet packageSet, out string galaxyMapPath, out string secondaryPath,
         out string galaxyArtPath)
     {
+        packageSet = game switch
+        {
+            MEGame.LE2 => LE2PackageSet,
+            MEGame.LE3 => LE3PackageSet,
+            _ => null
+        };
         galaxyMapPath = null;
-        companionPath = null;
+        secondaryPath = null;
         galaxyArtPath = null;
-        if (string.IsNullOrWhiteSpace(MEDirectories.GetDefaultGamePath(MEGame.LE3)))
+        if (packageSet is null)
+        {
+            return false;
+        }
+        if (string.IsNullOrWhiteSpace(MEDirectories.GetDefaultGamePath(game)))
         {
             if (showErrors)
             {
                 MessageBox.Show(this,
-                    "Configure your Legendary Edition installation path before opening the highest-mounted LE3 galaxy map.",
+                    $"Configure your Legendary Edition installation path before opening the highest-mounted {packageSet.GameLabel} galaxy map.",
                     "SFXGalaxy Editor", MessageBoxButton.OK, MessageBoxImage.Information);
             }
             return false;
         }
 
-        bool foundGalaxyMap = MELoadedFiles.TryGetHighestMountedFile(MEGame.LE3, VanillaGalaxyMapFile, out galaxyMapPath);
-        bool foundCompanion = MELoadedFiles.TryGetHighestMountedFile(MEGame.LE3, CompanionGalaxyMapFile, out companionPath);
-        bool foundGalaxyArt = MELoadedFiles.TryGetHighestMountedFile(MEGame.LE3, GalaxyArtFile, out galaxyArtPath);
-        if (!foundGalaxyMap || !foundCompanion || !foundGalaxyArt)
+        bool foundGalaxyMap = MELoadedFiles.TryGetHighestMountedFile(game, packageSet.GalaxyMapFile, out galaxyMapPath);
+        bool foundSecondary = MELoadedFiles.TryGetHighestMountedFile(game, packageSet.SecondaryFile, out secondaryPath);
+        bool foundGalaxyArt = MELoadedFiles.TryGetHighestMountedFile(game, packageSet.GalaxyArtFile, out galaxyArtPath);
+        if (!foundGalaxyMap || !foundSecondary || !foundGalaxyArt)
         {
             if (showErrors)
             {
                 string missing = string.Join(" and ", new[]
                 {
-                    foundGalaxyMap ? null : VanillaGalaxyMapFile,
-                    foundCompanion ? null : CompanionGalaxyMapFile,
-                    foundGalaxyArt ? null : GalaxyArtFile
+                    foundGalaxyMap ? null : packageSet.GalaxyMapFile,
+                    foundSecondary ? null : packageSet.SecondaryFile,
+                    foundGalaxyArt ? null : packageSet.GalaxyArtFile
                 }.Where(name => name is not null));
-                MessageBox.Show(this, $"Could not locate the highest-mounted {missing} in the configured LE3 installation.",
+                MessageBox.Show(this, $"Could not locate the highest-mounted {missing} in the configured {packageSet.GameLabel} installation.",
                     "SFXGalaxy Editor", MessageBoxButton.OK, MessageBoxImage.Warning);
             }
             return false;
@@ -419,66 +455,94 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
 
     public void LoadFile(string fileName)
     {
-        if (TryResolveHighestMountedPair(showErrors: true, out string galaxyMapPath, out string companionPath,
-                out string galaxyArtPath))
+        try
         {
-            LoadPackagePair(galaxyMapPath, companionPath, galaxyArtPath);
+            using IMEPackage selectedPackage = MEPackageHandler.QuickOpenMEPackage(fileName);
+            OpenHighestMountedGalaxyMap(selectedPackage.Game, showErrors: true);
+        }
+        catch (Exception exception)
+        {
+            MessageBox.Show(this, $"Unable to determine the game for the selected package:\n\n{exception.Message}",
+                "SFXGalaxy Editor", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 
-    private void LoadPackagePair(string galaxyMapPath, string companionPath, string galaxyArtPath)
+    private void LoadPackageSet(GalaxyMapPackageSet packageSet, string galaxyMapPath, string secondaryPath,
+        string galaxyArtPath)
     {
         try
         {
             PropertiesInterpreter.UnloadExport();
             MetadataLoader.UnloadExport();
             UnloadVisualAssets();
-            UnloadCompanionPackage();
+            UnloadSecondaryPackages();
             LoadMEPackage(galaxyMapPath);
 
-            if (Pcc.Game != MEGame.LE3)
+            if (Pcc.Game != packageSet.Game)
             {
-                throw new InvalidDataException("SFXGalaxy Editor supports Legendary Edition 3 packages only.");
+                throw new InvalidDataException($"{packageSet.GalaxyMapFile} is not a {packageSet.GameLabel} package.");
             }
 
-            ExportEntry galaxy = Pcc.Exports.FirstOrDefault(e => e.ClassName == "SFXGalaxy" && !e.IsDefaultObject && !e.IsTrash());
+            ExportEntry galaxy = GetGalaxyRoot(Pcc);
             if (galaxy is null)
             {
-                throw new InvalidDataException($"{VanillaGalaxyMapFile} does not contain an SFXGalaxy instance.");
+                throw new InvalidDataException($"{packageSet.GalaxyMapFile} does not contain an SFXGalaxy instance.");
             }
 
-            _companionPcc = MEPackageHandler.OpenMEPackage(companionPath);
-            if (_companionPcc.Game != MEGame.LE3 || GetGalaxyRoot(_companionPcc) is null)
+            if (packageSet.SynchronizesSecondary)
             {
-                throw new InvalidDataException($"{CompanionGalaxyMapFile} does not contain a compatible LE3 SFXGalaxy instance.");
+                _companionPcc = MEPackageHandler.OpenMEPackage(secondaryPath);
+                if (_companionPcc.Game != packageSet.Game || GetGalaxyRoot(_companionPcc) is null)
+                {
+                    throw new InvalidDataException($"{packageSet.SecondaryFile} does not contain a compatible {packageSet.GameLabel} SFXGalaxy instance.");
+                }
+            }
+            else
+            {
+                _supportPcc = MEPackageHandler.OpenMEPackage(secondaryPath);
+                if (_supportPcc.Game != packageSet.Game)
+                {
+                    throw new InvalidDataException($"{packageSet.SecondaryFile} is not a {packageSet.GameLabel} package.");
+                }
             }
 
+            _packageSet = packageSet;
             LoadGalaxyBackground(galaxyArtPath);
             RebuildHierarchy(galaxy.UIndex, galaxy.UIndex);
-            _companionNeedsFullSync = true;
-            (int sourceCount, int companionCount, int differences) = CompareGalaxyStructure(Pcc, _companionPcc);
-            CompanionSyncStatus = differences == 0
-                ? $"Both galaxy hierarchies loaded ({sourceCount} exports). Changes are mirrored from {VanillaGalaxyMapFile}."
-                : $"Loaded with {differences} structural differences ({sourceCount} map / {companionCount} companion exports). The next edit will port the authoritative hierarchy.";
+            if (packageSet.SynchronizesSecondary)
+            {
+                _companionNeedsFullSync = true;
+                (int sourceCount, int companionCount, int differences) = CompareGalaxyStructure(Pcc, _companionPcc);
+                CompanionSyncStatus = differences == 0
+                    ? $"Both galaxy hierarchies loaded ({sourceCount} exports). Changes are mirrored from {packageSet.GalaxyMapFile}."
+                    : $"Loaded with {differences} structural differences ({sourceCount} map / {companionCount} companion exports). The next edit will port the authoritative hierarchy.";
+            }
+            else
+            {
+                CompanionSyncStatus = $"Loaded required map object package {packageSet.SecondaryFile}.";
+            }
             // Match Level Editor: keep the exact loaded package path visible in the window title.
-            Title = $"SFXGalaxy Editor (LE3) — {Pcc.FilePath}";
+            Title = $"SFXGalaxy Editor ({packageSet.GameLabel}) — {Pcc.FilePath}";
             RecentsController.AddRecent(galaxyMapPath, false, Pcc.Game);
             RecentsController.SaveRecentList(true);
             OnPropertyChanged(nameof(Pcc));
             OnPropertyChanged(nameof(AuthoritativePackagePath));
             OnPropertyChanged(nameof(CompanionPackagePath));
+            OnPropertyChanged(nameof(SecondaryPackageLabel));
             OnPropertyChanged(nameof(GalaxyArtPackagePath));
+            OnPropertyChanged(nameof(SupportsLE3ObjectTypes));
             UpdateStatus();
+            CommandManager.InvalidateRequerySuggested();
         }
         catch (Exception exception)
         {
             PropertiesInterpreter.UnloadExport();
             MetadataLoader.UnloadExport();
             UnloadVisualAssets();
-            UnloadCompanionPackage();
+            UnloadSecondaryPackages();
             UnLoadMEPackage();
             HierarchyRoots.ClearEx();
-            MessageBox.Show(this, $"Unable to open the galaxy map package pair:\n\n{exception.Message}",
+            MessageBox.Show(this, $"Unable to open the galaxy map package set:\n\n{exception.Message}",
                 "SFXGalaxy Editor", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
@@ -487,19 +551,27 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
     {
         try
         {
-            // BioD_Nor_203aGalaxyMap is authoritative: persist it before porting to BioD_Nor_203CIC.
+            // The authoritative hierarchy is always persisted first. LE3 then mirrors it into 203CIC;
+            // LE2's 103b package is a read-only support level and has no SFXGalaxy hierarchy to mirror.
             await Pcc.SaveAsync();
-            if (!SynchronizeCompanionFromAuthoritative(fullHierarchy: true, changedExports: null, showErrors: true))
+            if (_packageSet.SynchronizesSecondary)
             {
-                return;
+                if (!SynchronizeCompanionFromAuthoritative(fullHierarchy: true, changedExports: null, showErrors: true))
+                {
+                    return;
+                }
+                await _companionPcc.SaveAsync();
+                CompanionSyncStatus = "Both highest-mounted galaxy map packages are synchronized and saved.";
             }
-            await _companionPcc.SaveAsync();
-            CompanionSyncStatus = "Both highest-mounted galaxy map packages are synchronized and saved.";
+            else
+            {
+                CompanionSyncStatus = $"Saved {_packageSet.GalaxyMapFile}; required map object package {_packageSet.SecondaryFile} remains loaded.";
+            }
             UpdateStatus();
         }
         catch (Exception exception)
         {
-            MessageBox.Show(this, $"Unable to save the synchronized galaxy map package pair:\n\n{exception.Message}",
+            MessageBox.Show(this, $"Unable to save the galaxy map package set:\n\n{exception.Message}",
                 "SFXGalaxy Editor", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
@@ -515,15 +587,22 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
         {
             try
             {
-                string companionSavePath = Path.Combine(Path.GetDirectoryName(dialog.FileName)!, CompanionGalaxyMapFile);
                 await Pcc.SaveAsync(dialog.FileName);
-                if (!SynchronizeCompanionFromAuthoritative(fullHierarchy: true, changedExports: null, showErrors: true))
+                if (_packageSet.SynchronizesSecondary)
                 {
-                    return;
+                    string companionSavePath = Path.Combine(Path.GetDirectoryName(dialog.FileName)!, _packageSet.SecondaryFile);
+                    if (!SynchronizeCompanionFromAuthoritative(fullHierarchy: true, changedExports: null, showErrors: true))
+                    {
+                        return;
+                    }
+                    await _companionPcc.SaveAsync(companionSavePath);
+                    CompanionSyncStatus = "Both galaxy map packages were synchronized and saved to the selected folder.";
                 }
-                await _companionPcc.SaveAsync(companionSavePath);
-                Title = $"SFXGalaxy Editor (LE3) — {Pcc.FilePath}";
-                CompanionSyncStatus = "Both galaxy map packages were synchronized and saved to the selected folder.";
+                else
+                {
+                    CompanionSyncStatus = $"Saved {_packageSet.GalaxyMapFile} to the selected path; {_packageSet.SecondaryFile} remains loaded as support data.";
+                }
+                Title = $"SFXGalaxy Editor ({_packageSet.GameLabel}) — {Pcc.FilePath}";
                 OnPropertyChanged(nameof(Pcc));
                 OnPropertyChanged(nameof(AuthoritativePackagePath));
                 OnPropertyChanged(nameof(CompanionPackagePath));
@@ -531,7 +610,7 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
             }
             catch (Exception exception)
             {
-                MessageBox.Show(this, $"Unable to save the synchronized galaxy map package pair:\n\n{exception.Message}",
+                MessageBox.Show(this, $"Unable to save the galaxy map package set:\n\n{exception.Message}",
                     "SFXGalaxy Editor", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
@@ -559,15 +638,20 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
         return (sourceKeys.Count, companionKeys.Count, differences);
     }
 
-    private void UnloadCompanionPackage()
+    private void UnloadSecondaryPackages()
     {
         _companionPcc?.Release();
         _companionPcc = null;
+        _supportPcc?.Release();
+        _supportPcc = null;
         _companionNeedsFullSync = false;
         _pendingCompanionSyncUIndexes.Clear();
         _pendingCompanionFullSync = false;
+        _packageSet = null;
         OnPropertyChanged(nameof(CompanionPackagePath));
-        CompanionSyncStatus = "Companion package not loaded.";
+        OnPropertyChanged(nameof(SecondaryPackageLabel));
+        OnPropertyChanged(nameof(SupportsLE3ObjectTypes));
+        CompanionSyncStatus = "Secondary package not loaded.";
     }
 
     private void LoadGalaxyBackground(string galaxyArtPath)
@@ -575,14 +659,14 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
         _galaxyArtPackagePath = galaxyArtPath;
         OnPropertyChanged(nameof(GalaxyArtPackagePath));
         _galaxyArtPcc = MEPackageHandler.OpenMEPackage(galaxyArtPath);
-        if (_galaxyArtPcc.Game != MEGame.LE3)
+        if (_galaxyArtPcc.Game != _packageSet.Game)
         {
-            throw new InvalidDataException($"{GalaxyArtFile} is not a Legendary Edition 3 package.");
+            throw new InvalidDataException($"{_packageSet.GalaxyArtFile} is not a {_packageSet.GameLabel} package.");
         }
         ExportEntry galaxyTexture = _galaxyArtPcc.FindExport(GalaxyTexturePath, "Texture2D")
-            ?? throw new InvalidDataException($"{GalaxyArtFile} does not contain {GalaxyTexturePath}.");
+            ?? throw new InvalidDataException($"{_packageSet.GalaxyArtFile} does not contain {GalaxyTexturePath}.");
         _galaxyBackground = DecodeBackgroundTexture(galaxyTexture)
-            ?? throw new InvalidDataException($"Could not decode {GalaxyTexturePath} from {GalaxyArtFile}.");
+            ?? throw new InvalidDataException($"Could not decode {GalaxyTexturePath} from {_packageSet.GalaxyArtFile}.");
     }
 
     private void UnloadVisualAssets()
@@ -663,7 +747,15 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
     private bool SynchronizeCompanionFromAuthoritative(bool fullHierarchy,
         IEnumerable<ExportEntry> changedExports, bool showErrors, bool includeExplicitExternalExports = false)
     {
-        if (Pcc is null || _companionPcc is null)
+        if (Pcc is null)
+        {
+            return false;
+        }
+        if (_packageSet?.SynchronizesSecondary != true)
+        {
+            return true;
+        }
+        if (_companionPcc is null)
         {
             return false;
         }
@@ -671,9 +763,9 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
         try
         {
             ExportEntry sourceGalaxy = GetGalaxyRoot(Pcc)
-                ?? throw new InvalidDataException($"{VanillaGalaxyMapFile} no longer contains SFXGalaxy.");
+                ?? throw new InvalidDataException($"{_packageSet.GalaxyMapFile} no longer contains SFXGalaxy.");
             ExportEntry companionGalaxy = GetGalaxyRoot(_companionPcc)
-                ?? throw new InvalidDataException($"{CompanionGalaxyMapFile} no longer contains SFXGalaxy.");
+                ?? throw new InvalidDataException($"{_packageSet.SecondaryFile} no longer contains SFXGalaxy.");
 
             fullHierarchy |= _companionNeedsFullSync;
             List<ExportEntry> sourcesToPort;
@@ -720,7 +812,7 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
                         throw new InvalidDataException($"Could not resolve the companion parent for {source.InstancedFullPath}.");
                     }
                     target = EntryImporter.ImportExport(_companionPcc, source, targetParent.UIndex, relinkerOptions) as ExportEntry
-                             ?? throw new InvalidDataException($"Could not port {source.InstancedFullPath} into {CompanionGalaxyMapFile}.");
+                             ?? throw new InvalidDataException($"Could not port {source.InstancedFullPath} into {_packageSet.SecondaryFile}.");
                     companionByKey[key] = target;
                 }
                 relinkerOptions.CrossPackageMap[source] = target;
@@ -735,7 +827,7 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
                 if (relinkerOptions.CrossPackageMap[source] is not ExportEntry target
                     || !EntryImporter.ReplaceExportDataWithAnother(source, target, relinkerOptions))
                 {
-                    throw new InvalidDataException($"Could not serialize {source.InstancedFullPath} into {CompanionGalaxyMapFile}.");
+                    throw new InvalidDataException($"Could not serialize {source.InstancedFullPath} into {_packageSet.SecondaryFile}.");
                 }
             }
 
@@ -748,7 +840,7 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
             _companionNeedsFullSync = false;
             int warningCount = relinkerOptions.RelinkReport.Count;
             CompanionSyncStatus = warningCount == 0
-                ? $"Synchronized {sourcesToPort.Count} exports from {VanillaGalaxyMapFile} to {CompanionGalaxyMapFile}."
+                ? $"Synchronized {sourcesToPort.Count} exports from {_packageSet.GalaxyMapFile} to {_packageSet.SecondaryFile}."
                 : $"Synchronized with {warningCount} relinker warnings; save will retry a full synchronization.";
             return warningCount == 0;
         }
@@ -759,7 +851,7 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
             if (showErrors)
             {
                 MessageBox.Show(this,
-                    $"{VanillaGalaxyMapFile} remains the authoritative edited package, but its changes could not be ported to {CompanionGalaxyMapFile}:\n\n{exception.Message}",
+                    $"{_packageSet.GalaxyMapFile} remains the authoritative edited package, but its changes could not be ported to {_packageSet.SecondaryFile}:\n\n{exception.Message}",
                     "Galaxy map synchronization", MessageBoxButton.OK, MessageBoxImage.Error);
             }
             return false;
@@ -863,23 +955,48 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
             });
         }
 
-        // Children is the serialized hierarchy. Clusters, Systems, and Planets are sparse
-        // lookup tables keyed by the game's table IDs, not an alternate hierarchy.
-        foreach (ObjectProperty childReference in properties.GetProp<ArrayProperty<ObjectProperty>>("Children")?.ToList() ?? [])
+        // LE3 serializes the hierarchy through Children and keeps its typed arrays as table-ID
+        // lookups. LE2 has no Children property and serializes its hierarchy through the typed
+        // Clusters, Systems, Planets, and Features arrays declared in LE2's SFXGame.
+        foreach (string childArrayName in GetSerializedChildArrayNames(export))
         {
-            if (childReference.ResolveToEntry(Pcc) is not ExportEntry childExport || childExport.IsTrash())
+            foreach (ObjectProperty childReference in properties
+                         .GetProp<ArrayProperty<ObjectProperty>>(childArrayName)?.ToList() ?? [])
             {
-                continue;
-            }
+                if (childReference.ResolveToEntry(Pcc) is not ExportEntry childExport || childExport.IsTrash())
+                {
+                    continue;
+                }
 
-            SFXGalaxyNode child = BuildNode(childExport, node, visited);
-            if (child is not null)
-            {
-                node.Children.Add(child);
+                SFXGalaxyNode child = BuildNode(childExport, node, visited);
+                if (child is not null)
+                {
+                    node.Children.Add(child);
+                }
             }
         }
 
         return node;
+    }
+
+    private static IEnumerable<string> GetSerializedChildArrayNames(ExportEntry export)
+    {
+        if (export.Game == MEGame.LE3)
+        {
+            return ["Children"];
+        }
+        if (export.Game != MEGame.LE2)
+        {
+            return [];
+        }
+        return export.ClassName switch
+        {
+            "SFXGalaxy" => ["Clusters"],
+            "SFXCluster" => ["Systems"],
+            "SFXSystem" => ["Planets"],
+            "BioPlanet" => ["Features"],
+            _ => []
+        };
     }
 
     private static SFXGalaxyNodeKind Classify(ExportEntry export, PropertyCollection properties)
@@ -975,7 +1092,7 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
             return;
         }
 
-        ExportEntry galaxy = Pcc.Exports.FirstOrDefault(e => e.ClassName == "SFXGalaxy" && !e.IsDefaultObject && !e.IsTrash());
+        ExportEntry galaxy = GetGalaxyRoot(Pcc);
         if (galaxy is null)
         {
             return;
@@ -1574,13 +1691,22 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
                 [SFXGalaxyNodeKind.Feature, SFXGalaxyNodeKind.WarAsset],
             _ => []
         };
-        foreach (SFXGalaxyNodeKind kind in kinds)
+        foreach (SFXGalaxyNodeKind kind in kinds.Where(IsObjectKindSupported))
         {
             MenuItem item = new() { Header = KindName(kind) };
             item.Click += (_, _) => CreateCustomObject(kind, context, position);
             items.Add(item);
         }
     }
+
+    private bool IsObjectKindSupported(SFXGalaxyNodeKind kind) => Pcc?.Game switch
+    {
+        MEGame.LE2 => kind is SFXGalaxyNodeKind.Cluster or SFXGalaxyNodeKind.System
+            or SFXGalaxyNodeKind.Planet or SFXGalaxyNodeKind.AsteroidBelt or SFXGalaxyNodeKind.Anomaly
+            or SFXGalaxyNodeKind.Feature,
+        MEGame.LE3 => true,
+        _ => false
+    };
 
     private static SFXGalaxyNode ResolveAddContext(SFXGalaxyNode node)
     {
@@ -1892,7 +2018,7 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
             MessageBox.Show(this,
                 material is null
                     ? $"The selected planet's {slot.PropertyName} reference could not be resolved."
-                    : $"{GalaxyArtFile} does not contain the preview mesh {slot.MeshPath}.",
+                    : $"{_packageSet.GalaxyArtFile} does not contain the preview mesh {slot.MeshPath}.",
                 "Planet material preview", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
@@ -2067,7 +2193,7 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
         {
             MeshRenderer.WriteLiveMaterialParameters(source, material);
             if (SynchronizeCompanionFromAuthoritative(fullHierarchy: false, [source], showErrors: true,
-                    includeExplicitExternalExports: true))
+                    includeExplicitExternalExports: true) && _packageSet.SynchronizesSecondary)
             {
                 CompanionSyncStatus = $"Updated {source.InstancedFullPath} and mirrored its serialized MIC parameters.";
             }
@@ -2126,7 +2252,7 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
 
             bool synchronized = SynchronizeCompanionFromAuthoritative(fullHierarchy: true, changedExports: null, showErrors: true);
             RefreshPropertyExports();
-            if (synchronized)
+            if (synchronized && _packageSet.SynchronizesSecondary)
             {
                 CompanionSyncStatus = $"Created {newMaterial.InstancedFullPath}, repointed {slot.PropertyName}, and synchronized the galaxy hierarchy.";
             }
@@ -2191,7 +2317,7 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
 
     private void AddKnownKind(SFXGalaxyNodeKind kind)
     {
-        if (_rootNode is null)
+        if (_rootNode is null || !IsObjectKindSupported(kind))
         {
             return;
         }
@@ -2258,7 +2384,8 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
             created = Pcc.CreateExport(objectName, className, parent.Export, indexed: true);
             PropertyCollection properties = CreateInitialProperties(kind, label, displayNameStringRef, parent, requestedPosition);
 
-            if (kind is SFXGalaxyNodeKind.Planet or SFXGalaxyNodeKind.AsteroidBelt or SFXGalaxyNodeKind.Anomaly)
+            if (Pcc.Game == MEGame.LE3
+                && kind is SFXGalaxyNodeKind.Planet or SFXGalaxyNodeKind.AsteroidBelt or SFXGalaxyNodeKind.Anomaly)
             {
                 ExportEntry appearance = Pcc.CreateExport($"{objectName}_Appearance", "SFXGalaxyMapPlanetAppearance", created, indexed: true);
                 appearance.WriteProperties(new PropertyCollection());
@@ -2335,7 +2462,7 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
     {
         if (GlobalUnrealObjectInfo.GetPropertyInfo(Pcc.Game, property.Name, className) is null)
         {
-            throw new InvalidOperationException($"{property.Name} is not a serialized {className} property in LE3 metadata.");
+            throw new InvalidOperationException($"{property.Name} is not a serialized {className} property in {Pcc.Game} metadata.");
         }
         properties.AddOrReplaceProp(property);
     }
@@ -2390,7 +2517,7 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
             clone = EntryCloner.CloneEntry(template.Export, incrementIndex: true, newParentUIndex: parent.Export.UIndex);
             clone.ObjectName = Pcc.GetNextIndexedName(MakeObjectName(label, template.Kind));
             PropertyCollection cloneProperties = clone.GetProperties();
-            ResetClonedObjectProperties(cloneProperties, template.Kind);
+            ResetClonedObjectProperties(cloneProperties, template.Kind, Pcc.Game);
             int ordinal = parent.Children.Count(child => !child.IsImplicitStar);
             if (template.Kind == SFXGalaxyNodeKind.WarAsset)
             {
@@ -2435,15 +2562,24 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
         }
     }
 
-    private static void ResetClonedObjectProperties(PropertyCollection properties, SFXGalaxyNodeKind kind)
+    private static void ResetClonedObjectProperties(PropertyCollection properties, SFXGalaxyNodeKind kind, MEGame game)
     {
-        foreach (string arrayName in kind switch
-                 {
-                     SFXGalaxyNodeKind.Cluster => new[] { "Children", "Systems", "RelayConnections" },
-                     SFXGalaxyNodeKind.System => new[] { "Children", "Planets" },
-                     SFXGalaxyNodeKind.Planet or SFXGalaxyNodeKind.AsteroidBelt or SFXGalaxyNodeKind.Anomaly => new[] { "Children" },
-                     _ => []
-                 })
+        string[] arrayNames = game == MEGame.LE2
+            ? kind switch
+            {
+                SFXGalaxyNodeKind.Cluster => ["Systems", "RelayConnections"],
+                SFXGalaxyNodeKind.System => ["Planets"],
+                SFXGalaxyNodeKind.Planet or SFXGalaxyNodeKind.AsteroidBelt or SFXGalaxyNodeKind.Anomaly => ["Features"],
+                _ => []
+            }
+            : kind switch
+            {
+                SFXGalaxyNodeKind.Cluster => ["Children", "Systems", "RelayConnections"],
+                SFXGalaxyNodeKind.System => ["Children", "Planets"],
+                SFXGalaxyNodeKind.Planet or SFXGalaxyNodeKind.AsteroidBelt or SFXGalaxyNodeKind.Anomaly => ["Children"],
+                _ => []
+            };
+        foreach (string arrayName in arrayNames)
         {
             properties.GetProp<ArrayProperty<ObjectProperty>>(arrayName)?.Clear();
         }
@@ -2463,13 +2599,26 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
     private static void AddChildReferences(SFXGalaxyNode parent, ExportEntry child)
     {
         PropertyCollection parentProperties = parent.Export.GetProperties();
+        if (parent.Export.Game == MEGame.LE2)
+        {
+            string typedArrayName = GetLE2ChildArrayName(parent.Kind);
+            ArrayProperty<ObjectProperty> typed = GetOrCreateSerializedObjectArray(parent.Export, parentProperties, typedArrayName);
+            if (typed.All(reference => reference.Value != child.UIndex))
+            {
+                typed.Add(new ObjectProperty(child));
+            }
+            parent.Export.WriteProperties(parentProperties);
+            return;
+        }
+
+        // Preserve the existing LE3 behavior: Children owns the hierarchy while the typed arrays
+        // remain sparse tables indexed by the game's table IDs.
         ArrayProperty<ObjectProperty> children = GetOrCreateSerializedObjectArray(parent.Export, parentProperties, "Children");
         if (children.All(reference => reference.Value != child.UIndex))
         {
             children.Add(new ObjectProperty(child));
         }
-
-        string typedArrayName = parent.Kind switch
+        string le3TypedArrayName = parent.Kind switch
         {
             SFXGalaxyNodeKind.Galaxy when child.ClassName == "SFXCluster" => "Clusters",
             SFXGalaxyNodeKind.Cluster when child.ClassName == "SFXSystem" => "Systems",
@@ -2478,9 +2627,9 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
             SFXGalaxyNodeKind.System => "Planets",
             _ => null
         };
-        if (typedArrayName is not null)
+        if (le3TypedArrayName is not null)
         {
-            ArrayProperty<ObjectProperty> typed = GetOrCreateSerializedObjectArray(parent.Export, parentProperties, typedArrayName);
+            ArrayProperty<ObjectProperty> typed = GetOrCreateSerializedObjectArray(parent.Export, parentProperties, le3TypedArrayName);
             if (typed.All(reference => reference.Value != child.UIndex))
             {
                 typed.Add(new ObjectProperty(child));
@@ -2489,12 +2638,21 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
         parent.Export.WriteProperties(parentProperties);
     }
 
+    private static string GetLE2ChildArrayName(SFXGalaxyNodeKind parentKind) => parentKind switch
+    {
+        SFXGalaxyNodeKind.Galaxy => "Clusters",
+        SFXGalaxyNodeKind.Cluster => "Systems",
+        SFXGalaxyNodeKind.System => "Planets",
+        SFXGalaxyNodeKind.Planet or SFXGalaxyNodeKind.AsteroidBelt or SFXGalaxyNodeKind.Anomaly => "Features",
+        _ => throw new InvalidOperationException($"{parentKind} cannot contain an LE2 galaxy map child.")
+    };
+
     private static ArrayProperty<ObjectProperty> GetOrCreateSerializedObjectArray(ExportEntry owner,
         PropertyCollection properties, string propertyName)
     {
         if (GlobalUnrealObjectInfo.GetPropertyInfo(owner.Game, propertyName, owner.ClassName, containingExport: owner) is null)
         {
-            throw new InvalidOperationException($"{propertyName} is not a serialized {owner.ClassName} property in LE3 metadata.");
+            throw new InvalidOperationException($"{propertyName} is not a serialized {owner.ClassName} property in {owner.Game} metadata.");
         }
         ArrayProperty<ObjectProperty> array = properties.GetProp<ArrayProperty<ObjectProperty>>(propertyName);
         if (array is null)
@@ -2544,6 +2702,19 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
     private static void RemoveChildReferences(ExportEntry parent, ExportEntry child)
     {
         PropertyCollection properties = parent.GetProperties();
+        if (parent.Game == MEGame.LE2)
+        {
+            foreach (string arrayName in new[] { "Clusters", "Systems", "Planets", "Features" })
+            {
+                if (properties.GetProp<ArrayProperty<ObjectProperty>>(arrayName) is not { } array) continue;
+                foreach (ObjectProperty reference in array.Where(reference => reference.Value == child.UIndex))
+                {
+                    reference.Value = 0;
+                }
+            }
+            parent.WriteProperties(properties);
+            return;
+        }
         foreach (string arrayName in new[] { "Children" })
         {
             if (properties.GetProp<ArrayProperty<ObjectProperty>>(arrayName) is not { } array) continue;
@@ -2598,7 +2769,7 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
     {
         if (Pcc is null)
         {
-            StatusText = "Open an LE3 galaxy map package to begin.";
+            StatusText = "Choose LE2 or LE3 highest-mounted galaxy map files to begin.";
             return;
         }
         string path = CurrentNode is null ? string.Empty : string.Join(" › ", GetPath(CurrentNode).Select(node => node.DisplayName));

@@ -1762,7 +1762,8 @@ namespace LegendaryExplorer.Tools.PackageEditor
 
         private static bool TryGetSFXGalaxyEditorTargetExport(ExportEntry export, [NotNullWhen(true)] out ExportEntry? galaxyMapTarget)
         {
-            if (export.Game == MEGame.LE3 && LegendaryExplorer.Tools.SFXGalaxyEditor.SFXGalaxyEditorWindow.TryGetGalaxyObject(export, out ExportEntry mapObject))
+            if (export.Game is MEGame.LE2 or MEGame.LE3
+                && LegendaryExplorer.Tools.SFXGalaxyEditor.SFXGalaxyEditorWindow.TryGetGalaxyObject(export, out ExportEntry mapObject))
             {
                 galaxyMapTarget = mapObject;
                 return true;

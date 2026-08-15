@@ -783,16 +783,16 @@ public static class ToolSet
         });
         set.Add(new Tool
         {
-            name = "SFXGalaxy Editor (LE3)",
+            name = "SFXGalaxy Editor (LE2/LE3)",
             type = typeof(SFXGalaxyEditorWindow),
             icon = Application.Current.FindResource("iconSFXGalaxyEditor") as ImageSource,
             open = () =>
             {
                 (new SFXGalaxyEditorWindow()).Show();
             },
-            tags = ["user", "developer", "galaxy", "map", "cluster", "system", "planet", "star", "relay", "le3"],
+            tags = ["user", "developer", "galaxy", "map", "cluster", "system", "planet", "star", "relay", "le2", "le3"],
             category = "Core Editors",
-            description = "Edit the LE3 SFXGalaxy hierarchy, object properties, positions, planet orbits, and cluster relay connections.",
+            description = "Edit the LE2 or LE3 SFXGalaxy hierarchy, object properties, positions, planet orbits, and cluster relay connections.",
         });
         #endregion
 
