@@ -310,34 +310,78 @@ namespace LegendaryExplorer.Dialogs
             }
         }
 
+        private void Le2RadioEffectCheckBox_CheckedChanged(object sender, RoutedEventArgs e)
+        {
+            if (Le2HelmetEffectCheckBox == null)
+            {
+                return;
+            }
+
+            if (Le2RadioEffectCheckBox.IsChecked == true)
+            {
+                Le2HelmetEffectCheckBox.IsChecked = false;
+            }
+        }
+
+        private void Le2HelmetEffectCheckBox_CheckedChanged(object sender, RoutedEventArgs e)
+        {
+            if (Le2RadioEffectCheckBox == null)
+            {
+                return;
+            }
+
+            if (Le2HelmetEffectCheckBox.IsChecked == true)
+            {
+                Le2RadioEffectCheckBox.IsChecked = false;
+            }
+        }
+
         private void OutputBusComboBox_SelectionChanged(object sender,
             System.Windows.Controls.SelectionChangedEventArgs e) => UpdateOutputBusOptions();
 
         private void UpdateOutputBusOptions()
         {
             if (OutputBusComboBox == null || RadioEffectCheckBox == null || QecEffectCheckBox == null ||
-                HelmetEffectCheckBox == null || DuckAudioCheckBox == null || AttenuationCheckBox == null)
+                HelmetEffectCheckBox == null || DuckAudioCheckBox == null || AttenuationCheckBox == null ||
+                Le2RadioEffectCheckBox == null || Le2HelmetEffectCheckBox == null || Le2DuckAudioCheckBox == null ||
+                Le2AttenuationCheckBox == null)
             {
                 return;
             }
 
+            bool isLe2 = _package.Game == MEGame.LE2;
             bool isLe3 = _package.Game == MEGame.LE3;
-            string outputBus = OutputBusComboBox.SelectedItem as string;
+            string outputBus = OutputBusComboBox.SelectedItem as string ?? SelectedOutputBus;
             bool defaultsToHelmetEffect = DefaultsToHelmetEffect(_package.Game, outputBus);
             bool supportsMusicDucking = SupportsMusicDucking(_package.Game, outputBus);
 
             HelmetEffectCheckBox.IsEnabled = isLe3;
             RadioEffectCheckBox.IsEnabled = isLe3;
             QecEffectCheckBox.IsEnabled = isLe3;
-            DuckAudioCheckBox.IsEnabled = supportsMusicDucking;
-            AttenuationCheckBox.IsEnabled = SupportsStandardAttenuation(_package.Game);
-            if (!supportsMusicDucking)
+            DuckAudioCheckBox.IsEnabled = isLe3 && supportsMusicDucking;
+            AttenuationCheckBox.IsEnabled = isLe3 && SupportsStandardAttenuation(_package.Game);
+            Le2HelmetEffectCheckBox.IsEnabled = isLe2;
+            Le2RadioEffectCheckBox.IsEnabled = isLe2;
+            Le2DuckAudioCheckBox.IsEnabled = isLe2 && supportsMusicDucking;
+            Le2AttenuationCheckBox.IsEnabled = isLe2 && SupportsStandardAttenuation(_package.Game);
+            if (!isLe3 || !supportsMusicDucking)
             {
                 DuckAudioCheckBox.IsChecked = false;
             }
+            if (!isLe2 || !supportsMusicDucking)
+            {
+                Le2DuckAudioCheckBox.IsChecked = false;
+            }
             if (defaultsToHelmetEffect)
             {
-                HelmetEffectCheckBox.IsChecked = true;
+                if (isLe2)
+                {
+                    Le2HelmetEffectCheckBox.IsChecked = true;
+                }
+                else
+                {
+                    HelmetEffectCheckBox.IsChecked = true;
+                }
             }
 
             if (isLe3)
@@ -354,17 +398,24 @@ namespace LegendaryExplorer.Dialogs
                 AttenuationCheckBox.ToolTip =
                     "Adds the standard four-curve voice attenuation used in BioD_KroGar_300Tower_LOC_INT. Available for every LE3 output bus.";
             }
+            else if (isLe2)
+            {
+                Le2DuckAudioCheckBox.ToolTip = supportsMusicDucking
+                    ? "Adds the BioS_OmgHub duck event (relative -12 dB over 4 seconds) and its reset event (1 second) to the imported root ActorMixer."
+                    : "Select a music output bus to enable the shipped LE2 Omega music ducking events.";
+            }
         }
 
         private static bool DefaultsToHelmetEffect(MEGame game, string outputBus) =>
-            game == MEGame.LE3 && string.Equals(outputBus, ConversationOutputBus, StringComparison.Ordinal);
+            (game == MEGame.LE3 && string.Equals(outputBus, ConversationOutputBus, StringComparison.Ordinal)) ||
+            (game == MEGame.LE2 && string.Equals(outputBus, Le2ConversationOutputBus, StringComparison.Ordinal));
 
         private static bool SupportsMusicDucking(MEGame game, string outputBus) =>
-            game == MEGame.LE3 && !string.IsNullOrWhiteSpace(outputBus) &&
+            (game is MEGame.LE2 or MEGame.LE3) && !string.IsNullOrWhiteSpace(outputBus) &&
             (outputBus.Contains("Music", StringComparison.OrdinalIgnoreCase) ||
              outputBus.StartsWith("Mus-", StringComparison.OrdinalIgnoreCase));
 
-        private static bool SupportsStandardAttenuation(MEGame game) => game == MEGame.LE3;
+        private static bool SupportsStandardAttenuation(MEGame game) => game is MEGame.LE2 or MEGame.LE3;
 
         private void AttenuationScaleSlider_ValueChanged(object sender,
             RoutedPropertyChangedEventArgs<double> e)
@@ -374,6 +425,17 @@ namespace LegendaryExplorer.Dialogs
                 double maximumDistance = WwiseBankEffectPresets.StandardAttenuationOriginalMaxDistance *
                                          e.NewValue / 100d;
                 AttenuationScaleValueTextBlock.Text = $"{e.NewValue:0}% ({maximumDistance:0.#} max)";
+            }
+        }
+
+        private void Le2AttenuationScaleSlider_ValueChanged(object sender,
+            RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (Le2AttenuationScaleValueTextBlock != null)
+            {
+                double maximumDistance = WwiseBankEffectPresets.StandardAttenuationOriginalMaxDistance *
+                                         e.NewValue / 100d;
+                Le2AttenuationScaleValueTextBlock.Text = $"{e.NewValue:0}% ({maximumDistance:0.#} max)";
             }
         }
 
@@ -470,13 +532,24 @@ namespace LegendaryExplorer.Dialogs
             var isDialogue = IsDialogueBankCheckBox.IsChecked == true;
             var generateGenderedEvents = GenerateGenderedEventsCheckBox.IsChecked == true;
             var loopAudio = LoopAudioCheckBox.IsChecked == true;
+            bool isLe2 = _package.Game == MEGame.LE2;
             bool isLe3 = _package.Game == MEGame.LE3;
-            var applyRadioEffect = isLe3 && RadioEffectCheckBox.IsChecked == true;
+            var applyRadioEffect = isLe2
+                ? Le2RadioEffectCheckBox.IsChecked == true
+                : isLe3 && RadioEffectCheckBox.IsChecked == true;
             var applyQecEffect = isLe3 && QecEffectCheckBox.IsChecked == true;
-            var applyHelmetEffect = isLe3 && HelmetEffectCheckBox.IsChecked == true;
-            var applyMusicDucking = isLe3 && DuckAudioCheckBox.IsChecked == true;
-            var applyStandardAttenuation = isLe3 && AttenuationCheckBox.IsChecked == true;
-            var attenuationDistanceScale = AttenuationScaleSlider.Value / 100d;
+            var applyHelmetEffect = isLe2
+                ? Le2HelmetEffectCheckBox.IsChecked == true
+                : isLe3 && HelmetEffectCheckBox.IsChecked == true;
+            var applyMusicDucking = isLe2
+                ? Le2DuckAudioCheckBox.IsChecked == true
+                : isLe3 && DuckAudioCheckBox.IsChecked == true;
+            var applyStandardAttenuation = isLe2
+                ? Le2AttenuationCheckBox.IsChecked == true
+                : isLe3 && AttenuationCheckBox.IsChecked == true;
+            var attenuationDistanceScale = (isLe2
+                ? Le2AttenuationScaleSlider.Value
+                : AttenuationScaleSlider.Value) / 100d;
             var createSharedStopEvent = CreateSharedStopEventCheckBox.IsChecked == true;
             var createFaceFxAssets = _allowFaceFxAssetCreation && CreateFaceFXAssetsCheckBox.IsChecked == true;
             var topFolderName = TopFolderTextBox.Text.Trim();
@@ -680,7 +753,7 @@ namespace LegendaryExplorer.Dialogs
 
                 if (applyRadioEffect)
                 {
-                    ApplyBioWareRadioEffectToBank(bnkPath);
+                    ApplyBioWareRadioEffectToBank(bnkPath, _package.Game);
                 }
                 else if (applyQecEffect)
                 {
@@ -688,17 +761,17 @@ namespace LegendaryExplorer.Dialogs
                 }
                 else if (applyHelmetEffect)
                 {
-                    ApplyHelmetEffectToBank(bnkPath);
+                    ApplyHelmetEffectToBank(bnkPath, _package.Game);
                 }
 
                 if (applyMusicDucking)
                 {
-                    ApplyMusicDuckingToBank(bnkPath);
+                    ApplyMusicDuckingToBank(bnkPath, _package.Game);
                 }
 
                 if (applyStandardAttenuation)
                 {
-                    ApplyStandardAttenuationToBank(bnkPath, attenuationDistanceScale);
+                    ApplyStandardAttenuationToBank(bnkPath, attenuationDistanceScale, _package.Game);
                 }
 
                 Dispatcher.Invoke(() => StatusTextBlock.Text = "Importing soundbank into package...");
@@ -770,33 +843,44 @@ namespace LegendaryExplorer.Dialogs
         }
 
         /// <summary>
-        /// Adds the FutzBox and Parametric EQ ShareSets used by the root ActorMixers in
-        /// cit001_postbridge_lovei_b_dlg and applies the complete chain to the generated
-        /// root ActorMixer. The exact version-134 HIRC data is injected so Wwise does not
-        /// substitute its factory Dual_Filters_Radio_Comm preset.
+        /// Applies the shipped radio chain for the target game. LE2 uses the Parametric EQ and
+        /// effect ShareSets from BioD_JnkKgA_100Landing_LOC_INT; LE3 retains its FutzBox and
+        /// Parametric EQ chain from cit001_postbridge_lovei_b_dlg.
         /// </summary>
-        private static void ApplyBioWareRadioEffectToBank(string bnkPath)
+        private static void ApplyBioWareRadioEffectToBank(string bnkPath, MEGame game)
         {
-            ApplyExactEffectChainToBank(bnkPath, "BioWare radio", WwiseBankEffectPresets.BioWareRadio);
+            var effectChain = game == MEGame.LE2
+                ? WwiseBankEffectPresets.Le2Radio
+                : WwiseBankEffectPresets.BioWareRadio;
+            ApplyExactEffectChainToBank(bnkPath, "BioWare radio", effectChain, game: game);
         }
 
         /// <summary>
-        /// Adds the helmet FutzBox used by player and henchman dialogue in
-        /// BioD_KroGar_300Tower_LOC_INT. The Helmet RTPC controls BypassFX0 so the
-        /// filter is bypassed at 0 and enabled at 1, matching the shipped LE3 banks.
+        /// Applies the target game's helmet filter and runtime RTPC. LE2 uses the two filter
+        /// stages and the plain-text Helmet game parameter (ShortID 0x9D4305AE) found in
+        /// BioD_JnkKgA_100Landing_LOC_INT. LE3 retains its existing one-stage implementation.
         /// </summary>
-        private static void ApplyHelmetEffectToBank(string bnkPath)
+        private static void ApplyHelmetEffectToBank(string bnkPath, MEGame game)
         {
-            ApplyExactEffectChainToBank(bnkPath, "helmet voice", WwiseBankEffectPresets.HelmetFilter,
-                applyHelmetRtpc: true);
+            var effectChain = game == MEGame.LE2
+                ? WwiseBankEffectPresets.Le2HelmetFilter
+                : WwiseBankEffectPresets.HelmetFilter;
+            ApplyExactEffectChainToBank(bnkPath, "helmet voice", effectChain,
+                applyHelmetRtpc: true, game: game);
         }
 
         /// <summary>
-        /// Adds the -3 dB Volume state used by the music in wwise_cithub_streaming from
-        /// BioSnd_CitHub and applies it to the generated root ActorMixer.
+        /// Applies the target game's shipped music ducking behavior to the generated root
+        /// ActorMixer. LE2 uses the paired -12 dB offset/reset events from BioS_OmgHub;
+        /// LE3 retains the -3 dB Volume state from BioSnd_CitHub.
         /// </summary>
-        private static void ApplyMusicDuckingToBank(string bnkPath)
+        private static void ApplyMusicDuckingToBank(string bnkPath, MEGame game)
         {
+            if (game is not (MEGame.LE2 or MEGame.LE3))
+            {
+                throw new InvalidOperationException("Music ducking is only supported for LE2 and LE3 banks.");
+            }
+
             ME3Tweaks.Wwiser.WwiseBank bank;
             using (var input = new MemoryStream(File.ReadAllBytes(bnkPath), false))
             {
@@ -806,19 +890,13 @@ namespace LegendaryExplorer.Dialogs
             if (bank.BKHD.BankGeneratorVersion != WwiseBankEffectPresets.BankVersion)
             {
                 throw new InvalidOperationException(
-                    $"Music ducking requires a version-{WwiseBankEffectPresets.BankVersion} LE3 Wwise bank, " +
+                    $"Music ducking requires a version-{WwiseBankEffectPresets.BankVersion} {game} Wwise bank, " +
                     $"but WwiseCLI generated version {bank.BKHD.BankGeneratorVersion}.");
             }
 
             if (bank.HIRC == null)
             {
                 throw new InvalidOperationException("WwiseCLI generated a bank without an audio hierarchy.");
-            }
-
-            if (!WwiseBankEffectPresets.EnsureMusicDuckingData(bank))
-            {
-                throw new InvalidOperationException(
-                    "The generated bank already uses the shipped music ducking State ID for another object.");
             }
 
             var actorMixers = bank.HIRC.Items
@@ -835,7 +913,30 @@ namespace LegendaryExplorer.Dialogs
                 throw new InvalidOperationException("WwiseCLI generated a bank without a root ActorMixer.");
             }
 
-            WwiseBankEffectPresets.SetMusicDuckingOnScopes(rootActorMixers, true);
+            if (game == MEGame.LE2)
+            {
+                if (rootActorMixers.Count != 1)
+                {
+                    throw new InvalidOperationException(
+                        "LE2 music ducking requires the generated bank to contain one root ActorMixer.");
+                }
+
+                if (!WwiseBankEffectPresets.EnsureLe2MusicDuckingData(bank, rootActorMixers[0].Id))
+                {
+                    throw new InvalidOperationException(
+                        "The generated bank already uses one of the shipped LE2 Omega ducking Action or Event IDs for another object.");
+                }
+            }
+            else
+            {
+                if (!WwiseBankEffectPresets.EnsureMusicDuckingData(bank))
+                {
+                    throw new InvalidOperationException(
+                        "The generated bank already uses the shipped music ducking State ID for another object.");
+                }
+
+                WwiseBankEffectPresets.SetMusicDuckingOnScopes(rootActorMixers, true);
+            }
             bank.HIRC.ItemCount = checked((uint)bank.HIRC.Items.Count);
             using var output = new MemoryStream();
             WwiseBankParser.Serialize(bank, output);
@@ -905,11 +1006,11 @@ namespace LegendaryExplorer.Dialogs
         }
 
         /// <summary>
-        /// Adds the standard four-curve distance attenuation used by the root dialogue
-        /// ActorMixer in BioD_KroGar_300Tower_LOC_INT. All curve distances are scaled
-        /// together so their volume and filter transitions retain the shipped shape.
+        /// Adds the target game's shipped dialogue attenuation. LE2 uses the five-curve profile
+        /// from BioD_JnkKgA_100Landing_LOC_INT; LE3 retains the four-curve KroGar profile.
+        /// All curve distances are scaled together so their transitions retain the shipped shape.
         /// </summary>
-        private static void ApplyStandardAttenuationToBank(string bnkPath, double distanceScale)
+        private static void ApplyStandardAttenuationToBank(string bnkPath, double distanceScale, MEGame game)
         {
             if (double.IsNaN(distanceScale) || double.IsInfinity(distanceScale) || distanceScale <= 0)
             {
@@ -926,7 +1027,7 @@ namespace LegendaryExplorer.Dialogs
             if (bank.BKHD.BankGeneratorVersion != WwiseBankEffectPresets.BankVersion)
             {
                 throw new InvalidOperationException(
-                    $"Standard attenuation requires a version-{WwiseBankEffectPresets.BankVersion} LE3 Wwise bank, " +
+                    $"Standard attenuation requires a version-{WwiseBankEffectPresets.BankVersion} {game} Wwise bank, " +
                     $"but WwiseCLI generated version {bank.BKHD.BankGeneratorVersion}.");
             }
 
@@ -935,7 +1036,7 @@ namespace LegendaryExplorer.Dialogs
                 throw new InvalidOperationException("WwiseCLI generated a bank without an audio hierarchy.");
             }
 
-            if (!WwiseBankEffectPresets.EnsureStandardAttenuationData(bank,
+            if (!WwiseBankEffectPresets.EnsureStandardAttenuationData(bank, game,
                     checked((float)distanceScale), out uint attenuationId))
             {
                 throw new InvalidOperationException(
@@ -956,7 +1057,8 @@ namespace LegendaryExplorer.Dialogs
                 throw new InvalidOperationException("WwiseCLI generated a bank without a root ActorMixer.");
             }
 
-            WwiseBankEffectPresets.SetStandardAttenuationOnScopes(rootActorMixers, attenuationId, true);
+            WwiseBankEffectPresets.SetStandardAttenuationOnScopes(rootActorMixers, attenuationId, true,
+                enableDiffraction: game == MEGame.LE2);
             bank.HIRC.ItemCount = checked((uint)bank.HIRC.Items.Count);
             using var output = new MemoryStream();
             WwiseBankParser.Serialize(bank, output);
@@ -964,7 +1066,8 @@ namespace LegendaryExplorer.Dialogs
         }
 
         private static void ApplyExactEffectChainToBank(string bnkPath, string effectName,
-            IReadOnlyList<WwiseBankEffect> effectChain, bool applyHelmetRtpc = false)
+            IReadOnlyList<WwiseBankEffect> effectChain, bool applyHelmetRtpc = false,
+            MEGame game = MEGame.LE3)
         {
             ME3Tweaks.Wwiser.WwiseBank bank;
             using (var input = new MemoryStream(File.ReadAllBytes(bnkPath), false))
@@ -975,7 +1078,7 @@ namespace LegendaryExplorer.Dialogs
             if (bank.BKHD.BankGeneratorVersion != WwiseBankEffectPresets.BankVersion)
             {
                 throw new InvalidOperationException(
-                    $"The {effectName} effect requires a version-{WwiseBankEffectPresets.BankVersion} LE3 Wwise bank, " +
+                    $"The {effectName} effect requires a version-{WwiseBankEffectPresets.BankVersion} {game} Wwise bank, " +
                     $"but WwiseCLI generated version {bank.BKHD.BankGeneratorVersion}.");
             }
 
@@ -1023,7 +1126,14 @@ namespace LegendaryExplorer.Dialogs
 
                 if (applyHelmetRtpc)
                 {
-                    WwiseBankEffectPresets.SetHelmetRtpcOnScopes([actorMixer], true);
+                    if (game == MEGame.LE2)
+                    {
+                        WwiseBankEffectPresets.SetLe2HelmetRtpcOnScopes([actorMixer], true);
+                    }
+                    else
+                    {
+                        WwiseBankEffectPresets.SetHelmetRtpcOnScopes([actorMixer], true);
+                    }
                 }
             }
 

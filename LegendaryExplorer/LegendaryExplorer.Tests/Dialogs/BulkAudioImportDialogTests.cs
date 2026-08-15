@@ -13,6 +13,8 @@ using LegendaryExplorerCore;
 using LegendaryExplorerCore.Audio;
 using LegendaryExplorerCore.Packages;
 using ME3Tweaks.Wwiser;
+using HircAction = ME3Tweaks.Wwiser.Model.Hierarchy.Action;
+using HircEvent = ME3Tweaks.Wwiser.Model.Hierarchy.Event;
 using ME3Tweaks.Wwiser.Model.Hierarchy;
 using ME3Tweaks.Wwiser.Model.Hierarchy.Enums;
 using ME3Tweaks.Wwiser.Model.ParameterNode;
@@ -34,13 +36,38 @@ public class BulkAudioImportDialogTests
     private const uint FactoryRadioEffectId = 2952825346;
     private const uint HelmetFilterEffectId = BioWareRadioFutzBoxEffectId;
     private const uint HelmetRtpcId = 0xAA2B753F;
+    private const uint Le2HelmetEqEffectId = 0xB6871666;
+    private const uint Le2HelmetFilterEffectId = 0x8371E703;
+    private const uint Le2RadioEqEffectId = 0x85ABA16D;
+    private const uint Le2RadioFilterEffectId = 0xF4D30DBA;
+    private const uint Le2HelmetRtpcId = 0x9D4305AE;
     private const uint MusicDuckingStateGroupId = 0x7BC046C4;
     private const uint MusicDuckingStateId = 0x61030AE6;
     private const uint MusicDuckingStateInstanceId = 0x25716DBE;
+    private const uint Le2MusicDuckActionId = 0x015FDFA5;
+    private const uint Le2MusicDuckEventId = 0x16BCA20A;
+    private const uint Le2MusicResetActionId = 0x1423EC41;
+    private const uint Le2MusicResetEventId = 0xCD2B1173;
     private const uint StandardAttenuationSourceId = 0x13ED5249;
     private const string MusicDuckingStateHirc = "AQwAAAC+bXElAQAAAAAAQMA=";
+    private const string Le2MusicDuckActionHirc =
+        "AyEAAACl318BAgoF9RYNAAEQoA8AAAAEAgAAQMEAAAAAAAAAAAA=";
+    private const string Le2MusicDuckEventHirc = "BAkAAAAKorwWAaXfXwE=";
+    private const string Le2MusicResetActionHirc =
+        "AyEAAABB7CMUAgsF9RYNAAEQ6AMAAAAEAQAAAAAAAAAAAAAAAAA=";
+    private const string Le2MusicResetEventHirc = "BAkAAABzESvNAUHsIxQ=";
     private const string StandardAttenuationHirc =
         "DpsAAABJUu0TAQAAtEIAAHVDAABAwAAA8EEAAAAAAAEC//8D/wQCAgAAAAAAAAAAAAAAAAAAAIxCkud3vwQAAAACAgAAAAAAIYiVvgQAAAAAAIxCY2T/vgQAAAACAgAAAAAAIYiVvgQAAAAAAIxCY2T/vgQAAAAAAwAAAAAAAADIQQQAAAAAAOBAAAAAAAkAAAAAAIxCAAAAAAQAAAAAAA==";
+    private const string Le2StandardAttenuationHirc =
+        "DqIAAABJUu0TAAABAgP/BP8FAgIAAAAAAAAAAAAAAAAAAACMQv/+f78EAAAAAgIAAAAAACnzvL4EAAAAAACMQv/+f78EAAAAAgIAAAAAACnzvL4EAAAAAACMQv/+f78EAAAAAAIAAAAAAAAAAAABAAAAAACMQgAAcEIEAAAAAAMAAAAAAAAAyEEEAAAAAABSQQAAAAAJAAAAAACMQgAAAAAEAAAAAAA=";
+    private const string Le2HelmetEqHirc =
+        "EEsAAABmFoe2AwBpADgAAAABAAAAAADAwQCACUQAAAA/AQYAAAAAAMDBAMBiRAAAAD8AAAAAAAAAAAAAQJxFAACAPwEAAIBAAQAAAAAAAAA=";
+    private const string Le2HelmetFilterHirc =
+        "ECkAAAAD53GDAwBsABYAAAAAAEjCAAAAQArXIzzNzEw9AACAQQEBAAAAAAAAAA==";
+    private const string Le2RadioEqHirc =
+        "EEsAAABtoauFAwBpADgAAAABAAAAAAAAAAAAL0QAAIA/AQIAAAAAAAAAAACWRAAAQEABAAAAAAAAAAAAcNBFAACAPwAAAEBBAQAAAAAAAAA=";
+    private const string Le2RadioFilterHirc =
+        "ECkAAAC6DdP0AwBuABYAAAAAABDCAAAgQW8SgzqPwvU8AADAQQEBAAAAAAAAAA==";
     private const string BioWareRadioFutzBoxHirc =
         "EJ4AAAAIu3cHAxBuAIsAAAAAAAAAAADgEkYAAAAAAQAAAAAAlkMAAAAAAQQAAAAAAPBBAAAAAAAAAAAAAQAAAAAAekQAAAAAAAAAAAAAAPjBAGAuRQAAekQAAAAAAAAgwgAAIEEBEgAAAAAAyEIAAACgwQAAoMLNzMw9AAAgQQAAIEEACAAAAAQAAAAAAAAAAAAAAAAAoEAAAMhCAAAAAAAAAA==";
     private const string BioWareRadioEqHirc =
@@ -50,19 +77,21 @@ public class BulkAudioImportDialogTests
     public static void Initialize(TestContext _) => LegendaryExplorerCoreLib.InitLib(TaskScheduler.Default);
 
     [TestMethod]
-    public void ConversationOutputBusDefaultsToHelmetEffectOnlyForLe3()
+    public void ConversationOutputBusDefaultsToHelmetEffectForLe2AndLe3()
     {
         var method = typeof(BulkAudioImportDialog).GetMethod(
             "DefaultsToHelmetEffect", BindingFlags.NonPublic | BindingFlags.Static);
         Assert.IsNotNull(method);
 
         Assert.IsTrue((bool)method.Invoke(null, [MEGame.LE3, "Env-VO-Conversation"]));
+        Assert.IsTrue((bool)method.Invoke(null, [MEGame.LE2, "Conversation"]));
         Assert.IsFalse((bool)method.Invoke(null, [MEGame.LE2, "Env-VO-Conversation"]));
+        Assert.IsFalse((bool)method.Invoke(null, [MEGame.LE2, "Master Audio Bus"]));
         Assert.IsFalse((bool)method.Invoke(null, [MEGame.LE3, "Master Audio Bus"]));
     }
 
     [TestMethod]
-    public void MusicDuckingIsAvailableOnlyForLe3MusicBuses()
+    public void MusicDuckingIsAvailableForLe2AndLe3MusicBuses()
     {
         var method = typeof(BulkAudioImportDialog).GetMethod(
             "SupportsMusicDucking", BindingFlags.NonPublic | BindingFlags.Static);
@@ -71,19 +100,23 @@ public class BulkAudioImportDialogTests
         Assert.IsTrue((bool)method.Invoke(null, [MEGame.LE3, "Env-Music"]));
         Assert.IsTrue((bool)method.Invoke(null, [MEGame.LE3, "NonSlowdown-Music"]));
         Assert.IsTrue((bool)method.Invoke(null, [MEGame.LE3, "Mus-1-Moderate Ducking"]));
-        Assert.IsFalse((bool)method.Invoke(null, [MEGame.LE2, "Env-Music"]));
+        Assert.IsTrue((bool)method.Invoke(null, [MEGame.LE2, "Music"]));
+        Assert.IsTrue((bool)method.Invoke(null, [MEGame.LE2, "Music-Diegetic"]));
+        Assert.IsTrue((bool)method.Invoke(null, [MEGame.LE2, "UnDucked Music"]));
+        Assert.IsFalse((bool)method.Invoke(null, [MEGame.LE2, "Conversation"]));
         Assert.IsFalse((bool)method.Invoke(null, [MEGame.LE3, "Env-VO-Conversation"]));
     }
 
     [TestMethod]
-    public void StandardAttenuationIsAvailableForEveryLe3Bus()
+    public void StandardAttenuationIsAvailableForLe2AndLe3()
     {
         var method = typeof(BulkAudioImportDialog).GetMethod(
             "SupportsStandardAttenuation", BindingFlags.NonPublic | BindingFlags.Static);
         Assert.IsNotNull(method);
 
         Assert.IsTrue((bool)method.Invoke(null, [MEGame.LE3]));
-        Assert.IsFalse((bool)method.Invoke(null, [MEGame.LE2]));
+        Assert.IsTrue((bool)method.Invoke(null, [MEGame.LE2]));
+        Assert.IsFalse((bool)method.Invoke(null, [MEGame.LE1]));
     }
 
     [TestMethod]
@@ -154,8 +187,8 @@ public class BulkAudioImportDialogTests
                 "ApplyBioWareRadioEffectToBank", BindingFlags.NonPublic | BindingFlags.Static);
             Assert.IsNotNull(method);
 
-            method.Invoke(null, [testBankPath]);
-            method.Invoke(null, [testBankPath]);
+            method.Invoke(null, [testBankPath, MEGame.LE3]);
+            method.Invoke(null, [testBankPath, MEGame.LE3]);
 
             using var stream = File.OpenRead(testBankPath);
             var bank = WwiseBankParser.Deserialize(stream);
@@ -198,6 +231,93 @@ public class BulkAudioImportDialogTests
     }
 
     [TestMethod]
+    public void AppliesExactOmgHubMusicDuckingEventsToRootActorMixerForLe2()
+    {
+        var sourceBankPath = FindLegendaryExplorerTestData(
+            "LEX Test LE2", "GeneratedSoundBanks", "Windows", "Test_Bank.bnk");
+        var testBankPath = Path.Combine(Path.GetTempPath(), $"LEX_LE2_MusicDucking_Test_{Guid.NewGuid():N}.bnk");
+        File.Copy(sourceBankPath, testBankPath);
+
+        try
+        {
+            var method = typeof(BulkAudioImportDialog).GetMethod(
+                "ApplyMusicDuckingToBank", BindingFlags.NonPublic | BindingFlags.Static);
+            Assert.IsNotNull(method);
+
+            method.Invoke(null, [testBankPath, MEGame.LE2]);
+            method.Invoke(null, [testBankPath, MEGame.LE2]);
+
+            using var stream = File.OpenRead(testBankPath);
+            var bank = WwiseBankParser.Deserialize(stream);
+            Assert.AreEqual(134u, bank.BKHD.BankGeneratorVersion);
+            Assert.IsNotNull(bank.HIRC);
+
+            var actorMixers = bank.HIRC.Items.Select(container => container.Item).OfType<ActorMixer>().ToList();
+            var actorMixerIds = actorMixers.Select(actorMixer => actorMixer.Id).ToHashSet();
+            var rootActorMixer = actorMixers.Single(actorMixer =>
+                actorMixer.NodeBaseParameters.DirectParentId == 0 ||
+                !actorMixerIds.Contains(actorMixer.NodeBaseParameters.DirectParentId));
+
+            AssertExactRetargetedAction(bank, Le2MusicDuckActionId, Le2MusicDuckActionHirc,
+                rootActorMixer.Id);
+            AssertExactRetargetedAction(bank, Le2MusicResetActionId, Le2MusicResetActionHirc,
+                rootActorMixer.Id);
+            AssertExactEvent(bank, Le2MusicDuckEventId, Le2MusicDuckActionId, Le2MusicDuckEventHirc);
+            AssertExactEvent(bank, Le2MusicResetEventId, Le2MusicResetActionId, Le2MusicResetEventHirc);
+        }
+        finally
+        {
+            File.Delete(testBankPath);
+        }
+    }
+
+    [TestMethod]
+    public void AppliesExactShippedRadioEffectToLe2Bank()
+    {
+        var sourceBankPath = FindWwiserTestBank("LE3_v134_1.bnk");
+        var testBankPath = Path.Combine(Path.GetTempPath(), $"LEX_LE2_Radio_Test_{Guid.NewGuid():N}.bnk");
+        File.Copy(sourceBankPath, testBankPath);
+
+        try
+        {
+            var method = typeof(BulkAudioImportDialog).GetMethod(
+                "ApplyBioWareRadioEffectToBank", BindingFlags.NonPublic | BindingFlags.Static);
+            Assert.IsNotNull(method);
+
+            method.Invoke(null, [testBankPath, MEGame.LE2]);
+            method.Invoke(null, [testBankPath, MEGame.LE2]);
+
+            using var stream = File.OpenRead(testBankPath);
+            var bank = WwiseBankParser.Deserialize(stream);
+            Assert.AreEqual(134u, bank.BKHD.BankGeneratorVersion);
+            Assert.IsNotNull(bank.HIRC);
+
+            var radioHircItems = bank.HIRC.Items
+                .Where(item => item.Item.Id is Le2RadioEqEffectId or Le2RadioFilterEffectId)
+                .ToList();
+            Assert.HasCount(2, radioHircItems);
+            AssertExactShareSet(radioHircItems.Single(item => item.Item.Id == Le2RadioEqEffectId),
+                0x00690003u, Le2RadioEqHirc, bank);
+            AssertExactShareSet(radioHircItems.Single(item => item.Item.Id == Le2RadioFilterEffectId),
+                0x006E0003u, Le2RadioFilterHirc, bank);
+
+            var rootActorMixers = GetRootActorMixers(bank);
+            Assert.IsNotEmpty(rootActorMixers);
+            foreach (var rootActorMixer in rootActorMixers)
+            {
+                CollectionAssert.AreEqual(
+                    new[] { Le2RadioEqEffectId, Le2RadioFilterEffectId },
+                    rootActorMixer.NodeBaseParameters.FxParams.FxChunks.Select(item => item.Id).ToArray());
+                Assert.IsTrue(rootActorMixer.NodeBaseParameters.FxParams.IsOverrideParentFx);
+            }
+        }
+        finally
+        {
+            File.Delete(testBankPath);
+        }
+    }
+
+    [TestMethod]
     public void AppliesHelmetFilterControlledByShippedLe3Rtpc()
     {
         var sourceBankPath = FindWwiserTestBank("LE3_v134_1.bnk");
@@ -210,8 +330,8 @@ public class BulkAudioImportDialogTests
                 "ApplyHelmetEffectToBank", BindingFlags.NonPublic | BindingFlags.Static);
             Assert.IsNotNull(method);
 
-            method.Invoke(null, [testBankPath]);
-            method.Invoke(null, [testBankPath]);
+            method.Invoke(null, [testBankPath, MEGame.LE3]);
+            method.Invoke(null, [testBankPath, MEGame.LE3]);
 
             using var stream = File.OpenRead(testBankPath);
             var bank = WwiseBankParser.Deserialize(stream);
@@ -269,6 +389,79 @@ public class BulkAudioImportDialogTests
     }
 
     [TestMethod]
+    public void AppliesLe2HelmetFiltersControlledByPlainTextHelmetSignal()
+    {
+        var sourceBankPath = FindWwiserTestBank("LE3_v134_1.bnk");
+        var testBankPath = Path.Combine(Path.GetTempPath(), $"LEX_LE2_Helmet_Test_{Guid.NewGuid():N}.bnk");
+        File.Copy(sourceBankPath, testBankPath);
+
+        try
+        {
+            var method = typeof(BulkAudioImportDialog).GetMethod(
+                "ApplyHelmetEffectToBank", BindingFlags.NonPublic | BindingFlags.Static);
+            Assert.IsNotNull(method);
+
+            method.Invoke(null, [testBankPath, MEGame.LE2]);
+            method.Invoke(null, [testBankPath, MEGame.LE2]);
+
+            using var stream = File.OpenRead(testBankPath);
+            var bank = WwiseBankParser.Deserialize(stream);
+            Assert.AreEqual(134u, bank.BKHD.BankGeneratorVersion);
+            Assert.IsNotNull(bank.HIRC);
+
+            AssertExactShareSet(bank.HIRC.Items.Single(item => item.Item.Id == Le2HelmetEqEffectId),
+                0x00690003u, Le2HelmetEqHirc, bank);
+            AssertExactShareSet(bank.HIRC.Items.Single(item => item.Item.Id == Le2HelmetFilterEffectId),
+                0x006C0003u, Le2HelmetFilterHirc, bank);
+
+            var rootActorMixers = GetRootActorMixers(bank);
+            Assert.IsNotEmpty(rootActorMixers);
+            foreach (var rootActorMixer in rootActorMixers)
+            {
+                var effects = rootActorMixer.NodeBaseParameters.FxParams;
+                CollectionAssert.AreEqual(
+                    new[] { Le2HelmetEqEffectId, Le2HelmetFilterEffectId },
+                    effects.FxChunks.Select(item => item.Id).ToArray());
+                CollectionAssert.AreEqual(new byte[] { 0, 1 },
+                    effects.FxChunks.Select(item => item.FxIndex).ToArray());
+                Assert.IsTrue(effects.FxChunks.All(item => item.IsShareSet));
+                Assert.IsTrue(effects.IsOverrideParentFx);
+
+                var rtpcParameters = rootActorMixer.NodeBaseParameters.Rtpc;
+                Assert.AreEqual(rtpcParameters.Rtpcs.Count, rtpcParameters.RTPCCount.Value);
+                var helmetRtpcs = rtpcParameters.Rtpcs
+                    .Where(rtpc => rtpc.RtpcId == Le2HelmetRtpcId)
+                    .OrderBy(rtpc => rtpc.ParamId.ParamId)
+                    .ToList();
+                Assert.HasCount(2, helmetRtpcs);
+                CollectionAssert.AreEqual(
+                    new[] { ParameterId.RtpcParameterId.BypassFX0, ParameterId.RtpcParameterId.BypassFX1 },
+                    helmetRtpcs.Select(rtpc => rtpc.ParamId.ParamId).ToArray());
+                foreach (var helmetRtpc in helmetRtpcs)
+                {
+                    Assert.AreEqual(RtpcType.RtpcTypeInner.GameParameter, helmetRtpc.RtpcType.Value);
+                    Assert.AreEqual(AccumType.AccumTypeInner.Boolean, helmetRtpc.RtpcAccum.Value);
+                    Assert.AreEqual(CurveScaling.CurveScalingInner.None,
+                        helmetRtpc.RtpcConversionTable.Scaling.Value);
+                    CollectionAssert.AreEqual(new[] { 0f, 1f },
+                        helmetRtpc.RtpcConversionTable.Graph.Select(point => point.From).ToArray());
+                    CollectionAssert.AreEqual(new[] { 1f, 0f },
+                        helmetRtpc.RtpcConversionTable.Graph.Select(point => point.To).ToArray());
+                    Assert.IsTrue(helmetRtpc.RtpcConversionTable.Graph.All(
+                        point => point.Interp == CurveInterpolation.Constant));
+                }
+            }
+
+            CollectionAssert.AreEqual(new byte[] { 0xAE, 0x05, 0x43, 0x9D },
+                BitConverter.GetBytes(Le2HelmetRtpcId));
+        }
+        finally
+        {
+            File.Delete(testBankPath);
+        }
+    }
+
+    [TestMethod]
     public void AppliesExactCitHubMusicDuckingStateToRootActorMixers()
     {
         var sourceBankPath = FindWwiserTestBank("LE3_v134_1.bnk");
@@ -281,8 +474,8 @@ public class BulkAudioImportDialogTests
                 "ApplyMusicDuckingToBank", BindingFlags.NonPublic | BindingFlags.Static);
             Assert.IsNotNull(method);
 
-            method.Invoke(null, [testBankPath]);
-            method.Invoke(null, [testBankPath]);
+            method.Invoke(null, [testBankPath, MEGame.LE3]);
+            method.Invoke(null, [testBankPath, MEGame.LE3]);
 
             using var stream = File.OpenRead(testBankPath);
             var bank = WwiseBankParser.Deserialize(stream);
@@ -354,8 +547,8 @@ public class BulkAudioImportDialogTests
                 "ApplyStandardAttenuationToBank", BindingFlags.NonPublic | BindingFlags.Static);
             Assert.IsNotNull(method);
 
-            method.Invoke(null, [testBankPath, 1d]);
-            method.Invoke(null, [testBankPath, 1d]);
+            method.Invoke(null, [testBankPath, 1d, MEGame.LE3]);
+            method.Invoke(null, [testBankPath, 1d, MEGame.LE3]);
 
             using var stream = File.OpenRead(testBankPath);
             var bank = WwiseBankParser.Deserialize(stream);
@@ -419,6 +612,69 @@ public class BulkAudioImportDialogTests
     }
 
     [TestMethod]
+    public void AppliesExactJnkKgALe2AttenuationToRootActorMixers()
+    {
+        var sourceBankPath = FindWwiserTestBank("LE3_v134_1.bnk");
+        var testBankPath = Path.Combine(Path.GetTempPath(), $"LEX_LE2_Attenuation_Test_{Guid.NewGuid():N}.bnk");
+        File.Copy(sourceBankPath, testBankPath);
+
+        try
+        {
+            var method = typeof(BulkAudioImportDialog).GetMethod(
+                "ApplyStandardAttenuationToBank", BindingFlags.NonPublic | BindingFlags.Static);
+            Assert.IsNotNull(method);
+
+            method.Invoke(null, [testBankPath, 1d, MEGame.LE2]);
+            method.Invoke(null, [testBankPath, 1d, MEGame.LE2]);
+
+            using var stream = File.OpenRead(testBankPath);
+            var bank = WwiseBankParser.Deserialize(stream);
+            Assert.IsNotNull(bank.HIRC);
+
+            var rootActorMixers = GetRootActorMixers(bank);
+            Assert.IsNotEmpty(rootActorMixers);
+            uint? attenuationId = null;
+            foreach (var rootActorMixer in rootActorMixers)
+            {
+                var initialParams = rootActorMixer.NodeBaseParameters.InitialParams62;
+                var attenuationReferences = initialParams.ParameterIds
+                    .Select((parameter, index) => (parameter, index))
+                    .Where(pair => pair.parameter.PropValue == PropId.AttenuationID)
+                    .ToList();
+                Assert.HasCount(1, attenuationReferences);
+                var value = initialParams.ParameterValues[attenuationReferences[0].index];
+                uint rootAttenuationId = value.StoredAsFloat
+                    ? BitConverter.SingleToUInt32Bits(value.Float)
+                    : value.Integer;
+                attenuationId ??= rootAttenuationId;
+                Assert.AreEqual(attenuationId.Value, rootAttenuationId);
+
+                var positioning = rootActorMixer.NodeBaseParameters.PositioningChunk;
+                Assert.IsTrue(positioning.Mode.HasFlag(SpatializationMode.PositionAndOrientation));
+                Assert.IsTrue(positioning.Mode.HasFlag(SpatializationMode.EnableAttenuation));
+                Assert.IsTrue(positioning.Mode.HasFlag(SpatializationMode.EnableDiffraction));
+            }
+
+            Assert.IsTrue(attenuationId.HasValue);
+            var attenuationContainer = bank.HIRC.Items.Single(item => item.Item.Id == attenuationId.Value);
+            var attenuation = attenuationContainer.Item as Attenuation;
+            Assert.IsNotNull(attenuation);
+            Assert.HasCount(5, attenuation.Curves);
+
+            attenuation.Id = StandardAttenuationSourceId;
+            using var serializedAttenuation = new MemoryStream();
+            new BinarySerializer().Serialize(serializedAttenuation, attenuationContainer,
+                BankSerializationContext.FromBank(bank));
+            CollectionAssert.AreEqual(Convert.FromBase64String(Le2StandardAttenuationHirc),
+                serializedAttenuation.ToArray());
+        }
+        finally
+        {
+            File.Delete(testBankPath);
+        }
+    }
+
+    [TestMethod]
     public void ScalesEveryStandardAttenuationDistanceCurve()
     {
         var sourceBankPath = FindWwiserTestBank("LE3_v134_1.bnk");
@@ -431,8 +687,8 @@ public class BulkAudioImportDialogTests
                 "ApplyStandardAttenuationToBank", BindingFlags.NonPublic | BindingFlags.Static);
             Assert.IsNotNull(method);
 
-            method.Invoke(null, [testBankPath, 2d]);
-            method.Invoke(null, [testBankPath, 2d]);
+            method.Invoke(null, [testBankPath, 2d, MEGame.LE3]);
+            method.Invoke(null, [testBankPath, 2d, MEGame.LE3]);
 
             using var stream = File.OpenRead(testBankPath);
             var bank = WwiseBankParser.Deserialize(stream);
@@ -483,6 +739,16 @@ public class BulkAudioImportDialogTests
         using var serializedHirc = new MemoryStream();
         new BinarySerializer().Serialize(serializedHirc, hircItem, BankSerializationContext.FromBank(bank));
         CollectionAssert.AreEqual(Convert.FromBase64String(expectedHirc), serializedHirc.ToArray());
+    }
+
+    private static List<ActorMixer> GetRootActorMixers(ME3Tweaks.Wwiser.WwiseBank bank)
+    {
+        var actorMixers = bank.HIRC.Items.Select(item => item.Item).OfType<ActorMixer>().ToList();
+        var actorMixerIds = actorMixers.Select(item => item.Id).ToHashSet();
+        return actorMixers
+            .Where(item => item.NodeBaseParameters.DirectParentId == 0 ||
+                           !actorMixerIds.Contains(item.NodeBaseParameters.DirectParentId))
+            .ToList();
     }
 
     [TestMethod]
@@ -752,6 +1018,41 @@ public class BulkAudioImportDialogTests
 
     private static string GetName(XElement element) => element.Attribute("Name")?.Value;
 
+    private static void AssertExactRetargetedAction(ME3Tweaks.Wwiser.WwiseBank bank, uint actionId,
+        string serializedSourceAction, uint targetId)
+    {
+        var actionContainer = bank.HIRC.Items.Single(container => container.Item.Id == actionId);
+        var action = actionContainer.Item as HircAction;
+        Assert.IsNotNull(action);
+        Assert.AreEqual(targetId, action.TargetId);
+
+        var serializer = new BinarySerializer();
+        var context = BankSerializationContext.FromBank(bank);
+        var expectedContainer = serializer.Deserialize<HircItemContainer>(
+            Convert.FromBase64String(serializedSourceAction), context);
+        ((HircAction)expectedContainer.Item).TargetId = targetId;
+
+        using var actualBytes = new MemoryStream();
+        using var expectedBytes = new MemoryStream();
+        serializer.Serialize(actualBytes, actionContainer, context);
+        serializer.Serialize(expectedBytes, expectedContainer, context);
+        CollectionAssert.AreEqual(expectedBytes.ToArray(), actualBytes.ToArray());
+    }
+
+    private static void AssertExactEvent(ME3Tweaks.Wwiser.WwiseBank bank, uint eventId,
+        uint actionId, string serializedSourceEvent)
+    {
+        var eventContainer = bank.HIRC.Items.Single(container => container.Item.Id == eventId);
+        var hircEvent = eventContainer.Item as HircEvent;
+        Assert.IsNotNull(hircEvent);
+        CollectionAssert.AreEqual(new[] { actionId }, hircEvent.ActionIds.ToArray());
+        Assert.AreEqual((uint)hircEvent.ActionIds.Count, hircEvent.ActionCount.Value);
+
+        using var actualBytes = new MemoryStream();
+        new BinarySerializer().Serialize(actualBytes, eventContainer, BankSerializationContext.FromBank(bank));
+        CollectionAssert.AreEqual(Convert.FromBase64String(serializedSourceEvent), actualBytes.ToArray());
+    }
+
     private static string FindWwiserTestBank(string fileName)
     {
         for (var directory = new DirectoryInfo(AppContext.BaseDirectory); directory != null; directory = directory.Parent)
@@ -765,6 +1066,22 @@ public class BulkAudioImportDialogTests
         }
 
         Assert.Fail($"Could not locate Wwiser test bank '{fileName}'.");
+        return null;
+    }
+
+    private static string FindLegendaryExplorerTestData(params string[] relativePath)
+    {
+        for (var directory = new DirectoryInfo(AppContext.BaseDirectory); directory != null; directory = directory.Parent)
+        {
+            var candidate = Path.Combine(
+                [directory.FullName, "LegendaryExplorer", "WwiseTestData", .. relativePath]);
+            if (File.Exists(candidate))
+            {
+                return candidate;
+            }
+        }
+
+        Assert.Fail($"Could not locate Legendary Explorer test data '{Path.Combine(relativePath)}'.");
         return null;
     }
 }

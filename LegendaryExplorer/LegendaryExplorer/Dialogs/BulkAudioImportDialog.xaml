@@ -19,10 +19,56 @@
 
         <TabControl Grid.Row="1" x:Name="GameAudioTabControl" Margin="0,0,0,5">
             <TabItem x:Name="Le2AudioTab" Header="LE2 Audio">
-                <Border Padding="10">
-                    <TextBlock TextWrapping="Wrap"
-                               Text="LE2 imports streamed audio into an AFC and creates *_Play/Stop_* events. Output buses, game-defined auxiliary sends, gendered events, per-audio stop events, a shared Stop event, and looping are available. LE3 effect presets are intentionally excluded."/>
-                </Border>
+                <Grid Margin="10,6">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <TextBlock Grid.Row="0" Grid.ColumnSpan="2" Margin="0,0,0,5" TextWrapping="Wrap"
+                               Text="LE2 imports streamed audio into an AFC and creates *_Play/Stop_* events. These presets use shipped data from BioD_JnkKgA_100Landing_LOC_INT and BioS_OmgHub."/>
+                    <Label Grid.Row="1" Grid.Column="0" Content="Radio Effect:" VerticalAlignment="Center"/>
+                    <CheckBox Grid.Row="1" Grid.Column="1" x:Name="Le2RadioEffectCheckBox" IsChecked="False" VerticalAlignment="Center" Margin="5,4"
+                              Checked="Le2RadioEffectCheckBox_CheckedChanged" Unchecked="Le2RadioEffectCheckBox_CheckedChanged"
+                              Content="Apply the shipped LE2 radio filter"
+                              ToolTip="Applies the exact two-stage radio filter chain from BioD_JnkKgA_100Landing_LOC_INT."/>
+                    <Label Grid.Row="2" Grid.Column="0" Content="Helmet Effect:" VerticalAlignment="Center"/>
+                    <CheckBox Grid.Row="2" Grid.Column="1" x:Name="Le2HelmetEffectCheckBox" IsChecked="False" VerticalAlignment="Center" Margin="5,4"
+                              Checked="Le2HelmetEffectCheckBox_CheckedChanged" Unchecked="Le2HelmetEffectCheckBox_CheckedChanged"
+                              Content="Filter voices when helmets are equipped"
+                              ToolTip="Adds the shipped LE2 helmet filter and the game parameter named Helmet (ShortID 0x9D4305AE). Selected by default for the Conversation bus."/>
+                    <Label Grid.Row="3" Grid.Column="0" Content="Duck Audio:" VerticalAlignment="Center"/>
+                    <CheckBox Grid.Row="3" Grid.Column="1" x:Name="Le2DuckAudioCheckBox" IsChecked="False" VerticalAlignment="Center" Margin="5,4"
+                              Content="Apply shipped LE2 Omega music ducking (-12 dB)"
+                              ToolTip="Adds the exact duck and reset events from wwise_omghub_streaming in BioS_OmgHub. Available when an LE2 music output bus is selected."/>
+                    <Label Grid.Row="4" Grid.Column="0" Content="Attenuation:" VerticalAlignment="Top" Padding="5,8,5,5"/>
+                    <StackPanel Grid.Row="4" Grid.Column="1" Margin="5,4">
+                        <CheckBox x:Name="Le2AttenuationCheckBox" IsChecked="False" VerticalAlignment="Center"
+                                  Content="Apply shipped LE2 dialogue attenuation"
+                                  ToolTip="Adds the exact five-curve, 70-unit attenuation from BioD_JnkKgA_100Landing_LOC_INT."/>
+                        <Grid Margin="20,4,0,0" IsEnabled="{Binding ElementName=Le2AttenuationCheckBox, Path=IsChecked}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="105"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Distance scale:" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                            <Slider Grid.Column="1" x:Name="Le2AttenuationScaleSlider" Minimum="10" Maximum="500" Value="100"
+                                    TickFrequency="25" SmallChange="5" LargeChange="25" Margin="0,0,8,0"
+                                    AutoToolTipPlacement="TopLeft" AutoToolTipPrecision="0"
+                                    ValueChanged="Le2AttenuationScaleSlider_ValueChanged"
+                                    ToolTip="Scales every distance point together. 100% preserves the shipped curve, whose maximum distance is 70."/>
+                            <TextBlock Grid.Column="2" x:Name="Le2AttenuationScaleValueTextBlock" Text="100% (70 max)"
+                                       VerticalAlignment="Center"/>
+                        </Grid>
+                    </StackPanel>
+                </Grid>
             </TabItem>
             <TabItem x:Name="Le3AudioTab" Header="LE3 Audio">
                 <Grid Margin="10,6">
