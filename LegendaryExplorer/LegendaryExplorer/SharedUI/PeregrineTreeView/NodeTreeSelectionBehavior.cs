@@ -59,6 +59,9 @@ namespace LegendaryExplorer.SharedUI.PeregrineTreeView
             var newNode = e.NewValue as TreeViewEntry;
             if (newNode == null) return;
 
+            bool delayBeforeSelection = !newNode.IsProgramaticallySelecting;
+            newNode.IsProgramaticallySelecting = false;
+
             var tree = behavior.AssociatedObject;
             if (ReferenceEquals(tree.SelectedItem, newNode))
             {
@@ -67,7 +70,7 @@ namespace LegendaryExplorer.SharedUI.PeregrineTreeView
 
             if (behavior.DeferContainerRealization)
             {
-                _ = behavior.SelectItemDeferredAsync(newNode, selectionVersion);
+                _ = behavior.SelectItemDeferredAsync(newNode, selectionVersion, delayBeforeSelection);
                 return;
             }
 
@@ -106,11 +109,15 @@ namespace LegendaryExplorer.SharedUI.PeregrineTreeView
             }
         }
 
-        private async Task SelectItemDeferredAsync(TreeViewEntry newNode, int selectionVersion)
+        private async Task SelectItemDeferredAsync(TreeViewEntry newNode, int selectionVersion, bool delayBeforeSelection)
         {
-            // Do not force the virtualizing panel to realize every intermediate
-            // result when the user is searching or navigating rapidly.
-            await Task.Delay(DeferredSelectionDelay);
+            // Debounce ordinary binding changes, but let explicit navigation begin
+            // immediately. The selection version still cancels stale realizations.
+            if (delayBeforeSelection)
+            {
+                await Task.Delay(DeferredSelectionDelay);
+            }
+
             if (selectionVersion != _selectionVersion || _isCleanedUp)
             {
                 return;

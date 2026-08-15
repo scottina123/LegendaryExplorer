@@ -626,7 +626,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
 
             ResolveImportCommand = new GenericCommand(OpenImportDefinition, ImportIsSelected);
             ResolveImportsTreeViewCommand = new GenericCommand(ResolveImportsTreeView, PackageIsLoaded);
-            FindAllClassInstancesCommand = new GenericCommand(FindAllInstancesofClass, PackageIsLoaded);
+            FindAllClassInstancesCommand = new GenericCommand(FindAllInstancesOfClass, PackageIsLoaded);
             ExtractToPackageCommand = new GenericCommand(ExtractEntryToNewPackage, ExportIsSelected);
 
             RestoreExportCommand = new GenericCommand(RestoreExportData, ExportIsSelected);
@@ -1520,21 +1520,28 @@ namespace LegendaryExplorer.Tools.PackageEditor
             }
         }
 
-        private void FindAllInstancesofClass()
+        private void FindAllInstancesOfClass()
         {
-            var classes = Pcc.Exports.Select(x => x.ClassName).NonNull().Distinct().ToList().OrderBy(p => p).ToList();
-            var chosenClass = StringSelectorDialog.GetValue(this, "Select a class to list all instances of.", "Class selector", classes, classes.FirstOrDefault());
-            if (!string.IsNullOrWhiteSpace(chosenClass))
+            if (Pcc is null)
             {
-                var foundExports = Pcc.Exports.Where(x => x.ClassName == chosenClass).ToList();
-                // Have to make new EntryStringPair as Entry can be casted into String
-                ListDialog ld = new ListDialog(foundExports.Select(x => new EntryStringPair(x, x.InstancedFullPath)),
-                    $"Instances of {chosenClass}", $"These are all the exports in this package file that have a class of type {chosenClass}.", this)
-                {
-                    DoubleClickEntryHandler = entryDoubleClick
-                };
-                ld.Show();
+                return;
             }
+
+            if (string.IsNullOrWhiteSpace(SelectedClassSearch)
+                && !TrySelectClassSearch("Select a class to list all instances of."))
+            {
+                return;
+            }
+
+            string selectedClass = SelectedClassSearch;
+            var foundExports = Pcc.Exports.Where(x => x.ClassName == selectedClass).ToList();
+            // Have to make new EntryStringPair as Entry can be casted into String
+            ListDialog ld = new ListDialog(foundExports.Select(x => new EntryStringPair(x, x.InstancedFullPath)),
+                $"Instances of {selectedClass}", $"These are all the exports in this package file that have a class of type {selectedClass}.", this)
+            {
+                DoubleClickEntryHandler = entryDoubleClick
+            };
+            ld.Show();
         }
 
         private void SetIndicesInTreeToZero()
@@ -2310,53 +2317,76 @@ namespace LegendaryExplorer.Tools.PackageEditor
             searchCancellation.Dispose();
         }
 
-        private static IEnumerable<TreeViewEntry> EnumerateTreeNodes(TreeViewEntry root, bool reverse)
+        private static TreeViewEntry GetAdjacentTreeNode(TreeViewEntry node, bool reverse)
         {
             if (!reverse)
             {
-                yield return root;
-                var forwardFrames = new Stack<(TreeViewEntry Node, int NextChildIndex)>();
-                forwardFrames.Push((root, 0));
-                while (forwardFrames.Count > 0)
+                if (node.Sublinks.Count > 0)
                 {
-                    (TreeViewEntry node, int nextChildIndex) = forwardFrames.Pop();
-                    if (nextChildIndex >= node.Sublinks.Count)
+                    return node.Sublinks[0];
+                }
+
+                while (node.Parent is { } parent)
+                {
+                    int siblingIndex = parent.Sublinks.IndexOf(node) + 1;
+                    if (siblingIndex > 0 && siblingIndex < parent.Sublinks.Count)
                     {
-                        continue;
+                        return parent.Sublinks[siblingIndex];
                     }
 
-                    forwardFrames.Push((node, nextChildIndex + 1));
-                    TreeViewEntry child = node.Sublinks[nextChildIndex];
-                    yield return child;
-                    forwardFrames.Push((child, 0));
+                    node = parent;
                 }
 
-                yield break;
+                return null;
             }
 
-            // Reverse of the normal pre-order traversal: visit each subtree from
-            // right to left, then visit its parent.
-            var reverseFrames = new Stack<(TreeViewEntry Node, int NextChildIndex)>();
-            reverseFrames.Push((root, root.Sublinks.Count - 1));
-            while (reverseFrames.Count > 0)
+            if (node.Parent is not { } reverseParent)
             {
-                (TreeViewEntry node, int nextChildIndex) = reverseFrames.Pop();
-                if (nextChildIndex >= node.Sublinks.Count)
-                {
-                    reverseFrames.Push((node, node.Sublinks.Count - 1));
-                    continue;
-                }
-
-                if (nextChildIndex >= 0)
-                {
-                    reverseFrames.Push((node, nextChildIndex - 1));
-                    TreeViewEntry child = node.Sublinks[nextChildIndex];
-                    reverseFrames.Push((child, child.Sublinks.Count - 1));
-                    continue;
-                }
-
-                yield return node;
+                return null;
             }
+
+            int previousSiblingIndex = reverseParent.Sublinks.IndexOf(node) - 1;
+            if (previousSiblingIndex < 0)
+            {
+                return reverseParent;
+            }
+
+            TreeViewEntry previousNode = reverseParent.Sublinks[previousSiblingIndex];
+            while (previousNode.Sublinks.Count > 0)
+            {
+                previousNode = previousNode.Sublinks[^1];
+            }
+
+            return previousNode;
+        }
+
+        private static bool IsNodeInTree(TreeViewEntry node, TreeViewEntry root)
+        {
+            for (TreeViewEntry current = node; current is not null; current = current.Parent)
+            {
+                if (ReferenceEquals(current, root))
+                {
+                    return true;
+                }
+
+                if (current.Parent is not { } parent || !parent.Sublinks.Contains(current))
+                {
+                    return false;
+                }
+            }
+
+            return false;
+        }
+
+        private static TreeViewEntry GetLastTreeNode(TreeViewEntry root)
+        {
+            TreeViewEntry node = root;
+            while (node.Sublinks.Count > 0)
+            {
+                node = node.Sublinks[^1];
+            }
+
+            return node;
         }
 
         private async Task<TreeViewEntry> FindNextTreeNodeAsync(
@@ -2373,39 +2403,15 @@ namespace LegendaryExplorer.Tools.PackageEditor
             }
 
             TreeViewEntry treeRoot = AllTreeViewNodesX[0];
-            TreeViewEntry searchAnchor = selectedNode ?? treeRoot;
-            bool foundAnchor = false;
+            TreeViewEntry searchAnchor = selectedNode is not null && IsNodeInTree(selectedNode, treeRoot)
+                ? selectedNode
+                : treeRoot;
             int numSearched = 0;
 
-            foreach (TreeViewEntry node in EnumerateTreeNodes(treeRoot, reverse))
+            for (TreeViewEntry node = GetAdjacentTreeNode(searchAnchor, reverse);
+                 node is not null;
+                 node = GetAdjacentTreeNode(node, reverse))
             {
-                if (!await ContinueEntrySearchAsync(numSearched++, package, view, cancellationToken, treeRoot))
-                {
-                    return null;
-                }
-
-                if (!foundAnchor)
-                {
-                    foundAnchor = ReferenceEquals(node, searchAnchor);
-                    continue;
-                }
-
-                if (isMatch(node))
-                {
-                    return node;
-                }
-            }
-
-            // Wrap around and search the portion before the original selection.
-            // If the selected node disappeared while searching, this also gives us
-            // one complete pass over the current tree.
-            foreach (TreeViewEntry node in EnumerateTreeNodes(treeRoot, reverse))
-            {
-                if (foundAnchor && ReferenceEquals(node, searchAnchor))
-                {
-                    break;
-                }
-
                 if (!await ContinueEntrySearchAsync(numSearched++, package, view, cancellationToken, treeRoot))
                 {
                     return null;
@@ -2417,7 +2423,23 @@ namespace LegendaryExplorer.Tools.PackageEditor
                 }
             }
 
-            if (foundAnchor && isMatch(searchAnchor))
+            TreeViewEntry wrappedNode = reverse ? GetLastTreeNode(treeRoot) : treeRoot;
+            while (wrappedNode is not null && !ReferenceEquals(wrappedNode, searchAnchor))
+            {
+                if (!await ContinueEntrySearchAsync(numSearched++, package, view, cancellationToken, treeRoot))
+                {
+                    return null;
+                }
+
+                if (isMatch(wrappedNode))
+                {
+                    return wrappedNode;
+                }
+
+                wrappedNode = GetAdjacentTreeNode(wrappedNode, reverse);
+            }
+
+            if (ReferenceEquals(wrappedNode, searchAnchor) && isMatch(searchAnchor))
             {
                 return searchAnchor;
             }
@@ -7627,22 +7649,24 @@ namespace LegendaryExplorer.Tools.PackageEditor
                 }
                 else
                 {
-                    int n = LeftSide_ListView.SelectedIndex;
-                    int start = n == -1 ? 0 : n + 1;
                     if (view == CurrentViewMode.Exports)
                     {
                         int count = package.ExportCount;
-                        for (int i = start; i < count; i++)
+                        int index = LeftSide_ListView.SelectedIndex;
+                        LoopFunc(ref index, count);
+                        for (int numSearched = 0;
+                             numSearched < count;
+                             LoopFunc(ref index, count), numSearched++)
                         {
                             if (package.ExportCount != count
-                                || !await ContinueEntrySearchAsync(i - start, package, view, cancellationToken))
+                                || !await ContinueEntrySearchAsync(numSearched, package, view, cancellationToken))
                             {
                                 return;
                             }
 
-                            if (package.Exports[i].ClassName == searchClass)
+                            if (package.Exports[index].ClassName == searchClass)
                             {
-                                LeftSide_ListView.SelectedIndex = i;
+                                LeftSide_ListView.SelectedIndex = index;
                                 return;
                             }
                         }
@@ -7650,17 +7674,21 @@ namespace LegendaryExplorer.Tools.PackageEditor
                     else if (view == CurrentViewMode.Imports)
                     {
                         int count = package.ImportCount;
-                        for (int i = start; i < count; i++)
+                        int index = LeftSide_ListView.SelectedIndex;
+                        LoopFunc(ref index, count);
+                        for (int numSearched = 0;
+                             numSearched < count;
+                             LoopFunc(ref index, count), numSearched++)
                         {
                             if (package.ImportCount != count
-                                || !await ContinueEntrySearchAsync(i - start, package, view, cancellationToken))
+                                || !await ContinueEntrySearchAsync(numSearched, package, view, cancellationToken))
                             {
                                 return;
                             }
 
-                            if (package.Imports[i].ClassName == searchClass)
+                            if (package.Imports[index].ClassName == searchClass)
                             {
-                                LeftSide_ListView.SelectedIndex = i;
+                                LeftSide_ListView.SelectedIndex = index;
                                 return;
                             }
                         }
@@ -7689,13 +7717,52 @@ namespace LegendaryExplorer.Tools.PackageEditor
             await FindNextObjectByClassAsync(SelectedClassSearch, Keyboard.IsKeyDown(Key.LeftShift) || Keyboard.IsKeyDown(Key.RightShift));
         }
 
+        private async void FindPreviousObjectByClass_Click(object sender, RoutedEventArgs e)
+        {
+            ClassSearch_SplitButton.IsOpen = false;
+            if (Pcc == null)
+            {
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(SelectedClassSearch)
+                && !await SelectClassSearchAsync(runSearchAfterSelection: false))
+            {
+                return;
+            }
+
+            await FindNextObjectByClassAsync(SelectedClassSearch, reverse: true);
+        }
+
+        private void FindAllClassInstances_Click(object sender, RoutedEventArgs e)
+        {
+            ClassSearch_SplitButton.IsOpen = false;
+            FindAllInstancesOfClass();
+        }
+
         private async void SelectedClass_TextBox_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         {
             e.Handled = true;
-            await SelectClassSearchAsync(runSearchAfterSelection: false);
+            await SelectClassSearchAsync(runSearchAfterSelection: true);
         }
 
         private async Task<bool> SelectClassSearchAsync(bool runSearchAfterSelection)
+        {
+            if (!TrySelectClassSearch("Select a class to find."))
+            {
+                return false;
+            }
+
+            string chosenClass = SelectedClassSearch;
+            if (runSearchAfterSelection)
+            {
+                await FindNextObjectByClassAsync(chosenClass, Keyboard.IsKeyDown(Key.LeftShift) || Keyboard.IsKeyDown(Key.RightShift));
+            }
+
+            return true;
+        }
+
+        private bool TrySelectClassSearch(string prompt)
         {
             if (Pcc == null)
             {
@@ -7715,7 +7782,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
 
             string chosenClass = StringSelectorDialog.GetValue(
                 this,
-                "Select a class to find.",
+                prompt,
                 "Class selector",
                 classes,
                 string.IsNullOrWhiteSpace(SelectedClassSearch) ? classes.FirstOrDefault() : SelectedClassSearch);
@@ -7725,11 +7792,6 @@ namespace LegendaryExplorer.Tools.PackageEditor
             }
 
             SelectedClassSearch = chosenClass;
-            if (runSearchAfterSelection)
-            {
-                await FindNextObjectByClassAsync(chosenClass, Keyboard.IsKeyDown(Key.LeftShift) || Keyboard.IsKeyDown(Key.RightShift));
-            }
-
             return true;
         }
 
