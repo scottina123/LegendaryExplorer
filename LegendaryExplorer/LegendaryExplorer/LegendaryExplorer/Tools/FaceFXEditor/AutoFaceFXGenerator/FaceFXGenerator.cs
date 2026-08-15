@@ -175,7 +175,8 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
                 }
 
                 // Generate lip sync - use the working method
-                if (textPhonemes != null && textPhonemes.Count > 0)
+                bool generatedAudioLipSync = textPhonemes != null && textPhonemes.Count > 0;
+                if (generatedAudioLipSync)
                 {
                     // Use the proven GenerateLipSyncAnimations method which works
                     GenerateLipSyncAnimations(textPhonemes);
@@ -183,11 +184,19 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
                 else
                 {
                     bool hasImportedCurves = _options.FxaData?.Animations?.Count > 0;
-                    if (!hasImportedCurves)
+                    if (!hasImportedCurves && _options.Species != FaceFXSpecies.Quarian)
                     {
                         LastError = "No text or imported FXA/FXT curves were provided for lip sync generation.";
                         return false;
                     }
+                }
+
+                // Quarian lines historically use the complete authored reference,
+                // including its dense jawOpen curve. The generic audio-derived jaw
+                // does not drive this rig correctly, so the reference replaces it.
+                if (_options.Species == FaceFXSpecies.Quarian)
+                {
+                    GenerateQuarianReferenceAnimations();
                 }
 
                 // If we have FXA data, merge it in (it can enhance the generated animations)
@@ -196,20 +205,21 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
                     MergeFxaAnimations(_options.FxaData);
                 }
 
-                // Generate blink animation
-                if (_options.GenerateBlinkAnimation)
+                // Quarians already received their authored blink, eyebrow, head,
+                // gaze, emphasis, talking, and gesture curves above.
+                if (_options.Species != FaceFXSpecies.Quarian && _options.GenerateBlinkAnimation)
                 {
                     GenerateBlinkAnimation();
                 }
 
                 // Generate eyebrow animation for emphasis
-                if (_options.GenerateEyebrowAnimation)
+                if (_options.Species != FaceFXSpecies.Quarian && _options.GenerateEyebrowAnimation)
                 {
                     GenerateEyebrowAnimation();
                 }
 
                 // Generate subtle head movement
-                if (_options.GenerateHeadMovement)
+                if (_options.Species != FaceFXSpecies.Quarian && _options.GenerateHeadMovement)
                 {
                     GenerateHeadMovement();
                 }
@@ -432,7 +442,9 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
         private void MergeFxaAnimations(FxaAnimationData fxaData)
         {
             if (fxaData == null) return;
-            HashSet<string> lipSyncNames = PhonemeToVisemeMap.GetAllLipSyncVisemes();
+            var lipSyncNames = new HashSet<string>(
+                PhonemeToVisemeMap.GetVisemes(_options.Species),
+                StringComparer.OrdinalIgnoreCase);
 
             foreach (var kvp in fxaData.Animations)
             {
@@ -810,9 +822,12 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
             if (_line.NumKeys == null || _line.Points == null)
                 return;
 
-            // Remove known lip-sync controls for every audited rig. Non-human rigs
-            // do not use the m_ prefix, so prefix-only removal left stale curves behind.
-            HashSet<string> lipSyncNames = PhonemeToVisemeMap.GetAllLipSyncVisemes();
+            // Remove the complete regenerated control set for the selected rig.
+            // Non-human rigs do not use the m_ prefix, so prefix-only removal left
+            // stale Quarian/Geth curves behind.
+            var lipSyncNames = new HashSet<string>(
+                PhonemeToVisemeMap.GetVisemes(_options.Species),
+                StringComparer.OrdinalIgnoreCase);
             var indicesToRemove = new List<int>();
             for (int i = 0; i < _line.AnimationNames.Count; i++)
             {
@@ -1068,7 +1083,11 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
                 // Ensure the very last sample is exactly zero
                 samples[numSamples - 1] = 0f;
 
-                if (!samples.Any(value => value > 0.005f))
+                // The Quarian and Geth FaceFX rigs require the complete legacy
+                // animation-name inventory on each generated line. Other rigs can
+                // continue omitting unused curves to avoid empty-track bloat.
+                bool requiresCompleteRigList = _options.Species is FaceFXSpecies.Quarian or FaceFXSpecies.Geth;
+                if (!requiresCompleteRigList && !samples.Any(value => value > 0.005f))
                     continue;
 
                 var keyframes = ConvertSamplesToKeyframes(samples, sampleRate, duration);

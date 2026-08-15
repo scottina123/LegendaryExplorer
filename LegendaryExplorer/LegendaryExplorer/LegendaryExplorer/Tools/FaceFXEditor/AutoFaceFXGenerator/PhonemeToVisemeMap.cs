@@ -58,10 +58,12 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
                 FaceFXSpecies.Drell => DrellPhonemeMap,
                 FaceFXSpecies.Turian => TurianPhonemeMap,
                 FaceFXSpecies.Salarian => SalarianPhonemeMap,
-                // Shipped Quarian and Legion/Geth lines drive speech through jawOpen.
-                // The old maps accidentally treated head/gaze/blink graph nodes as visemes.
+                // Quarian mouth motion is audio-driven through jawOpen; the generator
+                // adds the rest of its authored reference animation set separately.
                 FaceFXSpecies.Quarian => BuildSingleControlMap("jawOpen"),
-                FaceFXSpecies.Geth => BuildSingleControlMap("jawOpen"),
+                // Preserve the complete legacy Legion/Geth speech mapping, including
+                // blinker, emphasis, gaze, talking, and gesture controls.
+                FaceFXSpecies.Geth => BuildGethSpeechMap(),
                 // These species have bone-based phoneme maps that don't match standard phonemes.
                 // Use Drell as fallback since it has standard phonemes with similar viseme names (jawOpen, smileRight, etc.)
                 FaceFXSpecies.Elcor => DrellPhonemeMap,
@@ -82,6 +84,13 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
         /// </summary>
         public static string[] GetVisemes(FaceFXSpecies species)
         {
+            // These two rigs have authored non-mouth controls that form part of a
+            // normal generated line. Keep their complete pre-overhaul inventories.
+            if (species == FaceFXSpecies.Quarian)
+                return QuarianVisemes;
+            if (species == FaceFXSpecies.Geth)
+                return GethVisemes;
+
             // Only emit controls that the effective text phoneme map can drive. The
             // previous species arrays included hundreds of graph/head controls and
             // generated empty curves for them on every line.
@@ -128,6 +137,19 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
                         .Max();
                     return new[] { new VisemeMapping(controlName, jaw) };
                 });
+        }
+
+        private static Dictionary<string, VisemeMapping[]> BuildGethSpeechMap()
+        {
+            var result = GethPhonemeMap.ToDictionary(pair => pair.Key, pair => pair.Value);
+
+            // The text analyzer uses these UDK aliases while the legacy Geth table
+            // uses their closest ARPABET equivalents.
+            result["H"] = GethPhonemeMap["HH"];
+            result["AX"] = GethPhonemeMap["AH"];
+            result["FLAP"] = GethPhonemeMap["T"];
+            result["TS"] = GethPhonemeMap["S"];
+            return result;
         }
 
         /// <summary>
@@ -2082,14 +2104,33 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
         };
 
         /// <summary>
-        /// All viseme animation names used in lip sync for Quarian
-        /// Note: Quarians use a simplified system with only jawOpen due to wearing helmets
+        /// Complete authored Quarian line animation set from the pre-overhaul
+        /// reference and verified against BioD_Gth002_400Resolution_LOC_INT.
         /// </summary>
         public static readonly string[] QuarianVisemes =
         [
-            // Quarians primarily use jawOpen for all facial animations
-            // since their face is behind a helmet visor
-            "jawOpen"
+            "jawOpen",
+            "Orientation_Head_Pitch",
+            "Orientation_Head_Roll",
+            "Orientation_Head_Yaw",
+            "Gaze_Eye_Pitch",
+            "Gaze_Eye_Yaw",
+            "Emphasis_Head_Pitch",
+            "Emphasis_Head_Roll",
+            "Emphasis_Head_Yaw",
+            "Eyebrow_Raise",
+            "Blink",
+            "G_TalkingNormal",
+            "E_defaultNoiseLoop",
+            "E_LookingLeftUp",
+            "E_Sad_Dissapointed",
+            "E_GESTURE_HeadRollLeft",
+            "E_GESTURE_HeadLeft",
+            "E_GESTURE_NeckForwardLeft",
+            "E_GESTURE_NeckBackLeft",
+            "G_WeightShiftLeft",
+            "E_Sad_Question",
+            "E_GESTURE_HeadRight"
         ];
 
         /// <summary>

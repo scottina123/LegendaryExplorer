@@ -2,8 +2,11 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using LegendaryExplorer.Resources;
 using LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator;
+using LegendaryExplorerCore.Unreal.BinaryConverters;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using static LegendaryExplorer.UserControls.ExportLoaderControls.FaceFXAnimSetEditorControl;
 
 namespace LegendaryExplorer.Tests.Tools.FaceFXEditor
 {
@@ -130,12 +133,64 @@ namespace LegendaryExplorer.Tests.Tools.FaceFXEditor
             CollectionAssert.AreEquivalent(
                 PhonemeToVisemeMap.HumanFemaleVisemes,
                 PhonemeToVisemeMap.GetVisemes(FaceFXSpecies.Asari));
-            CollectionAssert.AreEqual(new[] { "jawOpen" }, PhonemeToVisemeMap.GetVisemes(FaceFXSpecies.Quarian));
-            CollectionAssert.AreEqual(new[] { "jawOpen" }, PhonemeToVisemeMap.GetVisemes(FaceFXSpecies.Geth));
+            CollectionAssert.AreEqual(PhonemeToVisemeMap.QuarianVisemes, PhonemeToVisemeMap.GetVisemes(FaceFXSpecies.Quarian));
+            CollectionAssert.AreEqual(PhonemeToVisemeMap.GethVisemes, PhonemeToVisemeMap.GetVisemes(FaceFXSpecies.Geth));
+            Assert.AreEqual(22, PhonemeToVisemeMap.QuarianVisemes.Length);
+            Assert.AreEqual(18, PhonemeToVisemeMap.GethVisemes.Length);
             CollectionAssert.AreEqual(new[] { "m_JawOpen" }, PhonemeToVisemeMap.GetVisemes(FaceFXSpecies.Yahg));
             Assert.IsFalse(PhonemeToVisemeMap.GetVisemes(FaceFXSpecies.Krogan).Contains("lowerLipCurlin"));
             Assert.IsTrue(PhonemeToVisemeMap.GetVisemes(FaceFXSpecies.Krogan).Contains("jawRotateDown"));
             Assert.IsFalse(PhonemeToVisemeMap.GetVisemes(FaceFXSpecies.Krogan).Contains("jawBack"));
+
+            Dictionary<string, VisemeMapping[]> gethMap = PhonemeToVisemeMap.GetPhonemeMap(FaceFXSpecies.Geth);
+            foreach ((string phoneme, VisemeMapping[] mappings) in gethMap)
+            {
+                Assert.IsTrue(mappings.Any(mapping => mapping.VisemeName == "blinker"), $"{phoneme} must drive blinker.");
+                Assert.IsFalse(mappings.Any(mapping => mapping.VisemeName == "jawOpen"), $"{phoneme} must use the Geth rig, not a mouth curve.");
+            }
+            Assert.IsTrue(gethMap["AA"].Any(mapping => mapping.VisemeName == "G_TalkingNormal"));
+            Assert.IsTrue(gethMap["AA"].Any(mapping => mapping.VisemeName == "Emphasis_Head_Pitch"));
+            Assert.IsTrue(gethMap["H"].Any(mapping => mapping.VisemeName == "E_Neutral_Thoughtfull"));
+        }
+
+        [TestMethod]
+        public void QuarianReferenceRetainsItsCompleteAuthoredAnimationSet()
+        {
+            FxaAnimationData reference = FxaXmlParser.ParseFxaXml(EmbeddedResources.QuarianFaceFxReference);
+
+            CollectionAssert.AreEquivalent(PhonemeToVisemeMap.QuarianVisemes, reference.Animations.Keys.ToArray());
+            Assert.IsTrue(reference.Animations.TryGetValue("Blink", out FxaAnimation blink));
+            Assert.AreEqual(6, blink.Keys.Count);
+            Assert.IsTrue(blink.Keys.Max(key => key.Value) > 0.9f);
+        }
+
+        [TestMethod]
+        public void QuarianAndGethGenerationEmitTheirCompleteLegacyAnimationLists()
+        {
+            AssertGeneratedAnimationList(FaceFXSpecies.Quarian, PhonemeToVisemeMap.QuarianVisemes);
+            AssertGeneratedAnimationList(FaceFXSpecies.Quarian, PhonemeToVisemeMap.QuarianVisemes, string.Empty);
+            AssertGeneratedAnimationList(FaceFXSpecies.Geth, PhonemeToVisemeMap.GethVisemes);
+        }
+
+        [TestMethod]
+        public void QuarianGenerationUsesTheAuthoredJawOpenCurve()
+        {
+            (FaceFXLine line, TestFaceFxBinary faceFx) = GenerateLine(FaceFXSpecies.Quarian, "The signal is synchronized and ready.");
+            int animationIndex = line.AnimationNames.FindIndex(nameIndex => faceFx.Names[nameIndex] == "jawOpen");
+            Assert.IsTrue(animationIndex >= 0);
+            int pointOffset = line.NumKeys.Take(animationIndex).Sum();
+            List<FaceFXControlPoint> actual = line.Points.Skip(pointOffset).Take(line.NumKeys[animationIndex]).ToList();
+            FxaAnimation expected = FxaXmlParser.ParseFxaXml(EmbeddedResources.QuarianFaceFxReference).Animations["jawOpen"];
+
+            Assert.AreEqual(expected.Keys.Count, actual.Count);
+            float timeScale = actual[^1].time / expected.Keys[^1].Time;
+            for (int index = 0; index < expected.Keys.Count; index++)
+            {
+                Assert.AreEqual(expected.Keys[index].Time * timeScale, actual[index].time, 0.0001f);
+                Assert.AreEqual(expected.Keys[index].Value, actual[index].weight, 0.0001f);
+                Assert.AreEqual(expected.Keys[index].InTangent, actual[index].inTangent, 0.0001f);
+                Assert.AreEqual(expected.Keys[index].OutTangent, actual[index].leaveTangent, 0.0001f);
+            }
         }
 
         private static List<AmplitudeData> MakeQuietPhrase()
@@ -147,6 +202,52 @@ namespace LegendaryExplorer.Tests.Tools.FaceFXEditor
                     ? 0.07f + (index % 7) * 0.003f
                     : 0.004f
             }).ToList();
+        }
+
+        private static void AssertGeneratedAnimationList(FaceFXSpecies species, string[] expected, string text = "The signal is synchronized and ready.")
+        {
+            (FaceFXLine line, TestFaceFxBinary faceFx) = GenerateLine(species, text);
+            string[] actual = line.AnimationNames.Select(index => faceFx.Names[index]).ToArray();
+            CollectionAssert.AreEquivalent(expected, actual);
+        }
+
+        private static (FaceFXLine Line, TestFaceFxBinary FaceFx) GenerateLine(FaceFXSpecies species, string text)
+        {
+            var line = new FaceFXLine
+            {
+                AnimationNames = [],
+                NumKeys = [],
+                Points = []
+            };
+            var faceFx = new TestFaceFxBinary(line);
+            var generator = new FaceFXGenerator(
+                faceFx,
+                line,
+                text,
+                null,
+                new FaceFXGenerationOptions
+                {
+                    Species = species,
+                    UseAudioAmplitude = false,
+                    GenerateBlinkAnimation = false,
+                    GenerateEyebrowAnimation = false,
+                    GenerateHeadMovement = false
+                });
+
+            Assert.IsTrue(generator.Generate(), generator.LastError);
+            return (line, faceFx);
+        }
+
+        private sealed class TestFaceFxBinary : IFaceFXBinary
+        {
+            public TestFaceFxBinary(FaceFXLine line)
+            {
+                Lines = [line];
+            }
+
+            public List<string> Names { get; } = [];
+            public List<FaceFXLine> Lines { get; }
+            public ObjectBinary Binary => null;
         }
 
         private static float[] MakePulseCurve(int durationSeconds, int centerSeconds, float sampleRate)
