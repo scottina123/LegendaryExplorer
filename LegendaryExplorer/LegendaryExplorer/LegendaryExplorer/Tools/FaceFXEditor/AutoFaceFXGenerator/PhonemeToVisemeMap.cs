@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 
 namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
 {
@@ -23,7 +24,10 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
         Batarian,
         Vorcha,
         Prothean,
-        Yahg
+        Yahg,
+        AlienB,
+        EDI,
+        Shepard
     }
 
     /// <summary>
@@ -44,14 +48,20 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
             return species switch
             {
                 FaceFXSpecies.HumanMale => HumanMalePhonemeMap,
-                FaceFXSpecies.HumanChild => HumanChildPhonemeMap,
-                FaceFXSpecies.Asari => AsariPhonemeMap,
+                // Shipped LE3 child, Asari, EDI, Shepard, and Prothean dialogue uses
+                // the same 15 UDK m_* mouth tracks as human dialogue.
+                FaceFXSpecies.HumanChild => HumanFemalePhonemeMap,
+                FaceFXSpecies.Asari => HumanFemalePhonemeMap,
+                FaceFXSpecies.EDI => HumanFemalePhonemeMap,
+                FaceFXSpecies.Shepard => HumanFemalePhonemeMap,
                 FaceFXSpecies.Krogan => KroganPhonemeMap,
                 FaceFXSpecies.Drell => DrellPhonemeMap,
                 FaceFXSpecies.Turian => TurianPhonemeMap,
                 FaceFXSpecies.Salarian => SalarianPhonemeMap,
-                FaceFXSpecies.Quarian => QuarianPhonemeMap,
-                FaceFXSpecies.Geth => GethPhonemeMap,
+                // Shipped Quarian and Legion/Geth lines drive speech through jawOpen.
+                // The old maps accidentally treated head/gaze/blink graph nodes as visemes.
+                FaceFXSpecies.Quarian => BuildSingleControlMap("jawOpen"),
+                FaceFXSpecies.Geth => BuildSingleControlMap("jawOpen"),
                 // These species have bone-based phoneme maps that don't match standard phonemes.
                 // Use Drell as fallback since it has standard phonemes with similar viseme names (jawOpen, smileRight, etc.)
                 FaceFXSpecies.Elcor => DrellPhonemeMap,
@@ -59,10 +69,10 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
                 FaceFXSpecies.Volus => DrellPhonemeMap,
                 FaceFXSpecies.Batarian => DrellPhonemeMap,
                 FaceFXSpecies.Vorcha => DrellPhonemeMap,
+                FaceFXSpecies.AlienB => DrellPhonemeMap,
                 // Prothean uses m_* style visemes like Human Male (m_Open, m_Jaw+, m_OH, m_EE, etc.)
                 FaceFXSpecies.Prothean => HumanMalePhonemeMap,
-                // Yahg has unique visemes - use Drell as closest approximation
-                FaceFXSpecies.Yahg => DrellPhonemeMap,
+                FaceFXSpecies.Yahg => BuildSingleControlMap("m_JawOpen"),
                 _ => HumanFemalePhonemeMap
             };
         }
@@ -72,26 +82,52 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
         /// </summary>
         public static string[] GetVisemes(FaceFXSpecies species)
         {
-            return species switch
-            {
-                FaceFXSpecies.HumanMale => HumanMaleVisemes,
-                FaceFXSpecies.HumanChild => HumanChildVisemes,
-                FaceFXSpecies.Asari => AsariVisemes,
-                FaceFXSpecies.Krogan => KroganVisemes,
-                FaceFXSpecies.Drell => DrellVisemes,
-                FaceFXSpecies.Turian => TurianVisemes,
-                FaceFXSpecies.Salarian => SalarianVisemes,
-                FaceFXSpecies.Quarian => QuarianVisemes,
-                FaceFXSpecies.Geth => GethVisemes,
-                FaceFXSpecies.Elcor => ElcorVisemes,
-                FaceFXSpecies.Hanar => HanarVisemes,
-                FaceFXSpecies.Volus => VolusVisemes,
-                FaceFXSpecies.Batarian => BatarianVisemes,
-                FaceFXSpecies.Vorcha => VorchaVisemes,
-                FaceFXSpecies.Prothean => ProtheanVisemes,
-                FaceFXSpecies.Yahg => YahgVisemes,
-                _ => HumanFemaleVisemes
-            };
+            // Only emit controls that the effective text phoneme map can drive. The
+            // previous species arrays included hundreds of graph/head controls and
+            // generated empty curves for them on every line.
+            return GetPhonemeMap(species).Values
+                .SelectMany(mappings => mappings)
+                .Select(mapping => CanonicalizeVisemeName(mapping.VisemeName, species))
+                .Distinct(System.StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+        }
+
+        public static HashSet<string> GetAllLipSyncVisemes()
+        {
+            var result = new HashSet<string>(System.StringComparer.OrdinalIgnoreCase);
+            foreach (FaceFXSpecies species in System.Enum.GetValues<FaceFXSpecies>())
+                result.UnionWith(GetVisemes(species));
+            return result;
+        }
+
+        public static string CanonicalizeVisemeName(string name) => name switch
+        {
+            "lowerLipCurlin" => "lowerLipCurlIn",
+            "upperLipCurlin" => "upperLipCurlIn",
+            _ => name
+        };
+
+        public static string CanonicalizeVisemeName(string name, FaceFXSpecies species)
+        {
+            name = CanonicalizeVisemeName(name);
+            // Shipped Krogan FaceFXAnimSets drive jawRotateDown; jawBack is a graph
+            // implementation node present in the rig rather than the UDK output track.
+            return species == FaceFXSpecies.Krogan && name == "jawBack" ? "jawRotateDown" : name;
+        }
+
+        private static Dictionary<string, VisemeMapping[]> BuildSingleControlMap(string controlName)
+        {
+            return HumanFemalePhonemeMap.ToDictionary(
+                pair => pair.Key,
+                pair =>
+                {
+                    float jaw = pair.Value
+                        .Where(mapping => mapping.VisemeName is "m_Jaw+" or "m_Open" or "m_OH" or "m_EH")
+                        .Select(mapping => mapping.Weight)
+                        .DefaultIfEmpty(0.08f)
+                        .Max();
+                    return new[] { new VisemeMapping(controlName, jaw) };
+                });
         }
 
         /// <summary>

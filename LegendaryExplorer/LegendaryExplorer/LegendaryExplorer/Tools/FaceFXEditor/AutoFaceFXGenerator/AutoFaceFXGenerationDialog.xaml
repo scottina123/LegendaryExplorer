@@ -200,7 +200,7 @@
                             <Label Content="Emotion:" Width="80"/>
                             <ComboBox ItemsSource="{Binding AvailableEmotions}" 
                                       SelectedItem="{Binding SelectedEmotion}"
-                                      Width="180" VerticalAlignment="Center"/>
+                                      Width="260" VerticalAlignment="Center"/>
                         </StackPanel>
                         
                         <StackPanel Orientation="Horizontal" Margin="5,0">
@@ -210,6 +210,10 @@
                             <TextBlock Text="{Binding EmotionIntensity, StringFormat={}{0:P0}}" 
                                        Width="50" VerticalAlignment="Center" Margin="5,0"/>
                         </StackPanel>
+
+                        <CheckBox Content="Add emotion only (preserve all existing animation)"
+                                  IsChecked="{Binding AddEmotionToExistingLine}"
+                                  Margin="85,6,5,4"/>
                     </StackPanel>
                 </GroupBox>
 
@@ -218,7 +222,7 @@
                         Padding="10" Margin="5" CornerRadius="3">
                     <StackPanel Orientation="Horizontal">
                         <TextBlock Text="⚠" FontSize="16" Margin="0,0,10,0"/>
-                        <TextBlock Text="This will replace existing lip sync animations on this line." 
+                        <TextBlock Text="{Binding GenerationWarningText}"
                                    TextWrapping="Wrap"/>
                     </StackPanel>
                 </Border>

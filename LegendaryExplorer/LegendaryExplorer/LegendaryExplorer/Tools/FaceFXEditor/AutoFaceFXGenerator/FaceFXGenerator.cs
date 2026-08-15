@@ -59,6 +59,18 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
         /// Emotion to apply to the animation
         /// </summary>
         public EmotionType Emotion { get; set; } = EmotionType.None;
+
+        /// <summary>
+        /// Exact layered family or rig preset selected from the audited LE3 catalog.
+        /// Takes precedence over the legacy Emotion value.
+        /// </summary>
+        public FaceFXEmotionChoice EmotionChoice { get; set; }
+
+        /// <summary>
+        /// Adds or replaces only the selected emotion curves and preserves every
+        /// existing lip-sync, blink, gaze, and gesture curve on the line.
+        /// </summary>
+        public bool AddEmotionToExistingLine { get; set; }
         
         /// <summary>
         /// Intensity of the emotion (0-1) - higher values create more visible expressions
@@ -117,37 +129,46 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
                 if (_faceFX == null || _line == null)
                     return false;
 
-                // Analyze audio for duration and amplitude
+                // Analyze audio for duration and amplitude. Emotion-only edits can
+                // also use the existing line's timeline when no audio export is linked.
                 _audioDuration = AudioAnalyzer.GetAudioDuration(_audioExport);
                 if (_audioDuration <= 0)
                 {
-                    // Estimate duration from text if audio analysis fails
-                    _audioDuration = EstimateDurationFromText(_tlkText);
+                    float existingDuration = GetExistingLineDuration();
+                    _audioDuration = _options.AddEmotionToExistingLine && existingDuration > 0f
+                        ? existingDuration
+                        : EstimateDurationFromText(_tlkText);
                 }
 
-                // ALWAYS analyze audio amplitude - this is critical for natural lip sync
-                if (_audioExport != null)
+                if (_options.UseAudioAmplitude && _audioExport != null)
                 {
                     _amplitudeData = AudioAnalyzer.AnalyzeAmplitude(_audioExport);
+                    AlignAmplitudeTimeline();
                 }
                 else
                 {
                     _amplitudeData = new List<AmplitudeData>();
                 }
 
-                // Clear existing lip sync animations
-                ClearLipSyncAnimations();
-
-                if (_options.Species == FaceFXSpecies.Quarian)
+                FaceFXEmotionChoice selectedEmotion = GetSelectedEmotionChoice();
+                if (_options.AddEmotionToExistingLine)
                 {
-                    GenerateQuarianReferenceAnimations();
+                    if (selectedEmotion == null || selectedEmotion.IsNone || _options.EmotionIntensity <= 0f)
+                    {
+                        LastError = "Select an emotion before using emotion-only mode.";
+                        return false;
+                    }
+
+                    GenerateEmotionAnimation(selectedEmotion);
                     LastError = null;
                     return true;
                 }
 
-                // ALWAYS generate text-based phonemes - this is the foundation
+                // Clear existing lip sync animations
+                ClearLipSyncAnimations();
+
                 List<PhonemeData> textPhonemes = null;
-                if (!string.IsNullOrWhiteSpace(_tlkText))
+                if (_options.UseTextFallback && !string.IsNullOrWhiteSpace(_tlkText))
                 {
                     textPhonemes = TextToPhonemeAnalyzer.AnalyzeText(_tlkText, _audioDuration);
                     _phonemes = textPhonemes;
@@ -161,8 +182,12 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
                 }
                 else
                 {
-                    LastError = "No text provided for lip sync generation.";
-                    return false;
+                    bool hasImportedCurves = _options.FxaData?.Animations?.Count > 0;
+                    if (!hasImportedCurves)
+                    {
+                        LastError = "No text or imported FXA/FXT curves were provided for lip sync generation.";
+                        return false;
+                    }
                 }
 
                 // If we have FXA data, merge it in (it can enhance the generated animations)
@@ -190,9 +215,9 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
                 }
 
                 // Generate emotion expression
-                if (_options.Emotion != EmotionType.None && _options.EmotionIntensity > 0)
+                if (selectedEmotion != null && !selectedEmotion.IsNone && _options.EmotionIntensity > 0)
                 {
-                    GenerateEmotionAnimation();
+                    GenerateEmotionAnimation(selectedEmotion);
                 }
 
                 LastError = null;
@@ -407,14 +432,15 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
         private void MergeFxaAnimations(FxaAnimationData fxaData)
         {
             if (fxaData == null) return;
+            HashSet<string> lipSyncNames = PhonemeToVisemeMap.GetAllLipSyncVisemes();
 
             foreach (var kvp in fxaData.Animations)
             {
                 string animName = kvp.Key;
                 FxaAnimation fxaAnim = kvp.Value;
 
-                // Skip non-lip-sync animations or empty animations
-                if (!animName.StartsWith("m_") || fxaAnim.Keys.Count == 0)
+                // Imported UDK curves are authoritative for any audited rig lip control.
+                if (!lipSyncNames.Contains(animName) || fxaAnim.Keys.Count == 0)
                     continue;
 
                 // Check if the FXA animation has any meaningful (non-zero) values
@@ -431,7 +457,8 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
                 for (int i = 0; i < _line.AnimationNames.Count; i++)
                 {
                     int nameIdx = _line.AnimationNames[i];
-                    if (nameIdx >= 0 && nameIdx < _faceFX.Names.Count && _faceFX.Names[nameIdx] == animName)
+                    if (nameIdx >= 0 && nameIdx < _faceFX.Names.Count &&
+                        string.Equals(_faceFX.Names[nameIdx], animName, StringComparison.OrdinalIgnoreCase))
                     {
                         existingIndex = i;
                         break;
@@ -441,19 +468,13 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
                 // Convert FXA keys to control points
                 var points = new List<FaceFXControlPoint>();
                 
-                float fxaMinTime = fxaAnim.Keys.Min(k => k.Time);
-                float fxaMaxTime = fxaAnim.Keys.Max(k => k.Time);
-                float fxaDuration = fxaMaxTime - fxaMinTime;
-                float timeScale = fxaDuration > 0.01f ? _audioDuration / fxaDuration : 1.0f;
-
                 foreach (var key in fxaAnim.Keys)
                 {
-                    float scaledTime = (key.Time - fxaMinTime) * timeScale;
+                    // Preserve UDK/FaceFX's absolute key times, including preroll.
+                    // Rescaling every curve by its own min/max caused track-to-track
+                    // desynchronization and made timing depend on key distribution.
+                    float scaledTime = key.Time;
                     float scaledValue = key.Value * _options.LipSyncIntensity;
-                    
-                    // Modulate with audio amplitude
-                    float ampMod = GetAmplitudeAtTime(scaledTime);
-                    scaledValue *= Math.Max(0.7f, ampMod); // At least 70% of the value
 
                     points.Add(new FaceFXControlPoint
                     {
@@ -607,23 +628,20 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
             if (_amplitudeData == null || _amplitudeData.Count == 0)
                 return 1.0f; // Default to full intensity if no amplitude data
 
-            // Find the two closest samples for interpolation
-            AmplitudeData before = null;
-            AmplitudeData after = null;
-
-            foreach (var amp in _amplitudeData)
+            // Binary search keeps lookup cost local/constant as lines grow.
+            int low = 0;
+            int high = _amplitudeData.Count - 1;
+            while (low <= high)
             {
-                if (amp.Time <= time)
-                {
-                    if (before == null || amp.Time > before.Time)
-                        before = amp;
-                }
-                if (amp.Time >= time)
-                {
-                    if (after == null || amp.Time < after.Time)
-                        after = amp;
-                }
+                int middle = low + (high - low) / 2;
+                if (_amplitudeData[middle].Time < time)
+                    low = middle + 1;
+                else
+                    high = middle - 1;
             }
+
+            AmplitudeData after = low < _amplitudeData.Count ? _amplitudeData[low] : null;
+            AmplitudeData before = low > 0 ? _amplitudeData[low - 1] : after;
 
             // Interpolate between the two samples
             float amplitude;
@@ -650,8 +668,7 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
                 amplitude = before.NormalizedAmplitude + t * (after.NormalizedAmplitude - before.NormalizedAmplitude);
             }
 
-            // Use full amplitude for maximum mouth movement
-            return Math.Max(0.8f, amplitude);
+            return Math.Clamp(amplitude, 0f, 1f);
         }
 
         /// <summary>
@@ -765,6 +782,26 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
             return Math.Max(0.5f, estimatedDuration); // Minimum 0.5 seconds
         }
 
+        private float GetExistingLineDuration() => _line?.Points?.Select(point => point.time)
+            .DefaultIfEmpty(0f).Max() ?? 0f;
+
+        private void AlignAmplitudeTimeline()
+        {
+            if (_amplitudeData == null || _amplitudeData.Count < 2 || _audioDuration <= 0f)
+                return;
+
+            float decodedDuration = _amplitudeData[^1].Time + 0.02f;
+            if (decodedDuration <= 0f)
+                return;
+
+            float scale = _audioDuration / decodedDuration;
+            if (Math.Abs(scale - 1f) < 0.001f)
+                return;
+
+            foreach (AmplitudeData sample in _amplitudeData)
+                sample.Time *= scale;
+        }
+
         private void ClearLipSyncAnimations()
         {
             // Safety checks
@@ -773,7 +810,9 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
             if (_line.NumKeys == null || _line.Points == null)
                 return;
 
-            // Remove all m_ prefixed animations (lip sync) from the line
+            // Remove known lip-sync controls for every audited rig. Non-human rigs
+            // do not use the m_ prefix, so prefix-only removal left stale curves behind.
+            HashSet<string> lipSyncNames = PhonemeToVisemeMap.GetAllLipSyncVisemes();
             var indicesToRemove = new List<int>();
             for (int i = 0; i < _line.AnimationNames.Count; i++)
             {
@@ -781,7 +820,7 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
                 if (nameIndex >= 0 && nameIndex < _faceFX.Names.Count)
                 {
                     string animName = _faceFX.Names[nameIndex];
-                    if (animName.StartsWith("m_"))
+                    if (animName.StartsWith("m_", StringComparison.OrdinalIgnoreCase) || lipSyncNames.Contains(animName))
                     {
                         indicesToRemove.Add(i);
                     }
@@ -818,7 +857,7 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
         /// </summary>
         private void ImportFxaAnimations(FxaAnimationData fxaData)
         {
-            float duration = Math.Max(_audioDuration, 1.0f);
+            float duration = Math.Max(_audioDuration, 0.02f);
             float intensityScale = _options.LipSyncIntensity;
 
             foreach (var kvp in fxaData.Animations)
@@ -884,7 +923,7 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
         private void GenerateQuarianReferenceAnimations()
         {
             var referenceData = QuarianReferenceFaceFx.Value;
-            float duration = Math.Max(_audioDuration, 1.0f);
+            float duration = Math.Max(_audioDuration, 0.02f);
             float referenceDuration = referenceData.Animations.Values
                 .SelectMany(anim => anim.Keys)
                 .Select(key => key.Time)
@@ -941,7 +980,7 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
 
         private void GenerateLipSyncAnimations(List<PhonemeData> phonemes)
         {
-            float duration = Math.Max(_audioDuration, 1.0f);
+            float duration = Math.Max(_audioDuration, 0.02f);
             
             // === CORRECT APPROACH ===
             // Text determines WHICH animations (phonemes -> visemes)
@@ -956,6 +995,12 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
             
             // Step 2: Map text phonemes to audio timing
             var timedPhonemes = MapPhonemesToAudioTiming(phonemes, audioSegments, duration);
+            _phonemes = timedPhonemes.Select(phoneme => new PhonemeData
+            {
+                Phoneme = phoneme.Phoneme,
+                StartTime = phoneme.StartTime,
+                Duration = phoneme.Duration
+            }).ToList();
             
             // Step 3: Generate viseme curves based on timed phonemes
             // Use a sampled curve approach for smoother animation
@@ -977,22 +1022,16 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
                 if (!phonemeMap.TryGetValue(timedPhoneme.Phoneme, out var mappings))
                     continue;
 
-                float peakTime = timedPhoneme.StartTime + timedPhoneme.Duration * 0.5f;
                 float intensity = timedPhoneme.Intensity;
-                
-                // Calculate envelope parameters - faster attack/release for snappier animation
-                float attackStart = timedPhoneme.StartTime;
-                float attackEnd = timedPhoneme.StartTime + timedPhoneme.Duration * 0.25f;
-                float releaseStart = timedPhoneme.StartTime + timedPhoneme.Duration * 0.75f;
-                float releaseEnd = timedPhoneme.StartTime + timedPhoneme.Duration;
                 
                 // Add contribution to each mapped viseme
                 foreach (var mapping in mappings)
                 {
-                    if (!visemeSamples.ContainsKey(mapping.VisemeName))
+                    string visemeName = PhonemeToVisemeMap.CanonicalizeVisemeName(mapping.VisemeName, _options.Species);
+                    if (!visemeSamples.ContainsKey(visemeName))
                         continue;
                     
-                    float[] samples = visemeSamples[mapping.VisemeName];
+                    float[] samples = visemeSamples[visemeName];
                     
                     // Full weight for proper mouth opening
                     float peakWeight = mapping.Weight * intensity * _options.LipSyncIntensity;
@@ -1001,37 +1040,7 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
                     if (peakWeight < 0.02f)
                         continue;
                     
-                    // Add this phoneme's contribution to the curve using a smooth envelope
-                    for (int i = 0; i < numSamples; i++)
-                    {
-                        float t = i / sampleRate;
-                        
-                        if (t < attackStart || t > releaseEnd)
-                            continue;
-                        
-                        float weight = 0f;
-                        
-                        if (t < attackEnd)
-                        {
-                            // Attack phase - smooth ramp up
-                            float attackT = (t - attackStart) / (attackEnd - attackStart);
-                            weight = peakWeight * SmoothStep(attackT);
-                        }
-                        else if (t < releaseStart)
-                        {
-                            // Sustain phase - hold at peak
-                            weight = peakWeight;
-                        }
-                        else
-                        {
-                            // Release phase - smooth ramp down
-                            float releaseT = (t - releaseStart) / (releaseEnd - releaseStart);
-                            weight = peakWeight * (1f - SmoothStep(releaseT));
-                        }
-                        
-                        // Use max blending (like FaceFX does)
-                        samples[i] = Math.Max(samples[i], weight);
-                    }
+                    FaceFXGenerationMath.AddLocalVisemeEnvelope(samples, sampleRate, timedPhoneme, peakWeight);
                 }
             }
 
@@ -1040,12 +1049,9 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
             {
                 var samples = visemeSamples[viseme];
 
-                // Apply smoothing to reduce jitter - more smoothing for m_Open which gets many triggers
-                int smoothingPasses = viseme == "m_Open" ? 3 : 1;
-                for (int pass = 0; pass < smoothingPasses; pass++)
-                {
-                    SmoothSamplesInPlace(samples);
-                }
+                // One symmetric, fixed-time pass. Repeated in-place passes on m_Open
+                // progressively flattened local peaks on phoneme-dense lines.
+                FaceFXGenerationMath.SmoothLocally(samples);
 
                 // Ramp the tail end of the curve to zero so the mouth closes
                 // at the end of the line (prevents open-mouth freeze).
@@ -1061,6 +1067,9 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
                 }
                 // Ensure the very last sample is exactly zero
                 samples[numSamples - 1] = 0f;
+
+                if (!samples.Any(value => value > 0.005f))
+                    continue;
 
                 var keyframes = ConvertSamplesToKeyframes(samples, sampleRate, duration);
 
@@ -1105,83 +1114,36 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
         /// </summary>
         private List<FaceFXControlPoint> ConvertSamplesToKeyframes(float[] samples, float sampleRate, float duration)
         {
-            var keyframes = new List<FaceFXControlPoint>();
-
             if (samples.Length < 2)
             {
-                keyframes.Add(new FaceFXControlPoint { time = 0f, weight = 0f, inTangent = 0f, leaveTangent = 0f });
-                keyframes.Add(new FaceFXControlPoint { time = duration, weight = 0f, inTangent = 0f, leaveTangent = 0f });
-                return keyframes;
-            }
-
-            // Always start at 0
-            keyframes.Add(new FaceFXControlPoint { time = 0f, weight = 0f, inTangent = 0f, leaveTangent = 0f });
-
-            float sampleInterval = 1f / sampleRate;
-
-            // Allow keyframes as close as one sample apart so peaks/valleys are never skipped
-            float minKeyframeInterval = sampleInterval;
-            const float significanceThreshold = 0.015f;
-            // Force a keyframe at least this often when the signal is non-zero
-            const float maxGap = 0.12f;
-
-            float lastKeyframeTime = 0f;
-            float lastKeyframeWeight = 0f;
-
-            for (int i = 1; i < samples.Length - 1; i++)
-            {
-                float time = i / sampleRate;
-                float weight = samples[i];
-                float prevWeight = samples[i - 1];
-                float nextWeight = samples[i + 1];
-
-                float elapsed = time - lastKeyframeTime;
-                bool hasEnoughTime = elapsed >= minKeyframeInterval;
-
-                if (!hasEnoughTime)
-                    continue;
-
-                // Detect important curve features
-                bool isPeak = prevWeight < weight && weight >= nextWeight && weight > 0.01f;
-                bool isValley = prevWeight > weight && weight <= nextWeight;
-                bool isSignificantChange = Math.Abs(weight - lastKeyframeWeight) > significanceThreshold;
-                // Transitions to/from zero should always be captured
-                bool isZeroCrossing = (lastKeyframeWeight < 0.005f && weight > 0.01f) ||
-                                      (lastKeyframeWeight > 0.01f && weight < 0.005f);
-                // Enforce maximum gap when signal is active
-                bool gapTooLarge = elapsed >= maxGap && weight > 0.005f;
-
-                if (isPeak || isValley || isSignificantChange || isZeroCrossing || gapTooLarge)
+                return new List<FaceFXControlPoint>
                 {
-                    keyframes.Add(new FaceFXControlPoint
-                    {
-                        time = time,
-                        weight = weight,
-                        inTangent = 0f,
-                        leaveTangent = 0f
-                    });
-                    lastKeyframeTime = time;
-                    lastKeyframeWeight = weight;
-                }
+                    new() { time = 0f, weight = 0f, inTangent = 0f, leaveTangent = 0f },
+                    new() { time = duration, weight = 0f, inTangent = 0f, leaveTangent = 0f }
+                };
             }
 
-            // Always end at 0
-            keyframes.Add(new FaceFXControlPoint { time = duration, weight = 0f, inTangent = 0f, leaveTangent = 0f });
-
-            return keyframes;
+            List<int> indices = FaceFXGenerationMath.SelectKeyframeIndices(samples, sampleRate);
+            return indices.Select(index => new FaceFXControlPoint
+            {
+                time = index == samples.Length - 1 ? duration : index / sampleRate,
+                weight = index is 0 || index == samples.Length - 1 ? 0f : samples[index],
+                inTangent = 0f,
+                leaveTangent = 0f
+            }).ToList();
         }
 
         /// <summary>
         /// Analyze audio to find speech segments with amplitude information
         /// </summary>
-        private List<AudioSegment> AnalyzeAudioForSpeechSegments(float duration)
+        private List<FaceFXSpeechSegment> AnalyzeAudioForSpeechSegments(float duration)
         {
-            var segments = new List<AudioSegment>();
+            var segments = new List<FaceFXSpeechSegment>();
             
             if (_amplitudeData == null || _amplitudeData.Count < 2)
             {
                 // No audio data - create one segment spanning the whole duration
-                segments.Add(new AudioSegment
+                segments.Add(new FaceFXSpeechSegment
                 {
                     StartTime = 0f,
                     EndTime = duration,
@@ -1230,7 +1192,7 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
                         // End of speech segment (long enough silence)
                         if (lastSpeechTime - segmentStart >= minSegmentDuration)
                         {
-                            segments.Add(new AudioSegment
+                            segments.Add(new FaceFXSpeechSegment
                             {
                                 StartTime = segmentStart,
                                 EndTime = lastSpeechTime,
@@ -1246,7 +1208,7 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
             // Close final segment if still in speech
             if (inSpeech && ampCount > 0 && lastSpeechTime - segmentStart >= minSegmentDuration)
             {
-                segments.Add(new AudioSegment
+                segments.Add(new FaceFXSpeechSegment
                 {
                     StartTime = segmentStart,
                     EndTime = Math.Min(lastSpeechTime + 0.05f, duration),
@@ -1258,7 +1220,7 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
             // If no segments found, create one spanning the whole duration
             if (segments.Count == 0)
             {
-                segments.Add(new AudioSegment
+                segments.Add(new FaceFXSpeechSegment
                 {
                     StartTime = 0f,
                     EndTime = duration,
@@ -1275,67 +1237,11 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
         /// Every phoneme is guaranteed to be placed — they are distributed
         /// proportionally across segments by duration.
         /// </summary>
-        private List<TimedPhoneme> MapPhonemesToAudioTiming(List<PhonemeData> phonemes, List<AudioSegment> audioSegments, float duration)
+        private List<FaceFXTimedPhoneme> MapPhonemesToAudioTiming(List<PhonemeData> phonemes,
+            List<FaceFXSpeechSegment> audioSegments, float duration)
         {
-            var timedPhonemes = new List<TimedPhoneme>();
-
-            if (phonemes.Count == 0)
-                return timedPhonemes;
-
-            // Calculate total speech duration from audio segments
-            float totalSpeechTime = audioSegments.Sum(s => s.EndTime - s.StartTime);
-            if (totalSpeechTime <= 0)
-                totalSpeechTime = duration;
-
-            // Distribute ALL phonemes proportionally across segments.
-            // Each segment gets a share of phonemes proportional to its duration.
-            int phonemeIndex = 0;
-            int totalPhonemes = phonemes.Count;
-
-            for (int s = 0; s < audioSegments.Count; s++)
-            {
-                var segment = audioSegments[s];
-                float segmentDuration = segment.EndTime - segment.StartTime;
-
-                int phonemesInSegment;
-                if (s == audioSegments.Count - 1)
-                {
-                    // Last segment gets all remaining phonemes
-                    phonemesInSegment = totalPhonemes - phonemeIndex;
-                }
-                else
-                {
-                    // Proportional share, at least 1 if there are phonemes left
-                    phonemesInSegment = (int)Math.Round((double)totalPhonemes * segmentDuration / totalSpeechTime);
-                    phonemesInSegment = Math.Max(1, Math.Min(phonemesInSegment, totalPhonemes - phonemeIndex));
-                }
-
-                if (phonemesInSegment <= 0)
-                    continue;
-
-                float phonemeDuration = segmentDuration / phonemesInSegment;
-                phonemeDuration = Math.Max(phonemeDuration, 0.04f);
-
-                for (int i = 0; i < phonemesInSegment && phonemeIndex < totalPhonemes; i++)
-                {
-                    var phoneme = phonemes[phonemeIndex];
-
-                    float localTime = segment.StartTime + i * phonemeDuration + phonemeDuration * 0.5f;
-                    float localAmplitude = GetAmplitudeAtTime(localTime);
-
-                    timedPhonemes.Add(new TimedPhoneme
-                    {
-                        Phoneme = phoneme.Phoneme,
-                        StartTime = segment.StartTime + i * phonemeDuration,
-                        Duration = phonemeDuration,
-                        Intensity = Math.Max(0.9f, localAmplitude)
-                    });
-
-                    phonemeIndex++;
-                }
-            }
-
-            return timedPhonemes;
+            return FaceFXGenerationMath.MapPhonemesToSpeech(phonemes, audioSegments, duration,
+                _options.UseAudioAmplitude ? GetAmplitudeAtTime : _ => 1f);
         }
 
         /// <summary>
@@ -1374,28 +1280,6 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
             }
             
             return result;
-        }
-
-        /// <summary>
-        /// Audio segment with amplitude information
-        /// </summary>
-        private class AudioSegment
-        {
-            public float StartTime { get; set; }
-            public float EndTime { get; set; }
-            public float PeakAmplitude { get; set; }
-            public float AverageAmplitude { get; set; }
-        }
-
-        /// <summary>
-        /// Phoneme with timing derived from audio
-        /// </summary>
-        private class TimedPhoneme
-        {
-            public string Phoneme { get; set; }
-            public float StartTime { get; set; }
-            public float Duration { get; set; }
-            public float Intensity { get; set; }
         }
 
         /// <summary>
@@ -1451,7 +1335,7 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
             var points = new List<FaceFXControlPoint>();
             points.Add(new FaceFXControlPoint { time = 0f, weight = 0f, inTangent = 0f, leaveTangent = 0f });
 
-            float duration = Math.Max(_audioDuration, 1.0f);
+            float duration = Math.Max(_audioDuration, 0.02f);
             
             if (_phonemes != null && _phonemes.Count > 0)
             {
@@ -1509,7 +1393,7 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
         /// </summary>
         private void GenerateJawPositionAnimations()
         {
-            float duration = Math.Max(_audioDuration, 1.0f);
+            float duration = Math.Max(_audioDuration, 0.02f);
             
             var jawUpPoints = new List<FaceFXControlPoint>();
             var jawDownPoints = new List<FaceFXControlPoint>();
@@ -1594,7 +1478,7 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
             var points = new List<FaceFXControlPoint>();
             points.Add(new FaceFXControlPoint { time = 0f, weight = 0f, inTangent = 0f, leaveTangent = 0f });
 
-            float duration = Math.Max(_audioDuration, 1.0f);
+            float duration = Math.Max(_audioDuration, 0.02f);
             
             // Generate blinks at random intervals
             float averageBlinkInterval = 1f / _options.BlinkFrequency;
@@ -1603,11 +1487,14 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
 
             while (currentTime < duration - 0.2f)
             {
-                // Blink - single peak keyframe at center
+                // A blink is a local zero/peak/zero pulse. A lone peak between the
+                // endpoints interpolated the eyelids slowly across several seconds.
                 float blinkDuration = 0.15f + (float)random.NextDouble() * 0.1f;
                 float peakTime = currentTime + blinkDuration * 0.5f;
 
+                points.Add(new FaceFXControlPoint { time = currentTime, weight = 0f, inTangent = 0f, leaveTangent = 0f });
                 points.Add(new FaceFXControlPoint { time = peakTime, weight = 1f, inTangent = 0f, leaveTangent = 0f });
+                points.Add(new FaceFXControlPoint { time = currentTime + blinkDuration, weight = 0f, inTangent = 0f, leaveTangent = 0f });
 
                 // Next blink with some randomness
                 currentTime += averageBlinkInterval * (0.7f + (float)random.NextDouble() * 0.6f);
@@ -1624,7 +1511,7 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
             var points = new List<FaceFXControlPoint>();
             points.Add(new FaceFXControlPoint { time = 0f, weight = 0f, inTangent = 0f, leaveTangent = 0f });
 
-            float duration = Math.Max(_audioDuration, 1.0f);
+            float duration = Math.Max(_audioDuration, 0.02f);
             
             // Use phoneme data to raise eyebrows on emphasized sounds
             if (_phonemes != null && _phonemes.Count > 0)
@@ -1648,8 +1535,7 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
                         float weight = 0.4f * _options.LipSyncIntensity;
                         float centerTime = phoneme.StartTime + phoneme.Duration * 0.5f;
                         
-                        // Single keyframe
-                        points.Add(new FaceFXControlPoint { time = centerTime, weight = weight, inTangent = 0f, leaveTangent = 0f });
+                        AddLocalPulse(points, centerTime, weight, duration, 0.12f, 0.16f);
                     }
                     
                     phonemeIndex++;
@@ -1664,7 +1550,7 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
                 while (currentTime < duration - 0.5f)
                 {
                     float weight = (0.3f + (float)random.NextDouble() * 0.3f) * _options.LipSyncIntensity;
-                    points.Add(new FaceFXControlPoint { time = currentTime, weight = weight, inTangent = 0f, leaveTangent = 0f });
+                    AddLocalPulse(points, currentTime, weight, duration, 0.12f, 0.16f);
                     currentTime += 2.0f + (float)random.NextDouble() * 2.0f;
                 }
             }
@@ -1677,7 +1563,7 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
 
         private void GenerateHeadMovement()
         {
-            float duration = Math.Max(_audioDuration, 1.0f);
+            float duration = Math.Max(_audioDuration, 0.02f);
             var random = new Random(456);
             
             foreach (var axis in new[] { "Emphasis_Head_Pitch", "Emphasis_Head_Yaw" })
@@ -1699,7 +1585,7 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
                         {
                             float weight = ((float)random.NextDouble() * 0.2f - 0.1f) * _options.LipSyncIntensity;
                             float centerTime = phoneme.StartTime + phoneme.Duration * 0.5f;
-                            points.Add(new FaceFXControlPoint { time = centerTime, weight = weight, inTangent = 0f, leaveTangent = 0f });
+                            AddLocalPulse(points, centerTime, weight, duration, 0.20f, 0.24f);
                         }
                     }
                 }
@@ -1712,7 +1598,7 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
                     while (currentTime < duration - 0.3f)
                     {
                         float weight = ((float)random.NextDouble() * 0.2f - 0.1f) * _options.LipSyncIntensity;
-                        points.Add(new FaceFXControlPoint { time = currentTime, weight = weight, inTangent = 0f, leaveTangent = 0f });
+                        AddLocalPulse(points, currentTime, weight, duration, 0.20f, 0.24f);
                         currentTime += interval + (float)random.NextDouble() * 0.4f;
                     }
                 }
@@ -1725,12 +1611,134 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
             }
         }
 
+        private static void AddLocalPulse(List<FaceFXControlPoint> points, float centerTime,
+            float weight, float duration, float lead, float trail)
+        {
+            points.Add(new FaceFXControlPoint
+            {
+                time = Math.Max(0f, centerTime - lead), weight = 0f, inTangent = 0f, leaveTangent = 0f
+            });
+            points.Add(new FaceFXControlPoint
+            {
+                time = Math.Clamp(centerTime, 0f, duration), weight = weight, inTangent = 0f, leaveTangent = 0f
+            });
+            points.Add(new FaceFXControlPoint
+            {
+                time = Math.Min(duration, centerTime + trail), weight = 0f, inTangent = 0f, leaveTangent = 0f
+            });
+        }
+
         /// <summary>
         /// Generates emotion expression animations
         /// </summary>
+        private FaceFXEmotionChoice GetSelectedEmotionChoice()
+        {
+            if (_options.EmotionChoice != null)
+                return _options.EmotionChoice;
+
+            string layeredFamily = _options.Emotion switch
+            {
+                EmotionType.Anger => "Anger",
+                EmotionType.Disgust => "Disgust",
+                EmotionType.Fear => "Fear",
+                EmotionType.Happy => "Joy",
+                EmotionType.Sad => "Sadness",
+                EmotionType.Contempt => "Disdain",
+                EmotionType.Determined => "Stern",
+                EmotionType.Worried => "Concern",
+                _ => null
+            };
+            if (layeredFamily != null && FaceFXEmotionCatalog.SupportsLayeredEmotions(_options.Species))
+            {
+                return new FaceFXEmotionChoice
+                {
+                    DisplayName = $"Layered: {layeredFamily}",
+                    LayeredFamily = layeredFamily
+                };
+            }
+
+            if (_options.Emotion == EmotionType.Surprise)
+            {
+                return new FaceFXEmotionChoice
+                {
+                    DisplayName = "Preset: Neutral: Shock",
+                    PresetAnimation = "E_Neutral_Shock"
+                };
+            }
+
+            return FaceFXEmotionCatalog.GetForSpecies(_options.Species).FirstOrDefault();
+        }
+
+        private void GenerateEmotionAnimation(FaceFXEmotionChoice emotion)
+        {
+            float duration = Math.Max(_audioDuration, 0.02f);
+            float intensity = Math.Clamp(_options.EmotionIntensity, 0f, 1f);
+            List<FaceFXSpeechSegment> segments = AnalyzeAudioForSpeechSegments(duration);
+            float speechStart = Math.Clamp(segments.FirstOrDefault()?.StartTime ?? 0f, 0f, duration);
+            float speechEnd = Math.Clamp(segments.LastOrDefault()?.EndTime ?? duration, speechStart, duration);
+            float preRoll = Math.Max(-0.272f, speechStart - 0.272f);
+
+            if (!emotion.IsLayered)
+            {
+                // High-level full-face presets in shipped lines are generally sparse,
+                // constant curves spanning the line (often beginning in preroll).
+                float presetWeight = 0.8f * intensity;
+                AddAnimation(emotion.PresetAnimation, new List<FaceFXControlPoint>
+                {
+                    new() { time = preRoll, weight = presetWeight, inTangent = 0f, leaveTangent = 0f },
+                    new() { time = duration, weight = presetWeight, inTangent = 0f, leaveTangent = 0f }
+                });
+                return;
+            }
+
+            foreach ((string layer, float layerWeight) in new[]
+                     {
+                         ("WB", 0.469f), ("S", 1.0f), ("B", 0.349f), ("Y", 0.349f)
+                     })
+            {
+                // UDK/BioWare output selects one variant for each face layer. It does
+                // not stack variants 1 and 2 of every layer as the old generator did.
+                int variant = 1 + StableVariant(_line.NameAsString, emotion.LayeredFamily, layer) % 3;
+                string animationName = $"E_{layer}_{emotion.LayeredFamily}{variant}";
+                float peak = layerWeight * intensity;
+                float middle = speechStart + (speechEnd - speechStart) * 0.55f;
+                float release = Math.Max(middle, speechEnd - 0.12f);
+                var points = new List<FaceFXControlPoint>
+                {
+                    new() { time = preRoll, weight = 0f, inTangent = 0f, leaveTangent = 0f },
+                    new() { time = speechStart, weight = peak * 0.85f, inTangent = 0f, leaveTangent = 0f },
+                    new() { time = middle, weight = peak, inTangent = 0f, leaveTangent = 0f },
+                    new() { time = release, weight = peak * 0.92f, inTangent = 0f, leaveTangent = 0f },
+                    new() { time = duration, weight = 0f, inTangent = 0f, leaveTangent = 0f }
+                };
+
+                // Very short lines can collapse envelope landmarks onto one time.
+                points = points.GroupBy(point => point.time)
+                    .Select(group => group.OrderByDescending(point => point.weight).First())
+                    .OrderBy(point => point.time)
+                    .ToList();
+                AddAnimation(animationName, points);
+            }
+        }
+
+        private static int StableVariant(string lineName, string family, string layer)
+        {
+            unchecked
+            {
+                uint hash = 2166136261;
+                foreach (char character in $"{lineName}|{family}|{layer}")
+                {
+                    hash ^= character;
+                    hash *= 16777619;
+                }
+                return (int)(hash & 0x7fffffff);
+            }
+        }
+
+        [Obsolete("Use the audited FaceFXEmotionChoice overload.")]
         private void GenerateEmotionAnimation()
         {
-            float duration = Math.Max(_audioDuration, 1.0f);
+            float duration = Math.Max(_audioDuration, 0.02f);
             float intensity = _options.EmotionIntensity;
 
             // Define emotion animation mappings
@@ -1940,6 +1948,7 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
 
         private void AddAnimation(string name, List<FaceFXControlPoint> points)
         {
+            name = PhonemeToVisemeMap.CanonicalizeVisemeName(name);
             // Initialize lists if null
             if (_line.AnimationNames == null)
                 _line.AnimationNames = new List<int>();
@@ -1953,7 +1962,8 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
             for (int i = 0; i < _line.AnimationNames.Count; i++)
             {
                 int nameIdx = _line.AnimationNames[i];
-                if (nameIdx >= 0 && nameIdx < _faceFX.Names.Count && _faceFX.Names[nameIdx] == name)
+                if (nameIdx >= 0 && nameIdx < _faceFX.Names.Count &&
+                    string.Equals(_faceFX.Names[nameIdx], name, StringComparison.OrdinalIgnoreCase))
                 {
                     existingIndex = i;
                     break;
@@ -1990,7 +2000,8 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
             else
             {
                 // Add new animation
-                int nameIndex = _faceFX.Names.IndexOf(name);
+                int nameIndex = _faceFX.Names.FindIndex(existingName =>
+                    string.Equals(existingName, name, StringComparison.OrdinalIgnoreCase));
                 if (nameIndex < 0)
                 {
                     nameIndex = _faceFX.Names.Count;

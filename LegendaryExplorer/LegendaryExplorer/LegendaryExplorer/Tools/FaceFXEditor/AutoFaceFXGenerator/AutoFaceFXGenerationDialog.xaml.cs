@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Windows;
 using System.Windows.Media;
@@ -144,23 +145,16 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
             set { _blinkFrequency = value; OnPropertyChanged(); }
         }
 
-        // Base emotion categories - the code will apply appropriate FaceFX animations based on selected emotion
-        public List<string> AvailableEmotions { get; } = new List<string>
+        private IReadOnlyList<FaceFXEmotionChoice> _availableEmotions =
+            FaceFXEmotionCatalog.GetForSpecies(FaceFXSpecies.HumanFemale);
+        public IReadOnlyList<FaceFXEmotionChoice> AvailableEmotions
         {
-            "None",
-            "Anger",
-            "Disgust",
-            "Fear",
-            "Happy",
-            "Sad",
-            "Surprise",
-            "Contempt",
-            "Determined",
-            "Worried"
-        };
+            get => _availableEmotions;
+            private set { _availableEmotions = value; OnPropertyChanged(); }
+        }
 
-        private string _selectedEmotion = "None";
-        public string SelectedEmotion
+        private FaceFXEmotionChoice _selectedEmotion;
+        public FaceFXEmotionChoice SelectedEmotion
         {
             get => _selectedEmotion;
             set { _selectedEmotion = value; OnPropertyChanged(); }
@@ -172,6 +166,22 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
             get => _emotionIntensity;
             set { _emotionIntensity = value; OnPropertyChanged(); }
         }
+
+        private bool _addEmotionToExistingLine;
+        public bool AddEmotionToExistingLine
+        {
+            get => _addEmotionToExistingLine;
+            set
+            {
+                _addEmotionToExistingLine = value;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(GenerationWarningText));
+            }
+        }
+
+        public string GenerationWarningText => AddEmotionToExistingLine
+            ? "Only the selected emotion will be added or replaced; all existing line animation is preserved."
+            : "Existing lip-sync curves on this line will be replaced.";
 
         // Species selection
         public List<string> AvailableSpecies { get; } = new List<string>
@@ -192,14 +202,22 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
             "Batarian",
             "Vorcha",
             "Prothean",
-            "Yahg"
+            "Yahg",
+            "Alien B",
+            "EDI",
+            "Shepard"
         };
 
         private string _selectedSpecies = "Human Female";
         public string SelectedSpecies
         {
             get => _selectedSpecies;
-            set { _selectedSpecies = value; OnPropertyChanged(); }
+            set
+            {
+                _selectedSpecies = value;
+                OnPropertyChanged();
+                RefreshAvailableEmotions();
+            }
         }
 
         // Result
@@ -222,6 +240,7 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
             InitializeComponent();
             CustomWindowChrome.ApplyCustomChrome(this);
             DataContext = this;
+            SelectedEmotion = AvailableEmotions[0];
 
             if (owner != null)
             {
@@ -347,11 +366,11 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
         {
             try
             {
-                // Parse the selected emotion
-                EmotionType emotion = EmotionType.None;
-                if (!string.IsNullOrEmpty(SelectedEmotion) && SelectedEmotion != "None")
+                if (AddEmotionToExistingLine && (SelectedEmotion == null || SelectedEmotion.IsNone))
                 {
-                    Enum.TryParse(SelectedEmotion, out emotion);
+                    MessageBox.Show("Select an emotion to add to the existing line.", "Emotion Required",
+                        MessageBoxButton.OK, MessageBoxImage.Information);
+                    return;
                 }
 
                 // Parse the selected species
@@ -373,10 +392,12 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
                     "Vorcha" => FaceFXSpecies.Vorcha,
                     "Prothean" => FaceFXSpecies.Prothean,
                     "Yahg" => FaceFXSpecies.Yahg,
+                    "Alien B" => FaceFXSpecies.AlienB,
+                    "EDI" => FaceFXSpecies.EDI,
+                    "Shepard" => FaceFXSpecies.Shepard,
                     _ => FaceFXSpecies.HumanFemale
                 };
 
-                // FXA/FXT support is disabled for now - just use text analysis
                 var options = new FaceFXGenerationOptions
                 {
                     CharacterType = CharacterType.HumanFemale,
@@ -388,10 +409,11 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
                     LipSyncIntensity = LipSyncIntensity,
                     BlinkFrequency = BlinkFrequency,
                     UseAudioAmplitude = true,
-                    Emotion = emotion,
+                    EmotionChoice = SelectedEmotion,
                     EmotionIntensity = EmotionIntensity,
-                    FxaData = null, // Disabled for now
-                    UseTextFallback = true
+                    AddEmotionToExistingLine = AddEmotionToExistingLine,
+                    FxaData = CombineFxaAndFxtData(),
+                    UseTextFallback = UseTextAnalysis
                 };
 
                 var generator = new FaceFXGenerator(_faceFX, _line, TLKText, _audioExport, options);
@@ -422,6 +444,39 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
                 MessageBox.Show($"An error occurred during generation:\n\n{ex.Message}\n\n{ex.StackTrace}", 
                     "Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
+        }
+
+        private void RefreshAvailableEmotions()
+        {
+            FaceFXSpecies species = SelectedSpecies switch
+            {
+                "Human Male" => FaceFXSpecies.HumanMale,
+                "Human Child" => FaceFXSpecies.HumanChild,
+                "Asari" => FaceFXSpecies.Asari,
+                "Krogan" => FaceFXSpecies.Krogan,
+                "Drell" => FaceFXSpecies.Drell,
+                "Turian" => FaceFXSpecies.Turian,
+                "Salarian" => FaceFXSpecies.Salarian,
+                "Quarian" => FaceFXSpecies.Quarian,
+                "Geth" => FaceFXSpecies.Geth,
+                "Elcor" => FaceFXSpecies.Elcor,
+                "Hanar" => FaceFXSpecies.Hanar,
+                "Volus" => FaceFXSpecies.Volus,
+                "Batarian" => FaceFXSpecies.Batarian,
+                "Vorcha" => FaceFXSpecies.Vorcha,
+                "Prothean" => FaceFXSpecies.Prothean,
+                "Yahg" => FaceFXSpecies.Yahg,
+                "Alien B" => FaceFXSpecies.AlienB,
+                "EDI" => FaceFXSpecies.EDI,
+                "Shepard" => FaceFXSpecies.Shepard,
+                _ => FaceFXSpecies.HumanFemale
+            };
+
+            string previousDisplayName = SelectedEmotion?.DisplayName;
+            AvailableEmotions = FaceFXEmotionCatalog.GetForSpecies(species);
+            SelectedEmotion = AvailableEmotions.FirstOrDefault(emotion =>
+                                  emotion.DisplayName == previousDisplayName)
+                              ?? AvailableEmotions[0];
         }
 
         /// <summary>

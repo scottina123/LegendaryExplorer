@@ -84,54 +84,7 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
                 byte[] audioData = GetAudioAsWav(audioExport);
                 if (audioData == null || audioData.Length == 0)
                     return result;
-
-                using var ms = new MemoryStream(audioData);
-                using var reader = new WaveFileReader(ms);
-                
-                // Sample every ~20ms for amplitude analysis
-                float sampleInterval = 0.02f;
-                float totalDuration = (float)reader.TotalTime.TotalSeconds;
-                int samplesPerWindow = (int)(reader.WaveFormat.SampleRate * sampleInterval);
-                
-                float[] buffer = new float[samplesPerWindow];
-                var sampleProvider = reader.ToSampleProvider();
-                
-                float currentTime = 0f;
-                while (currentTime < totalDuration)
-                {
-                    int samplesRead = sampleProvider.Read(buffer, 0, samplesPerWindow);
-                    if (samplesRead == 0)
-                        break;
-
-                    // Calculate RMS amplitude for this window
-                    float sum = 0f;
-                    for (int i = 0; i < samplesRead; i++)
-                    {
-                        sum += buffer[i] * buffer[i];
-                    }
-                    float rms = (float)Math.Sqrt(sum / samplesRead);
-                    
-                    result.Add(new AmplitudeData
-                    {
-                        Time = currentTime,
-                        Amplitude = rms
-                    });
-                    
-                    currentTime += sampleInterval;
-                }
-
-                // Normalize amplitudes
-                if (result.Count > 0)
-                {
-                    float maxAmplitude = result.Max(a => a.Amplitude);
-                    if (maxAmplitude > 0)
-                    {
-                        foreach (var data in result)
-                        {
-                            data.NormalizedAmplitude = data.Amplitude / maxAmplitude;
-                        }
-                    }
-                }
+                return AnalyzeWavAmplitude(audioData);
             }
             catch
             {
@@ -139,6 +92,95 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
             }
 
             return result;
+        }
+
+        internal static List<AmplitudeData> AnalyzeWavAmplitude(byte[] audioData)
+        {
+            var result = new List<AmplitudeData>();
+            using var ms = new MemoryStream(audioData);
+            using var reader = new WaveFileReader(ms);
+
+            // Use fixed 20 ms windows. NAudio's sample provider is interleaved, so the
+            // channel count must be included or stereo audio is placed on a 2x-slow timeline.
+            const float sampleInterval = 0.02f;
+            int channelCount = Math.Max(1, reader.WaveFormat.Channels);
+            int framesPerWindow = Math.Max(1, (int)Math.Round(reader.WaveFormat.SampleRate * sampleInterval));
+            int samplesPerWindow = framesPerWindow * channelCount;
+            float[] buffer = new float[samplesPerWindow];
+            var sampleProvider = reader.ToSampleProvider();
+
+            long framesProcessed = 0;
+            while (true)
+            {
+                int samplesRead = sampleProvider.Read(buffer, 0, samplesPerWindow);
+                if (samplesRead == 0)
+                    break;
+
+                int completeSamples = samplesRead - samplesRead % channelCount;
+                if (completeSamples == 0)
+                    break;
+
+                double sum = 0;
+                for (int i = 0; i < completeSamples; i++)
+                    sum += buffer[i] * buffer[i];
+                float rms = (float)Math.Sqrt(sum / completeSamples);
+                int framesRead = completeSamples / channelCount;
+
+                result.Add(new AmplitudeData
+                {
+                    // Derive every timestamp from the exact decoded frame count. This
+                    // avoids accumulated float additions on long dialogue lines.
+                    Time = (float)((double)framesProcessed / reader.WaveFormat.SampleRate),
+                    Amplitude = rms
+                });
+                framesProcessed += framesRead;
+            }
+
+            NormalizeAmplitudesLocally(result, sampleInterval);
+            return result;
+        }
+
+        /// <summary>
+        /// Normalizes an envelope against a fixed-duration neighborhood instead of the
+        /// loudest point in the whole file. A shout elsewhere in a long line therefore
+        /// cannot flatten otherwise valid quiet speech.
+        /// </summary>
+        internal static void NormalizeAmplitudesLocally(IList<AmplitudeData> data, float sampleInterval = 0.02f,
+            float neighborhoodSeconds = 2.0f)
+        {
+            if (data == null || data.Count == 0)
+                return;
+
+            int halfWindow = Math.Max(1, (int)Math.Round(neighborhoodSeconds / sampleInterval / 2f));
+            var localValues = new List<float>(halfWindow * 2 + 1);
+
+            for (int i = 0; i < data.Count; i++)
+            {
+                localValues.Clear();
+                int start = Math.Max(0, i - halfWindow);
+                int end = Math.Min(data.Count - 1, i + halfWindow);
+                for (int j = start; j <= end; j++)
+                    localValues.Add(Math.Max(0f, data[j].Amplitude));
+
+                localValues.Sort();
+                float noiseFloor = Percentile(localValues, 0.15f);
+                float localCeiling = Percentile(localValues, 0.90f);
+                float baseline = noiseFloor * 0.8f;
+                float range = Math.Max(localCeiling - baseline, 0.00001f);
+                data[i].NormalizedAmplitude = Math.Clamp((data[i].Amplitude - baseline) / range, 0f, 1f);
+            }
+        }
+
+        private static float Percentile(IReadOnlyList<float> sortedValues, float percentile)
+        {
+            if (sortedValues.Count == 0)
+                return 0f;
+
+            float position = Math.Clamp(percentile, 0f, 1f) * (sortedValues.Count - 1);
+            int lower = (int)position;
+            int upper = Math.Min(lower + 1, sortedValues.Count - 1);
+            float fraction = position - lower;
+            return sortedValues[lower] + (sortedValues[upper] - sortedValues[lower]) * fraction;
         }
 
         /// <summary>
