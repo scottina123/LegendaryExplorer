@@ -34,6 +34,8 @@ internal static class WwiseBankEffectPresets
     internal const uint Le2HelmetFilterEffectId = 0x8371E703;
     internal const uint Le2RadioEqEffectId = 0x85ABA16D;
     internal const uint Le2RadioFilterEffectId = 0xF4D30DBA;
+    internal const uint Le2HologramEqEffectId = 0x5A281C31;
+    internal const uint Le2HologramFilterEffectId = 0x7128A668;
     // Wwise ShortID for the plain-text LE2 game parameter name "Helmet".
     internal const uint Le2HelmetRtpcId = 0x9D4305AE;
     internal const uint MusicDuckingStateGroupId = 0x7BC046C4;
@@ -91,6 +93,18 @@ internal static class WwiseBankEffectPresets
             "EEsAAABtoauFAwBpADgAAAABAAAAAAAAAAAAL0QAAIA/AQIAAAAAAAAAAACWRAAAQEABAAAAAAAAAAAAcNBFAACAPwAAAEBBAQAAAAAAAAA="),
         new(Le2RadioFilterEffectId, 0x006E0003u,
             "ECkAAAC6DdP0AwBuABYAAAAAABDCAAAgQW8SgzqPwvU8AADAQQEBAAAAAAAAAA==")
+    ];
+
+    /// <summary>
+    /// Exact version-134 ShareSets used on the hologram dialogue actor mixers in
+    /// profre_illusive_d. Their parameter payloads match ME2's inline effects byte-for-byte.
+    /// </summary>
+    internal static IReadOnlyList<WwiseBankEffect> Le2Hologram { get; } =
+    [
+        new(Le2HologramEqEffectId, 0x00690003u,
+            "EEsAAAAxHChaAwBpADgAAAABAAAAAACwwQAAyEIAAIA/AAMAAAAAAAC/AAD6RAAAAEAABQAAAAAAwEAAAHpFAACAPwEAAAAAAQAAAAAAAAA="),
+        new(Le2HologramFilterEffectId, 0x006C0003u,
+            "ECkAAABopihxAwBsABYAAAAzM9fBAABAQG8SgzpvEoM6AADAQAEBAAAAAAAAAA==")
     ];
 
     internal static IReadOnlyList<WwiseBankEffect> BioWareRadio { get; } =

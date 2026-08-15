@@ -40,6 +40,8 @@ public class BulkAudioImportDialogTests
     private const uint Le2HelmetFilterEffectId = 0x8371E703;
     private const uint Le2RadioEqEffectId = 0x85ABA16D;
     private const uint Le2RadioFilterEffectId = 0xF4D30DBA;
+    private const uint Le2HologramEqEffectId = 0x5A281C31;
+    private const uint Le2HologramFilterEffectId = 0x7128A668;
     private const uint Le2HelmetRtpcId = 0x9D4305AE;
     private const uint MusicDuckingStateGroupId = 0x7BC046C4;
     private const uint MusicDuckingStateId = 0x61030AE6;
@@ -68,6 +70,10 @@ public class BulkAudioImportDialogTests
         "EEsAAABtoauFAwBpADgAAAABAAAAAAAAAAAAL0QAAIA/AQIAAAAAAAAAAACWRAAAQEABAAAAAAAAAAAAcNBFAACAPwAAAEBBAQAAAAAAAAA=";
     private const string Le2RadioFilterHirc =
         "ECkAAAC6DdP0AwBuABYAAAAAABDCAAAgQW8SgzqPwvU8AADAQQEBAAAAAAAAAA==";
+    private const string Le2HologramEqHirc =
+        "EEsAAAAxHChaAwBpADgAAAABAAAAAACwwQAAyEIAAIA/AAMAAAAAAAC/AAD6RAAAAEAABQAAAAAAwEAAAHpFAACAPwEAAAAAAQAAAAAAAAA=";
+    private const string Le2HologramFilterHirc =
+        "ECkAAABopihxAwBsABYAAAAzM9fBAABAQG8SgzpvEoM6AADAQAEBAAAAAAAAAA==";
     private const string BioWareRadioFutzBoxHirc =
         "EJ4AAAAIu3cHAxBuAIsAAAAAAAAAAADgEkYAAAAAAQAAAAAAlkMAAAAAAQQAAAAAAPBBAAAAAAAAAAAAAQAAAAAAekQAAAAAAAAAAAAAAPjBAGAuRQAAekQAAAAAAAAgwgAAIEEBEgAAAAAAyEIAAACgwQAAoMLNzMw9AAAgQQAAIEEACAAAAAQAAAAAAAAAAAAAAAAAoEAAAMhCAAAAAAAAAA==";
     private const string BioWareRadioEqHirc =
@@ -309,6 +315,52 @@ public class BulkAudioImportDialogTests
                     new[] { Le2RadioEqEffectId, Le2RadioFilterEffectId },
                     rootActorMixer.NodeBaseParameters.FxParams.FxChunks.Select(item => item.Id).ToArray());
                 Assert.IsTrue(rootActorMixer.NodeBaseParameters.FxParams.IsOverrideParentFx);
+            }
+        }
+        finally
+        {
+            File.Delete(testBankPath);
+        }
+    }
+
+    [TestMethod]
+    public void AppliesExactMe2IllusiveManHologramEffectToLe2Bank()
+    {
+        var sourceBankPath = FindWwiserTestBank("LE3_v134_1.bnk");
+        var testBankPath = Path.Combine(Path.GetTempPath(), $"LEX_LE2_Hologram_Test_{Guid.NewGuid():N}.bnk");
+        File.Copy(sourceBankPath, testBankPath);
+
+        try
+        {
+            var method = typeof(BulkAudioImportDialog).GetMethod(
+                "ApplyHologramEffectToBank", BindingFlags.NonPublic | BindingFlags.Static);
+            Assert.IsNotNull(method);
+
+            method.Invoke(null, [testBankPath]);
+            method.Invoke(null, [testBankPath]);
+
+            using var stream = File.OpenRead(testBankPath);
+            var bank = WwiseBankParser.Deserialize(stream);
+            Assert.AreEqual(134u, bank.BKHD.BankGeneratorVersion);
+            Assert.IsNotNull(bank.HIRC);
+
+            AssertExactShareSet(bank.HIRC.Items.Single(item => item.Item.Id == Le2HologramEqEffectId),
+                0x00690003u, Le2HologramEqHirc, bank);
+            AssertExactShareSet(bank.HIRC.Items.Single(item => item.Item.Id == Le2HologramFilterEffectId),
+                0x006C0003u, Le2HologramFilterHirc, bank);
+
+            var rootActorMixers = GetRootActorMixers(bank);
+            Assert.IsNotEmpty(rootActorMixers);
+            foreach (var rootActorMixer in rootActorMixers)
+            {
+                var effects = rootActorMixer.NodeBaseParameters.FxParams;
+                CollectionAssert.AreEqual(
+                    new[] { Le2HologramEqEffectId, Le2HologramFilterEffectId },
+                    effects.FxChunks.Select(item => item.Id).ToArray());
+                CollectionAssert.AreEqual(new byte[] { 0, 1 },
+                    effects.FxChunks.Select(item => item.FxIndex).ToArray());
+                Assert.IsTrue(effects.FxChunks.All(item => item.IsShareSet));
+                Assert.IsTrue(effects.IsOverrideParentFx);
             }
         }
         finally

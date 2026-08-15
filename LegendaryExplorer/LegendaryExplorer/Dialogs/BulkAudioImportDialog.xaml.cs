@@ -312,7 +312,7 @@ namespace LegendaryExplorer.Dialogs
 
         private void Le2RadioEffectCheckBox_CheckedChanged(object sender, RoutedEventArgs e)
         {
-            if (Le2HelmetEffectCheckBox == null)
+            if (Le2HelmetEffectCheckBox == null || Le2HologramEffectCheckBox == null)
             {
                 return;
             }
@@ -320,12 +320,13 @@ namespace LegendaryExplorer.Dialogs
             if (Le2RadioEffectCheckBox.IsChecked == true)
             {
                 Le2HelmetEffectCheckBox.IsChecked = false;
+                Le2HologramEffectCheckBox.IsChecked = false;
             }
         }
 
         private void Le2HelmetEffectCheckBox_CheckedChanged(object sender, RoutedEventArgs e)
         {
-            if (Le2RadioEffectCheckBox == null)
+            if (Le2RadioEffectCheckBox == null || Le2HologramEffectCheckBox == null)
             {
                 return;
             }
@@ -333,6 +334,21 @@ namespace LegendaryExplorer.Dialogs
             if (Le2HelmetEffectCheckBox.IsChecked == true)
             {
                 Le2RadioEffectCheckBox.IsChecked = false;
+                Le2HologramEffectCheckBox.IsChecked = false;
+            }
+        }
+
+        private void Le2HologramEffectCheckBox_CheckedChanged(object sender, RoutedEventArgs e)
+        {
+            if (Le2RadioEffectCheckBox == null || Le2HelmetEffectCheckBox == null)
+            {
+                return;
+            }
+
+            if (Le2HologramEffectCheckBox.IsChecked == true)
+            {
+                Le2RadioEffectCheckBox.IsChecked = false;
+                Le2HelmetEffectCheckBox.IsChecked = false;
             }
         }
 
@@ -343,7 +359,8 @@ namespace LegendaryExplorer.Dialogs
         {
             if (OutputBusComboBox == null || RadioEffectCheckBox == null || QecEffectCheckBox == null ||
                 HelmetEffectCheckBox == null || DuckAudioCheckBox == null || AttenuationCheckBox == null ||
-                Le2RadioEffectCheckBox == null || Le2HelmetEffectCheckBox == null || Le2DuckAudioCheckBox == null ||
+                Le2RadioEffectCheckBox == null || Le2HelmetEffectCheckBox == null ||
+                Le2HologramEffectCheckBox == null || Le2DuckAudioCheckBox == null ||
                 Le2AttenuationCheckBox == null)
             {
                 return;
@@ -362,6 +379,7 @@ namespace LegendaryExplorer.Dialogs
             AttenuationCheckBox.IsEnabled = isLe3 && SupportsStandardAttenuation(_package.Game);
             Le2HelmetEffectCheckBox.IsEnabled = isLe2;
             Le2RadioEffectCheckBox.IsEnabled = isLe2;
+            Le2HologramEffectCheckBox.IsEnabled = isLe2;
             Le2DuckAudioCheckBox.IsEnabled = isLe2 && supportsMusicDucking;
             Le2AttenuationCheckBox.IsEnabled = isLe2 && SupportsStandardAttenuation(_package.Game);
             if (!isLe3 || !supportsMusicDucking)
@@ -541,6 +559,7 @@ namespace LegendaryExplorer.Dialogs
             var applyHelmetEffect = isLe2
                 ? Le2HelmetEffectCheckBox.IsChecked == true
                 : isLe3 && HelmetEffectCheckBox.IsChecked == true;
+            var applyHologramEffect = isLe2 && Le2HologramEffectCheckBox.IsChecked == true;
             var applyMusicDucking = isLe2
                 ? Le2DuckAudioCheckBox.IsChecked == true
                 : isLe3 && DuckAudioCheckBox.IsChecked == true;
@@ -586,7 +605,7 @@ namespace LegendaryExplorer.Dialogs
             {
                 var result = await Task.Run(() => RunBulkAudioImport(bankName, isDialogue, volume, outputBusName,
                     generateGenderedEvents, loopAudio, applyRadioEffect, applyQecEffect, applyHelmetEffect,
-                    applyMusicDucking, applyStandardAttenuation, attenuationDistanceScale,
+                    applyHologramEffect, applyMusicDucking, applyStandardAttenuation, attenuationDistanceScale,
                     createSharedStopEvent, createFaceFxAssets, topFolderName,
                     femaleFaceFxAssetName, maleFaceFxAssetName));
                 if (result != null)
@@ -617,7 +636,7 @@ namespace LegendaryExplorer.Dialogs
 
         private string RunBulkAudioImport(string bankName, bool isDialogue, double volume, string outputBusName,
             bool generateGenderedEvents, bool loopAudio, bool applyRadioEffect, bool applyQecEffect,
-            bool applyHelmetEffect, bool applyMusicDucking, bool applyStandardAttenuation,
+            bool applyHelmetEffect, bool applyHologramEffect, bool applyMusicDucking, bool applyStandardAttenuation,
             double attenuationDistanceScale, bool createSharedStopEvent, bool createFaceFxAssets,
             string topFolderName, string femaleFaceFxAssetName, string maleFaceFxAssetName)
         {
@@ -763,6 +782,10 @@ namespace LegendaryExplorer.Dialogs
                 {
                     ApplyHelmetEffectToBank(bnkPath, _package.Game);
                 }
+                else if (applyHologramEffect)
+                {
+                    ApplyHologramEffectToBank(bnkPath);
+                }
 
                 if (applyMusicDucking)
                 {
@@ -867,6 +890,16 @@ namespace LegendaryExplorer.Dialogs
                 : WwiseBankEffectPresets.HelmetFilter;
             ApplyExactEffectChainToBank(bnkPath, "helmet voice", effectChain,
                 applyHelmetRtpc: true, game: game);
+        }
+
+        /// <summary>
+        /// Applies the two-stage ME2 Illusive Man hologram voice chain using the exact
+        /// version-134 ShareSets preserved in LE2's profre_illusive_d bank.
+        /// </summary>
+        private static void ApplyHologramEffectToBank(string bnkPath)
+        {
+            ApplyExactEffectChainToBank(bnkPath, "Illusive Man hologram",
+                WwiseBankEffectPresets.Le2Hologram, game: MEGame.LE2);
         }
 
         /// <summary>
