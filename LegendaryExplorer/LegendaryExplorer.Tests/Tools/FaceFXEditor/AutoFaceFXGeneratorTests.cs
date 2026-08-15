@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using LegendaryExplorer.Resources;
 using LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator;
+using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.Unreal.BinaryConverters;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using static LegendaryExplorer.UserControls.ExportLoaderControls.FaceFXAnimSetEditorControl;
@@ -154,6 +155,76 @@ namespace LegendaryExplorer.Tests.Tools.FaceFXEditor
         }
 
         [TestMethod]
+        public void LegendaryOneAndTwoUseLegacyRigControlsForEverySupportedSpecies()
+        {
+            FaceFXSpecies[] expectedSpecies =
+            {
+                FaceFXSpecies.HumanFemale, FaceFXSpecies.HumanMale, FaceFXSpecies.Asari,
+                FaceFXSpecies.Krogan, FaceFXSpecies.Batarian, FaceFXSpecies.Drell,
+                FaceFXSpecies.Turian, FaceFXSpecies.Salarian, FaceFXSpecies.Quarian,
+                FaceFXSpecies.Geth, FaceFXSpecies.Elcor, FaceFXSpecies.Hanar,
+                FaceFXSpecies.Volus, FaceFXSpecies.Vorcha, FaceFXSpecies.Yahg, FaceFXSpecies.EDI
+            };
+
+            foreach (MEGame game in new[] { MEGame.LE1, MEGame.LE2 })
+            {
+                CollectionAssert.AreEquivalent(expectedSpecies, FaceFXSpeciesCatalog.GetForGame(game).ToArray());
+                foreach (FaceFXSpecies species in FaceFXSpeciesCatalog.GetForGame(game))
+                {
+                    (FaceFXLine line, TestFaceFxBinary faceFx) = GenerateLine(
+                        species, "The signal is synchronized and ready.", game);
+                    string[] expectedControls = PhonemeToVisemeMap.GetVisemes(species, game);
+                    string[] actualControls = line.AnimationNames.Select(index => faceFx.Names[index]).ToArray();
+
+                    Assert.IsTrue(expectedControls.Length > 0, $"{game} {species} has no rig controls.");
+                    Assert.IsTrue(actualControls.Length > 0, $"{game} {species} generated no curves.");
+                    Assert.IsTrue(actualControls.All(actual => expectedControls.Contains(actual,
+                        StringComparer.OrdinalIgnoreCase)), $"{game} {species} generated a control outside its rig.");
+                }
+            }
+
+            Assert.IsTrue(PhonemeToVisemeMap.GetVisemes(FaceFXSpecies.HumanFemale, MEGame.LE2).Contains("jawOpen"));
+            Assert.IsFalse(PhonemeToVisemeMap.GetVisemes(FaceFXSpecies.HumanFemale, MEGame.LE2).Contains("m_Open"));
+            Assert.IsTrue(PhonemeToVisemeMap.GetVisemes(FaceFXSpecies.HumanFemale, MEGame.LE3).Contains("m_Open"));
+            Assert.IsTrue(PhonemeToVisemeMap.GetVisemes(FaceFXSpecies.Krogan, MEGame.LE2).Contains("jawBack"));
+            Assert.IsFalse(PhonemeToVisemeMap.GetVisemes(FaceFXSpecies.Krogan, MEGame.LE3).Contains("jawBack"));
+        }
+
+        [TestMethod]
+        public void NonHumanoidEdiUsesTalkControlInLe2AndLe3()
+        {
+            CollectionAssert.AreEqual(new[] { "Talk" },
+                PhonemeToVisemeMap.GetVisemes(FaceFXSpecies.EDI, MEGame.LE2));
+            CollectionAssert.AreEqual(new[] { "Talk" },
+                PhonemeToVisemeMap.GetVisemes(FaceFXSpecies.EDI, MEGame.LE3));
+
+            AssertGeneratedAnimationList(FaceFXSpecies.EDI, new[] { "Talk" }, game: MEGame.LE2,
+                generateExpressions: true);
+            AssertGeneratedAnimationList(FaceFXSpecies.EDI, new[] { "Talk" }, game: MEGame.LE3,
+                generateExpressions: true);
+        }
+
+        [TestMethod]
+        public void LegacyEmotionCatalogUsesLegacyPresetsAndSpellings()
+        {
+            IReadOnlyList<FaceFXEmotionChoice> legacy = FaceFXEmotionCatalog.GetForSpecies(
+                FaceFXSpecies.HumanFemale, MEGame.LE2);
+            Assert.IsFalse(legacy.Any(choice => choice.IsLayered));
+            Assert.IsTrue(legacy.Any(choice => choice.PresetAnimation == "E_Neutral_Thoughtfull"));
+            Assert.IsTrue(legacy.Any(choice => choice.PresetAnimation == "E_Wounded_Pain"));
+
+            IReadOnlyList<FaceFXEmotionChoice> le1 = FaceFXEmotionCatalog.GetForSpecies(
+                FaceFXSpecies.HumanFemale, MEGame.LE1);
+            Assert.IsFalse(le1.Any(choice => choice.PresetAnimation?.StartsWith("E_Wounded_",
+                StringComparison.Ordinal) == true));
+
+            IReadOnlyList<FaceFXEmotionChoice> le3 = FaceFXEmotionCatalog.GetForSpecies(
+                FaceFXSpecies.HumanFemale, MEGame.LE3);
+            Assert.IsTrue(le3.Any(choice => choice.IsLayered));
+            Assert.IsTrue(le3.Any(choice => choice.PresetAnimation == "E_Neutral_Thoughtful"));
+        }
+
+        [TestMethod]
         public void QuarianReferenceRetainsItsCompleteAuthoredAnimationSet()
         {
             FxaAnimationData reference = FxaXmlParser.ParseFxaXml(EmbeddedResources.QuarianFaceFxReference);
@@ -204,14 +275,17 @@ namespace LegendaryExplorer.Tests.Tools.FaceFXEditor
             }).ToList();
         }
 
-        private static void AssertGeneratedAnimationList(FaceFXSpecies species, string[] expected, string text = "The signal is synchronized and ready.")
+        private static void AssertGeneratedAnimationList(FaceFXSpecies species, string[] expected,
+            string text = "The signal is synchronized and ready.", MEGame game = MEGame.LE3,
+            bool generateExpressions = false)
         {
-            (FaceFXLine line, TestFaceFxBinary faceFx) = GenerateLine(species, text);
+            (FaceFXLine line, TestFaceFxBinary faceFx) = GenerateLine(species, text, game, generateExpressions);
             string[] actual = line.AnimationNames.Select(index => faceFx.Names[index]).ToArray();
             CollectionAssert.AreEquivalent(expected, actual);
         }
 
-        private static (FaceFXLine Line, TestFaceFxBinary FaceFx) GenerateLine(FaceFXSpecies species, string text)
+        private static (FaceFXLine Line, TestFaceFxBinary FaceFx) GenerateLine(FaceFXSpecies species, string text,
+            MEGame game = MEGame.LE3, bool generateExpressions = false)
         {
             var line = new FaceFXLine
             {
@@ -227,11 +301,12 @@ namespace LegendaryExplorer.Tests.Tools.FaceFXEditor
                 null,
                 new FaceFXGenerationOptions
                 {
+                    Game = game,
                     Species = species,
                     UseAudioAmplitude = false,
-                    GenerateBlinkAnimation = false,
-                    GenerateEyebrowAnimation = false,
-                    GenerateHeadMovement = false
+                    GenerateBlinkAnimation = generateExpressions,
+                    GenerateEyebrowAnimation = generateExpressions,
+                    GenerateHeadMovement = generateExpressions
                 });
 
             Assert.IsTrue(generator.Generate(), generator.LastError);

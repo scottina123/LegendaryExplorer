@@ -1409,7 +1409,7 @@ namespace LegendaryExplorer.Dialogs
             Dispatcher.Invoke(() =>
             {
                 StatusTextBlock.Text = $"Configure FaceFX generation for {assetName}...";
-                var bulkDialog = new BulkFaceFXGenerationDialog(lineCount, this, defaultSpecies)
+                var bulkDialog = new BulkFaceFXGenerationDialog(lineCount, this, defaultSpecies, _package.Game)
                 {
                     Title = $"Bulk FaceFX Generation - {assetName}"
                 };
@@ -1418,6 +1418,7 @@ namespace LegendaryExplorer.Dialogs
                 {
                     options = new FaceFXGenerationOptions
                     {
+                        Game = _package.Game,
                         CharacterType = isFemaleAsset ? CharacterType.HumanFemale : CharacterType.HumanMale,
                         Species = bulkDialog.SelectedSpeciesEnum,
                         GenerateJawAnimation = true,

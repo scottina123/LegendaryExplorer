@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using LegendaryExplorerCore.Packages;
 
 namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
 {
@@ -43,8 +44,11 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
         /// For these species, we use Drell phoneme map which has standard phonemes with similar viseme names.
         /// Prothean uses m_* style visemes like Human Male, so it uses HumanMalePhonemeMap.
         /// </summary>
-        public static Dictionary<string, VisemeMapping[]> GetPhonemeMap(FaceFXSpecies species)
+        public static Dictionary<string, VisemeMapping[]> GetPhonemeMap(FaceFXSpecies species, MEGame game = MEGame.LE3)
         {
+            if (FaceFXSpeciesCatalog.IsLegacyLegendaryGame(game))
+                return GetLegacyPhonemeMap(species);
+
             return species switch
             {
                 FaceFXSpecies.HumanMale => HumanMalePhonemeMap,
@@ -52,7 +56,9 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
                 // the same 15 UDK m_* mouth tracks as human dialogue.
                 FaceFXSpecies.HumanChild => HumanFemalePhonemeMap,
                 FaceFXSpecies.Asari => HumanFemalePhonemeMap,
-                FaceFXSpecies.EDI => HumanFemalePhonemeMap,
+                // EDI here is her non-humanoid holographic form. Its LE2 rig and
+                // the compatible LE3 setup are both driven by one material control.
+                FaceFXSpecies.EDI => BuildSingleControlMap("Talk"),
                 FaceFXSpecies.Shepard => HumanFemalePhonemeMap,
                 FaceFXSpecies.Krogan => KroganPhonemeMap,
                 FaceFXSpecies.Drell => DrellPhonemeMap,
@@ -82,8 +88,20 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
         /// <summary>
         /// Gets the viseme animation names for the specified species
         /// </summary>
-        public static string[] GetVisemes(FaceFXSpecies species)
+        public static string[] GetVisemes(FaceFXSpecies species, MEGame game = MEGame.LE3)
         {
+            if (FaceFXSpeciesCatalog.IsLegacyLegendaryGame(game))
+            {
+                if (species == FaceFXSpecies.Geth)
+                    return GethVisemes;
+
+                return GetPhonemeMap(species, game).Values
+                    .SelectMany(mappings => mappings)
+                    .Select(mapping => CanonicalizeVisemeName(mapping.VisemeName, species, game))
+                    .Distinct(System.StringComparer.OrdinalIgnoreCase)
+                    .ToArray();
+            }
+
             // These two rigs have authored non-mouth controls that form part of a
             // normal generated line. Keep their complete pre-overhaul inventories.
             if (species == FaceFXSpecies.Quarian)
@@ -94,18 +112,18 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
             // Only emit controls that the effective text phoneme map can drive. The
             // previous species arrays included hundreds of graph/head controls and
             // generated empty curves for them on every line.
-            return GetPhonemeMap(species).Values
+            return GetPhonemeMap(species, game).Values
                 .SelectMany(mappings => mappings)
-                .Select(mapping => CanonicalizeVisemeName(mapping.VisemeName, species))
+                .Select(mapping => CanonicalizeVisemeName(mapping.VisemeName, species, game))
                 .Distinct(System.StringComparer.OrdinalIgnoreCase)
                 .ToArray();
         }
 
-        public static HashSet<string> GetAllLipSyncVisemes()
+        public static HashSet<string> GetAllLipSyncVisemes(MEGame game = MEGame.LE3)
         {
             var result = new HashSet<string>(System.StringComparer.OrdinalIgnoreCase);
             foreach (FaceFXSpecies species in System.Enum.GetValues<FaceFXSpecies>())
-                result.UnionWith(GetVisemes(species));
+                result.UnionWith(GetVisemes(species, game));
             return result;
         }
 
@@ -116,13 +134,91 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
             _ => name
         };
 
-        public static string CanonicalizeVisemeName(string name, FaceFXSpecies species)
+        public static string CanonicalizeVisemeName(string name, FaceFXSpecies species, MEGame game = MEGame.LE3)
         {
             name = CanonicalizeVisemeName(name);
             // Shipped Krogan FaceFXAnimSets drive jawRotateDown; jawBack is a graph
             // implementation node present in the rig rather than the UDK output track.
-            return species == FaceFXSpecies.Krogan && name == "jawBack" ? "jawRotateDown" : name;
+            if (!FaceFXSpeciesCatalog.IsLegacyLegendaryGame(game) && species == FaceFXSpecies.Krogan && name == "jawBack")
+                return "jawRotateDown";
+
+            if (FaceFXSpeciesCatalog.IsLegacyLegendaryGame(game))
+            {
+                string shippedName = GetLegacyRigControls(species)
+                    .FirstOrDefault(control => string.Equals(control, name, System.StringComparison.OrdinalIgnoreCase));
+                if (shippedName != null)
+                    return shippedName;
+            }
+
+            return name;
         }
+
+        private static Dictionary<string, VisemeMapping[]> GetLegacyPhonemeMap(FaceFXSpecies species)
+        {
+            Dictionary<string, VisemeMapping[]> source = species switch
+            {
+                // The LE1/LE2 human and Asari actors share the legacy bone-pose
+                // mouth control family. The audited Asari map drives that family.
+                FaceFXSpecies.HumanFemale => AsariPhonemeMap,
+                FaceFXSpecies.HumanMale => AsariPhonemeMap,
+                FaceFXSpecies.Asari => AsariPhonemeMap,
+                FaceFXSpecies.Krogan => KroganPhonemeMap,
+                FaceFXSpecies.Drell => DrellPhonemeMap,
+                FaceFXSpecies.Turian => TurianPhonemeMap,
+                FaceFXSpecies.Salarian => SalarianPhonemeMap,
+                FaceFXSpecies.Geth => BuildGethSpeechMap(),
+                FaceFXSpecies.Yahg => BuildSingleControlMap("m_JawOpen"),
+                FaceFXSpecies.EDI => BuildSingleControlMap("Talk"),
+                // These legacy actors use the same direct bone-pose control
+                // vocabulary. Drell supplies the complete standard-phoneme map;
+                // unsupported outputs are removed for each shipped rig below.
+                _ => DrellPhonemeMap
+            };
+
+            if (species == FaceFXSpecies.Geth)
+                return source;
+
+            HashSet<string> controls = GetLegacyRigControls(species)
+                .ToHashSet(System.StringComparer.OrdinalIgnoreCase);
+            return source.ToDictionary(
+                pair => pair.Key,
+                pair => pair.Value.Where(mapping => controls.Contains(CanonicalizeVisemeName(mapping.VisemeName))).ToArray());
+        }
+
+        private static IReadOnlyList<string> GetLegacyRigControls(FaceFXSpecies species) => species switch
+        {
+            FaceFXSpecies.HumanFemale or FaceFXSpecies.HumanMale or FaceFXSpecies.Asari => LegacyHumanVisemes,
+            FaceFXSpecies.Krogan => KroganVisemes,
+            FaceFXSpecies.Drell => DrellVisemes,
+            FaceFXSpecies.Turian => TurianVisemes,
+            FaceFXSpecies.Salarian => SalarianVisemes,
+            FaceFXSpecies.Quarian => LegacyQuarianVisemes,
+            FaceFXSpecies.Elcor => ElcorVisemes,
+            FaceFXSpecies.Hanar => HanarVisemes,
+            FaceFXSpecies.Volus => VolusVisemes,
+            FaceFXSpecies.Batarian => BatarianVisemes,
+            FaceFXSpecies.Vorcha or FaceFXSpecies.AlienB => VorchaVisemes,
+            FaceFXSpecies.Yahg => new[] { "m_JawOpen" },
+            FaceFXSpecies.EDI => new[] { "Talk" },
+            _ => LegacyHumanVisemes
+        };
+
+        private static readonly string[] LegacyHumanVisemes =
+        {
+            "smileRight", "smileLeft", "sneerRight", "sneerLeft", "frownRight", "frownLeft",
+            "jawOpen", "jawRotate", "lowerLipCurlOut", "O_mouth", "pucker", "upperLipCurlOut",
+            "upperLipCurlIn", "jawClench", "lowerLipCurlIn", "jawForward", "mouthDownLeft",
+            "mouthDownRight", "jawRotateDown", "lowerLipUpLeft", "lowerLipUpRight", "tongueUP",
+            "jawRotateUp", "jawBack"
+        };
+
+        private static readonly string[] LegacyQuarianVisemes =
+        {
+            "smileRight", "smileLeft", "sneerRight", "sneerLeft", "frownRight", "frownLeft",
+            "jawOpen", "jawRotate", "lowerLipCurlOut", "O_mouth", "pucker", "upperLipCurlOut",
+            "upperLipCurlIn", "jawClench", "lowerLipCurlIn", "jawForward", "mouthDownLeft",
+            "mouthDownRight", "tongueUP"
+        };
 
         private static Dictionary<string, VisemeMapping[]> BuildSingleControlMap(string controlName)
         {

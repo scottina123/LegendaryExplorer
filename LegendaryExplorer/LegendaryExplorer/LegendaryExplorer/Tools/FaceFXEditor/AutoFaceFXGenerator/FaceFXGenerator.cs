@@ -40,6 +40,11 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
     /// </summary>
     public class FaceFXGenerationOptions
     {
+        /// <summary>
+        /// Target game whose FaceFX rig vocabulary should be generated.
+        /// </summary>
+        public MEGame Game { get; set; } = MEGame.LE3;
+
         public CharacterType CharacterType { get; set; } = CharacterType.HumanFemale;
         
         /// <summary>
@@ -194,7 +199,7 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
                 // Quarian lines historically use the complete authored reference,
                 // including its dense jawOpen curve. The generic audio-derived jaw
                 // does not drive this rig correctly, so the reference replaces it.
-                if (_options.Species == FaceFXSpecies.Quarian)
+                if (UsesAuthoredQuarianReference)
                 {
                     GenerateQuarianReferenceAnimations();
                 }
@@ -207,19 +212,19 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
 
                 // Quarians already received their authored blink, eyebrow, head,
                 // gaze, emphasis, talking, and gesture curves above.
-                if (_options.Species != FaceFXSpecies.Quarian && _options.GenerateBlinkAnimation)
+                if (!UsesAuthoredQuarianReference && SupportsStandardExpressionControls && _options.GenerateBlinkAnimation)
                 {
                     GenerateBlinkAnimation();
                 }
 
                 // Generate eyebrow animation for emphasis
-                if (_options.Species != FaceFXSpecies.Quarian && _options.GenerateEyebrowAnimation)
+                if (!UsesAuthoredQuarianReference && SupportsStandardExpressionControls && _options.GenerateEyebrowAnimation)
                 {
                     GenerateEyebrowAnimation();
                 }
 
                 // Generate subtle head movement
-                if (_options.Species != FaceFXSpecies.Quarian && _options.GenerateHeadMovement)
+                if (!UsesAuthoredQuarianReference && SupportsStandardExpressionControls && _options.GenerateHeadMovement)
                 {
                     GenerateHeadMovement();
                 }
@@ -240,6 +245,11 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
             }
         }
 
+        private bool UsesAuthoredQuarianReference => _options.Species == FaceFXSpecies.Quarian
+            && !FaceFXSpeciesCatalog.IsLegacyLegendaryGame(_options.Game);
+
+        private bool SupportsStandardExpressionControls => _options.Species != FaceFXSpecies.EDI;
+
         /// <summary>
         /// Generate lip sync animations from phonemes, modulated by audio amplitude
         /// </summary>
@@ -249,7 +259,7 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
                 return;
 
             // Get species-specific phoneme map
-            var phonemeMap = PhonemeToVisemeMap.GetPhonemeMap(_options.Species);
+            var phonemeMap = PhonemeToVisemeMap.GetPhonemeMap(_options.Species, _options.Game);
             
             // Group phoneme events by viseme animation
             var visemeAnimations = new Dictionary<string, List<(float time, float weight)>>();
@@ -443,7 +453,7 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
         {
             if (fxaData == null) return;
             var lipSyncNames = new HashSet<string>(
-                PhonemeToVisemeMap.GetVisemes(_options.Species),
+                PhonemeToVisemeMap.GetVisemes(_options.Species, _options.Game),
                 StringComparer.OrdinalIgnoreCase);
 
             foreach (var kvp in fxaData.Animations)
@@ -538,7 +548,7 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
             // This adjusts the timing of existing animations based on precise phoneme timing
             // For now, we'll add additional keyframes at phoneme boundaries
             
-            var phonemeMap = PhonemeToVisemeMap.GetPhonemeMap(_options.Species);
+            var phonemeMap = PhonemeToVisemeMap.GetPhonemeMap(_options.Species, _options.Game);
             
             foreach (var (phoneme, startTime, endTime) in phonemeEvents)
             {
@@ -698,7 +708,7 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
                 }
             }
 
-            var phonemeMap = PhonemeToVisemeMap.GetPhonemeMap(_options.Species);
+            var phonemeMap = PhonemeToVisemeMap.GetPhonemeMap(_options.Species, _options.Game);
             
             // Generate animations from text analysis for any missing visemes
             foreach (var phoneme in textPhonemes)
@@ -826,7 +836,7 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
             // Non-human rigs do not use the m_ prefix, so prefix-only removal left
             // stale Quarian/Geth curves behind.
             var lipSyncNames = new HashSet<string>(
-                PhonemeToVisemeMap.GetVisemes(_options.Species),
+                PhonemeToVisemeMap.GetVisemes(_options.Species, _options.Game),
                 StringComparer.OrdinalIgnoreCase);
             var indicesToRemove = new List<int>();
             for (int i = 0; i < _line.AnimationNames.Count; i++)
@@ -1002,8 +1012,8 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
             // Audio determines TIMING, WIDTH, and STRENGTH
             
             // Get species-specific mappings
-            var phonemeMap = PhonemeToVisemeMap.GetPhonemeMap(_options.Species);
-            var visemeNames = PhonemeToVisemeMap.GetVisemes(_options.Species);
+            var phonemeMap = PhonemeToVisemeMap.GetPhonemeMap(_options.Species, _options.Game);
+            var visemeNames = PhonemeToVisemeMap.GetVisemes(_options.Species, _options.Game);
             
             // Step 1: Analyze audio to find speech segments and amplitude envelope
             var audioSegments = AnalyzeAudioForSpeechSegments(duration);
@@ -1042,7 +1052,7 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
                 // Add contribution to each mapped viseme
                 foreach (var mapping in mappings)
                 {
-                    string visemeName = PhonemeToVisemeMap.CanonicalizeVisemeName(mapping.VisemeName, _options.Species);
+                    string visemeName = PhonemeToVisemeMap.CanonicalizeVisemeName(mapping.VisemeName, _options.Species, _options.Game);
                     if (!visemeSamples.ContainsKey(visemeName))
                         continue;
                     
@@ -1086,7 +1096,7 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
                 // The Quarian and Geth FaceFX rigs require the complete legacy
                 // animation-name inventory on each generated line. Other rigs can
                 // continue omitting unused curves to avoid empty-track bloat.
-                bool requiresCompleteRigList = _options.Species is FaceFXSpecies.Quarian or FaceFXSpecies.Geth;
+                bool requiresCompleteRigList = _options.Species == FaceFXSpecies.Geth || UsesAuthoredQuarianReference;
                 if (!requiresCompleteRigList && !samples.Any(value => value > 0.005f))
                     continue;
 
@@ -1667,7 +1677,7 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
                 EmotionType.Worried => "Concern",
                 _ => null
             };
-            if (layeredFamily != null && FaceFXEmotionCatalog.SupportsLayeredEmotions(_options.Species))
+            if (layeredFamily != null && FaceFXEmotionCatalog.SupportsLayeredEmotions(_options.Species, _options.Game))
             {
                 return new FaceFXEmotionChoice
                 {
@@ -1685,7 +1695,7 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
                 };
             }
 
-            return FaceFXEmotionCatalog.GetForSpecies(_options.Species).FirstOrDefault();
+            return FaceFXEmotionCatalog.GetForSpecies(_options.Species, _options.Game).FirstOrDefault();
         }
 
         private void GenerateEmotionAnimation(FaceFXEmotionChoice emotion)
@@ -1967,7 +1977,7 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
 
         private void AddAnimation(string name, List<FaceFXControlPoint> points)
         {
-            name = PhonemeToVisemeMap.CanonicalizeVisemeName(name);
+            name = PhonemeToVisemeMap.CanonicalizeVisemeName(name, _options.Species, _options.Game);
             // Initialize lists if null
             if (_line.AnimationNames == null)
                 _line.AnimationNames = new List<int>();

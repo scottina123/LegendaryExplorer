@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using LegendaryExplorerCore.Packages;
 
 namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
 {
@@ -15,7 +16,7 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
     }
 
     /// <summary>
-    /// Emotions found by auditing every FaceFXAsset in LE3's BIOG_FaceFX_Assets.
+    /// Emotions found by auditing the shipped FaceFXAssets for each supported game.
     /// The exact misspellings/capitalization used by individual shipped rigs are
     /// preserved when a preset is resolved.
     /// </summary>
@@ -69,14 +70,14 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
             ("Wounded: Squint", "E_Wounded_Squint")
         };
 
-        public static IReadOnlyList<FaceFXEmotionChoice> GetForSpecies(FaceFXSpecies species)
+        public static IReadOnlyList<FaceFXEmotionChoice> GetForSpecies(FaceFXSpecies species, MEGame game = MEGame.LE3)
         {
             var result = new List<FaceFXEmotionChoice>
             {
                 new() { DisplayName = "None" }
             };
 
-            if (SupportsLayeredEmotions(species))
+            if (SupportsLayeredEmotions(species, game))
             {
                 result.AddRange(LayeredFamilies.Select(family => new FaceFXEmotionChoice
                 {
@@ -85,55 +86,83 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
                 }));
             }
 
-            AddPresets(result, CorePresets, species);
-
-            if (species is not (FaceFXSpecies.AlienB or FaceFXSpecies.Elcor or FaceFXSpecies.Hanar
-                or FaceFXSpecies.Quarian or FaceFXSpecies.Volus))
+            foreach ((string displayName, string animation) in CorePresets)
             {
-                AddPresets(result, FlirtPresets, species);
+                if (!IsLegacyPresetSupported(animation, species, game))
+                    continue;
+                AddPreset(result, displayName, animation, species, game);
             }
 
-            if (species is FaceFXSpecies.Asari or FaceFXSpecies.Drell or FaceFXSpecies.EDI
-                or FaceFXSpecies.HumanChild or FaceFXSpecies.HumanFemale or FaceFXSpecies.HumanMale
-                or FaceFXSpecies.Krogan or FaceFXSpecies.Prothean or FaceFXSpecies.Salarian
-                or FaceFXSpecies.Shepard or FaceFXSpecies.Turian or FaceFXSpecies.Yahg)
+            bool supportsFlirt = FaceFXSpeciesCatalog.IsLegacyLegendaryGame(game)
+                ? SupportsLegacyFlirt(species, game)
+                : species is not (FaceFXSpecies.AlienB or FaceFXSpecies.Elcor or FaceFXSpecies.Hanar
+                    or FaceFXSpecies.Quarian or FaceFXSpecies.Volus);
+            if (supportsFlirt)
             {
-                AddPresets(result, WoundedPresets, species);
+                AddPresets(result, FlirtPresets, species, game);
+            }
+
+            bool supportsWounded = FaceFXSpeciesCatalog.IsLegacyLegendaryGame(game)
+                ? game == MEGame.LE2 && species is FaceFXSpecies.Asari or FaceFXSpecies.Drell
+                    or FaceFXSpecies.EDI or FaceFXSpecies.HumanFemale or FaceFXSpecies.HumanMale
+                    or FaceFXSpecies.Krogan or FaceFXSpecies.Salarian or FaceFXSpecies.Turian
+                    or FaceFXSpecies.Yahg
+                : species is FaceFXSpecies.Asari or FaceFXSpecies.Drell or FaceFXSpecies.EDI
+                    or FaceFXSpecies.HumanChild or FaceFXSpecies.HumanFemale or FaceFXSpecies.HumanMale
+                    or FaceFXSpecies.Krogan or FaceFXSpecies.Prothean or FaceFXSpecies.Salarian
+                    or FaceFXSpecies.Shepard or FaceFXSpecies.Turian or FaceFXSpecies.Yahg;
+            if (supportsWounded)
+            {
+                AddPresets(result, WoundedPresets, species, game);
             }
 
             if (species is FaceFXSpecies.AlienB or FaceFXSpecies.Drell or FaceFXSpecies.Salarian)
-                AddPreset(result, "Wounded: Grimace", "E_Wounded_Grimace", species);
+            {
+                bool supportsGrimace = !FaceFXSpeciesCatalog.IsLegacyLegendaryGame(game)
+                    || game == MEGame.LE2 && species is FaceFXSpecies.Drell or FaceFXSpecies.Salarian;
+                if (supportsGrimace)
+                    AddPreset(result, "Wounded: Grimace", "E_Wounded_Grimace", species, game);
+            }
             if (species == FaceFXSpecies.AlienB)
-                AddPreset(result, "Angry: Outrage", "E_Angry_Outrage", species);
-            if (species == FaceFXSpecies.Drell)
-                AddPreset(result, "Happy: Broad Smile", "E_Happy_BroadSmile", species);
+                AddPreset(result, "Angry: Outrage", "E_Angry_Outrage", species, game);
+            if (species == FaceFXSpecies.Vorcha && FaceFXSpeciesCatalog.IsLegacyLegendaryGame(game))
+            {
+                AddPreset(result, "Angry: Outrage", "E_Angry_Outrage", species, game);
+                AddPreset(result, "Wounded: Grimace", "E_Wounded_Grimace", species, game);
+            }
+            if (species == FaceFXSpecies.Drell && !FaceFXSpeciesCatalog.IsLegacyLegendaryGame(game))
+                AddPreset(result, "Happy: Broad Smile", "E_Happy_BroadSmile", species, game);
 
             return result;
         }
 
-        public static bool SupportsLayeredEmotions(FaceFXSpecies species) =>
-            species is FaceFXSpecies.Asari or FaceFXSpecies.HumanFemale or FaceFXSpecies.HumanMale
+        public static bool SupportsLayeredEmotions(FaceFXSpecies species, MEGame game = MEGame.LE3) =>
+            !FaceFXSpeciesCatalog.IsLegacyLegendaryGame(game)
+            && species is FaceFXSpecies.Asari or FaceFXSpecies.HumanFemale or FaceFXSpecies.HumanMale
                 or FaceFXSpecies.Shepard;
 
         private static void AddPresets(List<FaceFXEmotionChoice> destination,
-            IEnumerable<(string DisplayName, string Animation)> presets, FaceFXSpecies species)
+            IEnumerable<(string DisplayName, string Animation)> presets, FaceFXSpecies species, MEGame game)
         {
             foreach ((string displayName, string animation) in presets)
-                AddPreset(destination, displayName, animation, species);
+                AddPreset(destination, displayName, animation, species, game);
         }
 
         private static void AddPreset(List<FaceFXEmotionChoice> destination, string displayName,
-            string animation, FaceFXSpecies species)
+            string animation, FaceFXSpecies species, MEGame game)
         {
             destination.Add(new FaceFXEmotionChoice
             {
                 DisplayName = $"Preset: {displayName}",
-                PresetAnimation = ResolveRigSpelling(animation, species)
+                PresetAnimation = ResolveRigSpelling(animation, species, game)
             });
         }
 
-        private static string ResolveRigSpelling(string animation, FaceFXSpecies species)
+        private static string ResolveRigSpelling(string animation, FaceFXSpecies species, MEGame game)
         {
+            if (FaceFXSpeciesCatalog.IsLegacyLegendaryGame(game) && animation == "E_Neutral_Thoughtful")
+                return "E_Neutral_Thoughtfull";
+
             if (animation == "E_Neutral_Thoughtful" && species is not (FaceFXSpecies.Asari
                 or FaceFXSpecies.HumanChild or FaceFXSpecies.HumanFemale or FaceFXSpecies.HumanMale
                 or FaceFXSpecies.Prothean or FaceFXSpecies.Shepard))
@@ -145,6 +174,21 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
                 return animation.Replace("OverJoyed", "Overjoyed", StringComparison.Ordinal);
 
             return animation;
+        }
+
+        private static bool IsLegacyPresetSupported(string animation, FaceFXSpecies species, MEGame game) =>
+            !FaceFXSpeciesCatalog.IsLegacyLegendaryGame(game)
+            || species != FaceFXSpecies.Batarian
+            || animation != "E_Angry_Squint";
+
+        private static bool SupportsLegacyFlirt(FaceFXSpecies species, MEGame game)
+        {
+            if (species is FaceFXSpecies.HumanFemale or FaceFXSpecies.HumanMale or FaceFXSpecies.Asari)
+                return true;
+
+            return game == MEGame.LE2 && species is FaceFXSpecies.Krogan or FaceFXSpecies.Batarian
+                or FaceFXSpecies.Drell or FaceFXSpecies.Turian or FaceFXSpecies.Salarian
+                or FaceFXSpecies.Geth or FaceFXSpecies.Yahg or FaceFXSpecies.EDI;
         }
     }
 }

@@ -25,6 +25,7 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
         private readonly IFaceFXBinary _faceFX;
         private readonly LegendaryExplorerCore.Unreal.BinaryConverters.FaceFXLine _line;
         private readonly ExportEntry _audioExport;
+        private readonly MEGame _game;
 
         // Properties for binding
         public string LineName => _line?.NameAsString ?? "Unknown";
@@ -184,29 +185,7 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
             : "Existing lip-sync curves on this line will be replaced.";
 
         // Species selection
-        public List<string> AvailableSpecies { get; } = new List<string>
-        {
-            "Human Female",
-            "Human Male",
-            "Human Child",
-            "Asari",
-            "Krogan",
-            "Drell",
-            "Turian",
-            "Salarian",
-            "Quarian",
-            "Geth",
-            "Elcor",
-            "Hanar",
-            "Volus",
-            "Batarian",
-            "Vorcha",
-            "Prothean",
-            "Yahg",
-            "Alien B",
-            "EDI",
-            "Shepard"
-        };
+        public List<string> AvailableSpecies { get; }
 
         private string _selectedSpecies = "Human Female";
         public string SelectedSpecies
@@ -229,17 +208,23 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
             int tlkId, 
             string tlkText, 
             ExportEntry audioExport,
-            Window owner = null)
+            Window owner = null,
+            MEGame game = MEGame.LE3)
         {
             _faceFX = faceFX;
             _line = line;
             _audioExport = audioExport;
+            _game = game;
             TLKID = tlkId;
             TLKText = tlkText ?? "";
+            AvailableSpecies = FaceFXSpeciesCatalog.GetForGame(game)
+                .Select(FaceFXSpeciesCatalog.GetDisplayName)
+                .ToList();
 
             InitializeComponent();
             CustomWindowChrome.ApplyCustomChrome(this);
             DataContext = this;
+            RefreshAvailableEmotions();
             SelectedEmotion = AvailableEmotions[0];
 
             if (owner != null)
@@ -374,32 +359,11 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
                 }
 
                 // Parse the selected species
-                FaceFXSpecies species = SelectedSpecies switch
-                {
-                    "Human Male" => FaceFXSpecies.HumanMale,
-                    "Human Child" => FaceFXSpecies.HumanChild,
-                    "Asari" => FaceFXSpecies.Asari,
-                    "Krogan" => FaceFXSpecies.Krogan,
-                    "Drell" => FaceFXSpecies.Drell,
-                    "Turian" => FaceFXSpecies.Turian,
-                    "Salarian" => FaceFXSpecies.Salarian,
-                    "Quarian" => FaceFXSpecies.Quarian,
-                    "Geth" => FaceFXSpecies.Geth,
-                    "Elcor" => FaceFXSpecies.Elcor,
-                    "Hanar" => FaceFXSpecies.Hanar,
-                    "Volus" => FaceFXSpecies.Volus,
-                    "Batarian" => FaceFXSpecies.Batarian,
-                    "Vorcha" => FaceFXSpecies.Vorcha,
-                    "Prothean" => FaceFXSpecies.Prothean,
-                    "Yahg" => FaceFXSpecies.Yahg,
-                    "Alien B" => FaceFXSpecies.AlienB,
-                    "EDI" => FaceFXSpecies.EDI,
-                    "Shepard" => FaceFXSpecies.Shepard,
-                    _ => FaceFXSpecies.HumanFemale
-                };
+                FaceFXSpecies species = FaceFXSpeciesCatalog.FromDisplayName(SelectedSpecies);
 
                 var options = new FaceFXGenerationOptions
                 {
+                    Game = _game,
                     CharacterType = CharacterType.HumanFemale,
                     Species = species,
                     GenerateJawAnimation = true,
@@ -448,32 +412,10 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
 
         private void RefreshAvailableEmotions()
         {
-            FaceFXSpecies species = SelectedSpecies switch
-            {
-                "Human Male" => FaceFXSpecies.HumanMale,
-                "Human Child" => FaceFXSpecies.HumanChild,
-                "Asari" => FaceFXSpecies.Asari,
-                "Krogan" => FaceFXSpecies.Krogan,
-                "Drell" => FaceFXSpecies.Drell,
-                "Turian" => FaceFXSpecies.Turian,
-                "Salarian" => FaceFXSpecies.Salarian,
-                "Quarian" => FaceFXSpecies.Quarian,
-                "Geth" => FaceFXSpecies.Geth,
-                "Elcor" => FaceFXSpecies.Elcor,
-                "Hanar" => FaceFXSpecies.Hanar,
-                "Volus" => FaceFXSpecies.Volus,
-                "Batarian" => FaceFXSpecies.Batarian,
-                "Vorcha" => FaceFXSpecies.Vorcha,
-                "Prothean" => FaceFXSpecies.Prothean,
-                "Yahg" => FaceFXSpecies.Yahg,
-                "Alien B" => FaceFXSpecies.AlienB,
-                "EDI" => FaceFXSpecies.EDI,
-                "Shepard" => FaceFXSpecies.Shepard,
-                _ => FaceFXSpecies.HumanFemale
-            };
+            FaceFXSpecies species = FaceFXSpeciesCatalog.FromDisplayName(SelectedSpecies);
 
             string previousDisplayName = SelectedEmotion?.DisplayName;
-            AvailableEmotions = FaceFXEmotionCatalog.GetForSpecies(species);
+            AvailableEmotions = FaceFXEmotionCatalog.GetForSpecies(species, _game);
             SelectedEmotion = AvailableEmotions.FirstOrDefault(emotion =>
                                   emotion.DisplayName == previousDisplayName)
                               ?? AvailableEmotions[0];

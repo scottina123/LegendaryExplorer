@@ -442,6 +442,9 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         private ExportEntry FindVoiceStreamFromExport(FaceFXLineEntry selectedLine)
         {
+            if (CurrentLoadedExport?.Game.IsGame1() == true)
+                return FindSoundNodeWaveFromExport(CurrentLoadedExport, selectedLine);
+
             if (CurrentLoadedExport != null && selectedLine.TLKID > 0)
             {
                 var wwiseEventSearchName = $"VO_{selectedLine.TLKID:D6}_{(selectedLine.IsMale ? "m" : "f")}";
@@ -2987,7 +2990,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 SelectedLineEntry.TLKID,
                 SelectedLineEntry.TLKString,
                 audioExport,
-                Window.GetWindow(this));
+                Window.GetWindow(this),
+                CurrentLoadedExport.Game);
 
             if (dialog.ShowDialog() == true && dialog.WasGenerated)
             {
@@ -3012,7 +3016,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             }
 
             // Show bulk generation options dialog
-            var bulkDialog = new Tools.FaceFXEditor.AutoFaceFXGenerator.BulkFaceFXGenerationDialog(Lines.Count, Window.GetWindow(this));
+            var bulkDialog = new Tools.FaceFXEditor.AutoFaceFXGenerator.BulkFaceFXGenerationDialog(
+                Lines.Count, Window.GetWindow(this), game: CurrentLoadedExport.Game);
             if (bulkDialog.ShowDialog() != true || !bulkDialog.Confirmed)
                 return;
 
@@ -3040,6 +3045,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
                     var options = new Tools.FaceFXEditor.AutoFaceFXGenerator.FaceFXGenerationOptions
                     {
+                        Game = CurrentLoadedExport.Game,
                         CharacterType = Tools.FaceFXEditor.AutoFaceFXGenerator.CharacterType.HumanFemale,
                         Species = selectedSpecies,
                         GenerateJawAnimation = true,
@@ -3331,7 +3337,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             }
 
             // Step 3: Bulk generate FaceFX for all lines
-            var bulkDialog = new Tools.FaceFXEditor.AutoFaceFXGenerator.BulkFaceFXGenerationDialog(Lines.Count, Window.GetWindow(this));
+            var bulkDialog = new Tools.FaceFXEditor.AutoFaceFXGenerator.BulkFaceFXGenerationDialog(
+                Lines.Count, Window.GetWindow(this), game: CurrentLoadedExport.Game);
             if (bulkDialog.ShowDialog() != true || !bulkDialog.Confirmed)
                 return;
 
@@ -3359,6 +3366,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
                     var options = new Tools.FaceFXEditor.AutoFaceFXGenerator.FaceFXGenerationOptions
                     {
+                        Game = CurrentLoadedExport.Game,
                         CharacterType = Tools.FaceFXEditor.AutoFaceFXGenerator.CharacterType.HumanFemale,
                         Species = selectedSpecies,
                         GenerateJawAnimation = true,
@@ -3733,7 +3741,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             }
 
             var bulkDialog = new Tools.FaceFXEditor.AutoFaceFXGenerator.BulkFaceFXGenerationDialog(newLines.Count,
-                Window.GetWindow(this), defaultSpecies)
+                Window.GetWindow(this), defaultSpecies, faceFxExport.Game)
             {
                 Title = $"Bulk FaceFX Generation - {faceFxExport.ObjectNameString}"
             };
@@ -3761,6 +3769,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     var audioExport = FindVoiceStreamFromExport(faceFxExport, lineEntry);
                     var options = new Tools.FaceFXEditor.AutoFaceFXGenerator.FaceFXGenerationOptions
                     {
+                        Game = faceFxExport.Game,
                         CharacterType = isFemaleAsset
                             ? Tools.FaceFXEditor.AutoFaceFXGenerator.CharacterType.HumanFemale
                             : Tools.FaceFXEditor.AutoFaceFXGenerator.CharacterType.HumanMale,
@@ -3810,6 +3819,9 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         private ExportEntry FindVoiceStreamFromExport(ExportEntry faceFxExport, FaceFXLineEntry selectedLine)
         {
+            if (faceFxExport?.Game.IsGame1() == true)
+                return FindSoundNodeWaveFromExport(faceFxExport, selectedLine);
+
             if (faceFxExport != null && selectedLine.TLKID > 0)
             {
                 var wwiseEventSearchName = $"VO_{selectedLine.TLKID:D6}_{(selectedLine.IsMale ? "m" : "f")}";
@@ -3844,6 +3856,36 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             }
 
             return null;
+        }
+
+        private static ExportEntry FindSoundNodeWaveFromExport(ExportEntry faceFxExport, FaceFXLineEntry selectedLine)
+        {
+            FaceFXLine line = selectedLine?.Line;
+            if (faceFxExport == null || line == null || string.IsNullOrEmpty(line.ID))
+                return null;
+
+            // LE1 FaceFX lines reference SoundNodeWave exports by their FaceFX ID rather
+            // than through a WwiseEvent. Female line names use the TLK ID as the object
+            // instance number, while male line IDs include the gender suffix directly.
+            bool isMale = line.NameAsString?.EndsWith("_M", StringComparison.OrdinalIgnoreCase) == true;
+            IEnumerable<IEntry> references;
+            if (isMale)
+            {
+                references = faceFxExport.FileRef.FindUsagesOfName(line.ID)
+                    .Where(entry => string.Equals(line.ID, entry.Key.ObjectName.Instanced,
+                        StringComparison.OrdinalIgnoreCase))
+                    .Select(entry => entry.Key);
+            }
+            else
+            {
+                string referenceName = line.ID.Replace($"_{selectedLine.TLKID}", "");
+                references = faceFxExport.FileRef.FindUsagesOfName(referenceName)
+                    .Where(entry => entry.Key.ObjectName.Number == selectedLine.TLKID + 1)
+                    .Select(entry => entry.Key);
+            }
+
+            return references.OfType<ExportEntry>()
+                .FirstOrDefault(entry => entry.ClassName == "SoundNodeWave");
         }
 
         /// <summary>

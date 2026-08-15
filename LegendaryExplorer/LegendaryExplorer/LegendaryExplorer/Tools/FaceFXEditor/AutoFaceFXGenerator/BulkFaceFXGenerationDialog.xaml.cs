@@ -1,8 +1,10 @@
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Windows;
 using LegendaryExplorer.SharedUI;
+using LegendaryExplorerCore.Packages;
 
 namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
 {
@@ -21,26 +23,7 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
         public string LineCountText { get; }
 
         // Species selection
-        public List<string> AvailableSpecies { get; } = new List<string>
-        {
-            "Human Female",
-            "Human Male",
-            "Human Child",
-            "Asari",
-            "Krogan",
-            "Drell",
-            "Turian",
-            "Salarian",
-            "Quarian",
-            "Geth",
-            "Elcor",
-            "Hanar",
-            "Volus",
-            "Batarian",
-            "Vorcha",
-            "Prothean",
-            "Yahg"
-        };
+        public List<string> AvailableSpecies { get; }
 
         private string _selectedSpecies = "Human Female";
         public string SelectedSpecies
@@ -73,58 +56,24 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
         /// <summary>
         /// The selected species as enum value
         /// </summary>
-        public FaceFXSpecies SelectedSpeciesEnum => SelectedSpecies switch
-        {
-            "Human Male" => FaceFXSpecies.HumanMale,
-            "Human Child" => FaceFXSpecies.HumanChild,
-            "Asari" => FaceFXSpecies.Asari,
-            "Krogan" => FaceFXSpecies.Krogan,
-            "Drell" => FaceFXSpecies.Drell,
-            "Turian" => FaceFXSpecies.Turian,
-            "Salarian" => FaceFXSpecies.Salarian,
-            "Quarian" => FaceFXSpecies.Quarian,
-            "Geth" => FaceFXSpecies.Geth,
-            "Elcor" => FaceFXSpecies.Elcor,
-            "Hanar" => FaceFXSpecies.Hanar,
-            "Volus" => FaceFXSpecies.Volus,
-            "Batarian" => FaceFXSpecies.Batarian,
-            "Vorcha" => FaceFXSpecies.Vorcha,
-            "Prothean" => FaceFXSpecies.Prothean,
-            "Yahg" => FaceFXSpecies.Yahg,
-            _ => FaceFXSpecies.HumanFemale
-        };
+        public FaceFXSpecies SelectedSpeciesEnum => FaceFXSpeciesCatalog.FromDisplayName(SelectedSpecies);
 
         /// <summary>
         /// Whether the user confirmed generation
         /// </summary>
         public bool Confirmed { get; private set; }
 
-        public BulkFaceFXGenerationDialog(int lineCount, Window owner = null, FaceFXSpecies? defaultSpecies = null)
+        public BulkFaceFXGenerationDialog(int lineCount, Window owner = null, FaceFXSpecies? defaultSpecies = null,
+            MEGame game = MEGame.LE3)
         {
             LineCountText = $"Generate FaceFX for {lineCount} lines";
+            AvailableSpecies = FaceFXSpeciesCatalog.GetForGame(game)
+                .Select(FaceFXSpeciesCatalog.GetDisplayName)
+                .ToList();
 
-            if (defaultSpecies.HasValue)
+            if (defaultSpecies.HasValue && FaceFXSpeciesCatalog.GetForGame(game).Contains(defaultSpecies.Value))
             {
-                SelectedSpecies = defaultSpecies.Value switch
-                {
-                    FaceFXSpecies.HumanMale => "Human Male",
-                    FaceFXSpecies.HumanChild => "Human Child",
-                    FaceFXSpecies.Asari => "Asari",
-                    FaceFXSpecies.Krogan => "Krogan",
-                    FaceFXSpecies.Drell => "Drell",
-                    FaceFXSpecies.Turian => "Turian",
-                    FaceFXSpecies.Salarian => "Salarian",
-                    FaceFXSpecies.Quarian => "Quarian",
-                    FaceFXSpecies.Geth => "Geth",
-                    FaceFXSpecies.Elcor => "Elcor",
-                    FaceFXSpecies.Hanar => "Hanar",
-                    FaceFXSpecies.Volus => "Volus",
-                    FaceFXSpecies.Batarian => "Batarian",
-                    FaceFXSpecies.Vorcha => "Vorcha",
-                    FaceFXSpecies.Prothean => "Prothean",
-                    FaceFXSpecies.Yahg => "Yahg",
-                    _ => "Human Female"
-                };
+                SelectedSpecies = FaceFXSpeciesCatalog.GetDisplayName(defaultSpecies.Value);
             }
 
             InitializeComponent();

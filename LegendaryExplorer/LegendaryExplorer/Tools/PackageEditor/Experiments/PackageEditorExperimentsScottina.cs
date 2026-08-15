@@ -415,7 +415,8 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             var dialog = new BulkFaceFXGenerationDialog(
                 lineCount,
                 owner,
-                isFemale ? FaceFXSpecies.HumanFemale : FaceFXSpecies.HumanMale)
+                isFemale ? FaceFXSpecies.HumanFemale : FaceFXSpecies.HumanMale,
+                owner.Pcc.Game)
             {
                 Title = $"Bulk FaceFX Generation - All {genderName} Assets"
             };
@@ -503,6 +504,7 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                         var faceFxBinary = new FaceFxAnimSetBinary(animSet);
                         var options = new FaceFXGenerationOptions
                         {
+                            Game = package.Game,
                             CharacterType = isFemaleAsset ? CharacterType.HumanFemale : CharacterType.HumanMale,
                             Species = settings.Species,
                             GenerateJawAnimation = true,
