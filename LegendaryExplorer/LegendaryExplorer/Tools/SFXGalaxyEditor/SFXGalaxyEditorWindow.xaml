@@ -130,10 +130,15 @@
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="*" />
                         </Grid.RowDefinitions>
-                        <DockPanel Margin="5,3,5,8">
+                        <Grid Margin="5,3,5,8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
                             <TextBlock Text="HIERARCHY" FontWeight="SemiBold" VerticalAlignment="Center" />
-                            <Button DockPanel.Dock="Right" Padding="8,3" Content="Add…" Click="AddForSelection_Click" />
-                        </DockPanel>
+                            <Button Grid.Column="1" Width="28" Height="24" Margin="8,0,0,0" Padding="0"
+                                    Content="+" ToolTip="Add object" Click="AddForSelection_Click" />
+                        </Grid>
                         <Grid Grid.Row="1" Margin="5">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="115" />

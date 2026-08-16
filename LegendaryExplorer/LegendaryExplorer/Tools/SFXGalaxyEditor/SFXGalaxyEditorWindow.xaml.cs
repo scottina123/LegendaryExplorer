@@ -2569,23 +2569,14 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
     {
         string kindName = KindName(kind);
         string className = ClassNameForKind(kind);
-        string label = PromptDialog.Prompt(this, "Custom object name:", $"Add {kindName}", $"New {kindName}", true)?.Trim();
-        if (string.IsNullOrWhiteSpace(label))
+        bool usesDisplayNameTlk = GlobalUnrealObjectInfo.GetPropertyInfo(Pcc.Game, "DisplayName", className) is not null;
+        var dialog = new SFXGalaxyAddObjectDialog(this, kindName, $"New {kindName}", Pcc, usesDisplayNameTlk);
+        if (dialog.ShowDialog() != true)
         {
             return;
         }
-        int displayNameStringRef = 0;
-        if (GlobalUnrealObjectInfo.GetPropertyInfo(Pcc.Game, "DisplayName", className) is not null)
-        {
-            string stringRefText = PromptDialog.Prompt(this,
-                "DisplayName TLK StringRef ID (leave blank or use 0 to edit it later in Properties):",
-                $"Add {kindName}", "0", true);
-            if (stringRefText is null)
-            {
-                return;
-            }
-            int.TryParse(stringRefText, out displayNameStringRef);
-        }
+        string label = dialog.ObjectName;
+        int displayNameStringRef = dialog.DisplayNameStringRef;
 
         ExportEntry created = null;
         bool parentReferencesAdded = false;
