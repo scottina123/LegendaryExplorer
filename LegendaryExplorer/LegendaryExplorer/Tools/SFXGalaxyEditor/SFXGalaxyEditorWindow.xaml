@@ -134,22 +134,50 @@
                             <TextBlock Text="HIERARCHY" FontWeight="SemiBold" VerticalAlignment="Center" />
                             <Button DockPanel.Dock="Right" Padding="8,3" Content="Add…" Click="AddForSelection_Click" />
                         </DockPanel>
-                        <TextBox x:Name="SearchBox" Grid.Row="1" Margin="5" Padding="7,5"
-                                 ToolTip="Search resolved names, descriptions, tags, classes, and export paths"
-                                 TextChanged="SearchBox_TextChanged" KeyDown="SearchBox_KeyDown" />
-                        <ListBox x:Name="SearchResultsList" Grid.Row="2" Margin="5,0,5,5" MaxHeight="190"
-                                 Visibility="Collapsed" MouseDoubleClick="SearchResultsList_MouseDoubleClick"
-                                 SelectionChanged="SearchResultsList_SelectionChanged">
-                            <ListBox.ItemTemplate>
-                                <DataTemplate DataType="{x:Type local:SFXGalaxyNode}">
-                                    <StackPanel Margin="2">
-                                        <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" />
-                                        <TextBlock Foreground="Gray" FontSize="10" Text="{Binding Export.InstancedFullPath}" TextTrimming="CharacterEllipsis" />
-                                        <TextBlock Foreground="Gray" FontSize="10" Text="{Binding Description}" TextTrimming="CharacterEllipsis" />
-                                    </StackPanel>
-                                </DataTemplate>
-                            </ListBox.ItemTemplate>
-                        </ListBox>
+                        <Grid Grid.Row="1" Margin="5">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="115" />
+                                <ColumnDefinition Width="5" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <xctk:WatermarkTextBox x:Name="TitleSearchBox" Padding="7,5" Watermark="Title"
+                                                   ToolTip="Search titles for every galaxy map object"
+                                                   TextChanged="TitleSearchBox_TextChanged" KeyDown="SearchBox_KeyDown" />
+                            <xctk:WatermarkTextBox x:Name="DescriptionSearchBox" Grid.Column="2" Padding="7,5" Watermark="Description"
+                                                   ToolTip="Search resolved object descriptions"
+                                                   TextChanged="DescriptionSearchBox_TextChanged" KeyDown="SearchBox_KeyDown" />
+                        </Grid>
+                        <Grid Grid.Row="2" Margin="5,0,5,5">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="115" />
+                                <ColumnDefinition Width="5" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <ListBox x:Name="TitleSearchResultsList" MaxHeight="190" Visibility="Collapsed"
+                                     MouseDoubleClick="SearchResultsList_MouseDoubleClick"
+                                     SelectionChanged="SearchResultsList_SelectionChanged"
+                                     HorizontalContentAlignment="Left"
+                                     ScrollViewer.HorizontalScrollBarVisibility="Auto">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate DataType="{x:Type local:SFXGalaxyNode}">
+                                        <TextBlock Margin="4,2" FontWeight="SemiBold" Text="{Binding DisplayName}"
+                                                   TextWrapping="NoWrap" ToolTip="{Binding DisplayName}" />
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                            <ListBox x:Name="DescriptionSearchResultsList" Grid.Column="2" MaxHeight="190" Visibility="Collapsed"
+                                     MouseDoubleClick="SearchResultsList_MouseDoubleClick"
+                                     SelectionChanged="SearchResultsList_SelectionChanged"
+                                     HorizontalContentAlignment="Left"
+                                     ScrollViewer.HorizontalScrollBarVisibility="Auto">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate DataType="{x:Type local:SFXGalaxyNode}">
+                                        <TextBlock Margin="4,2" Foreground="Gray" Text="{Binding Description}"
+                                                   TextWrapping="NoWrap" ToolTip="{Binding Description}" />
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                        </Grid>
                         <TreeView x:Name="HierarchyTree" Grid.Row="3" Margin="5" ItemsSource="{Binding HierarchyRoots}"
                                   SelectedItemChanged="HierarchyTree_SelectedItemChanged"
                                   MouseDoubleClick="HierarchyTree_MouseDoubleClick"

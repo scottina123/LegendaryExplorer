@@ -36,8 +36,6 @@ public sealed class SFXGalaxyNode
     public bool CanNavigateInto => !IsImplicitStar
         && Kind is SFXGalaxyNodeKind.Galaxy or SFXGalaxyNodeKind.Cluster or SFXGalaxyNodeKind.System;
     public string ExportLabel => IsImplicitStar ? "Implicit SFXSystem star" : $"[{Export.UIndex}] {Export.ClassName}";
-    public string SearchText => string.Join(" ", DisplayName, Description, Export?.ObjectNameString, Export?.ClassName, Export?.InstancedFullPath);
-
     public string KindLabel => Kind switch
     {
         SFXGalaxyNodeKind.AsteroidBelt => "Asteroid belt",

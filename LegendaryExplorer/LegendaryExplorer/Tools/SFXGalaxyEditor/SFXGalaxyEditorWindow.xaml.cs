@@ -123,7 +123,8 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
     private Line _relayPreview;
 
     public ObservableCollectionExtended<SFXGalaxyNode> HierarchyRoots { get; } = [];
-    public ObservableCollectionExtended<SFXGalaxyNode> SearchResults { get; } = [];
+    public ObservableCollectionExtended<SFXGalaxyNode> TitleSearchResults { get; } = [];
+    public ObservableCollectionExtended<SFXGalaxyNode> DescriptionSearchResults { get; } = [];
     public ObservableCollectionExtended<SFXGalaxyEditableExport> EditableExports { get; } = [];
     public ObservableCollectionExtended<SFXGalaxyPlanetMaterialSlot> PlanetMaterialSlots { get; } = [];
 
@@ -263,7 +264,7 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
         SaveAsCommand = new GenericCommand(SavePackageAs, CanSavePackageSet);
         BackCommand = new GenericCommand(NavigateBack, () => CurrentNode?.Parent is not null);
         NavigateIntoCommand = new GenericCommand(NavigateIntoSelected, () => CanEnter(SelectedNode));
-        FocusSearchCommand = new GenericCommand(() => SearchBox?.Focus(), () => Pcc is not null);
+        FocusSearchCommand = new GenericCommand(() => TitleSearchBox?.Focus(), () => Pcc is not null);
         DuplicateCommand = new GenericCommand(DuplicateSelected, () => SelectedNode is { Parent: not null, IsImplicitStar: false });
         DeleteCommand = new GenericCommand(DeleteSelected, () => SelectedNode is { Parent: not null, IsImplicitStar: false });
 
@@ -278,7 +279,8 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
         PlanetMaterialMeshViewer.LiveMaterialSaveAsNewLabel = "Create new MIC...";
         PlanetMaterialMeshViewer.LiveMaterialSaveHelpText =
             "Overwrite updates the referenced MIC everywhere it is shared. Create new makes a named MIC for only this planet layer and repoints the BioPlanet property.";
-        SearchResultsList.ItemsSource = SearchResults;
+        TitleSearchResultsList.ItemsSource = TitleSearchResults;
+        DescriptionSearchResultsList.ItemsSource = DescriptionSearchResults;
         RecentsController.InitRecentControl(Toolname, Recents_MenuItem, LoadFile);
     }
 
@@ -371,7 +373,8 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
         PropertiesInterpreter?.UnloadExport();
         MetadataLoader?.UnloadExport();
         HierarchyRoots.ClearEx();
-        SearchResults.ClearEx();
+        TitleSearchResults.ClearEx();
+        DescriptionSearchResults.ClearEx();
         EditableExports.ClearEx();
         UnloadVisualAssets();
         UnloadSecondaryPackages();
@@ -1868,31 +1871,55 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
         return null;
     }
 
-    private void SearchBox_TextChanged(object sender, TextChangedEventArgs e)
+    private void TitleSearchBox_TextChanged(object sender, TextChangedEventArgs e)
     {
-        string query = SearchBox.Text.Trim();
-        SearchResults.ClearEx();
+        string titleQuery = TitleSearchBox?.Text.Trim() ?? string.Empty;
+        RefreshSearchResults(
+            titleQuery,
+            TitleSearchResults,
+            TitleSearchResultsList,
+            node => node.DisplayName?.Contains(titleQuery, StringComparison.OrdinalIgnoreCase) ?? false);
+    }
+
+    private void DescriptionSearchBox_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        string descriptionQuery = DescriptionSearchBox?.Text.Trim() ?? string.Empty;
+        RefreshSearchResults(
+            descriptionQuery,
+            DescriptionSearchResults,
+            DescriptionSearchResultsList,
+            node => node.Description?.Contains(descriptionQuery, StringComparison.OrdinalIgnoreCase) ?? false);
+    }
+
+    private void RefreshSearchResults(
+        string query,
+        ObservableCollectionExtended<SFXGalaxyNode> results,
+        ListBox resultsList,
+        Func<SFXGalaxyNode, bool> matches)
+    {
+        results.ClearEx();
         if (_rootNode is null || query.Length < 2)
         {
-            SearchResultsList.Visibility = Visibility.Collapsed;
+            resultsList.Visibility = Visibility.Collapsed;
             return;
         }
-        SearchResults.AddRange(_rootNode.SelfAndDescendants()
-            .Where(node => node.SearchText.Contains(query, StringComparison.OrdinalIgnoreCase))
-            .Take(100));
-        SearchResultsList.Visibility = SearchResults.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        results.AddRange(_rootNode.SelfAndDescendants().Where(matches).Take(100));
+        resultsList.Visibility = results.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void SearchBox_KeyDown(object sender, KeyEventArgs e)
     {
+        bool isDescriptionSearch = ReferenceEquals(sender, DescriptionSearchBox);
+        ListBox resultsList = isDescriptionSearch ? DescriptionSearchResultsList : TitleSearchResultsList;
+        ObservableCollectionExtended<SFXGalaxyNode> results = isDescriptionSearch ? DescriptionSearchResults : TitleSearchResults;
         if (e.Key == Key.Escape)
         {
-            SearchResultsList.Visibility = Visibility.Collapsed;
+            resultsList.Visibility = Visibility.Collapsed;
             return;
         }
         if (e.Key == Key.Enter)
         {
-            SFXGalaxyNode node = SearchResultsList.SelectedItem as SFXGalaxyNode ?? SearchResults.FirstOrDefault();
+            SFXGalaxyNode node = resultsList.SelectedItem as SFXGalaxyNode ?? results.FirstOrDefault();
             if (node is not null)
             {
                 NavigateToSearchResult(node);
@@ -1903,7 +1930,7 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
 
     private void SearchResultsList_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (SearchResultsList.SelectedItem is SFXGalaxyNode node && SearchResultsList.IsKeyboardFocusWithin)
+        if (sender is ListBox { SelectedItem: SFXGalaxyNode node, IsKeyboardFocusWithin: true })
         {
             NavigateToSearchResult(node);
         }
@@ -1911,7 +1938,7 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
 
     private void SearchResultsList_MouseDoubleClick(object sender, MouseButtonEventArgs e)
     {
-        if (SearchResultsList.SelectedItem is SFXGalaxyNode node)
+        if (sender is ListBox { SelectedItem: SFXGalaxyNode node })
         {
             NavigateToSearchResult(node);
         }
@@ -1921,7 +1948,8 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
     {
         CurrentNode = FindOwningView(node);
         SelectedNode = node;
-        SearchResultsList.Visibility = Visibility.Collapsed;
+        TitleSearchResultsList.Visibility = Visibility.Collapsed;
+        DescriptionSearchResultsList.Visibility = Visibility.Collapsed;
         RenderCurrentLevel();
         SelectTreeNode(node);
     }
