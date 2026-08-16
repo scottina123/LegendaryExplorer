@@ -212,10 +212,20 @@
                             <TextBlock Width="105" Margin="0,0,7,0" VerticalAlignment="Center" Foreground="Gray" Text="Galaxy artwork:" />
                             <TextBox Padding="4,2" IsReadOnly="True" Text="{Binding GalaxyArtPackagePath, Mode=OneWay}" ToolTip="{Binding GalaxyArtPackagePath}" />
                         </DockPanel>
-                        <Border Grid.Row="4" Margin="5" BorderBrush="#335E7B8C" BorderThickness="1" Background="#FF02070D">
-                            <Grid>
-                                <Viewbox Stretch="Uniform">
-                                    <Canvas x:Name="MapCanvas" Width="1024" Height="1024" Background="Transparent"
+                        <Border Grid.Row="4" Margin="5" BorderBrush="#335E7B8C" BorderThickness="1"
+                                Background="#FF02070D" ClipToBounds="True">
+                            <Grid x:Name="MapViewport" Background="Transparent" ClipToBounds="True"
+                                  MouseLeftButtonDown="MapViewport_MouseLeftButtonDown"
+                                  MouseLeftButtonUp="MapViewport_MouseLeftButtonUp"
+                                  MouseMove="MapViewport_MouseMove"
+                                  MouseWheel="MapViewport_MouseWheel"
+                                  LostMouseCapture="MapViewport_LostMouseCapture"
+                                  SizeChanged="MapViewport_SizeChanged">
+                                <Viewbox x:Name="MapViewbox" Stretch="Uniform" RenderTransformOrigin="0,0">
+                                    <Viewbox.RenderTransform>
+                                        <MatrixTransform x:Name="MapViewportTransform" />
+                                    </Viewbox.RenderTransform>
+                                    <Canvas x:Name="MapCanvas" Width="1024" Height="1024" Background="Transparent" ClipToBounds="True"
                                             MouseMove="MapCanvas_MouseMove" MouseLeftButtonUp="MapCanvas_MouseLeftButtonUp"
                                             MouseLeave="MapCanvas_MouseLeave" MouseRightButtonUp="MapCanvas_MouseRightButtonUp" />
                                 </Viewbox>
@@ -231,7 +241,7 @@
                                 <Border HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="14" Padding="8,4"
                                         Background="#C0121B25" IsHitTestVisible="False">
                                     <TextBlock Foreground="#FFB3C1CA" FontSize="10"
-                                               Text="Drag objects to reposition • Drag a cluster's red handle to connect • Double-click to enter" />
+                                               Text="Drag empty space to pan • Mouse wheel to zoom • Drag objects to reposition • Double-click to enter" />
                                 </Border>
                             </Grid>
                         </Border>

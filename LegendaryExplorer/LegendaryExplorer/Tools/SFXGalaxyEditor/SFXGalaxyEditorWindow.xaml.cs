@@ -121,6 +121,12 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
     private Point _dragOrigin;
     private SFXGalaxyNode _relaySource;
     private Line _relayPreview;
+    private bool _isViewportPanning;
+    private Point _viewportPanStart;
+    private Point _viewportPanOrigin;
+    private double _viewportZoom = 1;
+    private double _viewportPanX;
+    private double _viewportPanY;
 
     public ObservableCollectionExtended<SFXGalaxyNode> HierarchyRoots { get; } = [];
     public ObservableCollectionExtended<SFXGalaxyNode> TitleSearchResults { get; } = [];
@@ -519,6 +525,7 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
             _packageSet = packageSet;
             LoadGalaxyBackground(galaxyArtPath);
             RebuildHierarchy(galaxy.UIndex, galaxy.UIndex);
+            ResetViewportTransform();
             if (packageSet.SynchronizesSecondary)
             {
                 _companionNeedsFullSync = true;
@@ -1151,6 +1158,7 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
         }
         CurrentNode = node;
         SelectedNode = node;
+        ResetViewportTransform();
         RenderCurrentLevel();
         SelectTreeNode(node);
     }
@@ -1166,6 +1174,7 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
         {
             CurrentNode = parent;
             SelectedNode = parent;
+            ResetViewportTransform();
             RenderCurrentLevel();
             SelectTreeNode(parent);
         }
@@ -1246,6 +1255,148 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
             DrawMarker(node);
         }
         OnPropertyChanged(nameof(CurrentObjectCountText));
+    }
+
+    private void MapViewport_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.Handled || e.LeftButton != MouseButtonState.Pressed || _dragNode is not null || _relaySource is not null)
+        {
+            return;
+        }
+
+        _isViewportPanning = true;
+        _viewportPanStart = e.GetPosition(MapViewport);
+        _viewportPanOrigin = new Point(_viewportPanX, _viewportPanY);
+        MapViewport.Cursor = Cursors.SizeAll;
+        Mouse.Capture(MapViewport);
+        e.Handled = true;
+    }
+
+    private void MapViewport_MouseMove(object sender, MouseEventArgs e)
+    {
+        if (!_isViewportPanning)
+        {
+            return;
+        }
+        if (e.LeftButton != MouseButtonState.Pressed)
+        {
+            EndViewportPan();
+            return;
+        }
+
+        Vector delta = e.GetPosition(MapViewport) - _viewportPanStart;
+        _viewportPanX = _viewportPanOrigin.X + delta.X;
+        _viewportPanY = _viewportPanOrigin.Y + delta.Y;
+        CoerceViewportPan();
+        ApplyViewportTransform();
+        e.Handled = true;
+    }
+
+    private void MapViewport_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if (!_isViewportPanning)
+        {
+            return;
+        }
+        EndViewportPan();
+        e.Handled = true;
+    }
+
+    private void MapViewport_LostMouseCapture(object sender, MouseEventArgs e)
+    {
+        _isViewportPanning = false;
+        if (MapViewport is not null)
+        {
+            MapViewport.Cursor = Cursors.Arrow;
+        }
+    }
+
+    private void MapViewport_MouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        if (MapViewport is null || MapViewport.ActualWidth <= 0 || MapViewport.ActualHeight <= 0)
+        {
+            return;
+        }
+
+        Point focus = e.GetPosition(MapViewport);
+        double oldZoom = _viewportZoom;
+        double zoomSteps = e.Delta / 120.0;
+        _viewportZoom = Math.Clamp(oldZoom * Math.Pow(1.15, zoomSteps), 0.5, 8.0);
+        if (Math.Abs(_viewportZoom - oldZoom) < 0.0001)
+        {
+            e.Handled = true;
+            return;
+        }
+
+        double zoomRatio = _viewportZoom / oldZoom;
+        _viewportPanX = focus.X - (focus.X - _viewportPanX) * zoomRatio;
+        _viewportPanY = focus.Y - (focus.Y - _viewportPanY) * zoomRatio;
+        CoerceViewportPan();
+        ApplyViewportTransform();
+        e.Handled = true;
+    }
+
+    private void MapViewport_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        CoerceViewportPan();
+        ApplyViewportTransform();
+    }
+
+    private void EndViewportPan()
+    {
+        _isViewportPanning = false;
+        if (MapViewport is not null)
+        {
+            MapViewport.Cursor = Cursors.Arrow;
+        }
+        if (Mouse.Captured == MapViewport)
+        {
+            Mouse.Capture(null);
+        }
+    }
+
+    private void ResetViewportTransform()
+    {
+        _viewportZoom = 1;
+        _viewportPanX = 0;
+        _viewportPanY = 0;
+        ApplyViewportTransform();
+    }
+
+    private void CoerceViewportPan()
+    {
+        if (MapViewport is null || MapViewport.ActualWidth <= 0 || MapViewport.ActualHeight <= 0)
+        {
+            return;
+        }
+
+        _viewportPanX = CoerceViewportAxis(_viewportPanX, MapViewport.ActualWidth, _viewportZoom);
+        _viewportPanY = CoerceViewportAxis(_viewportPanY, MapViewport.ActualHeight, _viewportZoom);
+    }
+
+    private static double CoerceViewportAxis(double offset, double viewportSize, double zoom)
+    {
+        double transformedSize = viewportSize * zoom;
+        if (transformedSize <= viewportSize)
+        {
+            double centeredOffset = (viewportSize - transformedSize) / 2;
+            double panAllowance = viewportSize * 0.25;
+            return Math.Clamp(offset, centeredOffset - panAllowance, centeredOffset + panAllowance);
+        }
+
+        double edgeAllowance = viewportSize * 0.1;
+        return Math.Clamp(offset, viewportSize - transformedSize - edgeAllowance, edgeAllowance);
+    }
+
+    private void ApplyViewportTransform()
+    {
+        if (MapViewportTransform is not null)
+        {
+            MapViewportTransform.Matrix = new Matrix(
+                _viewportZoom, 0,
+                0, _viewportZoom,
+                _viewportPanX, _viewportPanY);
+        }
     }
 
     private void DrawLevelBackground()
@@ -1946,10 +2097,16 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
 
     private void NavigateToSearchResult(SFXGalaxyNode node)
     {
-        CurrentNode = FindOwningView(node);
+        SFXGalaxyNode owningView = FindOwningView(node);
+        bool viewChanged = CurrentNode != owningView;
+        CurrentNode = owningView;
         SelectedNode = node;
         TitleSearchResultsList.Visibility = Visibility.Collapsed;
         DescriptionSearchResultsList.Visibility = Visibility.Collapsed;
+        if (viewChanged)
+        {
+            ResetViewportTransform();
+        }
         RenderCurrentLevel();
         SelectTreeNode(node);
     }
