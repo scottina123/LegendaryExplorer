@@ -419,13 +419,18 @@ namespace LegendaryExplorer.Tools.ConditionalsEditor
 
         private void Save()
         {
+            TrySave();
+        }
+
+        private bool TrySave()
+        {
             if (PrepareDraftsForSave() && Validate())
             {
                 if (File.FilePath is null)
                 {
                     // Unsaved new file
                     var d = new SaveFileDialog { Filter = CNDFileFilter };
-                    if (DirectoryMemory.ShowDialog(d) == false) return;
+                    if (DirectoryMemory.ShowDialog(d) == false) return false;
                     File.FilePath = d.FileName;
                     CurrentFileName = Path.GetFileName(d.FileName);
                     CurrentFilePath = d.FileName;
@@ -435,7 +440,10 @@ namespace LegendaryExplorer.Tools.ConditionalsEditor
                 }
 
                 SaveFile();
+                return true;
             }
+
+            return false;
         }
 
         private void SaveAs()
@@ -751,16 +759,30 @@ namespace LegendaryExplorer.Tools.ConditionalsEditor
 
         private void NewFile()
         {
-            if (FileIsLoaded()) Save();
+            var d = new SaveFileDialog { Filter = CNDFileFilter };
+            if (DirectoryMemory.ShowDialog(d) == false)
+            {
+                return;
+            }
+
+            if (FileIsLoaded() && !TrySave())
+            {
+                return;
+            }
+
             File = new CNDFile
             {
-                ConditionalEntries = new List<CNDFile.ConditionalEntry>()
+                ConditionalEntries = new List<CNDFile.ConditionalEntry>(),
+                FilePath = d.FileName
             };
-            CurrentFileName = null;
-            CurrentFilePath = null;
+            CurrentFileName = Path.GetFileName(d.FileName);
+            CurrentFilePath = d.FileName;
+            RecentsController.AddRecent(d.FileName, false, null); // Can we infer game this file is for?
+            RecentsController.SaveRecentList(true);
+            Title = $"Conditionals Editor - {d.FileName}";
             Conditionals.Clear();
             SelectedCond = null;
-            Save();
+            SaveFile();
         }
 
         private bool CanOpenCurrentFileLocation()
