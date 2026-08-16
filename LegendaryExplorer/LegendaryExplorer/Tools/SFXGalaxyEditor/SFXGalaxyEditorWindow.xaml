@@ -43,6 +43,8 @@
         <DockPanel>
             <Menu DockPanel.Dock="Top">
                 <MenuItem Header="_File" Padding="4">
+                    <MenuItem x:Name="OpenLE1GalaxyMapEditorMenuItem" Header="Open LE1 Galaxy Map Editor" Click="OpenLE1GalaxyMapEditor_Click" />
+                    <Separator />
                     <MenuItem Header="Open highest-mounted LE2 galaxy map files" Click="OpenHighestMountedLE2_Click" />
                     <MenuItem Header="Open highest-mounted LE3 galaxy map pair" Click="OpenHighestMountedLE3_Click" />
                     <MenuItem Header="_Open package…" Command="{Binding OpenCommand}" InputGestureText="Ctrl+O" />
@@ -99,8 +101,10 @@
                     <StackPanel Grid.Column="0" Margin="60" VerticalAlignment="Center">
                         <TextBlock Text="SFXGalaxy Editor" FontSize="25" FontWeight="SemiBold" />
                         <TextBlock Margin="0,12,0,0" TextWrapping="Wrap"
-                                   Text="Choose a game to load its highest-mounted galaxy map files. LE2 loads BioD_Nor_103aGalaxyMap.pcc with the required 103b map-object package and 103a art package. LE3 retains synchronized editing of BioD_Nor_203aGalaxyMap.pcc and BioD_Nor_203CIC.pcc with its 203a art package." />
-                        <StackPanel Margin="0,20,0,0" Orientation="Horizontal">
+                                   Text="Launch the dedicated LE1 editor, or choose LE2/LE3 to load the highest-mounted SFXGalaxy map files. LE2 loads BioD_Nor_103aGalaxyMap.pcc with the required 103b map-object package and 103a art package. LE3 retains synchronized editing of BioD_Nor_203aGalaxyMap.pcc and BioD_Nor_203CIC.pcc with its 203a art package." />
+                        <Button Margin="0,20,0,0" HorizontalAlignment="Left" Padding="14,8"
+                                Content="Open LE1 Galaxy Map Editor" Click="OpenLE1GalaxyMapEditor_Click" />
+                        <StackPanel Margin="0,10,0,0" Orientation="Horizontal">
                             <Button Padding="14,8" Content="Open highest-mounted LE2 galaxy map files" Click="OpenHighestMountedLE2_Click" />
                             <Button Margin="10,0,0,0" Padding="14,8" Content="Open highest-mounted LE3 galaxy map pair" Click="OpenHighestMountedLE3_Click" />
                         </StackPanel>

@@ -1,0 +1,409 @@
+<Window x:Class="LE1GalaxyMapEditor.Views.PlanetDesignerWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:models="clr-namespace:LE1GalaxyMapEditor.Services"
+        xmlns:primitives="clr-namespace:System.Windows.Controls.Primitives;assembly=PresentationFramework"
+        Title="{Binding Title}"
+        Width="1760" Height="940" MinWidth="1260" MinHeight="720"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource LE1GMEBrush0A1018}"
+        Foreground="{DynamicResource TextBrush}"
+        PreviewKeyDown="Window_OnPreviewKeyDown"
+        Closing="Window_OnClosing">
+    <Window.Resources>
+        <Style x:Key="PreviewToggleStyle" TargetType="CheckBox">
+            <Setter Property="MinHeight" Value="25"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Margin" Value="0,0,14,4"/>
+        </Style>
+        <Style x:Key="PresetTreeItemStyle" TargetType="TreeViewItem">
+            <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=OneWay}"/>
+            <Setter Property="Padding" Value="2"/>
+        </Style>
+        <HierarchicalDataTemplate DataType="{x:Type models:PlanetPresetModuleGroup}" ItemsSource="{Binding Clusters}">
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Text="&#x25C6;"
+                           Foreground="{Binding ModuleColor, Converter={StaticResource ModuleColorBrushConverter}}"
+                           Width="21" TextAlignment="Center" Margin="0,0,4,0"/>
+                <TextBlock Text="{Binding Tag}" FontWeight="SemiBold"/>
+                <TextBlock Text="  " />
+                <TextBlock Text="{Binding Name}" Foreground="{DynamicResource MutedTextBrush}"/>
+            </StackPanel>
+        </HierarchicalDataTemplate>
+        <HierarchicalDataTemplate DataType="{x:Type models:PlanetPresetClusterGroup}" ItemsSource="{Binding Systems}">
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Text="&#x2726;"
+                           Foreground="{Binding ModuleColor, Converter={StaticResource ModuleColorBrushConverter}}"
+                           Width="21" TextAlignment="Center" Margin="0,0,4,0"/>
+                <TextBlock Text="{Binding Name}" FontWeight="SemiBold"/>
+            </StackPanel>
+        </HierarchicalDataTemplate>
+        <HierarchicalDataTemplate DataType="{x:Type models:PlanetPresetSystemGroup}" ItemsSource="{Binding Planets}">
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Text="&#x2299;"
+                           Foreground="{Binding ModuleColor, Converter={StaticResource ModuleColorBrushConverter}}"
+                           Width="21" TextAlignment="Center" Margin="0,0,4,0"/>
+                <TextBlock Text="{Binding Name}" Foreground="{DynamicResource LE1GMEBrushC6D5DF}"/>
+            </StackPanel>
+        </HierarchicalDataTemplate>
+        <DataTemplate DataType="{x:Type models:PlanetAppearancePreset}">
+            <StackPanel Orientation="Horizontal" ToolTip="{Binding Shader}">
+                <StackPanel.ContextMenu>
+                    <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
+                        <MenuItem Header="Copy Appearance" Click="CopyAppearance_OnClick"/>
+                        <MenuItem Header="Paste Appearance" Click="PasteAppearance_OnClick"/>
+                    </ContextMenu>
+                </StackPanel.ContextMenu>
+                <TextBlock Text="{Binding VisualKind, Converter={StaticResource PlanetGlyphConverter}}"
+                           Foreground="{Binding ModuleColor, Converter={StaticResource ModuleColorBrushConverter}}"
+                           FontFamily="Segoe UI Symbol" Width="21" TextAlignment="Center"
+                           VerticalAlignment="Center" Margin="0,0,4,0"/>
+                <StackPanel>
+                    <TextBlock Text="{Binding PlanetName}"/>
+                    <TextBlock Text="{Binding Shader}" Foreground="{DynamicResource MutedTextBrush}" FontSize="10"/>
+                </StackPanel>
+            </StackPanel>
+        </DataTemplate>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="58"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="54"/>
+        </Grid.RowDefinitions>
+
+        <Border Grid.Row="0" Background="{DynamicResource PanelBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1" Padding="18,0">
+            <Grid>
+                <StackPanel VerticalAlignment="Center">
+                    <TextBlock Text="PLANET DESIGNER" Foreground="{DynamicResource AccentBrush}" FontSize="11" FontWeight="Bold"/>
+                    <TextBlock Text="{Binding Title}" FontSize="16" FontWeight="SemiBold" Margin="0,3,0,0"/>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                    <Button Content="Undo" Command="{Binding UndoCommand}" Padding="12,6" Margin="0,0,6,0" ToolTip="Undo the last Designer property or staged editor change (Ctrl+Z)"/>
+                    <Button Content="Redo" Command="{Binding RedoCommand}" Padding="12,6" ToolTip="Redo the Designer property or staged editor change (Ctrl+Y)"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <Border Grid.Row="1"
+                Background="{DynamicResource LE1GMEBrush36171D}"
+                BorderBrush="{DynamicResource LE1GMEBrush7A2E3A}"
+                BorderThickness="0,0,0,1"
+                Padding="18,9"
+                Visibility="{Binding HasError, Converter={StaticResource BooleanToVisibilityConverter}}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="!" Foreground="{DynamicResource DangerBrush}" FontWeight="Bold" Margin="0,0,9,0" VerticalAlignment="Top"/>
+                <TextBlock Grid.Column="1" Text="{Binding ErrorMessage}" TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                <Button Grid.Column="2"
+                        Content="&#x00D7;"
+                        Command="{Binding DismissErrorCommand}"
+                        Style="{StaticResource ChromeButtonStyle}"
+                        Width="26"
+                        Height="24"
+                        Padding="0"
+                        VerticalAlignment="Top"
+                        ToolTip="Dismiss this error message"/>
+            </Grid>
+        </Border>
+
+        <Grid Grid.Row="2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="300" MinWidth="250"/>
+                <ColumnDefinition Width="5"/>
+                <ColumnDefinition Width="*" MinWidth="520"/>
+                <ColumnDefinition Width="5"/>
+                <ColumnDefinition Width="440" MinWidth="390"/>
+            </Grid.ColumnDefinitions>
+
+            <Border Grid.Column="0" Background="{DynamicResource PanelBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,1,0">
+                <Grid Margin="12">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="170"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <TextBlock Text="PLANETS" FontWeight="Bold" Foreground="{DynamicResource AccentBrush}" Margin="0,0,0,7"/>
+                    <TextBox Grid.Row="1" Text="{Binding PresetSearch, UpdateSourceTrigger=PropertyChanged}" Padding="8,6" Margin="0,0,0,8" ToolTip="Search module, cluster, system, planet, row or Shader"/>
+                    <TreeView x:Name="PresetTree" Grid.Row="2" ItemsSource="{Binding PresetModules}" ItemContainerStyle="{StaticResource PresetTreeItemStyle}"
+                              Background="{DynamicResource LE1GMEBrush0C151E}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" Padding="5"
+                              PreviewMouseLeftButtonDown="PresetTree_OnPreviewMouseLeftButtonDown"
+                              VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling"
+                              VirtualizingPanel.ScrollUnit="Pixel" ScrollViewer.CanContentScroll="True"
+                              ScrollViewer.VerticalScrollBarVisibility="Auto" ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                              SelectedItemChanged="PresetTree_OnSelectedItemChanged">
+                        <TreeView.Resources>
+                            <Style TargetType="{x:Type ScrollViewer}">
+                                <Setter Property="Background" Value="{DynamicResource LE1GMEBrush0B131B}"/>
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="{x:Type ScrollViewer}">
+                                            <Grid Background="{TemplateBinding Background}">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+                                                <Grid.RowDefinitions>
+                                                    <RowDefinition Height="*"/>
+                                                    <RowDefinition Height="Auto"/>
+                                                </Grid.RowDefinitions>
+                                                <ScrollContentPresenter x:Name="PART_ScrollContentPresenter"
+                                                                        Content="{TemplateBinding Content}"
+                                                                        ContentTemplate="{TemplateBinding ContentTemplate}"
+                                                                        CanContentScroll="{TemplateBinding CanContentScroll}"
+                                                                        Margin="{TemplateBinding Padding}"
+                                                                        SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}"/>
+                                                <ScrollBar x:Name="PART_VerticalScrollBar"
+                                                           Grid.Column="1"
+                                                           Orientation="Vertical"
+                                                           Minimum="0"
+                                                           Maximum="{TemplateBinding ScrollableHeight}"
+                                                           ViewportSize="{TemplateBinding ViewportHeight}"
+                                                           Value="{TemplateBinding VerticalOffset}"
+                                                           Visibility="{TemplateBinding ComputedVerticalScrollBarVisibility}"/>
+                                                <ScrollBar x:Name="PART_HorizontalScrollBar"
+                                                           Grid.Row="1"
+                                                           Orientation="Horizontal"
+                                                           Minimum="0"
+                                                           Maximum="{TemplateBinding ScrollableWidth}"
+                                                           ViewportSize="{TemplateBinding ViewportWidth}"
+                                                           Value="{TemplateBinding HorizontalOffset}"
+                                                           Visibility="{TemplateBinding ComputedHorizontalScrollBarVisibility}"/>
+                                                <Border x:Name="ScrollBarCorner"
+                                                        Grid.Row="1"
+                                                        Grid.Column="1"
+                                                        Background="{DynamicResource LE1GMEBrush0B131B}"/>
+                                            </Grid>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                            </Style>
+                        </TreeView.Resources>
+                    </TreeView>
+
+                    <Grid Grid.Row="3" Margin="0,14,0,7">
+                        <TextBlock Text="PERSONAL TEMPLATES" FontWeight="Bold" Foreground="{DynamicResource AccentBrush}" VerticalAlignment="Center"/>
+                        <Button Content="Save current..." HorizontalAlignment="Right" VerticalAlignment="Center"
+                                MinHeight="30" Padding="10,6" Click="SaveTemplate_OnClick"/>
+                    </Grid>
+                    <ListBox x:Name="TemplateList" Grid.Row="4" ItemsSource="{Binding PersonalTemplates}" MouseDoubleClick="TemplateList_OnMouseDoubleClick">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel ToolTip="{Binding Description}">
+                                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold"/>
+                                    <TextBlock Text="{Binding Description}" Foreground="{DynamicResource MutedTextBrush}" FontSize="10" TextTrimming="CharacterEllipsis"/>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                    <StackPanel Grid.Row="5" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,7,0,0">
+                        <Button Content="Use" Command="{Binding UseTemplateCommand}" CommandParameter="{Binding SelectedItem, ElementName=TemplateList}" Padding="10,4" Margin="0,0,5,0"/>
+                        <Button Content="Delete" Command="{Binding DeleteTemplateCommand}" CommandParameter="{Binding SelectedItem, ElementName=TemplateList}" Padding="10,4"/>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Stretch" Background="{DynamicResource AppBackgroundBrush}"/>
+
+            <Grid Grid.Column="2" Background="{DynamicResource LE1GMEBrush05080D}">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+                <Border Background="{DynamicResource LE1GMEBrushAA0A1018}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1" Padding="12,8">
+                    <WrapPanel VerticalAlignment="Center">
+                        <CheckBox Content="Lighting" IsChecked="{Binding ShowLighting}" Style="{StaticResource PreviewToggleStyle}"/>
+                        <CheckBox Content="Post Processing" IsChecked="{Binding ShowPostProcessing}" Style="{StaticResource PreviewToggleStyle}"/>
+                        <CheckBox Content="Corona" IsChecked="{Binding ShowCorona}" Style="{StaticResource PreviewToggleStyle}"/>
+                        <CheckBox Content="Stars" IsChecked="{Binding ShowStars}" Style="{StaticResource PreviewToggleStyle}"/>
+                        <CheckBox Content="60fps Mode" IsChecked="{Binding PerformanceMode}" Style="{StaticResource PreviewToggleStyle}" Margin="0,0,16,4"/>
+                        <TextBlock Text="Cloud speed" VerticalAlignment="Center" Margin="0,0,6,4"/>
+                        <Slider Minimum="0" Maximum="20" Value="{Binding CloudSpeed}" Width="110" VerticalAlignment="Center" Margin="0,0,10,4"/>
+                        <Button Content="Reset clouds" Padding="9,3" Margin="0,0,12,4" Click="ResetClouds_OnClick"/>
+                        <TextBlock Text="{Binding PreviewDetail}" Foreground="{DynamicResource MutedTextBrush}" FontSize="10" VerticalAlignment="Center" Margin="0,2,0,4"/>
+                    </WrapPanel>
+                </Border>
+                <Border x:Name="PreviewHost" Grid.Row="1" Margin="18" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                        Background="{DynamicResource LE1GMEBrush020407}" SizeChanged="PreviewHost_OnSizeChanged">
+                    <Grid>
+                        <Viewbox Stretch="Uniform" StretchDirection="Both" HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <Grid Width="16" Height="9" Background="{DynamicResource LE1GMEBrush020407}">
+                                <Image x:Name="PreviewImage" Source="{Binding PreviewImage}" Stretch="Fill" SnapsToDevicePixels="True" RenderOptions.BitmapScalingMode="LowQuality"/>
+                            </Grid>
+                        </Viewbox>
+                        <TextBlock Text="Preparing live preview..." Foreground="{DynamicResource MutedTextBrush}" FontSize="14" HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding PreviewImage}" Value="{x:Null}">
+                                            <Setter Property="Visibility" Value="Visible"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </Grid>
+                </Border>
+            </Grid>
+
+            <GridSplitter Grid.Column="3" Width="5" HorizontalAlignment="Stretch" Background="{DynamicResource AppBackgroundBrush}"/>
+
+            <Border Grid.Column="4" Background="{DynamicResource PanelBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1,0,0,0">
+                <Grid>
+                    <Grid.RowDefinitions><RowDefinition Height="44"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+                    <Border BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1" Padding="12,0">
+                        <TextBlock Text="MATERIAL PARAMETERS" Foreground="{DynamicResource AccentBrush}" FontWeight="Bold" VerticalAlignment="Center"/>
+                    </Border>
+                    <ListBox Grid.Row="1" ItemsSource="{Binding Groups}" Margin="0" Padding="10,8,10,14"
+                             Background="Transparent" BorderThickness="0"
+                             ScrollViewer.VerticalScrollBarVisibility="Auto" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                             ScrollViewer.CanContentScroll="True" VirtualizingPanel.IsVirtualizing="True"
+                             VirtualizingPanel.VirtualizationMode="Recycling" VirtualizingPanel.ScrollUnit="Pixel">
+                        <ListBox.ItemContainerStyle>
+                            <Style TargetType="ListBoxItem">
+                                <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                <Setter Property="Padding" Value="0"/>
+                                <Setter Property="Margin" Value="0"/>
+                                <Setter Property="Focusable" Value="False"/>
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="ListBoxItem">
+                                            <ContentPresenter/>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                            </Style>
+                        </ListBox.ItemContainerStyle>
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel>
+                                    <Expander IsExpanded="{Binding ExpandedByDefault}" Margin="0,0,0,7" Foreground="{DynamicResource TextBrush}">
+                                        <Expander.Header>
+                                            <StackPanel Margin="0,3,0,4" MaxWidth="390">
+                                                <TextBlock Text="{Binding Name}" FontWeight="SemiBold"/>
+                                                <TextBlock Text="{Binding Description}" Foreground="{DynamicResource MutedTextBrush}" FontSize="10" TextWrapping="Wrap" Margin="0,2,0,0"/>
+                                            </StackPanel>
+                                        </Expander.Header>
+                                        <ItemsControl ItemsSource="{Binding Fields}" Margin="4,0,4,5">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <StackPanel Margin="0,3,0,7" ToolTip="{Binding Description}">
+                                                        <Grid MinHeight="28" Visibility="{Binding IsMixer, Converter={StaticResource InverseBooleanToVisibilityConverter}}">
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="138"/>
+                                                                <ColumnDefinition Width="*"/>
+                                                            </Grid.ColumnDefinitions>
+                                                            <TextBlock Text="{Binding DisplayName}" Foreground="{DynamicResource MutedTextBrush}"
+                                                                       VerticalAlignment="Center" Margin="0,0,8,0" TextTrimming="CharacterEllipsis"/>
+                                                            <Grid Grid.Column="1">
+                                                                <TextBox Visibility="{Binding IsShader, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                                                         Text="{Binding Primary.Value, UpdateSourceTrigger=PropertyChanged}" Padding="7,5"/>
+
+                                                                <ComboBox Visibility="{Binding IsTexture, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                                                          ItemsSource="{Binding TextureOptions}" IsEditable="False" IsTextSearchEnabled="True"
+                                                                          SelectedItem="{Binding Primary.Value, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                                          MaxDropDownHeight="420" Padding="4,3"/>
+
+                                                                <Grid Visibility="{Binding IsScalar, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="88"/></Grid.ColumnDefinitions>
+                                                                    <Slider Minimum="{Binding Minimum}" Maximum="{Binding Maximum}" TickFrequency="{Binding Step}" IsSnapToTickEnabled="True"
+                                                                            primitives:Thumb.DragStarted="PropertySlider_OnDragStarted"
+                                                                            primitives:Thumb.DragCompleted="PropertySlider_OnDragCompleted"
+                                                                            Value="{Binding Primary.NumericValue, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                                                    <TextBox Grid.Column="1" Text="{Binding Primary.Value, UpdateSourceTrigger=PropertyChanged}" Padding="6,4" HorizontalContentAlignment="Right"/>
+                                                                </Grid>
+
+                                                                <Grid Visibility="{Binding IsColorVector, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                                                    <TextBox Text="{Binding ColorSummary, Mode=OneWay}" IsReadOnly="True" Padding="6,4" HorizontalContentAlignment="Left"/>
+                                                                    <Button Grid.Column="1" Width="28" Margin="4,0,0,0" Padding="3" Click="HdrColor_OnClick" ToolTip="Open HDR colour picker">
+                                                                        <Border Width="15" Height="15" Background="{Binding ColorBrush}" BorderBrush="{DynamicResource LE1GMEBrush8AA0AE}" BorderThickness="1"/>
+                                                                    </Button>
+                                                                </Grid>
+
+                                                                <Grid Visibility="{Binding IsPackedColor, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                                                    <TextBox Text="{Binding Primary.Value, UpdateSourceTrigger=PropertyChanged}" Padding="6,4" HorizontalContentAlignment="Left"/>
+                                                                    <Button Grid.Column="1" Width="28" Margin="4,0,0,0" Padding="3" Click="PackedColor_OnClick" ToolTip="Open colour wheel">
+                                                                        <Border Width="15" Height="15" Background="{Binding ColorBrush}" BorderBrush="{DynamicResource LE1GMEBrush8AA0AE}" BorderThickness="1"/>
+                                                                    </Button>
+                                                                </Grid>
+                                                            </Grid>
+                                                        </Grid>
+
+                                                        <StackPanel Visibility="{Binding IsMixer, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                            <TextBlock Text="{Binding DisplayName}" Foreground="{DynamicResource LE1GMEBrushD8E0E7}" FontWeight="SemiBold"/>
+                                                            <TextBlock Text="{Binding Description}" Foreground="{DynamicResource MutedTextBrush}" FontSize="10" TextWrapping="Wrap" Margin="0,2,0,4"/>
+                                                            <ItemsControl ItemsSource="{Binding VisibleComponents}">
+                                                                <ItemsControl.ItemTemplate>
+                                                                    <DataTemplate>
+                                                                        <Grid Margin="0,2">
+                                                                            <Grid.ColumnDefinitions>
+                                                                                <ColumnDefinition Width="120"/>
+                                                                                <ColumnDefinition Width="*"/>
+                                                                                <ColumnDefinition Width="82"/>
+                                                                            </Grid.ColumnDefinitions>
+                                                                            <TextBlock Text="{Binding Label}" Foreground="{DynamicResource LE1GMEBrushB9C4CC}" VerticalAlignment="Center"/>
+                                                                            <Slider Grid.Column="1"
+                                                                                    Minimum="{Binding DataContext.Minimum, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                                                    Maximum="{Binding DataContext.Maximum, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                                                    TickFrequency="{Binding DataContext.Step, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                                                    primitives:Thumb.DragStarted="PropertySlider_OnDragStarted"
+                                                                                    primitives:Thumb.DragCompleted="PropertySlider_OnDragCompleted"
+                                                                                    IsSnapToTickEnabled="True" Value="{Binding NumericValue, UpdateSourceTrigger=PropertyChanged}"
+                                                                                    VerticalAlignment="Center" Margin="6,0,8,0"/>
+                                                                            <TextBox Grid.Column="2" Text="{Binding Value, UpdateSourceTrigger=PropertyChanged}" Padding="5,3" HorizontalContentAlignment="Right" ToolTip="{Binding ValidationError}"/>
+                                                                        </Grid>
+                                                                    </DataTemplate>
+                                                                </ItemsControl.ItemTemplate>
+                                                            </ItemsControl>
+                                                        </StackPanel>
+                                                        <Separator Margin="0,7,0,0" Background="{DynamicResource BorderBrush}"/>
+                                                    </StackPanel>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </Expander>
+                                    <Grid Visibility="{Binding ShowLinkTextureButton, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                          Margin="4,0,4,11">
+                                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                        <Button Content="Link texture..." Margin="0,0,4,0" Padding="10,6"
+                                                Click="LinkModuleTexture_OnClick"
+                                                ToolTip="Stage a local preview image and expose its seek-free texture reference in selected material menus."/>
+                                        <Button Grid.Column="1" Content="Manage textures..." Margin="4,0,0,0" Padding="10,6"
+                                                Click="ManageModuleTextures_OnClick"
+                                                ToolTip="Inspect or unlink custom Planet texture relationships from mounted modules."/>
+                                    </Grid>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                    </ListBox>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <Border Grid.Row="3" Background="{DynamicResource PanelRaisedBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,1,0,0" Padding="14,0">
+            <Grid>
+                <StackPanel VerticalAlignment="Center" MaxWidth="900" HorizontalAlignment="Left">
+                    <TextBlock Text="{Binding StatusMessage}" Foreground="{DynamicResource MutedTextBrush}" FontSize="11" TextTrimming="CharacterEllipsis"/>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                    <Button Content="Close" Padding="16,7" Margin="0,0,8,0" Click="Close_OnClick"/>
+                    <Button Content="Randomise" Padding="16,7" Margin="0,0,8,0" Command="{Binding RandomiseCommand}" ToolTip="Create a guarded variation from a BASEGAME planet appearance"/>
+                    <Button Content="Apply appearance" Padding="18,7" Command="{Binding ApplyCommand}" IsDefault="True" ToolTip="Stage this appearance as one undoable editor change (Ctrl+S)"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

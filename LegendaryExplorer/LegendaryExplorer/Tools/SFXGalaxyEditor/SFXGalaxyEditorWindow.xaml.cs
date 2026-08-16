@@ -223,7 +223,7 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
         }
     }
 
-    private string _statusText = "Choose LE2 or LE3 highest-mounted galaxy map files to begin.";
+    private string _statusText = "Launch the LE1 editor or choose LE2/LE3 highest-mounted galaxy map files to begin.";
     public string StatusText
     {
         get => _statusText;
@@ -383,6 +383,11 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
         {
             LoadFile(dialog.FileName);
         }
+    }
+
+    private void OpenLE1GalaxyMapEditor_Click(object sender, RoutedEventArgs e)
+    {
+        global::LegendaryExplorer.ToolSet.OpenLE1GalaxyMapEditor();
     }
 
     private void OpenHighestMountedLE2_Click(object sender, RoutedEventArgs e)
@@ -2769,7 +2774,7 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
     {
         if (Pcc is null)
         {
-            StatusText = "Choose LE2 or LE3 highest-mounted galaxy map files to begin.";
+            StatusText = "Launch the LE1 editor or choose LE2/LE3 highest-mounted galaxy map files to begin.";
             return;
         }
         string path = CurrentNode is null ? string.Empty : string.Join(" › ", GetPath(CurrentNode).Select(node => node.DisplayName));

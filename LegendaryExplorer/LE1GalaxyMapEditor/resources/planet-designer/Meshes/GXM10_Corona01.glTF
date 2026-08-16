@@ -1,0 +1,169 @@
+{
+  "asset": {
+    "copyright": "",
+    "generator": "Legendary Explorer 6.5 NIGHTLY 12/06/2026",
+    "version": "2.0"
+  },
+  "accessors": [
+    {
+      "name": "POSITION",
+      "bufferView": 0,
+      "componentType": 5126,
+      "count": 512,
+      "max": [
+        -7.699999696342275E-05,
+        1.0210529565811157,
+        1.0198229551315308
+      ],
+      "min": [
+        -0.006455000024288893,
+        -1.0210529565811157,
+        -1.0198229551315308
+      ],
+      "type": "VEC3"
+    },
+    {
+      "name": "NORMAL",
+      "bufferView": 0,
+      "byteOffset": 12,
+      "componentType": 5126,
+      "count": 512,
+      "max": [
+        0.9771771430969238,
+        0.2156829982995987,
+        0.22314201295375824
+      ],
+      "min": [
+        0.9741213917732239,
+        -0.21568293869495392,
+        -0.22314195334911346
+      ],
+      "type": "VEC3"
+    },
+    {
+      "name": "TANGENT",
+      "bufferView": 0,
+      "byteOffset": 24,
+      "componentType": 5126,
+      "count": 512,
+      "type": "VEC4"
+    },
+    {
+      "name": "TEXCOORD_0",
+      "bufferView": 0,
+      "byteOffset": 40,
+      "componentType": 5126,
+      "count": 512,
+      "max": [
+        1,
+        1
+      ],
+      "min": [
+        0,
+        0.019989013671875
+      ],
+      "type": "VEC2"
+    },
+    {
+      "name": "TEXCOORD_1",
+      "bufferView": 0,
+      "byteOffset": 48,
+      "componentType": 5126,
+      "count": 512,
+      "max": [
+        0.97998046875,
+        0.97998046875
+      ],
+      "min": [
+        0.019989013671875,
+        0.0203857421875
+      ],
+      "type": "VEC2"
+    },
+    {
+      "name": "_ORIGINAL_INDEX",
+      "bufferView": 0,
+      "byteOffset": 56,
+      "componentType": 5126,
+      "count": 512,
+      "max": [
+        511
+      ],
+      "min": [
+        0
+      ],
+      "type": "SCALAR"
+    },
+    {
+      "bufferView": 1,
+      "componentType": 5123,
+      "count": 768,
+      "type": "SCALAR"
+    }
+  ],
+  "bufferViews": [
+    {
+      "buffer": 0,
+      "byteLength": 30720,
+      "byteStride": 60,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteLength": 1536,
+      "byteOffset": 30720,
+      "target": 34963
+    }
+  ],
+  "buffers": [
+    {
+      "byteLength": 32256,
+      "uri": "GXM10_Corona01.bin"
+    }
+  ],
+  "materials": [
+    {
+      "name": "BIOA_GXM10_T.GXM10_CoronoMaster01",
+      "pbrMetallicRoughness": {}
+    }
+  ],
+  "meshes": [
+    {
+      "name": "GXM10_Corona01",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 0,
+            "NORMAL": 1,
+            "TANGENT": 2,
+            "TEXCOORD_0": 3,
+            "TEXCOORD_1": 4,
+            "_ORIGINAL_INDEX": 5
+          },
+          "indices": 6,
+          "material": 0
+        }
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "name": "GXM10_Corona01",
+      "children": [
+        1
+      ]
+    },
+    {
+      "name": "GXM10_Corona01",
+      "mesh": 0
+    }
+  ],
+  "scene": 0,
+  "scenes": [
+    {
+      "nodes": [
+        0
+      ]
+    }
+  ]
+}

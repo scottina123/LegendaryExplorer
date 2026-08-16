@@ -81,6 +81,12 @@ public static class ToolSet
 
     public static void Initialize()
     {
+        ThemeManager.ThemeChanged -= ThemeManager_OnThemeChanged;
+        ThemeManager.ThemeChanged += ThemeManager_OnThemeChanged;
+        global::LE1GalaxyMapEditor.Theming.EditorThemeManager.WindowCloseCancelled -= LE1GalaxyMapEditor_OnWindowCloseCancelled;
+        global::LE1GalaxyMapEditor.Theming.EditorThemeManager.WindowCloseCancelled += LE1GalaxyMapEditor_OnWindowCloseCancelled;
+        ApplyLE1GalaxyMapEditorTheme();
+
         HashSet<Tool> set = new();
 
         #region Toolset Devs
@@ -790,15 +796,38 @@ public static class ToolSet
             {
                 (new SFXGalaxyEditorWindow()).Show();
             },
-            tags = ["user", "developer", "galaxy", "map", "cluster", "system", "planet", "star", "relay", "le2", "le3"],
+            tags = ["user", "developer", "galaxy", "map", "cluster", "system", "planet", "star", "relay", "le1", "le2", "le3"],
             category = "Core Editors",
-            description = "Edit the LE2 or LE3 SFXGalaxy hierarchy, object properties, positions, planet orbits, and cluster relay connections.",
+            description = "Launch the dedicated LE1 Galaxy Map Editor, or edit the LE2/LE3 SFXGalaxy hierarchy, object properties, positions, planet orbits, and cluster relay connections.",
         });
         #endregion
 
         items = set;
 
         loadFavorites();
+    }
+
+    private static void ThemeManager_OnThemeChanged(object sender, bool isDarkMode) =>
+        ApplyLE1GalaxyMapEditorTheme();
+
+    private static void LE1GalaxyMapEditor_OnWindowCloseCancelled(object sender, EventArgs eventArgs) =>
+        MainWindow.LEXMainWindow.IsAllowedToClose = false;
+
+    public static void OpenLE1GalaxyMapEditor()
+    {
+        ApplyLE1GalaxyMapEditorTheme();
+        global::LE1GalaxyMapEditor.LE1GalaxyMapEditorLauncher.CreateWindow().Show();
+    }
+
+    private static void ApplyLE1GalaxyMapEditorTheme()
+    {
+        var theme = ThemeManager.CurrentTheme switch
+        {
+            AppTheme.Light => global::LE1GalaxyMapEditor.Theming.EditorTheme.Light,
+            AppTheme.Dark => global::LE1GalaxyMapEditor.Theming.EditorTheme.Dark,
+            _ => global::LE1GalaxyMapEditor.Theming.EditorTheme.ModernDark
+        };
+        global::LE1GalaxyMapEditor.Theming.EditorThemeManager.ApplyTheme(theme);
     }
 
     private static void loadFavorites()

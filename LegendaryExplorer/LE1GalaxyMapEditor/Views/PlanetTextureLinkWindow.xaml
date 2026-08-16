@@ -1,0 +1,63 @@
+<Window x:Class="LE1GalaxyMapEditor.Views.PlanetTextureLinkWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Link module Planet texture"
+        Width="540" Height="505" ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource AppBackgroundBrush}"
+        Foreground="{DynamicResource TextBrush}">
+    <Grid Margin="18">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <StackPanel>
+            <TextBlock Text="LINK MODULE PLANET TEXTURE" Foreground="{DynamicResource AccentBrush}"
+                       FontSize="11" FontWeight="Bold"/>
+            <TextBlock Text="Enter the full in-memory texture path from the seek-free package, including the package and texture name."
+                       Foreground="{DynamicResource MutedTextBrush}" TextWrapping="Wrap" Margin="0,6,0,0"/>
+            <TextBlock Text="Example: BIOA_MOD_SpectreLE1_GM_LAY.ME3_PlanetTexture01"
+                       Foreground="{DynamicResource MutedTextBrush}" FontStyle="Italic" Margin="0,4,0,0"/>
+        </StackPanel>
+
+        <TextBlock Grid.Row="1" Text="In-memory path" Margin="0,16,0,4"/>
+        <TextBox x:Name="InMemoryPathBox" Grid.Row="2" Padding="8,6"/>
+
+        <StackPanel Grid.Row="3" Margin="0,16,0,0">
+            <TextBlock Text="Available in" FontWeight="SemiBold"/>
+            <TextBlock Text="Select at least one material category." Foreground="{DynamicResource MutedTextBrush}" FontSize="10" Margin="0,2,0,8"/>
+            <WrapPanel>
+                <CheckBox x:Name="ContinentCheckBox" Content="Continent" Margin="0,0,18,8"/>
+                <CheckBox x:Name="NormalsCheckBox" Content="Normals" Margin="0,0,18,8"/>
+                <CheckBox x:Name="OceanCheckBox" Content="Ocean" Margin="0,0,18,8"/>
+                <CheckBox x:Name="CityEmissiveCheckBox" Content="City Emissive" Margin="0,0,18,8"/>
+                <CheckBox x:Name="AtmosphereCheckBox" Content="Atmosphere" Margin="0,0,18,8"/>
+            </WrapPanel>
+        </StackPanel>
+
+        <StackPanel Grid.Row="4" Margin="0,10,0,0">
+            <TextBlock Text="Local preview image" Margin="0,0,0,4"/>
+            <Grid>
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                <TextBox x:Name="SourcePathBox" Padding="8,6" IsReadOnly="True"/>
+                <Button Grid.Column="1" Content="Browse..." Padding="12,6" Margin="8,0,0,0" Click="BrowseButton_OnClick"/>
+            </Grid>
+            <TextBlock Text="The image is staged inside the module and used only by the editor preview; its filename does not need to match the game reference."
+                       Foreground="{DynamicResource MutedTextBrush}" FontSize="10" TextWrapping="Wrap" Margin="0,5,0,0"/>
+        </StackPanel>
+
+        <TextBlock x:Name="ValidationText" Grid.Row="5" Foreground="{DynamicResource DangerBrush}"
+                   TextWrapping="Wrap" Margin="0,10,0,0" Visibility="Collapsed"/>
+
+        <StackPanel Grid.Row="6" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,14,0,0">
+            <Button Content="Cancel" IsCancel="True" Style="{StaticResource ChromeButtonStyle}" Margin="0,0,8,0"/>
+            <Button Content="Link texture" IsDefault="True" Style="{StaticResource ChromeButtonStyle}" Click="AcceptButton_OnClick"/>
+        </StackPanel>
+    </Grid>
+</Window>

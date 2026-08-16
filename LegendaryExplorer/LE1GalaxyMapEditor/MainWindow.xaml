@@ -1,0 +1,1029 @@
+<Window x:Class="LE1GalaxyMapEditor.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:controls="clr-namespace:LE1GalaxyMapEditor.Controls"
+        xmlns:models="clr-namespace:LE1GalaxyMapEditor.Models"
+        xmlns:viewModels="clr-namespace:LE1GalaxyMapEditor.ViewModels"
+        mc:Ignorable="d"
+        Title="LE1 Galaxy Map Editor"
+        Icon="resources/branding/icon.ico"
+        Width="1440"
+        Height="860"
+        MinWidth="1050"
+        MinHeight="620"
+        WindowStartupLocation="CenterScreen"
+        Background="{DynamicResource AppBackgroundBrush}">
+    <Window.Resources>
+        <Style x:Key="PanelHeaderStyle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource MutedTextBrush}" />
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+
+        <Style x:Key="InspectorTextBoxStyle" TargetType="TextBox">
+            <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+            <Setter Property="Background" Value="{DynamicResource LE1GMEBrush0C151E}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="6,4" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="ToolTip" Value="{Binding ToolTipText}" />
+            <Setter Property="ToolTipService.ShowDuration" Value="30000" />
+            <Style.Triggers>
+                <Trigger Property="IsReadOnly" Value="True">
+                    <Setter Property="Foreground" Value="{DynamicResource LE1GMEBrush718594}" />
+                    <Setter Property="Background" Value="{DynamicResource LE1GMEBrush0A1118}" />
+                    <Setter Property="BorderBrush" Value="{DynamicResource LE1GMEBrush202E39}" />
+                    <Setter Property="Cursor" Value="Arrow" />
+                </Trigger>
+                <DataTrigger Binding="{Binding HasError}" Value="True">
+                    <Setter Property="BorderBrush" Value="{DynamicResource DangerBrush}" />
+                </DataTrigger>
+                <Trigger Property="IsKeyboardFocused" Value="True">
+                    <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="InspectorCheckboxStyle" TargetType="CheckBox">
+            <Setter Property="MinHeight" Value="26" />
+            <Setter Property="VerticalAlignment" Value="Stretch" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+
+        <Style x:Key="InspectorActionButtonStyle" TargetType="Button" BasedOn="{StaticResource ChromeButtonStyle}">
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="Padding" Value="9,7" />
+            <Setter Property="Margin" Value="0,3,0,0" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsPrimary}" Value="True">
+                    <Setter Property="Background" Value="{DynamicResource LE1GMEBrush17384A}" />
+                    <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding IsDestructive}" Value="True">
+                    <Setter Property="Background" Value="{DynamicResource LE1GMEBrush351A20}" />
+                    <Setter Property="BorderBrush" Value="{DynamicResource LE1GMEBrush71313D}" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="TwoDaCellBaseStyle" TargetType="DataGridCell">
+            <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+            <Setter Property="Background" Value="{DynamicResource LE1GMEBrush0B151F}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Style.Triggers>
+                <Trigger Property="IsSelected" Value="True">
+                    <Setter Property="Background" Value="{DynamicResource LE1GMEBrush29485B}" />
+                    <Setter Property="Foreground" Value="White" />
+                </Trigger>
+                <Trigger Property="IsReadOnly" Value="True">
+                    <Setter Property="Foreground" Value="{DynamicResource LE1GMEBrush8499A8}" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="TwoDaCellTextStyle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{Binding Foreground, RelativeSource={RelativeSource AncestorType=DataGridCell}}" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="Padding" Value="9,5" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+        </Style>
+
+        <Style x:Key="TwoDaCellEditorStyle" TargetType="TextBox">
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="Background" Value="{DynamicResource LE1GMEBrush132838}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="8,4" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="SelectionBrush" Value="{DynamicResource AccentDimBrush}" />
+        </Style>
+
+        <Style x:Key="TwoDaColumnHeaderStyle" TargetType="DataGridColumnHeader">
+            <Setter Property="Foreground" Value="{DynamicResource LE1GMEBrushC8D7E1}" />
+            <Setter Property="Background" Value="{DynamicResource LE1GMEBrush142331}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+            <Setter Property="BorderThickness" Value="0,0,1,1" />
+            <Setter Property="Padding" Value="9,8" />
+            <Setter Property="FontSize" Value="10" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="HorizontalContentAlignment" Value="Left" />
+        </Style>
+
+        <HierarchicalDataTemplate DataType="{x:Type viewModels:HierarchyNodeViewModel}"
+                                  ItemsSource="{Binding Children}">
+            <StackPanel Orientation="Horizontal" Margin="0,2">
+                <TextBlock Text="{Binding Icon}"
+                           Foreground="{Binding ModuleColor, Converter={StaticResource ModuleColorBrushConverter}}"
+                           Width="21"
+                           TextAlignment="Center"
+                           VerticalAlignment="Center" />
+                <TextBlock Text="{Binding DisplayName}"
+                           TextTrimming="CharacterEllipsis"
+                           VerticalAlignment="Center" />
+                <TextBlock Text="≋"
+                           Foreground="{DynamicResource WarningBrush}"
+                           FontWeight="Bold"
+                           FontSize="13"
+                           Margin="6,0,0,0"
+                           VerticalAlignment="Center"
+                           ToolTip="Multiple mounted modules contain this row"
+                           Visibility="{Binding HasMultipleInstances, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                <Border Margin="7,0,0,0"
+                        Padding="4,1"
+                        CornerRadius="2"
+                        BorderThickness="1"
+                        BorderBrush="{Binding ModuleColor, Converter={StaticResource ModuleColorBrushConverter}}"
+                        Opacity="0.82"
+                        VerticalAlignment="Center">
+                    <TextBlock Text="{Binding ModuleTag}"
+                               Foreground="{Binding ModuleColor, Converter={StaticResource ModuleColorBrushConverter}}"
+                               FontSize="8"
+                               FontWeight="SemiBold" />
+                </Border>
+            </StackPanel>
+        </HierarchicalDataTemplate>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="64" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="31" />
+        </Grid.RowDefinitions>
+
+        <Border Grid.Row="0" Background="{DynamicResource LE1GMEBrush0D1721}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1">
+            <Grid Margin="18,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <Border Grid.Column="0"
+                        Width="38"
+                        Height="38"
+                        VerticalAlignment="Center"
+                        Margin="0,0,12,0"
+                        CornerRadius="9"
+                        BorderBrush="{DynamicResource AccentBrush}"
+                        BorderThickness="1.5">
+                    <Border.Background>
+                        <ImageBrush ImageSource="resources/branding/LE1_256.png" Stretch="UniformToFill" />
+                    </Border.Background>
+                </Border>
+
+                <DockPanel Grid.Column="1" VerticalAlignment="Center">
+                    <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" Margin="0,0,14,0" VerticalAlignment="Center">
+                        <Button Content="↶" Command="{Binding UndoCommand}" Style="{StaticResource ChromeButtonStyle}" Padding="8,5" Margin="0,0,4,0" ToolTip="Undo staged change" />
+                        <Button Content="↷" Command="{Binding RedoCommand}" Style="{StaticResource ChromeButtonStyle}" Padding="8,5" Margin="0,0,4,0" ToolTip="Redo staged change" />
+                        <Button Content="Discard" Command="{Binding DiscardChangesCommand}" Style="{StaticResource ChromeButtonStyle}" Padding="8,5" Margin="0,0,4,0" ToolTip="Discard every uncommitted change" />
+                        <Button x:Name="CommitButton"
+                                Command="{Binding CommitCommand}"
+                                Content="{Binding CommitButtonText}"
+                                Style="{StaticResource ChromeButtonStyle}"
+                                Padding="8,5"
+                                ToolTip="Write all staged changes to module CSV files" />
+                    </StackPanel>
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Text="LE1 GALAXY MAP EDITOR" FontWeight="SemiBold" FontSize="16" />
+                        <TextBlock Text="{Binding SourceFolder}"
+                               Foreground="{DynamicResource MutedTextBrush}"
+                               FontSize="11"
+                               TextTrimming="CharacterEllipsis"
+                               Margin="0,3,24,0" />
+                    </StackPanel>
+                </DockPanel>
+
+                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button Command="{Binding ConfigureBaseGameCommand}"
+                            Background="{DynamicResource LE1GMEBrush183225}"
+                            BorderBrush="{DynamicResource LE1GMEBrush315E43}"
+                            BorderThickness="1"
+                            Padding="9,5"
+                            Margin="0,0,10,0"
+                            VerticalAlignment="Center"
+                            ToolTip="{Binding BaseGameToolTip}">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <Ellipse Width="6" Height="6" Fill="{DynamicResource LE1GMEBrush69CF8F}" Margin="0,0,6,0" VerticalAlignment="Center" />
+                            <TextBlock Text="BASEGAME READ-ONLY" Foreground="{DynamicResource LE1GMEBrush90D8A9}" FontSize="10" FontWeight="SemiBold" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+                    <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled" MaxWidth="360" Margin="0,0,8,0">
+                        <ItemsControl ItemsSource="{Binding ModuleBarItems}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Button Command="{Binding EditCommand}"
+                                            Padding="8,4"
+                                            Margin="0,0,5,0"
+                                            ToolTip="Click to edit module metadata and mount priority">
+                                        <Button.Style>
+                                            <Style TargetType="Button" BasedOn="{StaticResource ChromeButtonStyle}">
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsActive}" Value="True">
+                                                        <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                                                        <Setter Property="BorderThickness" Value="2" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Button.Style>
+                                        <StackPanel Orientation="Horizontal">
+                                            <Ellipse Width="7" Height="7" Fill="{Binding Color, Converter={StaticResource ModuleColorBrushConverter}}" Margin="0,0,6,0" />
+                                            <StackPanel>
+                                                <TextBlock Text="{Binding Name}" FontSize="9" FontWeight="SemiBold" MaxWidth="110" TextTrimming="CharacterEllipsis" />
+                                                <TextBlock Text="{Binding LoadOrder, StringFormat=Priority {0}}" Foreground="{DynamicResource MutedTextBrush}" FontSize="8" />
+                                            </StackPanel>
+                                            <TextBlock Text="●" Foreground="{DynamicResource WarningBrush}" FontSize="9" Margin="5,0,0,0"
+                                                       Visibility="{Binding IsDirty, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                            <TextBlock Text="✎" Foreground="{DynamicResource AccentBrush}" FontSize="10" Margin="5,0,0,0"
+                                                       ToolTip="Current editing module"
+                                                       Visibility="{Binding IsActive, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                        </StackPanel>
+                                    </Button>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                    <Button Command="{Binding CreateModuleCommand}"
+                            Style="{StaticResource ChromeButtonStyle}"
+                            Padding="10,6"
+                            Margin="0,0,7,0"
+                            ToolTip="Create a writable galaxy-map module">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="+" Foreground="{DynamicResource AccentBrush}" FontWeight="Bold" Margin="0,0,6,0" />
+                            <TextBlock Text="New Module" />
+                        </StackPanel>
+                    </Button>
+                    <Button Command="{Binding OpenModuleCommand}"
+                            Style="{StaticResource ChromeButtonStyle}"
+                            Padding="10,6"
+                            Margin="0,0,7,0"
+                            ToolTip="Mount an existing module folder">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="▣" Foreground="{DynamicResource AccentBrush}" Margin="0,0,7,0" />
+                            <TextBlock Text="Open Module" />
+                        </StackPanel>
+                    </Button>
+                    <Button Command="{Binding RefreshRememberedWorkspaceCommand}"
+                            Content="Refresh"
+                            Style="{StaticResource ChromeButtonStyle}"
+                            Padding="10,6"
+                            ToolTip="Reload BASEGAME, every loaded DLC module and TLK table, then rerun validation checks" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <Border Grid.Row="1"
+                Background="{DynamicResource LE1GMEBrush36171D}"
+                BorderBrush="{DynamicResource LE1GMEBrush7A2E3A}"
+                BorderThickness="0,0,0,1"
+                Padding="18,9"
+                Visibility="{Binding HasError, Converter={StaticResource BooleanToVisibilityConverter}}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="!" Foreground="{DynamicResource DangerBrush}" FontWeight="Bold" Margin="0,0,9,0" VerticalAlignment="Top" />
+                <TextBlock Grid.Column="1" Text="{Binding ErrorMessage}" TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,0,12,0" />
+                <Button Grid.Column="2"
+                        Content="×"
+                        Command="{Binding DismissErrorCommand}"
+                        Style="{StaticResource ChromeButtonStyle}"
+                        Width="26"
+                        Height="24"
+                        Padding="0"
+                        VerticalAlignment="Top"
+                        ToolTip="Dismiss this error message" />
+            </Grid>
+        </Border>
+
+        <Grid Grid.Row="2"
+              Visibility="{Binding IsGalaxyViewVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="275" MinWidth="210" />
+                <ColumnDefinition Width="5" />
+                <ColumnDefinition Width="*" MinWidth="420" />
+                <ColumnDefinition Width="5" />
+                <ColumnDefinition Width="365" MinWidth="290" />
+            </Grid.ColumnDefinitions>
+
+            <Border Grid.Column="0" Background="{DynamicResource PanelBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,1,0">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="48" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <Border Grid.Row="0" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1" Padding="12,0">
+                        <Grid>
+                            <TextBlock Text="HIERARCHY"
+                                       Style="{StaticResource PanelHeaderStyle}"
+                                       VerticalAlignment="Center" />
+                            <Button x:Name="ContextualAddButton"
+                                    HorizontalAlignment="Right"
+                                    VerticalAlignment="Center"
+                                    MinWidth="106"
+                                    Content="{Binding ContextualAddButtonText}"
+                                    Command="{Binding ContextualAddCommand}"
+                                    Visibility="{Binding HasContextualAddAction, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                    Style="{StaticResource ChromeButtonStyle}"
+                                    Padding="12,6"
+                                    ToolTip="{Binding ContextualAddToolTip}" />
+                        </Grid>
+                    </Border>
+                    <TextBox Grid.Row="1"
+                             Text="{Binding HierarchySearch, UpdateSourceTrigger=PropertyChanged}"
+                             Margin="12,8"
+                             Padding="8,6"
+                             ToolTip="Search clusters, systems, planets, modules, types, or row IDs" />
+                    <TreeView x:Name="HierarchyTree"
+                              Grid.Row="2"
+                              ItemsSource="{Binding HierarchyRoots}"
+                              Background="Transparent"
+                              BorderThickness="0"
+                              Foreground="{DynamicResource TextBrush}"
+                              Padding="8"
+                              ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                              ScrollViewer.CanContentScroll="True"
+                              VirtualizingPanel.IsVirtualizing="True"
+                              VirtualizingPanel.VirtualizationMode="Recycling"
+                              VirtualizingPanel.CacheLength="1"
+                              VirtualizingPanel.CacheLengthUnit="Page">
+                        <TreeView.Resources>
+                            <SolidColorBrush x:Key="{x:Static SystemColors.HighlightBrushKey}" Color="{DynamicResource LE1GMEColor243E4B}" />
+                            <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightBrushKey}" Color="{DynamicResource LE1GMEColor243E4B}" />
+                            <SolidColorBrush x:Key="{x:Static SystemColors.HighlightTextBrushKey}" Color="{DynamicResource LE1GMEColorFFFFFF}" />
+                            <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightTextBrushKey}" Color="{DynamicResource LE1GMEColorFFFFFF}" />
+                        </TreeView.Resources>
+                        <TreeView.ItemContainerStyle>
+                            <Style TargetType="TreeViewItem">
+                                <Setter Property="IsSelected" Value="{Binding IsSelected, Mode=TwoWay}" />
+                                <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
+                                <Setter Property="Visibility" Value="{Binding IsVisible, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+                                <Setter Property="Padding" Value="2" />
+                                <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+                                <Setter Property="ContextMenu">
+                                    <Setter.Value>
+                                        <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
+                                            <MenuItem Header="{Binding AddChildMenuHeader}"
+                                                      Command="{Binding AddChildCommand}"
+                                                      Visibility="{Binding SupportsAddChild, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                            <Separator Visibility="{Binding SupportsAddChild, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                            <MenuItem Header="Clone…"
+                                                      Command="{Binding CloneCommand}"
+                                                      Visibility="{Binding SupportsRowActions, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                            <MenuItem Header="{Binding MoveMenuHeader}"
+                                                      Command="{Binding MoveCommand}"
+                                                      Visibility="{Binding SupportsParentMove, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                            <MenuItem Header="Open Planet Designer..."
+                                                      Command="{Binding OpenPlanetDesignerCommand}"
+                                                      Visibility="{Binding SupportsPlanetDesigner, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                            <Separator Visibility="{Binding SupportsRowActions, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                            <MenuItem Header="Delete…"
+                                                      Command="{Binding DeleteCommand}"
+                                                      Visibility="{Binding SupportsRowActions, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                        </ContextMenu>
+                                    </Setter.Value>
+                                </Setter>
+                                <Setter Property="ToolTip">
+                                    <Setter.Value>
+                                        <TextBlock Text="{Binding ToolTipText}" />
+                                    </Setter.Value>
+                                </Setter>
+                                <EventSetter Event="PreviewMouseLeftButtonDown"
+                                             Handler="HierarchyItem_OnPreviewMouseLeftButtonDown" />
+                                <EventSetter Event="MouseDoubleClick"
+                                             Handler="HierarchyItem_OnMouseDoubleClick" />
+                                <Style.Triggers>
+                                    <Trigger Property="IsSelected" Value="True">
+                                        <Setter Property="Background" Value="{DynamicResource AccentDimBrush}" />
+                                        <Setter Property="Foreground" Value="White" />
+                                    </Trigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TreeView.ItemContainerStyle>
+                    </TreeView>
+
+                    <StackPanel Grid.Row="2"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center"
+                                Margin="28"
+                                IsHitTestVisible="False"
+                                Visibility="{Binding HasDocument, Converter={StaticResource InverseBooleanToVisibilityConverter}}">
+                        <TextBlock Text="✦" Foreground="{DynamicResource AccentDimBrush}" FontSize="34" HorizontalAlignment="Center" />
+                        <TextBlock Text="No galaxy loaded" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,10,0,5" />
+                        <TextBlock Text="Open the folder containing the six GalaxyMap CSV exports."
+                                   Foreground="{DynamicResource MutedTextBrush}"
+                                   TextAlignment="Center"
+                                   TextWrapping="Wrap" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Stretch" Background="{DynamicResource LE1GMEBrush0A1018}" />
+
+            <Grid Grid.Column="2" Background="{DynamicResource LE1GMEBrush080D13}">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="48" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <Border Grid.Row="0" Background="{DynamicResource PanelBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1" Padding="11,0">
+                    <Grid>
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <Button Content="The Milky Way" Command="{Binding NavigateGalaxyCommand}" Style="{StaticResource BreadcrumbButtonStyle}" />
+                            <StackPanel Orientation="Horizontal" Visibility="{Binding HasCurrentCluster, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                <TextBlock Text="›" Foreground="{DynamicResource MutedTextBrush}" VerticalAlignment="Center" Margin="4,0" />
+                                <Button Content="{Binding CurrentCluster.DisplayName}"
+                                        Command="{Binding NavigateClusterCommand}"
+                                        Style="{StaticResource BreadcrumbButtonStyle}" />
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Visibility="{Binding HasCurrentSystem, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                <TextBlock Text="›" Foreground="{DynamicResource MutedTextBrush}" VerticalAlignment="Center" Margin="4,0" />
+                                <TextBlock Text="{Binding CurrentSystem.DisplayName}" FontWeight="SemiBold" VerticalAlignment="Center" Margin="5,0" />
+                            </StackPanel>
+                        </StackPanel>
+                        <Button HorizontalAlignment="Right"
+                                VerticalAlignment="Center"
+                                Content="{Binding CoordinateGridButtonText}"
+                                Command="{Binding ToggleCoordinateGridCommand}"
+                                IsEnabled="{Binding HasDocument}"
+                                Style="{StaticResource ChromeButtonStyle}"
+                                Padding="9,4" />
+                    </Grid>
+                </Border>
+
+                <controls:SquareViewport x:Name="MapViewport" Grid.Row="1">
+                    <Grid x:Name="MapSquare"
+                          Background="{DynamicResource LE1GMEBrush05080D}"
+                          ClipToBounds="True"
+                          ContextMenuService.IsEnabled="{Binding HasContextualAddAction}">
+                        <Grid.ContextMenu>
+                            <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
+                                <MenuItem Header="{Binding ContextualAddButtonText}"
+                                          Command="{Binding ContextualAddCommand}" />
+                            </ContextMenu>
+                        </Grid.ContextMenu>
+                        <ContentControl Content="{Binding CurrentViewModel}"
+                                        HorizontalContentAlignment="Stretch"
+                                        VerticalContentAlignment="Stretch" />
+
+                        <controls:CoordinateGridLayer x:Name="CoordinateGrid" Panel.ZIndex="50"
+                                                      ShowGrid="{Binding IsCoordinateGridVisible}"
+                                                      Visibility="{Binding IsCoordinateOverlayVisible, Converter={StaticResource BooleanToVisibilityConverter}}" />
+
+                        <Grid Background="{DynamicResource LE1GMEBrush080D13}"
+                              Panel.ZIndex="60"
+                              Visibility="{Binding HasDocument, Converter={StaticResource InverseBooleanToVisibilityConverter}}">
+                            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Margin="40">
+                                <Grid Width="90" Height="90" HorizontalAlignment="Center">
+                                    <Ellipse Stroke="{DynamicResource LE1GMEBrush233645}" StrokeThickness="1" />
+                                    <Ellipse Width="58" Height="58" Stroke="{DynamicResource LE1GMEBrush1A2B37}" StrokeThickness="1" />
+                                    <Ellipse Width="12" Height="12" Fill="{DynamicResource AccentBrush}" />
+                                </Grid>
+                                <TextBlock Text="Galaxy view ready" FontSize="18" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,18,0,7" />
+                                <TextBlock Text="Load BASEGAME or open a galaxy-map module."
+                                           Foreground="{DynamicResource MutedTextBrush}"
+                                           HorizontalAlignment="Center" />
+                            </StackPanel>
+                        </Grid>
+
+                        <Border Panel.ZIndex="100"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Top"
+                                Margin="12"
+                                Background="{DynamicResource LE1GMEBrushE3231C10}"
+                                BorderBrush="{DynamicResource WarningBrush}"
+                                BorderThickness="1"
+                                CornerRadius="3"
+                                Padding="10,7"
+                                Visibility="{Binding IsAddingRelay, Converter={StaticResource BooleanToVisibilityConverter}}">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="{Binding RelayLinkPrompt}" VerticalAlignment="Center" Margin="0,0,10,0" />
+                                <Button Content="Cancel" Command="{Binding CancelRelayCommand}" Style="{StaticResource ChromeButtonStyle}" Padding="8,3" />
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+                </controls:SquareViewport>
+            </Grid>
+
+            <GridSplitter Grid.Column="3" Width="5" HorizontalAlignment="Stretch" Background="{DynamicResource LE1GMEBrush0A1018}" />
+
+            <Border Grid.Column="4" Background="{DynamicResource PanelBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1,0,0,0">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <Border Grid.Row="0" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1" Padding="16,13">
+                        <StackPanel>
+                            <TextBlock Text="PROPERTIES" Style="{StaticResource PanelHeaderStyle}" />
+                            <TextBlock Text="{Binding Inspector.Title}" FontSize="17" FontWeight="SemiBold" Margin="0,10,0,2" TextTrimming="CharacterEllipsis" />
+                            <TextBlock Text="{Binding Inspector.Subtitle}" Foreground="{DynamicResource MutedTextBrush}" FontSize="11" TextTrimming="CharacterEllipsis" />
+                            <ItemsControl ItemsSource="{Binding RowInstanceTabs}"
+                                          Margin="0,9,0,0"
+                                          Visibility="{Binding HasMultipleRowInstances, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Button Command="{Binding SelectCommand}"
+                                                Style="{StaticResource ChromeButtonStyle}"
+                                                Padding="7,4"
+                                                Margin="0,0,5,4"
+                                                ToolTip="{Binding Detail}">
+                                            <StackPanel Orientation="Horizontal">
+                                                <Ellipse Width="7" Height="7" Fill="{Binding Color, Converter={StaticResource ModuleColorBrushConverter}}" Margin="0,0,5,0" />
+                                                <TextBlock Text="{Binding Label}" FontSize="9" FontWeight="SemiBold" />
+                                                <TextBlock Text=" ✓" Foreground="{DynamicResource AccentBrush}" FontSize="9"
+                                                           Visibility="{Binding IsSelected, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                            </StackPanel>
+                                        </Button>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Border>
+
+                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                        <ItemsControl ItemsSource="{Binding Inspector.Sections}" Margin="10,8" Grid.IsSharedSizeScope="True">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Expander IsExpanded="{Binding IsExpanded, Mode=TwoWay}" Margin="0,0,0,7" Foreground="{DynamicResource TextBrush}">
+                                        <Expander.Header>
+                                            <StackPanel>
+                                                <TextBlock Text="{Binding Title}" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource AccentBrush}" />
+                                                <TextBlock Text="{Binding Detail}" FontSize="9" Foreground="{DynamicResource MutedTextBrush}" TextWrapping="Wrap" />
+                                            </StackPanel>
+                                        </Expander.Header>
+                                        <Border Background="{DynamicResource LE1GMEBrush0C151E}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="2" Padding="8" Margin="0,5,0,0">
+                                            <StackPanel>
+                                                <ItemsControl ItemsSource="{Binding Fields}">
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate>
+                                                            <Grid Margin="0,2" MinHeight="26">
+                                                                <Grid.ColumnDefinitions>
+                                                                    <ColumnDefinition Width="{x:Static viewModels:PropertyInspectorViewModel.LabelColumnWidth}" SharedSizeGroup="InspectorLabels" />
+                                                                    <ColumnDefinition Width="*" />
+                                                                </Grid.ColumnDefinitions>
+                                                                <TextBlock Grid.Column="0"
+                                                                           Text="{Binding DisplayName}"
+                                                                           Foreground="{DynamicResource MutedTextBrush}"
+                                                                           VerticalAlignment="Center"
+                                                                           Margin="0,0,8,0"
+                                                                           TextTrimming="CharacterEllipsis"
+                                                                           ToolTip="{Binding ToolTipText}"
+                                                                           ToolTipService.ShowDuration="30000">
+                                                                    <TextBlock.Style>
+                                                                        <Style TargetType="TextBlock">
+                                                                            <Setter Property="FontWeight" Value="Normal" />
+                                                                            <Style.Triggers>
+                                                                                <DataTrigger Binding="{Binding IsMain}" Value="True">
+                                                                                    <Setter Property="FontWeight" Value="SemiBold" />
+                                                                                    <Setter Property="Foreground" Value="{DynamicResource LE1GMEBrushBDD0DD}" />
+                                                                                </DataTrigger>
+                                                                            </Style.Triggers>
+                                                                        </Style>
+                                                                    </TextBlock.Style>
+                                                                </TextBlock>
+                                                                <Grid Grid.Column="1">
+                                                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                                                    <TextBox Text="{Binding Value, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
+                                                                             IsReadOnly="{Binding IsReadOnly}" PreviewKeyDown="InspectorField_OnPreviewKeyDown"
+                                                                             Style="{StaticResource InspectorTextBoxStyle}"
+                                                                             Visibility="{Binding IsTextEditor, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                                                    <Button Grid.Column="1" Width="28" Margin="4,0,0,0" Padding="3" Click="ColorField_OnClick"
+                                                                            ToolTip="Open colour wheel" IsEnabled="{Binding IsEditable}"
+                                                                            Visibility="{Binding IsColorEditor, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                                        <Border Width="15" Height="15" Background="{Binding ColorPreview}" BorderBrush="{DynamicResource LE1GMEBrush8AA0AE}" BorderThickness="1"/>
+                                                                    </Button>
+                                                                    <CheckBox IsChecked="{Binding IsChecked, Mode=TwoWay}" IsEnabled="{Binding IsEditable}" ToolTip="{Binding ToolTipText}" ToolTipService.ShowDuration="30000"
+                                                                              Style="{StaticResource InspectorCheckboxStyle}" Visibility="{Binding IsCheckboxEditor, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+                                                                    <ComboBox ItemsSource="{Binding Options}" DisplayMemberPath="Label" SelectedItem="{Binding SelectedOption, Mode=TwoWay}"
+                                                                              IsEnabled="{Binding IsEditable}" ToolTip="{Binding ToolTipText}" ToolTipService.ShowDuration="30000"
+                                                                              Visibility="{Binding IsDropdownEditor, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+                                                                    <controls:StrRefLookupControl Grid.Column="2" Margin="4,0,0,0"
+                                                                                                  Presentation="{Binding StrRefLookup}"
+                                                                                                  Visibility="{Binding IsStrRef, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                                                </Grid>
+                                                            </Grid>
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
+
+                                                <ItemsControl ItemsSource="{Binding Actions}">
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate>
+                                                            <Button Command="{Binding Command}"
+                                                                    Style="{StaticResource InspectorActionButtonStyle}"
+                                                                    ToolTip="{Binding Detail}">
+                                                                <StackPanel HorizontalAlignment="Stretch">
+                                                                    <TextBlock Text="{Binding Label}"
+                                                                               HorizontalAlignment="Stretch"
+                                                                               TextAlignment="Left"
+                                                                               TextWrapping="Wrap" />
+                                                                    <TextBlock Text="{Binding Detail}"
+                                                                               Foreground="{DynamicResource MutedTextBrush}"
+                                                                               FontSize="9"
+                                                                               HorizontalAlignment="Stretch"
+                                                                               TextAlignment="Left"
+                                                                               TextWrapping="Wrap"
+                                                                               Margin="0,2,0,0" />
+                                                                </StackPanel>
+                                                            </Button>
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
+                                            </StackPanel>
+                                        </Border>
+                                    </Expander>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <Grid Grid.Row="2"
+              Background="{DynamicResource LE1GMEBrush080D13}"
+              Visibility="{Binding IsTableViewVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="62" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="43" />
+            </Grid.RowDefinitions>
+
+            <Border Grid.Row="0"
+                    Background="{DynamicResource PanelBrush}"
+                    BorderBrush="{DynamicResource BorderBrush}"
+                    BorderThickness="0,0,0,1"
+                    Padding="16,0">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="2DA TABLES"
+                                       Style="{StaticResource PanelHeaderStyle}"
+                                       Foreground="{DynamicResource AccentBrush}"
+                                       VerticalAlignment="Center" />
+                            <Border Margin="9,0,0,0"
+                                    Padding="6,2"
+                                    Background="{DynamicResource LE1GMEBrush172735}"
+                                    BorderBrush="{DynamicResource BorderBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="2">
+                                <TextBlock Text="{Binding TableViewer.Title}"
+                                           FontFamily="Consolas"
+                                           FontSize="10"
+                                           Foreground="{DynamicResource LE1GMEBrushBFD1DC}" />
+                            </Border>
+                        </StackPanel>
+                        <TextBlock Text="{Binding TableViewer.EditingHint}"
+                                   Foreground="{DynamicResource MutedTextBrush}"
+                                   FontSize="10"
+                                   Margin="0,5,0,0" />
+                    </StackPanel>
+
+                    <ItemsControl Grid.Column="1"
+                                  ItemsSource="{Binding MountedModules}"
+                                  HorizontalAlignment="Center"
+                                  VerticalAlignment="Center"
+                                  Margin="20,0">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate><WrapPanel HorizontalAlignment="Center" /></ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Orientation="Horizontal" Margin="0,2,12,2" ToolTip="{Binding Name}">
+                                    <Ellipse Width="7" Height="7"
+                                             Fill="{Binding Color, Converter={StaticResource ModuleColorBrushConverter}}"
+                                             Margin="0,0,5,0"
+                                             VerticalAlignment="Center" />
+                                    <TextBlock Text="{Binding Tag}"
+                                               Foreground="{Binding Color, Converter={StaticResource ModuleColorBrushConverter}}"
+                                               FontSize="9"
+                                               FontWeight="SemiBold"
+                                               VerticalAlignment="Center" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <StackPanel Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right">
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                            <TextBlock Text="{Binding TableViewer.RowCount, StringFormat={}{0} rows}"
+                                       Foreground="{DynamicResource LE1GMEBrushB9C9D4}"
+                                       FontSize="10" />
+                            <TextBlock Text="  •  " Foreground="{DynamicResource LE1GMEBrush607887}" FontSize="10" />
+                            <TextBlock Text="{Binding TableViewer.ColumnCount, StringFormat={}{0} columns}"
+                                       Foreground="{DynamicResource LE1GMEBrushB9C9D4}"
+                                       FontSize="10" />
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,5,0,0">
+                            <Border Width="13" Height="10"
+                                    Background="{DynamicResource LE1GMEBrush243E4B}"
+                                    BorderBrush="{DynamicResource AccentBrush}"
+                                    BorderThickness="1"
+                                    Margin="0,0,5,0" />
+                            <TextBlock Text="filled = uncommitted"
+                                       Foreground="{DynamicResource MutedTextBrush}"
+                                       FontSize="9"
+                                       Margin="0,0,11,0" />
+                            <TextBlock Text="outline = effective module"
+                                       Foreground="{DynamicResource MutedTextBrush}"
+                                       FontSize="9" />
+                        </StackPanel>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <DataGrid x:Name="TableGrid"
+                      Grid.Row="1"
+                      ItemsSource="{Binding TableViewer.Rows}"
+                      Background="{DynamicResource LE1GMEBrush080D13}"
+                      Foreground="{DynamicResource TextBrush}"
+                      BorderThickness="0"
+                      HeadersVisibility="Column"
+                      ColumnHeaderStyle="{StaticResource TwoDaColumnHeaderStyle}"
+                      RowHeaderWidth="0"
+                      RowHeight="30"
+                      GridLinesVisibility="None"
+                      AutoGenerateColumns="False"
+                      CanUserAddRows="False"
+                      CanUserDeleteRows="False"
+                      CanUserReorderColumns="False"
+                      CanUserResizeColumns="True"
+                      CanUserResizeRows="False"
+                      CanUserSortColumns="False"
+                      SelectionMode="Extended"
+                      SelectionUnit="Cell"
+                      ClipboardCopyMode="ExcludeHeader"
+                      EnableRowVirtualization="True"
+                      EnableColumnVirtualization="True"
+                      VirtualizingPanel.IsVirtualizing="True"
+                      VirtualizingPanel.VirtualizationMode="Recycling"
+                      ScrollViewer.CanContentScroll="True"
+                      ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                      ScrollViewer.VerticalScrollBarVisibility="Auto"
+                      CellEditEnding="TableGrid_OnCellEditEnding"
+                      PreviewMouseWheel="TableGrid_OnPreviewMouseWheel"
+                      Loaded="TableGrid_OnLoaded">
+                <DataGrid.RowStyle>
+                    <Style TargetType="DataGridRow">
+                        <Setter Property="Background" Value="{DynamicResource LE1GMEBrush0B151F}" />
+                        <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+                        <Setter Property="BorderThickness" Value="0" />
+                        <Setter Property="SnapsToDevicePixels" Value="True" />
+                    </Style>
+                </DataGrid.RowStyle>
+            </DataGrid>
+
+            <Border Grid.Row="2"
+                    Background="{DynamicResource LE1GMEBrush0D1721}"
+                    BorderBrush="{DynamicResource BorderBrush}"
+                    BorderThickness="0,1,0,0"
+                    Padding="12,0">
+                <ItemsControl ItemsSource="{Binding TableViewer.Tabs}" VerticalAlignment="Center">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Button Content="{Binding Label}"
+                                    Command="{Binding SelectCommand}"
+                                    Padding="15,6"
+                                    Margin="0,0,5,0">
+                                <Button.Style>
+                                    <Style TargetType="Button" BasedOn="{StaticResource ChromeButtonStyle}">
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                                                <Setter Property="Background" Value="{DynamicResource LE1GMEBrush244657}" />
+                                                <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                                                <Setter Property="Foreground" Value="White" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Button.Style>
+                            </Button>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </Border>
+        </Grid>
+
+        <Border x:Name="DiagnosticsPanel"
+                Grid.Row="2"
+                Panel.ZIndex="250"
+                Width="520"
+                Height="310"
+                MinWidth="360"
+                MinHeight="180"
+                HorizontalAlignment="Right"
+                VerticalAlignment="Bottom"
+                Margin="0,0,12,12"
+                Background="{DynamicResource LE1GMEBrushF0141B23}"
+                BorderBrush="{DynamicResource WarningBrush}"
+                BorderThickness="1"
+                CornerRadius="4"
+                Padding="12"
+                Visibility="{Binding IsDiagnosticsPanelOpen, Converter={StaticResource BooleanToVisibilityConverter}}">
+            <Border.RenderTransform>
+                <TranslateTransform x:Name="DiagnosticsTransform" />
+            </Border.RenderTransform>
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <Grid Grid.Row="0" Margin="0,0,0,9">
+                    <Thumb Background="Transparent"
+                           Cursor="SizeAll"
+                           Margin="0,0,58,0"
+                           Panel.ZIndex="5"
+                           DragDelta="DiagnosticsHeader_OnDragDelta"
+                           ToolTip="Drag diagnostics panel">
+                        <Thumb.Template>
+                            <ControlTemplate TargetType="Thumb">
+                                <Border Background="Transparent" />
+                            </ControlTemplate>
+                        </Thumb.Template>
+                    </Thumb>
+                    <StackPanel>
+                        <TextBlock Text="VALIDATION DIAGNOSTICS" Foreground="{DynamicResource WarningBrush}" FontSize="11" FontWeight="Bold" />
+                        <TextBlock Foreground="{DynamicResource MutedTextBrush}"
+                                   FontSize="10"
+                                   Margin="0,3,40,0">
+                            <Run Text="{Binding ValidationErrorCount, Mode=OneWay}" />
+                            <Run Text=" errors  ·  " />
+                            <Run Text="{Binding ValidationWarningCount, Mode=OneWay}" />
+                            <Run Text=" warnings" />
+                        </TextBlock>
+                        <TextBlock Text="Results include physical module files and the effective mounted galaxy map."
+                                   Foreground="{DynamicResource MutedTextBrush}"
+                                   FontSize="10"
+                                   TextWrapping="Wrap"
+                                   Margin="0,2,40,0" />
+                    </StackPanel>
+                    <Button HorizontalAlignment="Right"
+                            Panel.ZIndex="6"
+                            VerticalAlignment="Top"
+                            Content="Close"
+                            Command="{Binding ToggleDiagnosticsCommand}"
+                            Style="{StaticResource ChromeButtonStyle}"
+                            Padding="7,3" />
+                </Grid>
+                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Margin="0,0,20,18">
+                    <ItemsControl x:Name="DiagnosticsList" ItemsSource="{Binding ValidationDiagnostics}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Button Command="{Binding DataContext.NavigateDiagnosticCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                        CommandParameter="{Binding}"
+                                        Background="Transparent"
+                                        BorderThickness="0"
+                                        Padding="0"
+                                        HorizontalContentAlignment="Stretch"
+                                        ToolTip="Select the row described by this diagnostic">
+                                    <Button.Template>
+                                        <ControlTemplate TargetType="Button">
+                                            <ContentPresenter />
+                                        </ControlTemplate>
+                                    </Button.Template>
+                                    <Border Background="{DynamicResource LE1GMEBrush1C2630}"
+                                        BorderThickness="3,0,0,0"
+                                        CornerRadius="2"
+                                        Padding="9,7"
+                                        Margin="0,0,0,5">
+                                    <Border.Style>
+                                        <Style TargetType="Border">
+                                            <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Severity}" Value="{x:Static models:ValidationSeverity.Warning}">
+                                                    <Setter Property="BorderBrush" Value="{DynamicResource WarningBrush}" />
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding Severity}" Value="{x:Static models:ValidationSeverity.Error}">
+                                                    <Setter Property="BorderBrush" Value="{DynamicResource DangerBrush}" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Border.Style>
+                                    <StackPanel>
+                                        <Grid Margin="0,0,0,3">
+                                            <TextBlock Text="{Binding Code, Mode=OneWay}"
+                                                       FontSize="9"
+                                                       FontWeight="Bold"
+                                                       Foreground="{DynamicResource MutedTextBrush}" />
+                                            <TextBlock Text="{Binding Severity, Mode=OneWay}"
+                                                       HorizontalAlignment="Right"
+                                                       FontSize="9"
+                                                       FontWeight="SemiBold"
+                                                       Foreground="{DynamicResource MutedTextBrush}" />
+                                        </Grid>
+                                        <TextBlock Text="{Binding Message, Mode=OneWay}"
+                                                   TextWrapping="Wrap"
+                                                   FontSize="11" />
+                                        <TextBlock Text="{Binding Location, Mode=OneWay}"
+                                                   Foreground="{DynamicResource LE1GMEBrush7890A2}"
+                                                   FontSize="9"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   Margin="0,4,0,0" />
+                                        </StackPanel>
+                                    </Border>
+                                </Button>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+                <Thumb Grid.RowSpan="2"
+                       Width="30"
+                       Height="30"
+                       HorizontalAlignment="Right"
+                       VerticalAlignment="Bottom"
+                       Margin="0,0,-7,-7"
+                       Cursor="SizeNWSE"
+                       Panel.ZIndex="10"
+                       DragDelta="DiagnosticsResize_OnDragDelta">
+                    <Thumb.Template>
+                        <ControlTemplate TargetType="Thumb">
+                            <Grid Background="Transparent">
+                                <Path Data="M 10 22 L 22 10 M 16 22 L 22 16"
+                                      Stroke="{DynamicResource MutedTextBrush}"
+                                      StrokeThickness="1.5" />
+                            </Grid>
+                        </ControlTemplate>
+                    </Thumb.Template>
+                </Thumb>
+            </Grid>
+        </Border>
+
+        <Border Grid.Row="3" Background="{DynamicResource LE1GMEBrush0C141D}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,1,0,0" Padding="12,0">
+            <Grid>
+                <TextBlock Text="{Binding StatusMessage}"
+                           Foreground="{DynamicResource MutedTextBrush}"
+                           FontSize="11"
+                           VerticalAlignment="Center"
+                           TextTrimming="CharacterEllipsis"
+                           Margin="0,0,560,0" />
+                <StackPanel HorizontalAlignment="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button Content="{Binding TableViewToggleText}"
+                            Command="{Binding ToggleTableViewCommand}"
+                            Padding="9,2"
+                            Margin="0,0,7,0"
+                            ToolTip="Switch between the visual galaxy editor and the merged live 2DA tables.">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource ChromeButtonStyle}">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsTableViewVisible}" Value="True">
+                                        <Setter Property="Background" Value="{DynamicResource LE1GMEBrush244657}" />
+                                        <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                                        <Setter Property="Foreground" Value="White" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+                <Button HorizontalAlignment="Right"
+                        VerticalAlignment="Center"
+                        Command="{Binding ToggleDiagnosticsCommand}"
+                        Background="{DynamicResource LE1GMEBrush322919}"
+                        BorderBrush="{DynamicResource LE1GMEBrush66502A}"
+                        Foreground="{DynamicResource WarningBrush}"
+                        Style="{StaticResource ChromeButtonStyle}"
+                        Padding="7,2"
+                        Visibility="{Binding HasDiagnostics, Converter={StaticResource BooleanToVisibilityConverter}}"
+                        ToolTip="Click to view validation details.">
+                    <TextBlock Foreground="{DynamicResource WarningBrush}" FontSize="10">
+                        <Run Text="{Binding ValidationErrorCount, Mode=OneWay}" />
+                        <Run Text=" errors  ·  " />
+                        <Run Text="{Binding ValidationWarningCount, Mode=OneWay}" />
+                        <Run Text=" warnings  ·  " />
+                        <Run Text="{Binding DiagnosticCount, Mode=OneWay}" />
+                        <Run Text=" total" />
+                    </TextBlock>
+                </Button>
+                </StackPanel>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

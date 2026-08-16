@@ -1,0 +1,65 @@
+<Window x:Class="LE1GalaxyMapEditor.Views.PlanetCreationWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:controls="clr-namespace:LE1GalaxyMapEditor.Controls"
+        Title="Add system object" Width="520" Height="650" MinHeight="560"
+        WindowStartupLocation="CenterOwner" ResizeMode="CanResize"
+        Background="{DynamicResource AppBackgroundBrush}" Foreground="{DynamicResource TextBrush}">
+    <Grid Margin="22">
+        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+        <StackPanel Margin="0,0,0,15">
+            <TextBlock Text="ADD PLANET / SYSTEM OBJECT" Foreground="{DynamicResource AccentBrush}" FontWeight="Bold" FontSize="11"/>
+            <TextBlock Margin="0,6,0,0" Foreground="{DynamicResource MutedTextBrush}" TextWrapping="Wrap"
+                       Text="Choose the structural template. Labels, row IDs and ActiveWorld are allocated automatically."/>
+        </StackPanel>
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+            <StackPanel>
+                <Grid Margin="0,0,0,10"><Grid.ColumnDefinitions><ColumnDefinition Width="145"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                    <TextBlock Text="Template" VerticalAlignment="Center"/><ComboBox x:Name="TemplateBox" Grid.Column="1" SelectionChanged="TemplateBox_OnSelectionChanged"/>
+                </Grid>
+                <TextBlock x:Name="TemplateDetailText" Foreground="{DynamicResource MutedTextBrush}" FontSize="10" TextWrapping="Wrap" Margin="145,0,0,13"/>
+                <Grid Margin="0,0,0,10"><Grid.ColumnDefinitions><ColumnDefinition Width="145"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                    <TextBlock Text="Internal name" VerticalAlignment="Center" ToolTip="Non-localised NameText value."/><TextBox x:Name="NameTextBox" Grid.Column="1" Padding="7,5"/>
+                </Grid>
+                <Grid Margin="0,0,0,10"><Grid.ColumnDefinitions><ColumnDefinition Width="145"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                    <TextBlock Text="Name (TLK ID)" VerticalAlignment="Center"/>
+                    <Grid Grid.Column="1"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                        <TextBox x:Name="NameBox" Padding="7,5" Text="0"/>
+                        <controls:StrRefLookupControl x:Name="NameLookup" Grid.Column="1" Margin="5,0,0,0"
+                                                      StringRefText="{Binding Text, ElementName=NameBox}"/>
+                    </Grid>
+                </Grid>
+                <Grid Margin="0,0,0,16"><Grid.ColumnDefinitions><ColumnDefinition Width="145"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                    <TextBlock Text="Scale" VerticalAlignment="Center"/><TextBox x:Name="ScaleBox" Grid.Column="1" Padding="7,5"/>
+                </Grid>
+
+                <Border x:Name="LandableContainer" Background="{DynamicResource LE1GMEBrush111E29}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="3" Padding="12">
+                    <StackPanel>
+                        <CheckBox x:Name="LandableBox" Content="Configure a landable destination" Checked="LandableBox_OnChanged" Unchecked="LandableBox_OnChanged"/>
+                        <TextBlock Foreground="{DynamicResource MutedTextBrush}" FontSize="10" TextWrapping="Wrap" Margin="22,4,0,8"
+                                   Text="Optional for every template. Creates a linked Map row and configures the use event."/>
+                        <StackPanel x:Name="LandablePanel" Visibility="Collapsed" Margin="22,4,0,0">
+                            <TextBlock Text="Persistent level" Foreground="{DynamicResource MutedTextBrush}" FontSize="10"/><TextBox x:Name="MapNameBox" Padding="7,5" Margin="0,3,0,8" Text="BIOA_NEW_MAP"/>
+                            <TextBlock Text="Start point" Foreground="{DynamicResource MutedTextBrush}" FontSize="10"/><TextBox x:Name="StartPointBox" Padding="7,5" Margin="0,3,0,8"/>
+                            <TextBlock Text="Remote event" Foreground="{DynamicResource MutedTextBrush}" FontSize="10"/><TextBox x:Name="EventBox" Padding="7,5" Margin="0,3,0,8" Text="Land"/>
+                            <Grid Margin="0,0,0,8"><Grid.ColumnDefinitions><ColumnDefinition Width="130"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                <TextBlock Text="Use button TLK" VerticalAlignment="Center"/>
+                                <Grid Grid.Column="1"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                    <TextBox x:Name="ButtonLabelBox" Padding="7,5"/>
+                                    <controls:StrRefLookupControl x:Name="ButtonLabelLookup" Grid.Column="1" Margin="5,0,0,0"
+                                                                  StringRefText="{Binding Text, ElementName=ButtonLabelBox}"/>
+                                </Grid>
+                            </Grid>
+                            <CheckBox x:Name="PlotPlanetBox" Content="Also create a mirrored PlotPlanet row"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+                <TextBlock x:Name="ErrorText" Foreground="{DynamicResource DangerBrush}" TextWrapping="Wrap" Margin="0,12,0,0"/>
+            </StackPanel>
+        </ScrollViewer>
+        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+            <Button Content="Cancel" Width="88" Margin="0,0,8,0" IsCancel="True" Style="{StaticResource ChromeButtonStyle}"/>
+            <Button Content="Create" Width="88" IsDefault="True" Click="Create_OnClick" Style="{StaticResource ChromeButtonStyle}"/>
+        </StackPanel>
+    </Grid>
+</Window>

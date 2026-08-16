@@ -107,6 +107,7 @@
 		<ProjectReference Include="..\..\SharedProjects\Be.Windows.Forms.HexBox\Be.Windows.Forms.HexBox.csproj" />
 		<ProjectReference Include="..\..\SharedProjects\HexConverterWPF\HexConverterWPF.csproj" />
 		<ProjectReference Include="..\LegendaryExplorerCore\LegendaryExplorerCore.csproj" />
+		<ProjectReference Include="..\LE1GalaxyMapEditor\LE1GalaxyMapEditor.csproj" />
 		<ProjectReference Include="..\submodules\WwiseParser\WwiseParserLib\WwiseParserLib.csproj" />
 		<ProjectReference Include="..\submodules\Wwiser.NET\ME3Tweaks.Wwiser\ME3Tweaks.Wwiser.csproj" />
 		<ProjectReference Include="..\submodules\Wwiser.NET\BinarySerializer\BinarySerializer\BinarySerializer.csproj" />

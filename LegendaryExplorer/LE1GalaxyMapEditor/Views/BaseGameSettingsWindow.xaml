@@ -1,0 +1,105 @@
+<Window x:Class="LE1GalaxyMapEditor.Views.BaseGameSettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="BASEGAME settings"
+        Width="470"
+        SizeToContent="Height"
+        ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        Background="{DynamicResource AppBackgroundBrush}">
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <StackPanel>
+            <TextBlock Text="BASEGAME READ-ONLY"
+                       Foreground="{DynamicResource LE1GMEBrush90D8A9}"
+                       FontSize="11"
+                       FontWeight="SemiBold" />
+            <TextBlock Margin="0,6,0,0"
+                       Foreground="{DynamicResource MutedTextBrush}"
+                       FontSize="10"
+                       TextWrapping="Wrap"
+                       Text="BASEGAME data cannot be edited. Its locale controls TLK presentation throughout the editor." />
+        </StackPanel>
+        <StackPanel Grid.Row="1" Margin="0,18,0,0">
+            <Grid Margin="0,0,0,18">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="145" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="TLK locale" VerticalAlignment="Center" />
+                <ComboBox x:Name="LocaleBox" Grid.Column="1" Padding="7,4" />
+            </Grid>
+
+            <Border Background="{DynamicResource LE1GMEBrush111E29}"
+                    BorderBrush="{DynamicResource BorderBrush}"
+                    BorderThickness="1"
+                    CornerRadius="3"
+                    Padding="12">
+                <StackPanel>
+                    <TextBlock Text="RESERVED ROW ID RANGES"
+                               Foreground="{DynamicResource AccentBrush}"
+                               FontSize="11"
+                               FontWeight="Bold" />
+                    <TextBlock Margin="0,4,0,11"
+                               Foreground="{DynamicResource MutedTextBrush}"
+                               FontSize="10"
+                               TextWrapping="Wrap"
+                               Text="Read-only reference for the row IDs reserved by the base game. Ranges are inclusive." />
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="145" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="24" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <TextBlock Grid.Column="1" Text="Start" Foreground="{DynamicResource MutedTextBrush}" FontSize="10" />
+                        <TextBlock Grid.Column="3" Text="End" Foreground="{DynamicResource MutedTextBrush}" FontSize="10" />
+
+                        <TextBlock Grid.Row="1" Text="Cluster" VerticalAlignment="Center" />
+                        <TextBox Grid.Row="1" Grid.Column="1" Text="1" IsReadOnly="True" Margin="0,3" Padding="6,4" />
+                        <TextBlock Grid.Row="1" Grid.Column="2" Text="–" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        <TextBox Grid.Row="1" Grid.Column="3" Text="20" IsReadOnly="True" Margin="0,3" Padding="6,4" />
+
+                        <TextBlock Grid.Row="2" Text="System" VerticalAlignment="Center" />
+                        <TextBox Grid.Row="2" Grid.Column="1" Text="1" IsReadOnly="True" Margin="0,3" Padding="6,4" />
+                        <TextBlock Grid.Row="2" Grid.Column="2" Text="–" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        <TextBox Grid.Row="2" Grid.Column="3" Text="47" IsReadOnly="True" Margin="0,3" Padding="6,4" />
+
+                        <TextBlock Grid.Row="3" Text="Planet / PlotPlanet" VerticalAlignment="Center" />
+                        <TextBox Grid.Row="3" Grid.Column="1" Text="1" IsReadOnly="True" Margin="0,3" Padding="6,4" />
+                        <TextBlock Grid.Row="3" Grid.Column="2" Text="–" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        <TextBox Grid.Row="3" Grid.Column="3" Text="2033" IsReadOnly="True" Margin="0,3" Padding="6,4" />
+
+                        <TextBlock Grid.Row="4" Text="Map" VerticalAlignment="Center" />
+                        <TextBox Grid.Row="4" Grid.Column="1" Text="0" IsReadOnly="True" Margin="0,3" Padding="6,4" />
+                        <TextBlock Grid.Row="4" Grid.Column="2" Text="–" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        <TextBox Grid.Row="4" Grid.Column="3" Text="200" IsReadOnly="True" Margin="0,3" Padding="6,4" />
+
+                        <TextBlock Grid.Row="5" Text="Relay" VerticalAlignment="Center" />
+                        <TextBox Grid.Row="5" Grid.Column="1" Text="0" IsReadOnly="True" Margin="0,3" Padding="6,4" />
+                        <TextBlock Grid.Row="5" Grid.Column="2" Text="–" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        <TextBox Grid.Row="5" Grid.Column="3" Text="16" IsReadOnly="True" Margin="0,3" Padding="6,4" />
+                    </Grid>
+                </StackPanel>
+            </Border>
+        </StackPanel>
+        <StackPanel Grid.Row="2" Margin="0,20,0,0" Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button Content="Cancel" IsCancel="True" Style="{StaticResource ChromeButtonStyle}" Padding="10,5" Margin="0,0,7,0" />
+            <Button Content="Apply" IsDefault="True" Style="{StaticResource ChromeButtonStyle}" Padding="12,5" Click="Apply_OnClick" />
+        </StackPanel>
+    </Grid>
+</Window>

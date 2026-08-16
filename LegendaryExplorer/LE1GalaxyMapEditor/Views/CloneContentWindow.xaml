@@ -1,0 +1,23 @@
+<Window x:Class="LE1GalaxyMapEditor.Views.CloneContentWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Clone galaxy-map content" Width="470" Height="410" WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize" Background="{DynamicResource LE1GMEBrush101820}" Foreground="{DynamicResource LE1GMEBrushE5EEF5}">
+    <Grid Margin="22">
+        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+        <StackPanel><TextBlock Text="CLONE CONTENT" Foreground="{DynamicResource LE1GMEBrush62BEEA}" FontWeight="Bold"/><TextBlock x:Name="SummaryText" Margin="0,8,0,16" TextWrapping="Wrap" Foreground="{DynamicResource LE1GMEBrush91A4B2}"/></StackPanel>
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="120"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+            <Grid.RowDefinitions><RowDefinition Height="42"/><RowDefinition Height="42"/><RowDefinition Height="42"/><RowDefinition Height="42"/><RowDefinition Height="42"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+            <TextBlock Text="Row ID" VerticalAlignment="Center"/><TextBox x:Name="RowIdBox" Grid.Column="1" Margin="0,5"/>
+            <TextBlock Grid.Row="1" Text="Label" VerticalAlignment="Center"/><TextBox x:Name="LabelBox" Grid.Row="1" Grid.Column="1" Margin="0,5"/>
+            <TextBlock Grid.Row="2" Text="Name (TLK ID)" VerticalAlignment="Center"/><TextBox x:Name="NameBox" Grid.Row="2" Grid.Column="1" Margin="0,5"/>
+            <TextBlock Grid.Row="3" Text="Display name" VerticalAlignment="Center"/><TextBox x:Name="NameTextBox" Grid.Row="3" Grid.Column="1" Margin="0,5"/>
+            <CheckBox x:Name="ChildrenBox" Grid.Row="4" Grid.ColumnSpan="2" Content="Clone all Systems, Planets and linked rows" VerticalAlignment="Center"/>
+            <TextBlock x:Name="ErrorText" Grid.Row="5" Grid.ColumnSpan="2" Foreground="{DynamicResource LE1GMEBrushFF7D88}" TextWrapping="Wrap"/>
+        </Grid>
+        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button Content="Cancel" Width="85" Margin="0,0,8,0" IsCancel="True"/>
+            <Button Content="Clone" Width="85" IsDefault="True" Click="Clone_OnClick"/>
+        </StackPanel>
+    </Grid>
+</Window>

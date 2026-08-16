@@ -1,0 +1,169 @@
+{
+  "asset": {
+    "copyright": "",
+    "generator": "Legendary Explorer 6.5 NIGHTLY 12/06/2026",
+    "version": "2.0"
+  },
+  "accessors": [
+    {
+      "name": "POSITION",
+      "bufferView": 0,
+      "componentType": 5126,
+      "count": 9098,
+      "max": [
+        0.98711097240448,
+        0.98711097240448,
+        0.98711097240448
+      ],
+      "min": [
+        -0.98711097240448,
+        -0.98711097240448,
+        -0.98711097240448
+      ],
+      "type": "VEC3"
+    },
+    {
+      "name": "NORMAL",
+      "bufferView": 0,
+      "byteOffset": 12,
+      "componentType": 5126,
+      "count": 9098,
+      "max": [
+        0.999984622001648,
+        0.999984622001648,
+        0.999984622001648
+      ],
+      "min": [
+        -0.999984622001648,
+        -0.999984622001648,
+        -0.999984622001648
+      ],
+      "type": "VEC3"
+    },
+    {
+      "name": "TANGENT",
+      "bufferView": 0,
+      "byteOffset": 24,
+      "componentType": 5126,
+      "count": 9098,
+      "type": "VEC4"
+    },
+    {
+      "name": "TEXCOORD_0",
+      "bufferView": 0,
+      "byteOffset": 40,
+      "componentType": 5126,
+      "count": 9098,
+      "max": [
+        1,
+        1
+      ],
+      "min": [
+        0,
+        0
+      ],
+      "type": "VEC2"
+    },
+    {
+      "name": "TEXCOORD_1",
+      "bufferView": 0,
+      "byteOffset": 48,
+      "componentType": 5126,
+      "count": 9098,
+      "max": [
+        0.97021484375,
+        0.97998046875
+      ],
+      "min": [
+        0.019989013671875,
+        0.019989013671875
+      ],
+      "type": "VEC2"
+    },
+    {
+      "name": "_ORIGINAL_INDEX",
+      "bufferView": 0,
+      "byteOffset": 56,
+      "componentType": 5126,
+      "count": 9098,
+      "max": [
+        9097
+      ],
+      "min": [
+        0
+      ],
+      "type": "SCALAR"
+    },
+    {
+      "bufferView": 1,
+      "componentType": 5123,
+      "count": 48384,
+      "type": "SCALAR"
+    }
+  ],
+  "bufferViews": [
+    {
+      "buffer": 0,
+      "byteLength": 545880,
+      "byteStride": 60,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteLength": 96768,
+      "byteOffset": 545880,
+      "target": 34963
+    }
+  ],
+  "buffers": [
+    {
+      "byteLength": 642648,
+      "uri": "GXM10_Planet01.bin"
+    }
+  ],
+  "materials": [
+    {
+      "name": "BIOA_GXM10_T.GXM10_PlanetMaster01",
+      "pbrMetallicRoughness": {}
+    }
+  ],
+  "meshes": [
+    {
+      "name": "GXM10_Planet01",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 0,
+            "NORMAL": 1,
+            "TANGENT": 2,
+            "TEXCOORD_0": 3,
+            "TEXCOORD_1": 4,
+            "_ORIGINAL_INDEX": 5
+          },
+          "indices": 6,
+          "material": 0
+        }
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "name": "GXM10_Planet01",
+      "children": [
+        1
+      ]
+    },
+    {
+      "name": "GXM10_Planet01",
+      "mesh": 0
+    }
+  ],
+  "scene": 0,
+  "scenes": [
+    {
+      "nodes": [
+        0
+      ]
+    }
+  ]
+}

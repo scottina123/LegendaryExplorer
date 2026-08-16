@@ -53,6 +53,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ME3Tweaks.Wwiser", "submodu
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LegendaryExplorerUnrealDoc", "LegendaryExplorerUnrealDoc\LegendaryExplorerUnrealDoc.csproj", "{FE6D8103-56EC-4638-89E0-B191BFC82AB4}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LE1GalaxyMapEditor", "LE1GalaxyMapEditor\LE1GalaxyMapEditor.csproj", "{D3325768-75A2-4DB1-922A-AB2C5C931A47}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LE1GalaxyMapEditor.Rendering", "LE1GalaxyMapEditor.Rendering\LE1GalaxyMapEditor.Rendering.csproj", "{698B64CE-2BE2-4308-BB88-A5AF6DD3348C}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -181,6 +185,22 @@ Global
 		{FE6D8103-56EC-4638-89E0-B191BFC82AB4}.WinAzureRelease|x64.Build.0 = Release|Any CPU
 		{FE6D8103-56EC-4638-89E0-B191BFC82AB4}.WinAzureTest|x64.ActiveCfg = Release|Any CPU
 		{FE6D8103-56EC-4638-89E0-B191BFC82AB4}.WinAzureTest|x64.Build.0 = Release|Any CPU
+		{D3325768-75A2-4DB1-922A-AB2C5C931A47}.Debug|x64.ActiveCfg = Debug|x64
+		{D3325768-75A2-4DB1-922A-AB2C5C931A47}.Debug|x64.Build.0 = Debug|x64
+		{D3325768-75A2-4DB1-922A-AB2C5C931A47}.Release|x64.ActiveCfg = Release|x64
+		{D3325768-75A2-4DB1-922A-AB2C5C931A47}.Release|x64.Build.0 = Release|x64
+		{D3325768-75A2-4DB1-922A-AB2C5C931A47}.WinAzureRelease|x64.ActiveCfg = Release|x64
+		{D3325768-75A2-4DB1-922A-AB2C5C931A47}.WinAzureRelease|x64.Build.0 = Release|x64
+		{D3325768-75A2-4DB1-922A-AB2C5C931A47}.WinAzureTest|x64.ActiveCfg = Debug|x64
+		{D3325768-75A2-4DB1-922A-AB2C5C931A47}.WinAzureTest|x64.Build.0 = Debug|x64
+		{698B64CE-2BE2-4308-BB88-A5AF6DD3348C}.Debug|x64.ActiveCfg = Debug|x64
+		{698B64CE-2BE2-4308-BB88-A5AF6DD3348C}.Debug|x64.Build.0 = Debug|x64
+		{698B64CE-2BE2-4308-BB88-A5AF6DD3348C}.Release|x64.ActiveCfg = Release|x64
+		{698B64CE-2BE2-4308-BB88-A5AF6DD3348C}.Release|x64.Build.0 = Release|x64
+		{698B64CE-2BE2-4308-BB88-A5AF6DD3348C}.WinAzureRelease|x64.ActiveCfg = Release|x64
+		{698B64CE-2BE2-4308-BB88-A5AF6DD3348C}.WinAzureRelease|x64.Build.0 = Release|x64
+		{698B64CE-2BE2-4308-BB88-A5AF6DD3348C}.WinAzureTest|x64.ActiveCfg = Debug|x64
+		{698B64CE-2BE2-4308-BB88-A5AF6DD3348C}.WinAzureTest|x64.Build.0 = Debug|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

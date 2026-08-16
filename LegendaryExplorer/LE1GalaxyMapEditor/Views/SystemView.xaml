@@ -1,0 +1,146 @@
+<UserControl x:Class="LE1GalaxyMapEditor.Views.SystemView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="clr-namespace:LE1GalaxyMapEditor.Controls"
+             Background="Transparent">
+    <UserControl.Resources>
+        <ResourceDictionary Source="/LE1GalaxyMapEditor;component/Themes/EditorConverters.xaml" />
+    </UserControl.Resources>
+    <Grid ClipToBounds="True">
+        <Border Background="{DynamicResource LE1GMEVisualBrush05080D}" />
+        <Image Source="{Binding BackgroundTexture}"
+               Stretch="Fill"
+               IsHitTestVisible="False"
+               RenderOptions.BitmapScalingMode="HighQuality"
+               RenderTransformOrigin="0.5,0.5">
+            <Image.RenderTransform>
+                <ScaleTransform ScaleX="{Binding BackgroundScale}" ScaleY="{Binding BackgroundScale}" />
+            </Image.RenderTransform>
+        </Image>
+
+        <controls:SystemOrbitLayer Planets="{Binding PlanetModels}"
+                                   RefreshToken="{Binding RefreshToken}"
+                                   IsHitTestVisible="False" />
+
+        <Grid x:Name="SystemSun" Width="76" Height="76" HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False"
+              Visibility="{Binding UsesNebulaBackground, Converter={StaticResource InverseBooleanToVisibilityConverter}}">
+            <Ellipse Fill="{DynamicResource LE1GMEVisualBrush16FFB640}" Width="76" Height="76" />
+            <Ellipse Fill="{DynamicResource LE1GMEVisualBrush35FFD267}" Width="48" Height="48" />
+            <Ellipse Fill="{DynamicResource LE1GMEVisualBrushFFF3B34A}" Stroke="{DynamicResource LE1GMEVisualBrushFFFFD889}" StrokeThickness="2" Width="24" Height="24">
+                <Ellipse.Effect>
+                    <DropShadowEffect Color="{DynamicResource LE1GMEVisualColorFFFFB744}" BlurRadius="20" ShadowDepth="0" Opacity="0.85" />
+                </Ellipse.Effect>
+            </Ellipse>
+        </Grid>
+
+        <ItemsControl ItemsSource="{Binding Planets}" ClipToBounds="False">
+            <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                    <controls:NormalizedCanvas ClipToBounds="False" />
+                </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemContainerStyle>
+                <Style TargetType="ContentPresenter">
+                    <Setter Property="controls:NormalizedCanvas.X" Value="{Binding Item.X}" />
+                    <Setter Property="controls:NormalizedCanvas.Y" Value="{Binding Item.Y}" />
+                    <Setter Property="controls:NormalizedCanvas.AnchorY" Value="22" />
+                    <Setter Property="controls:NormalizedCanvas.AnchorFromBottom" Value="{Binding IsNearBottomEdge}" />
+                </Style>
+            </ItemsControl.ItemContainerStyle>
+            <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                    <Button Command="{Binding DataContext.SelectCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                            CommandParameter="{Binding}"
+                            MouseDoubleClick="PlanetButton_OnMouseDoubleClick"
+                            Cursor="Hand"
+                            Background="Transparent"
+                            BorderThickness="0"
+                            Padding="2"
+                            ToolTip="{Binding SystemMapToolTip}">
+                        <Button.ContextMenu>
+                            <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
+                                <MenuItem Header="Open Planet Designer..." Command="{Binding OpenPlanetDesignerCommand}"
+                                          Visibility="{Binding SupportsPlanetDesigner, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+                                <Separator Visibility="{Binding SupportsPlanetDesigner, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+                                <MenuItem Header="Clone Planet / object…" Command="{Binding CloneCommand}"/>
+                                <MenuItem Header="Move to System…" Command="{Binding MoveCommand}"/>
+                                <Separator/>
+                                <MenuItem Header="Delete Planet / object…" Command="{Binding DeleteCommand}"/>
+                            </ContextMenu>
+                        </Button.ContextMenu>
+                        <Button.Template>
+                            <ControlTemplate TargetType="Button"><ContentPresenter /></ControlTemplate>
+                        </Button.Template>
+                        <Grid Width="132">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <Grid x:Name="MarkerVisual" Grid.Row="0" Width="44" Height="44" HorizontalAlignment="Center"
+                                  RenderTransformOrigin="0.5,0.5">
+                                <Grid.RenderTransform>
+                                    <ScaleTransform>
+                                        <ScaleTransform.ScaleX>
+                                            <MultiBinding Converter="{StaticResource ObjectScaleConverter}">
+                                                <Binding Path="Item.Scale" />
+                                                <Binding Path="ActualWidth" RelativeSource="{RelativeSource AncestorType={x:Type UserControl}}" />
+                                            </MultiBinding>
+                                        </ScaleTransform.ScaleX>
+                                        <ScaleTransform.ScaleY>
+                                            <MultiBinding Converter="{StaticResource ObjectScaleConverter}">
+                                                <Binding Path="Item.Scale" />
+                                                <Binding Path="ActualWidth" RelativeSource="{RelativeSource AncestorType={x:Type UserControl}}" />
+                                            </MultiBinding>
+                                        </ScaleTransform.ScaleY>
+                                    </ScaleTransform>
+                                </Grid.RenderTransform>
+                                <Ellipse x:Name="SelectionRing" Stroke="Transparent" StrokeThickness="2" Width="41" Height="41" />
+                                <TextBlock x:Name="ObjectGlyph"
+                                           Text="{Binding Item.VisualKind, Converter={StaticResource PlanetGlyphConverter}}"
+                                           Foreground="{Binding ModuleColor, Converter={StaticResource ModuleColorBrushConverter}}"
+                                           FontSize="25"
+                                           FontFamily="Segoe UI Symbol"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center">
+                                    <TextBlock.Effect>
+                                        <DropShadowEffect Color="{DynamicResource LE1GMEVisualColor7A91A6}" BlurRadius="8" ShadowDepth="0" Opacity="0.45" />
+                                    </TextBlock.Effect>
+                                </TextBlock>
+                            </Grid>
+                            <Border x:Name="LabelBorder" Grid.Row="1" Background="{DynamicResource LE1GMEVisualBrushC4070B10}" CornerRadius="2" Padding="4,2" HorizontalAlignment="Center">
+                                <TextBlock Text="{Binding DisplayName}" FontSize="14" TextAlignment="Center" TextWrapping="Wrap" MaxWidth="126" />
+                            </Border>
+                        </Grid>
+                    </Button>
+                    <DataTemplate.Triggers>
+                        <DataTrigger Binding="{Binding IsNearBottomEdge}" Value="True">
+                            <Setter TargetName="MarkerVisual" Property="Grid.Row" Value="1" />
+                            <Setter TargetName="LabelBorder" Property="Grid.Row" Value="0" />
+                        </DataTrigger>
+                        <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                            <Setter TargetName="SelectionRing" Property="Stroke" Value="{DynamicResource LE1GMEVisualBrushF2A33A}" />
+                            <Setter TargetName="ObjectGlyph" Property="Foreground" Value="{DynamicResource LE1GMEVisualBrushF2A33A}" />
+                            <Setter TargetName="LabelBorder" Property="Background" Value="{DynamicResource LE1GMEVisualBrushE24A321B}" />
+                        </DataTrigger>
+                    </DataTemplate.Triggers>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <Border HorizontalAlignment="Left" VerticalAlignment="Top" Margin="16" Background="{DynamicResource LE1GMEVisualBrushAA0A1018}" BorderBrush="{DynamicResource LE1GMEVisualBrush324655}" BorderThickness="1" CornerRadius="3" Padding="10,7" IsHitTestVisible="False">
+            <StackPanel>
+                <TextBlock Text="SYSTEM VIEW" Foreground="{DynamicResource AccentBrush}" FontSize="10" FontWeight="Bold" />
+                <TextBlock Text="{Binding System.DisplayName}" FontSize="14" FontWeight="SemiBold" Margin="0,4,0,0" />
+                <TextBlock Foreground="{DynamicResource MutedTextBrush}" FontSize="10" Margin="0,2,0,0">
+                    <Run Text="{Binding Planets.Count, Mode=OneWay}" />
+                    <Run Text=" planets / system objects" />
+                </TextBlock>
+            </StackPanel>
+        </Border>
+
+        <Border HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="12" Background="{DynamicResource LE1GMEVisualBrush880A1018}" CornerRadius="2" Padding="8,4" IsHitTestVisible="False">
+            <TextBlock Text="● Planet   ▲ Asteroid-belt anchor   ◆ Object / anomaly   ◉ Ringed   ⇄ Relay   ▣ Depot   ☀ Sun"
+                       Foreground="{DynamicResource LE1GMEVisualBrush778C9C}" FontSize="9" FontFamily="Segoe UI Symbol" />
+        </Border>
+    </Grid>
+</UserControl>

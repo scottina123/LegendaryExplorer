@@ -1,0 +1,10 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:converters="clr-namespace:LE1GalaxyMapEditor.Converters">
+    <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
+    <converters:InverseBooleanToVisibilityConverter x:Key="InverseBooleanToVisibilityConverter" />
+    <converters:PlanetGlyphConverter x:Key="PlanetGlyphConverter" />
+    <converters:PlanetBrushConverter x:Key="PlanetBrushConverter" />
+    <converters:ObjectScaleConverter x:Key="ObjectScaleConverter" />
+    <converters:ModuleColorBrushConverter x:Key="ModuleColorBrushConverter" />
+</ResourceDictionary>
