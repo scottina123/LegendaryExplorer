@@ -1034,13 +1034,16 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
 
     private static SFXGalaxyNodeKind Classify(ExportEntry export, PropertyCollection properties)
     {
-        if (export.ClassName == "SFXGalaxy") return SFXGalaxyNodeKind.Galaxy;
-        if (export.ClassName == "SFXCluster") return SFXGalaxyNodeKind.Cluster;
-        if (export.ClassName == "SFXSystem") return SFXGalaxyNodeKind.System;
-        if (export.ClassName.Contains("MassRelay", StringComparison.OrdinalIgnoreCase)) return SFXGalaxyNodeKind.MassRelay;
-        if (export.ClassName.Contains("FuelDepot", StringComparison.OrdinalIgnoreCase)) return SFXGalaxyNodeKind.FuelDepot;
-        if (export.ClassName.Contains("Reaper", StringComparison.OrdinalIgnoreCase)) return SFXGalaxyNodeKind.Reaper;
-        if (export.ClassName == "SFXPlanetFeatureGAWAsset") return SFXGalaxyNodeKind.WarAsset;
+        if (export.IsA("SFXGalaxy")) return SFXGalaxyNodeKind.Galaxy;
+        if (export.IsA("SFXCluster")) return SFXGalaxyNodeKind.Cluster;
+        if (export.IsA("SFXSystem")) return SFXGalaxyNodeKind.System;
+        if (export.IsA("SFXGalaxyMapMassRelay")
+            || export.ClassName.Contains("MassRelay", StringComparison.OrdinalIgnoreCase)) return SFXGalaxyNodeKind.MassRelay;
+        if (export.IsA("SFXGalaxyMapFuelDepot")
+            || export.ClassName.Contains("FuelDepot", StringComparison.OrdinalIgnoreCase)) return SFXGalaxyNodeKind.FuelDepot;
+        if (export.IsA("SFXGalaxyMapReaper")
+            || export.ClassName.Contains("Reaper", StringComparison.OrdinalIgnoreCase)) return SFXGalaxyNodeKind.Reaper;
+        if (export.IsA("SFXPlanetFeatureGAWAsset")) return SFXGalaxyNodeKind.WarAsset;
         if (export.IsA("SFXPlanetFeature")) return SFXGalaxyNodeKind.Feature;
         if (export.IsA("BioPlanet"))
         {
