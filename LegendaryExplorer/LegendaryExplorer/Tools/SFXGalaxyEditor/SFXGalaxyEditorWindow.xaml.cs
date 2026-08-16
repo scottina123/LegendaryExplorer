@@ -38,6 +38,8 @@ using MessageBoxButton = System.Windows.MessageBoxButton;
 using MessageBoxImage = System.Windows.MessageBoxImage;
 using MessageBoxResult = System.Windows.MessageBoxResult;
 using LECTexture2D = LegendaryExplorerCore.Unreal.Classes.Texture2D;
+using LEImage = LegendaryExplorerCore.Textures.Image;
+using LEPixelFormat = LegendaryExplorerCore.Textures.PixelFormat;
 using Texture2DMipInfo = LegendaryExplorerCore.Unreal.Classes.Texture2DMipInfo;
 
 namespace LegendaryExplorer.Tools.SFXGalaxyEditor;
@@ -686,14 +688,14 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
         OnPropertyChanged(nameof(GalaxyArtPackagePath));
     }
 
-    private ImageSource DecodeBackgroundTexture(ExportEntry textureExport)
+    private ImageSource DecodeBackgroundTexture(ExportEntry textureExport, bool ignoreTextureAlpha = false)
     {
         if (textureExport is null || !textureExport.IsA("Texture2D"))
         {
             return null;
         }
 
-        string cacheKey = $"{textureExport.FileRef.FilePath}|{textureExport.UIndex}|{textureExport.DataSize}";
+        string cacheKey = $"{textureExport.FileRef.FilePath}|{textureExport.UIndex}|{textureExport.DataSize}|opaque={ignoreTextureAlpha}";
         if (_backgroundTextureCache.TryGetValue(cacheKey, out ImageSource cached))
         {
             return cached;
@@ -715,7 +717,7 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
             byte[] png;
             try
             {
-                png = texture.GetPNG(mip);
+                png = DecodeBackgroundMip(texture, mip, ignoreTextureAlpha);
             }
             catch (FileNotFoundException)
             {
@@ -728,7 +730,7 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
                 {
                     throw;
                 }
-                png = texture.GetPNG(packageMip);
+                png = DecodeBackgroundMip(texture, packageMip, ignoreTextureAlpha);
             }
 
             using MemoryStream stream = new(png, writable: false);
@@ -747,6 +749,22 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
             Debug.WriteLine($"Could not decode galaxy map texture {textureExport.InstancedFullPath}: {exception}");
             return null;
         }
+    }
+
+    private static byte[] DecodeBackgroundMip(LECTexture2D texture, Texture2DMipInfo mip, bool ignoreTextureAlpha)
+    {
+        if (!ignoreTextureAlpha)
+        {
+            return texture.GetPNG(mip);
+        }
+
+        LEPixelFormat format = LEImage.getPixelFormatType(texture.TextureFormat);
+        byte[] encoded = LECTexture2D.GetTextureData(mip, texture.Export.Game);
+        int width = mip.width;
+        int height = mip.height;
+        byte[] bgra = LEImage.convertRawToARGB(encoded, ref width, ref height, format, clearAlpha: true);
+        using MemoryStream png = LEImage.convertToPng(bgra, width, height, LEPixelFormat.ARGB);
+        return png.ToArray();
     }
 
     private bool SynchronizeCompanionFromAuthoritative(bool fullHierarchy,
@@ -1268,7 +1286,9 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
             {
                 EntryImporter.TryResolveImport(textureImport, out textureExport, cache: _texturePackageCache);
             }
-            return DecodeBackgroundTexture(textureExport);
+            // Cluster textures use alpha for auxiliary game data (for example, Cluster01's
+            // alpha contains a hard square), not for compositing the background artwork.
+            return DecodeBackgroundTexture(textureExport, ignoreTextureAlpha: true);
         }
         catch (Exception exception)
         {
