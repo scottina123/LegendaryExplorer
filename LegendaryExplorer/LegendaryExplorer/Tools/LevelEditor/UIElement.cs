@@ -18,6 +18,168 @@ public class UIElement
     }
 }
 
+/// <summary>
+/// Draws the influence shape of the selected light. Keeping this separate from the light icon overlay ensures
+/// that large levels never fill the viewport with every light's bounds.
+/// </summary>
+public sealed class SelectedLightWireframeOverlay : UIElement
+{
+    private const int CircleSegments = 32;
+    private const float DirectionalArrowLength = 36f;
+    private const float DirectionalArrowSpacing = 11f;
+    private const float DirectionalArrowHeadLength = 9f;
+    private const float DirectionalArrowHeadWidth = 5f;
+
+    private static readonly Vector4 WireColor = new(1f, 0.85f, 0.12f, 1f);
+    private static readonly Vector4 InnerConeColor = new(1f, 0.95f, 0.5f, 0.75f);
+    private static readonly (float Y, float Z)[] DirectionalArrowOffsets =
+    [
+        (-1f, -1f), (-1f, 1f), (0f, 0f), (1f, -1f), (1f, 1f)
+    ];
+
+    public override void Draw(LevelEditorRenderContext context)
+    {
+        if (!context.ShowSelectedLightWireframe || context.TransformWidget.Attach is not ActorProxy actor
+            || !actor.HasLightSettings)
+        {
+            return;
+        }
+
+        if (actor is DirectionalLightActorProxy or DirectionalLightComponentActorProxy)
+        {
+            DrawDirectionalArrows(context, actor);
+            return;
+        }
+
+        if (!actor.TryGetSceneLight(out Scene3D.SceneLight light) || !float.IsFinite(light.Radius)
+            || light.Radius <= 0f)
+        {
+            return;
+        }
+
+        if (light.IsSpot)
+        {
+            DrawSpotLight(context, light, actor.HitID);
+        }
+        else
+        {
+            DrawSphere(context, light.Position, light.Radius, actor.HitID);
+        }
+    }
+
+    private static void DrawSphere(LevelEditorRenderContext context, Vector3 center, float radius, int hitId)
+    {
+        DrawCircle(context, center, Vector3.UnitX, Vector3.UnitY, radius, WireColor, hitId);
+        DrawCircle(context, center, Vector3.UnitX, Vector3.UnitZ, radius, WireColor, hitId);
+        DrawCircle(context, center, Vector3.UnitY, Vector3.UnitZ, radius, WireColor, hitId);
+    }
+
+    private static void DrawSpotLight(LevelEditorRenderContext context, Scene3D.SceneLight light, int hitId)
+    {
+        Vector3 direction = SafeNormal(light.Direction, Vector3.UnitX);
+        CreatePerpendicularBasis(direction, out Vector3 right, out Vector3 up);
+        DrawCone(context, light.Position, direction, right, up, light.Radius,
+            light.OuterConeAngleDegrees, WireColor, hitId, drawSpokes: true);
+
+        if (light.InnerConeAngleDegrees > 0f && light.InnerConeAngleDegrees < light.OuterConeAngleDegrees)
+        {
+            DrawCone(context, light.Position, direction, right, up, light.Radius,
+                light.InnerConeAngleDegrees, InnerConeColor, hitId, drawSpokes: false);
+        }
+    }
+
+    private static void DrawCone(LevelEditorRenderContext context, Vector3 origin, Vector3 direction,
+        Vector3 right, Vector3 up, float radius, float angleDegrees, Vector4 color, int hitId, bool drawSpokes)
+    {
+        float angle = Math.Clamp(angleDegrees, 0f, 89.5f) * MathF.PI / 180f;
+        float axialDistance = radius * MathF.Cos(angle);
+        float ringRadius = radius * MathF.Sin(angle);
+        Vector3 ringCenter = origin + direction * axialDistance;
+
+        Vector3 first = ringCenter + right * ringRadius;
+        Vector3 previous = first;
+        for (int segment = 1; segment <= CircleSegments; segment++)
+        {
+            float theta = MathF.PI * 2f * segment / CircleSegments;
+            Vector3 point = ringCenter + (right * MathF.Cos(theta) + up * MathF.Sin(theta)) * ringRadius;
+            context.Primitives.AddLine(previous, point, color, hitId);
+            previous = point;
+        }
+
+        if (!drawSpokes)
+        {
+            return;
+        }
+
+        for (int segment = 0; segment < 8; segment++)
+        {
+            float theta = MathF.PI * 0.25f * segment;
+            Vector3 point = ringCenter + (right * MathF.Cos(theta) + up * MathF.Sin(theta)) * ringRadius;
+            context.Primitives.AddLine(origin, point, color, hitId);
+        }
+    }
+
+    private static void DrawDirectionalArrows(LevelEditorRenderContext context, ActorProxy actor)
+    {
+        Vector3 origin = actor.LocalToWorld.Translation;
+        Vector4 screenPosition = context.WorldToScreen(origin);
+        if ((!context.Camera.IsOrthographic && screenPosition.W <= 0f) || !context.WorldToPixel(origin, out _))
+        {
+            return;
+        }
+
+        float scale = context.Camera.IsOrthographic
+            ? context.Camera.OrthoWidth * 4f / context.SceneViewportWidth
+            : screenPosition.W * (4f / context.SceneViewportWidth / context.Camera.ProjectionMatrix[0, 0]);
+        Vector3 direction = SafeNormal(actor.LocalToWorld.GetAxis(0), Vector3.UnitX);
+        CreatePerpendicularBasis(direction, out Vector3 right, out Vector3 up);
+
+        foreach ((float y, float z) in DirectionalArrowOffsets)
+        {
+            Vector3 start = origin + (right * y + up * z) * (DirectionalArrowSpacing * scale);
+            Vector3 end = start + direction * (DirectionalArrowLength * scale);
+            Vector3 headBase = end - direction * (DirectionalArrowHeadLength * scale);
+            Vector3 headRight = right * (DirectionalArrowHeadWidth * scale);
+            Vector3 headUp = up * (DirectionalArrowHeadWidth * scale);
+
+            context.Primitives.AddLine(start, end, WireColor, actor.HitID);
+            context.Primitives.AddLine(end, headBase + headRight, WireColor, actor.HitID);
+            context.Primitives.AddLine(end, headBase - headRight, WireColor, actor.HitID);
+            context.Primitives.AddLine(end, headBase + headUp, WireColor, actor.HitID);
+            context.Primitives.AddLine(end, headBase - headUp, WireColor, actor.HitID);
+        }
+    }
+
+    private static void DrawCircle(LevelEditorRenderContext context, Vector3 center, Vector3 axis1,
+        Vector3 axis2, float radius, Vector4 color, int hitId)
+    {
+        Vector3 first = center + axis1 * radius;
+        Vector3 previous = first;
+        for (int segment = 1; segment <= CircleSegments; segment++)
+        {
+            float angle = MathF.PI * 2f * segment / CircleSegments;
+            Vector3 point = center + (axis1 * MathF.Cos(angle) + axis2 * MathF.Sin(angle)) * radius;
+            context.Primitives.AddLine(previous, point, color, hitId);
+            previous = point;
+        }
+    }
+
+    private static void CreatePerpendicularBasis(Vector3 direction, out Vector3 right, out Vector3 up)
+    {
+        Vector3 helper = MathF.Abs(direction.Z) < 0.99f ? Vector3.UnitZ : Vector3.UnitY;
+        right = SafeNormal(Vector3.Cross(helper, direction), Vector3.UnitY);
+        up = SafeNormal(Vector3.Cross(direction, right), Vector3.UnitZ);
+    }
+
+    private static Vector3 SafeNormal(Vector3 value, Vector3 fallback)
+    {
+        float lengthSquared = value.LengthSquared();
+        return lengthSquared > 0.000001f && float.IsFinite(lengthSquared)
+            ? value / MathF.Sqrt(lengthSquared)
+            : fallback;
+    }
+}
+
 public sealed class LightIconOverlay : UIElement
 {
     private const int CircleSegments = 16;
@@ -170,8 +332,8 @@ public sealed class LightIconOverlay : UIElement
 }
 
 /// <summary>
-/// Lightweight, hit-testable emitter marker. It remains available when particle rendering is disabled so large
-/// levels can expose and select every VFX placement without allocating or simulating the effects.
+/// Lightweight, hit-testable emitter marker. It remains visible alongside rendered particles, and still lets large
+/// levels expose and select every VFX placement without allocating or simulating the effects when VFX is disabled.
 /// </summary>
 public sealed class EmitterIconOverlay : UIElement
 {
@@ -189,7 +351,7 @@ public sealed class EmitterIconOverlay : UIElement
 
     public override void Draw(LevelEditorRenderContext context)
     {
-        if (!context.ShowEmitterIcons || context.ShowEmitterVfx)
+        if (!context.ShowEmitterIcons)
         {
             return;
         }

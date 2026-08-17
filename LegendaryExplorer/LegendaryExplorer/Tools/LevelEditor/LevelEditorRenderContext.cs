@@ -49,6 +49,7 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
     public event Action RightClickViewport;
     public List<ActorProxy> DrawList_3D = [];
     public List<UIElement> DrawList_UI = [];
+    private readonly SelectedLightWireframeOverlay SelectedLightWireframe = new();
     private readonly LightIconOverlay LightIcons = new();
     private readonly EmitterIconOverlay EmitterIcons = new();
     private readonly PointOfInterestIconOverlay PointOfInterestIcons = new();
@@ -295,6 +296,7 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
     public readonly BatchedPrimitives Primitives = new();
     public readonly NavigationOverlay NavigationOverlay = new();
 
+    public bool ShowSelectedLightWireframe = true;
     public bool ShowLightIcons = true;
     public bool ShowEmitterVfx { get; private set; }
     public bool ShowEmitterIcons = true;
@@ -794,6 +796,10 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
             pointsOfInterestChanged |= actor is SFXPointOfInterestProxy;
         }
         StartRenderResourceWorker();
+        if (!DrawList_UI.Contains(SelectedLightWireframe))
+        {
+            DrawList_UI.Add(SelectedLightWireframe);
+        }
         if (!DrawList_UI.Contains(LightIcons))
         {
             DrawList_UI.Add(LightIcons);
@@ -1067,6 +1073,14 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
             CacheSceneLight(actor);
             QueueRenderResources(actor);
             InvalidateIconForActor(actor);
+            if (!DrawList_UI.Contains(SelectedLightWireframe))
+            {
+                DrawList_UI.Add(SelectedLightWireframe);
+            }
+            if (!DrawList_UI.Contains(LightIcons))
+            {
+                DrawList_UI.Add(LightIcons);
+            }
             if (!DrawList_UI.Contains(EmitterIcons))
             {
                 DrawList_UI.Add(EmitterIcons);

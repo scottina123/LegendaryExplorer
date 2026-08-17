@@ -352,6 +352,21 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
 
     public sealed record LightmassBackendChoice(StaticLightingBakeBackend Backend, string DisplayName);
 
+    private bool _showSelectedLightWireframe = Settings.LevelEditor_ShowSelectedLightWireframe;
+    public bool ShowSelectedLightWireframe
+    {
+        get => _showSelectedLightWireframe;
+        set
+        {
+            if (SetProperty(ref _showSelectedLightWireframe, value))
+            {
+                Settings.LevelEditor_ShowSelectedLightWireframe = value;
+                RenderContext.ShowSelectedLightWireframe = value;
+                SceneViewer?.MarkRenderDirty();
+            }
+        }
+    }
+
     private bool _showLightIcons = Settings.LevelEditor_ShowLightIcons;
     public bool ShowLightIcons
     {
@@ -710,6 +725,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
     public LevelEditor() : base("LevelEditor")
     {
         RenderContext = new LevelEditorRenderContext();
+        RenderContext.ShowSelectedLightWireframe = _showSelectedLightWireframe;
         RenderContext.ShowLightIcons = _showLightIcons;
         RenderContext.SetShowEmitterVfx(_showEmitterVfx);
         RenderContext.TransformWidget.OnDragComplete = OnWidgetDragComplete;

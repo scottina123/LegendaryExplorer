@@ -247,6 +247,11 @@ namespace LegendaryExplorer.Misc.AppSettings
             get => _leveleditor_showcollision;
             set => SetProperty(ref _leveleditor_showcollision, value);
         }
+        private static bool _leveleditor_showselectedlightwireframe = true;
+        public static bool LevelEditor_ShowSelectedLightWireframe {
+            get => _leveleditor_showselectedlightwireframe;
+            set => SetProperty(ref _leveleditor_showselectedlightwireframe, value);
+        }
         private static bool _leveleditor_showlighticons = true;
         public static bool LevelEditor_ShowLightIcons {
             get => _leveleditor_showlighticons;
@@ -673,6 +678,7 @@ namespace LegendaryExplorer.Misc.AppSettings
             PathfindingEditor_ShowEverythingElseLayer = TryGetSetting(settingsJson, "pathfindingeditor_showeverythingelselayer", false);
             PathfindingEditor_BackgroundColor = TryGetSetting(settingsJson, "pathfindingeditor_backgroundcolor", -8224126);
             LevelEditor_ShowCollision = TryGetSetting(settingsJson, "leveleditor_showcollision", false);
+            LevelEditor_ShowSelectedLightWireframe = TryGetSetting(settingsJson, "leveleditor_showselectedlightwireframe", true);
             LevelEditor_ShowLightIcons = TryGetSetting(settingsJson, "leveleditor_showlighticons", true);
             LevelEditor_ShowEmitterVfx = TryGetSetting(settingsJson, "leveleditor_showemittervfx", false);
             LevelEditor_ShowVolumes = TryGetSetting(settingsJson, "leveleditor_showvolumes", false);
@@ -796,6 +802,7 @@ namespace LegendaryExplorer.Misc.AppSettings
             settingsJson["pathfindingeditor_showeverythingelselayer"] = PathfindingEditor_ShowEverythingElseLayer.ToString();
             settingsJson["pathfindingeditor_backgroundcolor"] = PathfindingEditor_BackgroundColor.ToString();
             settingsJson["leveleditor_showcollision"] = LevelEditor_ShowCollision.ToString();
+            settingsJson["leveleditor_showselectedlightwireframe"] = LevelEditor_ShowSelectedLightWireframe.ToString();
             settingsJson["leveleditor_showlighticons"] = LevelEditor_ShowLightIcons.ToString();
             settingsJson["leveleditor_showemittervfx"] = LevelEditor_ShowEmitterVfx.ToString();
             settingsJson["leveleditor_showvolumes"] = LevelEditor_ShowVolumes.ToString();
