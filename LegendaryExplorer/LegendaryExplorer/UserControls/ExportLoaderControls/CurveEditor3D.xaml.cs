@@ -1087,6 +1087,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     private readonly List<ActorDirectionTrack> actorDirectionTracks = [];
     private readonly List<FaceOnlyVoEvent> faceOnlyVoEvents = [];
     private readonly ObservableCollection<DialogueTimelineSegment> dialogueTimelineSegments = [];
+    private readonly ObservableCollection<DialogueTimelineSegment> dialogueTimelineGoToSegments = [];
     private readonly ObservableCollection<DialogueTimelineEdge> dialogueTimelineEdges = [];
     private readonly List<DialogueTimelineSegment> dialogueTimelineActivePath = [];
     private readonly Dictionary<DialogueNodeReference, DialogueTimelineSegment> dialogueTimelineSegmentsByReference = [];
@@ -1210,6 +1211,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     private double previewActorRotationDialPreviousAngle;
 
     public IEnumerable<DialogueTimelineSegment> DialogueTimelineSegments => dialogueTimelineSegments;
+    public IEnumerable<DialogueTimelineSegment> DialogueTimelineGoToSegments => dialogueTimelineGoToSegments;
     public IEnumerable<DialogueTimelineEdge> DialogueTimelineEdges => dialogueTimelineEdges;
     public IEnumerable<DialogueBranchOption> DialogueBranchOptions => dialogueBranchOptions;
     public IEnumerable<DialogueSceneShopChoice> ActiveDialogueSceneShopChoices => activeDialogueSceneShopChoices;
@@ -2160,6 +2162,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     private void BuildDialogueTimeline(DialogueNodeExtended startNode)
     {
         dialogueTimelineSegments.Clear();
+        dialogueTimelineGoToSegments.Clear();
         dialogueTimelineEdges.Clear();
         dialogueTimelineActivePath.Clear();
         dialogueTimelineSegmentsByReference.Clear();
@@ -2235,6 +2238,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         int maxDepth = dialogueTimelineSegments.Max(segment => segment.TreeDepth);
         DialogueTimelineTreeWidth = maxDepth * horizontalSpacing + 250;
         DialogueTimelineTreeHeight = largestColumn * verticalSpacing + 2;
+        RefreshDialogueTimelineGoToSegments();
         BuildDialogueSceneShopChoices();
         UpdateActiveDialogueSceneShopChoices(dialogueTimelineStartSegment);
         RefreshDialogueTimelineActivePath();
@@ -3832,6 +3836,8 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     public ICommand ToggleUniformScaleCommand { get; private set; }
 
     public ICommand ToggleLocalCoordsCommand { get; private set; }
+
+    public ICommand DialogueTimelineGoToCommand { get; private set; }
 
     public IReadOnlyList<EInterpCurveMode> InterpModes { get; }
 
@@ -9245,6 +9251,8 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
     private void LoadCommands()
     {
+        DialogueTimelineGoToCommand = new GenericCommand(ToggleDialogueTimelineGoTo,
+            () => isDialogueConversationPreview && dialogueTimelineSegments.Count > 0);
         ToggleTranslateCommand = new GenericCommand(() => RenderContext.TransformWidget.Mode = EWidgetMode.Translate);
         ToggleRotateCommand = new GenericCommand(() =>
         {
@@ -11381,6 +11389,111 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             float targetTime = (float)e.NewValue;
             ApplyDialogueTimelineAtTime(targetTime, reconstruct: RequiresDialogueTimelineReconstruction(targetTime));
         }
+    }
+
+    private void ToggleDialogueTimelineGoTo()
+    {
+        if (isDialogueConversationPreview && dialogueTimelineSegments.Count > 0)
+        {
+            DialogueTimelineGoToPopup.IsOpen = !DialogueTimelineGoToPopup.IsOpen;
+        }
+    }
+
+    private void DialogueTimelineGoToButton_Click(object sender, RoutedEventArgs e) =>
+        ToggleDialogueTimelineGoTo();
+
+    private void DialogueTimelineGoToPopup_Opened(object sender, EventArgs e)
+    {
+        DialogueTimelineGoToList.SelectedItem = null;
+        DialogueTimelineGoToSearchBox.Clear();
+        RefreshDialogueTimelineGoToSegments();
+        DialogueTimelineGoToSearchBox.Focus();
+    }
+
+    private void DialogueTimelineGoToSearchBox_TextChanged(object sender, TextChangedEventArgs e) =>
+        RefreshDialogueTimelineGoToSegments();
+
+    private void RefreshDialogueTimelineGoToSegments()
+    {
+        string searchText = DialogueTimelineGoToSearchBox?.Text;
+        DialogueTimelineSegment[] matchingSegments = dialogueTimelineSegments
+            .Where(segment => string.IsNullOrWhiteSpace(searchText)
+                              || segment.DisplayLabel.Contains(searchText,
+                                  StringComparison.CurrentCultureIgnoreCase))
+            .ToArray();
+        dialogueTimelineGoToSegments.Clear();
+        foreach (DialogueTimelineSegment segment in matchingSegments)
+        {
+            dialogueTimelineGoToSegments.Add(segment);
+        }
+    }
+
+    private void DialogueTimelineGoToSearchBox_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape)
+        {
+            DialogueTimelineGoToPopup.IsOpen = false;
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Down && DialogueTimelineGoToList.Items.Count > 0)
+        {
+            DialogueTimelineGoToList.SelectedIndex = 0;
+            DialogueTimelineGoToList.Focus();
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Enter && DialogueTimelineGoToList.Items.Count > 0)
+        {
+            GoToDialogueTimelineSegment(DialogueTimelineGoToList.SelectedItem as DialogueTimelineSegment
+                                        ?? DialogueTimelineGoToList.Items[0] as DialogueTimelineSegment);
+            e.Handled = true;
+        }
+    }
+
+    private void DialogueTimelineGoToList_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape)
+        {
+            DialogueTimelineGoToPopup.IsOpen = false;
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Enter
+                 && DialogueTimelineGoToList.SelectedItem is DialogueTimelineSegment segment)
+        {
+            GoToDialogueTimelineSegment(segment);
+            e.Handled = true;
+        }
+    }
+
+    private void DialogueTimelineGoToList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (DialogueTimelineGoToList.SelectedItem is DialogueTimelineSegment segment)
+        {
+            GoToDialogueTimelineSegment(segment);
+        }
+    }
+
+    private void GoToDialogueTimelineSegment(DialogueTimelineSegment segment)
+    {
+        if (segment is null)
+        {
+            return;
+        }
+
+        DialogueTimelineGoToPopup.IsOpen = false;
+        updatingDialogueTimelineSelection = true;
+        DialogueTimelineListBox.SelectedItem = segment;
+        updatingDialogueTimelineSelection = false;
+        DialogueTimelineListBox.ScrollIntoView(segment);
+        Dispatcher.BeginInvoke(() =>
+        {
+            if (DialogueTimelineListBox.ItemContainerGenerator.ContainerFromItem(segment)
+                is FrameworkElement container)
+            {
+                container.BringIntoView();
+            }
+        }, DispatcherPriority.Background);
+        UpdateActiveDialogueSceneShopChoices(segment);
+        PlayDialogueTimelineSegmentFromStart(segment);
     }
 
     private void DialogueTimelineNode_SelectionChanged(object sender, SelectionChangedEventArgs e)

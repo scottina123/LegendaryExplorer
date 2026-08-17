@@ -11,6 +11,9 @@
         DataContext="{Binding RelativeSource={RelativeSource Self}}"
         Loaded="CurveEditor3D_Loaded"
         Unloaded="CurveEditor3D_Unloaded">
+    <exportLoaderControls:ExportLoaderControl.InputBindings>
+        <KeyBinding Key="G" Modifiers="Control" Command="{Binding DialogueTimelineGoToCommand}"/>
+    </exportLoaderControls:ExportLoaderControl.InputBindings>
     <DockPanel>
         <WrapPanel DockPanel.Dock="Top">
             <ToolBar ToolBarTray.IsLocked="True" OverflowMode="Never">
@@ -182,6 +185,7 @@
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
@@ -190,25 +194,50 @@
                             Click="DialogueTimelinePlayPause_Click"/>
                     <Button Grid.Column="2" Content="Rewind" Width="66" Margin="5,0,8,0" Padding="6,3"
                             Click="DialogueTimelineRewind_Click" ToolTip="Restart the current dialogue node"/>
-                    <Button x:Name="DialogueNodeCommitButton" Grid.Column="3" Content="Commit Node" Margin="0,0,8,0"
+                    <Grid Grid.Column="3" Margin="0,0,8,0">
+                        <Button x:Name="DialogueTimelineGoToButton" Content="Go to: (Ctrl+G)" Padding="8,3"
+                                Click="DialogueTimelineGoToButton_Click" ToolTip="Search for a dialogue node to go to"/>
+                        <Popup x:Name="DialogueTimelineGoToPopup"
+                               PlacementTarget="{Binding ElementName=DialogueTimelineGoToButton}"
+                               Placement="Bottom" StaysOpen="False" Opened="DialogueTimelineGoToPopup_Opened">
+                            <Border Width="360" MaxHeight="500" Padding="6"
+                                    Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"
+                                    BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"
+                                    BorderThickness="1">
+                                <DockPanel>
+                                    <TextBox x:Name="DialogueTimelineGoToSearchBox" DockPanel.Dock="Top" Margin="0,0,0,6"
+                                             TextChanged="DialogueTimelineGoToSearchBox_TextChanged"
+                                             KeyDown="DialogueTimelineGoToSearchBox_KeyDown"
+                                             ToolTip="Filter dialogue nodes"/>
+                                    <ListBox x:Name="DialogueTimelineGoToList"
+                                             ItemsSource="{Binding DialogueTimelineGoToSegments}"
+                                             DisplayMemberPath="DisplayLabel"
+                                             SelectionChanged="DialogueTimelineGoToList_SelectionChanged"
+                                             KeyDown="DialogueTimelineGoToList_KeyDown"
+                                             ScrollViewer.HorizontalScrollBarVisibility="Auto"/>
+                                </DockPanel>
+                            </Border>
+                        </Popup>
+                    </Grid>
+                    <Button x:Name="DialogueNodeCommitButton" Grid.Column="4" Content="Commit Node" Margin="0,0,8,0"
                             Padding="8,3" Visibility="Collapsed" IsEnabled="False"
                             Click="DialogueNodeCommit_Click"
                             ToolTip="Write the active node's cached TrackMove/FOV edits and staged Package Editor changes to the PCC; other node curve caches are unchanged."/>
-                    <Button x:Name="DialogueCacheCommitAllButton" Grid.Column="4" Content="Commit Entire Cache" Margin="0,0,8,0"
+                    <Button x:Name="DialogueCacheCommitAllButton" Grid.Column="5" Content="Commit Entire Cache" Margin="0,0,8,0"
                             Padding="8,3" Visibility="Collapsed" IsEnabled="False"
                             Click="DialogueCacheCommitAll_Click"
                             ToolTip="Write every pending TrackMove/FOV edit and staged Package Editor change from this conversation cache to the PCC."/>
-                    <Button x:Name="DialogueCacheSaveButton" Grid.Column="5" Content="Save Cache..." Margin="0,0,5,0"
+                    <Button x:Name="DialogueCacheSaveButton" Grid.Column="6" Content="Save Cache..." Margin="0,0,5,0"
                             Padding="8,3" Visibility="Collapsed" Click="DialogueCacheSave_Click"
                             ToolTip="Save the complete conversation cache as a persistent preset."/>
-                    <Button x:Name="DialogueCachePresetsButton" Grid.Column="6" Content="Cache Presets..." Margin="0,0,8,0"
+                    <Button x:Name="DialogueCachePresetsButton" Grid.Column="7" Content="Cache Presets..." Margin="0,0,8,0"
                             Padding="8,3" Visibility="Collapsed" Click="DialogueCachePresets_Click"
                             ToolTip="Search, load, save, or delete dialogue cache presets."/>
-                    <Slider x:Name="DialogueTimelineSlider" Grid.Column="7" Minimum="0" Value="0" Margin="0,0,10,0"
+                    <Slider x:Name="DialogueTimelineSlider" Grid.Column="8" Minimum="0" Value="0" Margin="0,0,10,0"
                             VerticalAlignment="Center" PreviewMouseDown="DialogueTimelineSlider_PreviewMouseDown"
                             PreviewMouseUp="DialogueTimelineSlider_PreviewMouseUp"
                             ValueChanged="DialogueTimelineSlider_ValueChanged"/>
-                    <TextBlock x:Name="DialogueTimelineTimeText" Grid.Column="8" VerticalAlignment="Center"
+                    <TextBlock x:Name="DialogueTimelineTimeText" Grid.Column="9" VerticalAlignment="Center"
                                Text="0.00 / 0.00" MinWidth="92" TextAlignment="Right"/>
                 </Grid>
 
