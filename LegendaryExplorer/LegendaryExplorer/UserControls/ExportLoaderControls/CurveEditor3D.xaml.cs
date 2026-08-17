@@ -3099,7 +3099,26 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         return identities;
     }
 
-    public static IReadOnlyList<string> GetDialoguePreviewHenchmanTags() =>
+    private static readonly IReadOnlyList<string> DialoguePreviewMe2HenchmanTags =
+        new ReadOnlyCollection<string>(
+    [
+        "hench_professor",
+        "hench_vixen",
+        "hench_leading",
+        "hench_mystic",
+        "hench_thief",
+        "hench_veteran",
+        "hench_grunt",
+        "hench_geth",
+        "hench_liara",
+        "hench_garrus",
+        "hench_assassin",
+        "hench_convict",
+        "hench_kenson",
+    ]);
+
+    private static readonly IReadOnlyList<string> DialoguePreviewMe3HenchmanTags =
+        new ReadOnlyCollection<string>(
     [
         "hench_liara",
         "hench_ashley",
@@ -3119,10 +3138,17 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         "hench_zaeed",
         "hench_kasumi",
         "hench_jacob",
-    ];
+    ]);
+
+    public static IReadOnlyList<string> GetDialoguePreviewHenchmanTags() =>
+        DialoguePreviewMe3HenchmanTags;
+
+    public static IReadOnlyList<string> GetDialoguePreviewHenchmanTags(MEGame game) =>
+        game.IsGame2() ? DialoguePreviewMe2HenchmanTags : DialoguePreviewMe3HenchmanTags;
 
     internal static bool IsDialoguePreviewHenchmanTag(string actorTag) =>
-        GetDialoguePreviewHenchmanTags().Contains(actorTag, StringComparer.OrdinalIgnoreCase);
+        DialoguePreviewMe2HenchmanTags.Contains(actorTag, StringComparer.OrdinalIgnoreCase)
+        || DialoguePreviewMe3HenchmanTags.Contains(actorTag, StringComparer.OrdinalIgnoreCase);
 
     internal static IReadOnlyList<DialogueNodeExtended> GetDialoguePreviewNodes(
         ConversationExtended conversation, DialogueNodeExtended startNode, bool conversationPreview)
@@ -3290,12 +3316,28 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         }
 
         Dictionary<string, string> resolvedNodeSlots = FindDialogueHenchmanNodeSlots(conversation, nodeSlots);
-        return directSlots.Select(slot => new DialoguePreviewHenchmanSlot(slot,
-                DescribeDirectDialogueHenchmanSlot(slot)))
+        return GetDialoguePreviewDefaultHenchmanSlots(conversation.Export.Game)
+            .Concat(directSlots.Select(slot => new DialoguePreviewHenchmanSlot(slot,
+                DescribeDirectDialogueHenchmanSlot(slot))))
             .Concat(resolvedNodeSlots.Select(pair => new DialoguePreviewHenchmanSlot(pair.Key, pair.Value)))
+            .DistinctBy(slot => slot.SlotTag, StringComparer.OrdinalIgnoreCase)
             .OrderBy(slot => GetDialogueHenchmanSlotSortKey(slot.SlotTag))
             .ThenBy(slot => slot.SlotTag, StringComparer.OrdinalIgnoreCase)
             .ToArray();
+    }
+
+    internal static IReadOnlyList<DialoguePreviewHenchmanSlot> GetDialoguePreviewDefaultHenchmanSlots(
+        MEGame game)
+    {
+        if (game != MEGame.LE2)
+        {
+            return [];
+        }
+        return
+        [
+            new DialoguePreviewHenchmanSlot("Hench_1", "First squadmate slot"),
+            new DialoguePreviewHenchmanSlot("Hench_2", "Second squadmate slot"),
+        ];
     }
 
     internal static IReadOnlyList<DialoguePreviewActorIdentity> ApplyDialoguePreviewHenchmanAssignments(

@@ -8,6 +8,7 @@ using LegendaryExplorer.Tools.AssetDatabase;
 using LegendaryExplorer.Tools.InterpEditor;
 using LegendaryExplorer.Tools.LevelEditor.Scene3D;
 using LegendaryExplorer.UserControls.ExportLoaderControls;
+using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.Unreal.Animation;
 using LegendaryExplorerCore.Unreal.BinaryConverters;
 using LegendaryExplorerCore.Unreal;
@@ -80,7 +81,7 @@ public class InterpTrackMoveTransformTests
     [TestMethod]
     public void DialogueHenchmanChoicesContainEverySupportedUniqueLe3Tag()
     {
-        IReadOnlyList<string> choices = CurveEditor3D.GetDialoguePreviewHenchmanTags();
+        IReadOnlyList<string> choices = CurveEditor3D.GetDialoguePreviewHenchmanTags(MEGame.LE3);
 
         Assert.HasCount(18, choices);
         Assert.HasCount(choices.Count, choices.Distinct(StringComparer.OrdinalIgnoreCase));
@@ -91,6 +92,55 @@ public class InterpTrackMoveTransformTests
             "hench_wrex", "hench_grunt", "hench_aria", "hench_nyreen", "hench_samara",
             "hench_zaeed", "hench_kasumi", "hench_jacob",
         }, choices.ToArray());
+    }
+
+    [TestMethod]
+    public void DialogueHenchmanChoicesUseTheMe2RosterAndDisplayNames()
+    {
+        var expectedChoices = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["hench_professor"] = "Mordin",
+            ["hench_vixen"] = "Miranda",
+            ["hench_leading"] = "Jacob",
+            ["hench_mystic"] = "Samara",
+            ["hench_thief"] = "Kasumi",
+            ["hench_veteran"] = "Zaeed",
+            ["hench_grunt"] = "Grunt",
+            ["hench_geth"] = "Legion",
+            ["hench_liara"] = "Liara",
+            ["hench_garrus"] = "Garrus",
+            ["hench_assassin"] = "Thane",
+            ["hench_convict"] = "Jack",
+            ["hench_kenson"] = "Kenson",
+        };
+
+        IReadOnlyList<string> me2Choices = CurveEditor3D.GetDialoguePreviewHenchmanTags(MEGame.ME2);
+        IReadOnlyList<string> le2Choices = CurveEditor3D.GetDialoguePreviewHenchmanTags(MEGame.LE2);
+
+        CollectionAssert.AreEqual(expectedChoices.Keys.ToArray(), me2Choices.ToArray());
+        CollectionAssert.AreEqual(me2Choices.ToArray(), le2Choices.ToArray());
+        foreach ((string actorTag, string displayName) in expectedChoices)
+        {
+            Assert.AreEqual(displayName, DialoguePreviewLevelPicker.GetHenchmanDisplayName(actorTag));
+            Assert.IsTrue(CurveEditor3D.IsDialoguePreviewHenchmanTag(actorTag));
+        }
+    }
+
+    [TestMethod]
+    public void Le2DialogueHenchmanChoicesDefaultToNoneForBothNumberedSlots()
+    {
+        IReadOnlyList<CurveEditor3D.DialoguePreviewHenchmanSlot> defaultSlots =
+            CurveEditor3D.GetDialoguePreviewDefaultHenchmanSlots(MEGame.LE2);
+        IReadOnlyList<DialoguePreviewLevelPicker.HenchmanChoice> choices =
+            DialoguePreviewLevelPicker.GetHenchmanChoices(MEGame.LE2);
+
+        CollectionAssert.AreEqual(new[] { "Hench_1", "Hench_2" },
+            defaultSlots.Select(slot => slot.SlotTag).ToArray());
+        Assert.AreEqual(string.Empty, choices[0].ActorTag);
+        Assert.AreEqual("None", choices[0].DisplayName);
+        Assert.IsFalse(DialoguePreviewLevelPicker.GetHenchmanChoices(MEGame.ME2)
+            .Any(choice => string.IsNullOrWhiteSpace(choice.ActorTag)));
+        Assert.IsEmpty(CurveEditor3D.GetDialoguePreviewDefaultHenchmanSlots(MEGame.ME2));
     }
 
     [TestMethod]

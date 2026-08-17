@@ -22,6 +22,8 @@ public partial class DialoguePreviewLevelPicker : TrackingNotifyPropertyChangedW
 {
     private bool restoringCacheOptions;
     private readonly List<DialogueCachePreset> compatibleCachePresets = [];
+    private readonly IReadOnlySet<string> availableHenchmanTags;
+    private readonly bool allowUnassignedHenchmen;
     private DialogueCachePreset selectedCachePreset;
 
     public sealed record HenchmanChoice(string ActorTag, string DisplayName);
@@ -75,6 +77,7 @@ public partial class DialoguePreviewLevelPicker : TrackingNotifyPropertyChangedW
         DialogueNodeExtended startNode, bool includeCache,
         bool requirePlayerGenderSelection = false) : base("Dialogue Preview Options", false)
     {
+        allowUnassignedHenchmen = game == MEGame.LE2;
         InitializeComponent();
         if (requirePlayerGenderSelection)
         {
@@ -82,9 +85,9 @@ public partial class DialoguePreviewLevelPicker : TrackingNotifyPropertyChangedW
             PlayerGenderComboBox.SelectedIndex = -1;
             LoadPreviewButton.Content = "Generate Actors";
         }
-        HenchmanChoice[] henchmanChoices = CurveEditor3D.GetDialoguePreviewHenchmanTags()
-            .Select(tag => new HenchmanChoice(tag, GetHenchmanDisplayName(tag)))
-            .ToArray();
+        IReadOnlyList<string> henchmanTags = CurveEditor3D.GetDialoguePreviewHenchmanTags(game);
+        availableHenchmanTags = henchmanTags.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        IReadOnlyList<HenchmanChoice> henchmanChoices = GetHenchmanChoices(game);
         foreach (CurveEditor3D.DialoguePreviewHenchmanSlot slot in
                  CurveEditor3D.GetDialoguePreviewHenchmanSlots(conversation, startNode, includeCache))
         {
@@ -92,6 +95,7 @@ public partial class DialoguePreviewLevelPicker : TrackingNotifyPropertyChangedW
             {
                 Slot = slot,
                 Choices = henchmanChoices,
+                SelectedHenchmanTag = allowUnassignedHenchmen ? string.Empty : null,
             });
         }
         HenchmanGroupBox.Visibility = HenchmanSlots.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
@@ -130,8 +134,40 @@ public partial class DialoguePreviewLevelPicker : TrackingNotifyPropertyChangedW
         }
     }
 
-    private static string GetHenchmanDisplayName(string actorTag)
+    internal static IReadOnlyList<HenchmanChoice> GetHenchmanChoices(MEGame game)
     {
+        IEnumerable<HenchmanChoice> choices = CurveEditor3D.GetDialoguePreviewHenchmanTags(game)
+            .Select(tag => new HenchmanChoice(tag, GetHenchmanDisplayName(tag)));
+        if (game == MEGame.LE2)
+        {
+            choices = choices.Prepend(new HenchmanChoice(string.Empty, "None"));
+        }
+        return choices.ToArray();
+    }
+
+    internal static string GetHenchmanDisplayName(string actorTag)
+    {
+        string knownName = actorTag?.ToLowerInvariant() switch
+        {
+            "hench_professor" => "Mordin",
+            "hench_vixen" => "Miranda",
+            "hench_leading" => "Jacob",
+            "hench_mystic" => "Samara",
+            "hench_thief" => "Kasumi",
+            "hench_veteran" => "Zaeed",
+            "hench_grunt" => "Grunt",
+            "hench_geth" => "Legion",
+            "hench_liara" => "Liara",
+            "hench_garrus" => "Garrus",
+            "hench_assassin" => "Thane",
+            "hench_convict" => "Jack",
+            "hench_kenson" => "Kenson",
+            _ => null,
+        };
+        if (knownName is not null)
+        {
+            return knownName;
+        }
         string name = actorTag.StartsWith("hench_", StringComparison.OrdinalIgnoreCase)
             ? actorTag["hench_".Length..]
             : actorTag;
@@ -139,9 +175,11 @@ public partial class DialoguePreviewLevelPicker : TrackingNotifyPropertyChangedW
     }
 
     private bool HasCompatibleHenchmanAssignments(DialogueCachePreset preset) => HenchmanSlots.All(slot =>
-        preset.HenchmanAssignments?.TryGetValue(slot.Slot.SlotTag, out string henchmanTag) == true
-        && CurveEditor3D.GetDialoguePreviewHenchmanTags().Contains(henchmanTag,
-            StringComparer.OrdinalIgnoreCase));
+    {
+        string henchmanTag = preset.HenchmanAssignments?.GetValueOrDefault(slot.Slot.SlotTag);
+        bool hasAssignment = !string.IsNullOrWhiteSpace(henchmanTag);
+        return hasAssignment ? availableHenchmanTags.Contains(henchmanTag) : allowUnassignedHenchmen;
+    });
 
     private void CacheSearchTextBox_TextChanged(object sender, TextChangedEventArgs e) =>
         RefreshCachePresetList();
@@ -294,7 +332,8 @@ public partial class DialoguePreviewLevelPicker : TrackingNotifyPropertyChangedW
                 : 0;
             foreach (HenchmanSlotSelection slot in HenchmanSlots)
             {
-                slot.SelectedHenchmanTag = preset.HenchmanAssignments.GetValueOrDefault(slot.Slot.SlotTag);
+                slot.SelectedHenchmanTag = preset.HenchmanAssignments.GetValueOrDefault(slot.Slot.SlotTag)
+                                            ?? (allowUnassignedHenchmen ? string.Empty : null);
             }
             HenchmanItemsControl.Items.Refresh();
             SelectedFiles.Clear();
@@ -355,8 +394,12 @@ public partial class DialoguePreviewLevelPicker : TrackingNotifyPropertyChangedW
             return;
         }
         bool matchesPreset = HenchmanSlots.All(slot =>
-            preset.HenchmanAssignments.TryGetValue(slot.Slot.SlotTag, out string cachedTag)
-            && string.Equals(cachedTag, slot.SelectedHenchmanTag, StringComparison.OrdinalIgnoreCase));
+        {
+            string cachedTag = preset.HenchmanAssignments.GetValueOrDefault(slot.Slot.SlotTag)
+                               ?? (allowUnassignedHenchmen ? string.Empty : null);
+            return string.Equals(cachedTag, slot.SelectedHenchmanTag,
+                StringComparison.OrdinalIgnoreCase);
+        });
         if (!matchesPreset)
         {
             BuildNewCacheRadio.IsChecked = true;
@@ -385,7 +428,8 @@ public partial class DialoguePreviewLevelPicker : TrackingNotifyPropertyChangedW
                 "Player Gender Required", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
-        if (HenchmanSlots.Any(slot => string.IsNullOrWhiteSpace(slot.SelectedHenchmanTag)))
+        if (!allowUnassignedHenchmen
+            && HenchmanSlots.Any(slot => string.IsNullOrWhiteSpace(slot.SelectedHenchmanTag)))
         {
             MessageBox.Show(this, "Choose a squadmate for every detected henchman slot.",
                 "Squad Assignment Required", MessageBoxButton.OK, MessageBoxImage.Information);
