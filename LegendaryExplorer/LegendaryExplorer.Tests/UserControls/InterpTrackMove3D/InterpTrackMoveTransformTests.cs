@@ -125,6 +125,37 @@ public class InterpTrackMoveTransformTests
     }
 
     [TestMethod]
+    public void DialogueHenchmanAssignmentsSupportDirectNumberedSlots()
+    {
+        Assert.AreEqual("Hench_1", CurveEditor3D.GetCanonicalDialogueHenchmanSlotTag("hench_1"));
+        Assert.AreEqual("Hench_2", CurveEditor3D.GetCanonicalDialogueHenchmanSlotTag("HENCH_2"));
+        Assert.AreEqual("Hench_Small", CurveEditor3D.GetCanonicalDialogueHenchmanSlotTag("hench_small"));
+        Assert.AreEqual("Hench_Big", CurveEditor3D.GetCanonicalDialogueHenchmanSlotTag("HENCH_BIG"));
+        Assert.IsNull(CurveEditor3D.GetCanonicalDialogueHenchmanSlotTag("hench_garrus"));
+
+        CurveEditor3D.DialoguePreviewActorIdentity[] identities =
+        [
+            new("Hench_1", ["Hench_1"]),
+            new("Hench_2", ["Hench_2"]),
+        ];
+        var assignments = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["Hench_1"] = "hench_tali",
+            ["Hench_2"] = "hench_garrus",
+        };
+
+        IReadOnlyList<CurveEditor3D.DialoguePreviewActorIdentity> assigned =
+            CurveEditor3D.ApplyDialoguePreviewHenchmanAssignments(identities, assignments);
+
+        Assert.IsTrue(assigned.Any(actor => actor.ActorTag.Equals("hench_tali",
+            StringComparison.OrdinalIgnoreCase) && actor.Aliases.Contains("Hench_1",
+            StringComparer.OrdinalIgnoreCase)));
+        Assert.IsTrue(assigned.Any(actor => actor.ActorTag.Equals("hench_garrus",
+            StringComparison.OrdinalIgnoreCase) && actor.Aliases.Contains("Hench_2",
+            StringComparer.OrdinalIgnoreCase)));
+    }
+
+    [TestMethod]
     public void MorphUsesSourceMeshBonesBeforeAnimationSkeletonRemap()
     {
         var lod = new StaticLODModel

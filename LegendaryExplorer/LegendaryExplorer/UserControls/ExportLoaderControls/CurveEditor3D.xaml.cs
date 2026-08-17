@@ -3262,21 +3262,27 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         {
             PropertyCollection groupProperties = group.GetCondensedProperties();
             string findActorMode = groupProperties.GetProp<EnumProperty>("m_eSFXFindActorMode")?.Value.Name;
-            IEnumerable<string> actorTags = new[]
+            string[] actorTags = new[]
                 {
                     groupProperties.GetProp<NameProperty>("m_nmSFXFindActor")?.Value.Instanced,
                     groupProperties.GetProp<NameProperty>("GroupName")?.Value.Instanced
                     ?? group.ObjectName.Instanced,
                 }
-                .Where(tag => !string.IsNullOrWhiteSpace(tag));
+                .Where(tag => !string.IsNullOrWhiteSpace(tag))
+                .ToArray();
+            string directSlot = actorTags.Select(GetCanonicalDialogueHenchmanSlotTag)
+                .FirstOrDefault(slot => slot is not null);
+            if (directSlot is not null)
+            {
+                // m_nmSFXFindActor is authoritative when both it and the group name are squad
+                // placeholders. This prevents aliases such as Hench_Big/Hench_2 from becoming
+                // duplicate assignment rows while still supporting a directly-authored Hench_1/2.
+                directSlots.Add(directSlot);
+            }
             foreach (string actorTag in actorTags)
             {
-                if (IsDirectDialogueHenchmanSlot(actorTag))
-                {
-                    directSlots.Add(GetCanonicalDialogueHenchmanSlotTag(actorTag));
-                }
-                else if (string.Equals(findActorMode, "FindActorByNode", StringComparison.OrdinalIgnoreCase)
-                         && IsDialogueNodeSlotTag(actorTag))
+                if (string.Equals(findActorMode, "FindActorByNode", StringComparison.OrdinalIgnoreCase)
+                    && IsDialogueNodeSlotTag(actorTag))
                 {
                     nodeSlots.Add(GetCanonicalDialogueNodeSlotTag(actorTag));
                 }
@@ -3285,9 +3291,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
         Dictionary<string, string> resolvedNodeSlots = FindDialogueHenchmanNodeSlots(conversation, nodeSlots);
         return directSlots.Select(slot => new DialoguePreviewHenchmanSlot(slot,
-                slot.Equals("Hench_Big", StringComparison.OrdinalIgnoreCase)
-                    ? "Large squadmate slot"
-                    : "Small squadmate slot"))
+                DescribeDirectDialogueHenchmanSlot(slot)))
             .Concat(resolvedNodeSlots.Select(pair => new DialoguePreviewHenchmanSlot(pair.Key, pair.Value)))
             .OrderBy(slot => GetDialogueHenchmanSlotSortKey(slot.SlotTag))
             .ThenBy(slot => slot.SlotTag, StringComparer.OrdinalIgnoreCase)
@@ -3366,7 +3370,8 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                 catch (Exception exception) when (exception is IOException or UnauthorizedAccessException
                                                   or InvalidDataException)
                 {
-                    // Squad-slot discovery is best effort. Direct Hench_Big/Hench_Small tags still work.
+                    // Squad-slot discovery is best effort. Direct Hench_Big/Hench_Small and
+                    // Hench_1/Hench_2 tags still work.
                 }
             }
         }
@@ -3444,12 +3449,35 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         return "Squad node";
     }
 
-    private static bool IsDirectDialogueHenchmanSlot(string actorTag) =>
-        actorTag?.Equals("Hench_Big", StringComparison.OrdinalIgnoreCase) == true
-        || actorTag?.Equals("Hench_Small", StringComparison.OrdinalIgnoreCase) == true;
+    internal static string GetCanonicalDialogueHenchmanSlotTag(string actorTag)
+    {
+        if (actorTag?.Equals("Hench_Big", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            return "Hench_Big";
+        }
+        if (actorTag?.Equals("Hench_Small", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            return "Hench_Small";
+        }
+        if (actorTag?.Equals("Hench_1", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            return "Hench_1";
+        }
+        if (actorTag?.Equals("Hench_2", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            return "Hench_2";
+        }
+        return null;
+    }
 
-    private static string GetCanonicalDialogueHenchmanSlotTag(string actorTag) =>
-        actorTag?.Equals("Hench_Big", StringComparison.OrdinalIgnoreCase) == true ? "Hench_Big" : "Hench_Small";
+    private static string DescribeDirectDialogueHenchmanSlot(string slotTag) => slotTag switch
+    {
+        "Hench_Big" => "Large squadmate slot",
+        "Hench_Small" => "Small squadmate slot",
+        "Hench_1" => "First squadmate slot",
+        "Hench_2" => "Second squadmate slot",
+        _ => "Squadmate slot",
+    };
 
     private static bool IsDialogueNodeSlotTag(string actorTag) =>
         actorTag?.StartsWith("Node", StringComparison.OrdinalIgnoreCase) == true
@@ -3464,6 +3492,8 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     {
         "Hench_Small" => 0,
         "Hench_Big" => 1,
+        "Hench_1" => 2,
+        "Hench_2" => 3,
         _ when IsDialogueNodeSlotTag(slotTag) => 10 + int.Parse(slotTag.AsSpan(4), CultureInfo.InvariantCulture),
         _ => int.MaxValue,
     };
