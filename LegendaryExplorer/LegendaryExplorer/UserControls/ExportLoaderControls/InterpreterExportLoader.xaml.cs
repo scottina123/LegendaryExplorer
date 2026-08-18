@@ -5111,6 +5111,31 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             }
         }
 
+        private void InlineMoveArrayElementButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is not Button { Tag: UPropertyTreeViewEntry node, CommandParameter: string direction })
+            {
+                return;
+            }
+
+            ApplySelectedTreeItem(node);
+            switch (direction)
+            {
+                case "Up":
+                    MoveArrayElement(true, node);
+                    break;
+                case "Down":
+                    MoveArrayElement(false, node);
+                    break;
+                case "Top":
+                    MoveArrayElementToIndex(0, node);
+                    break;
+                case "Bottom" when node.UPParent?.Property is ArrayPropertyBase arrayProperty:
+                    MoveArrayElementToIndex(arrayProperty.Count - 1, node);
+                    break;
+            }
+        }
+
         private void InlineDeleteArrayElementButton_Click(object sender, RoutedEventArgs e)
         {
             if (sender is FrameworkElement { Tag: UPropertyTreeViewEntry node })
@@ -5724,12 +5749,17 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             }
         }
 
-        private void MoveArrayElement(bool up)
+        private void MoveArrayElement(bool up, UPropertyTreeViewEntry targetItem = null)
         {
-            if (SelectedItem is UPropertyTreeViewEntry tvi && tvi.Property != null && tvi.UPParent?.Property is ArrayPropertyBase arrayProperty)
+            if ((targetItem ?? SelectedItem) is UPropertyTreeViewEntry tvi && tvi.Property != null && tvi.UPParent?.Property is ArrayPropertyBase arrayProperty)
             {
                 int index = tvi.UPParent.ChildrenProperties.IndexOf(tvi);
                 int swapIndex = up ? index - 1 : index + 1;
+                if (index < 0 || swapIndex < 0 || swapIndex >= arrayProperty.Count)
+                {
+                    return;
+                }
+
                 SelectedNodePath = $"{GetNodePath(tvi.UPParent)}.{swapIndex}";
                 ForcedRescanOffset = 0;
                 if (TryGetSynchronizedStructArrays(tvi, arrayProperty, out var syncedArrays))
@@ -5754,9 +5784,9 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             }
         }
 
-        private void MoveArrayElementToIndex(int destinationIndex)
+        private void MoveArrayElementToIndex(int destinationIndex, UPropertyTreeViewEntry targetItem = null)
         {
-            if (SelectedItem is UPropertyTreeViewEntry tvi && tvi.Property != null && tvi.UPParent?.Property is ArrayPropertyBase arrayProperty)
+            if ((targetItem ?? SelectedItem) is UPropertyTreeViewEntry tvi && tvi.Property != null && tvi.UPParent?.Property is ArrayPropertyBase arrayProperty)
             {
                 int index = tvi.UPParent.ChildrenProperties.IndexOf(tvi);
                 if (index < 0 || destinationIndex < 0 || destinationIndex >= arrayProperty.Count || index == destinationIndex)
@@ -6532,6 +6562,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         public bool IsInlineEditable => Property is FloatProperty or IntProperty or StringRefProperty or StrProperty or NameProperty or EnumProperty;
         public bool IsArrayElement => UPParent?.Property is ArrayPropertyBase;
+        public bool CanMoveArrayElementUp => IsArrayElement && UPParent.ChildrenProperties.IndexOf(this) > 0;
+        public bool CanMoveArrayElementDown => IsArrayElement && UPParent.ChildrenProperties.IndexOf(this) < UPParent.ChildrenProperties.Count - 1;
         public bool IsRemovableProperty => UPParent != null && Property is not null and not NoneProperty &&
                                            (UPParent.UPParent == null || UPParent.Property is StructProperty { IsImmutable: false });
         public bool ShowNumericInlineEditor => Property is FloatProperty or IntProperty or StringRefProperty or StrProperty;

@@ -78,6 +78,33 @@
                 </Setter.Value>
             </Setter>
         </Style>
+        <Style x:Key="InlineArrayMoveButtonStyle" TargetType="{x:Type Button}" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="MinWidth" Value="25"/>
+            <Setter Property="Margin" Value="2,0,0,0"/>
+            <Setter Property="Padding" Value="4,0"/>
+            <Setter Property="FontFamily" Value="Segoe UI Symbol"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="ToolTipService.InitialShowDelay" Value="150"/>
+        </Style>
+        <DataTemplate x:Key="InlineArrayElementActionsTemplate">
+            <StackPanel Orientation="Horizontal" Visibility="{Binding IsArrayElement, Converter={StaticResource BoolToVisibilityConverter}}">
+                <Button Margin="5,0,0,0" Padding="6,0" Content="+↑" ToolTip="Add a new element above this array element" Tag="{Binding}" Click="InlineAddArrayElementAboveButton_Click"/>
+                <Button Margin="5,0,0,0" Padding="6,0" Content="+↓" ToolTip="Add a new element below this array element" Tag="{Binding}" Click="InlineAddArrayElementBelowButton_Click"/>
+                <Border Margin="7,0,0,0" Padding="1" BorderBrush="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}" BorderThickness="1" CornerRadius="2">
+                    <StackPanel Orientation="Horizontal">
+                        <Button Content="↑" ToolTip="Move this array element up one position" Tag="{Binding}" CommandParameter="Up" Click="InlineMoveArrayElementButton_Click"
+                                IsEnabled="{Binding CanMoveArrayElementUp}" Style="{StaticResource InlineArrayMoveButtonStyle}"/>
+                        <Button Content="↓" ToolTip="Move this array element down one position" Tag="{Binding}" CommandParameter="Down" Click="InlineMoveArrayElementButton_Click"
+                                IsEnabled="{Binding CanMoveArrayElementDown}" Style="{StaticResource InlineArrayMoveButtonStyle}"/>
+                        <Button Content="⇈" ToolTip="Move this array element to the top" Tag="{Binding}" CommandParameter="Top" Click="InlineMoveArrayElementButton_Click"
+                                IsEnabled="{Binding CanMoveArrayElementUp}" Style="{StaticResource InlineArrayMoveButtonStyle}"/>
+                        <Button Content="⇊" ToolTip="Move this array element to the bottom" Tag="{Binding}" CommandParameter="Bottom" Click="InlineMoveArrayElementButton_Click"
+                                IsEnabled="{Binding CanMoveArrayElementDown}" Style="{StaticResource InlineArrayMoveButtonStyle}"/>
+                    </StackPanel>
+                </Border>
+                <Button Margin="5,0,0,0" Padding="6,0" Content="×" ToolTip="Delete this array element" Tag="{Binding}" Click="InlineDeleteArrayElementButton_Click"/>
+            </StackPanel>
+        </DataTemplate>
 
         <!-- Should these be shared at a higher level? (also used by metadata editor) -->
         <DataTemplate DataType="{x:Type packages:ImportEntry}">
@@ -282,9 +309,7 @@
                                             <Button Margin="5,0,0,0" Padding="6,0" Content="Find text..." ToolTip="Find this StringRef by its text in the loaded TLKs" Tag="{Binding}"
                                                     Click="StringRefTextLookupButton_Click" Visibility="{Binding IsStringRefProperty, Converter={StaticResource BoolToVisibilityConverter}}"/>
                                             <Button Margin="5,0,0,0" Padding="6,0" Content="✓" Tag="{Binding}" Click="InlineEditorConfirmButton_Click"/>
-                                            <Button Margin="5,0,0,0" Padding="6,0" Content="+↑" ToolTip="Add a new element above this array element" Tag="{Binding}" Click="InlineAddArrayElementAboveButton_Click" Visibility="{Binding IsArrayElement, Converter={StaticResource BoolToVisibilityConverter}}"/>
-                                            <Button Margin="5,0,0,0" Padding="6,0" Content="+↓" ToolTip="Add a new element below this array element" Tag="{Binding}" Click="InlineAddArrayElementBelowButton_Click" Visibility="{Binding IsArrayElement, Converter={StaticResource BoolToVisibilityConverter}}"/>
-                                            <Button Margin="5,0,0,0" Padding="6,0" Content="×" ToolTip="Delete this array element" Tag="{Binding}" Click="InlineDeleteArrayElementButton_Click" Visibility="{Binding IsArrayElement, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                                            <ContentControl Content="{Binding}" ContentTemplate="{StaticResource InlineArrayElementActionsTemplate}"/>
                                         </StackPanel>
                                         <StackPanel x:Name="PropertyItem_ObjectInlineEditor" Orientation="Horizontal" Margin="5,0,0,0" VerticalAlignment="Top"
                                                     Visibility="{Binding ShowObjectInlineEditor, Converter={StaticResource BoolToVisibilityConverter}}">
@@ -293,9 +318,7 @@
                                             <Button Margin="5,0,0,0" Padding="6,0" Content="✓" Tag="{Binding}" Click="InlineEditorConfirmButton_Click"/>
                                             <Button Margin="5,0,0,0" Padding="8,0" Content="{Binding AssetPickerButtonText}" ToolTip="{Binding AssetPickerToolTip}" Tag="{Binding}" Click="AssetPickerButton_Click" Visibility="{Binding ShowAssetPicker, Converter={StaticResource BoolToVisibilityConverter}}"/>
                                              <Button Margin="5,0,0,0" Padding="8,0" Content="Choose client effect..." ToolTip="Show pActionClientEffect values compatible with this nmProp" Tag="{Binding}" Click="ClientEffectPickerButton_Click" Visibility="{Binding ShowClientEffectPicker, Converter={StaticResource BoolToVisibilityConverter}}"/>
-                                            <Button Margin="5,0,0,0" Padding="6,0" Content="+↑" ToolTip="Add a new element above this array element" Tag="{Binding}" Click="InlineAddArrayElementAboveButton_Click" Visibility="{Binding IsArrayElement, Converter={StaticResource BoolToVisibilityConverter}}"/>
-                                            <Button Margin="5,0,0,0" Padding="6,0" Content="+↓" ToolTip="Add a new element below this array element" Tag="{Binding}" Click="InlineAddArrayElementBelowButton_Click" Visibility="{Binding IsArrayElement, Converter={StaticResource BoolToVisibilityConverter}}"/>
-                                            <Button Margin="5,0,0,0" Padding="6,0" Content="×" ToolTip="Delete this array element" Tag="{Binding}" Click="InlineDeleteArrayElementButton_Click" Visibility="{Binding IsArrayElement, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                                            <ContentControl Content="{Binding}" ContentTemplate="{StaticResource InlineArrayElementActionsTemplate}"/>
                                         </StackPanel>
                                         <StackPanel x:Name="PropertyItem_NameInlineEditor" Orientation="Horizontal" Margin="5,0,0,0" VerticalAlignment="Top"
                                                     Visibility="{Binding ShowNameInlineEditor, Converter={StaticResource BoolToVisibilityConverter}}">
@@ -357,9 +380,7 @@
                                             <TextBox Width="40" Text="{Binding InlineNameIndexValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Tag="{Binding}" KeyDown="InlineEditor_KeyDown" Style="{StaticResource InlineEditorTextBoxStyle}" Visibility="{Binding ShowStandardNamePicker, Converter={StaticResource BoolToVisibilityConverter}}"/>
                                             <Button Margin="5,0,0,0" Padding="6,0" Content="✓" Tag="{Binding}" Click="InlineEditorConfirmButton_Click" Visibility="{Binding ShowStandardNamePicker, Converter={StaticResource BoolToVisibilityConverter}}"/>
                                             <Button Margin="5,0,0,0" Padding="8,0" Content="Choose prop/action..." ToolTip="Show every valid nmProp and nmAction pair" Tag="{Binding}" Click="PropActionPickerButton_Click" Visibility="{Binding ShowPropActionPicker, Converter={StaticResource BoolToVisibilityConverter}}"/>
-                                            <Button Margin="5,0,0,0" Padding="6,0" Content="+↑" ToolTip="Add a new element above this array element" Tag="{Binding}" Click="InlineAddArrayElementAboveButton_Click" Visibility="{Binding IsArrayElement, Converter={StaticResource BoolToVisibilityConverter}}"/>
-                                            <Button Margin="5,0,0,0" Padding="6,0" Content="+↓" ToolTip="Add a new element below this array element" Tag="{Binding}" Click="InlineAddArrayElementBelowButton_Click" Visibility="{Binding IsArrayElement, Converter={StaticResource BoolToVisibilityConverter}}"/>
-                                            <Button Margin="5,0,0,0" Padding="6,0" Content="×" ToolTip="Delete this array element" Tag="{Binding}" Click="InlineDeleteArrayElementButton_Click" Visibility="{Binding IsArrayElement, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                                            <ContentControl Content="{Binding}" ContentTemplate="{StaticResource InlineArrayElementActionsTemplate}"/>
                                         </StackPanel>
                                          <StackPanel x:Name="PropertyItem_EnumInlineEditor" Orientation="Horizontal" Margin="5,0,0,0" VerticalAlignment="Top"
                                                      Visibility="{Binding ShowEnumInlineEditor, Converter={StaticResource BoolToVisibilityConverter}}">
@@ -380,9 +401,7 @@
                                                  </ComboBox.ItemsPanel>
                                              </ComboBox>
                                              <Button Margin="5,0,0,0" Padding="6,0" Content="✓" Tag="{Binding}" Click="InlineEditorConfirmButton_Click"/>
-                                             <Button Margin="5,0,0,0" Padding="6,0" Content="+↑" ToolTip="Add a new element above this array element" Tag="{Binding}" Click="InlineAddArrayElementAboveButton_Click" Visibility="{Binding IsArrayElement, Converter={StaticResource BoolToVisibilityConverter}}"/>
-                                             <Button Margin="5,0,0,0" Padding="6,0" Content="+↓" ToolTip="Add a new element below this array element" Tag="{Binding}" Click="InlineAddArrayElementBelowButton_Click" Visibility="{Binding IsArrayElement, Converter={StaticResource BoolToVisibilityConverter}}"/>
-                                             <Button Margin="5,0,0,0" Padding="6,0" Content="×" ToolTip="Delete this array element" Tag="{Binding}" Click="InlineDeleteArrayElementButton_Click" Visibility="{Binding IsArrayElement, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                                             <ContentControl Content="{Binding}" ContentTemplate="{StaticResource InlineArrayElementActionsTemplate}"/>
                                          </StackPanel>
                                         <TextBlock x:Name="PropertyItem_ParsedValue" Margin="5,0,0,0" Text="{Binding ParsedValue, Mode=OneTime}" VerticalAlignment="Center" FontStyle="Italic"
                                                    Visibility="{Binding ShowParsedValue, Converter={StaticResource BoolToVisibilityConverter}}"/>
