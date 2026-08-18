@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using LegendaryExplorer.Misc;
 using LegendaryExplorer.Misc.AppSettings;
 using LegendaryExplorer.SharedUI;
@@ -84,12 +85,24 @@ namespace LegendaryExplorer.Dialogs
         };
     }
 
+    public enum GestureAnimationTarget
+    {
+        Pose,
+        Gesture,
+        Transition,
+        StartingPose,
+    }
+
     public partial class GestureAnimationImporterDialog : Window, INotifyPropertyChanged
     {
         private readonly ExportEntry _gestureTrackExport;
         private readonly IMEPackage _pcc;
+        private readonly int? _compactGestureIndex;
+        private readonly GestureAnimationTarget? _compactAnimationTarget;
         private AssetDB _db;
         private List<AnimationRecord> _allAnimations = new();
+
+        private bool IsCompactAnimationPicker => _compactAnimationTarget.HasValue;
 
         /// <summary>
         /// The game whose asset database is currently loaded for browsing animations.
@@ -436,9 +449,29 @@ namespace LegendaryExplorer.Dialogs
         private GesturePreviewExportLoader _favoriteGestureTrackPreviewControl;
 
         public GestureAnimationImporterDialog(ExportEntry gestureTrackExport, Window owner)
+            : this(gestureTrackExport, owner, null, null)
+        {
+        }
+
+        public GestureAnimationImporterDialog(ExportEntry gestureTrackExport, Window owner, int gestureIndex,
+            GestureAnimationTarget animationTarget)
+            : this(gestureTrackExport, owner, (int?)gestureIndex, (GestureAnimationTarget?)animationTarget)
+        {
+        }
+
+        public GestureAnimationImporterDialog(ExportEntry gestureTrackExport, Window owner,
+            GestureAnimationTarget animationTarget)
+            : this(gestureTrackExport, owner, null, (GestureAnimationTarget?)animationTarget)
+        {
+        }
+
+        private GestureAnimationImporterDialog(ExportEntry gestureTrackExport, Window owner, int? gestureIndex,
+            GestureAnimationTarget? animationTarget)
         {
             _gestureTrackExport = gestureTrackExport;
             _pcc = gestureTrackExport.FileRef;
+            _compactGestureIndex = gestureIndex;
+            _compactAnimationTarget = animationTarget;
             Owner = owner;
 
             InitializeComponent();
@@ -446,8 +479,13 @@ namespace LegendaryExplorer.Dialogs
 
             TargetExportInfo = $"Target: {gestureTrackExport.InstancedFullPath} (UIndex {gestureTrackExport.UIndex}) in {Path.GetFileName(_pcc.FilePath)}";
 
+            if (IsCompactAnimationPicker)
+            {
+                ConfigureCompactAnimationPicker();
+            }
+
             // Hide gesture-track-specific UI for non-BioEvtSysTrackGesture targets
-            if (UsesDefaultPoseSetTarget || IsSFXSkeletalMeshActor)
+            if (!IsCompactAnimationPicker && (UsesDefaultPoseSetTarget || IsSFXSkeletalMeshActor))
             {
                 GbGestureImportTarget.Visibility = Visibility.Collapsed;
                 GbPropertyGroups.Visibility = Visibility.Collapsed;
@@ -458,7 +496,7 @@ namespace LegendaryExplorer.Dialogs
             }
 
             // Show Ambient Performances tab for targets that expose m_pPerfGameData
-            if (UsesDefaultPoseSetTarget)
+            if (!IsCompactAnimationPicker && UsesDefaultPoseSetTarget)
             {
                 AmbPerfTab.Visibility = Visibility.Visible;
                 LoadCurrentAmbPerfInfo();
@@ -469,10 +507,66 @@ namespace LegendaryExplorer.Dialogs
             SourceGameComboBox.ItemsSource = AvailableSourceGames;
             SourceGameComboBox.SelectedItem = _pcc.Game;
 
-            EnsureGestureTrackCriteria();
-            LoadFavoriteGestureTracks();
-            LoadExistingGestures();
+            if (!IsCompactAnimationPicker)
+            {
+                EnsureGestureTrackCriteria();
+                LoadFavoriteGestureTracks();
+                LoadExistingGestures();
+            }
             _ = LoadDatabaseAsync();
+        }
+
+        private void ConfigureCompactAnimationPicker()
+        {
+            if (_gestureTrackExport.ClassName != "BioEvtSysTrackGesture")
+            {
+                throw new ArgumentException("The compact animation picker requires a BioEvtSysTrackGesture export.", nameof(_gestureTrackExport));
+            }
+
+            if (_compactAnimationTarget != GestureAnimationTarget.StartingPose)
+            {
+                ArrayProperty<StructProperty> gestures = _gestureTrackExport.GetProperty<ArrayProperty<StructProperty>>("m_aGestures");
+                if (!_compactGestureIndex.HasValue
+                    || _compactGestureIndex.Value < 0
+                    || gestures == null
+                    || _compactGestureIndex.Value >= gestures.Count)
+                {
+                    throw new ArgumentOutOfRangeException(nameof(_compactGestureIndex), "The selected m_aGestures entry no longer exists.");
+                }
+            }
+
+            string targetName = _compactAnimationTarget switch
+            {
+                GestureAnimationTarget.Pose => "Pose",
+                GestureAnimationTarget.Gesture => "Gesture",
+                GestureAnimationTarget.Transition => "Transition",
+                GestureAnimationTarget.StartingPose => "Starting Pose",
+                _ => "Gesture"
+            };
+            Title = $"Choose {targetName} Animation";
+            Width = 960;
+            Height = 600;
+
+            TargetInfoPanel.Visibility = Visibility.Collapsed;
+            EditGesturesTab.Visibility = Visibility.Collapsed;
+            TrackGesturesTab.Visibility = Visibility.Collapsed;
+            FavoriteGestureTracksTab.Visibility = Visibility.Collapsed;
+            AmbPerfTab.Visibility = Visibility.Collapsed;
+            ImportAnimationTab.Header = null;
+            MainTabControl.BorderThickness = new Thickness(0);
+            MainTabControl.Padding = new Thickness(0);
+
+            ImportSettingsPanel.Visibility = Visibility.Collapsed;
+            ImportSettingsSplitter.Visibility = Visibility.Collapsed;
+            ImportSettingsColumn.Width = new GridLength(0);
+            ImportSettingsSplitterColumn.Width = new GridLength(0);
+
+            SourceGameLabel.Visibility = Visibility.Collapsed;
+            SourceGameComboBox.Visibility = Visibility.Collapsed;
+            AnimationSearchLabel.Text = "Search: ";
+            SourcePackagePanel.Visibility = Visibility.Collapsed;
+            CompactAnimationActions.Visibility = Visibility.Visible;
+            MainFooter.Visibility = Visibility.Collapsed;
         }
 
         private void LoadFavoriteGestureTracks()
@@ -663,12 +757,30 @@ namespace LegendaryExplorer.Dialogs
                 List<(string FileName, string ContentDir)> fileList = database.FileList
                     .Select(file => (file.FileName, database.ContentDir[file.DirectoryKey]))
                     .ToList();
-                List<GestureTrackRecord> gestureTracks = database.GestureTracks.ToList();
 
-                // Both operations perform substantial disk I/O. Keep them away from WPF's dispatcher,
-                // then publish their already-materialized results to the bound collections below.
+                // Resolving installed package paths performs substantial disk I/O. Keep it away from
+                // WPF's dispatcher, then publish its already-materialized result below.
                 Task<Dictionary<int, string>> filePathTask =
                     AssetDatabaseFilePathResolver.BuildIndexAsync(database, game, cancellationToken);
+
+                if (IsCompactAnimationPicker)
+                {
+                    _db = database;
+                    _fileListExtended = fileList;
+                    _resolvedFilePaths = await filePathTask;
+                    cancellationToken.ThrowIfCancellationRequested();
+
+                    _allAnimations = database.Animations.Where(animation => !animation.IsAmbPerf).ToList();
+                    FilteredAnimations.ReplaceAll(_allAnimations);
+                    AnimationStatusText = $"{_allAnimations.Count} {game} animations loaded.";
+
+                    _skeletonMeshes = database.Meshes.Where(mesh => mesh.IsSkeleton).ToList();
+                    ResetPreviewModels(AnimPreviewControl, PreviewMeshTextBox, PreviewHeadMeshTextBox,
+                        PreviewHairMeshTextBox, game);
+                    return;
+                }
+
+                List<GestureTrackRecord> gestureTracks = database.GestureTracks.ToList();
                 Task<Dictionary<int, string>> tlkTask = Task.Run(
                     () => LoadGestureTrackTlkStrings(game, database.Localization, cancellationToken),
                     cancellationToken);
@@ -1275,6 +1387,73 @@ namespace LegendaryExplorer.Dialogs
             catch (Exception ex)
             {
                 MessageBox.Show($"Error importing animation: {ex.Message}", "Import Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private void AnimationListBox_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+        {
+            if (IsCompactAnimationPicker && SelectedAnimation != null)
+            {
+                CompactImportAnimation_Click(sender, e);
+            }
+        }
+
+        private void CompactImportAnimation_Click(object sender, RoutedEventArgs e)
+        {
+            if (!IsCompactAnimationPicker || SelectedAnimation == null)
+            {
+                return;
+            }
+
+            ArrayProperty<StructProperty> gestures = null;
+            int gestureIndex = _compactGestureIndex ?? -1;
+            if (_compactAnimationTarget != GestureAnimationTarget.StartingPose)
+            {
+                gestures = _gestureTrackExport.GetProperty<ArrayProperty<StructProperty>>("m_aGestures");
+                if (gestures == null || gestureIndex < 0 || gestureIndex >= gestures.Count)
+                {
+                    MessageBox.Show("The selected m_aGestures entry no longer exists.", "Gesture Not Found",
+                        MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+            }
+
+            try
+            {
+                (string setName, string sequenceName) = ImportAnimationFromDatabase(SelectedAnimation);
+                if (_compactAnimationTarget == GestureAnimationTarget.StartingPose)
+                {
+                    _gestureTrackExport.WriteProperty(new NameProperty(setName, "nmStartingPoseSet"));
+                    _gestureTrackExport.WriteProperty(new NameProperty(sequenceName, "nmStartingPoseAnim"));
+                }
+                else
+                {
+                    PropertyCollection properties = gestures[gestureIndex].Properties;
+                    switch (_compactAnimationTarget)
+                    {
+                        case GestureAnimationTarget.Pose:
+                            properties.AddOrReplaceProp(new NameProperty(setName, "nmPoseSet"));
+                            properties.AddOrReplaceProp(new NameProperty(sequenceName, "nmPoseAnim"));
+                            break;
+                        case GestureAnimationTarget.Gesture:
+                            properties.AddOrReplaceProp(new NameProperty(setName, "nmGestureSet"));
+                            properties.AddOrReplaceProp(new NameProperty(sequenceName, "nmGestureAnim"));
+                            break;
+                        case GestureAnimationTarget.Transition:
+                            properties.AddOrReplaceProp(new NameProperty(setName, "nmTransitionSet"));
+                            properties.AddOrReplaceProp(new NameProperty(sequenceName, "nmTransitionAnim"));
+                            break;
+                    }
+
+                    _gestureTrackExport.WriteProperty(gestures);
+                }
+
+                DialogResult = true;
+            }
+            catch (Exception exception)
+            {
+                MessageBox.Show($"Error importing animation: {exception.Message}", "Import Error",
+                    MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
 

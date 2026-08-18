@@ -380,6 +380,10 @@
                                             <TextBox Width="40" Text="{Binding InlineNameIndexValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Tag="{Binding}" KeyDown="InlineEditor_KeyDown" Style="{StaticResource InlineEditorTextBoxStyle}" Visibility="{Binding ShowStandardNamePicker, Converter={StaticResource BoolToVisibilityConverter}}"/>
                                             <Button Margin="5,0,0,0" Padding="6,0" Content="✓" Tag="{Binding}" Click="InlineEditorConfirmButton_Click" Visibility="{Binding ShowStandardNamePicker, Converter={StaticResource BoolToVisibilityConverter}}"/>
                                             <Button Margin="5,0,0,0" Padding="8,0" Content="Choose prop/action..." ToolTip="Show every valid nmProp and nmAction pair" Tag="{Binding}" Click="PropActionPickerButton_Click" Visibility="{Binding ShowPropActionPicker, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                                            <Button Margin="5,0,0,0" Padding="8,0" Content="{Binding GestureAnimationPickerButtonText}"
+                                                    ToolTip="Choose and import an animation, then update this set/animation pair"
+                                                    Tag="{Binding}" Click="GestureAnimationPickerButton_Click"
+                                                    Visibility="{Binding ShowGestureAnimationPicker, Converter={StaticResource BoolToVisibilityConverter}}"/>
                                             <ContentControl Content="{Binding}" ContentTemplate="{StaticResource InlineArrayElementActionsTemplate}"/>
                                         </StackPanel>
                                          <StackPanel x:Name="PropertyItem_EnumInlineEditor" Orientation="Horizontal" Margin="5,0,0,0" VerticalAlignment="Top"

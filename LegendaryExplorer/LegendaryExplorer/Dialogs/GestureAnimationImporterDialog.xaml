@@ -16,26 +16,26 @@
         </Grid.RowDefinitions>
 
         <!-- Top: Target Info -->
-        <StackPanel Grid.Row="0" Margin="0,0,0,8">
+        <StackPanel x:Name="TargetInfoPanel" Grid.Row="0" Margin="0,0,0,8">
             <TextBlock Text="Import animations into Gesture Track" FontWeight="Bold" FontSize="14"/>
             <TextBlock Text="{Binding TargetExportInfo}" Opacity="0.7" Margin="0,2,0,0"/>
         </StackPanel>
 
         <!-- Middle: Split between animation list and gesture editor -->
-        <TabControl Grid.Row="1">
+        <TabControl x:Name="MainTabControl" Grid.Row="1">
             <!-- Tab 1: Import Animation -->
-            <TabItem Header="Import Animation">
+            <TabItem x:Name="ImportAnimationTab" Header="Import Animation">
                 <Grid>
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="300" MinWidth="200"/>
-                        <ColumnDefinition Width="5"/>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="5"/>
-                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition x:Name="AnimationPreviewColumn" Width="300" MinWidth="200"/>
+                        <ColumnDefinition x:Name="AnimationPreviewSplitterColumn" Width="5"/>
+                        <ColumnDefinition x:Name="AnimationBrowserColumn" Width="*"/>
+                        <ColumnDefinition x:Name="ImportSettingsSplitterColumn" Width="5"/>
+                        <ColumnDefinition x:Name="ImportSettingsColumn" Width="*"/>
                     </Grid.ColumnDefinitions>
 
                     <!-- Left: Animation Preview -->
-                    <DockPanel Grid.Column="0">
+                    <DockPanel x:Name="AnimationPreviewPanel" Grid.Column="0">
                         <TextBlock DockPanel.Dock="Top" Text="Animation Preview" FontWeight="Bold" Margin="0,0,0,4"/>
                         <StackPanel DockPanel.Dock="Top" Margin="0,0,0,4">
                             <DockPanel><TextBlock Text="Body: " Width="40" VerticalAlignment="Center"/><Button DockPanel.Dock="Right" Content="Select..." Tag="Body" Click="PreviewMesh_Select_Click"/><TextBox x:Name="PreviewMeshTextBox" IsReadOnly="True" Margin="0,0,3,0"/></DockPanel>
@@ -46,18 +46,18 @@
                         <sharedToolControls:AnimationPreviewControl x:Name="AnimPreviewControl"/>
                     </DockPanel>
 
-                    <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Stretch"/>
+                    <GridSplitter x:Name="AnimationPreviewSplitter" Grid.Column="1" Width="5" HorizontalAlignment="Stretch"/>
 
                     <!-- Middle: Animation List -->
                     <DockPanel Grid.Column="2">
                         <TextBlock DockPanel.Dock="Top" Text="Animations from Asset Database" FontWeight="Bold" Margin="0,0,0,4"/>
-                        <DockPanel DockPanel.Dock="Top" Margin="0,0,0,4">
-                            <TextBlock Text="Source Game: " VerticalAlignment="Center" DockPanel.Dock="Left"/>
+                        <DockPanel x:Name="AnimationSearchPanel" DockPanel.Dock="Top" Margin="0,0,0,4">
+                            <TextBlock x:Name="SourceGameLabel" Text="Source Game: " VerticalAlignment="Center" DockPanel.Dock="Left"/>
                             <ComboBox x:Name="SourceGameComboBox" SelectionChanged="SourceGameComboBox_SelectionChanged" Width="80" DockPanel.Dock="Left"/>
-                            <TextBlock Text="  Search: " VerticalAlignment="Center" DockPanel.Dock="Left"/>
+                            <TextBlock x:Name="AnimationSearchLabel" Text="  Search: " VerticalAlignment="Center" DockPanel.Dock="Left"/>
                             <TextBox x:Name="SearchBox" TextChanged="SearchBox_TextChanged"/>
                         </DockPanel>
-                        <DockPanel DockPanel.Dock="Top" Margin="0,0,0,4">
+                        <DockPanel x:Name="SourcePackagePanel" DockPanel.Dock="Top" Margin="0,0,0,4">
                             <TextBlock Text="Source Package: " VerticalAlignment="Center" DockPanel.Dock="Left"/>
                             <ComboBox x:Name="SourcePackageComboBox"
                                       ItemsSource="{Binding AvailableAnimationSources}"
@@ -65,9 +65,15 @@
                                       DisplayMemberPath="DisplayName"/>
                         </DockPanel>
                         <TextBlock DockPanel.Dock="Top" Text="{Binding AnimationStatusText}" Opacity="0.6" Margin="0,0,0,4"/>
+                        <DockPanel x:Name="CompactAnimationActions" DockPanel.Dock="Bottom" Margin="0,8,0,0" Visibility="Collapsed" LastChildFill="False">
+                            <Button Content="Cancel" DockPanel.Dock="Right" MinWidth="80" Padding="10,4" Margin="8,0,0,0" Click="Close_Click"/>
+                            <Button Content="Use Selected Animation" DockPanel.Dock="Right" MinWidth="150" Padding="10,4"
+                                    Click="CompactImportAnimation_Click" IsEnabled="{Binding CanImport}" IsDefault="True"/>
+                        </DockPanel>
                         <ListBox x:Name="AnimationListBox" 
                                  ItemsSource="{Binding FilteredAnimations}"
                                  SelectedItem="{Binding SelectedAnimation}"
+                                 MouseDoubleClick="AnimationListBox_MouseDoubleClick"
                                  VirtualizingStackPanel.IsVirtualizing="True"
                                  VirtualizingStackPanel.VirtualizationMode="Recycling">
                             <ListBox.ItemTemplate>
@@ -87,10 +93,10 @@
                         </ListBox>
                     </DockPanel>
 
-                    <GridSplitter Grid.Column="3" Width="5" HorizontalAlignment="Stretch"/>
+                    <GridSplitter x:Name="ImportSettingsSplitter" Grid.Column="3" Width="5" HorizontalAlignment="Stretch"/>
 
                     <!-- Right: Import Settings -->
-                    <DockPanel Grid.Column="4" Margin="5,0,0,0">
+                    <DockPanel x:Name="ImportSettingsPanel" Grid.Column="4" Margin="5,0,0,0">
                         <TextBlock DockPanel.Dock="Top" Text="Import Settings" FontWeight="Bold" Margin="0,0,0,8"/>
 
                         <ScrollViewer VerticalScrollBarVisibility="Auto">
@@ -618,7 +624,7 @@
                 </Grid>
             </TabItem>
         </TabControl>
-        <DockPanel Grid.Row="2" Margin="0,8,0,0">
+        <DockPanel x:Name="MainFooter" Grid.Row="2" Margin="0,8,0,0">
             <Button Content="Close" DockPanel.Dock="Right" Padding="16,4" Click="Close_Click"/>
             <TextBlock x:Name="StatusText" VerticalAlignment="Center" Text="{Binding StatusMessage}" Opacity="0.7"/>
         </DockPanel>

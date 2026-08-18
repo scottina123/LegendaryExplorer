@@ -1791,6 +1791,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                         GenerateUPropertyTreeForProperty(prop, topLevelTree, CurrentLoadedExport, UseAssetDatabaseOwnerFriendlyNames, PropertyChangedHandler: OnUPropertyTreeViewEntry_PropertyChanged, PropertyUpdatedHandler: OnUPropertyTreeViewEntry_PropertyUpdated);
                     }
                     ApplyBioEvtSysTrackPropActionChoices(topLevelTree);
+                    ApplyGestureAnimationPickerButtons(topLevelTree);
                     ApplySwitchCameraStageBoneChoices(topLevelTree);
                     MergeLinkedTrackRows(topLevelTree);
                     RestoreExpandedNodePaths(topLevelTree);
@@ -3006,6 +3007,53 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             if (export is not null && ReferenceEquals(CurrentLoadedExport, export))
             {
                 LoadExport(export);
+            }
+        }
+
+        private void ApplyGestureAnimationPickerButtons(UPropertyTreeViewEntry topLevelTree)
+        {
+            if (CurrentLoadedExport?.ClassName != "BioEvtSysTrackGesture")
+            {
+                return;
+            }
+
+            UPropertyTreeViewEntry startingPoseSetNode = topLevelTree.ChildrenProperties.FirstOrDefault(node =>
+                node.Property is NameProperty { Name.Name: "nmStartingPoseSet" });
+            if (startingPoseSetNode != null)
+            {
+                startingPoseSetNode.GestureAnimationPickerTarget = GestureAnimationTarget.StartingPose;
+            }
+
+            UPropertyTreeViewEntry gesturesNode = topLevelTree.ChildrenProperties.FirstOrDefault(node =>
+                node.Property is ArrayProperty<StructProperty> { Name.Name: "m_aGestures" });
+            if (gesturesNode == null)
+            {
+                return;
+            }
+
+            foreach (UPropertyTreeViewEntry gestureNode in gesturesNode.ChildrenProperties.Where(node =>
+                         node.Property is StructProperty))
+            {
+                UPropertyTreeViewEntry poseSetNode = gestureNode.ChildrenProperties.FirstOrDefault(node =>
+                    node.Property is NameProperty { Name.Name: "nmPoseSet" });
+                if (poseSetNode != null)
+                {
+                    poseSetNode.GestureAnimationPickerTarget = GestureAnimationTarget.Pose;
+                }
+
+                UPropertyTreeViewEntry gestureSetNode = gestureNode.ChildrenProperties.FirstOrDefault(node =>
+                    node.Property is NameProperty { Name.Name: "nmGestureSet" });
+                if (gestureSetNode != null)
+                {
+                    gestureSetNode.GestureAnimationPickerTarget = GestureAnimationTarget.Gesture;
+                }
+
+                UPropertyTreeViewEntry transitionSetNode = gestureNode.ChildrenProperties.FirstOrDefault(node =>
+                    node.Property is NameProperty { Name.Name: "nmTransitionSet" });
+                if (transitionSetNode != null)
+                {
+                    transitionSetNode.GestureAnimationPickerTarget = GestureAnimationTarget.Transition;
+                }
             }
         }
 
@@ -4622,6 +4670,50 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             node.InlineNameValue = selectedNameReference.Name;
             node.InlineNameIndexValue = selectedNameReference.Number.ToString(CultureInfo.InvariantCulture);
             TryCommitInlineEditor(node);
+        }
+
+        private void GestureAnimationPickerButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is not FrameworkElement { Tag: UPropertyTreeViewEntry node }
+                || node.GestureAnimationPickerTarget is not { } animationTarget
+                || CurrentLoadedExport is not { ClassName: "BioEvtSysTrackGesture" } gestureTrack)
+            {
+                return;
+            }
+
+            GestureAnimationImporterDialog picker;
+            if (animationTarget == GestureAnimationTarget.StartingPose)
+            {
+                picker = new GestureAnimationImporterDialog(
+                    gestureTrack,
+                    Window.GetWindow(this),
+                    animationTarget);
+            }
+            else
+            {
+                if (node.UPParent is not { } gestureNode
+                    || gestureNode.UPParent?.Property is not ArrayProperty<StructProperty> { Name.Name: "m_aGestures" })
+                {
+                    return;
+                }
+
+                int gestureIndex = gestureNode.UPParent.ChildrenProperties.IndexOf(gestureNode);
+                if (gestureIndex < 0)
+                {
+                    return;
+                }
+
+                picker = new GestureAnimationImporterDialog(
+                    gestureTrack,
+                    Window.GetWindow(this),
+                    gestureIndex,
+                    animationTarget);
+            }
+
+            if (picker.ShowDialog() == true && ReferenceEquals(CurrentLoadedExport, gestureTrack))
+            {
+                LoadExport(gestureTrack);
+            }
         }
 
         private async void AssetPickerButton_Click(object sender, RoutedEventArgs e)
@@ -6596,6 +6688,16 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         public bool ShowNameInlineEditor => IsNameProperty;
         public bool ShowPropActionPicker { get; set; }
         public bool ShowClientEffectPicker { get; set; }
+        public GestureAnimationTarget? GestureAnimationPickerTarget { get; set; }
+        public bool ShowGestureAnimationPicker => GestureAnimationPickerTarget.HasValue;
+        public string GestureAnimationPickerButtonText => GestureAnimationPickerTarget switch
+        {
+            GestureAnimationTarget.Pose => "Choose pose animation...",
+            GestureAnimationTarget.Gesture => "Choose gesture animation...",
+            GestureAnimationTarget.Transition => "Choose transition animation...",
+            GestureAnimationTarget.StartingPose => "Choose starting pose animation...",
+            _ => "Choose animation..."
+        };
         public string AssetReferenceClass
         {
             get
