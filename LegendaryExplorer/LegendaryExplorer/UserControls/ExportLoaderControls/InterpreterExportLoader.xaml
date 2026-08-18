@@ -295,7 +295,7 @@
                                     <RowDefinition Height="Auto"/>
                                     <RowDefinition Height="Auto"/>
                                 </Grid.RowDefinitions>
-                                <Border x:Name="PropertyItem_PrimarySelectionBorder" Background="Transparent">
+                                <Border x:Name="PropertyItem_PrimarySelectionBorder" Background="Transparent" MouseLeftButtonDown="PropertyItem_PrimarySelectionBorder_MouseDoubleClick">
                                     <StackPanel Orientation="Horizontal">
                                         <TextBlock x:Name="PropertyItem_Offset" Text="{Binding Property.StartOffset, StringFormat='{}{0:X5}:', Mode=OneTime}" VerticalAlignment="Top" Padding="0,0,4,0"
                                                    Visibility="{Binding ShowPropOffsets, RelativeSource={RelativeSource Mode=FindAncestor, AncestorType=global:InterpreterExportLoader}, Converter={StaticResource BoolToVisibilityConverter}}" />
@@ -407,6 +407,8 @@
                                                    Visibility="{Binding ShowParsedValue, Converter={StaticResource BoolToVisibilityConverter}}"/>
                                         <xctk:ColorPicker x:Name="PropertyItem_ColorPicker" Margin="5,0,0,0" Visibility="{Binding Property, Converter={StaticResource UPropertyColorPickerVisibilityConverter}, Mode=OneTime}" 
                                                           SelectedColor="{Binding ColorStructCode,Converter={StaticResource ColorCodeConverter}}" Width="60" Closed="ColorPicker_Closed"/>
+                                        <Button Margin="5,0,0,0" Padding="7,0" Content="+" FontWeight="Bold" ToolTip="Add a new element to this array" Tag="{Binding}"
+                                                Click="InlineAddArrayElementButton_Click" Visibility="{Binding IsArrayProperty, Converter={StaticResource BoolToVisibilityConverter}}"/>
                                         <Button Margin="5,0,0,0" Padding="6,0" Content="×" ToolTip="Remove this property from the export" Tag="{Binding}" Click="InlineRemovePropertyButton_Click" Visibility="{Binding IsRemovableProperty, Converter={StaticResource BoolToVisibilityConverter}}"/>
                                     </StackPanel>
                                 </Border>
@@ -414,7 +416,7 @@
                                            Visibility="{Binding AdvancedView, RelativeSource={RelativeSource Mode=FindAncestor, AncestorType=global:InterpreterExportLoader}, Converter={StaticResource BoolToVisibilityConverter}}"/>
                                 <TextBlock Grid.Column="1" Grid.Row="0" Grid.RowSpan="2" Text="⇔" Margin="8,0" VerticalAlignment="Center"
                                            Visibility="{Binding HasLinkedNode, Converter={StaticResource BoolToVisibilityConverter}}"/>
-                                <Border x:Name="PropertyItem_LinkedSelectionBorder" Grid.Column="2" Background="Transparent" Visibility="{Binding HasLinkedNode, Converter={StaticResource BoolToVisibilityConverter}}">
+                                <Border x:Name="PropertyItem_LinkedSelectionBorder" Grid.Column="2" Background="Transparent" Visibility="{Binding HasLinkedNode, Converter={StaticResource BoolToVisibilityConverter}}" MouseLeftButtonDown="LinkedNodePanel_PreviewMouseLeftButtonDown">
                                     <StackPanel Orientation="Horizontal">
                                         <TextBlock x:Name="PropertyItem_LinkedDisplayName" Text="{Binding LinkedDisplayName, Mode=OneTime}" VerticalAlignment="Top" Padding="2,0,0,0"/>
                                         <controls:EditableTextBlock x:Name="PropertyItem_LinkedEditableValue" Margin="5,0,0,0" Text="{Binding LinkedEditableValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" VerticalAlignment="Top" FontWeight="Bold"
@@ -484,7 +486,7 @@
                                            Visibility="{Binding AdvancedView, RelativeSource={RelativeSource Mode=FindAncestor, AncestorType=global:InterpreterExportLoader}, Converter={StaticResource BoolToVisibilityConverter}}"/>
                                 <TextBlock Grid.Column="3" Grid.Row="0" Grid.RowSpan="2" Text="⇔" Margin="8,0" VerticalAlignment="Center"
                                            Visibility="{Binding HasSecondLinkedNode, Converter={StaticResource BoolToVisibilityConverter}}"/>
-                                <Border x:Name="PropertyItem_SecondLinkedSelectionBorder" Grid.Column="4" Background="Transparent" Visibility="{Binding HasSecondLinkedNode, Converter={StaticResource BoolToVisibilityConverter}}">
+                                <Border x:Name="PropertyItem_SecondLinkedSelectionBorder" Grid.Column="4" Background="Transparent" Visibility="{Binding HasSecondLinkedNode, Converter={StaticResource BoolToVisibilityConverter}}" MouseLeftButtonDown="SecondLinkedNodePanel_PreviewMouseLeftButtonDown">
                                     <StackPanel Orientation="Horizontal">
                                         <TextBlock x:Name="PropertyItem_SecondLinkedDisplayName" Text="{Binding SecondLinkedDisplayName, Mode=OneTime}" VerticalAlignment="Top" Padding="2,0,0,0"/>
                                         <controls:EditableTextBlock x:Name="PropertyItem_SecondLinkedEditableValue" Margin="5,0,0,0" Text="{Binding SecondLinkedEditableValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" VerticalAlignment="Top" FontWeight="Bold"
@@ -552,9 +554,9 @@
                                 </Border>
                                 <TextBlock Grid.Column="4" Grid.Row="1" x:Name="PropertyItem_SecondLinkedDisplayType" FontSize="10" Text="{Binding SecondLinkedPropertyType, Mode=OneTime}" VerticalAlignment="Center" Margin="5,0,0,0"
                                            Visibility="{Binding AdvancedView, RelativeSource={RelativeSource Mode=FindAncestor, AncestorType=global:InterpreterExportLoader}, Converter={StaticResource BoolToVisibilityConverter}}"/>
-                                <Border x:Name="PropertyItem_PrimaryOverlay" Grid.RowSpan="2" Background="Transparent" MouseLeftButtonDown="PropertyItem_PrimarySelectionBorder_MouseDoubleClick"/>
-                                <Border x:Name="PropertyItem_LinkedOverlay" Grid.Column="2" Grid.RowSpan="2" Background="Transparent" Visibility="{Binding HasLinkedNode, Converter={StaticResource BoolToVisibilityConverter}}" MouseLeftButtonDown="LinkedNodePanel_PreviewMouseLeftButtonDown"/>
-                                <Border x:Name="PropertyItem_SecondLinkedOverlay" Grid.Column="4" Grid.RowSpan="2" Background="Transparent" Visibility="{Binding HasSecondLinkedNode, Converter={StaticResource BoolToVisibilityConverter}}" MouseLeftButtonDown="SecondLinkedNodePanel_PreviewMouseLeftButtonDown"/>
+                                <Border x:Name="PropertyItem_PrimaryOverlay" Grid.RowSpan="2" Panel.ZIndex="-1" Background="Transparent" MouseLeftButtonDown="PropertyItem_PrimarySelectionBorder_MouseDoubleClick"/>
+                                <Border x:Name="PropertyItem_LinkedOverlay" Grid.Column="2" Grid.RowSpan="2" Panel.ZIndex="-1" Background="Transparent" Visibility="{Binding HasLinkedNode, Converter={StaticResource BoolToVisibilityConverter}}" MouseLeftButtonDown="LinkedNodePanel_PreviewMouseLeftButtonDown"/>
+                                <Border x:Name="PropertyItem_SecondLinkedOverlay" Grid.Column="4" Grid.RowSpan="2" Panel.ZIndex="-1" Background="Transparent" Visibility="{Binding HasSecondLinkedNode, Converter={StaticResource BoolToVisibilityConverter}}" MouseLeftButtonDown="SecondLinkedNodePanel_PreviewMouseLeftButtonDown"/>
                             </Grid>
                             <b:Interaction.Triggers>
                                 <b:EventTrigger EventName="PreviewMouseRightButtonDown">

@@ -2999,6 +2999,16 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             CurrentLoadedExport.WriteProperties(CurrentLoadedProperties);
         }
 
+        private void WriteCurrentLoadedPropertiesAndReload()
+        {
+            ExportEntry export = CurrentLoadedExport;
+            WriteCurrentLoadedProperties(reloadPropertyData: false);
+            if (export is not null && ReferenceEquals(CurrentLoadedExport, export))
+            {
+                LoadExport(export);
+            }
+        }
+
         private void QueuePropertyDataReload(ExportEntry export)
         {
             pendingPropertyDataReload?.Abort();
@@ -5099,6 +5109,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             {
                 ApplySelectedTreeItem(node);
                 AddArrayElementsInternal(1, insertAboveSelectedElement: true, targetItem: node);
+                e.Handled = true;
             }
         }
 
@@ -5108,6 +5119,17 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             {
                 ApplySelectedTreeItem(node);
                 AddArrayElementsInternal(1, targetItem: node);
+                e.Handled = true;
+            }
+        }
+
+        private void InlineAddArrayElementButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is FrameworkElement { Tag: UPropertyTreeViewEntry { Property: ArrayPropertyBase } node })
+            {
+                ApplySelectedTreeItem(node);
+                AddArrayElementsInternal(1, targetItem: node);
+                e.Handled = true;
             }
         }
 
@@ -5134,6 +5156,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     MoveArrayElementToIndex(arrayProperty.Count - 1, node);
                     break;
             }
+            e.Handled = true;
         }
 
         private void InlineDeleteArrayElementButton_Click(object sender, RoutedEventArgs e)
@@ -5142,6 +5165,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             {
                 ApplySelectedTreeItem(node);
                 RemoveArrayElement(node);
+                e.Handled = true;
             }
         }
 
@@ -5245,7 +5269,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                         }
                     }
 
-                    CurrentLoadedExport.WriteProperties(CurrentLoadedProperties);
+                    WriteCurrentLoadedPropertiesAndReload();
                     return;
                 }
 
@@ -5320,7 +5344,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     }
                 }
 
-                CurrentLoadedExport.WriteProperties(CurrentLoadedProperties);
+                WriteCurrentLoadedPropertiesAndReload();
             }
         }
 
@@ -5692,7 +5716,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                         arrayProperty.RemoveAt(index);
                     }
 
-                    CurrentLoadedExport.WriteProperties(CurrentLoadedProperties);
+                    WriteCurrentLoadedPropertiesAndReload();
                 }
                 else
                 {
@@ -5779,8 +5803,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 {
                     arrayProperty.SwapElements(index, swapIndex);
                 }
-                //Will force reload
-                CurrentLoadedExport.WriteProperties(CurrentLoadedProperties);
+                WriteCurrentLoadedPropertiesAndReload();
             }
         }
 
@@ -5850,7 +5873,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     }
                 }
 
-                CurrentLoadedExport.WriteProperties(CurrentLoadedProperties);
+                WriteCurrentLoadedPropertiesAndReload();
             }
         }
 
@@ -6561,6 +6584,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         public bool IsStringRefProperty => InterpreterExportLoader.IsTlkStringRefProperty(Property, UPParent?.Property);
 
         public bool IsInlineEditable => Property is FloatProperty or IntProperty or StringRefProperty or StrProperty or NameProperty or EnumProperty;
+        public bool IsArrayProperty => Property is ArrayPropertyBase;
         public bool IsArrayElement => UPParent?.Property is ArrayPropertyBase;
         public bool CanMoveArrayElementUp => IsArrayElement && UPParent.ChildrenProperties.IndexOf(this) > 0;
         public bool CanMoveArrayElementDown => IsArrayElement && UPParent.ChildrenProperties.IndexOf(this) < UPParent.ChildrenProperties.Count - 1;
