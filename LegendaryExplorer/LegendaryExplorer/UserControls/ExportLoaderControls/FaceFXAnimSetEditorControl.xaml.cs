@@ -3420,13 +3420,26 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             }
 
             var message = $"Imported audio and prepared mirrored FaceFX lines.\n\nFemale lines ready: {femaleLines.Count}\nMale lines ready: {maleLines.Count}";
-            if (MessageBox.Show($"{message}\n\nGenerate FaceFX animations for these new lines now?",
-                    "Generate New FaceFX Lines", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes)
+            var pairedDialog = new Tools.FaceFXEditor.AutoFaceFXGenerator.PairedFaceFXGenerationDialog(
+                femaleLines.Count,
+                maleLines.Count,
+                Window.GetWindow(this),
+                CurrentLoadedExport.Game,
+                $"#{femaleExport.UIndex} {femaleExport.ObjectNameString}",
+                $"#{maleExport.UIndex} {maleExport.ObjectNameString}")
             {
-                var femaleResult = GenerateFaceFxForNewLines(femaleExport, femaleFaceFx, femaleLines,
-                    isFemaleAsset: true, Tools.FaceFXEditor.AutoFaceFXGenerator.FaceFXSpecies.HumanFemale);
-                var maleResult = GenerateFaceFxForNewLines(maleExport, maleFaceFx, maleLines,
-                    isFemaleAsset: false, Tools.FaceFXEditor.AutoFaceFXGenerator.FaceFXSpecies.HumanMale);
+                Title = "Generate New Male and Female FaceFX Lines"
+            };
+            if (pairedDialog.ShowDialog() == true && pairedDialog.Confirmed)
+            {
+                var femaleResult = pairedDialog.Female.Generate
+                    ? GenerateFaceFxForNewLines(femaleExport, femaleFaceFx, femaleLines,
+                        isFemaleAsset: true, pairedDialog.Female)
+                    : "skipped";
+                var maleResult = pairedDialog.Male.Generate
+                    ? GenerateFaceFxForNewLines(maleExport, maleFaceFx, maleLines,
+                        isFemaleAsset: false, pairedDialog.Male)
+                    : "skipped";
 
                 if (SelectedLineEntry != null)
                 {
@@ -3771,23 +3784,13 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             return false;
         }
 
-        private string GenerateFaceFxForNewLines(ExportEntry faceFxExport, IFaceFXBinary faceFx, List<FaceFXLineEntry> newLines,
-            bool isFemaleAsset, Tools.FaceFXEditor.AutoFaceFXGenerator.FaceFXSpecies defaultSpecies)
+        private string GenerateFaceFxForNewLines(ExportEntry faceFxExport, IFaceFXBinary faceFx,
+            List<FaceFXLineEntry> newLines, bool isFemaleAsset,
+            Tools.FaceFXEditor.AutoFaceFXGenerator.PairedFaceFXGenerationTarget settings)
         {
             if (newLines.Count == 0)
             {
                 return "0 new lines";
-            }
-
-            var bulkDialog = new Tools.FaceFXEditor.AutoFaceFXGenerator.BulkFaceFXGenerationDialog(newLines.Count,
-                Window.GetWindow(this), defaultSpecies, faceFxExport.Game, faceFxExport)
-            {
-                Title = $"Bulk FaceFX Generation - #{faceFxExport.UIndex} {faceFxExport.ObjectNameString}"
-            };
-
-            if (bulkDialog.ShowDialog() != true || !bulkDialog.Confirmed)
-            {
-                return "skipped";
             }
 
             int successCount = 0;
@@ -3812,13 +3815,13 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                         CharacterType = isFemaleAsset
                             ? Tools.FaceFXEditor.AutoFaceFXGenerator.CharacterType.HumanFemale
                             : Tools.FaceFXEditor.AutoFaceFXGenerator.CharacterType.HumanMale,
-                        Species = bulkDialog.SelectedSpeciesEnum,
+                        Species = settings.SelectedSpeciesEnum,
                         GenerateJawAnimation = true,
-                        GenerateBlinkAnimation = bulkDialog.GenerateBlinkAnimation,
+                        GenerateBlinkAnimation = settings.GenerateBlinkAnimation,
                         GenerateEyebrowAnimation = true,
                         GenerateHeadMovement = false,
-                        LipSyncIntensity = bulkDialog.LipSyncIntensity,
-                        BlinkFrequency = bulkDialog.BlinkFrequency,
+                        LipSyncIntensity = settings.LipSyncIntensity,
+                        BlinkFrequency = settings.BlinkFrequency,
                         UseAudioAmplitude = true,
                         FxaData = null,
                         UseTextFallback = true

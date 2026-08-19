@@ -342,23 +342,45 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                     return;
                 }
 
-                FaceFxGenerationSettings femaleSettings = null;
-                FaceFxGenerationSettings maleSettings = null;
-                if (scan.FemaleAssetCount > 0
-                    && !TryGetFaceFxGenerationSettings(pew, scan.FemaleLineCount, isFemale: true, out femaleSettings))
+                if (scan.FemaleLineCount == 0 && scan.MaleLineCount == 0)
+                {
+                    MessageBox.Show(pew,
+                        "The matching FaceFXAnimSet assets do not contain any lines to generate.",
+                        "Generate matching FaceFXAnimSets",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Information);
+                    return;
+                }
+
+                var pairedDialog = new PairedFaceFXGenerationDialog(
+                    scan.FemaleLineCount,
+                    scan.MaleLineCount,
+                    pew,
+                    pew.Pcc.Game,
+                    $"{scan.FemaleAssetCount} matching _F asset{(scan.FemaleAssetCount == 1 ? string.Empty : "s")}",
+                    $"{scan.MaleAssetCount} matching _M asset{(scan.MaleAssetCount == 1 ? string.Empty : "s")}")
+                {
+                    Title = "Generate Matching FaceFXAnimSets"
+                };
+                if (pairedDialog.ShowDialog() != true || !pairedDialog.Confirmed)
                 {
                     return;
                 }
 
-                if (scan.MaleAssetCount > 0
-                    && !TryGetFaceFxGenerationSettings(pew, scan.MaleLineCount, isFemale: false, out maleSettings))
-                {
-                    return;
-                }
+                FaceFxGenerationSettings femaleSettings = pairedDialog.Female.Generate
+                    ? new FaceFxGenerationSettings(pairedDialog.Female.SelectedSpeciesEnum,
+                        pairedDialog.Female.LipSyncIntensity, pairedDialog.Female.GenerateBlinkAnimation,
+                        pairedDialog.Female.BlinkFrequency)
+                    : null;
+                FaceFxGenerationSettings maleSettings = pairedDialog.Male.Generate
+                    ? new FaceFxGenerationSettings(pairedDialog.Male.SelectedSpeciesEnum,
+                        pairedDialog.Male.LipSyncIntensity, pairedDialog.Male.GenerateBlinkAnimation,
+                        pairedDialog.Male.BlinkFrequency)
+                    : null;
 
                 string confirmation = $"Generate FaceFX in {scan.FilesWithMatches} of {scan.PackageFiles.Count} PCC file(s)?\n\n" +
-                                      $"Female: {scan.FemaleAssetCount} asset(s), {scan.FemaleLineCount} line(s)\n" +
-                                      $"Male: {scan.MaleAssetCount} asset(s), {scan.MaleLineCount} line(s)";
+                                      $"Female: {(femaleSettings != null ? $"generate {scan.FemaleAssetCount} asset(s), {scan.FemaleLineCount} line(s)" : "skip")}\n" +
+                                      $"Male: {(maleSettings != null ? $"generate {scan.MaleAssetCount} asset(s), {scan.MaleLineCount} line(s)" : "skip")}";
                 if (scan.UnknownGenderAssetCount > 0)
                 {
                     confirmation += $"\nSkipped without _F/_M suffix: {scan.UnknownGenderAssetCount} asset(s)";
@@ -406,29 +428,6 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             {
                 pew.IsBusy = false;
             }
-        }
-
-        private static bool TryGetFaceFxGenerationSettings(PackageEditorWindow owner, int lineCount, bool isFemale,
-            out FaceFxGenerationSettings settings)
-        {
-            string genderName = isFemale ? "Female" : "Male";
-            var dialog = new BulkFaceFXGenerationDialog(
-                lineCount,
-                owner,
-                isFemale ? FaceFXSpecies.HumanFemale : FaceFXSpecies.HumanMale,
-                owner.Pcc.Game)
-            {
-                Title = $"Bulk FaceFX Generation - All {genderName} Assets"
-            };
-            if (dialog.ShowDialog() != true || !dialog.Confirmed)
-            {
-                settings = null;
-                return false;
-            }
-
-            settings = new FaceFxGenerationSettings(dialog.SelectedSpeciesEnum, dialog.LipSyncIntensity,
-                dialog.GenerateBlinkAnimation, dialog.BlinkFrequency);
-            return true;
         }
 
         private static FaceFxGenerationSummary GenerateFaceFxForFolder(FaceFxFolderScanSummary scan, string nameFragment,

@@ -2227,11 +2227,27 @@ namespace LegendaryExplorer.Dialogs
         private void CreateAndGenerateFaceFxAssets(ExportEntry topFolderExport, ExportEntry audioFolderExport,
             string femaleFaceFxAssetName, string maleFaceFxAssetName)
         {
-            var femaleFaceFx = GetOrCreateFaceFxAnimSetExport(topFolderExport, femaleFaceFxAssetName);
-            var maleFaceFx = GetOrCreateFaceFxAnimSetExport(topFolderExport, maleFaceFxAssetName);
+            var femaleFaceFxExport = GetOrCreateFaceFxAnimSetExport(topFolderExport, femaleFaceFxAssetName);
+            var maleFaceFxExport = GetOrCreateFaceFxAnimSetExport(topFolderExport, maleFaceFxAssetName);
+            var femaleFaceFx = femaleFaceFxExport.GetBinaryData<FaceFXAnimSet>();
+            var maleFaceFx = maleFaceFxExport.GetBinaryData<FaceFXAnimSet>();
 
-            AddAudioAndGenerateFaceFx(femaleFaceFx, audioFolderExport, isFemaleAsset: true, FaceFXSpecies.HumanFemale);
-            AddAudioAndGenerateFaceFx(maleFaceFx, audioFolderExport, isFemaleAsset: false, FaceFXSpecies.HumanMale);
+            AddAudioFromFolderExport(femaleFaceFxExport, femaleFaceFx, audioFolderExport, isFemaleAsset: true);
+            AddAudioFromFolderExport(maleFaceFxExport, maleFaceFx, audioFolderExport, isFemaleAsset: false);
+
+            var options = GetPairedFaceFxGenerationOptions(femaleFaceFxExport, femaleFaceFx.Lines.Count,
+                maleFaceFxExport, maleFaceFx.Lines.Count);
+            if (options.Female != null)
+            {
+                GenerateFaceFxForAllLines(femaleFaceFxExport, femaleFaceFx, isFemaleAsset: true, options.Female);
+            }
+            if (options.Male != null)
+            {
+                GenerateFaceFxForAllLines(maleFaceFxExport, maleFaceFx, isFemaleAsset: false, options.Male);
+            }
+
+            femaleFaceFxExport.WriteBinary(femaleFaceFx);
+            maleFaceFxExport.WriteBinary(maleFaceFx);
         }
 
         private ExportEntry GetOrCreateFaceFxAnimSetExport(ExportEntry parent, string assetName)
@@ -2247,59 +2263,64 @@ namespace LegendaryExplorer.Dialogs
             return faceFxExport;
         }
 
-        private void AddAudioAndGenerateFaceFx(ExportEntry faceFxExport, ExportEntry audioFolderExport, bool isFemaleAsset, FaceFXSpecies species)
+        private (FaceFXGenerationOptions Female, FaceFXGenerationOptions Male) GetPairedFaceFxGenerationOptions(
+            ExportEntry femaleFaceFxExport, int femaleLineCount, ExportEntry maleFaceFxExport, int maleLineCount)
         {
-            var faceFx = faceFxExport.GetBinaryData<FaceFXAnimSet>();
-            AddAudioFromFolderExport(faceFxExport, faceFx, audioFolderExport, isFemaleAsset);
-
-            var options = GetBulkFaceFxGenerationOptions(faceFxExport, faceFx.Lines.Count, species, isFemaleAsset);
-            if (options != null)
+            if (femaleLineCount == 0 && maleLineCount == 0)
             {
-                GenerateFaceFxForAllLines(faceFxExport, faceFx, isFemaleAsset, options);
+                return (null, null);
             }
 
-            faceFxExport.WriteBinary(faceFx);
-        }
-
-        private FaceFXGenerationOptions GetBulkFaceFxGenerationOptions(ExportEntry faceFxExport, int lineCount,
-            FaceFXSpecies defaultSpecies, bool isFemaleAsset)
-        {
-            if (lineCount == 0)
-            {
-                return null;
-            }
-
-            FaceFXGenerationOptions options = null;
+            FaceFXGenerationOptions femaleOptions = null;
+            FaceFXGenerationOptions maleOptions = null;
             Dispatcher.Invoke(() =>
             {
-                StatusTextBlock.Text = $"Configure FaceFX generation for {faceFxExport.ObjectNameString}...";
-                var bulkDialog = new BulkFaceFXGenerationDialog(lineCount, this, defaultSpecies, _package.Game,
-                    faceFxExport)
+                StatusTextBlock.Text = "Configure male and female FaceFX generation...";
+                var pairedDialog = new PairedFaceFXGenerationDialog(
+                    femaleLineCount,
+                    maleLineCount,
+                    this,
+                    _package.Game,
+                    $"#{femaleFaceFxExport.UIndex} {femaleFaceFxExport.ObjectNameString}",
+                    $"#{maleFaceFxExport.UIndex} {maleFaceFxExport.ObjectNameString}")
                 {
-                    Title = $"Bulk FaceFX Generation - #{faceFxExport.UIndex} {faceFxExport.ObjectNameString}"
+                    Title = "Generate Imported Male and Female FaceFX"
                 };
 
-                if (bulkDialog.ShowDialog() == true && bulkDialog.Confirmed)
+                if (pairedDialog.ShowDialog() == true && pairedDialog.Confirmed)
                 {
-                    options = new FaceFXGenerationOptions
+                    if (pairedDialog.Female.Generate)
                     {
-                        Game = _package.Game,
-                        CharacterType = isFemaleAsset ? CharacterType.HumanFemale : CharacterType.HumanMale,
-                        Species = bulkDialog.SelectedSpeciesEnum,
-                        GenerateJawAnimation = true,
-                        GenerateBlinkAnimation = bulkDialog.GenerateBlinkAnimation,
-                        GenerateEyebrowAnimation = true,
-                        GenerateHeadMovement = false,
-                        LipSyncIntensity = bulkDialog.LipSyncIntensity,
-                        BlinkFrequency = bulkDialog.BlinkFrequency,
-                        UseAudioAmplitude = true,
-                        FxaData = null,
-                        UseTextFallback = true
-                    };
+                        femaleOptions = CreateFaceFxGenerationOptions(pairedDialog.Female, isFemaleAsset: true);
+                    }
+                    if (pairedDialog.Male.Generate)
+                    {
+                        maleOptions = CreateFaceFxGenerationOptions(pairedDialog.Male, isFemaleAsset: false);
+                    }
                 }
             });
 
-            return options;
+            return (femaleOptions, maleOptions);
+        }
+
+        private FaceFXGenerationOptions CreateFaceFxGenerationOptions(PairedFaceFXGenerationTarget target,
+            bool isFemaleAsset)
+        {
+            return new FaceFXGenerationOptions
+            {
+                Game = _package.Game,
+                CharacterType = isFemaleAsset ? CharacterType.HumanFemale : CharacterType.HumanMale,
+                Species = target.SelectedSpeciesEnum,
+                GenerateJawAnimation = true,
+                GenerateBlinkAnimation = target.GenerateBlinkAnimation,
+                GenerateEyebrowAnimation = true,
+                GenerateHeadMovement = false,
+                LipSyncIntensity = target.LipSyncIntensity,
+                BlinkFrequency = target.BlinkFrequency,
+                UseAudioAmplitude = true,
+                FxaData = null,
+                UseTextFallback = true
+            };
         }
 
         private int AddAudioFromFolderExport(ExportEntry faceFxExport, FaceFXAnimSet faceFx, ExportEntry folderExport, bool isFemaleAsset)
