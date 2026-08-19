@@ -126,6 +126,20 @@ public class BulkAudioImportDialogTests
     }
 
     [TestMethod]
+    public void AudioFileFilterMatchesFilenameTlkIdAndSubtitleText()
+    {
+        var item = new BulkAudioImportDialog.AudioImportItem(
+            @"C:\Audio\VO_37252256_f.wav", 37252256, "This is the resolved subtitle text.");
+
+        Assert.IsTrue(BulkAudioImportDialog.MatchesAudioFileFilter(item, "VO_37252256"));
+        Assert.IsTrue(BulkAudioImportDialog.MatchesAudioFileFilter(item, "37252256"));
+        Assert.IsTrue(BulkAudioImportDialog.MatchesAudioFileFilter(item, "resolved SUBTITLE"));
+        Assert.IsTrue(BulkAudioImportDialog.MatchesAudioFileFilter(item, ""));
+        Assert.IsFalse(BulkAudioImportDialog.MatchesAudioFileFilter(item, "different dialogue"));
+        Assert.AreEqual("TLK 37252256: This is the resolved subtitle text.", item.TlkDisplayText);
+    }
+
+    [TestMethod]
     public void IndividualEffectTargetsMatchEveryGeneratedLe3SoundVariant()
     {
         var wavPath = @"C:\Audio\Voice.wav";

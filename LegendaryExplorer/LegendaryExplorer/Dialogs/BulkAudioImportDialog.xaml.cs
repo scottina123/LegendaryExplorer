@@ -9,6 +9,7 @@ using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Data;
 using System.Xml.Linq;
 using LegendaryExplorer.Audio;
 using LegendaryExplorer.SharedUI;
@@ -34,7 +35,25 @@ namespace LegendaryExplorer.Dialogs
     public partial class BulkAudioImportDialog : Window, INotifyPropertyChanged
     {
         public ObservableCollection<AudioImportItem> WavFileItems { get; } = new();
+        public ICollectionView WavFileItemsView { get; }
         public IEnumerable<string> WavFiles => WavFileItems.Select(item => item.FilePath);
+
+        private string _audioFileFilterText;
+        public string AudioFileFilterText
+        {
+            get => _audioFileFilterText;
+            set
+            {
+                if (_audioFileFilterText == value)
+                {
+                    return;
+                }
+
+                _audioFileFilterText = value;
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(AudioFileFilterText)));
+                WavFileItemsView?.Refresh();
+            }
+        }
 
         public enum AudioEffectPreset
         {
@@ -62,12 +81,21 @@ namespace LegendaryExplorer.Dialogs
             private bool _duckAudio;
             private double _attenuationScalePercent = 100d;
 
-            public AudioImportItem(string filePath)
+            public AudioImportItem(string filePath, int? tlkId = null, string tlkSubtitle = null)
             {
                 FilePath = filePath;
+                TlkId = tlkId;
+                TlkSubtitle = tlkSubtitle?.Trim();
             }
 
             public string FilePath { get; }
+            public int? TlkId { get; }
+            public string TlkSubtitle { get; }
+            public string TlkDisplayText => TlkId.HasValue
+                ? string.IsNullOrWhiteSpace(TlkSubtitle)
+                    ? $"TLK {TlkId.Value}: subtitle not found"
+                    : $"TLK {TlkId.Value}: {TlkSubtitle.ReplaceLineEndings(" ")}"
+                : string.Empty;
             public bool CreateStopEvent { get; set; }
             public AudioEffectPreset EffectPreset { get; set; } = AudioEffectPreset.BankWide;
             public bool LoopAudio { get; set; }
@@ -264,6 +292,9 @@ namespace LegendaryExplorer.Dialogs
             _bankPackageName = bankPackageName;
             _bankStreamingAudioPackageName = bankStreamingAudioPackageName;
             _allowFaceFxAssetCreation = allowFaceFxAssetCreation;
+            WavFileItemsView = CollectionViewSource.GetDefaultView(WavFileItems);
+            WavFileItemsView.Filter = item =>
+                item is AudioImportItem audioItem && MatchesAudioFileFilter(audioItem, AudioFileFilterText);
 
             bool isLe2 = _package.Game == MEGame.LE2;
             IndividualEffectOptions = GetIndividualEffectOptions(_package.Game);
@@ -306,7 +337,7 @@ namespace LegendaryExplorer.Dialogs
                              .Where(file => File.Exists(file) && AudioInputConverter.IsSupportedAudioFile(file))
                              .Distinct(StringComparer.OrdinalIgnoreCase))
                 {
-                    WavFileItems.Add(new AudioImportItem(file));
+                    WavFileItems.Add(CreateAudioImportItem(file));
                 }
             }
 
@@ -329,6 +360,44 @@ namespace LegendaryExplorer.Dialogs
             }
         }
 
+        private AudioImportItem CreateAudioImportItem(string filePath)
+        {
+            int tlkId = ExtractTlkIdFromWwiseEventName(Path.GetFileNameWithoutExtension(filePath));
+            if (tlkId <= 0)
+            {
+                return new AudioImportItem(filePath);
+            }
+
+            string tlkSubtitle = null;
+            try
+            {
+                tlkSubtitle = TLKManagerWPF.GlobalFindStrRefbyID(tlkId, _package);
+                if (string.IsNullOrWhiteSpace(tlkSubtitle) ||
+                    tlkSubtitle.Equals("No Data", StringComparison.OrdinalIgnoreCase))
+                {
+                    tlkSubtitle = null;
+                }
+            }
+            catch (Exception exception)
+            {
+                Debug.WriteLine($"BulkAudioImport: Could not resolve TLK {tlkId}: {exception.Message}");
+            }
+
+            return new AudioImportItem(filePath, tlkId, tlkSubtitle);
+        }
+
+        internal static bool MatchesAudioFileFilter(AudioImportItem item, string filterText)
+        {
+            if (item == null || string.IsNullOrWhiteSpace(filterText))
+            {
+                return item != null;
+            }
+
+            string filter = filterText.Trim();
+            return item.FilePath.Contains(filter, StringComparison.OrdinalIgnoreCase) ||
+                   item.TlkDisplayText.Contains(filter, StringComparison.OrdinalIgnoreCase);
+        }
+
         private void AddFilesButton_Click(object sender, RoutedEventArgs e)
         {
             var openFileDialog = new OpenFileDialog
@@ -344,7 +413,7 @@ namespace LegendaryExplorer.Dialogs
                 {
                     if (!WavFileItems.Any(item => item.FilePath.Equals(file, StringComparison.OrdinalIgnoreCase)))
                     {
-                        WavFileItems.Add(new AudioImportItem(file));
+                        WavFileItems.Add(CreateAudioImportItem(file));
                     }
                 }
             }
@@ -836,7 +905,7 @@ namespace LegendaryExplorer.Dialogs
             string topFolderName, string femaleFaceFxAssetName, string maleFaceFxAssetName)
         {
             var audioImportItems = Dispatcher.Invoke(() => WavFileItems
-                .Select(item => new AudioImportItem(item.FilePath)
+                .Select(item => new AudioImportItem(item.FilePath, item.TlkId, item.TlkSubtitle)
                 {
                     CreateStopEvent = item.CreateStopEvent,
                     EffectPreset = item.EffectPreset,
