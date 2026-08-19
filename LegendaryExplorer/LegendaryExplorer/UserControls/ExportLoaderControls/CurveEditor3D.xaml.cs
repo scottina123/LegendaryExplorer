@@ -3099,6 +3099,18 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         return identities;
     }
 
+    private static readonly IReadOnlyList<string> DialoguePreviewLe1HenchmanTags =
+        new ReadOnlyCollection<string>(
+    [
+        "hench_humanmale",
+        "hench_humanfemale",
+        "hench_turian",
+        "hench_asari",
+        "hench_quarian",
+        "hench_krogan",
+        "hench_jenkins",
+    ]);
+
     private static readonly IReadOnlyList<string> DialoguePreviewMe2HenchmanTags =
         new ReadOnlyCollection<string>(
     [
@@ -3143,11 +3155,16 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     public static IReadOnlyList<string> GetDialoguePreviewHenchmanTags() =>
         DialoguePreviewMe3HenchmanTags;
 
-    public static IReadOnlyList<string> GetDialoguePreviewHenchmanTags(MEGame game) =>
-        game.IsGame2() ? DialoguePreviewMe2HenchmanTags : DialoguePreviewMe3HenchmanTags;
+    public static IReadOnlyList<string> GetDialoguePreviewHenchmanTags(MEGame game) => game switch
+    {
+        MEGame.LE1 => DialoguePreviewLe1HenchmanTags,
+        _ when game.IsGame2() => DialoguePreviewMe2HenchmanTags,
+        _ => DialoguePreviewMe3HenchmanTags,
+    };
 
     internal static bool IsDialoguePreviewHenchmanTag(string actorTag) =>
-        DialoguePreviewMe2HenchmanTags.Contains(actorTag, StringComparer.OrdinalIgnoreCase)
+        DialoguePreviewLe1HenchmanTags.Contains(actorTag, StringComparer.OrdinalIgnoreCase)
+        || DialoguePreviewMe2HenchmanTags.Contains(actorTag, StringComparer.OrdinalIgnoreCase)
         || DialoguePreviewMe3HenchmanTags.Contains(actorTag, StringComparer.OrdinalIgnoreCase);
 
     internal static IReadOnlyList<DialogueNodeExtended> GetDialoguePreviewNodes(
@@ -3329,7 +3346,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     internal static IReadOnlyList<DialoguePreviewHenchmanSlot> GetDialoguePreviewDefaultHenchmanSlots(
         MEGame game)
     {
-        if (game != MEGame.LE2)
+        if (game is not (MEGame.LE1 or MEGame.LE2))
         {
             return [];
         }

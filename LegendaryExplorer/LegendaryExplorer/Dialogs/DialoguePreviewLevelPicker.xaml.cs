@@ -77,7 +77,7 @@ public partial class DialoguePreviewLevelPicker : TrackingNotifyPropertyChangedW
         DialogueNodeExtended startNode, bool includeCache,
         bool requirePlayerGenderSelection = false) : base("Dialogue Preview Options", false)
     {
-        allowUnassignedHenchmen = game == MEGame.LE2;
+        allowUnassignedHenchmen = game is MEGame.LE1 or MEGame.LE2;
         InitializeComponent();
         if (requirePlayerGenderSelection)
         {
@@ -138,7 +138,7 @@ public partial class DialoguePreviewLevelPicker : TrackingNotifyPropertyChangedW
     {
         IEnumerable<HenchmanChoice> choices = CurveEditor3D.GetDialoguePreviewHenchmanTags(game)
             .Select(tag => new HenchmanChoice(tag, GetHenchmanDisplayName(tag)));
-        if (game == MEGame.LE2)
+        if (game is MEGame.LE1 or MEGame.LE2)
         {
             choices = choices.Prepend(new HenchmanChoice(string.Empty, "None"));
         }
@@ -149,6 +149,13 @@ public partial class DialoguePreviewLevelPicker : TrackingNotifyPropertyChangedW
     {
         string knownName = actorTag?.ToLowerInvariant() switch
         {
+            "hench_humanmale" => "Kaidan",
+            "hench_humanfemale" => "Ashley",
+            "hench_turian" => "Garrus",
+            "hench_asari" => "Liara",
+            "hench_quarian" => "Tali",
+            "hench_krogan" => "Wrex",
+            "hench_jenkins" => "Jenkins",
             "hench_professor" => "Mordin",
             "hench_vixen" => "Miranda",
             "hench_leading" => "Jacob",

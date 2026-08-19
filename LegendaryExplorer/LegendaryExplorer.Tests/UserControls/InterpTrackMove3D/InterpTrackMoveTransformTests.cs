@@ -95,6 +95,46 @@ public class InterpTrackMoveTransformTests
     }
 
     [TestMethod]
+    public void DialogueHenchmanChoicesUseTheExclusiveLe1RosterAndDisplayNames()
+    {
+        var expectedChoices = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["hench_humanmale"] = "Kaidan",
+            ["hench_humanfemale"] = "Ashley",
+            ["hench_turian"] = "Garrus",
+            ["hench_asari"] = "Liara",
+            ["hench_quarian"] = "Tali",
+            ["hench_krogan"] = "Wrex",
+            ["hench_jenkins"] = "Jenkins",
+        };
+
+        IReadOnlyList<string> le1Choices = CurveEditor3D.GetDialoguePreviewHenchmanTags(MEGame.LE1);
+
+        CollectionAssert.AreEqual(expectedChoices.Keys.ToArray(), le1Choices.ToArray());
+        foreach ((string actorTag, string displayName) in expectedChoices)
+        {
+            Assert.AreEqual(displayName, DialoguePreviewLevelPicker.GetHenchmanDisplayName(actorTag));
+            Assert.IsTrue(CurveEditor3D.IsDialoguePreviewHenchmanTag(actorTag));
+        }
+    }
+
+    [TestMethod]
+    public void Le1DialogueHenchmanChoicesAreAlwaysAvailableForBothNumberedSlots()
+    {
+        IReadOnlyList<CurveEditor3D.DialoguePreviewHenchmanSlot> defaultSlots =
+            CurveEditor3D.GetDialoguePreviewDefaultHenchmanSlots(MEGame.LE1);
+        IReadOnlyList<DialoguePreviewLevelPicker.HenchmanChoice> choices =
+            DialoguePreviewLevelPicker.GetHenchmanChoices(MEGame.LE1);
+
+        CollectionAssert.AreEqual(new[] { "Hench_1", "Hench_2" },
+            defaultSlots.Select(slot => slot.SlotTag).ToArray());
+        Assert.AreEqual(string.Empty, choices[0].ActorTag);
+        Assert.AreEqual("None", choices[0].DisplayName);
+        CollectionAssert.AreEqual(CurveEditor3D.GetDialoguePreviewHenchmanTags(MEGame.LE1).ToArray(),
+            choices.Skip(1).Select(choice => choice.ActorTag).ToArray());
+    }
+
+    [TestMethod]
     public void DialogueHenchmanChoicesUseTheMe2RosterAndDisplayNames()
     {
         var expectedChoices = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
