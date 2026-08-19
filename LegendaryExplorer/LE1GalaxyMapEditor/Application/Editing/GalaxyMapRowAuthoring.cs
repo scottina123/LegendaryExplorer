@@ -27,8 +27,12 @@ public static class GalaxyMapRowAuthoring
 
     public static void PrepareNewRow(GalaxyMapLayer layer, GalaxyMapRow row)
     {
-        var schema = CsvGalaxyMapLoader.GetCanonicalSchema(row.Table);
-        layer.SetSchema(schema);
+        var schema = layer.GetSchema(row.Table);
+        if (schema is null)
+        {
+            schema = CsvGalaxyMapLoader.GetCanonicalSchema(row.Table);
+            layer.SetSchema(schema);
+        }
         var known = KnownColumns(row.Table);
         foreach (var header in schema.Headers.Skip(1).Where(header => !known.Contains(header)))
         {

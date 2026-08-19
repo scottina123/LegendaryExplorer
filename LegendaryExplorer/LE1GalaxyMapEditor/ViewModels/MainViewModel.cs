@@ -31,6 +31,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private readonly Action<MELocalization>? _saveBaseGameLocale;
     private readonly IEditorDialogs _dialogs;
     private readonly ValidationCoordinator _validation;
+    private readonly ValidationRepairPolicy _identityRepairs;
     private readonly EditorSession _session = new();
     private readonly EditSessionService _edits;
     private readonly WorkspaceWorkflowService _workspaceWorkflows;
@@ -103,6 +104,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         _commitPreviewBuilder = new CommitPreviewBuilder(_manifestStore);
         _validation = new ValidationCoordinator(deferredScheduler ?? new DispatcherDeferredScheduler());
         _validation.Completed += ValidationOnCompleted;
+        _identityRepairs = new ValidationRepairPolicy(() => ValidationDiagnostics);
         _edits = new EditSessionService(
             _session,
             manifestStore: _manifestStore,
@@ -120,11 +122,12 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         _clusterTextures = new ClusterTextureWorkflow(_session, _edits, _textures);
         _planetTextures = new PlanetTextureWorkflow(_session, _edits, _textures);
         _planetRelationships = new PlanetRelationshipWorkflow(_session, _edits);
-        _inspectorEdits = new InspectorEditWorkflow(_session, _edits);
+        _inspectorEdits = new InspectorEditWorkflow(_session, _edits, _identityRepairs.CanRepair);
         TableViewer = new TableViewerViewModel(
             new TableProjectionService(_session),
             ApplyTableCellEdit,
             () => Workspace?.Modules.Any(module => !module.IsReadOnly && !module.IsBaseGame) == true,
+            _identityRepairs,
             _tlkService,
             ResolveTlkLocale);
         _rowAuthoring = new RowAuthoringWorkflow(_session, _edits, _inspectorEdits);
@@ -133,6 +136,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         Inspector = new PropertyInspectorViewModel(new MainInspectorPresentationWorkflow(
             _session,
             _relay,
+            _identityRepairs,
             () => HasActiveModule,
             BeginUserEdit,
             _inspectorEdits.ValidateEdit,
@@ -2379,7 +2383,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
             _navigation.PreferredInstanceTag = target.Tag;
             RefreshWorkspace(
-                key,
+                result.SelectionKey ?? key,
                 view,
                 result.Message,
                 preserveHierarchy: result.Impact?.IsStructural != true,
@@ -2470,6 +2474,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private void ApplyValidation(ValidationSnapshot snapshot)
     {
         ValidationDiagnostics.ReplaceAll(snapshot.Diagnostics);
+        Inspector.RefreshIdentityEditability();
+        TableViewer.RefreshIdentityEditability();
 
         OnPropertyChanged(nameof(HasDiagnostics));
         OnPropertyChanged(nameof(DiagnosticCount));

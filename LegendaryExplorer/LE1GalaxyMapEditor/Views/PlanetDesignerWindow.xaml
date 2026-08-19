@@ -288,7 +288,7 @@
                             <ListBox.ItemTemplate>
                                 <DataTemplate>
                                     <StackPanel>
-                                    <Expander IsExpanded="{Binding ExpandedByDefault}" Margin="0,0,0,7" Foreground="{DynamicResource TextBrush}">
+                                    <Expander IsExpanded="{Binding ExpandedByDefault}" Margin="0,0,0,7" Foreground="{DynamicResource TextBrush}" Style="{StaticResource InspectorExpanderStyle}">
                                         <Expander.Header>
                                             <StackPanel Margin="0,3,0,4" MaxWidth="390">
                                                 <TextBlock Text="{Binding Name}" FontWeight="SemiBold"/>

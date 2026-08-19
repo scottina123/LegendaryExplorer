@@ -434,17 +434,26 @@ public partial class MainWindow : Window
                 Property = DataGridCell.IsSelectedProperty,
                 Value = true
             };
-            selectedTrigger.Setters.Add(new Setter(DataGridCell.BorderBrushProperty, Brushes.White));
+            selectedTrigger.Setters.Add(new Setter(DataGridCell.BorderBrushProperty, FindResource("TextBrush")));
             selectedTrigger.Setters.Add(new Setter(DataGridCell.BorderThicknessProperty, new Thickness(2)));
             cellStyle.Triggers.Add(selectedTrigger);
 
+            var readOnlyTrigger = new DataTrigger
+            {
+                Binding = new Binding($"Cells[{index}].IsReadOnly"),
+                Value = true
+            };
+            readOnlyTrigger.Setters.Add(new Setter(DataGridCell.OpacityProperty, 0.58));
+            cellStyle.Triggers.Add(readOnlyTrigger);
+
             // Invalid input must remain visible while the cell is still selected/editing.
+            // Keep this trigger last so validation styling wins over every passive state.
             var errorTrigger = new DataTrigger
             {
                 Binding = new Binding($"Cells[{index}].HasError"),
                 Value = true
             };
-            errorTrigger.Setters.Add(new Setter(DataGridCell.BackgroundProperty, new SolidColorBrush(Color.FromRgb(0x35, 0x1A, 0x20))));
+            errorTrigger.Setters.Add(new Setter(DataGridCell.BackgroundProperty, FindResource("LE1GMEBrush351A20")));
             errorTrigger.Setters.Add(new Setter(DataGridCell.BorderBrushProperty, FindResource("DangerBrush")));
             errorTrigger.Setters.Add(new Setter(DataGridCell.BorderThicknessProperty, new Thickness(2)));
             cellStyle.Triggers.Add(errorTrigger);
@@ -458,7 +467,7 @@ public partial class MainWindow : Window
                 CellStyle = cellStyle,
                 ElementStyle = textStyle,
                 EditingElementStyle = editorStyle,
-                IsReadOnly = viewModel.TableViewer.IsColumnReadOnly(column),
+                IsReadOnly = !viewModel.TableViewer.IsEditingAvailable,
                 MinWidth = string.Equals(column.Name, CsvRowSnapshot.RowIdColumnName, StringComparison.OrdinalIgnoreCase)
                     ? 72
                     : 86,
@@ -514,6 +523,16 @@ public partial class MainWindow : Window
 
         Dispatcher.BeginInvoke(new Action(() => viewModel.TableViewer.RefreshIfNeeded()),
             DispatcherPriority.Background);
+    }
+
+    private void TableGrid_OnBeginningEdit(object sender, DataGridBeginningEditEventArgs eventArgs)
+    {
+        if (eventArgs.Row.Item is TableRowViewModel row &&
+            DataContext is MainViewModel viewModel &&
+            viewModel.TableViewer.IsCellReadOnly(row, eventArgs.Column.DisplayIndex))
+        {
+            eventArgs.Cancel = true;
+        }
     }
 
     private void TableGrid_OnPreviewMouseWheel(object sender, MouseWheelEventArgs eventArgs)

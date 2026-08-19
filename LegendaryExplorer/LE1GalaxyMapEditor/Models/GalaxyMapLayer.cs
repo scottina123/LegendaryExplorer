@@ -129,6 +129,13 @@ public sealed class GalaxyMapLayer
     public void SetSchema(CsvTableSchema schema)
     {
         ArgumentNullException.ThrowIfNull(schema);
+        if (_schemas.TryGetValue(schema.Table, out var existing) &&
+            existing.SourceIdentity is not null &&
+            schema.SourceIdentity is null)
+        {
+            throw new InvalidOperationException(
+                $"The identified {schema.Table} source schema cannot be replaced by an anonymous schema.");
+        }
         _schemas[schema.Table] = schema;
     }
 

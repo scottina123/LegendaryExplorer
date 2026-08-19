@@ -32,7 +32,7 @@ public sealed class GalaxyMapValidator
         ValidateModuleRanges(workspace, diagnostics);
         ValidateLayers(workspace, diagnostics);
         ValidateEffectiveDocument(workspace.EffectiveDocument, diagnostics, validateCollectionOrder: false);
-        return Order(diagnostics);
+        return Order(FocusOnActiveEdit(workspace, diagnostics));
     }
 
     public IReadOnlyList<ValidationDiagnostic> Validate(GalaxyMapDocument document)
@@ -41,6 +41,24 @@ public sealed class GalaxyMapValidator
         var diagnostics = new List<ValidationDiagnostic>();
         ValidateEffectiveDocument(document, diagnostics, validateCollectionOrder: true);
         return Order(diagnostics);
+    }
+
+    private static IEnumerable<ValidationDiagnostic> FocusOnActiveEdit(
+        GalaxyMapWorkspace workspace,
+        IEnumerable<ValidationDiagnostic> diagnostics)
+    {
+        var activeTag = workspace.ActiveModule?.Tag;
+        foreach (var diagnostic in diagnostics)
+        {
+            // Unsafe output matters across the mounted stack. Advice is useful only
+            // for the module being edited; inherited quirks are otherwise just noise.
+            if (diagnostic.Severity == ValidationSeverity.Error ||
+                (!string.IsNullOrWhiteSpace(activeTag) &&
+                 string.Equals(diagnostic.ModuleTag, activeTag, StringComparison.OrdinalIgnoreCase)))
+            {
+                yield return diagnostic;
+            }
+        }
     }
 
     private static void ValidateModuleRanges(
@@ -548,39 +566,6 @@ public sealed class GalaxyMapValidator
                     nameof(Planet.OrbitRing));
             }
 
-            if (planet.OrbitRing == 2 && (planet.SystemLevelType != 0 || planet.PlanetLevelType != 0))
-            {
-                AddForRow(diagnostics, planet, "TYPE-ASTEROID-BELT-COMBINATION", ValidationSeverity.Warning,
-                    "Vanilla asteroid belts use SystemLevelType 0 and PlanetLevelType 0.",
-                    nameof(Planet.OrbitRing));
-            }
-
-            if (planet.OrbitRing == 2)
-            {
-                foreach (var functionName in new[] { "VisibleFunction", "UsableFunction", "UsablePlanetFunction" })
-                {
-                    if (planet.ExtraFields.TryGetValue(functionName, out var function) && function != "975")
-                    {
-                        AddForRow(diagnostics, planet, "TYPE-ASTEROID-BELT-RULE", ValidationSeverity.Warning,
-                            $"All vanilla asteroid belts use function 975 for {functionName}; another value may expose the belt anchor.",
-                            functionName);
-                    }
-                }
-            }
-
-            if (planet.SystemLevelType == 2 && planet.OrbitRing != 1)
-            {
-                AddForRow(diagnostics, planet, "TYPE-RINGED-PLANET-ORBIT", ValidationSeverity.Warning,
-                    "A ringed planet normally uses OrbitRing 1.", nameof(Planet.OrbitRing));
-            }
-
-            if (planet.SystemLevelType == 1 && planet.PlanetLevelType is not 2 and not 4)
-            {
-                AddForRow(diagnostics, planet, "TYPE-ANOMALY-SELECTION", ValidationSeverity.Warning,
-                    "Anomalies and ships normally use PlanetLevelType 2; Citadel uses the special value 4.",
-                    nameof(Planet.PlanetLevelType));
-            }
-
             if (planet.SystemLevelType is < 0 or > 5)
             {
                 AddForRow(diagnostics, planet, "TYPE-SYSTEM-LEVEL", ValidationSeverity.Warning,
@@ -605,13 +590,6 @@ public sealed class GalaxyMapValidator
                 AddForRow(diagnostics, planet, "TYPE-PLANET-LEVEL-BROKEN", ValidationSeverity.Warning,
                     $"PlanetLevelType {planet.PlanetLevelType} is recognised by the schema but is known to be broken in LE1.",
                     nameof(Planet.PlanetLevelType));
-            }
-
-            if (planet.SystemLevelType != 2 && planet.RingColor != -1)
-            {
-                AddForRow(diagnostics, planet, "TYPE-RING-COLOR-NONRINGED", ValidationSeverity.Warning,
-                    "RingColor should be -1 unless SystemLevelType is 2 (ringed planet).",
-                    nameof(Planet.RingColor));
             }
 
             if (planet.RingColor is < int.MinValue or > uint.MaxValue)
@@ -684,7 +662,11 @@ public sealed class GalaxyMapValidator
             {
                 AddForRow(diagnostics, planet, "ACTIVEWORLD-DUPLICATE", ValidationSeverity.Error,
                     $"ActiveWorld {planet.ActiveWorld} is also used by Planet row {sameActiveWorld.RowId}.",
-                    nameof(Planet.ActiveWorld));
+                    nameof(Planet.ActiveWorld), repairTargets:
+                    [
+                        ValidationRepairTarget.For(sameActiveWorld, nameof(Planet.ActiveWorld)),
+                        ValidationRepairTarget.For(planet, nameof(Planet.ActiveWorld))
+                    ]);
             }
             else
             {
@@ -773,25 +755,31 @@ public sealed class GalaxyMapValidator
                 continue;
             }
 
+            var relationshipRepairs = new[]
+            {
+                ValidationRepairTarget.For(planet, CsvRowSnapshot.RowIdColumnName),
+                ValidationRepairTarget.For(plotPlanet, CsvRowSnapshot.RowIdColumnName)
+            };
+
             if (plotPlanet.Code != planet.ActiveWorld)
             {
                 AddForRow(diagnostics, plotPlanet, "PLOT-CODE-MISMATCH", ValidationSeverity.Error,
                     $"PlotPlanet Code {plotPlanet.Code} must equal the linked Planet's ActiveWorld {planet.ActiveWorld}.",
-                    nameof(PlotPlanetEntry.Code));
+                    nameof(PlotPlanetEntry.Code), repairTargets: relationshipRepairs);
             }
 
             if (plotPlanet.Name != planet.Name)
             {
                 AddForRow(diagnostics, plotPlanet, "PLOT-NAME-MISMATCH", ValidationSeverity.Warning,
                     $"PlotPlanet Name {plotPlanet.Name} differs from the linked Planet Name {planet.Name}.",
-                    nameof(PlotPlanetEntry.Name));
+                    nameof(PlotPlanetEntry.Name), repairTargets: relationshipRepairs);
             }
 
             if (!string.Equals(plotPlanet.NameText, planet.NameText, StringComparison.Ordinal))
             {
                 AddForRow(diagnostics, plotPlanet, "PLOT-NAMETEXT-MISMATCH", ValidationSeverity.Warning,
                     $"PlotPlanet NameText '{plotPlanet.NameText}' differs from the linked Planet '{planet.NameText}'.",
-                    nameof(PlotPlanetEntry.NameText));
+                    nameof(PlotPlanetEntry.NameText), repairTargets: relationshipRepairs);
             }
         }
     }
@@ -823,7 +811,7 @@ public sealed class GalaxyMapValidator
 
             if (references.Skip(1).Any())
             {
-                AddForRow(diagnostics, map, "MAP-SHARED", ValidationSeverity.Warning,
+                AddForRow(diagnostics, map, "MAP-SHARED", ValidationSeverity.Info,
                     $"Map row {map.RowId} is referenced by multiple Planets: " +
                     string.Join(", ", references.Select(planet => planet.RowId)) + ".",
                     "Row ID");
@@ -993,8 +981,16 @@ public sealed class GalaxyMapValidator
         ValidationSeverity severity,
         string message,
         string column,
-        string? moduleTag = null)
-        => diagnostics.Add(new ValidationDiagnostic(
+        string? moduleTag = null,
+        IReadOnlyList<ValidationRepairTarget>? repairTargets = null)
+    {
+        if (repairTargets is null && severity == ValidationSeverity.Error &&
+            ValidationRepairPolicy.IsManagedIdentity(row, column))
+        {
+            repairTargets = [ValidationRepairTarget.For(row, column)];
+        }
+
+        diagnostics.Add(new ValidationDiagnostic(
             code,
             severity,
             message,
@@ -1002,7 +998,9 @@ public sealed class GalaxyMapValidator
             row.Table.ToString(),
             row.RowId,
             column,
-            row.CsvSnapshot?.SourceRowNumber));
+            row.CsvSnapshot?.SourceRowNumber,
+            repairTargets));
+    }
 
     private static IReadOnlyList<ValidationDiagnostic> Order(IEnumerable<ValidationDiagnostic> diagnostics)
         => diagnostics.OrderByDescending(diagnostic => diagnostic.Severity)

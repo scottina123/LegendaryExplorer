@@ -26,6 +26,7 @@ public sealed class TableViewerViewModel : ObservableObject
     private readonly TableProjectionService _projection;
     private readonly Func<GalaxyMapRowKey, string, string, WorkflowResult> _applyEdit;
     private readonly Func<bool> _canEdit;
+    private readonly ValidationRepairPolicy _repairs;
     private readonly GalaxyMapTlkService? _tlk;
     private readonly Func<GalaxyMapModule, MELocalization> _localeForModule;
     private IReadOnlyList<TableColumn> _columns = [];
@@ -38,12 +39,14 @@ public sealed class TableViewerViewModel : ObservableObject
         TableProjectionService projection,
         Func<GalaxyMapRowKey, string, string, WorkflowResult> applyEdit,
         Func<bool> canEdit,
+        ValidationRepairPolicy? repairs = null,
         GalaxyMapTlkService? tlk = null,
         Func<GalaxyMapModule, MELocalization>? localeForModule = null)
     {
         _projection = projection ?? throw new ArgumentNullException(nameof(projection));
         _applyEdit = applyEdit ?? throw new ArgumentNullException(nameof(applyEdit));
         _canEdit = canEdit ?? throw new ArgumentNullException(nameof(canEdit));
+        _repairs = repairs ?? new ValidationRepairPolicy(() => []);
         _tlk = tlk;
         _localeForModule = localeForModule ?? (module => module.TlkLocale);
         Tabs = new ObservableCollection<TableTabViewModel>(TabOrder.Select(table =>
@@ -134,11 +137,27 @@ public sealed class TableViewerViewModel : ObservableObject
         OnPropertyChanged(nameof(EditingHint));
     }
 
-    public bool IsColumnReadOnly(TableColumn column)
-        => !IsEditingAvailable ||
-           string.Equals(column.Name, CsvRowSnapshot.RowIdColumnName, StringComparison.OrdinalIgnoreCase) ||
-           SelectedTable == GalaxyMapTable.Planet &&
-           string.Equals(column.Name, "ActiveWorld", StringComparison.OrdinalIgnoreCase);
+    public bool IsCellReadOnly(TableRowViewModel row, int columnIndex)
+        => !IsEditingAvailable || columnIndex < 0 || columnIndex >= row.Cells.Count ||
+           row.Cells[columnIndex].IsReadOnly;
+
+    public void RefreshIdentityEditability()
+    {
+        foreach (var row in Rows)
+        {
+            for (var index = 0; index < Columns.Count && index < row.Cells.Count; index++)
+            {
+                var column = Columns[index];
+                var cell = row.Cells[index];
+                var isManagedIdentity = ValidationRepairPolicy.IsManagedIdentity(row.Key.Table, column.Name);
+                var isIdentityRepair = isManagedIdentity &&
+                    _repairs.CanRepair(row.Key, cell.EffectiveModule, column.Name);
+                cell.SetIdentityState(
+                    isReadOnly: isManagedIdentity && !isIdentityRepair,
+                    isIdentityRepair: isIdentityRepair);
+            }
+        }
+    }
 
     public WorkflowResult CommitCellEdit(TableRowViewModel row, int columnIndex, string token)
     {
@@ -149,11 +168,11 @@ public sealed class TableViewerViewModel : ObservableObject
 
         var column = Columns[columnIndex];
         var cell = row.Cells[columnIndex];
-        if (IsColumnReadOnly(column))
+        if (IsCellReadOnly(row, columnIndex))
         {
             var message = !IsEditingAvailable
                 ? "Create or open a writable module before editing table cells."
-                : $"{column.Name} is managed by the editor and is read-only here.";
+                : $"{column.Name} is managed by the editor and only unlocks when validation offers it as a manual repair.";
             cell.SetValidationError(message);
             return WorkflowResult.Failure(message, row.Key);
         }
@@ -185,6 +204,9 @@ public sealed class TableViewerViewModel : ObservableObject
             columns.Select(column =>
             {
                 var cell = row.Cells[column.Name];
+                var isManagedIdentity = ValidationRepairPolicy.IsManagedIdentity(row.Key.Table, column.Name);
+                var isIdentityRepair = isManagedIdentity &&
+                    _repairs.CanRepair(row.Key, cell.EffectiveModule, column.Name);
                 return new TableCellViewModel(
                     cell.DisplayValue,
                     cell.EffectiveModuleTag,
@@ -192,7 +214,10 @@ public sealed class TableViewerViewModel : ObservableObject
                     cell.IsStaged,
                     cell.DiffersFromLowerInstance,
                     cell.OverrideChain.Count,
-                    ResolveTlkToolTip(column, cell, cell.EffectiveModule));
+                    ResolveTlkToolTip(column, cell, cell.EffectiveModule),
+                    effectiveModule: cell.EffectiveModule,
+                    isReadOnly: isManagedIdentity && !isIdentityRepair,
+                    isIdentityRepair: isIdentityRepair);
             }).ToArray());
 
     private string? ResolveTlkToolTip(TableColumn column, MergedTableCell cell, GalaxyMapModule module)
@@ -257,6 +282,8 @@ public sealed class TableCellViewModel : ObservableObject
 {
     private string _editValue;
     private string? _validationError;
+    private bool _isReadOnly;
+    private bool _isIdentityRepair;
 
     public TableCellViewModel(
         string displayValue,
@@ -265,7 +292,10 @@ public sealed class TableCellViewModel : ObservableObject
         bool isStaged,
         bool differsFromLowerInstance,
         int overrideCount,
-        string? tlkToolTipText = null)
+        string? tlkToolTipText = null,
+        GalaxyMapModule? effectiveModule = null,
+        bool isReadOnly = false,
+        bool isIdentityRepair = false)
     {
         DisplayValue = displayValue;
         _editValue = displayValue;
@@ -275,6 +305,9 @@ public sealed class TableCellViewModel : ObservableObject
         DiffersFromLowerInstance = differsFromLowerInstance;
         OverrideCount = overrideCount;
         TlkToolTipText = tlkToolTipText;
+        EffectiveModule = effectiveModule ?? GalaxyMapModule.BaseGame;
+        _isReadOnly = isReadOnly;
+        _isIdentityRepair = isIdentityRepair;
     }
 
     public string DisplayValue { get; }
@@ -285,11 +318,28 @@ public sealed class TableCellViewModel : ObservableObject
     }
 
     public string EffectiveModuleTag { get; }
+    public GalaxyMapModule EffectiveModule { get; }
     public ModuleColor EffectiveModuleColor { get; }
     public bool IsStaged { get; }
     public bool DiffersFromLowerInstance { get; }
     public int OverrideCount { get; }
     public string? TlkToolTipText { get; }
+    public bool IsReadOnly
+    {
+        get => _isReadOnly;
+        private set => SetProperty(ref _isReadOnly, value);
+    }
+    public bool IsIdentityRepair
+    {
+        get => _isIdentityRepair;
+        private set
+        {
+            if (SetProperty(ref _isIdentityRepair, value))
+            {
+                OnPropertyChanged(nameof(ToolTipText));
+            }
+        }
+    }
     public bool HasError => !string.IsNullOrWhiteSpace(ValidationError);
     public string? ValidationError
     {
@@ -321,7 +371,10 @@ public sealed class TableCellViewModel : ObservableObject
                 ? " This value differs from the next lower instance."
                 : string.Empty;
             var staged = IsStaged ? " This cell has an uncommitted change." : string.Empty;
-            var cellContext = provenance + overrides + comparison + staged;
+            var repair = IsIdentityRepair
+                ? " Validation has temporarily unlocked this managed identity for manual repair."
+                : string.Empty;
+            var cellContext = provenance + overrides + comparison + staged + repair;
             var toolTip = string.IsNullOrWhiteSpace(TlkToolTipText)
                 ? cellContext
                 : TlkToolTipText;
@@ -359,4 +412,10 @@ public sealed class TableCellViewModel : ObservableObject
     }
 
     internal void SetValidationError(string? error) => ValidationError = error;
+
+    internal void SetIdentityState(bool isReadOnly, bool isIdentityRepair)
+    {
+        IsReadOnly = isReadOnly;
+        IsIdentityRepair = isIdentityRepair;
+    }
 }

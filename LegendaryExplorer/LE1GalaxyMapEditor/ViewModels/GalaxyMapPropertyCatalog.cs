@@ -35,7 +35,7 @@ public static class GalaxyMapPropertyCatalog
             (_, "Y") => new("Map Y", "Confirmed: vertical position on this map, normally from 0 to 1."),
             (GalaxyMapTable.System, "CLUSTER") => new("Parent Cluster", "Confirmed: row ID of the Cluster containing this System."),
             (GalaxyMapTable.Planet, "SYSTEM") => new("Parent System", "Confirmed: row ID of the System containing this object."),
-            (GalaxyMapTable.Planet, "ACTIVEWORLD") => new("ActiveWorld ID", "Derived: Cluster suffix × 10,000 + System suffix × 100 + Planet suffix. The maximum supported value is 990999; the editor maintains it automatically."),
+            (GalaxyMapTable.Planet, "ACTIVEWORLD") => new("ActiveWorld ID", "Derived: Cluster suffix × 10,000 + System suffix × 100 + Planet suffix. The maximum supported value is 990999; the editor maintains it automatically, but unlocks an invalid value for manual repair."),
             (GalaxyMapTable.Planet, "DESCRIPTION") => new("Description (TLK)", "Confirmed: localised TLK string reference for the object description.", IsStrRef: true),
             (GalaxyMapTable.Planet, "BUTTONLABEL") => new("Use button (TLK)", "Confirmed: localised TLK string reference for the button used to interact with the object.", IsStrRef: true),
             (GalaxyMapTable.Planet, "MAP") => new("Linked Map", "Confirmed: Map-table row ID, or -1 when no destination is linked."),

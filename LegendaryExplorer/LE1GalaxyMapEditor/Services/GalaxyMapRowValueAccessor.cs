@@ -44,9 +44,6 @@ public static class GalaxyMapRowValueAccessor
             : known;
     }
 
-    public static bool IsReadOnly(GalaxyMapRow row, string column)
-        => IsRowId(column) || row is Planet && column.Equals("ActiveWorld", StringComparison.OrdinalIgnoreCase);
-
     public static string PropertyName(GalaxyMapRow row, string column)
     {
         if (IsRowId(column))
@@ -78,12 +75,16 @@ public static class GalaxyMapRowValueAccessor
         error = null;
         token ??= string.Empty;
 
-        if (IsReadOnly(row, column))
+        if (IsRowId(column))
         {
-            error = IsRowId(column)
-                ? "Row IDs are managed by the editor and cannot be changed in the table viewer."
-                : $"{column} is derived from managed galaxy-map relationships.";
-            return false;
+            if (!int.TryParse(token, NumberStyles.Integer, CultureInfo.InvariantCulture, out var rowId))
+            {
+                error = "Enter a whole number.";
+                return false;
+            }
+
+            value = rowId;
+            return true;
         }
 
         if (IsDoubleColumn(row, column))
@@ -153,9 +154,10 @@ public static class GalaxyMapRowValueAccessor
 
     public static void SetValue(GalaxyMapRow row, string column, object? value)
     {
-        if (IsReadOnly(row, column))
+        if (IsRowId(column))
         {
-            throw new InvalidOperationException($"{column} is read-only in the table viewer.");
+            row.RowId = (int)value!;
+            return;
         }
 
         switch (row)
@@ -303,6 +305,7 @@ public static class GalaxyMapRowValueAccessor
             case "Y": row.Y = (double)value!; return;
             case "NAME": row.Name = (int)value!; return;
             case "NAMETEXT": row.NameText = (string)value!; return;
+            case "ACTIVEWORLD": row.ActiveWorld = (int)value!; return;
             case "DESCRIPTION": row.Description = (int?)value; return;
             case "BUTTONLABEL": row.ButtonLabel = (int?)value; return;
             case "MAP": row.MapRowId = (int)value!; return;

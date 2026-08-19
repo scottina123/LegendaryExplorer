@@ -80,7 +80,7 @@
             <Style.Triggers>
                 <Trigger Property="IsSelected" Value="True">
                     <Setter Property="Background" Value="{DynamicResource LE1GMEBrush29485B}" />
-                    <Setter Property="Foreground" Value="White" />
+                    <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
                 </Trigger>
                 <Trigger Property="IsReadOnly" Value="True">
                     <Setter Property="Foreground" Value="{DynamicResource LE1GMEBrush8499A8}" />
@@ -97,7 +97,7 @@
         </Style>
 
         <Style x:Key="TwoDaCellEditorStyle" TargetType="TextBox">
-            <Setter Property="Foreground" Value="White" />
+            <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
             <Setter Property="FontWeight" Value="Bold" />
             <Setter Property="Background" Value="{DynamicResource LE1GMEBrush132838}" />
             <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
@@ -412,7 +412,7 @@
                                 <Style.Triggers>
                                     <Trigger Property="IsSelected" Value="True">
                                         <Setter Property="Background" Value="{DynamicResource AccentDimBrush}" />
-                                        <Setter Property="Foreground" Value="White" />
+                                        <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
                                     </Trigger>
                                 </Style.Triggers>
                             </Style>
@@ -566,7 +566,7 @@
                         <ItemsControl ItemsSource="{Binding Inspector.Sections}" Margin="10,8" Grid.IsSharedSizeScope="True">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
-                                    <Expander IsExpanded="{Binding IsExpanded, Mode=TwoWay}" Margin="0,0,0,7" Foreground="{DynamicResource TextBrush}">
+                                    <Expander IsExpanded="{Binding IsExpanded, Mode=TwoWay}" Margin="0,0,0,7" Foreground="{DynamicResource TextBrush}" Style="{StaticResource InspectorExpanderStyle}">
                                         <Expander.Header>
                                             <StackPanel>
                                                 <TextBlock Text="{Binding Title}" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource AccentBrush}" />
@@ -787,6 +787,7 @@
                       ScrollViewer.CanContentScroll="True"
                       ScrollViewer.HorizontalScrollBarVisibility="Auto"
                       ScrollViewer.VerticalScrollBarVisibility="Auto"
+                      BeginningEdit="TableGrid_OnBeginningEdit"
                       CellEditEnding="TableGrid_OnCellEditEnding"
                       PreviewMouseWheel="TableGrid_OnPreviewMouseWheel"
                       Loaded="TableGrid_OnLoaded">
@@ -821,7 +822,7 @@
                                             <DataTrigger Binding="{Binding IsSelected}" Value="True">
                                                 <Setter Property="Background" Value="{DynamicResource LE1GMEBrush244657}" />
                                                 <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
-                                                <Setter Property="Foreground" Value="White" />
+                                                <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
                                             </DataTrigger>
                                         </Style.Triggers>
                                     </Style>
@@ -997,7 +998,7 @@
                                     <DataTrigger Binding="{Binding IsTableViewVisible}" Value="True">
                                         <Setter Property="Background" Value="{DynamicResource LE1GMEBrush244657}" />
                                         <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
-                                        <Setter Property="Foreground" Value="White" />
+                                        <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
                                     </DataTrigger>
                                 </Style.Triggers>
                             </Style>

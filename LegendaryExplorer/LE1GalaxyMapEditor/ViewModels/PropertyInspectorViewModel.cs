@@ -22,9 +22,11 @@ public sealed class InspectorFieldViewModel : ObservableObject
 {
     private readonly Func<string, string?> _apply;
     private readonly Func<string, GalaxyMapStrRefPresentation>? _resolveStrRef;
+    private readonly Func<bool>? _readOnlyProvider;
     private string _value;
     private string? _validationError;
     private GalaxyMapStrRefPresentation? _strRefLookup;
+    private bool _isReadOnly;
 
     public InspectorFieldViewModel(
         string name,
@@ -34,7 +36,8 @@ public sealed class InspectorFieldViewModel : ObservableObject
         Func<string, string?> apply,
         InspectorEditorKind editorKind = InspectorEditorKind.Text,
         IReadOnlyList<InspectorFieldOption>? options = null,
-        GalaxyMapPropertyMetadata? metadata = null)
+        GalaxyMapPropertyMetadata? metadata = null,
+        Func<bool>? readOnlyProvider = null)
     {
         Name = name;
         DisplayName = metadata?.DisplayName ?? name;
@@ -44,7 +47,8 @@ public sealed class InspectorFieldViewModel : ObservableObject
         _value = value;
         _strRefLookup = _resolveStrRef?.Invoke(value);
         IsMain = isMain;
-        IsReadOnly = isReadOnly;
+        _isReadOnly = isReadOnly;
+        _readOnlyProvider = readOnlyProvider;
         _apply = apply;
         EditorKind = editorKind;
         Options = options ?? [];
@@ -63,7 +67,17 @@ public sealed class InspectorFieldViewModel : ObservableObject
         get => _strRefLookup;
         private set => SetProperty(ref _strRefLookup, value);
     }
-    public bool IsReadOnly { get; }
+    public bool IsReadOnly
+    {
+        get => _isReadOnly;
+        private set
+        {
+            if (SetProperty(ref _isReadOnly, value))
+            {
+                OnPropertyChanged(nameof(IsEditable));
+            }
+        }
+    }
     public bool IsEditable => !IsReadOnly;
     public InspectorEditorKind EditorKind { get; }
     public IReadOnlyList<InspectorFieldOption> Options { get; }
@@ -134,6 +148,14 @@ public sealed class InspectorFieldViewModel : ObservableObject
     }
 
     public bool HasError => !string.IsNullOrEmpty(ValidationError);
+
+    public void RefreshReadOnly()
+    {
+        if (_readOnlyProvider is not null)
+        {
+            IsReadOnly = _readOnlyProvider();
+        }
+    }
 }
 
 public sealed class InspectorActionViewModel
@@ -272,10 +294,18 @@ public sealed class PropertyInspectorViewModel : ObservableObject
         }
     }
 
+    public void RefreshIdentityEditability()
+    {
+        foreach (var field in Sections.SelectMany(section => section.Fields))
+        {
+            field.RefreshReadOnly();
+        }
+    }
+
     private void AddCluster(Cluster row)
     {
         Sections.Add(new InspectorSectionViewModel("Cluster", [
-            Int("Row ID", () => row.RowId, value => row.RowId = value),
+            RowId(row),
             Text("Label", () => row.Label, value => SetManaged(row, nameof(Cluster.Label), value, () => row.Label = value)),
             Int("Name", () => row.Name, value => SetManaged(row, nameof(Cluster.Name), value, () => row.Name = value)),
             Text("NameText", () => row.NameText, value => SetManaged(row, nameof(Cluster.NameText), value, () => row.NameText = value)),
@@ -297,7 +327,7 @@ public sealed class PropertyInspectorViewModel : ObservableObject
     private void AddSystem(GalaxySystem row)
     {
         Sections.Add(new InspectorSectionViewModel("System", [
-            Int("Row ID", () => row.RowId, value => row.RowId = value),
+            RowId(row),
             Text("Label", () => row.Label, value => SetManaged(row, nameof(GalaxySystem.Label), value, () => row.Label = value)),
             Int("Name", () => row.Name, value => SetManaged(row, nameof(GalaxySystem.Name), value, () => row.Name = value)),
             Text("NameText", () => row.NameText, value => SetManaged(row, nameof(GalaxySystem.NameText), value, () => row.NameText = value)),
@@ -320,14 +350,15 @@ public sealed class PropertyInspectorViewModel : ObservableObject
     private void AddPlanet(Planet row)
     {
         Sections.Add(new InspectorSectionViewModel("Planet", [
-            Int("Row ID", () => row.RowId, value => row.RowId = value),
+            RowId(row),
             Text("Label", () => row.Label, value => SetManaged(row, nameof(Planet.Label), value, () => row.Label = value)),
             Int("Name", () => row.Name, value => SetManaged(row, nameof(Planet.Name), value, () => row.Name = value)),
             Text("NameText", () => row.NameText, value => SetManaged(row, nameof(Planet.NameText), value, () => row.NameText = value)),
             NullableInt("Description", () => row.Description, value => row.Description = value),
             Dropdown("System", () => row.SystemRowId, value => SetManaged(row, nameof(Planet.SystemRowId), value, () => row.SystemRowId = value),
                 _workflow.GetOptions(InspectorOptionSet.Systems)),
-            ReadOnlyInt("ActiveWorld", () => row.ActiveWorld),
+            IdentityInt(row, nameof(Planet.ActiveWorld), nameof(Planet.ActiveWorld),
+                () => row.ActiveWorld, value => row.ActiveWorld = value),
             Dropdown("Map", () => row.MapRowId, value => row.MapRowId = value,
                 _workflow.GetOptions(InspectorOptionSet.Maps))
         ], detail: "Identity and managed relationships. ActiveWorld is derived from the numbered label chain."));
@@ -366,14 +397,14 @@ public sealed class PropertyInspectorViewModel : ObservableObject
         var fields = standalone
             ? new[]
             {
-                Int("Row ID", () => row.RowId, value => row.RowId = value, true),
+                RowId(row),
                 Int("Code", () => row.Code, value => row.Code = value, true),
                 Int("Name", () => row.Name, value => row.Name = value, true),
                 Text("NameText", () => row.NameText, value => row.NameText = value, true)
             }
             :
             [
-                ReadOnlyInt("Row ID", () => row.RowId),
+                RowId(row),
                 ReadOnlyInt("Code", () => row.Code),
                 ReadOnlyInt("Name", () => row.Name),
                 ReadOnlyText("NameText", () => row.NameText)
@@ -389,7 +420,7 @@ public sealed class PropertyInspectorViewModel : ObservableObject
     private void AddMap(MapEntry row, string sectionTitle, bool standalone)
     {
         Sections.Add(new InspectorSectionViewModel(sectionTitle, [
-            Int("Row ID", () => row.RowId, value => row.RowId = value, standalone),
+            RowId(row, standalone),
             Text("Map", () => row.MapName, value => row.MapName = value, standalone),
             Text("StartPoint", () => row.StartPoint, value => row.StartPoint = value, standalone)
         ]));
@@ -399,7 +430,7 @@ public sealed class PropertyInspectorViewModel : ObservableObject
     private void AddRelay(RelayConnection row)
     {
         Sections.Add(new InspectorSectionViewModel("Relay", [
-            Int("Row ID", () => row.RowId, value => row.RowId = value),
+            RowId(row),
             Dropdown("StartCluster", () => row.StartClusterEncoded, value => row.StartClusterEncoded = value,
                 _workflow.GetOptions(InspectorOptionSet.RelayClusters)),
             Dropdown("EndCluster", () => row.EndClusterEncoded, value => row.EndClusterEncoded = value,
@@ -588,6 +619,41 @@ public sealed class PropertyInspectorViewModel : ObservableObject
             return null;
         }, metadata: Metadata(name));
 
+    private InspectorFieldViewModel RowId(GalaxyMapRow row, bool isMain = true)
+        => IdentityInt(
+            row,
+            CsvRowSnapshot.RowIdColumnName,
+            nameof(GalaxyMapRow.RowId),
+            () => row.RowId,
+            value => SetManaged(row, nameof(GalaxyMapRow.RowId), value, () => row.RowId = value),
+            isMain);
+
+    private InspectorFieldViewModel IdentityInt(
+        GalaxyMapRow row,
+        string columnName,
+        string propertyName,
+        Func<int> getter,
+        Action<int> setter,
+        bool isMain = true)
+        => new(columnName, getter().ToString(CultureInfo.InvariantCulture), isMain,
+            IsIdentityReadOnly(row, columnName), value =>
+            {
+                if (!int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed))
+                {
+                    return "Enter a whole number.";
+                }
+
+                if (Validate(row, propertyName, parsed) is { } error)
+                {
+                    return error;
+                }
+
+                _workflow.BeginEdit();
+                setter(parsed);
+                return null;
+            }, metadata: GalaxyMapPropertyCatalog.Get(row.Table, columnName),
+            readOnlyProvider: () => IsIdentityReadOnly(row, columnName));
+
     private InspectorFieldViewModel ReadOnlyInt(string name, Func<int> getter, bool isMain = true)
         => new(name, getter().ToString(CultureInfo.InvariantCulture), isMain, true, _ => null,
             metadata: Metadata(name));
@@ -723,8 +789,10 @@ public sealed class PropertyInspectorViewModel : ObservableObject
         name.Equals("Colour2", StringComparison.OrdinalIgnoreCase) || name.Equals("FlareTint", StringComparison.OrdinalIgnoreCase) ||
         name.Equals("SunColor0", StringComparison.OrdinalIgnoreCase) || name.Equals("SunColor1", StringComparison.OrdinalIgnoreCase) || name.Equals("SunColor2", StringComparison.OrdinalIgnoreCase);
 
-    private bool IsReadOnly(string fieldName)
-        => string.Equals(fieldName, "Row ID", StringComparison.OrdinalIgnoreCase) || !_currentEditable;
+    private bool IsReadOnly(string _) => !_currentEditable;
+
+    private bool IsIdentityReadOnly(GalaxyMapRow row, string fieldName)
+        => !_currentEditable || !_workflow.CanRepairIdentity(row, fieldName);
 
     private static string DescribeRow(GalaxyMapRow row, string kind)
     {

@@ -64,7 +64,7 @@ public static class GalaxyMapDefaults
         row.SetExtraField("UsableFunction", (template == PlanetCreationTemplate.AsteroidBelt ? HiddenFunction : AlwaysFunction).ToString());
         row.SetExtraField("UsableParameter", "1");
         row.SetExtraField("UsablePlanetConditional", "1");
-        row.SetExtraField("UsablePlanetFunction", (template == PlanetCreationTemplate.AsteroidBelt ? HiddenFunction : AlwaysFunction).ToString());
+        row.SetExtraField("UsablePlanetFunction", HiddenFunction.ToString());
         row.SetExtraField("UsablePlanetParameter", "1");
     }
 
@@ -107,7 +107,8 @@ public static class GalaxyMapDefaults
         return upper switch
         {
             "VISIBLECONDITIONAL" or "USABLECONDITIONAL" or "USABLEPLANETCONDITIONAL" => "1",
-            "VISIBLEFUNCTION" or "USABLEFUNCTION" or "USABLEPLANETFUNCTION" => "974",
+            "VISIBLEFUNCTION" or "USABLEFUNCTION" => "974",
+            "USABLEPLANETFUNCTION" => "975",
             "VISIBLEPARAMETER" or "USABLEPARAMETER" or "USABLEPLANETPARAMETER" => "1",
             "EVENTPARAMETER" => "1",
             "OPACITY" => "1",

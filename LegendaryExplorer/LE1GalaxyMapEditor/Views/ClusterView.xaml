@@ -104,7 +104,7 @@
                                          Height="5" />
                             </Grid>
                             <Border x:Name="LabelBorder" Grid.Row="1" Background="{DynamicResource LE1GMEVisualBrushBD0A1018}" CornerRadius="2" Padding="5,2" HorizontalAlignment="Center">
-                                <TextBlock Text="{Binding DisplayName}" FontSize="14" FontWeight="SemiBold" TextAlignment="Center" TextWrapping="Wrap" />
+                                <TextBlock Text="{Binding DisplayName}" Foreground="{DynamicResource LE1GMEVisualBrushE8F0F5}" FontSize="14" FontWeight="SemiBold" TextAlignment="Center" TextWrapping="Wrap" />
                             </Border>
                         </Grid>
                     </Button>
@@ -129,7 +129,7 @@
         <Border HorizontalAlignment="Left" VerticalAlignment="Top" Margin="16" Background="{DynamicResource LE1GMEVisualBrushAA0A1018}" BorderBrush="{DynamicResource LE1GMEVisualBrush324655}" BorderThickness="1" CornerRadius="3" Padding="10,7" IsHitTestVisible="False">
             <StackPanel>
                 <TextBlock Text="CLUSTER VIEW" Foreground="{DynamicResource AccentBrush}" FontSize="10" FontWeight="Bold" />
-                <TextBlock Text="{Binding Cluster.DisplayName}" FontSize="14" FontWeight="SemiBold" Margin="0,4,0,0" />
+                <TextBlock Text="{Binding Cluster.DisplayName}" Foreground="{DynamicResource LE1GMEVisualBrushE8F0F5}" FontSize="14" FontWeight="SemiBold" Margin="0,4,0,0" />
                 <TextBlock Foreground="{DynamicResource MutedTextBrush}" FontSize="10" Margin="0,2,0,0">
                     <Run Text="{Binding Systems.Count, Mode=OneWay}" />
                     <Run Text=" systems  •  CSV-linked background" />

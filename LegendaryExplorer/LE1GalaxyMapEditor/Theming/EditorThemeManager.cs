@@ -119,6 +119,7 @@ public static class EditorThemeManager
         AddBrush(resources, "BorderBrush", ThemeColor(theme, "2A3A49", "3F3F46", "C8C8C8"));
         AddBrush(resources, "TextBrush", ThemeColor(theme, "E8F0F5", "E0E0E0", "1E1E1E"));
         AddBrush(resources, "MutedTextBrush", ThemeColor(theme, "8FA2B2", "B0B0B0", "5F5F5F"));
+        AddBrush(resources, "CanvasSummaryTextBrush", ThemeColor(theme, "8FA2B2", "B0B0B0", "B0B0B0"));
         AddBrush(resources, "AccentBrush", ThemeColor(theme, "47B4D5", "007ACC", "0067C0"));
         AddBrush(resources, "AccentDimBrush", ThemeColor(theme, "243E4B", "264F78", "D6EBF7"));
         AddBrush(resources, "DangerBrush", ThemeColor(theme, "ED5665", "F06A73", "C42B1C"));
@@ -284,7 +285,8 @@ public static class EditorThemeManager
     [
         "05080D", "14070D12", "16FFB640", "24F2A33A", "324655", "35FFD267",
         "42F2A33A", "667C8B", "778C9C", "880A1018", "AA0A1018", "BD0A1018",
-        "C4070B10", "E24A321B", "F2A33A", "FFD27A", "FFF3B34A", "FFFFD889"
+        "C4070B10", "E24A321B", "E8F0F5", "F2A33A", "FFD27A", "FFF3B34A",
+        "FFFFD889"
     ];
 
     private static readonly string[] VisualColorValues =

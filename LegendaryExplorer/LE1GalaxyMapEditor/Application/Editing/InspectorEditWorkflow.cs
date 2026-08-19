@@ -12,7 +12,10 @@ public sealed record MoveParentChange(
 
 public sealed record InspectorEditResult(bool Handled, WorkflowResult? Result = null);
 
-public sealed class InspectorEditWorkflow(EditorSession session, EditSessionService edits)
+public sealed class InspectorEditWorkflow(
+    EditorSession session,
+    EditSessionService edits,
+    Func<GalaxyMapRow, string, bool>? canRepairIdentity = null)
 {
     public const string MoveParentProperty = "MoveParent";
 
@@ -21,6 +24,7 @@ public sealed class InspectorEditWorkflow(EditorSession session, EditSessionServ
         var move = propertyName == MoveParentProperty && value is MoveParentChange;
         return row switch
         {
+            _ when propertyName == nameof(GalaxyMapRow.RowId) => true,
             _ when propertyName == "AvailabilityAlways" => true,
             Cluster => propertyName == nameof(Cluster.Label),
             GalaxySystem => propertyName is nameof(GalaxySystem.Label) or nameof(GalaxySystem.ClusterRowId) || move,
@@ -48,6 +52,7 @@ public sealed class InspectorEditWorkflow(EditorSession session, EditSessionServ
 
         column = row switch
         {
+            _ when propertyName == nameof(GalaxyMapRow.RowId) => CsvRowSnapshot.RowIdColumnName,
             Cluster when propertyName is nameof(Cluster.Label) or nameof(Cluster.X) or nameof(Cluster.Y) or
                 nameof(Cluster.Name) or nameof(Cluster.NameText) or nameof(Cluster.SphereSize) => propertyName,
             Cluster when propertyName == nameof(Cluster.Background) => "Background",
@@ -82,6 +87,26 @@ public sealed class InspectorEditWorkflow(EditorSession session, EditSessionServ
         }
 
         propertyName = NormalizePropertyName(row, propertyName);
+        if (propertyName == nameof(GalaxyMapRow.RowId))
+        {
+            var rowId = Convert.ToInt32(value, CultureInfo.InvariantCulture);
+            if (rowId < 0)
+            {
+                return "Row ID must be zero or greater.";
+            }
+
+            var physicalLayer = session.Workspace?.Layers.FirstOrDefault(layer =>
+                layer.Rows(row.Table).Any(candidate => ReferenceEquals(candidate, row))) ??
+                session.Workspace?.ModuleLayers.FirstOrDefault(layer =>
+                    string.Equals(layer.Module.Tag, row.Origin?.ModuleTag, StringComparison.OrdinalIgnoreCase));
+            if (physicalLayer?.Rows(row.Table).Any(candidate =>
+                    candidate.RowId == rowId && candidate.RowId != row.RowId) == true)
+            {
+                return $"{row.Table} row ID {rowId} is already used in {physicalLayer.Module.Tag}.";
+            }
+
+            return null;
+        }
         if (propertyName is nameof(Cluster.X) or nameof(Cluster.Y) && value is double coordinate &&
             coordinate is < 0 or > 1)
         {
@@ -294,6 +319,14 @@ public sealed class InspectorEditWorkflow(EditorSession session, EditSessionServ
             return WorkflowResult.Failure("This table is a read-only reference view.", inspectedRow.Key);
         }
 
+        if (ValidationRepairPolicy.IsManagedIdentity(inspectedRow, column) &&
+            canRepairIdentity?.Invoke(inspectedRow, column) != true)
+        {
+            return WorkflowResult.Failure(
+                $"{column} is managed by the editor and current validation does not offer it as a manual repair.",
+                inspectedRow.Key);
+        }
+
         if (!GalaxyMapRowValueAccessor.TryParse(inspectedRow, column, token, out var value, out var parseError))
         {
             return WorkflowResult.Failure(parseError ?? $"{column} is not a valid value.", inspectedRow.Key);
@@ -361,6 +394,11 @@ public sealed class InspectorEditWorkflow(EditorSession session, EditSessionServ
         if (ValidateEdit(inspectedRow, propertyName, value) is { } validationError)
         {
             return new InspectorEditResult(true, WorkflowResult.Failure(validationError));
+        }
+
+        if (propertyName == nameof(GalaxyMapRow.RowId))
+        {
+            return ApplyRowIdEdit(inspectedRow, Convert.ToInt32(value, CultureInfo.InvariantCulture), target, presentation);
         }
 
         var moveRequest = propertyName == MoveParentProperty ? value as MoveParentChange : null;
@@ -599,6 +637,45 @@ public sealed class InspectorEditWorkflow(EditorSession session, EditSessionServ
             mutationPresentation,
             moveRequest?.SuccessMessage ??
             $"Updated {inspectedRow.Table} row {inspectedRow.RowId} and {staged.Count - 1} dependent row(s).",
+            IsStructural: true));
+        return new InspectorEditResult(true, result);
+    }
+
+    private InspectorEditResult ApplyRowIdEdit(
+        GalaxyMapRow inspectedRow,
+        int newRowId,
+        GalaxyMapModule target,
+        HistoryPresentationState presentation)
+    {
+        var workspace = session.Workspace!;
+        workspace.SetActiveModule(target);
+        var layer = workspace.ActiveLayer!;
+        var oldKey = inspectedRow.Key;
+        var newKey = new GalaxyMapRowKey(inspectedRow.Table, newRowId);
+        var existing = layer.Find(oldKey);
+        if (existing is null)
+        {
+            return new InspectorEditResult(true, WorkflowResult.Failure(
+                $"Row ID can only be changed in the writable module that owns {oldKey}."));
+        }
+
+        var staged = GalaxyMapRowCloner.Clone(existing);
+        staged.RowId = newRowId;
+        staged.Origin = new GalaxyMapRowOrigin(target, workspace.GetOverrideChain(newKey).Any(candidate =>
+            !string.Equals(candidate.Origin?.ModuleTag, target.Tag, StringComparison.OrdinalIgnoreCase)));
+        GalaxyMapRowAuthoring.MarkDirty(staged, CsvRowSnapshot.RowIdColumnName);
+
+        var updatedPresentation = presentation with { SelectionKey = newKey };
+        var result = edits.ExecuteMutation(new EditMutationRequest(
+            [oldKey, newKey],
+            [inspectedRow.Table],
+            () =>
+            {
+                layer.Remove(existing);
+                layer.Upsert(staged);
+            },
+            updatedPresentation,
+            $"Changed {inspectedRow.Table} row ID {oldKey.RowId} to {newRowId} without altering references.",
             IsStructural: true));
         return new InspectorEditResult(true, result);
     }

@@ -1,5 +1,6 @@
 using System.Globalization;
 using LE1GalaxyMapEditor.Models;
+using LE1GalaxyMapEditor.Services;
 using LE1GalaxyMapEditor.ViewModels;
 using LE1GalaxyMapEditor.Workflows;
 using LE1GalaxyMapEditor.Workflows.Editing;
@@ -40,6 +41,7 @@ public sealed record InspectorActionDescriptor(
 public interface IInspectorPresentationWorkflow
 {
     bool CanEdit { get; }
+    bool CanRepairIdentity(GalaxyMapRow row, string columnName);
     void BeginEdit();
     string? ValidateEdit(GalaxyMapRow row, string propertyName, object? value);
     bool ApplyManagedEdit(GalaxyMapRow row, string propertyName, object? value);
@@ -52,6 +54,7 @@ public sealed class NullInspectorPresentationWorkflow : IInspectorPresentationWo
 {
     public static NullInspectorPresentationWorkflow Instance { get; } = new();
     public bool CanEdit => true;
+    public bool CanRepairIdentity(GalaxyMapRow row, string columnName) => false;
     public void BeginEdit() { }
     public string? ValidateEdit(GalaxyMapRow row, string propertyName, object? value) => null;
     public bool ApplyManagedEdit(GalaxyMapRow row, string propertyName, object? value) => false;
@@ -63,6 +66,7 @@ public sealed class NullInspectorPresentationWorkflow : IInspectorPresentationWo
 public sealed class MainInspectorPresentationWorkflow(
     EditorSession session,
     RelayWorkflow relay,
+    ValidationRepairPolicy repairs,
     Func<bool> canEdit,
     Action beginEdit,
     Func<GalaxyMapRow, string, object?, string?> validateEdit,
@@ -70,6 +74,9 @@ public sealed class MainInspectorPresentationWorkflow(
     Action<GalaxyMapRow, InspectorActionDescriptor> executeAction) : IInspectorPresentationWorkflow
 {
     public bool CanEdit => canEdit();
+
+    public bool CanRepairIdentity(GalaxyMapRow row, string columnName)
+        => repairs.CanRepair(row, columnName);
 
     public void BeginEdit() => beginEdit();
 
