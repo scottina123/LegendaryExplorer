@@ -36,6 +36,13 @@ namespace LegendaryExplorer.Dialogs
         /// The package file from which entries are loaded.
         /// </summary>
         private IMEPackage Pcc;
+
+        /// <summary>
+        /// Optional provider used by selectors whose entries are too expensive to load until the user searches.
+        /// </summary>
+        private Func<string, IEnumerable<object>> ItemSearch;
+
+        public Visibility ItemSearchVisibility => ItemSearch is null ? Visibility.Collapsed : Visibility.Visible;
         
         /// <summary>
         /// Gets the collection of all entries available for selection, filtered by the provided predicate.
@@ -52,10 +59,28 @@ namespace LegendaryExplorer.Dialogs
             {
                 if (SetProperty(ref searchText, value))
                 {
+                    if (ItemSearch is null)
+                    {
+                        UpdateFilteredEntries();
+                    }
+                }
+            }
+        }
+
+        private string itemFilterText;
+        public string ItemFilterText
+        {
+            get => itemFilterText;
+            set
+            {
+                if (SetProperty(ref itemFilterText, value) && ItemSearch is not null)
+                {
                     UpdateFilteredEntries();
                 }
             }
         }
+
+        public string ItemFilterHelpText => "Filter current results by string ID, TLK name, or text";
 
         private object selectedEntryItem;
         public object SelectedEntryItem
@@ -113,6 +138,25 @@ namespace LegendaryExplorer.Dialogs
             LoadCommands();
             InitializeComponent();
             UpdateFilteredEntries();
+            EntrySearchTextBox.Focus();
+        }
+
+        private EntrySelector(Window owner, Func<string, IEnumerable<object>> itemSearch, string directionsText = null,
+            string searchHelpText = null, string windowTitle = null)
+        {
+            Pcc = null;
+            ItemSearch = itemSearch ?? throw new ArgumentNullException(nameof(itemSearch));
+            SupportedInputTypes = SupportedTypes.ExportsAndImports;
+            DirectionsTextOverride = directionsText;
+            SearchHelpTextOverride = searchHelpText;
+            Owner = owner;
+            DataContext = this;
+            LoadCommands();
+            InitializeComponent();
+            if (!string.IsNullOrWhiteSpace(windowTitle))
+            {
+                Title = windowTitle;
+            }
             EntrySearchTextBox.Focus();
         }
 
@@ -217,6 +261,23 @@ namespace LegendaryExplorer.Dialogs
         }
 
         /// <summary>
+        /// Displays an item selector whose list is populated by the supplied search provider.
+        /// </summary>
+        public static T SearchForItem<T>(Window owner, Func<string, IEnumerable<T>> itemSearch,
+            string directionsText = null, string searchHelpText = null, string windowTitle = null) where T : class
+        {
+            ArgumentNullException.ThrowIfNull(itemSearch);
+            using var dlg = new EntrySelector(owner,
+                search => itemSearch(search)?.Cast<object>() ?? [], directionsText, searchHelpText, windowTitle);
+            if (dlg.ShowDialog() == true)
+            {
+                return dlg.SelectedEntryItem as T;
+            }
+
+            return null;
+        }
+
+        /// <summary>
         /// Gets the command for accepting the current selection.
         /// </summary>
         public ICommand OKCommand { get; set; }
@@ -263,7 +324,7 @@ namespace LegendaryExplorer.Dialogs
         private void UpdateFilteredEntries()
         {
             IEnumerable<object> filteredEntries = AllEntriesList;
-            string search = SearchText?.Trim();
+            string search = (ItemSearch is null ? SearchText : ItemFilterText)?.Trim();
             if (!string.IsNullOrWhiteSpace(search))
             {
                 filteredEntries = filteredEntries.Where(entry => EntryMatchesSearch(entry, search));
@@ -277,6 +338,42 @@ namespace LegendaryExplorer.Dialogs
             }
 
             SelectedEntryItem = FilteredEntriesList.FirstOrDefault();
+        }
+
+        private void RunItemSearch()
+        {
+            if (ItemSearch is null)
+            {
+                return;
+            }
+
+            string search = SearchText?.Trim();
+            if (string.IsNullOrWhiteSpace(search))
+            {
+                AllEntriesList.Clear();
+                FilteredEntriesList.Clear();
+                SelectedEntryItem = null;
+                return;
+            }
+
+            Cursor previousCursor = Mouse.OverrideCursor;
+            Mouse.OverrideCursor = Cursors.Wait;
+            try
+            {
+                List<object> results = ItemSearch(search).ToList();
+                AllEntriesList.ReplaceAll(results);
+                UpdateFilteredEntries();
+                if (SelectedEntryItem is not null)
+                {
+                    EntrySelectorListView.ScrollIntoView(SelectedEntryItem);
+                    EntryFilterTextBox.Focus();
+                    EntryFilterTextBox.SelectAll();
+                }
+            }
+            finally
+            {
+                Mouse.OverrideCursor = previousCursor;
+            }
         }
 
         private static bool EntryMatchesSearch(object item, string search)
@@ -416,6 +513,37 @@ namespace LegendaryExplorer.Dialogs
                     EntrySelectorListView.ScrollIntoView(SelectedEntryItem);
                 }
 
+                e.Handled = true;
+                return;
+            }
+
+            if (e.Key == Key.Enter && ItemSearch is not null)
+            {
+                RunItemSearch();
+                e.Handled = true;
+            }
+            else if (e.Key == Key.Enter && OKCommand.CanExecute(null))
+            {
+                OKCommand.Execute(null);
+            }
+        }
+
+        private void SearchButton_Click(object sender, RoutedEventArgs e)
+        {
+            RunItemSearch();
+        }
+
+        private void EntryFilterTextBox_KeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Down && FilteredEntriesList.Count > 0)
+            {
+                EntrySelectorListView.Focus();
+                if (SelectedEntryItem is null)
+                {
+                    SelectedEntryItem = FilteredEntriesList[0];
+                }
+
+                EntrySelectorListView.ScrollIntoView(SelectedEntryItem);
                 e.Handled = true;
                 return;
             }

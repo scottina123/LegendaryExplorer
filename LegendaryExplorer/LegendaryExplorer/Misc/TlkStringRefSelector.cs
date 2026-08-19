@@ -8,7 +8,6 @@ using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.TLK;
 using LegendaryExplorerCore.TLK.ME1;
 using LegendaryExplorerCore.TLK.ME2ME3;
-using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
 
 namespace LegendaryExplorer.Misc
 {
@@ -49,43 +48,17 @@ namespace LegendaryExplorer.Misc
 
         private static int? SelectStringRef(Window owner, MEGame game, IEnumerable<ME1TalkFile> localTalkFiles)
         {
-
-            var prompt = new PromptDialog("Enter text to find anywhere in a loaded TLK string:", "Find StringRef by Text", selectText: true)
-            {
-                Owner = owner,
-                WindowStartupLocation = WindowStartupLocation.CenterOwner
-            };
-            if (prompt.ShowDialog() != true)
-            {
-                return null;
-            }
-
-            string searchText = prompt.ResponseText;
-            if (string.IsNullOrWhiteSpace(searchText))
-            {
-                MessageBox.Show(owner, "Enter text to search for.", "TLK Text Search", MessageBoxButton.OK, MessageBoxImage.Information);
-                return null;
-            }
-
-            return SelectStringRef(owner, game, localTalkFiles, searchText);
-        }
-
-        private static int? SelectStringRef(Window owner, MEGame game, IEnumerable<ME1TalkFile> localTalkFiles, string searchText)
-        {
-            List<TlkTextMatch> matches = FindMatches(game, localTalkFiles, searchText);
-            if (matches.Count == 0)
-            {
-                MessageBox.Show(owner, "That text was not found in any loaded TLK for this game. Try another search.", "TLK Text Not Found", MessageBoxButton.OK, MessageBoxImage.Information);
-                return null;
-            }
-
-            return EntrySelector.GetItem(owner, matches, "Select the TLK string reference to apply:",
-                searchHelpText: "Filter results by string ID, TLK name, or text")?.StringRef;
+            return EntrySelector.SearchForItem(owner,
+                searchText => FindMatches(game, localTalkFiles, searchText),
+                "Search for and select the TLK string reference to apply:",
+                "Enter an exact string ID or TLK text, then press Enter or Search",
+                "TLK StringRef Picker")?.StringRef;
         }
 
         private static List<TlkTextMatch> FindMatches(MEGame game, IEnumerable<ME1TalkFile> localTalkFiles, string searchText)
         {
             var matches = new List<TlkTextMatch>();
+            bool searchByStringRef = int.TryParse(searchText, out int searchedStringRef);
 
             void AddME1Matches(IEnumerable<ME1TalkFile> talkFiles)
             {
@@ -93,7 +66,9 @@ namespace LegendaryExplorer.Misc
                 {
                     string source = $"{Path.GetFileName(talkFile.FilePath)} -> {talkFile.BioTlkSetName}.{talkFile.Name}";
                     matches.AddRange(talkFile.StringRefs
-                        .Where(stringRef => stringRef.Data?.Contains(searchText, StringComparison.OrdinalIgnoreCase) == true)
+                        .Where(stringRef => searchByStringRef
+                            ? stringRef.StringID == searchedStringRef
+                            : stringRef.Data?.Contains(searchText, StringComparison.OrdinalIgnoreCase) == true)
                         .Select(stringRef => new TlkTextMatch(stringRef.StringID, source, stringRef.Data)));
                 }
             }
@@ -102,9 +77,20 @@ namespace LegendaryExplorer.Misc
             {
                 foreach (ME2ME3LazyTLK talkFile in talkFiles)
                 {
-                    matches.AddRange(talkFile.FindIdsByData(searchText, StringComparison.OrdinalIgnoreCase)
-                        .Select(stringRef => new TlkTextMatch(stringRef, talkFile.FileName,
-                            talkFile.FindDataById(stringRef, returnNullIfNotFound: true, noQuotes: true))));
+                    if (searchByStringRef)
+                    {
+                        string text = talkFile.FindDataById(searchedStringRef, returnNullIfNotFound: true, noQuotes: true);
+                        if (text is not null)
+                        {
+                            matches.Add(new TlkTextMatch(searchedStringRef, talkFile.FileName, text));
+                        }
+                    }
+                    else
+                    {
+                        matches.AddRange(talkFile.FindIdsByData(searchText, StringComparison.OrdinalIgnoreCase)
+                            .Select(stringRef => new TlkTextMatch(stringRef, talkFile.FileName,
+                                talkFile.FindDataById(stringRef, returnNullIfNotFound: true, noQuotes: true))));
+                    }
                 }
             }
 
@@ -135,7 +121,7 @@ namespace LegendaryExplorer.Misc
 
         private sealed record TlkTextMatch(int StringRef, string Source, string Text)
         {
-            public override string ToString() => $"{StringRef}: {Source} — {Text.ReplaceLineEndings(" ")}";
+            public override string ToString() => $"{StringRef}: {Source} — {Text?.ReplaceLineEndings(" ")}";
         }
     }
 }

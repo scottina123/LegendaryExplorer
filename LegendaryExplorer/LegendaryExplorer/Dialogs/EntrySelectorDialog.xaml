@@ -52,12 +52,26 @@
 
         <StackPanel DockPanel.Dock="Top">
             <TextBlock Text="{Binding DirectionsText, FallbackValue=Select an export or import}" FontSize="14" FontWeight="Bold" TextWrapping="Wrap"/>
-            <TextBox x:Name="EntrySearchTextBox"
-                     Margin="0,8,0,0"
-                     Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
-                     KeyDown="EntrySearchTextBox_KeyDown"
-                     ToolTip="{Binding SearchHelpText}"/>
+            <DockPanel Margin="0,8,0,0" LastChildFill="True">
+                <Button DockPanel.Dock="Right"
+                        Content="Search"
+                        Margin="5,0,0,0"
+                        Padding="10,2"
+                        Visibility="{Binding ItemSearchVisibility}"
+                        Click="SearchButton_Click"/>
+                <TextBox x:Name="EntrySearchTextBox"
+                         Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                         KeyDown="EntrySearchTextBox_KeyDown"
+                         ToolTip="{Binding SearchHelpText}"/>
+            </DockPanel>
             <TextBlock Margin="0,4,0,8" Foreground="Gray" Text="{Binding SearchHelpText}"/>
+            <StackPanel Visibility="{Binding ItemSearchVisibility}">
+                <TextBox x:Name="EntryFilterTextBox"
+                         Text="{Binding ItemFilterText, UpdateSourceTrigger=PropertyChanged}"
+                         KeyDown="EntryFilterTextBox_KeyDown"
+                         ToolTip="{Binding ItemFilterHelpText}"/>
+                <TextBlock Margin="0,4,0,8" Foreground="Gray" Text="{Binding ItemFilterHelpText}"/>
+            </StackPanel>
         </StackPanel>
 
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" DockPanel.Dock="Bottom" Margin="0,10,0,0">
