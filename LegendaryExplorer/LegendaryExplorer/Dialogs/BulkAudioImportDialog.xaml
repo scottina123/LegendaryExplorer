@@ -18,13 +18,16 @@
                    TextWrapping="Wrap" Margin="0,0,0,8" Opacity="0.8"/>
 
         <TabControl Grid.Row="1" x:Name="GameAudioTabControl" Margin="0,0,0,5">
-            <TabItem x:Name="Le2AudioTab" Header="LE2 Audio">
+            <TabItem x:Name="Le2AudioTab" Header="LE2 Bank-wide Effects"
+                     ToolTip="These settings apply to every imported audio file unless that file selects an individual effect below.">
                 <Grid Margin="10,6">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
                     <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
@@ -74,15 +77,28 @@
                                        VerticalAlignment="Center"/>
                         </Grid>
                     </StackPanel>
+                    <Label Grid.Row="6" Grid.Column="0" Content="Loop Audio:" VerticalAlignment="Center"/>
+                    <CheckBox Grid.Row="6" Grid.Column="1" x:Name="Le2LoopAudioCheckBox" IsChecked="False"
+                              VerticalAlignment="Center" Margin="5,4"
+                              Content="Loop every imported audio file infinitely"
+                              ToolTip="Enables the LE2-authored IsLoopingEnabled property on every imported streamed Sound."/>
+                    <Label Grid.Row="7" Grid.Column="0" Content="Shared Stop Event:" VerticalAlignment="Center"/>
+                    <CheckBox Grid.Row="7" Grid.Column="1" x:Name="Le2CreateSharedStopEventCheckBox"
+                              IsChecked="False" VerticalAlignment="Center" Margin="5,4"
+                              Content="Create one Stop event for all imported audio"
+                              ToolTip="Creates one WwiseEvent named Stop with a stop action for every imported Sound object."/>
                 </Grid>
             </TabItem>
-            <TabItem x:Name="Le3AudioTab" Header="LE3 Audio">
+            <TabItem x:Name="Le3AudioTab" Header="LE3 Bank-wide Effects"
+                     ToolTip="These settings apply to every imported audio file unless that file selects an individual effect below.">
                 <Grid Margin="10,6">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
                     <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
@@ -128,6 +144,16 @@
                                        VerticalAlignment="Center"/>
                         </Grid>
                     </StackPanel>
+                    <Label Grid.Row="5" Grid.Column="0" Content="Loop Audio:" VerticalAlignment="Center"/>
+                    <CheckBox Grid.Row="5" Grid.Column="1" x:Name="Le3LoopAudioCheckBox" IsChecked="False"
+                              VerticalAlignment="Center" Margin="5,4"
+                              Content="Loop every imported audio file infinitely"
+                              ToolTip="Enables infinite looping on every imported LE3 Sound."/>
+                    <Label Grid.Row="6" Grid.Column="0" Content="Shared Stop Event:" VerticalAlignment="Center"/>
+                    <CheckBox Grid.Row="6" Grid.Column="1" x:Name="Le3CreateSharedStopEventCheckBox"
+                              IsChecked="False" VerticalAlignment="Center" Margin="5,4"
+                              Content="Create one Stop event for all imported audio"
+                              ToolTip="Creates one WwiseEvent named Stop with a stop action for every imported Sound object."/>
                 </Grid>
             </TabItem>
         </TabControl>
@@ -139,7 +165,6 @@
                     <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
                 <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
@@ -166,47 +191,98 @@
                 <Label Grid.Row="4" Grid.Column="0" Content="Gendered Events:" VerticalAlignment="Center"/>
                 <CheckBox Grid.Row="4" Grid.Column="1" x:Name="GenerateGenderedEventsCheckBox" IsChecked="True" VerticalAlignment="Center" Margin="5,4"
                           Content="Create both _m and _f event variants"/>
-                <Label Grid.Row="5" Grid.Column="0" Content="Loop Audio:" VerticalAlignment="Center"/>
-                <CheckBox Grid.Row="5" Grid.Column="1" x:Name="LoopAudioCheckBox" IsChecked="False" VerticalAlignment="Center" Margin="5,4"
-                          Content="Loop imported audio infinitely"/>
-                <Label Grid.Row="6" Grid.Column="0" x:Name="CreateFaceFXAssetsLabel" Content="FaceFX Assets:" VerticalAlignment="Center"/>
-                <CheckBox Grid.Row="6" Grid.Column="1" x:Name="CreateFaceFXAssetsCheckBox" IsChecked="False" VerticalAlignment="Center" Margin="5,4"
-                          Content="Create male and female FaceFX assets and generate lines" ToolTip="When checked, imported audio is placed under the top folder's audio package, and matching male/female FaceFXAnimSet assets are created under the top folder."/>
-                <Label Grid.Row="7" Grid.Column="0" x:Name="TopFolderLabel" Content="Top Folder:" VerticalAlignment="Center"/>
-                <TextBox Grid.Row="7" Grid.Column="1" x:Name="TopFolderTextBox" Text="NewAudioImport" Padding="4" Margin="5,2" TextChanged="TopFolderTextBox_TextChanged"
+                <Label Grid.Row="5" Grid.Column="0" x:Name="CreateFaceFXAssetsLabel" Content="FaceFX Assets:" VerticalAlignment="Center"/>
+                <CheckBox Grid.Row="5" Grid.Column="1" x:Name="CreateFaceFXAssetsCheckBox" IsChecked="False" VerticalAlignment="Center" Margin="5,4"
+                           Content="Create male and female FaceFX assets and generate lines" ToolTip="When checked, imported audio is placed under the top folder's audio package, and matching male/female FaceFXAnimSet assets are created under the top folder."/>
+                <Label Grid.Row="6" Grid.Column="0" x:Name="TopFolderLabel" Content="Top Folder:"
+                       VerticalAlignment="Center"
+                       IsEnabled="{Binding IsChecked, ElementName=CreateFaceFXAssetsCheckBox}"/>
+                <TextBox Grid.Row="6" Grid.Column="1" x:Name="TopFolderTextBox" Text="NewAudioImport" Padding="4" Margin="5,2" TextChanged="TopFolderTextBox_TextChanged"
+                         IsEnabled="{Binding IsChecked, ElementName=CreateFaceFXAssetsCheckBox}"
                          ToolTip="Package folder to create at the top level. The audio folder will be created under this folder, and generated FaceFX assets will be created directly under this folder."/>
-                <Label Grid.Row="8" Grid.Column="0" x:Name="FemaleFaceFXAssetNameLabel" Content="Female FaceFX:" VerticalAlignment="Center"/>
-                <TextBox Grid.Row="8" Grid.Column="1" x:Name="FemaleFaceFXAssetNameTextBox" Text="NewAudioImport_F" Padding="4" Margin="5,2" TextChanged="FaceFXAssetNameTextBox_TextChanged"
+                <Label Grid.Row="7" Grid.Column="0" x:Name="FemaleFaceFXAssetNameLabel" Content="Female FaceFX:"
+                       VerticalAlignment="Center"
+                       IsEnabled="{Binding IsChecked, ElementName=CreateFaceFXAssetsCheckBox}"/>
+                <TextBox Grid.Row="7" Grid.Column="1" x:Name="FemaleFaceFXAssetNameTextBox" Text="NewAudioImport_F" Padding="4" Margin="5,2" TextChanged="FaceFXAssetNameTextBox_TextChanged"
+                         IsEnabled="{Binding IsChecked, ElementName=CreateFaceFXAssetsCheckBox}"
                          ToolTip="Name of the generated female FaceFXAnimSet asset under the top folder."/>
-                <Label Grid.Row="9" Grid.Column="0" x:Name="MaleFaceFXAssetNameLabel" Content="Male FaceFX:" VerticalAlignment="Center"/>
-                <TextBox Grid.Row="9" Grid.Column="1" x:Name="MaleFaceFXAssetNameTextBox" Text="NewAudioImport_M" Padding="4" Margin="5,2" TextChanged="FaceFXAssetNameTextBox_TextChanged"
+                <Label Grid.Row="8" Grid.Column="0" x:Name="MaleFaceFXAssetNameLabel" Content="Male FaceFX:"
+                       VerticalAlignment="Center"
+                       IsEnabled="{Binding IsChecked, ElementName=CreateFaceFXAssetsCheckBox}"/>
+                <TextBox Grid.Row="8" Grid.Column="1" x:Name="MaleFaceFXAssetNameTextBox" Text="NewAudioImport_M" Padding="4" Margin="5,2" TextChanged="FaceFXAssetNameTextBox_TextChanged"
+                         IsEnabled="{Binding IsChecked, ElementName=CreateFaceFXAssetsCheckBox}"
                          ToolTip="Name of the generated male FaceFXAnimSet asset under the top folder."/>
             </Grid>
         </GroupBox>
 
-        <ListBox Grid.Row="3" x:Name="WavFilesListBox" ItemsSource="{Binding WavFileItems}"
-                 SelectionMode="Extended" Margin="0,0,0,5">
-            <ListBox.ItemContainerStyle>
-                <Style TargetType="ListBoxItem">
-                    <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
-                </Style>
-            </ListBox.ItemContainerStyle>
-            <ListBox.ItemTemplate>
-                <DataTemplate>
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="Auto"/>
-                        </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="{Binding FilePath}" TextTrimming="CharacterEllipsis"
-                                   VerticalAlignment="Center" ToolTip="{Binding FilePath}" Margin="2,0,10,0"/>
-                        <CheckBox Grid.Column="1" Content="Create stop event" IsChecked="{Binding CreateStopEvent}"
-                                  VerticalAlignment="Center" Margin="5,2"
-                                  ToolTip="Creates one stop event for this audio input. If gendered events are enabled, it stops every generated event variant for that input."/>
-                    </Grid>
-                </DataTemplate>
-            </ListBox.ItemTemplate>
-        </ListBox>
+        <GroupBox Grid.Row="3" Header="Audio Files (individual effects and settings)"
+                  Padding="4" Margin="0,0,0,5">
+            <ListBox x:Name="WavFilesListBox" ItemsSource="{Binding WavFileItems}"
+                     SelectionMode="Extended">
+                <ListBox.ItemContainerStyle>
+                    <Style TargetType="ListBoxItem">
+                        <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                    </Style>
+                </ListBox.ItemContainerStyle>
+                <ListBox.ItemTemplate>
+                    <DataTemplate>
+                        <Grid Margin="2">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+                            <TextBlock Grid.Column="0" Text="{Binding FilePath}" TextTrimming="CharacterEllipsis"
+                                       VerticalAlignment="Center" ToolTip="{Binding FilePath}" Margin="2,0,10,0"/>
+                            <CheckBox Grid.Column="1" Content="Create stop event" IsChecked="{Binding CreateStopEvent}"
+                                      VerticalAlignment="Center" Margin="5,2"
+                                      ToolTip="Creates one stop event for this audio input. If gendered events are enabled, it stops every generated event variant for that input."/>
+                            <StackPanel Grid.Row="1" Grid.ColumnSpan="2" Orientation="Horizontal" Margin="2,2,0,2">
+                                <TextBlock Text="Effect:" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                                <ComboBox Width="180" ItemsSource="{Binding DataContext.IndividualEffectOptions,
+                                                   RelativeSource={RelativeSource AncestorType={x:Type Window}}}"
+                                          DisplayMemberPath="Name" SelectedValuePath="Preset"
+                                          SelectedValue="{Binding EffectPreset}" Margin="0,0,10,0" Padding="3"
+                                          ToolTip="Select an effect for only this audio file, or inherit the bank-wide effect selected above."/>
+                                <CheckBox Content="Loop" IsChecked="{Binding LoopAudio}" VerticalAlignment="Center"
+                                          Margin="0,0,10,0" ToolTip="Loops only this audio file when bank-wide looping is disabled."/>
+                                <CheckBox Content="Duck" IsChecked="{Binding DuckAudio}" VerticalAlignment="Center"
+                                          Margin="0,0,10,0"
+                                          IsEnabled="{Binding DataContext.IsIndividualMusicDuckingAvailable,
+                                              RelativeSource={RelativeSource AncestorType={x:Type Window}}}"
+                                          ToolTip="Applies the shipped music ducking behavior only to this audio file. Available for music output buses."/>
+                                <CheckBox x:Name="IndividualAttenuationCheckBox" Content="Attenuation"
+                                          IsChecked="{Binding ApplyAttenuation}"
+                                          VerticalAlignment="Center"
+                                          ToolTip="Applies the game-specific attenuation preset only to this audio file. Its distance overrides the bank-wide distance when both are enabled."/>
+                            </StackPanel>
+                            <Grid Grid.Row="2" Grid.ColumnSpan="2" Margin="235,0,0,4"
+                                  IsEnabled="{Binding ElementName=IndividualAttenuationCheckBox, Path=IsChecked}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="105"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="Distance scale:" VerticalAlignment="Center"
+                                           Margin="0,0,8,0"/>
+                                <Slider Grid.Column="1" Minimum="10" Maximum="500"
+                                        Value="{Binding AttenuationScalePercent, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                        TickFrequency="25"
+                                        SmallChange="5" LargeChange="25" Margin="0,0,8,0"
+                                        AutoToolTipPlacement="TopLeft" AutoToolTipPrecision="0"
+                                        ToolTip="Scales this audio file's attenuation distances. 100% preserves the shipped curve."/>
+                                <TextBlock Grid.Column="2" Text="{Binding AttenuationScaleDisplay}"
+                                           VerticalAlignment="Center"/>
+                            </Grid>
+                        </Grid>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+        </GroupBox>
 
         <DockPanel Grid.Row="4" Margin="0,5,0,10">
             <StackPanel Orientation="Horizontal" DockPanel.Dock="Left">
@@ -214,9 +290,6 @@
                 <Button x:Name="RemoveSelectedButton" Content="Remove Selected" Width="120" Height="28" Click="RemoveSelectedButton_Click" Margin="0,0,5,0"/>
                 <Button x:Name="ClearAllButton" Content="Clear All" Width="90" Height="28" Click="ClearAllButton_Click"/>
             </StackPanel>
-            <CheckBox x:Name="CreateSharedStopEventCheckBox" Content="Create shared Stop event for all imported audio"
-                      IsChecked="False" VerticalAlignment="Center" HorizontalAlignment="Right"
-                      ToolTip="Creates one WwiseEvent named Stop with a stop action for every imported Sound object."/>
         </DockPanel>
 
         <TextBlock Grid.Row="5" x:Name="StatusTextBlock" Text="" TextWrapping="Wrap" Margin="0,0,0,5" Opacity="0.8"/>

@@ -126,6 +126,337 @@ public class BulkAudioImportDialogTests
     }
 
     [TestMethod]
+    public void IndividualEffectTargetsMatchEveryGeneratedLe3SoundVariant()
+    {
+        var wavPath = @"C:\Audio\Voice.wav";
+        var item = new BulkAudioImportDialog.AudioImportItem(wavPath)
+        {
+            EffectPreset = BulkAudioImportDialog.AudioEffectPreset.Radio
+        };
+        var method = typeof(BulkAudioImportDialog).GetMethod(
+            "BuildIndividualEffectTargets", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.IsNotNull(method);
+
+        var targets = method.Invoke(null,
+            [new List<BulkAudioImportDialog.AudioImportItem> { item }, MEGame.LE3, true]) as
+            Dictionary<uint, BulkAudioImportDialog.AudioEffectPreset>;
+        Assert.IsNotNull(targets);
+
+        var actorMixer = BuildActorMixerXml(MEGame.LE3, [wavPath], generateGenderedEvents: true);
+        var generatedSoundIds = actorMixer.Descendants("Sound")
+            .Select(sound => uint.Parse(sound.Attribute("ShortID")?.Value ?? "0"))
+            .ToArray();
+        CollectionAssert.AreEquivalent(generatedSoundIds, targets.Keys.ToArray());
+        Assert.IsTrue(targets.Values.All(preset =>
+            preset == BulkAudioImportDialog.AudioEffectPreset.Radio));
+    }
+
+    [TestMethod]
+    public void AppliesDifferentEffectsOnlyToSelectedLe3Sounds()
+    {
+        var sourceBankPath = FindWwiserTestBank("LE3_v134_1.bnk");
+        var testBankPath = Path.Combine(Path.GetTempPath(), $"LEX_Individual_Effects_Test_{Guid.NewGuid():N}.bnk");
+        File.Copy(sourceBankPath, testBankPath);
+
+        try
+        {
+            List<Sound> sourceSounds;
+            Dictionary<uint, uint[]> originalRootEffects;
+            using (var stream = File.OpenRead(testBankPath))
+            {
+                var sourceBank = WwiseBankParser.Deserialize(stream);
+                sourceSounds = sourceBank.HIRC.Items.Select(item => item.Item).OfType<Sound>().Take(2).ToList();
+                originalRootEffects = GetRootActorMixers(sourceBank).ToDictionary(
+                    actorMixer => actorMixer.Id,
+                    actorMixer => actorMixer.NodeBaseParameters.FxParams.FxChunks
+                        .Select(chunk => chunk.Id).ToArray());
+            }
+            Assert.HasCount(2, sourceSounds);
+
+            var targets = new Dictionary<uint, BulkAudioImportDialog.AudioEffectPreset>
+            {
+                [sourceSounds[0].Id] = BulkAudioImportDialog.AudioEffectPreset.Qec,
+                [sourceSounds[1].Id] = BulkAudioImportDialog.AudioEffectPreset.Helmet
+            };
+            var method = typeof(BulkAudioImportDialog).GetMethod(
+                "ApplyIndividualEffectsToBank", BindingFlags.NonPublic | BindingFlags.Static);
+            Assert.IsNotNull(method);
+
+            method.Invoke(null, [testBankPath, MEGame.LE3, targets]);
+            method.Invoke(null, [testBankPath, MEGame.LE3, targets]);
+
+            using var resultStream = File.OpenRead(testBankPath);
+            var bank = WwiseBankParser.Deserialize(resultStream);
+            var soundsById = bank.HIRC.Items.Select(item => item.Item).OfType<Sound>()
+                .ToDictionary(sound => sound.Id);
+            var qecSound = soundsById[sourceSounds[0].Id];
+            var helmetSound = soundsById[sourceSounds[1].Id];
+
+            CollectionAssert.AreEqual(new[] { QecFutzBoxEffectId, QecFlangerEffectId },
+                qecSound.NodeBaseParameters.FxParams.FxChunks.Select(chunk => chunk.Id).ToArray());
+            CollectionAssert.AreEqual(new[] { HelmetFilterEffectId },
+                helmetSound.NodeBaseParameters.FxParams.FxChunks.Select(chunk => chunk.Id).ToArray());
+            Assert.IsTrue(qecSound.NodeBaseParameters.FxParams.IsOverrideParentFx);
+            Assert.IsTrue(helmetSound.NodeBaseParameters.FxParams.IsOverrideParentFx);
+            Assert.IsFalse(qecSound.NodeBaseParameters.Rtpc.Rtpcs.Any(rtpc => rtpc.RtpcId == HelmetRtpcId));
+            Assert.HasCount(1, helmetSound.NodeBaseParameters.Rtpc.Rtpcs
+                .Where(rtpc => rtpc.RtpcId == HelmetRtpcId));
+
+            foreach (var rootActorMixer in GetRootActorMixers(bank))
+            {
+                CollectionAssert.AreEqual(originalRootEffects[rootActorMixer.Id],
+                    rootActorMixer.NodeBaseParameters.FxParams.FxChunks.Select(chunk => chunk.Id).ToArray());
+            }
+        }
+        finally
+        {
+            File.Delete(testBankPath);
+        }
+    }
+
+    [TestMethod]
+    public void AppliesHologramAndHelmetEffectsToIndividualLe2Sounds()
+    {
+        var sourceBankPath = FindWwiserTestBank("LE3_v134_1.bnk");
+        var testBankPath = Path.Combine(Path.GetTempPath(), $"LEX_LE2_Individual_Effects_Test_{Guid.NewGuid():N}.bnk");
+        File.Copy(sourceBankPath, testBankPath);
+
+        try
+        {
+            List<Sound> sourceSounds;
+            using (var stream = File.OpenRead(testBankPath))
+            {
+                var sourceBank = WwiseBankParser.Deserialize(stream);
+                sourceSounds = sourceBank.HIRC.Items.Select(item => item.Item).OfType<Sound>().Take(2).ToList();
+            }
+            Assert.HasCount(2, sourceSounds);
+
+            var targets = new Dictionary<uint, BulkAudioImportDialog.AudioEffectPreset>
+            {
+                [sourceSounds[0].Id] = BulkAudioImportDialog.AudioEffectPreset.Hologram,
+                [sourceSounds[1].Id] = BulkAudioImportDialog.AudioEffectPreset.Helmet
+            };
+            var method = typeof(BulkAudioImportDialog).GetMethod(
+                "ApplyIndividualEffectsToBank", BindingFlags.NonPublic | BindingFlags.Static);
+            Assert.IsNotNull(method);
+            method.Invoke(null, [testBankPath, MEGame.LE2, targets]);
+
+            using var resultStream = File.OpenRead(testBankPath);
+            var bank = WwiseBankParser.Deserialize(resultStream);
+            var soundsById = bank.HIRC.Items.Select(item => item.Item).OfType<Sound>()
+                .ToDictionary(sound => sound.Id);
+            var hologramSound = soundsById[sourceSounds[0].Id];
+            var helmetSound = soundsById[sourceSounds[1].Id];
+
+            CollectionAssert.AreEqual(new[] { Le2HologramEqEffectId, Le2HologramFilterEffectId },
+                hologramSound.NodeBaseParameters.FxParams.FxChunks.Select(chunk => chunk.Id).ToArray());
+            CollectionAssert.AreEqual(new[] { Le2HelmetEqEffectId, Le2HelmetFilterEffectId },
+                helmetSound.NodeBaseParameters.FxParams.FxChunks.Select(chunk => chunk.Id).ToArray());
+            Assert.IsFalse(hologramSound.NodeBaseParameters.Rtpc.Rtpcs
+                .Any(rtpc => rtpc.RtpcId == Le2HelmetRtpcId));
+            Assert.HasCount(2, helmetSound.NodeBaseParameters.Rtpc.Rtpcs
+                .Where(rtpc => rtpc.RtpcId == Le2HelmetRtpcId));
+        }
+        finally
+        {
+            File.Delete(testBankPath);
+        }
+    }
+
+    [TestMethod]
+    public void AppliesLoopDuckingAndAttenuationOnlyToSelectedLe3Sound()
+    {
+        var sourceBankPath = FindWwiserTestBank("LE3_v134_1.bnk");
+        var testBankPath = Path.Combine(Path.GetTempPath(), $"LEX_LE3_Individual_Settings_Test_{Guid.NewGuid():N}.bnk");
+        File.Copy(sourceBankPath, testBankPath);
+
+        try
+        {
+            uint selectedSoundId;
+            uint untouchedSoundId;
+            byte[] untouchedSoundBefore;
+            using (var stream = File.OpenRead(testBankPath))
+            {
+                var sourceBank = WwiseBankParser.Deserialize(stream);
+                var sourceSounds = sourceBank.HIRC.Items.Select(item => item.Item).OfType<Sound>().Take(2).ToList();
+                Assert.HasCount(2, sourceSounds);
+                selectedSoundId = sourceSounds[0].Id;
+                untouchedSoundId = sourceSounds[1].Id;
+                var untouchedContainer = sourceBank.HIRC.Items.Single(item => item.Item.Id == untouchedSoundId);
+                using var serializedUntouchedSound = new MemoryStream();
+                new BinarySerializer().Serialize(serializedUntouchedSound, untouchedContainer,
+                    BankSerializationContext.FromBank(sourceBank));
+                untouchedSoundBefore = serializedUntouchedSound.ToArray();
+            }
+
+            var targets = new Dictionary<uint, BulkAudioImportDialog.IndividualAudioSettings>
+            {
+                [selectedSoundId] = new()
+                {
+                    LoopAudio = true,
+                    DuckAudio = true,
+                    ApplyAttenuation = true,
+                    AttenuationDistanceScale = 1.5d
+                }
+            };
+            var method = typeof(BulkAudioImportDialog).GetMethod(
+                "ApplyIndividualAudioSettingsToBank", BindingFlags.NonPublic | BindingFlags.Static);
+            Assert.IsNotNull(method);
+            method.Invoke(null, [testBankPath, MEGame.LE3, targets, true, true, true]);
+            method.Invoke(null, [testBankPath, MEGame.LE3, targets, true, true, true]);
+
+            using var resultStream = File.OpenRead(testBankPath);
+            var bank = WwiseBankParser.Deserialize(resultStream);
+            var selectedSound = bank.HIRC.Items.Select(item => item.Item).OfType<Sound>()
+                .Single(sound => sound.Id == selectedSoundId);
+            var initialParams = selectedSound.NodeBaseParameters.InitialParams62;
+            Assert.IsTrue(initialParams.ParameterIds.Any(parameter => parameter.PropValue == PropId.Loop));
+            Assert.IsTrue(initialParams.ParameterIds.Any(parameter => parameter.PropValue == PropId.AttenuationID));
+            Assert.IsTrue(selectedSound.NodeBaseParameters.PositioningChunk.Mode
+                .HasFlag(SpatializationMode.EnableAttenuation));
+            int attenuationReferenceIndex = initialParams.ParameterIds.FindIndex(parameter =>
+                parameter.PropValue == PropId.AttenuationID);
+            var attenuationReference = initialParams.ParameterValues[attenuationReferenceIndex];
+            uint attenuationId = attenuationReference.StoredAsFloat
+                ? BitConverter.SingleToUInt32Bits(attenuationReference.Float)
+                : attenuationReference.Integer;
+            var attenuation = bank.HIRC.Items.Single(item => item.Item.Id == attenuationId).Item as Attenuation;
+            Assert.IsNotNull(attenuation);
+            Assert.AreEqual(105f, attenuation.Curves.SelectMany(curve => curve.Graph).Max(point => point.From),
+                0.001f);
+            var duckingGroup = selectedSound.NodeBaseParameters.StateChunk.GroupChunks
+                .Single(group => group.Id == MusicDuckingStateGroupId);
+            Assert.IsTrue(duckingGroup.StateGroup.States.Any(state =>
+                state.Id == MusicDuckingStateId && state.StateInstanceId == MusicDuckingStateInstanceId));
+
+            var untouchedContainerAfter = bank.HIRC.Items.Single(item => item.Item.Id == untouchedSoundId);
+            using var serializedUntouchedSoundAfter = new MemoryStream();
+            new BinarySerializer().Serialize(serializedUntouchedSoundAfter, untouchedContainerAfter,
+                BankSerializationContext.FromBank(bank));
+            CollectionAssert.AreEqual(untouchedSoundBefore, serializedUntouchedSoundAfter.ToArray());
+        }
+        finally
+        {
+            File.Delete(testBankPath);
+        }
+    }
+
+    [TestMethod]
+    public void IndividualAttenuationSlidersCreateIndependentDistances()
+    {
+        var sourceBankPath = FindWwiserTestBank("LE3_v134_1.bnk");
+        var testBankPath = Path.Combine(Path.GetTempPath(), $"LEX_LE3_Individual_Attenuation_Test_{Guid.NewGuid():N}.bnk");
+        File.Copy(sourceBankPath, testBankPath);
+
+        try
+        {
+            List<uint> selectedSoundIds;
+            using (var stream = File.OpenRead(testBankPath))
+            {
+                var sourceBank = WwiseBankParser.Deserialize(stream);
+                selectedSoundIds = sourceBank.HIRC.Items.Select(item => item.Item).OfType<Sound>()
+                    .Select(sound => sound.Id).Take(2).ToList();
+            }
+            Assert.HasCount(2, selectedSoundIds);
+
+            var targets = new Dictionary<uint, BulkAudioImportDialog.IndividualAudioSettings>
+            {
+                [selectedSoundIds[0]] = new() { ApplyAttenuation = true, AttenuationDistanceScale = 0.5d },
+                [selectedSoundIds[1]] = new() { ApplyAttenuation = true, AttenuationDistanceScale = 2d }
+            };
+            var method = typeof(BulkAudioImportDialog).GetMethod(
+                "ApplyIndividualAudioSettingsToBank", BindingFlags.NonPublic | BindingFlags.Static);
+            Assert.IsNotNull(method);
+            method.Invoke(null, [testBankPath, MEGame.LE3, targets, false, false, true]);
+            method.Invoke(null, [testBankPath, MEGame.LE3, targets, false, false, true]);
+
+            using var resultStream = File.OpenRead(testBankPath);
+            var bank = WwiseBankParser.Deserialize(resultStream);
+            var selectedSounds = bank.HIRC.Items.Select(item => item.Item).OfType<Sound>()
+                .Where(sound => selectedSoundIds.Contains(sound.Id))
+                .ToDictionary(sound => sound.Id);
+
+            uint GetAttenuationId(Sound sound)
+            {
+                var initialParams = sound.NodeBaseParameters.InitialParams62;
+                int index = initialParams.ParameterIds.FindIndex(parameter =>
+                    parameter.PropValue == PropId.AttenuationID);
+                Assert.AreNotEqual(-1, index);
+                var value = initialParams.ParameterValues[index];
+                return value.StoredAsFloat ? BitConverter.SingleToUInt32Bits(value.Float) : value.Integer;
+            }
+
+            uint firstAttenuationId = GetAttenuationId(selectedSounds[selectedSoundIds[0]]);
+            uint secondAttenuationId = GetAttenuationId(selectedSounds[selectedSoundIds[1]]);
+            Assert.AreNotEqual(firstAttenuationId, secondAttenuationId);
+
+            var firstAttenuation = bank.HIRC.Items.Single(item => item.Item.Id == firstAttenuationId).Item as Attenuation;
+            var secondAttenuation = bank.HIRC.Items.Single(item => item.Item.Id == secondAttenuationId).Item as Attenuation;
+            Assert.IsNotNull(firstAttenuation);
+            Assert.IsNotNull(secondAttenuation);
+            Assert.AreEqual(35f,
+                firstAttenuation.Curves.SelectMany(curve => curve.Graph).Max(point => point.From), 0.001f);
+            Assert.AreEqual(140f,
+                secondAttenuation.Curves.SelectMany(curve => curve.Graph).Max(point => point.From), 0.001f);
+        }
+        finally
+        {
+            File.Delete(testBankPath);
+        }
+    }
+
+    [TestMethod]
+    public void Le2IndividualDuckingEventsTargetEverySelectedSound()
+    {
+        var sourceBankPath = FindWwiserTestBank("LE3_v134_1.bnk");
+        var testBankPath = Path.Combine(Path.GetTempPath(), $"LEX_LE2_Individual_Ducking_Test_{Guid.NewGuid():N}.bnk");
+        File.Copy(sourceBankPath, testBankPath);
+
+        try
+        {
+            List<uint> selectedSoundIds;
+            using (var stream = File.OpenRead(testBankPath))
+            {
+                var sourceBank = WwiseBankParser.Deserialize(stream);
+                selectedSoundIds = sourceBank.HIRC.Items.Select(item => item.Item).OfType<Sound>()
+                    .Select(sound => sound.Id).Take(2).OrderBy(id => id).ToList();
+            }
+            Assert.HasCount(2, selectedSoundIds);
+
+            var targets = selectedSoundIds.ToDictionary(
+                soundId => soundId,
+                _ => new BulkAudioImportDialog.IndividualAudioSettings { DuckAudio = true });
+            var method = typeof(BulkAudioImportDialog).GetMethod(
+                "ApplyIndividualAudioSettingsToBank", BindingFlags.NonPublic | BindingFlags.Static);
+            Assert.IsNotNull(method);
+            method.Invoke(null, [testBankPath, MEGame.LE2, targets, false, true, false]);
+            method.Invoke(null, [testBankPath, MEGame.LE2, targets, false, true, false]);
+
+            using var resultStream = File.OpenRead(testBankPath);
+            var bank = WwiseBankParser.Deserialize(resultStream);
+            var duckEvent = bank.HIRC.Items.Single(item => item.Item.Id == Le2MusicDuckEventId).Item as HircEvent;
+            var resetEvent = bank.HIRC.Items.Single(item => item.Item.Id == Le2MusicResetEventId).Item as HircEvent;
+            Assert.IsNotNull(duckEvent);
+            Assert.IsNotNull(resetEvent);
+            Assert.HasCount(2, duckEvent.ActionIds);
+            Assert.HasCount(2, resetEvent.ActionIds);
+
+            var duckTargets = duckEvent.ActionIds.Select(actionId =>
+                ((HircAction)bank.HIRC.Items.Single(item => item.Item.Id == actionId).Item).TargetId)
+                .OrderBy(id => id).ToArray();
+            var resetTargets = resetEvent.ActionIds.Select(actionId =>
+                ((HircAction)bank.HIRC.Items.Single(item => item.Item.Id == actionId).Item).TargetId)
+                .OrderBy(id => id).ToArray();
+            CollectionAssert.AreEqual(selectedSoundIds, duckTargets);
+            CollectionAssert.AreEqual(selectedSoundIds, resetTargets);
+        }
+        finally
+        {
+            File.Delete(testBankPath);
+        }
+    }
+
+    [TestMethod]
     public void AppliesExactHackettQecEffectChainToLe3Bank()
     {
         var sourceBankPath = FindWwiserTestBank("LE3_v134_1.bnk");

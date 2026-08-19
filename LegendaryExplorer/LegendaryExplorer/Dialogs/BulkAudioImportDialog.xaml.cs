@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
@@ -25,16 +26,42 @@ using LegendaryExplorerCore.Helpers;
 using ME3Tweaks.Wwiser;
 using ME3Tweaks.Wwiser.Model.ParameterNode;
 using WwiserActorMixer = ME3Tweaks.Wwiser.Model.Hierarchy.ActorMixer;
+using WwiserIHasNode = ME3Tweaks.Wwiser.Model.Hierarchy.IHasNode;
+using WwiserSound = ME3Tweaks.Wwiser.Model.Hierarchy.Sound;
 
 namespace LegendaryExplorer.Dialogs
 {
-    public partial class BulkAudioImportDialog : Window
+    public partial class BulkAudioImportDialog : Window, INotifyPropertyChanged
     {
         public ObservableCollection<AudioImportItem> WavFileItems { get; } = new();
         public IEnumerable<string> WavFiles => WavFileItems.Select(item => item.FilePath);
 
-        public sealed class AudioImportItem
+        public enum AudioEffectPreset
         {
+            BankWide,
+            Radio,
+            Qec,
+            Helmet,
+            Hologram
+        }
+
+        public sealed class AudioEffectOption
+        {
+            public AudioEffectOption(string name, AudioEffectPreset preset)
+            {
+                Name = name;
+                Preset = preset;
+            }
+
+            public string Name { get; }
+            public AudioEffectPreset Preset { get; }
+        }
+
+        public sealed class AudioImportItem : INotifyPropertyChanged
+        {
+            private bool _duckAudio;
+            private double _attenuationScalePercent = 100d;
+
             public AudioImportItem(string filePath)
             {
                 FilePath = filePath;
@@ -42,7 +69,61 @@ namespace LegendaryExplorer.Dialogs
 
             public string FilePath { get; }
             public bool CreateStopEvent { get; set; }
+            public AudioEffectPreset EffectPreset { get; set; } = AudioEffectPreset.BankWide;
+            public bool LoopAudio { get; set; }
+            public bool ApplyAttenuation { get; set; }
+
+            public double AttenuationScalePercent
+            {
+                get => _attenuationScalePercent;
+                set
+                {
+                    if (Math.Abs(_attenuationScalePercent - value) < double.Epsilon)
+                    {
+                        return;
+                    }
+
+                    _attenuationScalePercent = value;
+                    PropertyChanged?.Invoke(this,
+                        new PropertyChangedEventArgs(nameof(AttenuationScalePercent)));
+                    PropertyChanged?.Invoke(this,
+                        new PropertyChangedEventArgs(nameof(AttenuationScaleDisplay)));
+                }
+            }
+
+            public string AttenuationScaleDisplay =>
+                $"{AttenuationScalePercent:0}% " +
+                $"({WwiseBankEffectPresets.StandardAttenuationOriginalMaxDistance * AttenuationScalePercent / 100d:0.#} max)";
+
+            public bool DuckAudio
+            {
+                get => _duckAudio;
+                set
+                {
+                    if (_duckAudio == value)
+                    {
+                        return;
+                    }
+
+                    _duckAudio = value;
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(DuckAudio)));
+                }
+            }
+
+            public event PropertyChangedEventHandler PropertyChanged;
         }
+
+        public sealed class IndividualAudioSettings
+        {
+            public bool LoopAudio { get; set; }
+            public bool DuckAudio { get; set; }
+            public bool ApplyAttenuation { get; set; }
+            public double AttenuationDistanceScale { get; set; } = 1d;
+        }
+
+        public IReadOnlyList<AudioEffectOption> IndividualEffectOptions { get; }
+        public bool IsIndividualMusicDuckingAvailable { get; private set; }
+        public event PropertyChangedEventHandler PropertyChanged;
 
         private static readonly string[] Le3OutputBuses =
         {
@@ -185,6 +266,7 @@ namespace LegendaryExplorer.Dialogs
             _allowFaceFxAssetCreation = allowFaceFxAssetCreation;
 
             bool isLe2 = _package.Game == MEGame.LE2;
+            IndividualEffectOptions = GetIndividualEffectOptions(_package.Game);
             OutputBuses.AddRange(isLe2 ? Le2OutputBuses : Le3OutputBuses);
             SelectedOutputBus = isLe2 ? Le2ConversationOutputBus : ConversationOutputBus;
 
@@ -199,10 +281,6 @@ namespace LegendaryExplorer.Dialogs
             GenerateGenderedEventsCheckBox.ToolTip = isLe2
                 ? "Creates *_m_Play and *_f_Play event variants. A single LE2 Sound can back both variants."
                 : "Creates *_m_Play and *_f_Play event variants, each targeting its matching LE3 Sound.";
-            LoopAudioCheckBox.ToolTip = isLe2
-                ? "Enables the LE2-authored IsLoopingEnabled property on each streamed Sound."
-                : "Enables infinite looping on each streamed LE3 Sound.";
-
             UpdateOutputBusOptions();
 
             if (!_allowFaceFxAssetCreation)
@@ -372,6 +450,20 @@ namespace LegendaryExplorer.Dialogs
             bool defaultsToHelmetEffect = DefaultsToHelmetEffect(_package.Game, outputBus);
             bool supportsMusicDucking = SupportsMusicDucking(_package.Game, outputBus);
 
+            if (IsIndividualMusicDuckingAvailable != supportsMusicDucking)
+            {
+                IsIndividualMusicDuckingAvailable = supportsMusicDucking;
+                PropertyChanged?.Invoke(this,
+                    new PropertyChangedEventArgs(nameof(IsIndividualMusicDuckingAvailable)));
+            }
+            if (!supportsMusicDucking)
+            {
+                foreach (var item in WavFileItems)
+                {
+                    item.DuckAudio = false;
+                }
+            }
+
             HelmetEffectCheckBox.IsEnabled = isLe3;
             RadioEffectCheckBox.IsEnabled = isLe3;
             QecEffectCheckBox.IsEnabled = isLe3;
@@ -434,6 +526,105 @@ namespace LegendaryExplorer.Dialogs
              outputBus.StartsWith("Mus-", StringComparison.OrdinalIgnoreCase));
 
         private static bool SupportsStandardAttenuation(MEGame game) => game is MEGame.LE2 or MEGame.LE3;
+
+        private static IReadOnlyList<AudioEffectOption> GetIndividualEffectOptions(MEGame game) => game switch
+        {
+            MEGame.LE2 =>
+            [
+                new("Bank-wide/default", AudioEffectPreset.BankWide),
+                new("LE2 radio", AudioEffectPreset.Radio),
+                new("Helmet", AudioEffectPreset.Helmet),
+                new("Hologram", AudioEffectPreset.Hologram)
+            ],
+            MEGame.LE3 =>
+            [
+                new("Bank-wide/default", AudioEffectPreset.BankWide),
+                new("BioWare radio", AudioEffectPreset.Radio),
+                new("Hackett QEC", AudioEffectPreset.Qec),
+                new("Helmet", AudioEffectPreset.Helmet)
+            ],
+            _ => [new("Bank-wide/default", AudioEffectPreset.BankWide)]
+        };
+
+        private static Dictionary<uint, AudioEffectPreset> BuildIndividualEffectTargets(
+            IReadOnlyCollection<AudioImportItem> audioImportItems, MEGame game, bool generateGenderedEvents)
+        {
+            var targets = new Dictionary<uint, AudioEffectPreset>();
+            var wavFiles = audioImportItems.Select(item => item.FilePath).ToList();
+            var pairedGenderBases = generateGenderedEvents
+                ? GetBasesWithBothGenderedInputs(wavFiles, game)
+                : [];
+
+            foreach (var item in audioImportItems.Where(item => item.EffectPreset != AudioEffectPreset.BankWide))
+            {
+                var soundName = Path.GetFileNameWithoutExtension(item.FilePath);
+                foreach (var targetSoundName in GetGeneratedSoundNamesForInput(soundName, pairedGenderBases,
+                             game, generateGenderedEvents))
+                {
+                    uint targetSoundId = GenerateShortId(targetSoundName);
+                    if (targets.TryGetValue(targetSoundId, out var existingPreset) &&
+                        existingPreset != item.EffectPreset)
+                    {
+                        throw new InvalidOperationException(
+                            $"Audio inputs that generate Sound ID 0x{targetSoundId:X8} select conflicting individual effects.");
+                    }
+
+                    targets[targetSoundId] = item.EffectPreset;
+                }
+            }
+
+            return targets;
+        }
+
+        private static Dictionary<uint, IndividualAudioSettings> BuildIndividualAudioSettingTargets(
+            IReadOnlyCollection<AudioImportItem> audioImportItems, MEGame game, bool generateGenderedEvents)
+        {
+            var targets = new Dictionary<uint, IndividualAudioSettings>();
+            var wavFiles = audioImportItems.Select(item => item.FilePath).ToList();
+            var pairedGenderBases = generateGenderedEvents
+                ? GetBasesWithBothGenderedInputs(wavFiles, game)
+                : [];
+
+            foreach (var item in audioImportItems.Where(item =>
+                         item.LoopAudio || item.DuckAudio || item.ApplyAttenuation))
+            {
+                var soundName = Path.GetFileNameWithoutExtension(item.FilePath);
+                foreach (var targetSoundName in GetGeneratedSoundNamesForInput(soundName, pairedGenderBases,
+                             game, generateGenderedEvents))
+                {
+                    uint targetSoundId = GenerateShortId(targetSoundName);
+                    if (!targets.TryGetValue(targetSoundId, out var settings))
+                    {
+                        settings = new IndividualAudioSettings();
+                        targets[targetSoundId] = settings;
+                    }
+
+                    settings.LoopAudio |= item.LoopAudio;
+                    settings.DuckAudio |= item.DuckAudio;
+                    if (item.ApplyAttenuation)
+                    {
+                        double distanceScale = item.AttenuationScalePercent / 100d;
+                        if (settings.ApplyAttenuation &&
+                            Math.Abs(settings.AttenuationDistanceScale - distanceScale) > 0.000001d)
+                        {
+                            throw new InvalidOperationException(
+                                $"Audio inputs that generate Sound ID 0x{targetSoundId:X8} select conflicting attenuation scales.");
+                        }
+
+                        settings.ApplyAttenuation = true;
+                        settings.AttenuationDistanceScale = distanceScale;
+                    }
+                }
+            }
+
+            return targets;
+        }
+
+        private static IEnumerable<string> GetGeneratedSoundNamesForInput(string soundName,
+            HashSet<string> pairedGenderBases, MEGame game, bool generateGenderedEvents) =>
+            game == MEGame.LE3 && generateGenderedEvents
+                ? GetGenderedNamesForInput(soundName, pairedGenderBases, game)
+                : [soundName];
 
         private void AttenuationScaleSlider_ValueChanged(object sender,
             RoutedPropertyChangedEventArgs<double> e)
@@ -549,9 +740,11 @@ namespace LegendaryExplorer.Dialogs
 
             var isDialogue = IsDialogueBankCheckBox.IsChecked == true;
             var generateGenderedEvents = GenerateGenderedEventsCheckBox.IsChecked == true;
-            var loopAudio = LoopAudioCheckBox.IsChecked == true;
             bool isLe2 = _package.Game == MEGame.LE2;
             bool isLe3 = _package.Game == MEGame.LE3;
+            var loopAudio = isLe2
+                ? Le2LoopAudioCheckBox.IsChecked == true
+                : Le3LoopAudioCheckBox.IsChecked == true;
             var applyRadioEffect = isLe2
                 ? Le2RadioEffectCheckBox.IsChecked == true
                 : isLe3 && RadioEffectCheckBox.IsChecked == true;
@@ -569,7 +762,9 @@ namespace LegendaryExplorer.Dialogs
             var attenuationDistanceScale = (isLe2
                 ? Le2AttenuationScaleSlider.Value
                 : AttenuationScaleSlider.Value) / 100d;
-            var createSharedStopEvent = CreateSharedStopEventCheckBox.IsChecked == true;
+            var createSharedStopEvent = isLe2
+                ? Le2CreateSharedStopEventCheckBox.IsChecked == true
+                : Le3CreateSharedStopEventCheckBox.IsChecked == true;
             var createFaceFxAssets = _allowFaceFxAssetCreation && CreateFaceFXAssetsCheckBox.IsChecked == true;
             var topFolderName = TopFolderTextBox.Text.Trim();
             var femaleFaceFxAssetName = FemaleFaceFXAssetNameTextBox.Text.Trim();
@@ -641,7 +836,15 @@ namespace LegendaryExplorer.Dialogs
             string topFolderName, string femaleFaceFxAssetName, string maleFaceFxAssetName)
         {
             var audioImportItems = Dispatcher.Invoke(() => WavFileItems
-                .Select(item => new AudioImportItem(item.FilePath) { CreateStopEvent = item.CreateStopEvent })
+                .Select(item => new AudioImportItem(item.FilePath)
+                {
+                    CreateStopEvent = item.CreateStopEvent,
+                    EffectPreset = item.EffectPreset,
+                    LoopAudio = item.LoopAudio,
+                    DuckAudio = item.DuckAudio,
+                    ApplyAttenuation = item.ApplyAttenuation,
+                    AttenuationScalePercent = item.AttenuationScalePercent
+                })
                 .ToList());
 
             // Sort audio inputs by TLK number so exports are created in numerical order
@@ -652,6 +855,10 @@ namespace LegendaryExplorer.Dialogs
                 .Where(item => item.CreateStopEvent)
                 .Select(item => item.FilePath)
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var individualEffectTargets = BuildIndividualEffectTargets(audioImportItems, _package.Game,
+                generateGenderedEvents);
+            var individualAudioSettingTargets = BuildIndividualAudioSettingTargets(audioImportItems,
+                _package.Game, generateGenderedEvents);
 
             // 1. Extract template project
             string templateZip = WwiseCliHandler.GetWwiseTemplateProject(_package.Game);
@@ -787,6 +994,18 @@ namespace LegendaryExplorer.Dialogs
                     ApplyHologramEffectToBank(bnkPath);
                 }
 
+                if (individualEffectTargets.Count > 0)
+                {
+                    ApplyIndividualEffectsToBank(bnkPath, _package.Game, individualEffectTargets);
+                }
+
+                if (individualAudioSettingTargets.Count > 0)
+                {
+                    ApplyIndividualAudioSettingsToBank(bnkPath, _package.Game, individualAudioSettingTargets,
+                        applyLooping: !loopAudio, applyDucking: !applyMusicDucking,
+                        applyAttenuation: true);
+                }
+
                 if (applyMusicDucking)
                 {
                     ApplyMusicDuckingToBank(bnkPath, _package.Game);
@@ -901,6 +1120,245 @@ namespace LegendaryExplorer.Dialogs
             ApplyExactEffectChainToBank(bnkPath, "Illusive Man hologram",
                 WwiseBankEffectPresets.Le2Hologram, game: MEGame.LE2);
         }
+
+        /// <summary>
+        /// Applies row-level effect overrides to the generated Sound nodes targeted by those rows'
+        /// Play events. Sounds left on BankWide continue to inherit the root ActorMixer settings.
+        /// </summary>
+        private static void ApplyIndividualEffectsToBank(string bnkPath, MEGame game,
+            IReadOnlyDictionary<uint, AudioEffectPreset> individualEffectTargets)
+        {
+            if (individualEffectTargets.Count == 0)
+            {
+                return;
+            }
+
+            ME3Tweaks.Wwiser.WwiseBank bank;
+            using (var input = new MemoryStream(File.ReadAllBytes(bnkPath), false))
+            {
+                bank = WwiseBankParser.Deserialize(input);
+            }
+
+            if (bank.BKHD.BankGeneratorVersion != WwiseBankEffectPresets.BankVersion)
+            {
+                throw new InvalidOperationException(
+                    $"Individual effects require a version-{WwiseBankEffectPresets.BankVersion} {game} Wwise bank, " +
+                    $"but WwiseCLI generated version {bank.BKHD.BankGeneratorVersion}.");
+            }
+
+            if (bank.HIRC == null)
+            {
+                throw new InvalidOperationException("WwiseCLI generated a bank without an audio hierarchy.");
+            }
+
+            if (individualEffectTargets.Values.Any(preset => preset == AudioEffectPreset.BankWide))
+            {
+                throw new InvalidOperationException(
+                    "Bank-wide/default is not a valid individual Sound effect override.");
+            }
+
+            var soundsById = bank.HIRC.Items
+                .Select(item => item.Item)
+                .OfType<WwiserSound>()
+                .ToDictionary(sound => sound.Id);
+            var missingSoundIds = individualEffectTargets.Keys
+                .Where(soundId => !soundsById.ContainsKey(soundId))
+                .ToList();
+            if (missingSoundIds.Count > 0)
+            {
+                throw new InvalidOperationException(
+                    $"The generated bank did not contain the selected audio Sound node(s): " +
+                    string.Join(", ", missingSoundIds.Select(soundId => $"0x{soundId:X8}")) + ".");
+            }
+
+            foreach (var presetGroup in individualEffectTargets.GroupBy(pair => pair.Value))
+            {
+                var (effectName, effectChain, applyHelmetRtpc) = GetIndividualEffectDefinition(game,
+                    presetGroup.Key);
+                if (!WwiseBankEffectPresets.EnsureEffectData(bank, effectChain))
+                {
+                    throw new InvalidOperationException(
+                        $"The generated bank already uses a {effectName} ShareSet ID for another object.");
+                }
+
+                var targetSounds = presetGroup.Select(pair => soundsById[pair.Key]).ToList();
+                foreach (var sound in targetSounds)
+                {
+                    SetExactEffectChainOnNode(sound, effectChain);
+                }
+
+                if (applyHelmetRtpc)
+                {
+                    if (game == MEGame.LE2)
+                    {
+                        WwiseBankEffectPresets.SetLe2HelmetRtpcOnScopes(targetSounds.Cast<WwiserIHasNode>(), true);
+                    }
+                    else
+                    {
+                        WwiseBankEffectPresets.SetHelmetRtpcOnScopes(targetSounds.Cast<WwiserIHasNode>(), true);
+                    }
+                }
+            }
+
+            bank.HIRC.ItemCount = checked((uint)bank.HIRC.Items.Count);
+            using var output = new MemoryStream();
+            WwiseBankParser.Serialize(bank, output);
+            File.WriteAllBytes(bnkPath, output.ToArray());
+        }
+
+        private static void ApplyIndividualAudioSettingsToBank(string bnkPath, MEGame game,
+            IReadOnlyDictionary<uint, IndividualAudioSettings> individualAudioSettingTargets,
+            bool applyLooping, bool applyDucking, bool applyAttenuation)
+        {
+            var relevantTargets = individualAudioSettingTargets
+                .Where(pair => applyLooping && pair.Value.LoopAudio ||
+                               applyDucking && pair.Value.DuckAudio ||
+                               applyAttenuation && pair.Value.ApplyAttenuation)
+                .ToDictionary(pair => pair.Key, pair => pair.Value);
+            if (relevantTargets.Count == 0)
+            {
+                return;
+            }
+
+            ME3Tweaks.Wwiser.WwiseBank bank;
+            using (var input = new MemoryStream(File.ReadAllBytes(bnkPath), false))
+            {
+                bank = WwiseBankParser.Deserialize(input);
+            }
+
+            if (bank.BKHD.BankGeneratorVersion != WwiseBankEffectPresets.BankVersion)
+            {
+                throw new InvalidOperationException(
+                    $"Individual audio settings require a version-{WwiseBankEffectPresets.BankVersion} {game} Wwise bank, " +
+                    $"but WwiseCLI generated version {bank.BKHD.BankGeneratorVersion}.");
+            }
+
+            if (bank.HIRC == null)
+            {
+                throw new InvalidOperationException("WwiseCLI generated a bank without an audio hierarchy.");
+            }
+
+            var soundsById = bank.HIRC.Items
+                .Select(item => item.Item)
+                .OfType<WwiserSound>()
+                .ToDictionary(sound => sound.Id);
+            var missingSoundIds = relevantTargets.Keys
+                .Where(soundId => !soundsById.ContainsKey(soundId))
+                .ToList();
+            if (missingSoundIds.Count > 0)
+            {
+                throw new InvalidOperationException(
+                    $"The generated bank did not contain the selected audio Sound node(s): " +
+                    string.Join(", ", missingSoundIds.Select(soundId => $"0x{soundId:X8}")) + ".");
+            }
+
+            if (applyLooping)
+            {
+                foreach (var sound in relevantTargets
+                             .Where(pair => pair.Value.LoopAudio)
+                             .Select(pair => soundsById[pair.Key]))
+                {
+                    SetLoopOnSound(sound);
+                }
+            }
+
+            if (applyDucking)
+            {
+                var duckingSounds = relevantTargets
+                    .Where(pair => pair.Value.DuckAudio)
+                    .Select(pair => soundsById[pair.Key])
+                    .ToList();
+                if (duckingSounds.Count > 0)
+                {
+                    if (game == MEGame.LE2)
+                    {
+                        if (!WwiseBankEffectPresets.EnsureLe2MusicDuckingDataForTargets(bank,
+                                duckingSounds.Select(sound => sound.Id).ToList()))
+                        {
+                            throw new InvalidOperationException(
+                                "The generated bank could not add the shipped LE2 Omega ducking events for the selected audio.");
+                        }
+                    }
+                    else if (game == MEGame.LE3)
+                    {
+                        if (!WwiseBankEffectPresets.EnsureMusicDuckingData(bank))
+                        {
+                            throw new InvalidOperationException(
+                                "The generated bank already uses the shipped music ducking State ID for another object.");
+                        }
+
+                        WwiseBankEffectPresets.SetMusicDuckingOnScopes(duckingSounds.Cast<WwiserIHasNode>(), true);
+                    }
+                }
+            }
+
+            if (applyAttenuation)
+            {
+                foreach (var pair in relevantTargets.Where(pair => pair.Value.ApplyAttenuation))
+                {
+                    double attenuationDistanceScale = pair.Value.AttenuationDistanceScale;
+                    var sound = soundsById[pair.Key];
+                    if (double.IsNaN(attenuationDistanceScale) || double.IsInfinity(attenuationDistanceScale) ||
+                        attenuationDistanceScale <= 0 ||
+                        !WwiseBankEffectPresets.EnsureStandardAttenuationDataForScope(bank, game,
+                            checked((float)attenuationDistanceScale), sound.Id, out uint attenuationId))
+                    {
+                        throw new InvalidOperationException(
+                            $"The generated bank could not add a BioWare attenuation ShareSet for Sound 0x{sound.Id:X8}.");
+                    }
+
+                    WwiseBankEffectPresets.SetStandardAttenuationOnScopes(
+                        new WwiserIHasNode[] { sound }, attenuationId, true,
+                        enableDiffraction: game == MEGame.LE2);
+                }
+            }
+
+            bank.HIRC.ItemCount = checked((uint)bank.HIRC.Items.Count);
+            using var output = new MemoryStream();
+            WwiseBankParser.Serialize(bank, output);
+            File.WriteAllBytes(bnkPath, output.ToArray());
+        }
+
+        private static void SetLoopOnSound(WwiserSound sound)
+        {
+            var initialParams = sound.NodeBaseParameters.InitialParams62;
+            for (int index = initialParams.ParameterIds.Count - 1; index >= 0; index--)
+            {
+                if (initialParams.ParameterIds[index].PropValue != PropId.Loop)
+                {
+                    continue;
+                }
+
+                initialParams.ParameterIds.RemoveAt(index);
+                initialParams.ParameterValues.RemoveAt(index);
+            }
+
+            initialParams.AddParameter(PropId.Loop, new InitialParamsV62.ParameterValue
+            {
+                Integer = 0,
+                StoredAsFloat = false
+            });
+            initialParams.ParamLength = checked((byte)initialParams.ParameterIds.Count);
+        }
+
+        private static (string Name, IReadOnlyList<WwiseBankEffect> Chain, bool ApplyHelmetRtpc)
+            GetIndividualEffectDefinition(MEGame game, AudioEffectPreset preset) => (game, preset) switch
+            {
+                (MEGame.LE2, AudioEffectPreset.Radio) =>
+                    ("LE2 radio", WwiseBankEffectPresets.Le2Radio, false),
+                (MEGame.LE2, AudioEffectPreset.Helmet) =>
+                    ("LE2 helmet voice", WwiseBankEffectPresets.Le2HelmetFilter, true),
+                (MEGame.LE2, AudioEffectPreset.Hologram) =>
+                    ("Illusive Man hologram", WwiseBankEffectPresets.Le2Hologram, false),
+                (MEGame.LE3, AudioEffectPreset.Radio) =>
+                    ("BioWare radio", WwiseBankEffectPresets.BioWareRadio, false),
+                (MEGame.LE3, AudioEffectPreset.Qec) =>
+                    ("Hackett QEC", WwiseBankEffectPresets.HackettQec, false),
+                (MEGame.LE3, AudioEffectPreset.Helmet) =>
+                    ("helmet voice", WwiseBankEffectPresets.HelmetFilter, true),
+                _ => throw new InvalidOperationException(
+                    $"The {preset} individual effect is not available for {game}.")
+            };
 
         /// <summary>
         /// Applies the target game's shipped music ducking behavior to the generated root
@@ -1142,20 +1600,7 @@ namespace LegendaryExplorer.Dialogs
 
             foreach (var actorMixer in rootActorMixers)
             {
-                var effects = actorMixer.NodeBaseParameters.FxParams;
-                effects.FxChunks.Clear();
-                for (var effectIndex = 0; effectIndex < effectChain.Count; effectIndex++)
-                {
-                    effects.FxChunks.Add(new FxChunk
-                    {
-                        FxIndex = checked((byte)effectIndex),
-                        Id = effectChain[effectIndex].Id,
-                        IsShareSet = true
-                    });
-                }
-                effects.BitsFxBypass = 0;
-                effects.NumFx = checked((byte)effects.FxChunks.Count);
-                effects.IsOverrideParentFx = true;
+                SetExactEffectChainOnNode(actorMixer, effectChain);
 
                 if (applyHelmetRtpc)
                 {
@@ -1174,6 +1619,25 @@ namespace LegendaryExplorer.Dialogs
             using var output = new MemoryStream();
             WwiseBankParser.Serialize(bank, output);
             File.WriteAllBytes(bnkPath, output.ToArray());
+        }
+
+        private static void SetExactEffectChainOnNode(WwiserIHasNode node,
+            IReadOnlyList<WwiseBankEffect> effectChain)
+        {
+            var effects = node.NodeBaseParameters.FxParams;
+            effects.FxChunks.Clear();
+            for (var effectIndex = 0; effectIndex < effectChain.Count; effectIndex++)
+            {
+                effects.FxChunks.Add(new FxChunk
+                {
+                    FxIndex = checked((byte)effectIndex),
+                    Id = effectChain[effectIndex].Id,
+                    IsShareSet = true
+                });
+            }
+            effects.BitsFxBypass = 0;
+            effects.NumFx = checked((byte)effects.FxChunks.Count);
+            effects.IsOverrideParentFx = true;
         }
 
         /// <summary>

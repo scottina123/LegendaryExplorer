@@ -12,6 +12,7 @@ using ME3Tweaks.Wwiser.Model.ParameterNode.Positioning;
 using ME3Tweaks.Wwiser.Model.RTPC;
 using ME3Tweaks.Wwiser.Model.State;
 using HircAction = ME3Tweaks.Wwiser.Model.Hierarchy.Action;
+using HircEvent = ME3Tweaks.Wwiser.Model.Hierarchy.Event;
 using HierarchyState = ME3Tweaks.Wwiser.Model.Hierarchy.State;
 using StateEntry = ME3Tweaks.Wwiser.Model.State.State;
 
@@ -177,6 +178,18 @@ internal static class WwiseBankEffectPresets
 
     internal static bool EnsureStandardAttenuationData(ME3Tweaks.Wwiser.WwiseBank bank,
         MEGame game, float distanceScale, out uint attenuationId)
+        => EnsureStandardAttenuationDataCore(bank, game, distanceScale, null, out attenuationId);
+
+    internal static bool EnsureStandardAttenuationDataForScope(ME3Tweaks.Wwiser.WwiseBank bank,
+        MEGame game, float distanceScale, uint scopeId, out uint attenuationId)
+    {
+        attenuationId = 0;
+        return scopeId != 0 &&
+               EnsureStandardAttenuationDataCore(bank, game, distanceScale, scopeId, out attenuationId);
+    }
+
+    private static bool EnsureStandardAttenuationDataCore(ME3Tweaks.Wwiser.WwiseBank bank,
+        MEGame game, float distanceScale, uint? scopeId, out uint attenuationId)
     {
         attenuationId = 0;
         if (bank.HIRC == null || bank.BKHD.BankGeneratorVersion != BankVersion ||
@@ -186,7 +199,10 @@ internal static class WwiseBankEffectPresets
             return false;
         }
 
-        uint generatedAttenuationId = GenerateShortId($"lex_standard_attenuation_{bank.BKHD.SoundBankId:X8}");
+        string attenuationName = scopeId.HasValue
+            ? $"lex_standard_attenuation_{bank.BKHD.SoundBankId:X8}_{scopeId.Value:X8}"
+            : $"lex_standard_attenuation_{bank.BKHD.SoundBankId:X8}";
+        uint generatedAttenuationId = GenerateShortId(attenuationName);
         attenuationId = generatedAttenuationId;
         var existingIndex = bank.HIRC.Items.FindIndex(item => item.Item.Id == generatedAttenuationId);
         if (existingIndex >= 0 && bank.HIRC.Items[existingIndex].Item is not Attenuation)
@@ -381,27 +397,60 @@ internal static class WwiseBankEffectPresets
     }
 
     internal static bool EnsureLe2MusicDuckingData(ME3Tweaks.Wwiser.WwiseBank bank,
-        uint targetActorMixerId)
+        uint targetActorMixerId) => EnsureLe2MusicDuckingDataForTargets(bank, [targetActorMixerId]);
+
+    internal static bool EnsureLe2MusicDuckingDataForTargets(ME3Tweaks.Wwiser.WwiseBank bank,
+        IReadOnlyCollection<uint> targetNodeIds)
     {
-        if (bank.HIRC == null || bank.BKHD.BankGeneratorVersion != BankVersion || targetActorMixerId == 0)
+        var targets = targetNodeIds.Where(targetId => targetId != 0).Distinct().OrderBy(targetId => targetId)
+            .ToList();
+        if (bank.HIRC == null || bank.BKHD.BankGeneratorVersion != BankVersion || targets.Count == 0)
         {
             return false;
         }
 
         var serializer = new BinarySerializer();
         var context = BankSerializationContext.FromBank(bank);
-        HircItemContainer[] shippedContainers =
-        [
-            serializer.Deserialize<HircItemContainer>(Convert.FromBase64String(Le2MusicDuckActionHirc), context),
-            serializer.Deserialize<HircItemContainer>(Convert.FromBase64String(Le2MusicResetActionHirc), context),
-            serializer.Deserialize<HircItemContainer>(Convert.FromBase64String(Le2MusicDuckEventHirc), context),
-            serializer.Deserialize<HircItemContainer>(Convert.FromBase64String(Le2MusicResetEventHirc), context)
-        ];
+        var shippedContainers = new List<HircItemContainer>();
+        var duckActionIds = new List<uint>();
+        var resetActionIds = new List<uint>();
 
-        foreach (var action in shippedContainers.Select(container => container.Item).OfType<HircAction>())
+        for (int index = 0; index < targets.Count; index++)
         {
-            action.TargetId = targetActorMixerId;
+            uint targetId = targets[index];
+            var duckActionContainer = serializer.Deserialize<HircItemContainer>(
+                Convert.FromBase64String(Le2MusicDuckActionHirc), context);
+            var resetActionContainer = serializer.Deserialize<HircItemContainer>(
+                Convert.FromBase64String(Le2MusicResetActionHirc), context);
+            var duckAction = (HircAction)duckActionContainer.Item;
+            var resetAction = (HircAction)resetActionContainer.Item;
+
+            if (index > 0)
+            {
+                duckAction.Id = GenerateShortId($"lex_le2_music_duck_{targetId:X8}");
+                resetAction.Id = GenerateShortId($"lex_le2_music_reset_{targetId:X8}");
+            }
+
+            duckAction.TargetId = targetId;
+            resetAction.TargetId = targetId;
+            duckActionIds.Add(duckAction.Id);
+            resetActionIds.Add(resetAction.Id);
+            shippedContainers.Add(duckActionContainer);
+            shippedContainers.Add(resetActionContainer);
         }
+
+        var duckEventContainer = serializer.Deserialize<HircItemContainer>(
+            Convert.FromBase64String(Le2MusicDuckEventHirc), context);
+        var resetEventContainer = serializer.Deserialize<HircItemContainer>(
+            Convert.FromBase64String(Le2MusicResetEventHirc), context);
+        var duckEvent = (HircEvent)duckEventContainer.Item;
+        var resetEvent = (HircEvent)resetEventContainer.Item;
+        duckEvent.ActionIds = duckActionIds;
+        duckEvent.ActionCount.Value = checked((uint)duckActionIds.Count);
+        resetEvent.ActionIds = resetActionIds;
+        resetEvent.ActionCount.Value = checked((uint)resetActionIds.Count);
+        shippedContainers.Add(duckEventContainer);
+        shippedContainers.Add(resetEventContainer);
 
         foreach (var shippedContainer in shippedContainers)
         {
