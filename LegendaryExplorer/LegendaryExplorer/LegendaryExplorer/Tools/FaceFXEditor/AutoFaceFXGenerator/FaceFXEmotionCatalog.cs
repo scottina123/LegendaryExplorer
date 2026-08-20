@@ -102,7 +102,8 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
                 AddPresets(result, FlirtPresets, species, game);
             }
 
-            bool supportsWounded = FaceFXSpeciesCatalog.IsLegacyLegendaryGame(game)
+            bool supportsWounded = species == FaceFXSpecies.TurianFemale
+                || (FaceFXSpeciesCatalog.IsLegacyLegendaryGame(game)
                 ? game == MEGame.LE2 && species is FaceFXSpecies.Asari or FaceFXSpecies.Drell
                     or FaceFXSpecies.EDI or FaceFXSpecies.HumanFemale or FaceFXSpecies.HumanMale
                     or FaceFXSpecies.Krogan or FaceFXSpecies.Salarian or FaceFXSpecies.Turian
@@ -110,7 +111,7 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
                 : species is FaceFXSpecies.Asari or FaceFXSpecies.Drell or FaceFXSpecies.EDI
                     or FaceFXSpecies.HumanChild or FaceFXSpecies.HumanFemale or FaceFXSpecies.HumanMale
                     or FaceFXSpecies.Krogan or FaceFXSpecies.Prothean or FaceFXSpecies.Salarian
-                    or FaceFXSpecies.Shepard or FaceFXSpecies.Turian or FaceFXSpecies.Yahg;
+                    or FaceFXSpecies.Shepard or FaceFXSpecies.Turian or FaceFXSpecies.Yahg);
             if (supportsWounded)
             {
                 AddPresets(result, WoundedPresets, species, game);
@@ -183,7 +184,8 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
 
         private static bool SupportsLegacyFlirt(FaceFXSpecies species, MEGame game)
         {
-            if (species is FaceFXSpecies.HumanFemale or FaceFXSpecies.HumanMale or FaceFXSpecies.Asari)
+            if (species is FaceFXSpecies.HumanFemale or FaceFXSpecies.HumanMale or FaceFXSpecies.Asari
+                or FaceFXSpecies.TurianFemale)
                 return true;
 
             return game == MEGame.LE2 && species is FaceFXSpecies.Krogan or FaceFXSpecies.Batarian

@@ -161,7 +161,7 @@ namespace LegendaryExplorer.Tests.Tools.FaceFXEditor
             {
                 FaceFXSpecies.HumanFemale, FaceFXSpecies.HumanMale, FaceFXSpecies.Asari,
                 FaceFXSpecies.Krogan, FaceFXSpecies.Batarian, FaceFXSpecies.Drell,
-                FaceFXSpecies.Turian, FaceFXSpecies.Salarian, FaceFXSpecies.Quarian,
+                FaceFXSpecies.Turian, FaceFXSpecies.TurianFemale, FaceFXSpecies.Salarian, FaceFXSpecies.Quarian,
                 FaceFXSpecies.Geth, FaceFXSpecies.Elcor, FaceFXSpecies.Hanar,
                 FaceFXSpecies.Volus, FaceFXSpecies.Vorcha, FaceFXSpecies.Yahg, FaceFXSpecies.EDI
             };
@@ -202,6 +202,53 @@ namespace LegendaryExplorer.Tests.Tools.FaceFXEditor
                 generateExpressions: true);
             AssertGeneratedAnimationList(FaceFXSpecies.EDI, new[] { "Talk" }, game: MEGame.LE3,
                 generateExpressions: true);
+        }
+
+        [TestMethod]
+        public void TurianFemaleUsesNyreenRigDataInEveryLegendaryGame()
+        {
+            string[] expectedInventory =
+            {
+                "smileRight", "smileLeft", "sneerRight", "sneerLeft", "jawOpen", "jawForward",
+                "O_mouth", "upperLipCurlOut", "lowerLipCurlOut", "lowerLipCurlIn", "tongueForward",
+                "upperLipCurlIn", "pucker", "tongueUp", "noseDown", "noseUp", "tongueUp1",
+                "tongueUp2", "tongueUp3", "MandibleFlareRight", "MandibleFlareLeft", "TongueUp1",
+                "TongueUp2", "TongueUp3", "mouthDownRight", "jawClench"
+            };
+
+            Assert.AreEqual("Turian Female", FaceFXSpeciesCatalog.GetDisplayName(FaceFXSpecies.TurianFemale));
+            Assert.AreEqual(FaceFXSpecies.TurianFemale, FaceFXSpeciesCatalog.FromDisplayName("Turian Female"));
+            CollectionAssert.AreEqual(expectedInventory, PhonemeToVisemeMap.TurianFemaleVisemes);
+
+            foreach (MEGame game in new[] { MEGame.LE1, MEGame.LE2, MEGame.LE3 })
+            {
+                Assert.IsTrue(FaceFXSpeciesCatalog.GetForGame(game).Contains(FaceFXSpecies.TurianFemale));
+                Dictionary<string, VisemeMapping[]> actualMap =
+                    PhonemeToVisemeMap.GetPhonemeMap(FaceFXSpecies.TurianFemale, game);
+                Assert.AreEqual(65, actualMap.Count);
+                foreach ((string phoneme, VisemeMapping[] expectedMappings) in
+                    PhonemeToVisemeMap.TurianFemalePhonemeMap)
+                {
+                    Assert.IsTrue(actualMap.TryGetValue(phoneme, out VisemeMapping[] actualMappings),
+                        $"{game} is missing {phoneme}.");
+                    CollectionAssert.AreEqual(expectedMappings.Select(mapping => mapping.VisemeName).ToArray(),
+                        actualMappings.Select(mapping => mapping.VisemeName).ToArray(), $"{game} {phoneme}");
+                    for (int index = 0; index < expectedMappings.Length; index++)
+                        Assert.AreEqual(expectedMappings[index].Weight, actualMappings[index].Weight, 0.000001f,
+                            $"{game} {phoneme} {expectedMappings[index].VisemeName}");
+                }
+
+                string[] drivenControls = PhonemeToVisemeMap.GetVisemes(FaceFXSpecies.TurianFemale, game);
+                Assert.IsTrue(drivenControls.Contains("tongueUp1", StringComparer.Ordinal));
+                Assert.IsTrue(drivenControls.Contains("TongueUp1", StringComparer.Ordinal));
+                Assert.IsTrue(drivenControls.All(control => expectedInventory.Contains(control, StringComparer.Ordinal)));
+
+                IReadOnlyList<FaceFXEmotionChoice> emotions =
+                    FaceFXEmotionCatalog.GetForSpecies(FaceFXSpecies.TurianFemale, game);
+                Assert.AreEqual(30, emotions.Count);
+                Assert.IsTrue(emotions.Any(choice => choice.PresetAnimation == "E_Flirt_Interested"));
+                Assert.IsTrue(emotions.Any(choice => choice.PresetAnimation == "E_Wounded_Pain"));
+            }
         }
 
         [TestMethod]

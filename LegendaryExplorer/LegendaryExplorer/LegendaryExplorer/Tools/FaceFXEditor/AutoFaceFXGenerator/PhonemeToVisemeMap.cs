@@ -16,6 +16,7 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
         Krogan,
         Drell,
         Turian,
+        TurianFemale,
         Salarian,
         Quarian,
         Geth,
@@ -63,6 +64,7 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
                 FaceFXSpecies.Krogan => KroganPhonemeMap,
                 FaceFXSpecies.Drell => DrellPhonemeMap,
                 FaceFXSpecies.Turian => TurianPhonemeMap,
+                FaceFXSpecies.TurianFemale => TurianFemalePhonemeMap,
                 FaceFXSpecies.Salarian => SalarianPhonemeMap,
                 // Quarian mouth motion is audio-driven through jawOpen; the generator
                 // adds the rest of its authored reference animation set separately.
@@ -98,7 +100,7 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
                 return GetPhonemeMap(species, game).Values
                     .SelectMany(mappings => mappings)
                     .Select(mapping => CanonicalizeVisemeName(mapping.VisemeName, species, game))
-                    .Distinct(System.StringComparer.OrdinalIgnoreCase)
+                    .Distinct(GetVisemeNameComparer(species))
                     .ToArray();
             }
 
@@ -115,9 +117,14 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
             return GetPhonemeMap(species, game).Values
                 .SelectMany(mappings => mappings)
                 .Select(mapping => CanonicalizeVisemeName(mapping.VisemeName, species, game))
-                .Distinct(System.StringComparer.OrdinalIgnoreCase)
+                .Distinct(GetVisemeNameComparer(species))
                 .ToArray();
         }
+
+        private static System.StringComparer GetVisemeNameComparer(FaceFXSpecies species) =>
+            species == FaceFXSpecies.TurianFemale
+                ? System.StringComparer.Ordinal
+                : System.StringComparer.OrdinalIgnoreCase;
 
         public static HashSet<string> GetAllLipSyncVisemes(MEGame game = MEGame.LE3)
         {
@@ -144,8 +151,11 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
 
             if (FaceFXSpeciesCatalog.IsLegacyLegendaryGame(game))
             {
+                System.StringComparison comparison = species == FaceFXSpecies.TurianFemale
+                    ? System.StringComparison.Ordinal
+                    : System.StringComparison.OrdinalIgnoreCase;
                 string shippedName = GetLegacyRigControls(species)
-                    .FirstOrDefault(control => string.Equals(control, name, System.StringComparison.OrdinalIgnoreCase));
+                    .FirstOrDefault(control => string.Equals(control, name, comparison));
                 if (shippedName != null)
                     return shippedName;
             }
@@ -165,6 +175,7 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
                 FaceFXSpecies.Krogan => KroganPhonemeMap,
                 FaceFXSpecies.Drell => DrellPhonemeMap,
                 FaceFXSpecies.Turian => TurianPhonemeMap,
+                FaceFXSpecies.TurianFemale => TurianFemalePhonemeMap,
                 FaceFXSpecies.Salarian => SalarianPhonemeMap,
                 FaceFXSpecies.Geth => BuildGethSpeechMap(),
                 FaceFXSpecies.Yahg => BuildSingleControlMap("m_JawOpen"),
@@ -191,6 +202,7 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
             FaceFXSpecies.Krogan => KroganVisemes,
             FaceFXSpecies.Drell => DrellVisemes,
             FaceFXSpecies.Turian => TurianVisemes,
+            FaceFXSpecies.TurianFemale => TurianFemaleVisemes,
             FaceFXSpecies.Salarian => SalarianVisemes,
             FaceFXSpecies.Quarian => LegacyQuarianVisemes,
             FaceFXSpecies.Elcor => ElcorVisemes,
@@ -942,6 +954,114 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
             "mouthDownRight",
             "jawForward",
             "noseUp"
+        ];
+
+        /// <summary>
+        /// Turian female phoneme-to-viseme mappings from SFX_TurianFemale_FaceFX in
+        /// BioD_Omg004_320CallNyreen.pcc export 393. This LE3Patch rig is the reference
+        /// for LE1, LE2, and LE3 because the earlier games do not ship a female Turian rig.
+        /// </summary>
+        public static readonly Dictionary<string, VisemeMapping[]> TurianFemalePhonemeMap = new()
+        {
+            { "SIL", new[] { new VisemeMapping("jawClench", 0.010000f) } },
+            { "P", new[] { new VisemeMapping("upperLipCurlIn", 0.760000f), new VisemeMapping("lowerLipCurlIn", 0.760000f), new VisemeMapping("pucker", 0.170000f), new VisemeMapping("noseDown", 0.200000f) } },
+            { "B", new[] { new VisemeMapping("jawClench", 0.130599f) } },
+            { "M", new[] { new VisemeMapping("smileRight", 0.430000f), new VisemeMapping("smileLeft", 0.430000f), new VisemeMapping("pucker", 1.000000f), new VisemeMapping("upperLipCurlIn", 1.000000f), new VisemeMapping("lowerLipCurlIn", 1.000000f) } },
+            { "T", new[] { new VisemeMapping("pucker", 0.170000f), new VisemeMapping("jawOpen", 0.030000f), new VisemeMapping("TongueUp2", 0.505517f), new VisemeMapping("TongueUp3", 0.809833f), new VisemeMapping("upperLipCurlIn", 0.760000f), new VisemeMapping("lowerLipCurlIn", 0.760000f), new VisemeMapping("noseDown", 0.210000f) } },
+            { "D", new[] { new VisemeMapping("sneerRight", 0.130000f), new VisemeMapping("sneerLeft", 0.130000f), new VisemeMapping("jawOpen", 0.050000f), new VisemeMapping("TongueUp1", 0.537844f), new VisemeMapping("TongueUp2", 0.744358f), new VisemeMapping("TongueUp3", 0.280023f), new VisemeMapping("upperLipCurlOut", 0.370000f), new VisemeMapping("lowerLipCurlOut", 0.230000f) } },
+            { "K", new[] { new VisemeMapping("sneerRight", 0.100000f), new VisemeMapping("sneerLeft", 0.100000f), new VisemeMapping("upperLipCurlOut", 0.350000f), new VisemeMapping("lowerLipCurlOut", 0.390000f), new VisemeMapping("O_mouth", 0.080000f) } },
+            { "G", new[] { new VisemeMapping("upperLipCurlOut", 0.500000f), new VisemeMapping("lowerLipCurlOut", 0.520000f), new VisemeMapping("jawOpen", 0.010000f), new VisemeMapping("O_mouth", 0.160000f) } },
+            { "N", new[] { new VisemeMapping("sneerRight", 0.250000f), new VisemeMapping("sneerLeft", 0.250000f), new VisemeMapping("tongueUp1", 0.510000f), new VisemeMapping("tongueUp2", 0.530000f), new VisemeMapping("tongueUp3", 0.700000f) } },
+            { "NG", new[] { new VisemeMapping("smileRight", 0.690000f), new VisemeMapping("smileLeft", 0.690000f), new VisemeMapping("sneerRight", 0.200000f), new VisemeMapping("sneerLeft", 0.200000f), new VisemeMapping("upperLipCurlIn", 0.420000f), new VisemeMapping("tongueUp", 0.720000f) } },
+            { "RA", new[] { new VisemeMapping("jawOpen", 0.111740f) } },
+            { "RU", new[] { new VisemeMapping("jawOpen", 0.111740f) } },
+            { "FLAP", new[] { new VisemeMapping("lowerLipCurlOut", 0.120000f), new VisemeMapping("lowerLipCurlIn", 0.130000f), new VisemeMapping("jawOpen", 0.020000f), new VisemeMapping("tongueUp", 0.660000f) } },
+            { "PH", new[] { new VisemeMapping("sneerRight", 0.150000f), new VisemeMapping("sneerLeft", 0.150000f), new VisemeMapping("pucker", 1.000000f), new VisemeMapping("jawOpen", 0.046875f), new VisemeMapping("upperLipCurlIn", 1.000000f), new VisemeMapping("lowerLipCurlIn", 1.000000f) } },
+            { "F", new[] { new VisemeMapping("sneerRight", 0.150000f), new VisemeMapping("sneerLeft", 0.150000f), new VisemeMapping("pucker", 1.000000f), new VisemeMapping("jawOpen", 0.046875f), new VisemeMapping("upperLipCurlIn", 1.000000f), new VisemeMapping("lowerLipCurlIn", 1.000000f) } },
+            { "V", new[] { new VisemeMapping("pucker", 0.530506f), new VisemeMapping("jawOpen", 0.054315f), new VisemeMapping("upperLipCurlIn", 0.593750f), new VisemeMapping("lowerLipCurlIn", 1.000000f) } },
+            { "TH", new[] { new VisemeMapping("sneerRight", 0.290476f), new VisemeMapping("sneerLeft", 0.500000f), new VisemeMapping("TongueUp1", 0.237638f), new VisemeMapping("TongueUp2", 0.505517f), new VisemeMapping("TongueUp3", 0.802371f), new VisemeMapping("MandibleFlareRight", 0.134635f), new VisemeMapping("MandibleFlareLeft", 0.221126f) } },
+            { "DH", new[] { new VisemeMapping("TongueUp1", 0.359150f), new VisemeMapping("TongueUp2", 0.751821f), new VisemeMapping("TongueUp3", 0.735212f) } },
+            { "S", new[] { new VisemeMapping("smileRight", 1.000000f), new VisemeMapping("smileLeft", 1.000000f), new VisemeMapping("sneerRight", 0.210000f), new VisemeMapping("sneerLeft", 0.210000f), new VisemeMapping("jawOpen", 0.084077f) } },
+            { "Z", new[] { new VisemeMapping("smileRight", 1.000000f), new VisemeMapping("smileLeft", 1.000000f), new VisemeMapping("sneerRight", 0.260000f), new VisemeMapping("sneerLeft", 0.260000f), new VisemeMapping("jawOpen", 0.091518f) } },
+            { "SH", new[] { new VisemeMapping("pucker", 0.534226f), new VisemeMapping("O_mouth", 1.000000f), new VisemeMapping("jawOpen", 0.039435f), new VisemeMapping("upperLipCurlOut", 1.000000f), new VisemeMapping("lowerLipCurlOut", 1.000000f) } },
+            { "ZH", new[] { new VisemeMapping("sneerRight", 0.250000f), new VisemeMapping("sneerLeft", 0.250000f), new VisemeMapping("O_mouth", 1.000000f), new VisemeMapping("TongueUp1", 0.680799f), new VisemeMapping("TongueUp2", 0.520445f), new VisemeMapping("TongueUp3", 0.212864f), new VisemeMapping("upperLipCurlOut", 1.000000f), new VisemeMapping("lowerLipCurlOut", 1.000000f) } },
+            { "CX", new[] { new VisemeMapping("sneerRight", 0.100000f), new VisemeMapping("sneerLeft", 0.100000f), new VisemeMapping("upperLipCurlOut", 0.350000f), new VisemeMapping("lowerLipCurlOut", 0.390000f), new VisemeMapping("O_mouth", 0.080000f) } },
+            { "X", new[] { new VisemeMapping("sneerRight", 0.100000f), new VisemeMapping("sneerLeft", 0.100000f), new VisemeMapping("upperLipCurlOut", 0.350000f), new VisemeMapping("lowerLipCurlOut", 0.390000f), new VisemeMapping("O_mouth", 0.080000f) } },
+            { "GH", new[] { new VisemeMapping("upperLipCurlOut", 0.500000f), new VisemeMapping("lowerLipCurlOut", 0.520000f), new VisemeMapping("jawOpen", 0.010000f), new VisemeMapping("O_mouth", 0.160000f) } },
+            { "HH", new[] { new VisemeMapping("upperLipCurlOut", 0.370000f), new VisemeMapping("lowerLipCurlOut", 0.390000f), new VisemeMapping("pucker", 0.900000f), new VisemeMapping("O_mouth", 0.330000f), new VisemeMapping("noseDown", 0.200000f) } },
+            { "H", new[] { new VisemeMapping("upperLipCurlOut", 0.370000f), new VisemeMapping("lowerLipCurlOut", 0.390000f), new VisemeMapping("pucker", 0.900000f), new VisemeMapping("O_mouth", 0.330000f), new VisemeMapping("noseDown", 0.200000f) } },
+            { "R", new[] { new VisemeMapping("jawOpen", 0.111740f) } },
+            { "Y", new[] { new VisemeMapping("smileRight", 1.000000f), new VisemeMapping("smileLeft", 1.000000f), new VisemeMapping("pucker", 0.900000f), new VisemeMapping("O_mouth", 0.480000f), new VisemeMapping("jawOpen", 0.030000f), new VisemeMapping("upperLipCurlOut", 0.370000f), new VisemeMapping("lowerLipCurlOut", 0.390000f), new VisemeMapping("noseDown", 0.200000f) } },
+            { "L", new[] { new VisemeMapping("mouthDownRight", 0.052381f), new VisemeMapping("jawClench", 0.442857f), new VisemeMapping("O_mouth", 0.260000f), new VisemeMapping("jawOpen", 0.076190f), new VisemeMapping("TongueUp1", 0.437776f), new VisemeMapping("TongueUp2", 0.632401f), new VisemeMapping("TongueUp3", 0.682977f) } },
+            { "W", new[] { new VisemeMapping("pucker", 1.000000f), new VisemeMapping("upperLipCurlIn", 1.000000f), new VisemeMapping("lowerLipCurlOut", 0.005952f), new VisemeMapping("lowerLipCurlIn", 0.716518f), new VisemeMapping("noseDown", 0.100000f) } },
+            { "TS", new[] { new VisemeMapping("pucker", 0.170000f), new VisemeMapping("jawOpen", 0.030000f), new VisemeMapping("TongueUp2", 0.505517f), new VisemeMapping("TongueUp3", 0.809833f), new VisemeMapping("upperLipCurlIn", 0.760000f), new VisemeMapping("lowerLipCurlIn", 0.760000f), new VisemeMapping("noseDown", 0.210000f) } },
+            { "CH", new[] { new VisemeMapping("upperLipCurlOut", 1.000000f), new VisemeMapping("lowerLipCurlOut", 1.000000f), new VisemeMapping("O_mouth", 0.300000f) } },
+            { "JH", new[] { new VisemeMapping("upperLipCurlOut", 1.000000f), new VisemeMapping("lowerLipCurlOut", 1.000000f), new VisemeMapping("O_mouth", 0.220000f) } },
+            { "IY", new[] { new VisemeMapping("smileRight", 1.000000f), new VisemeMapping("smileLeft", 1.000000f), new VisemeMapping("sneerRight", 0.300000f), new VisemeMapping("sneerLeft", 0.300000f), new VisemeMapping("jawOpen", 0.020000f) } },
+            { "IH", new[] { new VisemeMapping("smileRight", 1.000000f), new VisemeMapping("smileLeft", 1.000000f), new VisemeMapping("sneerRight", 0.250000f), new VisemeMapping("sneerLeft", 0.250000f), new VisemeMapping("jawOpen", 0.200000f), new VisemeMapping("jawForward", 0.380000f) } },
+            { "E", new[] { new VisemeMapping("sneerRight", 0.131069f), new VisemeMapping("sneerLeft", 0.151841f), new VisemeMapping("O_mouth", 0.300000f), new VisemeMapping("jawOpen", 0.080357f), new VisemeMapping("MandibleFlareRight", 0.053701f), new VisemeMapping("MandibleFlareLeft", 0.023520f) } },
+            { "EN", new[] { new VisemeMapping("sneerRight", 0.131069f), new VisemeMapping("sneerLeft", 0.151841f), new VisemeMapping("O_mouth", 0.300000f), new VisemeMapping("jawOpen", 0.080357f), new VisemeMapping("MandibleFlareRight", 0.053701f), new VisemeMapping("MandibleFlareLeft", 0.023520f) } },
+            { "EH", new[] { new VisemeMapping("smileRight", 1.000000f), new VisemeMapping("smileLeft", 1.000000f), new VisemeMapping("jawOpen", 0.128571f) } },
+            { "EY", new[] { new VisemeMapping("smileRight", 1.000000f), new VisemeMapping("smileLeft", 1.000000f), new VisemeMapping("sneerRight", 0.349172f), new VisemeMapping("sneerLeft", 0.406294f), new VisemeMapping("jawOpen", 0.121280f), new VisemeMapping("MandibleFlareRight", 0.140942f), new VisemeMapping("MandibleFlareLeft", 0.099856f) } },
+            { "AE", new[] { new VisemeMapping("jawOpen", 0.139881f) } },
+            { "AH", new[] { new VisemeMapping("jawOpen", 0.300000f), new VisemeMapping("MandibleFlareRight", 0.051450f), new VisemeMapping("MandibleFlareLeft", 0.054287f), new VisemeMapping("noseUp", 0.040000f) } },
+            { "AX", new[] { new VisemeMapping("smileRight", 0.710000f), new VisemeMapping("smileLeft", 0.710000f), new VisemeMapping("jawOpen", 0.121280f) } },
+            { "UX", new[] { new VisemeMapping("smileRight", 0.710000f), new VisemeMapping("smileLeft", 0.710000f), new VisemeMapping("jawOpen", 0.121280f) } },
+            { "ER", new[] { new VisemeMapping("smileRight", 1.000000f), new VisemeMapping("smileLeft", 1.000000f), new VisemeMapping("jawOpen", 0.098958f), new VisemeMapping("TongueUp1", 0.723686f), new VisemeMapping("TongueUp2", 0.796604f), new VisemeMapping("TongueUp3", 0.153167f), new VisemeMapping("lowerLipCurlIn", 1.000000f) } },
+            { "AXR", new[] { new VisemeMapping("smileRight", 1.000000f), new VisemeMapping("smileLeft", 1.000000f), new VisemeMapping("jawOpen", 0.098958f), new VisemeMapping("TongueUp1", 0.723686f), new VisemeMapping("TongueUp2", 0.796604f), new VisemeMapping("TongueUp3", 0.153167f), new VisemeMapping("lowerLipCurlIn", 1.000000f) } },
+            { "EXR", new[] { new VisemeMapping("smileRight", 1.000000f), new VisemeMapping("smileLeft", 1.000000f), new VisemeMapping("jawOpen", 0.098958f), new VisemeMapping("TongueUp1", 0.723686f), new VisemeMapping("TongueUp2", 0.796604f), new VisemeMapping("TongueUp3", 0.153167f), new VisemeMapping("lowerLipCurlIn", 1.000000f) } },
+            { "A", new[] { new VisemeMapping("sneerRight", 0.131069f), new VisemeMapping("sneerLeft", 0.151841f), new VisemeMapping("O_mouth", 0.300000f), new VisemeMapping("jawOpen", 0.080357f), new VisemeMapping("MandibleFlareRight", 0.053701f), new VisemeMapping("MandibleFlareLeft", 0.023520f) } },
+            { "AA", new[] { new VisemeMapping("sneerRight", 0.131069f), new VisemeMapping("sneerLeft", 0.151841f), new VisemeMapping("O_mouth", 0.300000f), new VisemeMapping("jawOpen", 0.200000f), new VisemeMapping("MandibleFlareRight", 0.053701f), new VisemeMapping("MandibleFlareLeft", 0.023520f) } },
+            { "AAN", new[] { new VisemeMapping("sneerRight", 0.131069f), new VisemeMapping("sneerLeft", 0.151841f), new VisemeMapping("O_mouth", 0.300000f), new VisemeMapping("jawOpen", 0.080357f), new VisemeMapping("MandibleFlareRight", 0.053701f), new VisemeMapping("MandibleFlareLeft", 0.023520f) } },
+            { "AO", new[] { new VisemeMapping("O_mouth", 0.380000f), new VisemeMapping("jawOpen", 0.173363f), new VisemeMapping("lowerLipCurlOut", 1.000000f) } },
+            { "AON", new[] { new VisemeMapping("O_mouth", 0.380000f), new VisemeMapping("jawOpen", 0.173363f), new VisemeMapping("lowerLipCurlOut", 1.000000f) } },
+            { "O", new[] { new VisemeMapping("O_mouth", 0.380000f), new VisemeMapping("jawOpen", 0.250000f), new VisemeMapping("lowerLipCurlOut", 1.000000f) } },
+            { "ON", new[] { new VisemeMapping("O_mouth", 0.380000f), new VisemeMapping("jawOpen", 0.173363f), new VisemeMapping("lowerLipCurlOut", 1.000000f) } },
+            { "UW", new[] { new VisemeMapping("O_mouth", 1.000000f), new VisemeMapping("jawOpen", 0.171429f), new VisemeMapping("jawForward", 0.470000f), new VisemeMapping("upperLipCurlOut", 1.000000f), new VisemeMapping("lowerLipCurlOut", 1.000000f) } },
+            { "UH", new[] { new VisemeMapping("pucker", 1.000000f), new VisemeMapping("O_mouth", 0.392857f), new VisemeMapping("jawOpen", 0.100000f), new VisemeMapping("upperLipCurlOut", 0.870000f), new VisemeMapping("lowerLipCurlOut", 0.850000f) } },
+            { "OW", new[] { new VisemeMapping("O_mouth", 1.000000f), new VisemeMapping("jawOpen", 0.136161f), new VisemeMapping("TongueUp1", 0.337707f), new VisemeMapping("TongueUp2", 0.460735f), new VisemeMapping("TongueUp3", 0.168091f), new VisemeMapping("upperLipCurlOut", 1.000000f), new VisemeMapping("lowerLipCurlOut", 1.000000f) } },
+            { "UY", new[] { new VisemeMapping("pucker", 1.000000f), new VisemeMapping("upperLipCurlIn", 1.000000f), new VisemeMapping("lowerLipCurlOut", 0.005952f), new VisemeMapping("lowerLipCurlIn", 0.716518f), new VisemeMapping("noseDown", 0.100000f) } },
+            { "UU", new[] { new VisemeMapping("pucker", 1.000000f), new VisemeMapping("upperLipCurlIn", 1.000000f), new VisemeMapping("lowerLipCurlOut", 0.005952f), new VisemeMapping("lowerLipCurlIn", 0.716518f), new VisemeMapping("noseDown", 0.100000f) } },
+            { "EU", new[] { new VisemeMapping("O_mouth", 0.380000f), new VisemeMapping("jawOpen", 0.173363f), new VisemeMapping("lowerLipCurlOut", 1.000000f) } },
+            { "OE", new[] { new VisemeMapping("O_mouth", 0.380000f), new VisemeMapping("jawOpen", 0.173363f), new VisemeMapping("lowerLipCurlOut", 1.000000f) } },
+            { "OEN", new[] { new VisemeMapping("O_mouth", 0.380000f), new VisemeMapping("jawOpen", 0.173363f), new VisemeMapping("lowerLipCurlOut", 1.000000f) } },
+            { "AY", new[] { new VisemeMapping("smileRight", 1.000000f), new VisemeMapping("smileLeft", 1.000000f), new VisemeMapping("sneerRight", 0.150000f), new VisemeMapping("sneerLeft", 0.150000f), new VisemeMapping("jawOpen", 0.120000f) } },
+            { "AW", new[] { new VisemeMapping("pucker", 1.000000f), new VisemeMapping("O_mouth", 1.000000f), new VisemeMapping("jawOpen", 0.080357f), new VisemeMapping("upperLipCurlOut", 0.450000f), new VisemeMapping("lowerLipCurlOut", 0.510000f) } },
+            { "OY", new[] { new VisemeMapping("O_mouth", 1.000000f), new VisemeMapping("jawOpen", 0.098958f), new VisemeMapping("upperLipCurlOut", 1.000000f), new VisemeMapping("lowerLipCurlOut", 1.000000f) } },
+        };
+
+        /// <summary>
+        /// Complete lip-sync control inventory from the Nyreen Turian female reference asset.
+        /// Both tongueUp* capitalizations are intentional and are distinct entries in the source.
+        /// </summary>
+        public static readonly string[] TurianFemaleVisemes =
+        [
+            "smileRight",
+            "smileLeft",
+            "sneerRight",
+            "sneerLeft",
+            "jawOpen",
+            "jawForward",
+            "O_mouth",
+            "upperLipCurlOut",
+            "lowerLipCurlOut",
+            "lowerLipCurlIn",
+            "tongueForward",
+            "upperLipCurlIn",
+            "pucker",
+            "tongueUp",
+            "noseDown",
+            "noseUp",
+            "tongueUp1",
+            "tongueUp2",
+            "tongueUp3",
+            "MandibleFlareRight",
+            "MandibleFlareLeft",
+            "TongueUp1",
+            "TongueUp2",
+            "TongueUp3",
+            "mouthDownRight",
+            "jawClench"
         ];
 
         /// <summary>
