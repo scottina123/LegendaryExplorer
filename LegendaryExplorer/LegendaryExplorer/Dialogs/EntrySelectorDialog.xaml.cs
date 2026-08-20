@@ -50,6 +50,7 @@ namespace LegendaryExplorer.Dialogs
 
         private SequenceEditorWPF SequencePreviewEditor;
         private bool SequencePreviewSelectionPending;
+        private bool SynchronizingSequencePreviewSelection;
 
         public Visibility ItemSearchVisibility => ItemSearch is null ? Visibility.Collapsed : Visibility.Visible;
 
@@ -112,7 +113,15 @@ namespace LegendaryExplorer.Dialogs
         public object SelectedEntryItem
         {
             get => selectedEntryItem;
-            set => SetProperty(ref selectedEntryItem, value);
+            set
+            {
+                if (SetProperty(ref selectedEntryItem, value)
+                    && !SynchronizingSequencePreviewSelection
+                    && value is ExportEntry export)
+                {
+                    SequencePreviewEditor?.FocusReadOnlyPreviewObject(export);
+                }
+            }
         }
 
         /// <summary>
@@ -191,8 +200,41 @@ namespace LegendaryExplorer.Dialogs
             MinHeight = Math.Min(600, Height);
 
             SequencePreviewEditor = new SequenceEditorWPF(enableRecents: false);
-            SequencePreviewHost.Content = SequencePreviewEditor.TakeReadOnlyPreviewContent(ApplySequencePreviewSelection);
+            SequencePreviewHost.Content = SequencePreviewEditor.TakeReadOnlyPreviewContent(
+                SynchronizeEntrySelectionFromSequencePreview,
+                ApplySequencePreviewSelection);
             SequencePreviewEditor.LoadEmbeddedPackage(Pcc, sequencePreview);
+        }
+
+        private void SynchronizeEntrySelectionFromSequencePreview(ExportEntry entry)
+        {
+            if (entry is null
+                || AllEntriesList.OfType<IEntry>().FirstOrDefault(candidate => candidate.UIndex == entry.UIndex) is not { } selectedEntry)
+            {
+                return;
+            }
+
+            SynchronizingSequencePreviewSelection = true;
+            try
+            {
+                if (!FilteredEntriesList.Contains(selectedEntry))
+                {
+                    SearchText = string.Empty;
+                    ItemFilterText = string.Empty;
+                }
+
+                if (!FilteredEntriesList.Contains(selectedEntry))
+                {
+                    return;
+                }
+
+                SelectedEntryItem = selectedEntry;
+                EntrySelectorListView.ScrollIntoView(selectedEntry);
+            }
+            finally
+            {
+                SynchronizingSequencePreviewSelection = false;
+            }
         }
 
         private void ApplySequencePreviewSelection(ExportEntry entry)
@@ -203,7 +245,7 @@ namespace LegendaryExplorer.Dialogs
                 return;
             }
 
-            SelectedEntryItem = selectedEntry;
+            SynchronizeEntrySelectionFromSequencePreview(entry);
             if (!SequencePreviewSelectionPending)
             {
                 SequencePreviewSelectionPending = true;

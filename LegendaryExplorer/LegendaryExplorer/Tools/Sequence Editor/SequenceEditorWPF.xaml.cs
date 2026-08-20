@@ -107,6 +107,9 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
         private bool isEmbeddedContentLoaded;
         private bool isReadOnlyPreview;
         private readonly bool recentsEnabled;
+        private bool suppressReadOnlyPreviewSelectionCallback;
+        private int? pendingReadOnlyPreviewObjectUIndex;
+        private Action<ExportEntry> readOnlyPreviewObjectSelected;
         private Action<ExportEntry> readOnlyPreviewObjectDoubleClicked;
         private bool isDisposed;
 
@@ -467,10 +470,12 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
         /// <summary>
         /// Extracts only the graph and export list for a read-only embedded sequence preview.
         /// </summary>
-        public FrameworkElement TakeReadOnlyPreviewContent(Action<ExportEntry> objectDoubleClicked)
+        public FrameworkElement TakeReadOnlyPreviewContent(Action<ExportEntry> objectSelected,
+            Action<ExportEntry> objectDoubleClicked)
         {
             isEmbedded = true;
             isReadOnlyPreview = true;
+            readOnlyPreviewObjectSelected = objectSelected;
             readOnlyPreviewObjectDoubleClicked = objectDoubleClicked;
 
             graphEditor.Camera.MouseDown -= backMouseDown_Handler;
@@ -486,6 +491,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             CurrentObjects_ListBox.ContextMenu = null;
             CurrentObjects_ListBox.SelectionMode = SelectionMode.Single;
             CurrentObjects_ListBox.SelectionChanged += ReadOnlyPreviewList_SelectionChanged;
+            CurrentObjects_ListBox.PreviewMouseLeftButtonDown += ReadOnlyPreviewList_MouseLeftButtonDown;
             CurrentObjects_ListBox.MouseDoubleClick += ReadOnlyPreviewList_MouseDoubleClick;
 
             if (GraphHost.Parent is Panel graphParent)
@@ -526,6 +532,42 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             preview.Loaded += EmbeddedContent_Loaded;
             preview.Unloaded += EmbeddedContent_Unloaded;
             return preview;
+        }
+
+        /// <summary>
+        /// Selects an object in the read-only preview, scrolls the export column to it, and centers its graph node.
+        /// Requests made before the sequence graph is ready are applied after it loads.
+        /// </summary>
+        public void FocusReadOnlyPreviewObject(ExportEntry export)
+        {
+            if (!isReadOnlyPreview || export is null)
+            {
+                return;
+            }
+
+            if (CurrentObjects.FirstOrDefault(obj => obj.UIndex == export.UIndex) is not { } obj)
+            {
+                pendingReadOnlyPreviewObjectUIndex = export.UIndex;
+                return;
+            }
+
+            pendingReadOnlyPreviewObjectUIndex = null;
+            suppressReadOnlyPreviewSelectionCallback = true;
+            try
+            {
+                if (!ReferenceEquals(CurrentObjects_ListBox.SelectedItem, obj))
+                {
+                    CurrentObjects_ListBox.SelectedItem = obj;
+                }
+                else
+                {
+                    FocusReadOnlyPreviewObject(obj);
+                }
+            }
+            finally
+            {
+                suppressReadOnlyPreviewSelectionCallback = false;
+            }
         }
 
         private void EmbeddedContent_Loaded(object sender, RoutedEventArgs e)
@@ -2035,6 +2077,15 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                 if (isReadOnlyPreview && CurrentObjects.Count > 0)
                 {
                     graphEditor.Camera.AnimateViewToCenterBounds(CurrentObjects.BoundingRect(), true, 0);
+
+                    if (pendingReadOnlyPreviewObjectUIndex is int pendingUIndex)
+                    {
+                        pendingReadOnlyPreviewObjectUIndex = null;
+                        if (CurrentObjects.FirstOrDefault(obj => obj.UIndex == pendingUIndex) is { } pendingObject)
+                        {
+                            FocusReadOnlyPreviewObject(pendingObject.Export);
+                        }
+                    }
                 }
             }
             catch (Exception e) when (!App.IsDebug)
@@ -5833,7 +5884,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
         {
             if (e.Button == System.Windows.Forms.MouseButtons.Left && sender is SObj obj)
             {
-                CurrentObjects_ListBox.SelectedItem = obj;
+                SelectReadOnlyPreviewObjectFromPreview(obj);
             }
         }
 
@@ -5841,9 +5892,18 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
         {
             if (e.Button == System.Windows.Forms.MouseButtons.Left && sender is SObj obj)
             {
-                CurrentObjects_ListBox.SelectedItem = obj;
+                SelectReadOnlyPreviewObjectFromPreview(obj);
                 e.Handled = true;
                 readOnlyPreviewObjectDoubleClicked?.Invoke(obj.Export);
+            }
+        }
+
+        private void ReadOnlyPreviewList_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            if (e.OriginalSource is DependencyObject source
+                && ItemsControl.ContainerFromElement(CurrentObjects_ListBox, source) is ListBoxItem { DataContext: SObj obj })
+            {
+                SelectReadOnlyPreviewObjectFromPreview(obj);
             }
         }
 
@@ -5870,6 +5930,34 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                 obj.IsSelected = true;
             }
 
+            if (e.AddedItems.OfType<SObj>().LastOrDefault() is { } selectedObject)
+            {
+                FocusReadOnlyPreviewObject(selectedObject);
+                if (!suppressReadOnlyPreviewSelectionCallback)
+                {
+                    readOnlyPreviewObjectSelected?.Invoke(selectedObject.Export);
+                }
+            }
+
+            graphEditor.Refresh();
+        }
+
+        private void SelectReadOnlyPreviewObjectFromPreview(SObj obj)
+        {
+            if (!ReferenceEquals(CurrentObjects_ListBox.SelectedItem, obj))
+            {
+                CurrentObjects_ListBox.SelectedItem = obj;
+                return;
+            }
+
+            FocusReadOnlyPreviewObject(obj);
+            readOnlyPreviewObjectSelected?.Invoke(obj.Export);
+        }
+
+        private void FocusReadOnlyPreviewObject(SObj obj)
+        {
+            CurrentObjects_ListBox.ScrollIntoView(obj);
+            graphEditor.Camera.AnimateViewToCenterBounds(obj.GlobalFullBounds, false, 100);
             graphEditor.Refresh();
         }
 
@@ -6006,7 +6094,9 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                 x.Dispose();
             });
             CurrentObjects_ListBox.SelectionChanged -= ReadOnlyPreviewList_SelectionChanged;
+            CurrentObjects_ListBox.PreviewMouseLeftButtonDown -= ReadOnlyPreviewList_MouseLeftButtonDown;
             CurrentObjects_ListBox.MouseDoubleClick -= ReadOnlyPreviewList_MouseDoubleClick;
+            readOnlyPreviewObjectSelected = null;
             readOnlyPreviewObjectDoubleClicked = null;
             CurrentObjects.Clear();
             ResetTreeView();
