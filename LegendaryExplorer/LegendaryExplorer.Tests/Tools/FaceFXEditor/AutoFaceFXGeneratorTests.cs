@@ -2,7 +2,11 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Media;
 using LegendaryExplorer.Resources;
+using LegendaryExplorer.SharedUI.Controls;
 using LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator;
 using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.Unreal.BinaryConverters;
@@ -202,6 +206,62 @@ namespace LegendaryExplorer.Tests.Tools.FaceFXEditor
                 generateExpressions: true);
             AssertGeneratedAnimationList(FaceFXSpecies.EDI, new[] { "Talk" }, game: MEGame.LE3,
                 generateExpressions: true);
+        }
+
+        [TestMethod]
+        public void SearchableSelectionListsMatchEverySearchTermCaseInsensitively()
+        {
+            Assert.IsTrue(SearchableSelectionList.MatchesSearch("Turian Female", "tur fem"));
+            Assert.IsTrue(SearchableSelectionList.MatchesSearch(
+                new FaceFXEmotionChoice { DisplayName = "Neutral: Thoughtful" }, "THO neutral"));
+            Assert.IsFalse(SearchableSelectionList.MatchesSearch("Turian Female", "tur krogan"));
+            Assert.IsTrue(SearchableSelectionList.MatchesSearch("Human Male", "  "));
+        }
+
+        [STATestMethod]
+        public void SearchableSelectionListSearchFieldAcceptsPointerInputAndFiltersItems()
+        {
+            var control = new SearchableSelectionList
+            {
+                ItemsSource = new[] { "Human Female", "Turian Female", "Krogan" },
+                SelectedItem = "Human Female",
+                Width = 240,
+                Height = 120
+            };
+            var window = new Window
+            {
+                Content = control,
+                Width = 280,
+                Height = 180,
+                Left = -10000,
+                Top = -10000,
+                ShowActivated = false,
+                ShowInTaskbar = false
+            };
+
+            try
+            {
+                window.Show();
+                control.UpdateLayout();
+
+                var filterBox = (WatermarkTextBox)control.FindName("FilterBox");
+                DependencyObject hitElement = filterBox.InputHitTest(new Point(10, 10)) as DependencyObject;
+                while (hitElement != null && hitElement is not TextBox)
+                    hitElement = VisualTreeHelper.GetParent(hitElement);
+
+                Assert.IsInstanceOfType<TextBox>(hitElement,
+                    "A pointer click in the search field must reach its editable TextBox.");
+
+                filterBox.Text = "tur fem";
+                CollectionAssert.AreEqual(new[] { "Turian Female" },
+                    control.FilteredItems.Cast<string>().ToArray());
+                Assert.AreEqual("Human Female", control.SelectedItem,
+                    "Filtering must not silently replace a selection that is temporarily hidden.");
+            }
+            finally
+            {
+                window.Close();
+            }
         }
 
         [TestMethod]

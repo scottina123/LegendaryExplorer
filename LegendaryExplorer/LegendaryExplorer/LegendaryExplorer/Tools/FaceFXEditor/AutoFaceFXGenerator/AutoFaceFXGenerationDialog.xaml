@@ -159,11 +159,12 @@
                 <!-- Generation Options -->
                 <GroupBox Header="Generation Options">
                     <StackPanel>
-                        <StackPanel Orientation="Horizontal" Margin="5">
-                            <Label Content="Species:" Width="120"/>
-                            <ComboBox ItemsSource="{Binding AvailableSpecies}" 
-                                      SelectedItem="{Binding SelectedSpecies}"
-                                      Width="150" VerticalAlignment="Center"/>
+                        <StackPanel Margin="5">
+                            <Label Content="Species:"/>
+                            <local:SearchableSelectionList ItemsSource="{Binding AvailableSpecies}"
+                                                           SelectedItem="{Binding SelectedSpecies}"
+                                                           SearchWatermark="Search species..."
+                                                           Height="115"/>
                         </StackPanel>
                         
                         <CheckBox Content="Generate Blink Animation" IsChecked="{Binding GenerateBlinkAnimation}"/>
@@ -196,11 +197,12 @@
                         <TextBlock Text="Add an emotional expression to the animation:" 
                                    FontStyle="Italic" FontSize="11" Margin="5,2" Opacity="0.8" TextWrapping="Wrap"/>
                         
-                        <StackPanel Orientation="Horizontal" Margin="5">
-                            <Label Content="Emotion:" Width="80"/>
-                            <ComboBox ItemsSource="{Binding AvailableEmotions}" 
-                                      SelectedItem="{Binding SelectedEmotion}"
-                                      Width="260" VerticalAlignment="Center"/>
+                        <StackPanel Margin="5">
+                            <Label Content="Emotion:"/>
+                            <local:SearchableSelectionList ItemsSource="{Binding AvailableEmotions}"
+                                                           SelectedItem="{Binding SelectedEmotion}"
+                                                           SearchWatermark="Search emotions..."
+                                                           Height="145"/>
                         </StackPanel>
                         
                         <StackPanel Orientation="Horizontal" Margin="5,0">

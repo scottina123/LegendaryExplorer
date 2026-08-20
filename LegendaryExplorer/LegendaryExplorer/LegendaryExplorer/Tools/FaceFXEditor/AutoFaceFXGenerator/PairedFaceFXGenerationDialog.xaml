@@ -6,8 +6,8 @@
         xmlns:local="clr-namespace:LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator"
         mc:Ignorable="d"
         Title="Male and Female FaceFX Generation"
-        Height="515" Width="820"
-        MinHeight="515" MinWidth="820"
+        Height="620" Width="820"
+        MinHeight="620" MinWidth="820"
         WindowStartupLocation="CenterOwner"
         ResizeMode="NoResize"
         d:DataContext="{d:DesignInstance Type={x:Type local:PairedFaceFXGenerationDialog}, IsDesignTimeCreatable=False}">
@@ -31,16 +31,20 @@
             </StackPanel>
         </Border>
 
-        <Grid Grid.Row="1" Margin="15">
-            <Grid.RowDefinitions>
-                <RowDefinition Height="*"/>
-                <RowDefinition Height="Auto"/>
-            </Grid.RowDefinitions>
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="15"/>
-                <ColumnDefinition Width="*"/>
-            </Grid.ColumnDefinitions>
+        <ScrollViewer Grid.Row="1"
+                      HorizontalContentAlignment="Stretch"
+                      HorizontalScrollBarVisibility="Disabled"
+                      VerticalScrollBarVisibility="Auto">
+            <Grid Margin="15">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="15"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
 
             <GroupBox Grid.Column="0" Padding="10">
                 <GroupBox.Header>
@@ -55,11 +59,12 @@
                         <TextBlock Text="Target:" FontSize="12" Opacity="0.8"/>
                         <TextBlock Text="{Binding Female.TargetText}" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,2,0,0"/>
                     </StackPanel>
-                    <StackPanel Orientation="Horizontal" Margin="0,5">
-                        <Label Content="Species:" Width="105"/>
-                        <ComboBox ItemsSource="{Binding Female.AvailableSpecies}"
-                                  SelectedItem="{Binding Female.SelectedSpecies}"
-                                  Width="210" VerticalAlignment="Center"/>
+                    <StackPanel Margin="0,5">
+                        <Label Content="Species:"/>
+                        <local:SearchableSelectionList ItemsSource="{Binding Female.AvailableSpecies}"
+                                                       SelectedItem="{Binding Female.SelectedSpecies}"
+                                                       SearchWatermark="Search species..."
+                                                       Height="115"/>
                     </StackPanel>
                     <StackPanel Orientation="Horizontal" Margin="0,5">
                         <Label Content="Intensity Scale:" Width="105"/>
@@ -95,11 +100,12 @@
                         <TextBlock Text="Target:" FontSize="12" Opacity="0.8"/>
                         <TextBlock Text="{Binding Male.TargetText}" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,2,0,0"/>
                     </StackPanel>
-                    <StackPanel Orientation="Horizontal" Margin="0,5">
-                        <Label Content="Species:" Width="105"/>
-                        <ComboBox ItemsSource="{Binding Male.AvailableSpecies}"
-                                  SelectedItem="{Binding Male.SelectedSpecies}"
-                                  Width="210" VerticalAlignment="Center"/>
+                    <StackPanel Margin="0,5">
+                        <Label Content="Species:"/>
+                        <local:SearchableSelectionList ItemsSource="{Binding Male.AvailableSpecies}"
+                                                       SelectedItem="{Binding Male.SelectedSpecies}"
+                                                       SearchWatermark="Search species..."
+                                                       Height="115"/>
                     </StackPanel>
                     <StackPanel Orientation="Horizontal" Margin="0,5">
                         <Label Content="Intensity Scale:" Width="105"/>
@@ -130,7 +136,8 @@
                     <TextBlock Text="⚠ This operation cannot be undone." TextWrapping="Wrap"/>
                 </Border>
             </StackPanel>
-        </Grid>
+            </Grid>
+        </ScrollViewer>
 
         <Border Grid.Row="2" BorderThickness="0,1,0,0" BorderBrush="{DynamicResource BorderColorBrush}" Padding="10">
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">

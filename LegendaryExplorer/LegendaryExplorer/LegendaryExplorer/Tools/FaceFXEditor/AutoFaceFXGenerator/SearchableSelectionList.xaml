@@ -1,0 +1,28 @@
+<UserControl x:Class="LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator.SearchableSelectionList"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="clr-namespace:LegendaryExplorer.SharedUI.Controls"
+             x:Name="Root"
+             Focusable="False">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="26"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <controls:WatermarkTextBox x:Name="FilterBox"
+                                  Watermark="{Binding SearchWatermark, ElementName=Root}"
+                                  TextChanged="FilterBox_OnTextChanged"
+                                  PreviewKeyDown="FilterBox_OnPreviewKeyDown"
+                                  Cursor="IBeam"
+                                  Margin="0,0,0,4"/>
+
+        <ListBox x:Name="SelectionList"
+                 Grid.Row="1"
+                 ItemsSource="{Binding FilteredItems, ElementName=Root}"
+                 SelectionChanged="SelectionList_OnSelectionChanged"
+                 HorizontalContentAlignment="Stretch"
+                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                 ScrollViewer.VerticalScrollBarVisibility="Auto"/>
+    </Grid>
+</UserControl>
