@@ -3971,7 +3971,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             var currentLinkedOp = linkStruct.GetProp<ObjectProperty>("LinkedOp")?.ResolveToEntry(Pcc) as ExportEntry;
             NameReference currentAction = linkStruct.GetProp<NameProperty>("LinkAction")?.Value ?? new NameReference("None");
 
-            if (ShowActionLinkEditDialog(linkKind, currentName, currentLinkedOp, currentAction) is { } result)
+            if (ShowActionLinkEditDialog(export, linkKind, currentName, currentLinkedOp, currentAction) is { } result)
             {
                 linkStruct.Properties.AddOrReplaceProp(new StrProperty(result.EntryName, "LinkDesc"));
                 linkStruct.Properties.AddOrReplaceProp(new ObjectProperty(result.LinkedOp, "LinkedOp"));
@@ -4100,8 +4100,8 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                 : null;
         }
 
-        private ActionLinkEditDialogResult ShowActionLinkEditDialog(string linkKind, string currentName,
-            ExportEntry currentLinkedOp, NameReference currentAction)
+        private ActionLinkEditDialogResult ShowActionLinkEditDialog(ExportEntry linkOwner, string linkKind,
+            string currentName, ExportEntry currentLinkedOp, NameReference currentAction)
         {
             var nameTextBox = new TextBox
             {
@@ -4244,8 +4244,19 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             linkActionNumberTextBox.TextChanged += (_, _) => UpdateOkState();
             pickLinkedOpButton.Click += (_, _) =>
             {
+                ExportEntry sequence = linkOwner.IsA("Sequence")
+                    ? linkOwner
+                    : linkOwner.GetProperty<ObjectProperty>("ParentSequence")?.ResolveToEntry(Pcc) as ExportEntry;
+                HashSet<int> sequenceObjectUIndexes = sequence is null
+                    ? null
+                    : [.. sequence.GetProperty<ArrayProperty<ObjectProperty>>("SequenceObjects")?
+                        .Select(objectProperty => objectProperty.Value) ?? []];
                 if (EntrySelector.GetEntry<ExportEntry>(dialog, Pcc, $"Select linked op for {linkKind} link",
-                        exp => exp.IsA("Sequence") || exp.IsA("SequenceObject"), selectedLinkedOp) is not { } linkedOp)
+                        exp => exp.IsA("Sequence") || exp.IsA("SequenceObject"), selectedLinkedOp,
+                        initialFilterPredicate: sequenceObjectUIndexes is null
+                            ? null
+                            : exp => sequenceObjectUIndexes.Contains(exp.UIndex),
+                        showAllEntriesOptionLabel: "Show full LinkedOp list") is not { } linkedOp)
                 {
                     return;
                 }

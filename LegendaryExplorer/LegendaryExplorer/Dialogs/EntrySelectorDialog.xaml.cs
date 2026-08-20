@@ -42,7 +42,29 @@ namespace LegendaryExplorer.Dialogs
         /// </summary>
         private Func<string, IEnumerable<object>> ItemSearch;
 
+        /// <summary>
+        /// Optional filter applied when the dialog opens. The user can disable it to see every valid entry.
+        /// </summary>
+        private Predicate<IEntry> InitialEntryFilter;
+
         public Visibility ItemSearchVisibility => ItemSearch is null ? Visibility.Collapsed : Visibility.Visible;
+
+        public Visibility ShowAllEntriesOptionVisibility => InitialEntryFilter is null ? Visibility.Collapsed : Visibility.Visible;
+
+        public string ShowAllEntriesOptionLabel { get; private set; }
+
+        private bool showAllEntries;
+        public bool ShowAllEntries
+        {
+            get => showAllEntries;
+            set
+            {
+                if (SetProperty(ref showAllEntries, value))
+                {
+                    UpdateFilteredEntries();
+                }
+            }
+        }
         
         /// <summary>
         /// Gets the collection of all entries available for selection, filtered by the provided predicate.
@@ -99,12 +121,17 @@ namespace LegendaryExplorer.Dialogs
         /// <param name="entryPredicate">A predicate to narrow the displayed entries</param>
         /// <param name="supportRootSelection">Whether to include a special option in the selection list</param>
         /// <param name="rootSelectionLabel">Label for the special option when <paramref name="supportRootSelection"/> is true</param>
-        private EntrySelector(Window owner, IMEPackage pcc, SupportedTypes supportedInputTypes, string directionsText = null, Predicate<IEntry> entryPredicate = null, bool supportRootSelection = false, string rootSelectionLabel = "[Package root]", string searchHelpText = null)
+        private EntrySelector(Window owner, IMEPackage pcc, SupportedTypes supportedInputTypes, string directionsText = null,
+            Predicate<IEntry> entryPredicate = null, bool supportRootSelection = false,
+            string rootSelectionLabel = "[Package root]", string searchHelpText = null,
+            Predicate<IEntry> initialEntryFilter = null, string showAllEntriesOptionLabel = null)
         {
             this.Pcc = pcc;
             this.SupportedInputTypes = supportedInputTypes;
             this.DirectionsTextOverride = directionsText;
             this.SearchHelpTextOverride = searchHelpText;
+            InitialEntryFilter = initialEntryFilter;
+            ShowAllEntriesOptionLabel = showAllEntriesOptionLabel ?? "Show full list";
 
             var allEntriesBuilding = new List<object>();
             if (SupportedInputTypes.HasFlag(SupportedTypes.Imports))
@@ -184,7 +211,10 @@ namespace LegendaryExplorer.Dialogs
         /// <param name="directionsText">Optional custom text to display as directions to the user</param>
         /// <param name="predicate">Optional predicate to filter the displayed entries</param>
         /// <returns>A tuple indicating whether the package root was selected and the selected entry (null if root was selected or dialog was cancelled)</returns>
-        public static (bool selectedPackageRoot, T selectedEntry) GetEntryWithNoOption<T>(Window owner, IMEPackage pcc, string directionsText = null, Predicate<T> predicate = null, object defaultItem = null, bool selectLastItemByDefault = false, string noOptionLabel = "[Package root]") where T : class, IEntry
+        public static (bool selectedPackageRoot, T selectedEntry) GetEntryWithNoOption<T>(Window owner,
+            IMEPackage pcc, string directionsText = null, Predicate<T> predicate = null, object defaultItem = null,
+            bool selectLastItemByDefault = false, string noOptionLabel = "[Package root]",
+            Predicate<T> initialFilterPredicate = null, string showAllEntriesOptionLabel = null) where T : class, IEntry
         {
             SupportedTypes supportedInputTypes = SupportedTypes.ExportsAndImports;
             if (typeof(T) == typeof(ExportEntry))
@@ -201,7 +231,12 @@ namespace LegendaryExplorer.Dialogs
             {
                 entryPredicate = entry => predicate((T)entry);
             }
-            using var dlg = new EntrySelector(owner, pcc, supportedInputTypes, directionsText, entryPredicate, true, noOptionLabel);
+            Predicate<IEntry> initialEntryFilter = initialFilterPredicate is null
+                ? null
+                : entry => initialFilterPredicate((T)entry);
+            using var dlg = new EntrySelector(owner, pcc, supportedInputTypes, directionsText, entryPredicate, true,
+                noOptionLabel, initialEntryFilter: initialEntryFilter,
+                showAllEntriesOptionLabel: showAllEntriesOptionLabel);
             dlg.SetInitialSelection(defaultItem, selectLastItemByDefault);
             if (dlg.ShowDialog() == true)
             {
@@ -221,7 +256,9 @@ namespace LegendaryExplorer.Dialogs
         /// <param name="predicate">Optional predicate to filter the displayed entries</param>
         /// <param name="defaultItem">Optional entry to pre-select in the dialog</param>
         /// <returns>The selected entry, or null if the dialog was cancelled</returns>
-        public static T GetEntry<T>(Window owner, IMEPackage pcc, string directionsText = null, Predicate<T> predicate = null, IEntry defaultItem = null, bool selectLastItemByDefault = false) where T : class, IEntry
+        public static T GetEntry<T>(Window owner, IMEPackage pcc, string directionsText = null,
+            Predicate<T> predicate = null, IEntry defaultItem = null, bool selectLastItemByDefault = false,
+            Predicate<T> initialFilterPredicate = null, string showAllEntriesOptionLabel = null) where T : class, IEntry
         {
             SupportedTypes supportedInputTypes = SupportedTypes.ExportsAndImports;
             if (typeof(T) == typeof(ExportEntry))
@@ -238,7 +275,11 @@ namespace LegendaryExplorer.Dialogs
             {
                 entryPredicate = entry => predicate((T)entry);
             }
-            using var dlg = new EntrySelector(owner, pcc, supportedInputTypes, directionsText, entryPredicate);
+            Predicate<IEntry> initialEntryFilter = initialFilterPredicate is null
+                ? null
+                : entry => initialFilterPredicate((T)entry);
+            using var dlg = new EntrySelector(owner, pcc, supportedInputTypes, directionsText, entryPredicate,
+                initialEntryFilter: initialEntryFilter, showAllEntriesOptionLabel: showAllEntriesOptionLabel);
             dlg.SetInitialSelection(defaultItem, selectLastItemByDefault);
             if (dlg.ShowDialog() == true)
             {
@@ -309,7 +350,7 @@ namespace LegendaryExplorer.Dialogs
 
         private void SetInitialSelection(object defaultItem, bool selectLastItemByDefault = false)
         {
-            SelectedEntryItem = defaultItem;
+            SelectedEntryItem = defaultItem is not null && FilteredEntriesList.Contains(defaultItem) ? defaultItem : null;
             if (SelectedEntryItem is null && FilteredEntriesList.Count > 0)
             {
                 SelectedEntryItem = selectLastItemByDefault ? FilteredEntriesList[^1] : FilteredEntriesList[0];
@@ -324,6 +365,12 @@ namespace LegendaryExplorer.Dialogs
         private void UpdateFilteredEntries()
         {
             IEnumerable<object> filteredEntries = AllEntriesList;
+            if (!ShowAllEntries && InitialEntryFilter is not null)
+            {
+                filteredEntries = filteredEntries.Where(entry => entry is not IEntry packageEntry
+                                                                  || InitialEntryFilter(packageEntry));
+            }
+
             string search = (ItemSearch is null ? SearchText : ItemFilterText)?.Trim();
             if (!string.IsNullOrWhiteSpace(search))
             {

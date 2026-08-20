@@ -143,6 +143,12 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         /// </summary>
         public bool ReloadPropertyDataAfterWrite { get; set; } = true;
 
+        /// <summary>
+        /// Opens LinkedOp selection filtered to objects in the sequence containing the loaded export, while
+        /// allowing the user to reveal the full list of valid objects.
+        /// </summary>
+        public bool FilterLinkedOpSelectionToCurrentSequenceByDefault { get; set; }
+
         public bool UseAssetDatabaseOwnerFriendlyNames { get; set; } = true;
 
         private bool _hasUnsavedChanges;
@@ -3686,6 +3692,21 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             CurrentObjectPropertyChoices = MakeAllEntriesList(expectedType, exactTypeOnly: ShouldUseExactObjectTypeSelection(op, expectedType));
         }
 
+        private HashSet<int> GetCurrentSequenceObjectUIndexes()
+        {
+            ExportEntry sequence = CurrentLoadedExport.IsA("Sequence")
+                ? CurrentLoadedExport
+                : CurrentLoadedExport.GetProperty<ObjectProperty>("ParentSequence")?.ResolveToEntry(Pcc) as ExportEntry;
+            if (sequence is null)
+            {
+                return null;
+            }
+
+            return [.. sequence
+                .GetProperty<ArrayProperty<ObjectProperty>>("SequenceObjects")?
+                .Select(objectProperty => objectProperty.Value) ?? []];
+        }
+
         private static bool ShouldUseExactObjectTypeSelection(ObjectProperty objectProperty, string expectedType)
         {
             return string.Equals(objectProperty?.Name.Name, "ParentSequence", StringComparison.Ordinal)
@@ -3827,13 +3848,21 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             UpdateObjectComboBoxOptions(objectProperty, targetNode);
 
             HashSet<int> allowedEntryUIndexes = [.. CurrentObjectPropertyChoices.OfType<IEntry>().Select(entry => entry.UIndex)];
+            HashSet<int> currentSequenceObjectUIndexes = FilterLinkedOpSelectionToCurrentSequenceByDefault
+                                                        && objectProperty.Name == "LinkedOp"
+                ? GetCurrentSequenceObjectUIndexes()
+                : null;
             var (selectedNull, selectedEntry) = EntrySelector.GetEntryWithNoOption<IEntry>(
                 Window.GetWindow(this),
                 Pcc,
                 $"Select an object reference for {targetNode.DisplayName}.",
                 predicate: entry => allowedEntryUIndexes.Contains(entry.UIndex),
                 selectLastItemByDefault: true,
-                noOptionLabel: "0 Null");
+                noOptionLabel: "0 Null",
+                initialFilterPredicate: currentSequenceObjectUIndexes is null
+                    ? null
+                    : entry => currentSequenceObjectUIndexes.Contains(entry.UIndex),
+                showAllEntriesOptionLabel: "Show full LinkedOp list");
 
             if (!selectedNull && selectedEntry == null)
             {
