@@ -140,6 +140,16 @@ public class BulkAudioImportDialogTests
     }
 
     [TestMethod]
+    public void OutputBusFilterMatchesPartialNamesIgnoringCase()
+    {
+        Assert.IsTrue(BulkAudioImportDialog.MatchesOutputBusFilter("Env-VO-Conversation", "vo-conv"));
+        Assert.IsTrue(BulkAudioImportDialog.MatchesOutputBusFilter("NonSlowdown-Music", " MUSIC "));
+        Assert.IsTrue(BulkAudioImportDialog.MatchesOutputBusFilter("Master Audio Bus", ""));
+        Assert.IsFalse(BulkAudioImportDialog.MatchesOutputBusFilter("Env-VO-Conversation", "music"));
+        Assert.IsFalse(BulkAudioImportDialog.MatchesOutputBusFilter(null, "music"));
+    }
+
+    [TestMethod]
     public void IndividualEffectTargetsMatchEveryGeneratedLe3SoundVariant()
     {
         var wavPath = @"C:\Audio\Voice.wav";

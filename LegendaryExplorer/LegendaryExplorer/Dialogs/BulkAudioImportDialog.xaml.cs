@@ -10,6 +10,7 @@ using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Data;
+using System.Windows.Input;
 using System.Xml.Linq;
 using LegendaryExplorer.Audio;
 using LegendaryExplorer.SharedUI;
@@ -266,6 +267,25 @@ namespace LegendaryExplorer.Dialogs
         /// Wwise project so the generated ActorMixer receives the game bus's name-derived ShortID.
         /// </summary>
         public List<string> OutputBuses { get; } = [];
+        public ICollectionView OutputBusesView { get; }
+
+        private string _outputBusFilterText;
+        public string OutputBusFilterText
+        {
+            get => _outputBusFilterText;
+            set
+            {
+                if (_outputBusFilterText == value)
+                {
+                    return;
+                }
+
+                _outputBusFilterText = value;
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(OutputBusFilterText)));
+                OutputBusesView?.Refresh();
+                RestoreSelectedOutputBusIfVisible();
+            }
+        }
 
         public string SelectedOutputBus { get; set; }
 
@@ -299,11 +319,15 @@ namespace LegendaryExplorer.Dialogs
             bool isLe2 = _package.Game == MEGame.LE2;
             IndividualEffectOptions = GetIndividualEffectOptions(_package.Game);
             OutputBuses.AddRange(isLe2 ? Le2OutputBuses : Le3OutputBuses);
+            OutputBusesView = CollectionViewSource.GetDefaultView(OutputBuses);
+            OutputBusesView.Filter = item => item is string outputBus &&
+                                                   MatchesOutputBusFilter(outputBus, OutputBusFilterText);
             SelectedOutputBus = isLe2 ? Le2ConversationOutputBus : ConversationOutputBus;
 
             InitializeComponent();
             DataContext = this;
             CustomWindowChrome.ApplyCustomChrome(this);
+            RestoreSelectedOutputBusIfVisible();
 
             Le2AudioTab.IsEnabled = isLe2;
             Le3AudioTab.IsEnabled = _package.Game == MEGame.LE3;
@@ -396,6 +420,19 @@ namespace LegendaryExplorer.Dialogs
             string filter = filterText.Trim();
             return item.FilePath.Contains(filter, StringComparison.OrdinalIgnoreCase) ||
                    item.TlkDisplayText.Contains(filter, StringComparison.OrdinalIgnoreCase);
+        }
+
+        internal static bool MatchesOutputBusFilter(string outputBus, string filterText) =>
+            outputBus != null && (string.IsNullOrWhiteSpace(filterText) ||
+                                  outputBus.Contains(filterText.Trim(), StringComparison.OrdinalIgnoreCase));
+
+        private void RestoreSelectedOutputBusIfVisible()
+        {
+            if (OutputBusListBox?.Items.Contains(SelectedOutputBus) == true)
+            {
+                OutputBusListBox.SelectedItem = SelectedOutputBus;
+                OutputBusListBox.ScrollIntoView(SelectedOutputBus);
+            }
         }
 
         private void AddFilesButton_Click(object sender, RoutedEventArgs e)
@@ -499,12 +536,32 @@ namespace LegendaryExplorer.Dialogs
             }
         }
 
-        private void OutputBusComboBox_SelectionChanged(object sender,
-            System.Windows.Controls.SelectionChangedEventArgs e) => UpdateOutputBusOptions();
+        private void OutputBusFilterTextBox_KeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key != Key.Down || OutputBusListBox.Items.Count == 0)
+            {
+                return;
+            }
+
+            OutputBusListBox.SelectedItem ??= OutputBusListBox.Items[0];
+            OutputBusListBox.Focus();
+            e.Handled = true;
+        }
+
+        private void OutputBusListBox_SelectionChanged(object sender,
+            System.Windows.Controls.SelectionChangedEventArgs e)
+        {
+            if (OutputBusListBox.SelectedItem is string selectedOutputBus)
+            {
+                SelectedOutputBus = selectedOutputBus;
+            }
+
+            UpdateOutputBusOptions();
+        }
 
         private void UpdateOutputBusOptions()
         {
-            if (OutputBusComboBox == null || RadioEffectCheckBox == null || QecEffectCheckBox == null ||
+            if (OutputBusListBox == null || RadioEffectCheckBox == null || QecEffectCheckBox == null ||
                 HelmetEffectCheckBox == null || DuckAudioCheckBox == null || AttenuationCheckBox == null ||
                 Le2RadioEffectCheckBox == null || Le2HelmetEffectCheckBox == null ||
                 Le2HologramEffectCheckBox == null || Le2DuckAudioCheckBox == null ||
@@ -515,7 +572,7 @@ namespace LegendaryExplorer.Dialogs
 
             bool isLe2 = _package.Game == MEGame.LE2;
             bool isLe3 = _package.Game == MEGame.LE3;
-            string outputBus = OutputBusComboBox.SelectedItem as string ?? SelectedOutputBus;
+            string outputBus = OutputBusListBox.SelectedItem as string ?? SelectedOutputBus;
             bool defaultsToHelmetEffect = DefaultsToHelmetEffect(_package.Game, outputBus);
             bool supportsMusicDucking = SupportsMusicDucking(_package.Game, outputBus);
 
@@ -804,8 +861,7 @@ namespace LegendaryExplorer.Dialogs
                 return;
             }
 
-            var selectedBusItem = OutputBusComboBox.SelectedItem as string;
-            var outputBusName = selectedBusItem ?? "Master Audio Bus";
+            var outputBusName = SelectedOutputBus ?? "Master Audio Bus";
 
             var isDialogue = IsDialogueBankCheckBox.IsChecked == true;
             var generateGenderedEvents = GenerateGenderedEventsCheckBox.IsChecked == true;

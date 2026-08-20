@@ -180,11 +180,25 @@
                 <Label Grid.Row="1" Grid.Column="0" Content="Volume (dB):" VerticalAlignment="Center"/>
                 <TextBox Grid.Row="1" Grid.Column="1" x:Name="VolumeTextBox" Text="-10" Padding="4" Margin="5,2"
                          ToolTip="Volume offset in dB applied to the ActorMixer. Typical dialogue value is -10."/>
-                <Label Grid.Row="2" Grid.Column="0" Content="Output Bus:" VerticalAlignment="Center"/>
-                <ComboBox Grid.Row="2" Grid.Column="1" x:Name="OutputBusComboBox" IsEditable="False" Margin="5,2" Padding="4"
-                          ItemsSource="{Binding OutputBuses}" SelectedItem="{Binding SelectedOutputBus}"
-                          SelectionChanged="OutputBusComboBox_SelectionChanged"
-                          ToolTip="The game-specific Wwise output bus for the ActorMixer. The selected bus is injected into the temporary project automatically."/>
+                <Label Grid.Row="2" Grid.Column="0" Content="Output Bus:" VerticalAlignment="Top" Padding="5,8,5,5"/>
+                <Grid Grid.Row="2" Grid.Column="1" Margin="5,2">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <DockPanel Margin="0,0,0,4">
+                        <TextBlock Text="Filter:" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                        <TextBox x:Name="OutputBusFilterTextBox"
+                                 Text="{Binding OutputBusFilterText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                 Padding="4" KeyDown="OutputBusFilterTextBox_KeyDown"
+                                 ToolTip="Filter output buses by name."/>
+                    </DockPanel>
+                    <ListBox Grid.Row="1" x:Name="OutputBusListBox" Height="105"
+                             ItemsSource="{Binding OutputBusesView}"
+                             SelectionChanged="OutputBusListBox_SelectionChanged"
+                             ScrollViewer.VerticalScrollBarVisibility="Auto"
+                             ToolTip="The game-specific Wwise output bus for the ActorMixer. The selected bus is injected into the temporary project automatically."/>
+                </Grid>
                 <Label Grid.Row="3" Grid.Column="0" Content="Dialogue Bank:" VerticalAlignment="Center"/>
                 <CheckBox Grid.Row="3" Grid.Column="1" x:Name="IsDialogueBankCheckBox" IsChecked="True" VerticalAlignment="Center" Margin="5,4"
                           Content="Audio filenames contain TLK refs (e.g. VO_123456_m)" ToolTip="When checked, Wwise object names are retained for dialogue and FaceFX matching."/>
