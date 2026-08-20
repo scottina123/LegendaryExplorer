@@ -2998,7 +2998,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
             pendingPropertyWriteExportUIndex = CurrentLoadedExport.UIndex;
             pendingPropertyWriteRequiresActorRebuild = SelectedItem?.AssetReferenceClass is
-                "StaticMesh" or "SkeletalMesh" or "ParticleSystem";
+                "StaticMesh" or "SkeletalMesh" or "ParticleSystem" or "BioMorphFace";
             if (reloadPropertyData && ReloadPropertyDataAfterWrite)
             {
                 QueuePropertyDataReload(CurrentLoadedExport);
@@ -4746,7 +4746,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         {
             if (sender is not FrameworkElement { Tag: UPropertyTreeViewEntry node }
                 || node.Property is not ObjectProperty
-                || node.AssetReferenceClass is not ("StaticMesh" or "SkeletalMesh" or "ParticleSystem")
+                || node.AssetReferenceClass is not ("StaticMesh" or "SkeletalMesh" or "ParticleSystem" or "BioMorphFace")
                 || CurrentLoadedExport is null)
             {
                 return;
@@ -4764,9 +4764,14 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 var picker = new StaticMeshPickerDialog(Pcc.Game, Pcc, owner);
                 selection = picker.ShowDialog() == true ? picker.SelectedResult : null;
             }
-            else
+            else if (node.AssetReferenceClass == "ParticleSystem")
             {
                 var picker = new ParticleSystemPickerDialog(Pcc.Game, Pcc, owner);
+                selection = picker.ShowDialog() == true ? picker.SelectedResult : null;
+            }
+            else
+            {
+                var picker = new MorphPickerDialog(Pcc.Game, Pcc, owner);
                 selection = picker.ShowDialog() == true ? picker.SelectedResult : null;
             }
 
@@ -6760,7 +6765,9 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     propertyName,
                     container,
                     containingExport: AttachedExport)?.Reference;
-                return reference is "StaticMesh" or "SkeletalMesh" or "ParticleSystem" ? reference : null;
+                return reference is "StaticMesh" or "SkeletalMesh" or "ParticleSystem" or "BioMorphFace"
+                    ? reference
+                    : null;
             }
         }
         public bool ShowAssetPicker => AssetReferenceClass is not null;
@@ -6768,12 +6775,14 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         {
             "SkeletalMesh" => "Choose skeletal mesh...",
             "StaticMesh" => "Choose static mesh...",
+            "BioMorphFace" => "Choose morph...",
             _ => "Choose particle system..."
         };
         public string AssetPickerToolTip => AssetReferenceClass switch
         {
             "SkeletalMesh" => $"Choose a skeletal mesh from this package or the {AttachedExport?.Game} Asset Database.",
             "StaticMesh" => $"Choose a static mesh from this package or the {AttachedExport?.Game} Asset Database.",
+            "BioMorphFace" => $"Choose and preview a morph from this package or the {AttachedExport?.Game} Asset Database.",
             _ => $"Choose a particle system template from this package or the {AttachedExport?.Game} Asset Database."
         };
         public string MaterialParameterArrayName => Property is NameProperty { Name.Name: "ParameterName" }

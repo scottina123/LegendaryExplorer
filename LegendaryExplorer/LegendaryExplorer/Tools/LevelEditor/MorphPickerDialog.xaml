@@ -1,0 +1,88 @@
+<misc:NotifyPropertyChangedWindowBase
+        x:Class="LegendaryExplorer.Tools.LevelEditor.MorphPickerDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:misc="clr-namespace:LegendaryExplorer.Misc"
+        xmlns:xctk="http://schemas.xceed.com/wpf/xaml/toolkit"
+        xmlns:exportLoaderControls="clr-namespace:LegendaryExplorer.UserControls.ExportLoaderControls"
+        mc:Ignorable="d"
+        DataContext="{Binding RelativeSource={RelativeSource Self}}"
+        Title="Choose Morph Head" Height="640" Width="900"
+        Loaded="Window_Loaded"
+        Closing="Window_Closing">
+    <Grid Margin="6">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        <Grid Grid.Row="0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="5"/>
+                <ColumnDefinition Width="1.5*"/>
+            </Grid.ColumnDefinitions>
+            <TabControl Grid.Column="0" SelectedIndex="{Binding SelectedTabIndex, Mode=TwoWay}">
+                <TabItem Header="Package Morphs">
+                    <DockPanel>
+                        <xctk:WatermarkTextBox DockPanel.Dock="Top" x:Name="LocalFilterBox" Watermark="Filter morphs..."
+                                               Margin="0,4,0,3" Height="22" VerticalContentAlignment="Center"
+                                               TextChanged="LocalFilterBox_TextChanged"/>
+                        <ListBox ItemsSource="{Binding FilteredLocalMorphs}"
+                                 SelectedItem="{Binding SelectedLocalMorph, Mode=TwoWay}"
+                                 DisplayMemberPath="DisplayName"
+                                 VirtualizingStackPanel.IsVirtualizing="True"
+                                 VirtualizingStackPanel.VirtualizationMode="Recycling"/>
+                    </DockPanel>
+                </TabItem>
+                <TabItem Header="Asset Database">
+                    <xctk:BusyIndicator IsBusy="{Binding IsLoading}" BusyContent="{Binding LoadingText}">
+                        <DockPanel>
+                            <xctk:WatermarkTextBox DockPanel.Dock="Top" x:Name="DbFilterBox" Watermark="Filter morphs..."
+                                                   Margin="0,4,0,3" Height="22" VerticalContentAlignment="Center"
+                                                   TextChanged="DbFilterBox_TextChanged"/>
+                            <ListBox ItemsSource="{Binding FilteredDatabaseMorphs}"
+                                     SelectedItem="{Binding SelectedDatabaseMorph, Mode=TwoWay}"
+                                     VirtualizingStackPanel.IsVirtualizing="True"
+                                     VirtualizingStackPanel.VirtualizationMode="Recycling">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Margin="1">
+                                            <TextBlock Text="{Binding DisplayName, Mode=OneTime}" TextTrimming="CharacterEllipsis"/>
+                                            <TextBlock Text="{Binding Details, Mode=OneTime}" FontSize="10"
+                                                       Foreground="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}"
+                                                       TextTrimming="CharacterEllipsis"/>
+                                            <TextBlock Text="{Binding SourceDisplayName, Mode=OneTime}" FontSize="10"
+                                                       Foreground="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}"
+                                                       TextTrimming="CharacterEllipsis"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                        </DockPanel>
+                    </xctk:BusyIndicator>
+                </TabItem>
+            </TabControl>
+            <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Stretch"/>
+            <Grid Grid.Column="2">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*" MinHeight="120"/>
+                </Grid.RowDefinitions>
+                <DockPanel Grid.Row="0" Margin="0,0,0,2">
+                    <TextBlock Text="Morph Preview" FontWeight="Bold" DockPanel.Dock="Left"/>
+                    <TextBlock Text="{Binding PreviewStatus}" Margin="8,0,0,0"
+                               Foreground="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}"
+                               TextTrimming="CharacterEllipsis"/>
+                </DockPanel>
+                <exportLoaderControls:BioMorphFaceEditor Grid.Row="1" x:Name="MorphPreview"
+                                                         IsMorphEditorReadOnly="True"/>
+            </Grid>
+        </Grid>
+        <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,6,0,0">
+            <Button Content="OK" Width="70" Command="{Binding OKCommand}" IsDefault="True"/>
+            <Button Content="Cancel" Width="70" Margin="6,0,0,0" Click="CancelButton_Click" IsCancel="True"/>
+        </StackPanel>
+    </Grid>
+</misc:NotifyPropertyChangedWindowBase>
