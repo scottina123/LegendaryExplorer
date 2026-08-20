@@ -160,6 +160,7 @@
                             </Grid.ColumnDefinitions>
                             <ListBox x:Name="TitleSearchResultsList" MaxHeight="190" Visibility="Collapsed"
                                      MouseDoubleClick="SearchResultsList_MouseDoubleClick"
+                                     MouseRightButtonUp="SearchResultsList_MouseRightButtonUp"
                                      SelectionChanged="SearchResultsList_SelectionChanged"
                                      HorizontalContentAlignment="Left"
                                      ScrollViewer.HorizontalScrollBarVisibility="Auto">
@@ -172,6 +173,7 @@
                             </ListBox>
                             <ListBox x:Name="DescriptionSearchResultsList" Grid.Column="2" MaxHeight="190" Visibility="Collapsed"
                                      MouseDoubleClick="SearchResultsList_MouseDoubleClick"
+                                     MouseRightButtonUp="SearchResultsList_MouseRightButtonUp"
                                      SelectionChanged="SearchResultsList_SelectionChanged"
                                      HorizontalContentAlignment="Left"
                                      ScrollViewer.HorizontalScrollBarVisibility="Auto">

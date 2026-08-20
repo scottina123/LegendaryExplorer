@@ -20,6 +20,7 @@ using LegendaryExplorer.SharedUI;
 using LegendaryExplorer.SharedUI.Bases;
 using LegendaryExplorer.SharedUI.Interfaces;
 using LegendaryExplorer.Tools.AssetDatabase;
+using LegendaryExplorer.Tools.PackageEditor;
 using LegendaryExplorer.Tools.TlkManagerNS;
 using LegendaryExplorer.UserControls.ExportLoaderControls;
 using LegendaryExplorer.UserControls.SharedToolControls;
@@ -1818,12 +1819,15 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
             menu.Items.Add(deleteConnection);
         }
 
+        if (menu.Items.Count > 0)
+        {
+            menu.Items.Add(new Separator());
+        }
+        AddPackageEditorMenuItem(menu.Items, node);
+
         if (node.Parent is not null && !node.IsImplicitStar)
         {
-            if (menu.Items.Count > 0)
-            {
-                menu.Items.Add(new Separator());
-            }
+            menu.Items.Add(new Separator());
             MenuItem clone = new() { Header = "Clone object" };
             clone.Click += (_, _) =>
             {
@@ -1841,6 +1845,64 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
             menu.Items.Add(delete);
         }
         return menu;
+    }
+
+    private void AddPackageEditorMenuItem(ItemCollection items, SFXGalaxyNode node)
+    {
+        if (node?.Export is not ExportEntry export)
+        {
+            return;
+        }
+
+        if (_packageSet?.SynchronizesSecondary == true)
+        {
+            MenuItem openInPackageEditor = new() { Header = "Open in Package Editor" };
+            AddPackageEditorTarget(openInPackageEditor.Items, export, _packageSet.GalaxyMapFile);
+
+            ExportEntry companionExport = FindCompanionExport(export);
+            AddPackageEditorTarget(openInPackageEditor.Items, companionExport, _packageSet.SecondaryFile);
+            items.Add(openInPackageEditor);
+            return;
+        }
+
+        MenuItem open = new() { Header = "Open in Package Editor" };
+        open.Click += (_, _) => OpenInPackageEditor(export);
+        items.Add(open);
+    }
+
+    private static void AddPackageEditorTarget(ItemCollection items, ExportEntry export, string packageName)
+    {
+        MenuItem target = new()
+        {
+            Header = packageName,
+            IsEnabled = export is not null,
+            ToolTip = export is null ? "The linked object is not present in this package." : null
+        };
+        if (export is not null)
+        {
+            target.Click += (_, _) => OpenInPackageEditor(export);
+        }
+        items.Add(target);
+    }
+
+    private ExportEntry FindCompanionExport(ExportEntry authoritativeExport)
+    {
+        if (_companionPcc is null || authoritativeExport is null)
+        {
+            return null;
+        }
+
+        string syncKey = GalaxySyncKey(authoritativeExport);
+        return _companionPcc.Exports.FirstOrDefault(export => !export.IsTrash()
+            && GalaxySyncKey(export).Equals(syncKey, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static void OpenInPackageEditor(ExportEntry export)
+    {
+        PackageEditorWindow packageEditor = new();
+        packageEditor.Show();
+        packageEditor.LoadFile(export.FileRef.FilePath, export.UIndex);
+        packageEditor.Activate();
     }
 
     private ContextMenu BuildAddMenu(SFXGalaxyNode context, Point? position)
@@ -2096,6 +2158,22 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
         {
             NavigateToSearchResult(node);
         }
+    }
+
+    private void SearchResultsList_MouseRightButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not ListBox
+            || FindVisualParent<ListBoxItem>(e.OriginalSource as DependencyObject) is not { DataContext: SFXGalaxyNode node } item)
+        {
+            return;
+        }
+
+        item.IsSelected = true;
+        SelectedNode = node;
+        ContextMenu menu = BuildObjectContextMenu(node);
+        item.ContextMenu = menu;
+        menu.IsOpen = true;
+        e.Handled = true;
     }
 
     private void NavigateToSearchResult(SFXGalaxyNode node)
