@@ -7,6 +7,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using LegendaryExplorer.Misc;
 using LegendaryExplorer.SharedUI;
+using LegendaryExplorer.Tools.Sequence_Editor;
 using LegendaryExplorerCore.Misc;
 using LegendaryExplorerCore.Packages;
 
@@ -46,6 +47,9 @@ namespace LegendaryExplorer.Dialogs
         /// Optional filter applied when the dialog opens. The user can disable it to see every valid entry.
         /// </summary>
         private Predicate<IEntry> InitialEntryFilter;
+
+        private SequenceEditorWPF SequencePreviewEditor;
+        private bool SequencePreviewSelectionPending;
 
         public Visibility ItemSearchVisibility => ItemSearch is null ? Visibility.Collapsed : Visibility.Visible;
 
@@ -124,7 +128,8 @@ namespace LegendaryExplorer.Dialogs
         private EntrySelector(Window owner, IMEPackage pcc, SupportedTypes supportedInputTypes, string directionsText = null,
             Predicate<IEntry> entryPredicate = null, bool supportRootSelection = false,
             string rootSelectionLabel = "[Package root]", string searchHelpText = null,
-            Predicate<IEntry> initialEntryFilter = null, string showAllEntriesOptionLabel = null)
+            Predicate<IEntry> initialEntryFilter = null, string showAllEntriesOptionLabel = null,
+            ExportEntry sequencePreview = null)
         {
             this.Pcc = pcc;
             this.SupportedInputTypes = supportedInputTypes;
@@ -164,8 +169,47 @@ namespace LegendaryExplorer.Dialogs
             DataContext = this;
             LoadCommands();
             InitializeComponent();
+            InitializeSequencePreview(sequencePreview);
             UpdateFilteredEntries();
             EntrySearchTextBox.Focus();
+        }
+
+        private void InitializeSequencePreview(ExportEntry sequencePreview)
+        {
+            if (sequencePreview is null)
+            {
+                return;
+            }
+
+            SequencePreviewSplitterColumn.Width = new GridLength(5);
+            SequencePreviewColumn.Width = new GridLength(5, GridUnitType.Star);
+            SequencePreviewSplitter.Visibility = Visibility.Visible;
+            SequencePreviewHost.Visibility = Visibility.Visible;
+            Width = Math.Min(1600, Math.Max(1000, SystemParameters.WorkArea.Width - 80));
+            Height = Math.Min(800, Math.Max(600, SystemParameters.WorkArea.Height - 80));
+            MinWidth = Math.Min(1000, Width);
+            MinHeight = Math.Min(600, Height);
+
+            SequencePreviewEditor = new SequenceEditorWPF(enableRecents: false);
+            SequencePreviewHost.Content = SequencePreviewEditor.TakeReadOnlyPreviewContent(ApplySequencePreviewSelection);
+            SequencePreviewEditor.LoadEmbeddedPackage(Pcc, sequencePreview);
+        }
+
+        private void ApplySequencePreviewSelection(ExportEntry entry)
+        {
+            if (entry is null
+                || AllEntriesList.OfType<IEntry>().FirstOrDefault(candidate => candidate.UIndex == entry.UIndex) is not { } selectedEntry)
+            {
+                return;
+            }
+
+            SelectedEntryItem = selectedEntry;
+            if (!SequencePreviewSelectionPending)
+            {
+                SequencePreviewSelectionPending = true;
+                Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background,
+                    new Action(AcceptSelection));
+            }
         }
 
         private EntrySelector(Window owner, Func<string, IEnumerable<object>> itemSearch, string directionsText = null,
@@ -214,7 +258,8 @@ namespace LegendaryExplorer.Dialogs
         public static (bool selectedPackageRoot, T selectedEntry) GetEntryWithNoOption<T>(Window owner,
             IMEPackage pcc, string directionsText = null, Predicate<T> predicate = null, object defaultItem = null,
             bool selectLastItemByDefault = false, string noOptionLabel = "[Package root]",
-            Predicate<T> initialFilterPredicate = null, string showAllEntriesOptionLabel = null) where T : class, IEntry
+            Predicate<T> initialFilterPredicate = null, string showAllEntriesOptionLabel = null,
+            ExportEntry sequencePreview = null) where T : class, IEntry
         {
             SupportedTypes supportedInputTypes = SupportedTypes.ExportsAndImports;
             if (typeof(T) == typeof(ExportEntry))
@@ -236,7 +281,7 @@ namespace LegendaryExplorer.Dialogs
                 : entry => initialFilterPredicate((T)entry);
             using var dlg = new EntrySelector(owner, pcc, supportedInputTypes, directionsText, entryPredicate, true,
                 noOptionLabel, initialEntryFilter: initialEntryFilter,
-                showAllEntriesOptionLabel: showAllEntriesOptionLabel);
+                showAllEntriesOptionLabel: showAllEntriesOptionLabel, sequencePreview: sequencePreview);
             dlg.SetInitialSelection(defaultItem, selectLastItemByDefault);
             if (dlg.ShowDialog() == true)
             {
@@ -258,7 +303,8 @@ namespace LegendaryExplorer.Dialogs
         /// <returns>The selected entry, or null if the dialog was cancelled</returns>
         public static T GetEntry<T>(Window owner, IMEPackage pcc, string directionsText = null,
             Predicate<T> predicate = null, IEntry defaultItem = null, bool selectLastItemByDefault = false,
-            Predicate<T> initialFilterPredicate = null, string showAllEntriesOptionLabel = null) where T : class, IEntry
+            Predicate<T> initialFilterPredicate = null, string showAllEntriesOptionLabel = null,
+            ExportEntry sequencePreview = null) where T : class, IEntry
         {
             SupportedTypes supportedInputTypes = SupportedTypes.ExportsAndImports;
             if (typeof(T) == typeof(ExportEntry))
@@ -279,7 +325,8 @@ namespace LegendaryExplorer.Dialogs
                 ? null
                 : entry => initialFilterPredicate((T)entry);
             using var dlg = new EntrySelector(owner, pcc, supportedInputTypes, directionsText, entryPredicate,
-                initialEntryFilter: initialEntryFilter, showAllEntriesOptionLabel: showAllEntriesOptionLabel);
+                initialEntryFilter: initialEntryFilter, showAllEntriesOptionLabel: showAllEntriesOptionLabel,
+                sequencePreview: sequencePreview);
             dlg.SetInitialSelection(defaultItem, selectLastItemByDefault);
             if (dlg.ShowDialog() == true)
             {
@@ -510,6 +557,12 @@ namespace LegendaryExplorer.Dialogs
                 if (disposing)
                 {
                     // TODO: dispose managed state (managed objects).
+                    SequencePreviewEditor?.DisposeEmbeddedContent();
+                    SequencePreviewEditor = null;
+                    if (SequencePreviewHost is not null)
+                    {
+                        SequencePreviewHost.Content = null;
+                    }
                     Pcc = null;
                 }
 

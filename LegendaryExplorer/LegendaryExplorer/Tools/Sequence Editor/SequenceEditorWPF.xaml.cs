@@ -105,6 +105,9 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
         private DispatcherOperation pendingInterpDataEditorsReload;
         private bool isEmbedded;
         private bool isEmbeddedContentLoaded;
+        private bool isReadOnlyPreview;
+        private readonly bool recentsEnabled;
+        private Action<ExportEntry> readOnlyPreviewObjectDoubleClicked;
         private bool isDisposed;
 
         public bool UseSavedViews
@@ -289,15 +292,28 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
         public static readonly string LE2ViewsPath = Path.Combine(SequenceEditorDataFolder, @"LE2SequenceViews\");
         public static readonly string LE1ViewsPath = Path.Combine(SequenceEditorDataFolder, @"LE1SequenceViews\");
 
-        public SequenceEditorWPF() : base("Sequence Editor")
+        public SequenceEditorWPF() : this(true)
         {
+        }
+
+        internal SequenceEditorWPF(bool enableRecents) : base("Sequence Editor")
+        {
+            recentsEnabled = enableRecents;
             LoadCommands();
             DataContext = this;
             StatusText = "Select package file to load";
             InitializeComponent();
             InitializeExperimentsBrowser();
 
-            RecentsController.InitRecentControl(Toolname, Recents_MenuItem, x => LoadFile(x));
+            if (recentsEnabled)
+            {
+                RecentsController.InitRecentControl(Toolname, Recents_MenuItem, x => LoadFile(x));
+            }
+            else
+            {
+                RecentsController.Visibility = Visibility.Collapsed;
+                Recents_MenuItem.Visibility = Visibility.Collapsed;
+            }
 
             // Apply theme-appropriate colors based on current dark mode setting
             ApplyThemeDefaults();
@@ -446,6 +462,70 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             content.Loaded += EmbeddedContent_Loaded;
             content.Unloaded += EmbeddedContent_Unloaded;
             return content;
+        }
+
+        /// <summary>
+        /// Extracts only the graph and export list for a read-only embedded sequence preview.
+        /// </summary>
+        public FrameworkElement TakeReadOnlyPreviewContent(Action<ExportEntry> objectDoubleClicked)
+        {
+            isEmbedded = true;
+            isReadOnlyPreview = true;
+            readOnlyPreviewObjectDoubleClicked = objectDoubleClicked;
+
+            graphEditor.Camera.MouseDown -= backMouseDown_Handler;
+            graphEditor.Camera.MouseUp -= back_MouseUp;
+            graphEditor.Click -= graphEditor_Click;
+            graphEditor.DragDrop -= SequenceEditor_DragDrop;
+            graphEditor.DragEnter -= SequenceEditor_DragEnter;
+            graphEditor.AllowDrop = false;
+            graphEditor.DisableDragging();
+
+            CurrentObjects_ListBox.SelectionChanged -= CurrentObjectsList_SelectedItemChanged;
+            CurrentObjects_ListBox.PreviewMouseRightButtonDown -= CurrentObjects_ListBox_PreviewMouseRightButtonDown;
+            CurrentObjects_ListBox.ContextMenu = null;
+            CurrentObjects_ListBox.SelectionMode = SelectionMode.Single;
+            CurrentObjects_ListBox.SelectionChanged += ReadOnlyPreviewList_SelectionChanged;
+            CurrentObjects_ListBox.MouseDoubleClick += ReadOnlyPreviewList_MouseDoubleClick;
+
+            if (GraphHost.Parent is Panel graphParent)
+            {
+                graphParent.Children.Remove(GraphHost);
+            }
+
+            if (CurrentObjects_ListBox.Parent is Panel listParent)
+            {
+                listParent.Children.Remove(CurrentObjects_ListBox);
+            }
+
+            Content = null;
+
+            Grid.SetRow(GraphHost, 0);
+            Grid.SetColumn(GraphHost, 0);
+            Grid.SetColumnSpan(GraphHost, 1);
+            GraphHost.Visibility = Visibility.Visible;
+            Grid.SetRow(CurrentObjects_ListBox, 0);
+            Grid.SetColumn(CurrentObjects_ListBox, 2);
+            CurrentObjects_ListBox.Visibility = Visibility.Visible;
+            CurrentObjects_ListBox.MinWidth = 190;
+            CurrentObjects_ListBox.Width = 250;
+
+            var preview = new Grid { DataContext = this };
+            preview.ColumnDefinitions.Add(new ColumnDefinition());
+            preview.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(5) });
+            preview.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            preview.Children.Add(GraphHost);
+            var splitter = new GridSplitter
+            {
+                Width = 5,
+                HorizontalAlignment = HorizontalAlignment.Stretch
+            };
+            Grid.SetColumn(splitter, 1);
+            preview.Children.Add(splitter);
+            preview.Children.Add(CurrentObjects_ListBox);
+            preview.Loaded += EmbeddedContent_Loaded;
+            preview.Unloaded += EmbeddedContent_Unloaded;
+            return preview;
         }
 
         private void EmbeddedContent_Loaded(object sender, RoutedEventArgs e)
@@ -1362,7 +1442,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             get => _selectedItem;
             set
             {
-                if (AutoSaveView_MenuItem.IsChecked)
+                if (!isReadOnlyPreview && AutoSaveView_MenuItem.IsChecked)
                 {
                     saveView();
                 }
@@ -1461,7 +1541,10 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                 Title = $"Sequence Editor - {filePath}";
                 StatusText = GetStatusBarText();
 
-                RefreshToolboxItems(true);
+                if (!isReadOnlyPreview)
+                {
+                    RefreshToolboxItems(true);
+                }
             }
             catch (Exception ex) when (!App.IsDebug)
             {
@@ -1705,9 +1788,12 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
 
                 CurrentFile = Path.GetFileName(fileName);
 
-                // Streams don't work for recents
-                RecentsController.AddRecent(fileName, false, Pcc?.Game);
-                RecentsController.SaveRecentList(true);
+                if (recentsEnabled)
+                {
+                    // Streams don't work for recents
+                    RecentsController.AddRecent(fileName, false, Pcc?.Game);
+                    RecentsController.SaveRecentList(true);
+                }
 
                 postloadPackage(fileName);
 
@@ -1903,7 +1989,11 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             bool forceAutoLayout = fromFile;
             if (fromFile)
             {
-                Properties_InterpreterWPF.LoadExport(seqExport);
+                if (!isReadOnlyPreview)
+                {
+                    Properties_InterpreterWPF.LoadExport(seqExport);
+                }
+
                 if (!forceAutoLayout && UseSavedViews && File.Exists(JSONpath))
                 {
                     SavedView = JsonConvert.DeserializeObject<SavedViewData>(File.ReadAllText(JSONpath));
@@ -1940,6 +2030,11 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                             ?.GlobalFullBounds ?? new RectangleF();
                         graphEditor.Camera.AnimateViewToCenterBounds(viewBounds, false, 0);
                     }
+                }
+
+                if (isReadOnlyPreview && CurrentObjects.Count > 0)
+                {
+                    graphEditor.Camera.AnimateViewToCenterBounds(CurrentObjects.BoundingRect(), true, 0);
                 }
             }
             catch (Exception e) when (!App.IsDebug)
@@ -2005,7 +2100,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                 //CurrentObjects.AddRange(convertedImports.Select(LoadObject));
 
                 // Subtrack imports. But they should be shown still
-                if (CurrentObjects.Count != (seqObjs.Count - nullCount))
+                if (!isReadOnlyPreview && CurrentObjects.Count != (seqObjs.Count - nullCount))
                 {
                     MessageBox.Show(this,
                         "Sequence contains invalid or duplicate exports! Correct this by editing the SequenceObject array in the Properties editor");
@@ -2070,9 +2165,26 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             Layout();
             foreach (SObj o in CurrentObjects)
             {
-                o.MouseDown += node_MouseDown;
-                o.Click += node_Click;
-                o.DoubleClick += node_DoubleClick;
+                if (isReadOnlyPreview)
+                {
+                    DisableChildPicking(o);
+                    o.MouseDown += ReadOnlyPreviewNode_MouseDown;
+                    o.DoubleClick += ReadOnlyPreviewNode_DoubleClick;
+                }
+                else
+                {
+                    o.MouseDown += node_MouseDown;
+                    o.Click += node_Click;
+                    o.DoubleClick += node_DoubleClick;
+                }
+            }
+
+            if (isReadOnlyPreview)
+            {
+                foreach (SeqEdEdge edge in graphEditor.edgeLayer)
+                {
+                    edge.Pickable = false;
+                }
             }
 
             if (forceAutoLayout || (SavedView.Positions.IsEmpty() && (Pcc.Game is MEGame.ME2 or MEGame.ME3)))
@@ -2120,7 +2232,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                 obj = new SAction(export, graphEditor);
             }
 
-            if (obj is SBox box)
+            if (!isReadOnlyPreview && obj is SBox box)
             {
                 box.AddLinkEntryRequested = PromptAndAddNamedLinkEntryFromGraph;
                 box.EditLinkEntryRequested = PromptAndEditNamedLinkEntryFromGraph;
@@ -2128,6 +2240,15 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             }
 
             return obj;
+        }
+
+        private static void DisableChildPicking(PNode node)
+        {
+            foreach (PNode child in node)
+            {
+                child.Pickable = false;
+                DisableChildPicking(child);
+            }
         }
 
         private static bool warnedOfReload = false;
@@ -4256,7 +4377,8 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                         initialFilterPredicate: sequenceObjectUIndexes is null
                             ? null
                             : exp => sequenceObjectUIndexes.Contains(exp.UIndex),
-                        showAllEntriesOptionLabel: "Show full LinkedOp list") is not { } linkedOp)
+                        showAllEntriesOptionLabel: "Show full LinkedOp list",
+                        sequencePreview: sequence) is not { } linkedOp)
                 {
                     return;
                 }
@@ -5707,6 +5829,50 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             }
         }
 
+        private void ReadOnlyPreviewNode_MouseDown(object sender, PInputEventArgs e)
+        {
+            if (e.Button == System.Windows.Forms.MouseButtons.Left && sender is SObj obj)
+            {
+                CurrentObjects_ListBox.SelectedItem = obj;
+            }
+        }
+
+        private void ReadOnlyPreviewNode_DoubleClick(object sender, PInputEventArgs e)
+        {
+            if (e.Button == System.Windows.Forms.MouseButtons.Left && sender is SObj obj)
+            {
+                CurrentObjects_ListBox.SelectedItem = obj;
+                e.Handled = true;
+                readOnlyPreviewObjectDoubleClicked?.Invoke(obj.Export);
+            }
+        }
+
+        private void ReadOnlyPreviewList_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+        {
+            if (e.OriginalSource is DependencyObject source
+                && ItemsControl.ContainerFromElement(CurrentObjects_ListBox, source) is ListBoxItem
+                && CurrentObjects_ListBox.SelectedItem is SObj obj)
+            {
+                e.Handled = true;
+                readOnlyPreviewObjectDoubleClicked?.Invoke(obj.Export);
+            }
+        }
+
+        private void ReadOnlyPreviewList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            foreach (SObj obj in e.RemovedItems.OfType<SObj>())
+            {
+                obj.IsSelected = false;
+            }
+
+            foreach (SObj obj in e.AddedItems.OfType<SObj>())
+            {
+                obj.IsSelected = true;
+            }
+
+            graphEditor.Refresh();
+        }
+
         protected void node_MouseDown(object sender, PInputEventArgs e)
         {
             if (sender is SObj obj)
@@ -5813,11 +5979,14 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
 
             isDisposed = true;
 
-            if (AutoSaveView_MenuItem.IsChecked)
+            if (!isReadOnlyPreview && AutoSaveView_MenuItem.IsChecked)
                 saveView();
 
-            Settings.SequenceEditor_AutoSaveViewV2 = AutoSaveView_MenuItem.IsChecked;
-            Settings.SequenceEditor_ShowOutputNumbers = SObj.OutputNumbers;
+            if (!isReadOnlyPreview)
+            {
+                Settings.SequenceEditor_AutoSaveViewV2 = AutoSaveView_MenuItem.IsChecked;
+                Settings.SequenceEditor_ShowOutputNumbers = SObj.OutputNumbers;
+            }
 
             // Unsubscribe from theme changes to prevent memory leaks
             ThemeManager.ThemeChanged -= OnThemeChanged;
@@ -5832,8 +6001,13 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                 x.MouseDown -= node_MouseDown;
                 x.Click -= node_Click;
                 x.DoubleClick -= node_DoubleClick;
+                x.MouseDown -= ReadOnlyPreviewNode_MouseDown;
+                x.DoubleClick -= ReadOnlyPreviewNode_DoubleClick;
                 x.Dispose();
             });
+            CurrentObjects_ListBox.SelectionChanged -= ReadOnlyPreviewList_SelectionChanged;
+            CurrentObjects_ListBox.MouseDoubleClick -= ReadOnlyPreviewList_MouseDoubleClick;
+            readOnlyPreviewObjectDoubleClicked = null;
             CurrentObjects.Clear();
             ResetTreeView();
             ClearInterpDataTree();

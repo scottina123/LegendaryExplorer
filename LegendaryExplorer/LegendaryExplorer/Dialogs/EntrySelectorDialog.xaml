@@ -26,7 +26,13 @@
             </StackPanel>
         </DataTemplate>
     </misc:NotifyPropertyChangedWindowBase.Resources>
-    <DockPanel Margin="5" LastChildFill="True">
+    <Grid Margin="5">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="3*"/>
+            <ColumnDefinition x:Name="SequencePreviewSplitterColumn" Width="0"/>
+            <ColumnDefinition x:Name="SequencePreviewColumn" Width="0"/>
+        </Grid.ColumnDefinitions>
+        <DockPanel Grid.Column="0" LastChildFill="True">
         <DockPanel.Resources>
             <Style x:Key="CustomListViewItemStyle" TargetType="{x:Type ListViewItem}">
                 <Style.Triggers>
@@ -100,5 +106,15 @@
                 </DataTemplate>
             </ListView.Resources>
         </ListView>
-    </DockPanel>
+        </DockPanel>
+        <GridSplitter x:Name="SequencePreviewSplitter"
+                      Grid.Column="1"
+                      Width="5"
+                      HorizontalAlignment="Stretch"
+                      Visibility="Collapsed"/>
+        <ContentControl x:Name="SequencePreviewHost"
+                        Grid.Column="2"
+                        Margin="8,0,0,0"
+                        Visibility="Collapsed"/>
+    </Grid>
 </misc:NotifyPropertyChangedWindowBase>

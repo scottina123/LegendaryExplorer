@@ -3692,19 +3692,11 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             CurrentObjectPropertyChoices = MakeAllEntriesList(expectedType, exactTypeOnly: ShouldUseExactObjectTypeSelection(op, expectedType));
         }
 
-        private HashSet<int> GetCurrentSequenceObjectUIndexes()
+        private ExportEntry GetCurrentSequence()
         {
-            ExportEntry sequence = CurrentLoadedExport.IsA("Sequence")
+            return CurrentLoadedExport.IsA("Sequence")
                 ? CurrentLoadedExport
                 : CurrentLoadedExport.GetProperty<ObjectProperty>("ParentSequence")?.ResolveToEntry(Pcc) as ExportEntry;
-            if (sequence is null)
-            {
-                return null;
-            }
-
-            return [.. sequence
-                .GetProperty<ArrayProperty<ObjectProperty>>("SequenceObjects")?
-                .Select(objectProperty => objectProperty.Value) ?? []];
         }
 
         private static bool ShouldUseExactObjectTypeSelection(ObjectProperty objectProperty, string expectedType)
@@ -3848,10 +3840,14 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             UpdateObjectComboBoxOptions(objectProperty, targetNode);
 
             HashSet<int> allowedEntryUIndexes = [.. CurrentObjectPropertyChoices.OfType<IEntry>().Select(entry => entry.UIndex)];
-            HashSet<int> currentSequenceObjectUIndexes = FilterLinkedOpSelectionToCurrentSequenceByDefault
-                                                        && objectProperty.Name == "LinkedOp"
-                ? GetCurrentSequenceObjectUIndexes()
+            ExportEntry currentSequence = FilterLinkedOpSelectionToCurrentSequenceByDefault
+                                          && objectProperty.Name == "LinkedOp"
+                ? GetCurrentSequence()
                 : null;
+            HashSet<int> currentSequenceObjectUIndexes = currentSequence is null
+                ? null
+                : [.. currentSequence.GetProperty<ArrayProperty<ObjectProperty>>("SequenceObjects")?
+                    .Select(sequenceObject => sequenceObject.Value) ?? []];
             var (selectedNull, selectedEntry) = EntrySelector.GetEntryWithNoOption<IEntry>(
                 Window.GetWindow(this),
                 Pcc,
@@ -3862,7 +3858,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 initialFilterPredicate: currentSequenceObjectUIndexes is null
                     ? null
                     : entry => currentSequenceObjectUIndexes.Contains(entry.UIndex),
-                showAllEntriesOptionLabel: "Show full LinkedOp list");
+                showAllEntriesOptionLabel: "Show full LinkedOp list",
+                sequencePreview: currentSequence);
 
             if (!selectedNull && selectedEntry == null)
             {
