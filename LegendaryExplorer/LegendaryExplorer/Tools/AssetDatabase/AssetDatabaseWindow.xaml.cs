@@ -415,6 +415,12 @@ namespace LegendaryExplorer.Tools.AssetDatabase
 
         private string CurrentDBPath { get; set; }
         public AssetDB CurrentDataBase { get; } = new();
+        private string _morphPreviewStatus = "Select a morph to preview.";
+        public string MorphPreviewStatus
+        {
+            get => _morphPreviewStatus;
+            private set => SetProperty(ref _morphPreviewStatus, value);
+        }
         private readonly Dictionary<string, Conversation> _conversationLookup = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, (string FileName, string Location)> _convoFileInfoCache = new(StringComparer.OrdinalIgnoreCase);
         private readonly DispatcherTimer _lineSearchDebounceTimer;
@@ -908,6 +914,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         private IMEPackage audioPcc;
         private IMEPackage animPcc;
         private IMEPackage vfxPreviewPcc;
+        private IMEPackage morphPreviewPcc;
         private bool _updatingAnimPreviewModels;
         private List<MeshRecord> _animPreviewMeshes = [];
         private readonly Dictionary<PreviewActorModelComponent, MeshRecord> _selectedAnimPreviewMeshes = [];
@@ -1003,6 +1010,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                 || (currentView == 12 && actorsUsagesPanel?.SelectedIndex >= 0)
                 || (currentView == 13 && gestureTracksUsagesPanel?.SelectedIndex >= 0)
                 || (currentView == 14 && trackPropsUsagesPanel?.SelectedIndex >= 0)
+                || (currentView == 15 && lstbx_MorphFaces?.SelectedIndex >= 0)
                 || (currentView == 0 && IsNotCND(lstbx_Files?.SelectedItem));
         }
 
@@ -1203,6 +1211,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             Settings.AssetDB_AmbPerfMasterPccPath = AmbPerfMasterPccPath ?? "";
 
             MeshRendererTab_MeshRenderer?.Dispose();
+            UnloadMorphPreview();
             SoundpanelWPF_ADB?.Dispose();
             BIKExternalExportLoaderTab_BIKExternalExportLoader?.Dispose();
             EmbeddedTextureViewerTab_EmbeddedTextureViewer?.Dispose();
@@ -1230,6 +1239,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             animPcc = null;
             gesturePreviewPcc = null;
             vfxPreviewPcc = null;
+            morphPreviewPcc = null;
             _ambPerfMasterPcc = null;
             AmbPerfMasterPccPath = null;
 
@@ -1237,6 +1247,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             dbworker.RunWorkerCompleted -= dbworker_LineWorkCompleted;
 
             ClearDataBase();
+            MorphPreviewControl?.Dispose();
         }
 
         private void VFX_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -2723,6 +2734,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         public void SwitchGame(object param)
         {
             var p = param as string;
+            UnloadMorphPreview();
             UnloadGesturePreview();
             btn_GesturePreviewToggle.IsChecked = false;
             btn_GesturePreviewToggle.Content = "Toggle Gesture Preview";
@@ -3090,6 +3102,14 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                 var tu = (TlkUsage)tlkUsagesPanel.SelectedItem;
                 (usagepkg, contentdir, usagemount) = FileListExtended[tu.FileKey];
                 usageUID = tu.UIndex;
+            }
+            else if (lstbx_MorphFaces?.SelectedItem is BioMorphFaceRecord morph
+                     && currentView == 15
+                     && morph.FileKey >= 0
+                     && morph.FileKey < FileListExtended.Count)
+            {
+                (usagepkg, contentdir, usagemount) = FileListExtended[morph.FileKey];
+                usageUID = morph.UIndex;
             }
 
             return (usagepkg, contentdir, usagemount, usageUID);
@@ -3632,6 +3652,9 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                     case 14:
                         FilterWatermark = "Search (by nmProp or nmAction)";
                         break;
+                    case 15:
+                        FilterWatermark = "Search (by morph, base head, species, feature, or source file)";
+                        break;
                     default:
                         FilterWatermark = "Search";
                         break;
@@ -3671,6 +3694,12 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                     UnloadGesturePreview();
                     btn_GesturePreviewToggle.IsChecked = false;
                     btn_GesturePreviewToggle.Content = "Toggle Gesture Preview";
+                }
+
+                if (previousView == 15)
+                {
+                    UnloadMorphPreview();
+                    MorphPreviewStatus = "Select a morph to preview.";
                 }
 
                 if (currentView == 0)
@@ -3840,6 +3869,73 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             {
                 ToggleGesturePreview();
             }
+        }
+
+        private void lstbx_MorphFaces_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            e.Handled = true;
+            if (currentView == 15)
+            {
+                LoadMorphPreview();
+            }
+        }
+
+        private void LoadMorphPreview()
+        {
+            UnloadMorphPreview();
+            if (lstbx_MorphFaces?.SelectedItem is not BioMorphFaceRecord morph)
+            {
+                MorphPreviewStatus = "Select a morph to preview.";
+                return;
+            }
+
+            if (morph.FileKey < 0 || morph.FileKey >= FileListExtended.Count)
+            {
+                MorphPreviewStatus = "The morph's source file is not present in this database.";
+                return;
+            }
+
+            string filePath = GetFilePath(morph.FileKey);
+            if (string.IsNullOrWhiteSpace(filePath))
+            {
+                MorphPreviewStatus = "The morph's source package could not be found in the game installation.";
+                return;
+            }
+
+            var (fileName, _, _) = FileListExtended[morph.FileKey];
+            try
+            {
+                IMEPackage package = fetchPackage(filePath, morph.FileKey, fileName);
+                if (package is null)
+                {
+                    MorphPreviewStatus = "The morph's source package could not be opened.";
+                    return;
+                }
+
+                if (!package.TryGetUExport(morph.UIndex, out ExportEntry export)
+                    || !MorphPreviewControl.CanParse(export))
+                {
+                    package.Dispose();
+                    MorphPreviewStatus = $"Export #{morph.UIndex} is not a previewable BioMorphFace.";
+                    return;
+                }
+
+                morphPreviewPcc = package;
+                MorphPreviewStatus = null;
+                MorphPreviewControl.LoadExport(export);
+            }
+            catch (Exception exception)
+            {
+                UnloadMorphPreview();
+                MorphPreviewStatus = $"Could not preview this morph: {exception.GetBaseException().Message}";
+            }
+        }
+
+        private void UnloadMorphPreview()
+        {
+            MorphPreviewControl?.UnloadExport();
+            morphPreviewPcc?.Dispose();
+            morphPreviewPcc = null;
         }
 
         private void lstbx_Lines_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -6257,6 +6353,32 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                        || ContainsText(propAction.ActionName, FilterText));
         }
 
+        private bool MorphFaceTabFilter(object obj)
+        {
+            if (obj is not BioMorphFaceRecord morph
+                || (FileListFilter.IsSelected && !FileListFilter.CustomFileList.ContainsKey(morph.FileKey)))
+            {
+                return false;
+            }
+
+            if (string.IsNullOrWhiteSpace(FilterText))
+            {
+                return true;
+            }
+
+            string sourceFile = morph.FileKey >= 0 && morph.FileKey < FileListExtended.Count
+                ? FileListExtended[morph.FileKey].FileName
+                : null;
+            return ContainsText(morph.MorphName, FilterText)
+                   || ContainsText(morph.BaseHeadName, FilterText)
+                   || ContainsText(morph.SpeciesDisplayName, FilterText)
+                   || ContainsText(sourceFile, FilterText)
+                   || ContainsText(morph.UIndex.ToString(), FilterText)
+                   || (morph.Features?.Any(feature => ContainsText(feature.Name, FilterText)) ?? false)
+                   || (morph.ScalarOverrides?.Any(scalar => ContainsText(scalar.Name, FilterText)) ?? false)
+                   || (morph.ColorOverrides?.Any(color => ContainsText(color.Name, FilterText)) ?? false);
+        }
+
         private bool MatchesGestureNodeTlk(GestureTrackRecord track, string filter)
         {
             return string.IsNullOrWhiteSpace(filter)
@@ -6375,6 +6497,11 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                     ICollectionView viewTP = CollectionViewSource.GetDefaultView(CurrentDataBase.PropActions);
                     viewTP.Filter = TrackPropTabFilter;
                     lstbx_TrackProps.ItemsSource = viewTP;
+                    break;
+                case 15: // Morph Faces
+                    ICollectionView viewMF = CollectionViewSource.GetDefaultView(CurrentDataBase.MorphFaces);
+                    viewMF.Filter = MorphFaceTabFilter;
+                    lstbx_MorphFaces.ItemsSource = viewMF;
                     break;
                 default: //Files
                     lstbx_Files.Items.Filter = FileFilter;
@@ -6640,6 +6767,10 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                     {
                         var pu = (PlotUsage)lstbx_PlotUsages.SelectedItem;
                         FileKey = pu.FileKey;
+                    }
+                    else if (currentView == 15 && lstbx_MorphFaces.SelectedItem is BioMorphFaceRecord morph)
+                    {
+                        FileKey = morph.FileKey;
                     }
                     else if (lstbx_Files.SelectedIndex >= 0 && currentView == 0)
                     {

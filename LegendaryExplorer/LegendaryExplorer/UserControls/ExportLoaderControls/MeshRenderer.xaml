@@ -128,7 +128,7 @@
                 <Border DockPanel.Dock="Right" Width="430" Padding="7" BorderThickness="1,0,0,0"
                         BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"
                         Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"
-                        Visibility="{Binding IsMorphEditorMode, Converter={StaticResource BoolToVisibilityConverter}}">
+                        Visibility="{Binding ShowMorphEditorPanel, Converter={StaticResource BoolToVisibilityConverter}}">
                     <DockPanel>
                         <StackPanel DockPanel.Dock="Top">
                             <TextBlock Text="Morph Editor" FontWeight="Bold" FontSize="15"/>

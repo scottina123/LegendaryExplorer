@@ -424,6 +424,29 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         /// </summary>
         public bool IsMorphEditorMode { get; }
 
+        private bool _isMorphEditorReadOnly;
+        /// <summary>
+        /// Uses the BioMorphFace rendering pipeline without exposing controls that mutate the
+        /// loaded morph. Intended for read-only preview hosts such as Asset Database.
+        /// </summary>
+        public bool IsMorphEditorReadOnly
+        {
+            get => _isMorphEditorReadOnly;
+            set
+            {
+                if (SetProperty(ref _isMorphEditorReadOnly, value))
+                {
+                    OnPropertyChanged(nameof(ShowMorphEditorPanel));
+                    OnPropertyChanged(nameof(CanEditMorph));
+                    OnPropertyChanged(nameof(CanOverrideMorph));
+                }
+            }
+        }
+
+        public bool ShowMorphEditorPanel => IsMorphEditorMode && !IsMorphEditorReadOnly;
+
+        public bool CanEditMorph => HasMorphEditorData && !IsMorphEditorReadOnly;
+
         private string PendingLiveMaterialSelectionName;
         private System.Windows.Point? MaterialPickMouseDownPosition;
 

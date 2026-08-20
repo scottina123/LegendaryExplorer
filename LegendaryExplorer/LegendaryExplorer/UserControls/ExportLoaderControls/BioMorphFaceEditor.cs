@@ -46,9 +46,12 @@ public sealed class BioMorphFaceEditor : MeshRenderer
             return;
         }
 
-        var window = new ExportLoaderHostedWindow(new BioMorphFaceEditor(), CurrentLoadedExport)
+        var window = new ExportLoaderHostedWindow(new BioMorphFaceEditor
         {
-            Title = $"Morph Editor - {CurrentLoadedExport.UIndex} {CurrentLoadedExport.InstancedFullPath} - {CurrentLoadedExport.FileRef.FilePath}"
+            IsMorphEditorReadOnly = IsMorphEditorReadOnly
+        }, CurrentLoadedExport)
+        {
+            Title = $"{(IsMorphEditorReadOnly ? "Morph Preview" : "Morph Editor")} - {CurrentLoadedExport.UIndex} {CurrentLoadedExport.InstancedFullPath} - {CurrentLoadedExport.FileRef.FilePath}"
         };
         window.Show();
     }
@@ -132,7 +135,7 @@ public partial class MeshRenderer
             }
         }
     }
-    public bool CanOverrideMorph => HasMorphEditorData && AllowMorphOverride;
+    public bool CanOverrideMorph => CanEditMorph && AllowMorphOverride;
 
     public ObservableCollectionExtended<MorphFeatureEditorItem> MorphFeatureItems { get; } = [];
     public IEnumerable<MorphFeatureEditorItem> MatchedMorphFeatureItems =>
@@ -229,6 +232,7 @@ public partial class MeshRenderer
             if (SetProperty(ref _hasMorphEditorData, value))
             {
                 OnPropertyChanged(nameof(CanOverrideMorph));
+                OnPropertyChanged(nameof(CanEditMorph));
             }
         }
     }
@@ -1143,7 +1147,7 @@ public partial class MeshRenderer
 
     private void SaveMorphAsNew_Click(object sender, RoutedEventArgs e)
     {
-        if (CurrentLoadedExport is null || !HasMorphEditorData)
+        if (CurrentLoadedExport is null || !CanEditMorph)
         {
             return;
         }

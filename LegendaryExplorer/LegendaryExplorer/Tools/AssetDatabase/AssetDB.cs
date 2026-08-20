@@ -224,6 +224,8 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         BioMorphColorRecord[] ColorOverrides)
     {
         public BioMorphFaceRecord() : this(default, default, default, default, default, default, [], [], []) { }
+
+        [IgnoredMember] public string SpeciesDisplayName => Species.ToDisplayName();
     }
 
     public enum BioPlanetMaterialLayer : byte
