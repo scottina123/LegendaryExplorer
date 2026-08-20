@@ -110,6 +110,7 @@
             <MenuItem Header="View reference graph (EXPERIMENTAL)" ToolTip="Shows incoming references to this object all the way to root objects in the package" Command="{Binding ViewReferenceGraphCommand}" SharedUI:Bindings.VisibilityToEnabled="True"/>
             <MenuItem Header="Attempt to find definition of import" ToolTip="Attempts to find the likely source of this import. Note that due to how unreal engine handles memory this may not be the one used." Command="{Binding ResolveImportCommand}" SharedUI:Bindings.VisibilityToEnabled="True"/>
             <MenuItem Header="Copy name text" ToolTip="Copies the name text to the clipboard" Command="{Binding CopyNameCommand}" SharedUI:Bindings.VisibilityToEnabled="True"/>
+            <MenuItem Header="Copy object name" ToolTip="Copies the entry's instanced object name to the clipboard" Click="CopyObjectName_Click" Tag="CopyObjectName" Visibility="Collapsed"/>
             <MenuItem Header="Copy full path" ToolTip="Copies the entry's full path to the clipboard" Click="CopyFullPath_Click" Tag="CopyFullPath" Visibility="Collapsed"/>
             <MenuItem Header="Add name" ToolTip="Add a name to this package" Command="{Binding AddNameCommand}" CommandParameter="FromContextMenu" SharedUI:Bindings.VisibilityToEnabled="True"/>
             <MenuItem Header="Edit name" ToolTip="Edits the string this name represents" Command="{Binding EditNameCommand}" SharedUI:Bindings.VisibilityToEnabled="True"/>

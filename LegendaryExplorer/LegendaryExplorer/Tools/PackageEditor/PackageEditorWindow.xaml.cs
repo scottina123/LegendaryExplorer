@@ -8328,6 +8328,14 @@ namespace LegendaryExplorer.Tools.PackageEditor
             }
         }
 
+        private void CopyObjectName_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is MenuItem { Parent: ContextMenu contextMenu } && TryGetContextMenuEntry(contextMenu, out var entry))
+            {
+                Clipboard.SetText(entry.ObjectName.Instanced);
+            }
+        }
+
         private void EntryContextMenu_Opened(object sender, RoutedEventArgs e)
         {
             if (sender is not ContextMenu contextMenu)
@@ -8354,13 +8362,16 @@ namespace LegendaryExplorer.Tools.PackageEditor
             var stripShadowmapMenuItem = contextMenu.Items
                 .OfType<MenuItem>()
                 .FirstOrDefault(item => Equals(item.Tag, "StripShadowmap"));
+            var copyObjectNameMenuItem = contextMenu.Items
+                .OfType<MenuItem>()
+                .FirstOrDefault(item => Equals(item.Tag, "CopyObjectName"));
             var copyFullPathMenuItem = contextMenu.Items
                 .OfType<MenuItem>()
                 .FirstOrDefault(item => Equals(item.Tag, "CopyFullPath"));
             var renameObjectMenuItem = contextMenu.Items
                 .OfType<MenuItem>()
                 .FirstOrDefault(item => Equals(item.Tag, "RenameObject"));
-            if (changeLinksMenuItem is null && matchMicMenuItem is null && restoreMaterialMenuItem is null && addMissingTexturesMenuItem is null && stripLightmapMenuItem is null && stripShadowmapMenuItem is null && copyFullPathMenuItem is null && renameObjectMenuItem is null)
+            if (changeLinksMenuItem is null && matchMicMenuItem is null && restoreMaterialMenuItem is null && addMissingTexturesMenuItem is null && stripLightmapMenuItem is null && stripShadowmapMenuItem is null && copyObjectNameMenuItem is null && copyFullPathMenuItem is null && renameObjectMenuItem is null)
             {
                 return;
             }
@@ -8386,6 +8397,13 @@ namespace LegendaryExplorer.Tools.PackageEditor
             if (copyFullPathMenuItem is not null)
             {
                 copyFullPathMenuItem.Visibility = hasEntry
+                    ? Visibility.Visible
+                    : Visibility.Collapsed;
+            }
+
+            if (copyObjectNameMenuItem is not null)
+            {
+                copyObjectNameMenuItem.Visibility = hasEntry
                     ? Visibility.Visible
                     : Visibility.Collapsed;
             }
