@@ -29,8 +29,8 @@
     <Grid Margin="5">
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="3*"/>
-            <ColumnDefinition x:Name="SequencePreviewSplitterColumn" Width="0"/>
-            <ColumnDefinition x:Name="SequencePreviewColumn" Width="0"/>
+            <ColumnDefinition x:Name="PreviewSplitterColumn" Width="0"/>
+            <ColumnDefinition x:Name="PreviewColumn" Width="0"/>
         </Grid.ColumnDefinitions>
         <DockPanel Grid.Column="0" LastChildFill="True">
         <DockPanel.Resources>
@@ -107,12 +107,12 @@
             </ListView.Resources>
         </ListView>
         </DockPanel>
-        <GridSplitter x:Name="SequencePreviewSplitter"
+        <GridSplitter x:Name="PreviewSplitter"
                       Grid.Column="1"
                       Width="5"
                       HorizontalAlignment="Stretch"
                       Visibility="Collapsed"/>
-        <ContentControl x:Name="SequencePreviewHost"
+        <ContentControl x:Name="PreviewHost"
                         Grid.Column="2"
                         Margin="8,0,0,0"
                         Visibility="Collapsed"/>

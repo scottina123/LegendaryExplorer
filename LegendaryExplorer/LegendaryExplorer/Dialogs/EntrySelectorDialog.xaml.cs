@@ -2,14 +2,20 @@
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using LegendaryExplorer.Misc;
 using LegendaryExplorer.SharedUI;
 using LegendaryExplorer.Tools.Sequence_Editor;
+using LegendaryExplorer.UserControls.ExportLoaderControls;
+using LegendaryExplorerCore.Helpers;
 using LegendaryExplorerCore.Misc;
 using LegendaryExplorerCore.Packages;
+using LegendaryExplorerCore.Packages.CloningImportingAndRelinking;
+using LegendaryExplorerCore.Unreal;
 
 namespace LegendaryExplorer.Dialogs
 {
@@ -51,6 +57,11 @@ namespace LegendaryExplorer.Dialogs
         private SequenceEditorWPF SequencePreviewEditor;
         private bool SequencePreviewSelectionPending;
         private bool SynchronizingSequencePreviewSelection;
+        private TextureViewerExportLoader TexturePreviewViewer;
+        private TextBlock TexturePreviewHeader;
+        private PackageCache TexturePreviewPackageCache;
+        private Task TexturePreviewResolutionTask = Task.CompletedTask;
+        private int TexturePreviewRequestVersion;
 
         public Visibility ItemSearchVisibility => ItemSearch is null ? Visibility.Collapsed : Visibility.Visible;
 
@@ -115,12 +126,17 @@ namespace LegendaryExplorer.Dialogs
             get => selectedEntryItem;
             set
             {
-                if (SetProperty(ref selectedEntryItem, value)
-                    && !SynchronizingSequencePreviewSelection
-                    && value is ExportEntry export)
+                if (!SetProperty(ref selectedEntryItem, value))
+                {
+                    return;
+                }
+
+                if (!SynchronizingSequencePreviewSelection && value is ExportEntry export)
                 {
                     SequencePreviewEditor?.FocusReadOnlyPreviewObject(export);
                 }
+
+                UpdateTexturePreview(value as IEntry);
             }
         }
 
@@ -138,7 +154,7 @@ namespace LegendaryExplorer.Dialogs
             Predicate<IEntry> entryPredicate = null, bool supportRootSelection = false,
             string rootSelectionLabel = "[Package root]", string searchHelpText = null,
             Predicate<IEntry> initialEntryFilter = null, string showAllEntriesOptionLabel = null,
-            ExportEntry sequencePreview = null)
+            ExportEntry sequencePreview = null, bool texturePreview = false)
         {
             this.Pcc = pcc;
             this.SupportedInputTypes = supportedInputTypes;
@@ -179,8 +195,21 @@ namespace LegendaryExplorer.Dialogs
             LoadCommands();
             InitializeComponent();
             InitializeSequencePreview(sequencePreview);
+            InitializeTexturePreview(texturePreview);
             UpdateFilteredEntries();
             EntrySearchTextBox.Focus();
+        }
+
+        private void ShowPreviewPane(GridLength previewWidth)
+        {
+            PreviewSplitterColumn.Width = new GridLength(5);
+            PreviewColumn.Width = previewWidth;
+            PreviewSplitter.Visibility = Visibility.Visible;
+            PreviewHost.Visibility = Visibility.Visible;
+            Width = Math.Min(1600, Math.Max(1000, SystemParameters.WorkArea.Width - 80));
+            Height = Math.Min(800, Math.Max(600, SystemParameters.WorkArea.Height - 80));
+            MinWidth = Math.Min(1000, Width);
+            MinHeight = Math.Min(600, Height);
         }
 
         private void InitializeSequencePreview(ExportEntry sequencePreview)
@@ -190,20 +219,155 @@ namespace LegendaryExplorer.Dialogs
                 return;
             }
 
-            SequencePreviewSplitterColumn.Width = new GridLength(5);
-            SequencePreviewColumn.Width = new GridLength(5, GridUnitType.Star);
-            SequencePreviewSplitter.Visibility = Visibility.Visible;
-            SequencePreviewHost.Visibility = Visibility.Visible;
-            Width = Math.Min(1600, Math.Max(1000, SystemParameters.WorkArea.Width - 80));
-            Height = Math.Min(800, Math.Max(600, SystemParameters.WorkArea.Height - 80));
-            MinWidth = Math.Min(1000, Width);
-            MinHeight = Math.Min(600, Height);
+            ShowPreviewPane(new GridLength(5, GridUnitType.Star));
 
             SequencePreviewEditor = new SequenceEditorWPF(enableRecents: false);
-            SequencePreviewHost.Content = SequencePreviewEditor.TakeReadOnlyPreviewContent(
+            PreviewHost.Content = SequencePreviewEditor.TakeReadOnlyPreviewContent(
                 SynchronizeEntrySelectionFromSequencePreview,
                 ApplySequencePreviewSelection);
             SequencePreviewEditor.LoadEmbeddedPackage(Pcc, sequencePreview);
+        }
+
+        private void InitializeTexturePreview(bool texturePreview)
+        {
+            if (!texturePreview)
+            {
+                return;
+            }
+
+            ShowPreviewPane(new GridLength(3, GridUnitType.Star));
+            TexturePreviewPackageCache = new PackageCache();
+            TexturePreviewViewer = new TextureViewerExportLoader
+            {
+                ViewerModeOnly = true
+            };
+            TexturePreviewHeader = new TextBlock
+            {
+                Text = "Texture preview",
+                FontWeight = FontWeights.Bold,
+                Margin = new Thickness(0, 0, 0, 8),
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                ToolTip = "The currently selected texture"
+            };
+
+            var previewPanel = new DockPanel();
+            DockPanel.SetDock(TexturePreviewHeader, Dock.Top);
+            previewPanel.Children.Add(TexturePreviewHeader);
+            previewPanel.Children.Add(TexturePreviewViewer);
+            PreviewHost.Content = previewPanel;
+            SetTexturePreviewMessage("Select a texture to preview");
+        }
+
+        private void UpdateTexturePreview(IEntry entry)
+        {
+            if (TexturePreviewViewer is null)
+            {
+                return;
+            }
+
+            int requestVersion = Interlocked.Increment(ref TexturePreviewRequestVersion);
+            TexturePreviewViewer.UnloadExport();
+            TexturePreviewHeader.Text = entry is null
+                ? "Texture preview"
+                : $"Texture preview — {entry.InstancedFullPath}";
+            TexturePreviewHeader.ToolTip = entry?.InstancedFullPath ?? "The currently selected texture";
+
+            if (entry is null)
+            {
+                SetTexturePreviewMessage("No texture selected");
+                return;
+            }
+
+            if (!entry.IsTexture() && entry.ClassName != "TextureCube")
+            {
+                SetTexturePreviewMessage("The selected entry is not a previewable texture");
+                return;
+            }
+
+            if (entry is ExportEntry textureExport && textureExport.IsTexture())
+            {
+                LoadTexturePreview(textureExport);
+                return;
+            }
+
+            SetTexturePreviewMessage("Loading texture preview…");
+            PackageCache packageCache = TexturePreviewPackageCache;
+            Task<(ExportEntry texture, string error)> resolutionTask = TexturePreviewResolutionTask.ContinueWith(
+                _ => ResolveTexturePreview(entry, packageCache, requestVersion),
+                TaskScheduler.Default);
+            TexturePreviewResolutionTask = resolutionTask;
+            resolutionTask.ContinueWithOnUIThread(task =>
+            {
+                if (disposedValue || requestVersion != TexturePreviewRequestVersion)
+                {
+                    return;
+                }
+
+                if (task.IsFaulted)
+                {
+                    SetTexturePreviewMessage($"Could not load texture preview: {task.Exception?.GetBaseException().Message}");
+                }
+                else if (task.Result.texture is null)
+                {
+                    SetTexturePreviewMessage(task.Result.error ?? "Could not resolve the selected texture");
+                }
+                else
+                {
+                    LoadTexturePreview(task.Result.texture);
+                }
+            });
+        }
+
+        private (ExportEntry texture, string error) ResolveTexturePreview(
+            IEntry entry, PackageCache packageCache, int requestVersion)
+        {
+            try
+            {
+                if (requestVersion != Volatile.Read(ref TexturePreviewRequestVersion))
+                {
+                    return (null, null);
+                }
+
+                ExportEntry textureExport = entry switch
+                {
+                    ExportEntry export => export,
+                    ImportEntry import when EntryImporter.TryResolveImport(import, out ExportEntry resolved, cache: packageCache) => resolved,
+                    _ => null
+                };
+                if (textureExport is null)
+                {
+                    return (null, "Could not resolve the selected texture import");
+                }
+
+                if (textureExport.ClassName == "TextureCube")
+                {
+                    ExportEntry cubeFace = textureExport.GetProperty<ObjectProperty>("FacePosX")?
+                        .ResolveToExport(textureExport.FileRef, packageCache);
+                    return cubeFace?.IsTexture() == true
+                        ? (cubeFace, null)
+                        : (null, "Could not resolve the TextureCube's positive-X face");
+                }
+
+                return textureExport.IsTexture()
+                    ? (textureExport, null)
+                    : (null, "The resolved entry is not a previewable texture");
+            }
+            catch (Exception exception)
+            {
+                return (null, $"Could not load texture preview: {exception.Message}");
+            }
+        }
+
+        private void LoadTexturePreview(ExportEntry textureExport)
+        {
+            SetTexturePreviewMessage("Loading texture preview…");
+            TexturePreviewViewer.LoadExport(textureExport);
+        }
+
+        private void SetTexturePreviewMessage(string message)
+        {
+            TexturePreviewViewer.CannotShowTextureText = message;
+            TexturePreviewViewer.CannotShowTextureTextVisibility = Visibility.Visible;
         }
 
         private void SynchronizeEntrySelectionFromSequencePreview(ExportEntry entry)
@@ -301,7 +465,7 @@ namespace LegendaryExplorer.Dialogs
             IMEPackage pcc, string directionsText = null, Predicate<T> predicate = null, object defaultItem = null,
             bool selectLastItemByDefault = false, string noOptionLabel = "[Package root]",
             Predicate<T> initialFilterPredicate = null, string showAllEntriesOptionLabel = null,
-            ExportEntry sequencePreview = null) where T : class, IEntry
+            ExportEntry sequencePreview = null, bool texturePreview = false) where T : class, IEntry
         {
             SupportedTypes supportedInputTypes = SupportedTypes.ExportsAndImports;
             if (typeof(T) == typeof(ExportEntry))
@@ -323,7 +487,8 @@ namespace LegendaryExplorer.Dialogs
                 : entry => initialFilterPredicate((T)entry);
             using var dlg = new EntrySelector(owner, pcc, supportedInputTypes, directionsText, entryPredicate, true,
                 noOptionLabel, initialEntryFilter: initialEntryFilter,
-                showAllEntriesOptionLabel: showAllEntriesOptionLabel, sequencePreview: sequencePreview);
+                showAllEntriesOptionLabel: showAllEntriesOptionLabel, sequencePreview: sequencePreview,
+                texturePreview: texturePreview);
             dlg.SetInitialSelection(defaultItem, selectLastItemByDefault);
             if (dlg.ShowDialog() == true)
             {
@@ -346,7 +511,7 @@ namespace LegendaryExplorer.Dialogs
         public static T GetEntry<T>(Window owner, IMEPackage pcc, string directionsText = null,
             Predicate<T> predicate = null, IEntry defaultItem = null, bool selectLastItemByDefault = false,
             Predicate<T> initialFilterPredicate = null, string showAllEntriesOptionLabel = null,
-            ExportEntry sequencePreview = null) where T : class, IEntry
+            ExportEntry sequencePreview = null, bool texturePreview = false) where T : class, IEntry
         {
             SupportedTypes supportedInputTypes = SupportedTypes.ExportsAndImports;
             if (typeof(T) == typeof(ExportEntry))
@@ -368,7 +533,7 @@ namespace LegendaryExplorer.Dialogs
                 : entry => initialFilterPredicate((T)entry);
             using var dlg = new EntrySelector(owner, pcc, supportedInputTypes, directionsText, entryPredicate,
                 initialEntryFilter: initialEntryFilter, showAllEntriesOptionLabel: showAllEntriesOptionLabel,
-                sequencePreview: sequencePreview);
+                sequencePreview: sequencePreview, texturePreview: texturePreview);
             dlg.SetInitialSelection(defaultItem, selectLastItemByDefault);
             if (dlg.ShowDialog() == true)
             {
@@ -601,9 +766,19 @@ namespace LegendaryExplorer.Dialogs
                     // TODO: dispose managed state (managed objects).
                     SequencePreviewEditor?.DisposeEmbeddedContent();
                     SequencePreviewEditor = null;
-                    if (SequencePreviewHost is not null)
+                    TexturePreviewViewer?.Dispose();
+                    TexturePreviewViewer = null;
+                    Interlocked.Increment(ref TexturePreviewRequestVersion);
+                    PackageCache texturePreviewPackageCache = TexturePreviewPackageCache;
+                    TexturePreviewPackageCache = null;
+                    if (texturePreviewPackageCache is not null)
                     {
-                        SequencePreviewHost.Content = null;
+                        TexturePreviewResolutionTask.ContinueWith(_ => texturePreviewPackageCache.Dispose(),
+                            TaskScheduler.Default);
+                    }
+                    if (PreviewHost is not null)
+                    {
+                        PreviewHost.Content = null;
                     }
                     Pcc = null;
                 }

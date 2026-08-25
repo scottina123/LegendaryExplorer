@@ -3848,18 +3848,27 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 ? null
                 : [.. currentSequence.GetProperty<ArrayProperty<ObjectProperty>>("SequenceObjects")?
                     .Select(sequenceObject => sequenceObject.Value) ?? []];
+            bool showTexturePreview = targetNode.UPParent?.Property is StructProperty
+            {
+                StructType: "TextureParameterValue" or "TextureParameter"
+            };
+            object defaultItem = showTexturePreview
+                ? objectProperty.Value == 0 ? "0 Null" : Pcc.GetEntry(objectProperty.Value)
+                : null;
             var (selectedNull, selectedEntry) = EntrySelector.GetEntryWithNoOption<IEntry>(
                 Window.GetWindow(this),
                 Pcc,
                 $"Select an object reference for {targetNode.DisplayName}.",
                 predicate: entry => allowedEntryUIndexes.Contains(entry.UIndex),
+                defaultItem: defaultItem,
                 selectLastItemByDefault: true,
                 noOptionLabel: "0 Null",
                 initialFilterPredicate: currentSequenceObjectUIndexes is null
                     ? null
                     : entry => currentSequenceObjectUIndexes.Contains(entry.UIndex),
                 showAllEntriesOptionLabel: "Show full LinkedOp list",
-                sequencePreview: currentSequence);
+                sequencePreview: currentSequence,
+                texturePreview: showTexturePreview);
 
             if (!selectedNull && selectedEntry == null)
             {

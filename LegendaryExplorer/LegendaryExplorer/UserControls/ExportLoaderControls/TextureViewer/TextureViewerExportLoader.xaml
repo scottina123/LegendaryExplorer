@@ -39,7 +39,8 @@
             </ListBox.ItemContainerStyle>
         </ListBox>
         <DockPanel>
-            <Grid DockPanel.Dock="Bottom">
+            <Grid DockPanel.Dock="Bottom"
+                  Visibility="{Binding ViewerModeOnly, Converter={StaticResource BoolToVisibilityConverter}, ConverterParameter='Not'}">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
@@ -84,6 +85,15 @@
                 <StackPanel Orientation="Horizontal">
                 </StackPanel>
             </StackPanel>
+            <xctk:DropDownButton DockPanel.Dock="Bottom"
+                                 Content="View options"
+                                 HorizontalAlignment="Center"
+                                 Margin="0,3"
+                                 Visibility="{Binding ViewerModeOnly, Converter={StaticResource BoolToVisibilityConverter}}">
+                <xctk:DropDownButton.DropDownContent>
+                    <scene3D:SceneControlOptionsControl/>
+                </xctk:DropDownButton.DropDownContent>
+            </xctk:DropDownButton>
             <Grid HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
                 <TextBlock Name="TextureStatus_TextBlock" Text="{Binding CannotShowTextureText, FallbackValue=Select a mip}" Visibility="{Binding CannotShowTextureTextVisibility}" TextAlignment="Center" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                 <!--<Button Name="TFCSelect_Button" Margin="10,0,0,0" Content="Select TFC"/>-->
