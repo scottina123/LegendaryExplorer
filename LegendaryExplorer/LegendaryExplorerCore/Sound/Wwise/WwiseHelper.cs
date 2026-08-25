@@ -5,6 +5,7 @@ using System.Text;
 using System.Threading.Tasks;
 using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.Unreal;
+using LegendaryExplorerCore.Unreal.BinaryConverters;
 
 namespace LegendaryExplorerCore.Sound.Wwise
 {
@@ -13,6 +14,125 @@ namespace LegendaryExplorerCore.Sound.Wwise
     /// </summary>
     public class WwiseHelper
     {
+        /// <summary>
+        /// Gets the local WwiseStream exports referenced by a WwiseEvent.
+        /// </summary>
+        /// <remarks>
+        /// ME2/ME3/LE3 store stream references in the event binary, while LE2 stores them in the
+        /// References property. Both locations are checked so this also handles converted events.
+        /// </remarks>
+        public static IReadOnlyList<ExportEntry> GetReferencedWwiseStreams(ExportEntry wwiseEventExport)
+        {
+            if (wwiseEventExport?.ClassName != "WwiseEvent")
+            {
+                return [];
+            }
+
+            var streams = new List<ExportEntry>();
+            var seenStreams = new HashSet<int>();
+
+            void AddStream(int uIndex)
+            {
+                if (!wwiseEventExport.FileRef.IsUExport(uIndex) || !seenStreams.Add(uIndex))
+                {
+                    return;
+                }
+
+                ExportEntry stream = wwiseEventExport.FileRef.GetUExport(uIndex);
+                if (stream.ClassName == "WwiseStream")
+                {
+                    streams.Add(stream);
+                }
+            }
+
+            WwiseEvent wwiseEvent = wwiseEventExport.GetBinaryData<WwiseEvent>();
+            if (wwiseEvent.Links is not null)
+            {
+                foreach (WwiseEvent.WwiseEventLink link in wwiseEvent.Links)
+                {
+                    if (link.WwiseStreams is not null)
+                    {
+                        foreach (int streamUIndex in link.WwiseStreams)
+                        {
+                            AddStream(streamUIndex);
+                        }
+                    }
+                }
+            }
+
+            var references = wwiseEventExport.GetProperty<ArrayProperty<StructProperty>>("References");
+            if (references is not null)
+            {
+                foreach (StructProperty reference in references)
+                {
+                    var relationships = reference.GetProp<StructProperty>("Relationships");
+                    var referencedStreams = relationships?.GetProp<ArrayProperty<ObjectProperty>>("Streams");
+                    if (referencedStreams is null)
+                    {
+                        continue;
+                    }
+
+                    foreach (ObjectProperty streamReference in referencedStreams)
+                    {
+                        AddStream(streamReference.Value);
+                    }
+                }
+            }
+
+            return streams;
+        }
+
+        /// <summary>
+        /// Finds the unique referenced WwiseStream whose name matches a dialogue WwiseEvent's TLK ID and gender.
+        /// Returns the sole referenced stream for non-dialogue events, or null when several references are ambiguous.
+        /// </summary>
+        public static ExportEntry GetMatchingReferencedWwiseStream(ExportEntry wwiseEventExport,
+            IReadOnlyList<ExportEntry> referencedStreams = null)
+        {
+            if (wwiseEventExport?.ClassName != "WwiseEvent")
+            {
+                return null;
+            }
+
+            referencedStreams ??= GetReferencedWwiseStreams(wwiseEventExport);
+            if (referencedStreams.Count == 1)
+            {
+                return referencedStreams[0];
+            }
+
+            string[] eventNameParts = wwiseEventExport.ObjectName.Name.Split('_');
+            for (int i = 0; i < eventNameParts.Length - 1; i++)
+            {
+                if (!int.TryParse(eventNameParts[i], out int tlkId)
+                    || eventNameParts[i + 1] is not ("m" or "M" or "f" or "F"))
+                {
+                    continue;
+                }
+
+                string gender = eventNameParts[i + 1].ToLowerInvariant();
+                string paddedGenderedId = $"{tlkId:D8}_{gender}";
+                string genderedId = $"_{tlkId}_{gender}";
+                List<ExportEntry> genderMatches = referencedStreams
+                    .Where(stream => stream.ObjectName.Name.Contains(paddedGenderedId, StringComparison.OrdinalIgnoreCase)
+                                  || stream.ObjectName.Name.Contains(genderedId, StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+                if (genderMatches.Count == 1)
+                {
+                    return genderMatches[0];
+                }
+
+                string paddedId = $"{tlkId:D8}";
+                string delimitedId = $"_{tlkId}_";
+                List<ExportEntry> idMatches = referencedStreams
+                    .Where(stream => stream.ObjectName.Name.Contains(paddedId, StringComparison.OrdinalIgnoreCase)
+                                  || stream.ObjectName.Name.Contains(delimitedId, StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+                return idMatches.Count == 1 ? idMatches[0] : null;
+            }
+
+            return null;
+        }
+
         /// <summary>
         /// Update the DurationMilliseconds property on all WwiseEvents that reference the given WwiseStream
         /// </summary>

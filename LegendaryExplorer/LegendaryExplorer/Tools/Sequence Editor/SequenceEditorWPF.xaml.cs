@@ -1292,6 +1292,12 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                 properties.AddOrReplaceProp(new ArrayProperty<StrProperty>([new StrProperty("")], "Commands"));
             }
 
+            if (info.ClassName == "SeqAct_WwisePostEvent"
+                && GlobalUnrealObjectInfo.GetPropertyInfo(Pcc.Game, "WwiseObject", info.ClassName, info) != null)
+            {
+                properties.AddOrReplaceProp(new ObjectProperty(0, "WwiseObject"));
+            }
+
             if (GlobalUnrealObjectInfo.GetPropertyInfo(Pcc.Game, "m_vSFXTeleportLocation", info.ClassName, info) != null)
             {
                 properties.AddOrReplaceProp(CommonStructs.Vector3Prop(0, 0, 0, "m_vSFXTeleportLocation"));

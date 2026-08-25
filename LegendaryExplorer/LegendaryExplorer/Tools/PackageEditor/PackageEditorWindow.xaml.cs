@@ -41,6 +41,7 @@ using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.Packages.CloningImportingAndRelinking;
 using LegendaryExplorerCore.Shaders;
 using LegendaryExplorerCore.Sound.ISACT;
+using LegendaryExplorerCore.Sound.Wwise;
 using LegendaryExplorerCore.TLK.ME1;
 using LegendaryExplorerCore.Unreal;
 using LegendaryExplorerCore.Unreal.BinaryConverters;
@@ -8371,7 +8372,10 @@ namespace LegendaryExplorer.Tools.PackageEditor
             var renameObjectMenuItem = contextMenu.Items
                 .OfType<MenuItem>()
                 .FirstOrDefault(item => Equals(item.Tag, "RenameObject"));
-            if (changeLinksMenuItem is null && matchMicMenuItem is null && restoreMaterialMenuItem is null && addMissingTexturesMenuItem is null && stripLightmapMenuItem is null && stripShadowmapMenuItem is null && copyObjectNameMenuItem is null && copyFullPathMenuItem is null && renameObjectMenuItem is null)
+            var goToWwiseStreamMenuItem = contextMenu.Items
+                .OfType<MenuItem>()
+                .FirstOrDefault(item => Equals(item.Tag, "GoToWwiseStream"));
+            if (changeLinksMenuItem is null && matchMicMenuItem is null && restoreMaterialMenuItem is null && addMissingTexturesMenuItem is null && stripLightmapMenuItem is null && stripShadowmapMenuItem is null && copyObjectNameMenuItem is null && copyFullPathMenuItem is null && renameObjectMenuItem is null && goToWwiseStreamMenuItem is null)
             {
                 return;
             }
@@ -8441,6 +8445,57 @@ namespace LegendaryExplorer.Tools.PackageEditor
                 stripShadowmapMenuItem.Visibility = hasExport && CanStripShadowmap(export)
                     ? Visibility.Visible
                     : Visibility.Collapsed;
+            }
+
+            if (goToWwiseStreamMenuItem is not null)
+            {
+                ConfigureWwiseStreamNavigationMenu(goToWwiseStreamMenuItem, export);
+            }
+        }
+
+        private void ConfigureWwiseStreamNavigationMenu(MenuItem menuItem, ExportEntry export)
+        {
+            menuItem.Items.Clear();
+            menuItem.CommandParameter = null;
+
+            if (export?.ClassName != "WwiseEvent")
+            {
+                menuItem.Visibility = Visibility.Collapsed;
+                return;
+            }
+
+            IReadOnlyList<ExportEntry> streams = WwiseHelper.GetReferencedWwiseStreams(export);
+            menuItem.Visibility = streams.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+            ExportEntry matchingStream = WwiseHelper.GetMatchingReferencedWwiseStream(export, streams);
+            if (matchingStream is not null)
+            {
+                menuItem.CommandParameter = matchingStream;
+                menuItem.ToolTip = $"Go to {matchingStream.InstancedFullPath}";
+                return;
+            }
+
+            menuItem.ToolTip = "Choose a WwiseStream referenced by this WwiseEvent";
+
+            foreach (ExportEntry stream in streams)
+            {
+                var streamMenuItem = new MenuItem
+                {
+                    Header = $"(Exp) {stream.UIndex} {stream.InstancedFullPath}",
+                    CommandParameter = stream,
+                    ToolTip = "Go to this WwiseStream"
+                };
+                streamMenuItem.Click += GoToWwiseStream_Click;
+                menuItem.Items.Add(streamMenuItem);
+            }
+        }
+
+        private void GoToWwiseStream_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is MenuItem { CommandParameter: ExportEntry stream }
+                && ReferenceEquals(stream.FileRef, Pcc))
+            {
+                GoToNumber(stream.UIndex);
+                e.Handled = true;
             }
         }
 
