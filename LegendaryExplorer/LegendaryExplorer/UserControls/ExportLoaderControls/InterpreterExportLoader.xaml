@@ -308,6 +308,8 @@
                                             <TextBox MinWidth="80" Text="{Binding InlineEditorValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Tag="{Binding}" KeyDown="InlineEditor_KeyDown" Style="{StaticResource InlineEditorTextBoxStyle}"/>
                                             <Button Margin="5,0,0,0" Padding="6,0" Content="Find text..." ToolTip="Find this StringRef by its text in the loaded TLKs" Tag="{Binding}"
                                                     Click="StringRefTextLookupButton_Click" Visibility="{Binding IsStringRefProperty, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                                            <Button Margin="5,0,0,0" Padding="8,0" Content="Choose movie..." ToolTip="Search basegame and DLC Movies folders and preview a movie" Tag="{Binding}"
+                                                    Click="MoviePickerButton_Click" Visibility="{Binding ShowMoviePicker, Converter={StaticResource BoolToVisibilityConverter}}"/>
                                             <Button Margin="5,0,0,0" Padding="6,0" Content="✓" Tag="{Binding}" Click="InlineEditorConfirmButton_Click"/>
                                             <ContentControl Content="{Binding}" ContentTemplate="{StaticResource InlineArrayElementActionsTemplate}"/>
                                         </StackPanel>
@@ -429,6 +431,8 @@
                                         <StackPanel x:Name="PropertyItem_LinkedNumericInlineEditor" Orientation="Horizontal" Margin="5,0,0,0" VerticalAlignment="Top"
                                                     Visibility="{Binding ShowLinkedNumericInlineEditor, Converter={StaticResource BoolToVisibilityConverter}}">
                                             <TextBox MinWidth="80" Text="{Binding LinkedInlineEditorValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Tag="{Binding LinkedNode}" KeyDown="InlineEditor_KeyDown" Style="{StaticResource InlineEditorTextBoxStyle}"/>
+                                            <Button Margin="5,0,0,0" Padding="8,0" Content="Choose movie..." ToolTip="Search basegame and DLC Movies folders and preview a movie" Tag="{Binding LinkedNode}"
+                                                    Click="MoviePickerButton_Click" Visibility="{Binding LinkedNode.ShowMoviePicker, Converter={StaticResource BoolToVisibilityConverter}}"/>
                                             <Button Margin="5,0,0,0" Padding="6,0" Content="✓" Tag="{Binding LinkedNode}" Click="InlineEditorConfirmButton_Click"/>
                                         </StackPanel>
                                         <StackPanel x:Name="PropertyItem_LinkedObjectInlineEditor" Orientation="Horizontal" Margin="5,0,0,0" VerticalAlignment="Top"
@@ -499,6 +503,8 @@
                                         <StackPanel x:Name="PropertyItem_SecondLinkedNumericInlineEditor" Orientation="Horizontal" Margin="5,0,0,0" VerticalAlignment="Top"
                                                     Visibility="{Binding ShowSecondLinkedNumericInlineEditor, Converter={StaticResource BoolToVisibilityConverter}}">
                                             <TextBox MinWidth="80" Text="{Binding SecondLinkedInlineEditorValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Tag="{Binding SecondLinkedNode}" KeyDown="InlineEditor_KeyDown" Style="{StaticResource InlineEditorTextBoxStyle}"/>
+                                            <Button Margin="5,0,0,0" Padding="8,0" Content="Choose movie..." ToolTip="Search basegame and DLC Movies folders and preview a movie" Tag="{Binding SecondLinkedNode}"
+                                                    Click="MoviePickerButton_Click" Visibility="{Binding SecondLinkedNode.ShowMoviePicker, Converter={StaticResource BoolToVisibilityConverter}}"/>
                                             <Button Margin="5,0,0,0" Padding="6,0" Content="✓" Tag="{Binding SecondLinkedNode}" Click="InlineEditorConfirmButton_Click"/>
                                         </StackPanel>
                                         <StackPanel x:Name="PropertyItem_SecondLinkedObjectInlineEditor" Orientation="Horizontal" Margin="5,0,0,0" VerticalAlignment="Top"

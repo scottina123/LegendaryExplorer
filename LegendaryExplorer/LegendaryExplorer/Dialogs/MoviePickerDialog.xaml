@@ -1,0 +1,67 @@
+<Window x:Class="LegendaryExplorer.Dialogs.MoviePickerDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:sharedUI="clr-namespace:LegendaryExplorer.SharedUI"
+        Title="Choose Movie" Width="960" Height="650" MinWidth="720" MinHeight="480"
+        WindowStartupLocation="CenterOwner" Loaded="Window_Loaded" Closing="Window_Closing">
+    <Grid Margin="12">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="340"/>
+            <ColumnDefinition Width="12"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <DockPanel Grid.Column="0" Margin="0,0,0,8">
+            <TextBlock DockPanel.Dock="Left" Text="Search:" VerticalAlignment="Center" Margin="0,0,8,0"/>
+            <TextBox x:Name="SearchTextBox" Padding="6,4" TextChanged="SearchTextBox_TextChanged"
+                     ToolTip="Search movie names, DLC names, and paths"/>
+        </DockPanel>
+
+        <ListBox x:Name="MovieListBox" Grid.Row="1" Grid.Column="0"
+                 SelectionChanged="MovieListBox_SelectionChanged"
+                 MouseDoubleClick="MovieListBox_MouseDoubleClick"
+                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                 ScrollViewer.VerticalScrollBarVisibility="Auto"
+                 VirtualizingPanel.IsVirtualizing="True"
+                 VirtualizingPanel.VirtualizationMode="Recycling">
+            <ListBox.ItemTemplate>
+                <DataTemplate>
+                    <StackPanel Margin="5,3" ToolTip="{Binding FilePath}">
+                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                        <TextBlock Text="{Binding Source}" FontSize="11" Opacity="0.7" TextTrimming="CharacterEllipsis"/>
+                    </StackPanel>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
+
+        <TextBlock x:Name="CatalogStatusTextBlock" Grid.Row="2" Grid.Column="0" Margin="0,8,0,0"
+                   TextWrapping="Wrap" Opacity="0.75"/>
+
+        <Border Grid.Row="0" Grid.RowSpan="2" Grid.Column="2" Background="Black"
+                BorderBrush="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}" BorderThickness="1">
+            <sharedUI:WindowsFormsHostEx x:Name="PreviewFormsHost"
+                                         HorizontalAlignment="Stretch" VerticalAlignment="Stretch"/>
+        </Border>
+
+        <StackPanel Grid.Row="2" Grid.Column="2" Margin="0,8,0,0">
+            <TextBlock x:Name="SelectedMovieTextBlock" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+            <TextBlock x:Name="PreviewStatusTextBlock" Margin="0,3,0,0" TextWrapping="Wrap" Opacity="0.75"/>
+        </StackPanel>
+
+        <DockPanel Grid.Row="3" Grid.ColumnSpan="3" Margin="0,12,0,0">
+            <TextBlock VerticalAlignment="Center" Opacity="0.7"
+                       Text="The preview loops automatically. The movie name is stored without its file extension."/>
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button x:Name="ChooseButton" Content="Choose Movie" IsDefault="True" IsEnabled="False"
+                        MinWidth="110" Padding="10,5" Margin="8,0,0,0" Click="ChooseButton_Click"/>
+                <Button Content="Cancel" IsCancel="True" MinWidth="85" Padding="10,5" Margin="8,0,0,0"/>
+            </StackPanel>
+        </DockPanel>
+    </Grid>
+</Window>

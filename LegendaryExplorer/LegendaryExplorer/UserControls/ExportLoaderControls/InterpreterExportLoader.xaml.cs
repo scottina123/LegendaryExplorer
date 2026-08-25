@@ -4634,6 +4634,28 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             TryCommitInlineEditor(sender as FrameworkElement);
         }
 
+        private void MoviePickerButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is not FrameworkElement { Tag: UPropertyTreeViewEntry node }
+                || !node.ShowMoviePicker
+                || node.AttachedExport is null)
+            {
+                return;
+            }
+
+            var picker = new MoviePickerDialog(
+                node.AttachedExport.Game,
+                node.InlineEditorValue,
+                Window.GetWindow(this));
+            if (picker.ShowDialog() != true || string.IsNullOrWhiteSpace(picker.SelectedMovieName))
+            {
+                return;
+            }
+
+            node.InlineEditorValue = picker.SelectedMovieName;
+            TryCommitInlineEditor(node);
+        }
+
         private void MaterialParameterNamePickerButton_Click(object sender, RoutedEventArgs e)
         {
             if (sender is not FrameworkElement { Tag: UPropertyTreeViewEntry node }
@@ -6714,6 +6736,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         public bool IsRemovableProperty => UPParent != null && Property is not null and not NoneProperty &&
                                            (UPParent.UPParent == null || UPParent.Property is StructProperty { IsImmutable: false });
         public bool ShowNumericInlineEditor => Property is FloatProperty or IntProperty or StringRefProperty or StrProperty;
+        public bool ShowMoviePicker => Property is StrProperty
+                                       && Property.Name.Name.Equals("m_sMovieName", StringComparison.OrdinalIgnoreCase);
         public bool ShowObjectInlineEditor => IsObjectProperty;
         public bool ShowEditableTextBlock => !(ShowNumericInlineEditor || ShowNameInlineEditor || ShowObjectInlineEditor || ShowEnumInlineEditor);
         public bool ShowNameInlineEditor => IsNameProperty;
