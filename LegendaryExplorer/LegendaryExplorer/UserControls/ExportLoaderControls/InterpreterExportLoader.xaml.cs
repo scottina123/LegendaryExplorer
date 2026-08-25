@@ -1166,10 +1166,54 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         private bool ArrayPropertyIsSelected() => SelectedItem?.Property is ArrayPropertyBase;
 
         private bool IsExportLoaded() => CurrentLoadedExport != null;
-        private bool IsItemGUIDImmutable() => SelectedItem?.Property is StructProperty { IsImmutable: true, StructType: "Guid" };
+        private bool IsItemGUIDImmutable() => SelectedItem?.IsGuidProperty == true;
         private void GenerateNewGUID()
         {
-            CurrentLoadedExport.WriteProperty(CommonStructs.GuidProp(Guid.NewGuid(), SelectedItem.Property.Name));
+            GenerateNewGUID(SelectedItem);
+        }
+
+        private void GenerateNewGUID(UPropertyTreeViewEntry node)
+        {
+            if (node?.Property is not StructProperty { IsImmutable: true, StructType: "Guid" } guidProperty)
+            {
+                return;
+            }
+
+            IntProperty[] guidParts =
+            [
+                guidProperty.GetProp<IntProperty>("A"),
+                guidProperty.GetProp<IntProperty>("B"),
+                guidProperty.GetProp<IntProperty>("C"),
+                guidProperty.GetProp<IntProperty>("D")
+            ];
+            if (guidParts.Any(part => part is null))
+            {
+                return;
+            }
+
+            Guid newGuid = Guid.NewGuid();
+            byte[] guidBytes = newGuid.ToByteArray();
+            for (int i = 0; i < guidParts.Length; i++)
+            {
+                guidParts[i].Value = BitConverter.ToInt32(guidBytes, i * sizeof(int));
+            }
+
+            node.ParsedValue = newGuid.ToString();
+            foreach (UPropertyTreeViewEntry child in node.ChildrenProperties)
+            {
+                child.RefreshEditableValueFromProperty();
+            }
+            WriteCurrentLoadedProperties();
+        }
+
+        private void InlineGenerateGuidButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is FrameworkElement { Tag: UPropertyTreeViewEntry node })
+            {
+                ApplySelectedTreeItem(node);
+                GenerateNewGUID(node);
+                e.Handled = true;
+            }
         }
 
         private bool ArrayElementIsSelected() => SelectedItem?.UPParent?.Property is ArrayPropertyBase;
@@ -6738,6 +6782,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         public bool IsStringRefProperty => InterpreterExportLoader.IsTlkStringRefProperty(Property, UPParent?.Property);
 
         public bool IsInlineEditable => Property is FloatProperty or IntProperty or StringRefProperty or StrProperty or NameProperty or EnumProperty;
+        public bool IsGuidProperty => Property is StructProperty { IsImmutable: true, StructType: "Guid" };
         public bool IsArrayProperty => Property is ArrayPropertyBase;
         public bool IsArrayElement => UPParent?.Property is ArrayPropertyBase;
         public bool CanMoveArrayElementUp => IsArrayElement && UPParent.ChildrenProperties.IndexOf(this) > 0;
@@ -7211,6 +7256,17 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     _ => value
                 });
             }
+        }
+
+        internal void RefreshEditableValueFromProperty()
+        {
+            string value = Property switch
+            {
+                IntProperty intProperty => intProperty.Value.ToString(),
+                _ => _editableValue
+            };
+            SetProperty(ref _editableValue, value, nameof(EditableValue));
+            ResetInlineEditorValues();
         }
 
         private bool TryParseInlineNamePropertyValue(string value, NameProperty nameProperty, out string normalizedValue)

@@ -413,6 +413,8 @@
                                                    Visibility="{Binding ShowParsedValue, Converter={StaticResource BoolToVisibilityConverter}}"/>
                                         <xctk:ColorPicker x:Name="PropertyItem_ColorPicker" Margin="5,0,0,0" Visibility="{Binding Property, Converter={StaticResource UPropertyColorPickerVisibilityConverter}, Mode=OneTime}" 
                                                           SelectedColor="{Binding ColorStructCode,Converter={StaticResource ColorCodeConverter}}" Width="60" Closed="ColorPicker_Closed"/>
+                                        <Button Margin="5,0,0,0" Padding="8,0" Content="Randomize" ToolTip="Replace this GUID with a new random GUID" Tag="{Binding}"
+                                                Click="InlineGenerateGuidButton_Click" Visibility="{Binding IsGuidProperty, Converter={StaticResource BoolToVisibilityConverter}}"/>
                                         <Button Margin="5,0,0,0" Padding="7,0" Content="+" FontWeight="Bold" ToolTip="Add a new element to this array" Tag="{Binding}"
                                                 Click="InlineAddArrayElementButton_Click" Visibility="{Binding IsArrayProperty, Converter={StaticResource BoolToVisibilityConverter}}"/>
                                         <Button Margin="5,0,0,0" Padding="6,0" Content="×" ToolTip="Remove this property from the export" Tag="{Binding}" Click="InlineRemovePropertyButton_Click" Visibility="{Binding IsRemovableProperty, Converter={StaticResource BoolToVisibilityConverter}}"/>
