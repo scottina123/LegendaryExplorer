@@ -4711,6 +4711,13 @@ private BinInterpNode MakeMaterialEntryNode(EndianReader bin, string name)
     return node;
 }
 
+private BinInterpNode MakeTextureEntryNode(EndianReader bin, string name)
+{
+    BinInterpNode node = MakeEntryNode(bin, name);
+    node.IsTextureReference = true;
+    return node;
+}
+
 private BinInterpNode MakeEntryNode(EndianReader bin, string name, out int uIndex)
 {
     long binPosition = bin.Position;

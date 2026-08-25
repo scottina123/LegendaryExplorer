@@ -761,8 +761,9 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         private void InlineObjectDisplay_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         {
-            if (sender is not FrameworkElement { DataContext: BinInterpNode { IsMaterialReference: true } node }
-                || CurrentLoadedExport is null)
+            if (sender is not FrameworkElement { DataContext: BinInterpNode node }
+                || CurrentLoadedExport is null
+                || (!node.IsMaterialReference && !node.IsTextureReference))
             {
                 return;
             }
@@ -772,19 +773,27 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             node.IsSelected = true;
 
             int.TryParse(node.InlineObjectIndexValue, out int currentIndex);
-            IEntry selectedMaterial = EntrySelector.GetEntry<IEntry>(
-                Window.GetWindow(this),
-                CurrentLoadedExport.FileRef,
-                "Select a Material or MaterialInstanceConstant to apply.",
-                entry => entry.ClassName is "Material" or "MaterialInstanceConstant",
-                CurrentLoadedExport.FileRef.GetEntry(currentIndex));
-            if (selectedMaterial is null)
+            IEntry selectedEntry = node.IsTextureReference
+                ? EntrySelector.GetEntry<IEntry>(
+                    Window.GetWindow(this),
+                    CurrentLoadedExport.FileRef,
+                    "Select a texture to apply.",
+                    predicate: entry => entry.IsA("Texture"),
+                    defaultItem: CurrentLoadedExport.FileRef.GetEntry(currentIndex),
+                    texturePreview: true)
+                : EntrySelector.GetEntry<IEntry>(
+                    Window.GetWindow(this),
+                    CurrentLoadedExport.FileRef,
+                    "Select a Material or MaterialInstanceConstant to apply.",
+                    entry => entry.ClassName is "Material" or "MaterialInstanceConstant",
+                    CurrentLoadedExport.FileRef.GetEntry(currentIndex));
+            if (selectedEntry is null)
             {
                 return;
             }
 
-            node.InlineObjectIndexValue = selectedMaterial.UIndex.ToString();
-            node.InlineObjectDisplayValue = GetInlineObjectDisplayText(selectedMaterial.UIndex);
+            node.InlineObjectIndexValue = selectedEntry.UIndex.ToString();
+            node.InlineObjectDisplayValue = GetInlineObjectDisplayText(selectedEntry.UIndex);
             TryCommitInlineEditor(node);
         }
 

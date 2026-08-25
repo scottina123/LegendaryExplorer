@@ -187,7 +187,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 nodes.Add(MakeUInt32Node(bin, "NumUserTexCoords"));
                 if (Pcc.Game >= MEGame.ME3)
                 {
-                    nodes.Add(MakeArrayNode(bin, "UniformExpressionTextures", i => MakeEntryNode(bin, $"{i}")));
+                    nodes.Add(MakeArrayNode(bin, "UniformExpressionTextures", i => MakeTextureEntryNode(bin, $"{i}")));
                 }
                 else
                 {

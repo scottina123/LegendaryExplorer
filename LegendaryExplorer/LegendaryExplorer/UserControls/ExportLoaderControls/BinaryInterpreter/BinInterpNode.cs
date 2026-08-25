@@ -49,6 +49,10 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         /// Indicates that this object reference is a material slot and can use the material picker.
         /// </summary>
         public bool IsMaterialReference { get; set; }
+        /// <summary>
+        /// Indicates that this object reference is a texture slot and can use the texture picker with previews.
+        /// </summary>
+        public bool IsTextureReference { get; set; }
         public ArrayPropertyChildAddAlgorithm ArrayAddAlgorithm;
 
         private bool _isInlineEditing;
