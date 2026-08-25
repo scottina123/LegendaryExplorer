@@ -131,6 +131,27 @@
         <TabControl Name="SoundPanel_TabsControl" Visibility="{Binding MiniPlayerMode, Converter={StaticResource BoolToVisibilityConverter}, ConverterParameter='Not'}">
             <TabItem Header="Player" Name="SoundPanel_PlayerTab">
                 <DockPanel Margin="0,0,0,8" x:Name="SoundPanel_PlayerTabGrid">
+                    <ItemsControl x:Name="WwiseNavigationItemsControl"
+                                  DockPanel.Dock="Top"
+                                  ItemsSource="{Binding NavigationTargets}"
+                                  Margin="5,5,5,0"
+                                  Visibility="Collapsed">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <WrapPanel Orientation="Horizontal"/>
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Button Content="{Binding Label}"
+                                        ToolTip="{Binding Export.InstancedFullPath}"
+                                        Margin="0,0,5,5"
+                                        Padding="7,2"
+                                        Command="{Binding DataContext.NavigateToExportCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                        CommandParameter="{Binding}"/>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
                     <!--<TextBox Name="infoTextBox" Text="Select an export" Grid.Column="0" Grid.Row="0"/>-->
                     <ListBox x:Name="ExportInfoListBox" ItemsSource="{Binding ExportInformationList}" 
                          PreviewKeyDown="WEMItem_KeyDown" MouseDoubleClick="ExportInfoListBox_DoubleClick" SelectionChanged="ExportInfoListBox_SelectionChanged" HorizontalContentAlignment="Stretch">

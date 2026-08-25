@@ -144,6 +144,7 @@
             <MenuItem Header="Open in Pathfinding Editor" Command="{Binding OpenExportInCommand}" CommandParameter="PathfindingEditor" SharedUI:Bindings.VisibilityToEnabled="True"/>
             <MenuItem Header="Open in WwiseEditor" Command="{Binding OpenExportInCommand}" CommandParameter="WwiseEditor" SharedUI:Bindings.VisibilityToEnabled="True"/>
             <MenuItem Header="Go to WwiseStream" ToolTip="Go to the WwiseStream referenced by this WwiseEvent" Click="GoToWwiseStream_Click" Tag="GoToWwiseStream" Visibility="Collapsed"/>
+            <MenuItem Header="Go to WwiseEvent" ToolTip="Go to the WwiseEvent that plays this WwiseStream" Click="GoToWwiseEvent_Click" Tag="GoToWwiseEvent" Visibility="Collapsed"/>
             <MenuItem Header="Open in Level Editor" Command="{Binding OpenExportInCommand}" CommandParameter="LevelEditor" SharedUI:Bindings.VisibilityToEnabled="True"/>
             <MenuItem Header="Open in SFXGalaxy Editor (LE3)" Command="{Binding OpenExportInCommand}" CommandParameter="SFXGalaxyEditor" SharedUI:Bindings.VisibilityToEnabled="True"/>
 

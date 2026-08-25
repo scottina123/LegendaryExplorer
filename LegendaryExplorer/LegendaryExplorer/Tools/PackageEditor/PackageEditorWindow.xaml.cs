@@ -5829,6 +5829,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
             InitializeComponent();
             DataContext = this;
             ((FrameworkElement)Resources["EntryContextMenu"]).DataContext = this;
+            SoundTab_Soundpanel.NavigationRequested += Soundpanel_NavigationRequested;
 
             //map export loaders to their tabs
             ExportLoaders[InterpreterTab_Interpreter] = Interpreter_Tab;
@@ -8375,7 +8376,10 @@ namespace LegendaryExplorer.Tools.PackageEditor
             var goToWwiseStreamMenuItem = contextMenu.Items
                 .OfType<MenuItem>()
                 .FirstOrDefault(item => Equals(item.Tag, "GoToWwiseStream"));
-            if (changeLinksMenuItem is null && matchMicMenuItem is null && restoreMaterialMenuItem is null && addMissingTexturesMenuItem is null && stripLightmapMenuItem is null && stripShadowmapMenuItem is null && copyObjectNameMenuItem is null && copyFullPathMenuItem is null && renameObjectMenuItem is null && goToWwiseStreamMenuItem is null)
+            var goToWwiseEventMenuItem = contextMenu.Items
+                .OfType<MenuItem>()
+                .FirstOrDefault(item => Equals(item.Tag, "GoToWwiseEvent"));
+            if (changeLinksMenuItem is null && matchMicMenuItem is null && restoreMaterialMenuItem is null && addMissingTexturesMenuItem is null && stripLightmapMenuItem is null && stripShadowmapMenuItem is null && copyObjectNameMenuItem is null && copyFullPathMenuItem is null && renameObjectMenuItem is null && goToWwiseStreamMenuItem is null && goToWwiseEventMenuItem is null)
             {
                 return;
             }
@@ -8451,6 +8455,11 @@ namespace LegendaryExplorer.Tools.PackageEditor
             {
                 ConfigureWwiseStreamNavigationMenu(goToWwiseStreamMenuItem, export);
             }
+
+            if (goToWwiseEventMenuItem is not null)
+            {
+                ConfigureWwiseEventNavigationMenu(goToWwiseEventMenuItem, export);
+            }
         }
 
         private void ConfigureWwiseStreamNavigationMenu(MenuItem menuItem, ExportEntry export)
@@ -8496,6 +8505,87 @@ namespace LegendaryExplorer.Tools.PackageEditor
             {
                 GoToNumber(stream.UIndex);
                 e.Handled = true;
+            }
+        }
+
+        private void ConfigureWwiseEventNavigationMenu(MenuItem menuItem, ExportEntry export)
+        {
+            menuItem.Items.Clear();
+            menuItem.CommandParameter = null;
+            menuItem.Header = "Go to WwiseEvent";
+
+            if (export?.ClassName != "WwiseStream")
+            {
+                menuItem.Visibility = Visibility.Collapsed;
+                return;
+            }
+
+            IReadOnlyList<ExportEntry> matchingEvents = WwiseHelper.GetMatchingWwiseEvents(export);
+            menuItem.Visibility = matchingEvents.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+            if (matchingEvents.Count == 1)
+            {
+                ExportEntry matchingEvent = matchingEvents[0];
+                string gender = GetWwiseEventGenderLabel(matchingEvent);
+                menuItem.Header = gender is null ? "Go to WwiseEvent" : $"Go to {gender} WwiseEvent";
+                menuItem.CommandParameter = matchingEvent;
+                menuItem.ToolTip = $"Go to {matchingEvent.InstancedFullPath}";
+                return;
+            }
+
+            menuItem.ToolTip = "Choose a WwiseEvent that plays this WwiseStream";
+            foreach (ExportEntry wwiseEvent in matchingEvents)
+            {
+                string gender = GetWwiseEventGenderLabel(wwiseEvent);
+                var eventMenuItem = new MenuItem
+                {
+                    Header = $"{(gender is null ? string.Empty : $"{char.ToUpperInvariant(gender[0])}{gender[1..]}: ")}(Exp) {wwiseEvent.UIndex} {wwiseEvent.InstancedFullPath}",
+                    CommandParameter = wwiseEvent,
+                    ToolTip = "Go to this WwiseEvent"
+                };
+                eventMenuItem.Click += GoToWwiseEvent_Click;
+                menuItem.Items.Add(eventMenuItem);
+            }
+        }
+
+        private static string GetWwiseEventGenderLabel(ExportEntry wwiseEvent)
+        {
+            string[] nameParts = wwiseEvent.ObjectName.Name.Split('_');
+            for (int i = 0; i < nameParts.Length - 1; i++)
+            {
+                if (!int.TryParse(nameParts[i], out _))
+                {
+                    continue;
+                }
+
+                if (nameParts[i + 1].Equals("f", StringComparison.OrdinalIgnoreCase))
+                {
+                    return "female";
+                }
+
+                if (nameParts[i + 1].Equals("m", StringComparison.OrdinalIgnoreCase))
+                {
+                    return "male";
+                }
+            }
+
+            return null;
+        }
+
+        private void GoToWwiseEvent_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is MenuItem { CommandParameter: ExportEntry wwiseEvent }
+                && ReferenceEquals(wwiseEvent.FileRef, Pcc))
+            {
+                GoToNumber(wwiseEvent.UIndex);
+                e.Handled = true;
+            }
+        }
+
+        private void Soundpanel_NavigationRequested(ExportEntry export)
+        {
+            if (ReferenceEquals(export?.FileRef, Pcc))
+            {
+                GoToNumber(export.UIndex);
             }
         }
 

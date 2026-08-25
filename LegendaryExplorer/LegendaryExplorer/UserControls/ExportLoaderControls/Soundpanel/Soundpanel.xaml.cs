@@ -50,7 +50,20 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
     /// </summary>
     public partial class Soundpanel : ExportLoaderControl
     {
+        public sealed class NavigationTarget
+        {
+            public string Label { get; }
+            public ExportEntry Export { get; }
+
+            public NavigationTarget(string label, ExportEntry export)
+            {
+                Label = label;
+                Export = export;
+            }
+        }
+
         public ObservableCollectionExtended<object> ExportInformationList { get; } = new();
+        public ObservableCollectionExtended<NavigationTarget> NavigationTargets { get; } = new();
         public ObservableCollectionExtended<HIRCNotableItem> HIRCNotableItems { get; } = new();
         private readonly List<EmbeddedWEMFile> AllWems = new(); //used only for rebuilding soundbank
         WwiseStream wwiseStream;
@@ -72,6 +85,11 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         /// True = playing, False = paused or stopped.
         /// </summary>
         public event EventHandler<bool> PlaybackStateChanged;
+
+        /// <summary>
+        /// Requests that the hosting tool select an export related to the currently displayed audio.
+        /// </summary>
+        public event Action<ExportEntry> NavigationRequested;
 
         public ISACTListBankChunk CurrentLoadedISACTEntry { get; private set; }
         public AFCFileEntry CurrentLoadedAFCFileEntry { get; private set; }
@@ -354,6 +372,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         public ICommand ExportAudioCommand { get; set; }
         public ICommand StartPlaybackCommand { get; set; }
         public ICommand StopPlaybackCommand { get; set; }
+        public ICommand NavigateToExportCommand { get; private set; }
 
         public ICommand TrackControlMouseDownCommand { get; set; }
         public ICommand TrackControlMouseUpCommand { get; set; }
@@ -370,6 +389,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             ExportAudioCommand = new RelayCommand(ExportAudio, CanExportAudio);
             StartPlaybackCommand = new GenericCommand(StartPlayback, CanStartPlayback);
             StopPlaybackCommand = new RelayCommand(StopPlayback, CanStopPlayback);
+            NavigateToExportCommand = new RelayCommand(NavigateToExport);
 
             // Event commands
             TrackControlMouseDownCommand = new RelayCommand(TrackControlMouseDown, CanTrackControlMouseDown);
@@ -427,13 +447,28 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         {
             try
             {
+                ExportEntry requestedExport = exportEntry;
                 ExportInformationList.ClearEx();
+                ClearNavigationTargets();
                 AllWems.Clear();
                 CurrentLoadedWwisebank = null;
                 StopPlaying();
+                CurrentLoadedExport = null;
+                exportEntry = ResolveAudioExport(exportEntry);
+                if (exportEntry is null)
+                {
+                    return;
+                }
+
+                PopulateNavigationTargets(requestedExport, exportEntry);
+
                 if (exportEntry.ClassName == "WwiseStream")
                 {
                     ExportInformationList.Add($"#{exportEntry.UIndex} {exportEntry.ClassName} : {exportEntry.ObjectName.Instanced}");
+                    if (requestedExport?.ClassName == "WwiseEvent")
+                    {
+                        ExportInformationList.Add($"Referenced by WwiseEvent #{requestedExport.UIndex} : {requestedExport.ObjectName.Instanced}");
+                    }
                     SoundPanel_TabsControl.SelectedItem = SoundPanel_PlayerTab;
                     WwiseStream w = exportEntry.GetBinaryData<WwiseStream>();
                     ExportInformationList.Add($"Filename : {w.Filename ?? "Stored in this package"}");
@@ -699,12 +734,90 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             //_audioPlayer.Dispose();
             //infoTextBox.Text = "Select an export";
             waveformImage.Source = null;
+            ClearNavigationTargets();
             CurrentLoadedExport = null;
+        }
+
+        private void ClearNavigationTargets()
+        {
+            NavigationTargets.ClearEx();
+            WwiseNavigationItemsControl.Visibility = Visibility.Collapsed;
+        }
+
+        private void PopulateNavigationTargets(ExportEntry requestedExport, ExportEntry audioExport)
+        {
+            if (requestedExport?.ClassName == "WwiseEvent" && audioExport?.ClassName == "WwiseStream")
+            {
+                NavigationTargets.Add(new NavigationTarget(
+                    $"Go to WwiseStream (Exp {audioExport.UIndex})", audioExport));
+                WwiseNavigationItemsControl.Visibility = Visibility.Visible;
+                return;
+            }
+
+            if (requestedExport?.ClassName != "WwiseStream")
+            {
+                return;
+            }
+
+            foreach (ExportEntry wwiseEvent in WwiseHelper.GetMatchingWwiseEvents(requestedExport))
+            {
+                NavigationTargets.Add(new NavigationTarget(GetWwiseEventNavigationLabel(wwiseEvent), wwiseEvent));
+            }
+
+            WwiseNavigationItemsControl.Visibility = NavigationTargets.Count > 0
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+        }
+
+        private static string GetWwiseEventNavigationLabel(ExportEntry wwiseEvent)
+        {
+            string[] nameParts = wwiseEvent.ObjectName.Name.Split('_');
+            for (int i = 0; i < nameParts.Length - 1; i++)
+            {
+                if (!int.TryParse(nameParts[i], out _))
+                {
+                    continue;
+                }
+
+                if (nameParts[i + 1].Equals("f", StringComparison.OrdinalIgnoreCase))
+                {
+                    return $"Go to female WwiseEvent (Exp {wwiseEvent.UIndex})";
+                }
+
+                if (nameParts[i + 1].Equals("m", StringComparison.OrdinalIgnoreCase))
+                {
+                    return $"Go to male WwiseEvent (Exp {wwiseEvent.UIndex})";
+                }
+            }
+
+            return $"Go to WwiseEvent (Exp {wwiseEvent.UIndex})";
+        }
+
+        private void NavigateToExport(object parameter)
+        {
+            if (parameter is NavigationTarget target)
+            {
+                NavigationRequested?.Invoke(target.Export);
+            }
+        }
+
+        /// <summary>
+        /// Resolves an export to the audio-bearing export that Soundpanel should load.
+        /// </summary>
+        public static ExportEntry ResolveAudioExport(ExportEntry exportEntry)
+        {
+            return exportEntry?.ClassName == "WwiseEvent"
+                ? WwiseHelper.GetMatchingReferencedWwiseStream(exportEntry)
+                : exportEntry;
         }
 
         public static bool CanParseStatic(ExportEntry exportEntry)
         {
-            return (exportEntry.FileRef.Game.IsGame1() && exportEntry.ClassName == "SoundNodeWave") || (!exportEntry.FileRef.Game.IsGame1() && (exportEntry.ClassName == "WwiseBank" || exportEntry.ClassName == "WwiseStream"));
+            exportEntry = ResolveAudioExport(exportEntry);
+            return exportEntry is not null
+                   && ((exportEntry.FileRef.Game.IsGame1() && exportEntry.ClassName == "SoundNodeWave")
+                       || (!exportEntry.FileRef.Game.IsGame1()
+                           && (exportEntry.ClassName == "WwiseBank" || exportEntry.ClassName == "WwiseStream")));
         }
 
         public override bool CanParse(ExportEntry exportEntry) => CanParseStatic(exportEntry);
@@ -716,6 +829,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         internal void LoadAFCEntry(AFCFileEntry aEntry)
         {
             ExportInformationList.ClearEx();
+            ClearNavigationTargets();
             AllWems.Clear();
 
             ExportInformationList.Add($"Audio file in Audio File Cache");

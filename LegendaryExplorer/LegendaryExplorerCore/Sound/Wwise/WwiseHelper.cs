@@ -134,6 +134,31 @@ namespace LegendaryExplorerCore.Sound.Wwise
         }
 
         /// <summary>
+        /// Gets the WwiseEvents whose uniquely matched audio is the supplied WwiseStream.
+        /// This excludes events that merely include the stream in a larger, ambiguous reference list.
+        /// </summary>
+        public static IReadOnlyList<ExportEntry> GetMatchingWwiseEvents(ExportEntry wwiseStreamExport)
+        {
+            if (wwiseStreamExport?.ClassName != "WwiseStream")
+            {
+                return [];
+            }
+
+            var matchingEvents = new List<ExportEntry>();
+            foreach (ExportEntry wwiseEvent in wwiseStreamExport.FileRef.Exports.Where(exp => exp.ClassName == "WwiseEvent"))
+            {
+                IReadOnlyList<ExportEntry> referencedStreams = GetReferencedWwiseStreams(wwiseEvent);
+                if (referencedStreams.Any(stream => stream.UIndex == wwiseStreamExport.UIndex)
+                    && GetMatchingReferencedWwiseStream(wwiseEvent, referencedStreams)?.UIndex == wwiseStreamExport.UIndex)
+                {
+                    matchingEvents.Add(wwiseEvent);
+                }
+            }
+
+            return matchingEvents;
+        }
+
+        /// <summary>
         /// Update the DurationMilliseconds property on all WwiseEvents that reference the given WwiseStream
         /// </summary>
         /// <param name="wwiseStreamExport"></param>
