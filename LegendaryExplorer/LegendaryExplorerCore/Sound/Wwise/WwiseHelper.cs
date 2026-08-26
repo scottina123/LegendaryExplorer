@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.Unreal;
@@ -14,6 +15,36 @@ namespace LegendaryExplorerCore.Sound.Wwise
     /// </summary>
     public class WwiseHelper
     {
+        /// <summary>
+        /// Extracts the TLK ID embedded in a dialogue WwiseStream name.
+        /// </summary>
+        public static int? GetTlkIdFromWwiseStreamName(string streamName)
+        {
+            if (string.IsNullOrWhiteSpace(streamName))
+            {
+                return null;
+            }
+
+            Match match = Regex.Match(streamName, @"(?<!\d)(\d{6,})(?!\d)");
+            return match.Success && int.TryParse(match.Groups[1].Value, out int tlkId) ? tlkId : null;
+        }
+
+        /// <summary>
+        /// Tests a resolved WwiseStream TLK ID and subtitle against the Binary Interpreter filter.
+        /// </summary>
+        public static bool MatchesWwiseStreamTlkFilter(int? tlkId, string subtitle, string filterText)
+        {
+            if (string.IsNullOrWhiteSpace(filterText))
+            {
+                return true;
+            }
+
+            string filter = filterText.Trim();
+            return (int.TryParse(filter, out int numericFilter) && numericFilter == tlkId)
+                   || (tlkId?.ToString().Contains(filter, StringComparison.OrdinalIgnoreCase) ?? false)
+                   || (subtitle?.Contains(filter, StringComparison.OrdinalIgnoreCase) ?? false);
+        }
+
         /// <summary>
         /// Gets the local WwiseStream exports referenced by a WwiseEvent.
         /// </summary>

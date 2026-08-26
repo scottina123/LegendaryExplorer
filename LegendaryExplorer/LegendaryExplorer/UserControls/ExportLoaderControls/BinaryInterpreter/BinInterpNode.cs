@@ -45,6 +45,35 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         public int Length { get; set; }
         public BinaryInterpreterWPF.NodeType Tag { get; set; }
+
+        private bool _isVisible = true;
+        public bool IsVisible
+        {
+            get => _isVisible;
+            set => SetProperty(ref _isVisible, value);
+        }
+
+        /// <summary>
+        /// Package index of a WwiseStream represented by this node, when it is a resolved stream reference.
+        /// </summary>
+        public int ReferencedWwiseStreamUIndex { get; set; }
+
+        /// <summary>
+        /// TLK ID parsed from the referenced WwiseStream name.
+        /// </summary>
+        public int? WwiseStreamTlkId { get; set; }
+
+        /// <summary>
+        /// Resolved subtitle for <see cref="WwiseStreamTlkId"/>.
+        /// </summary>
+        public string WwiseStreamSubtitle { get; set; }
+
+        /// <summary>
+        /// Text shown next to a resolved WwiseStream reference.
+        /// </summary>
+        public string WwiseStreamTlkDisplayText { get; set; }
+
+        public bool IsWwiseStreamReference => ReferencedWwiseStreamUIndex > 0;
         /// <summary>
         /// Indicates that this object reference is a material slot and can use the material picker.
         /// </summary>

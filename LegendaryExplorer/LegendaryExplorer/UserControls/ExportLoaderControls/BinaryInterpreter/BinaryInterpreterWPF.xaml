@@ -82,6 +82,15 @@
                     <xctk:ByteUpDown Name="ByteShift_UpDown" Width="40" VerticalAlignment="Stretch" Margin="5,0,0,0" Value="{Binding ByteShiftUpDownValue}" Minimum="0" Maximum="7" ValueChanged="ByteShift_UpDown_ValueChanged"/>
                 </StackPanel>
 
+                <StackPanel Orientation="Horizontal" Visibility="{Binding WwiseStreamFilterVisibility}">
+                    <Separator Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}"/>
+                    <TextBlock Text="TLK filter:" VerticalAlignment="Center" Margin="5,0,0,0"/>
+                    <TextBox Width="240" Margin="5,0,0,0" VerticalAlignment="Center"
+                             Text="{Binding WwiseStreamFilterText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                             ToolTip="Filter referenced WwiseStreams by TLK number or subtitle text"
+                             Style="{DynamicResource {x:Static ToolBar.TextBoxStyleKey}}"/>
+                </StackPanel>
+
                 <Button Name="CopyTree_Button" ToolTip="Copies the tree to the clipboard as text" Click="CopyTree_Button_OnClick" VerticalAlignment="Center" Margin="5,0" Width="26">
                     <fa:ImageAwesome Icon="Solid_Copy" Height="16" Width="16" Foreground="CornflowerBlue"/>
                 </Button>
@@ -171,6 +180,15 @@
                                         <TextBox x:Name="InlineNameIndexEditor" Width="40" Text="{Binding InlineNameIndexValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Tag="{Binding}" KeyDown="InlineEditor_KeyDown" Loaded="InlineEditor_Loaded"/>
                                         <Button Margin="5,0,0,0" Padding="6,0" Content="✓" Tag="{Binding}" Click="InlineEditorConfirmButton_Click"/>
                                     </StackPanel>
+                                    <StackPanel Orientation="Horizontal" Margin="8,0,0,0"
+                                                Visibility="{Binding IsWwiseStreamReference, Converter={StaticResource BoolToVisibilityConverter}}">
+                                        <TextBlock MaxWidth="600" VerticalAlignment="Center" Foreground="{DynamicResource SecondaryTextBrush}"
+                                                   Text="{Binding WwiseStreamTlkDisplayText}" ToolTip="{Binding WwiseStreamTlkDisplayText}"
+                                                   TextTrimming="CharacterEllipsis"/>
+                                        <Button Margin="5,0,0,0" Padding="7,0" Content="Go to" Tag="{Binding}"
+                                                ToolTip="Go to this WwiseStream export"
+                                                Click="NavigateToReferencedWwiseStream_Click"/>
+                                    </StackPanel>
                                 </StackPanel>
                             </HierarchicalDataTemplate>
                             <HierarchicalDataTemplate DataType="{x:Type exportLoaderControls:UPropertyTreeViewEntry}" ItemsSource="{Binding ChildrenProperties}">
@@ -249,6 +267,11 @@
                                 <Setter Property="IsSelected" Value="{Binding Path=IsSelected, Mode=TwoWay}" />
                                 <Setter Property="peregrineTreeView:TreeViewItemHelper.BringSelectedItemIntoView" Value="True" />
                                 <Setter Property="peregrineTreeView:TreeViewItemHelper.BringExpandedChildrenIntoView" Value="True" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsVisible}" Value="False">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
                             </Style>
                         </TreeView.ItemContainerStyle>
                         <TreeView.ContextMenu>

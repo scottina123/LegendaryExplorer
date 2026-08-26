@@ -115,6 +115,7 @@ public partial class BinaryInterpreterWPF
     {
         var subnodes = new List<ITreeItem>();
         WwiseIdMap.Clear();
+        BuildWwiseStreamIdMap();
         var bin = new EndianReader(new MemoryStream(data)) { Endian = Pcc.Endian };
         bin.JumpTo(CurrentLoadedExport.propsEnd());
 
@@ -463,7 +464,13 @@ public partial class BinaryInterpreterWPF
             root.Items.Add(MakeUInt32Node(bin, "FormatBits"));
         }
 
+        uint sourceId = bin.ReadUInt32();
+        bin.Skip(-4);
         root.Items.Add(MakeUInt32Node(bin, "SourceID"));
+        if (WwiseStreamIdMap.TryGetValue(sourceId, out ExportEntry referencedStream))
+        {
+            AttachWwiseStreamReference(root, referencedStream, includeStreamPathInHeader: true);
+        }
         if(version <= 86)
         {
             root.Items.Add(MakeUInt32Node(bin, "FileID"));

@@ -205,21 +205,28 @@ public partial class BinaryInterpreterWPF
                     string nodeText = $"0x{binarystart:X4} ";
                     int val = EndianReader.ToInt32(data, binarystart, CurrentLoadedExport.FileRef.Endian);
                     string name = val.ToString();
+                    ExportEntry referencedStream = null;
                     if (Pcc.GetEntry(val) is ExportEntry exp)
                     {
                         nodeText += $"{i}: {name} {exp.InstancedFullPath} ({exp.ClassName})";
+                        if (exp.ClassName == "WwiseStream")
+                        {
+                            referencedStream = exp;
+                        }
                     }
                     else if (Pcc.GetEntry(val) is ImportEntry imp)
                     {
                         nodeText += $"{i}: {name} {imp.InstancedFullPath} ({imp.ClassName})";
                     }
 
-                    subnodes.Add(new BinInterpNode
+                    var referenceNode = new BinInterpNode
                     {
                         Header = nodeText,
                         Tag = NodeType.StructLeafObject,
                         Offset = binarystart
-                    });
+                    };
+                    AttachWwiseStreamReference(referenceNode, referencedStream);
+                    subnodes.Add(referenceNode);
                     binarystart += 4;
                     /*
                         int objectindex = BitConverter.ToInt32(data, binarypos);
@@ -283,12 +290,14 @@ public partial class BinaryInterpreterWPF
                     for (int w = 0; w < streamcount; w++)
                     {
                         int wwstream = EndianReader.ToInt32(data, binarystart, CurrentLoadedExport.FileRef.Endian);
-                        subnodes.Add(new BinInterpNode
+                        var streamNode = new BinInterpNode
                         {
                             Header = $"0x{binarystart:X4} WwiseStream: {wwstream} {CurrentLoadedExport.FileRef.GetEntryString(wwstream)}",
                             Tag = NodeType.StructLeafObject,
                             Offset = binarystart
-                        });
+                        };
+                        AttachWwiseStreamReference(streamNode, CurrentLoadedExport.FileRef.GetEntry(wwstream) as ExportEntry);
+                        subnodes.Add(streamNode);
                         binarystart += 4;
                     }
                 }

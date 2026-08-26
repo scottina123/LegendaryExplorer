@@ -472,6 +472,10 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             }
 
             CurrentLoadedExport = exportEntry;
+            WwiseStreamFilterText = null;
+            WwiseStreamFilterVisibility = exportEntry.ClassName is "WwiseBank" or "WwiseEvent"
+                ? Visibility.Visible
+                : Visibility.Collapsed;
 
             OnDemand_Panel.Visibility = Visibility.Visible;
             LoadedContent_Panel.Visibility = Visibility.Collapsed;
@@ -605,6 +609,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     LoadedContent_Panel.Visibility = Visibility.Visible;
                     InitializeInlineEditors(result);
                     TreeViewItems.Replace(result);
+                    ApplyWwiseStreamFilter();
                     if (PreviousLoadedUIndex == CurrentLoadedExport?.UIndex)
                     {
                         RestoreTreeState(result);
@@ -1367,6 +1372,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             //Todo: convert to this single byteprovider and clear bytes rather than instantiating new ones.
             BinaryInterpreter_Hexbox.ByteProvider = new ReadOptimizedByteProvider();
             TreeViewItems.ClearEx();
+            WwiseStreamFilterText = null;
+            WwiseStreamFilterVisibility = Visibility.Collapsed;
             if (CurrentLoadedExport != null && CurrentLoadedExport.DataSize > 20480)
             {
                 //There was likely a large amount of nodes placed onto the UI

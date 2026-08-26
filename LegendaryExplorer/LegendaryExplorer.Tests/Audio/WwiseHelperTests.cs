@@ -18,6 +18,19 @@ public class WwiseHelperTests
     public static void Initialize(TestContext _) => LegendaryExplorerCoreLib.InitLib(TaskScheduler.Default);
 
     [TestMethod]
+    public void ExtractsAndFiltersWwiseStreamTlkMetadata()
+    {
+        int? tlkId = WwiseHelper.GetTlkIdFromWwiseStreamName("citprs_miranda_talk1_m_00692109_m_wav");
+
+        Assert.AreEqual(692109, tlkId);
+        Assert.IsNull(WwiseHelper.GetTlkIdFromWwiseStreamName("ambience_stream_42"));
+        Assert.IsTrue(WwiseHelper.MatchesWwiseStreamTlkFilter(tlkId, "This is the resolved subtitle.", "692109"));
+        Assert.IsTrue(WwiseHelper.MatchesWwiseStreamTlkFilter(tlkId, "This is the resolved subtitle.", "00692109"));
+        Assert.IsTrue(WwiseHelper.MatchesWwiseStreamTlkFilter(tlkId, "This is the resolved subtitle.", "RESOLVED subtitle"));
+        Assert.IsFalse(WwiseHelper.MatchesWwiseStreamTlkFilter(tlkId, "This is the resolved subtitle.", "different line"));
+    }
+
+    [TestMethod]
     public void GetsReferencedWwiseStreamsFromGame3Binary()
     {
         using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("WwiseEventNavigationTest.pcc", MEGame.LE3);
