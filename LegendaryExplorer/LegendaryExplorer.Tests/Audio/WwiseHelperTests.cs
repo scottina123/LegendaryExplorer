@@ -23,6 +23,9 @@ public class WwiseHelperTests
         int? tlkId = WwiseHelper.GetTlkIdFromWwiseStreamName("citprs_miranda_talk1_m_00692109_m_wav");
 
         Assert.AreEqual(692109, tlkId);
+        Assert.AreEqual(692109, WwiseHelper.GetTlkIdFromWwiseEventName("VO_692109_m_Play"));
+        Assert.AreEqual(12345, WwiseHelper.GetTlkIdFromWwiseEventName("vo_12345_f_play"));
+        Assert.IsNull(WwiseHelper.GetTlkIdFromWwiseEventName("Play_Ambience_12345"));
         Assert.IsNull(WwiseHelper.GetTlkIdFromWwiseStreamName("ambience_stream_42"));
         Assert.IsTrue(WwiseHelper.MatchesWwiseStreamTlkFilter(tlkId, "This is the resolved subtitle.", "692109"));
         Assert.IsTrue(WwiseHelper.MatchesWwiseStreamTlkFilter(tlkId, "This is the resolved subtitle.", "00692109"));

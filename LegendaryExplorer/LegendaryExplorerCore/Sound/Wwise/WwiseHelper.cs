@@ -16,6 +16,24 @@ namespace LegendaryExplorerCore.Sound.Wwise
     public class WwiseHelper
     {
         /// <summary>
+        /// Extracts the TLK ID embedded in a dialogue WwiseEvent name.
+        /// </summary>
+        public static int? GetTlkIdFromWwiseEventName(string eventName)
+        {
+            if (string.IsNullOrWhiteSpace(eventName))
+            {
+                return null;
+            }
+
+            Match match = Regex.Match(eventName, @"^VO_(\d+)(?:_|$)", RegexOptions.IgnoreCase);
+            return match.Success
+                   && int.TryParse(match.Groups[1].Value, out int tlkId)
+                   && tlkId > 0
+                ? tlkId
+                : null;
+        }
+
+        /// <summary>
         /// Extracts the TLK ID embedded in a dialogue WwiseStream name.
         /// </summary>
         public static int? GetTlkIdFromWwiseStreamName(string streamName)

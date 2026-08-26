@@ -5,6 +5,7 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:sys="clr-namespace:System;assembly=mscorlib"
+    xmlns:dialogs="clr-namespace:LegendaryExplorer.Dialogs"
     xmlns:packages="clr-namespace:LegendaryExplorerCore.Packages;assembly=LegendaryExplorerCore"
     xmlns:misc="clr-namespace:LegendaryExplorer.Misc"
     WindowStartupLocation="CenterOwner"
@@ -13,16 +14,37 @@
         ResizeMode="CanResizeWithGrip"
         Title="Entry Selector" Width="780" Height="520" MinWidth="520" MinHeight="360">
     <misc:NotifyPropertyChangedWindowBase.Resources>
+        <dialogs:EntrySelectorWwiseTlkTextConverter x:Key="EntrySelectorWwiseTlkTextConverter"/>
         <DataTemplate DataType="{x:Type packages:ImportEntry}">
-            <StackPanel Orientation="Horizontal">
-                <TextBlock Text="{Binding Path=UIndex}" Foreground="Gray"/>
-                <TextBlock Text="{Binding Path=InstancedFullPath}" Margin="5,0,0,0" Foreground="Gray"/>
+            <StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="{Binding Path=UIndex}" Foreground="Gray"/>
+                    <TextBlock Text="{Binding Path=InstancedFullPath}" Margin="5,0,0,0" Foreground="Gray"/>
+                </StackPanel>
+                <TextBlock Margin="35,0,0,0" FontSize="11" Foreground="Gray" TextTrimming="CharacterEllipsis">
+                    <TextBlock.Text>
+                        <MultiBinding Converter="{StaticResource EntrySelectorWwiseTlkTextConverter}">
+                            <Binding/>
+                            <Binding RelativeSource="{RelativeSource AncestorType={x:Type dialogs:EntrySelector}}"/>
+                        </MultiBinding>
+                    </TextBlock.Text>
+                </TextBlock>
             </StackPanel>
         </DataTemplate>
         <DataTemplate DataType="{x:Type packages:ExportEntry}">
-            <StackPanel Orientation="Horizontal">
-                <TextBlock Text="{Binding Path=UIndex}" Foreground="Gray"/>
-                <TextBlock Text="{Binding InstancedFullPath}" Margin="5,0,0,0"/>
+            <StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="{Binding Path=UIndex}" Foreground="Gray"/>
+                    <TextBlock Text="{Binding InstancedFullPath}" Margin="5,0,0,0"/>
+                </StackPanel>
+                <TextBlock Margin="35,0,0,0" FontSize="11" Foreground="Gray" TextTrimming="CharacterEllipsis">
+                    <TextBlock.Text>
+                        <MultiBinding Converter="{StaticResource EntrySelectorWwiseTlkTextConverter}">
+                            <Binding/>
+                            <Binding RelativeSource="{RelativeSource AncestorType={x:Type dialogs:EntrySelector}}"/>
+                        </MultiBinding>
+                    </TextBlock.Text>
+                </TextBlock>
             </StackPanel>
         </DataTemplate>
     </misc:NotifyPropertyChangedWindowBase.Resources>

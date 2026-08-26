@@ -6,15 +6,18 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Data;
 using System.Windows.Input;
 using LegendaryExplorer.Misc;
 using LegendaryExplorer.SharedUI;
 using LegendaryExplorer.Tools.Sequence_Editor;
+using LegendaryExplorer.Tools.TlkManagerNS;
 using LegendaryExplorer.UserControls.ExportLoaderControls;
 using LegendaryExplorerCore.Helpers;
 using LegendaryExplorerCore.Misc;
 using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.Packages.CloningImportingAndRelinking;
+using LegendaryExplorerCore.Sound.Wwise;
 using LegendaryExplorerCore.Unreal;
 
 namespace LegendaryExplorer.Dialogs
@@ -62,6 +65,7 @@ namespace LegendaryExplorer.Dialogs
         private PackageCache TexturePreviewPackageCache;
         private Task TexturePreviewResolutionTask = Task.CompletedTask;
         private int TexturePreviewRequestVersion;
+        private readonly Dictionary<(IMEPackage Package, int StringRef), string> WwiseTlkSubtitleCache = new();
 
         public Visibility ItemSearchVisibility => ItemSearch is null ? Visibility.Collapsed : Visibility.Visible;
 
@@ -677,7 +681,7 @@ namespace LegendaryExplorer.Dialogs
             }
         }
 
-        private static bool EntryMatchesSearch(object item, string search)
+        private bool EntryMatchesSearch(object item, string search)
         {
             if (item is string rootLabel)
             {
@@ -700,7 +704,56 @@ namespace LegendaryExplorer.Dialogs
             return uIndexText.Contains(normalizedSearch, StringComparison.OrdinalIgnoreCase)
                    || entry.ObjectName.Instanced.Contains(search, StringComparison.OrdinalIgnoreCase)
                    || entry.ClassName.Contains(search, StringComparison.OrdinalIgnoreCase)
-                   || entry.InstancedFullPath.Contains(search, StringComparison.OrdinalIgnoreCase);
+                   || entry.InstancedFullPath.Contains(search, StringComparison.OrdinalIgnoreCase)
+                   || TryGetWwiseTlkMetadata(entry, out int tlkId, out string subtitle)
+                   && WwiseHelper.MatchesWwiseStreamTlkFilter(tlkId, subtitle, normalizedSearch);
+        }
+
+        private bool TryGetWwiseTlkMetadata(IEntry entry, out int tlkId, out string subtitle)
+        {
+            tlkId = 0;
+            subtitle = null;
+            if (entry?.FileRef is not { } package)
+            {
+                return false;
+            }
+
+            int? parsedTlkId = entry.ClassName switch
+            {
+                "WwiseEvent" => WwiseHelper.GetTlkIdFromWwiseEventName(entry.ObjectName.Name),
+                "WwiseStream" => WwiseHelper.GetTlkIdFromWwiseStreamName(entry.ObjectName.Name),
+                _ => null
+            };
+            if (parsedTlkId is not > 0)
+            {
+                return false;
+            }
+
+            tlkId = parsedTlkId.Value;
+            var cacheKey = (package, tlkId);
+            if (!WwiseTlkSubtitleCache.TryGetValue(cacheKey, out subtitle))
+            {
+                string resolvedText = TLKManagerWPF.GlobalFindStrRefbyID(tlkId, package);
+                subtitle = string.IsNullOrWhiteSpace(resolvedText) || resolvedText == "No Data"
+                    ? null
+                    : resolvedText.ReplaceLineEndings(" ").Trim();
+                WwiseTlkSubtitleCache[cacheKey] = subtitle;
+            }
+
+            return true;
+        }
+
+        internal string GetWwiseTlkDisplayText(object item)
+        {
+            if (item is not IEntry entry
+                || !TryGetWwiseTlkMetadata(entry, out int tlkId, out string subtitle))
+            {
+                return null;
+            }
+
+            return string.IsNullOrWhiteSpace(subtitle)
+                ? $"TLK {tlkId}"
+                : $"TLK {tlkId}: {subtitle}";
         }
 
         /// <summary>
@@ -745,7 +798,7 @@ namespace LegendaryExplorer.Dialogs
             }
         }
 
-        public string SearchHelpText => SearchHelpTextOverride ?? "Search by export/import number, object name, class, or full path";
+        public string SearchHelpText => SearchHelpTextOverride ?? "Search by export/import number, object name, class, full path, TLK ID, or subtitle text";
 
         #region IDisposable Support
         /// <summary>
@@ -887,6 +940,21 @@ namespace LegendaryExplorer.Dialogs
             {
                 OKCommand.Execute(null);
             }
+        }
+    }
+
+    public sealed class EntrySelectorWwiseTlkTextConverter : IMultiValueConverter
+    {
+        public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
+        {
+            return values.Length >= 2 && values[1] is EntrySelector selector
+                ? selector.GetWwiseTlkDisplayText(values[0])
+                : null;
+        }
+
+        public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture)
+        {
+            throw new NotSupportedException();
         }
     }
 }
