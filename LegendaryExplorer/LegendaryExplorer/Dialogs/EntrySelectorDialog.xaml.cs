@@ -65,6 +65,12 @@ namespace LegendaryExplorer.Dialogs
         private PackageCache TexturePreviewPackageCache;
         private Task TexturePreviewResolutionTask = Task.CompletedTask;
         private int TexturePreviewRequestVersion;
+        private Soundpanel AudioPreviewPlayer;
+        private TextBlock AudioPreviewHeader;
+        private TextBlock AudioPreviewMessage;
+        private PackageCache AudioPreviewPackageCache;
+        private Task AudioPreviewResolutionTask = Task.CompletedTask;
+        private int AudioPreviewRequestVersion;
         private readonly Dictionary<(IMEPackage Package, int StringRef), string> WwiseTlkSubtitleCache = new();
 
         public Visibility ItemSearchVisibility => ItemSearch is null ? Visibility.Collapsed : Visibility.Visible;
@@ -141,6 +147,7 @@ namespace LegendaryExplorer.Dialogs
                 }
 
                 UpdateTexturePreview(value as IEntry);
+                UpdateAudioPreview(value as IEntry);
             }
         }
 
@@ -200,6 +207,7 @@ namespace LegendaryExplorer.Dialogs
             InitializeComponent();
             InitializeSequencePreview(sequencePreview);
             InitializeTexturePreview(texturePreview);
+            InitializeAudioPreview();
             UpdateFilteredEntries();
             EntrySearchTextBox.Focus();
         }
@@ -374,6 +382,183 @@ namespace LegendaryExplorer.Dialogs
             TexturePreviewViewer.CannotShowTextureTextVisibility = Visibility.Visible;
         }
 
+        private void InitializeAudioPreview()
+        {
+            if (AudioPreviewPlayer is not null
+                || SequencePreviewEditor is not null
+                || TexturePreviewViewer is not null
+                || !AllEntriesList.OfType<IEntry>().Any(IsWwiseAudioEntry))
+            {
+                return;
+            }
+
+            ShowPreviewPane(new GridLength(2, GridUnitType.Star));
+            AudioPreviewPackageCache = new PackageCache();
+            AudioPreviewPlayer = new Soundpanel
+            {
+                MiniPlayerMode = true,
+                PlayBackOnlyMode = true,
+                GenerateWaveformGraph = true,
+                VerticalAlignment = VerticalAlignment.Top
+            };
+            AudioPreviewHeader = new TextBlock
+            {
+                Text = "Audio preview",
+                FontWeight = FontWeights.Bold,
+                Margin = new Thickness(0, 0, 0, 8),
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                ToolTip = "The currently selected Wwise audio entry"
+            };
+            AudioPreviewMessage = new TextBlock
+            {
+                Foreground = SystemColors.GrayTextBrush,
+                Margin = new Thickness(0, 0, 0, 8),
+                TextWrapping = TextWrapping.Wrap
+            };
+
+            var previewPanel = new DockPanel();
+            DockPanel.SetDock(AudioPreviewHeader, Dock.Top);
+            DockPanel.SetDock(AudioPreviewMessage, Dock.Top);
+            previewPanel.Children.Add(AudioPreviewHeader);
+            previewPanel.Children.Add(AudioPreviewMessage);
+            previewPanel.Children.Add(AudioPreviewPlayer);
+            PreviewHost.Content = previewPanel;
+            SetAudioPreviewMessage("Select a WwiseEvent or WwiseStream to preview its audio");
+        }
+
+        private static bool IsWwiseAudioEntry(IEntry entry)
+            => entry?.ClassName is "WwiseEvent" or "WwiseStream";
+
+        private void UpdateAudioPreview(IEntry entry)
+        {
+            if (AudioPreviewPlayer is null)
+            {
+                return;
+            }
+
+            int requestVersion = Interlocked.Increment(ref AudioPreviewRequestVersion);
+            AudioPreviewPlayer.StopPlaying();
+            AudioPreviewPlayer.UnloadExport();
+            AudioPreviewHeader.Text = entry is null
+                ? "Audio preview"
+                : $"Audio preview — {entry.InstancedFullPath}";
+            AudioPreviewHeader.ToolTip = entry?.InstancedFullPath ?? "The currently selected Wwise audio entry";
+
+            if (entry is null)
+            {
+                SetAudioPreviewMessage("No entry selected");
+                return;
+            }
+
+            if (!IsWwiseAudioEntry(entry))
+            {
+                SetAudioPreviewMessage("The selected entry is not a WwiseEvent or WwiseStream");
+                return;
+            }
+
+            if (entry is ExportEntry audioExport)
+            {
+                (ExportEntry resolvedExport, string error) = ResolveAudioPreview(audioExport, null, requestVersion);
+                if (resolvedExport is null)
+                {
+                    SetAudioPreviewMessage(error);
+                }
+                else
+                {
+                    LoadAudioPreview(resolvedExport);
+                }
+
+                return;
+            }
+
+            SetAudioPreviewMessage("Resolving audio import…");
+            PackageCache packageCache = AudioPreviewPackageCache;
+            Task<(ExportEntry audioExport, string error)> resolutionTask = AudioPreviewResolutionTask.ContinueWith(
+                _ => ResolveAudioPreview(entry, packageCache, requestVersion),
+                TaskScheduler.Default);
+            AudioPreviewResolutionTask = resolutionTask;
+            resolutionTask.ContinueWithOnUIThread(task =>
+            {
+                if (disposedValue || requestVersion != AudioPreviewRequestVersion)
+                {
+                    return;
+                }
+
+                if (task.IsFaulted)
+                {
+                    SetAudioPreviewMessage($"Could not load audio preview: {task.Exception?.GetBaseException().Message}");
+                }
+                else if (task.Result.audioExport is null)
+                {
+                    SetAudioPreviewMessage(task.Result.error ?? "Could not resolve the selected audio import");
+                }
+                else
+                {
+                    LoadAudioPreview(task.Result.audioExport);
+                }
+            });
+        }
+
+        private (ExportEntry audioExport, string error) ResolveAudioPreview(
+            IEntry entry, PackageCache packageCache, int requestVersion)
+        {
+            try
+            {
+                if (requestVersion != Volatile.Read(ref AudioPreviewRequestVersion))
+                {
+                    return (null, null);
+                }
+
+                ExportEntry requestedExport = entry switch
+                {
+                    ExportEntry export => export,
+                    ImportEntry import when packageCache is not null
+                                            && EntryImporter.TryResolveImport(import, out ExportEntry resolved,
+                                                cache: packageCache) => resolved,
+                    _ => null
+                };
+                if (requestedExport is null)
+                {
+                    return (null, "Could not resolve the selected audio import");
+                }
+
+                if (!IsWwiseAudioEntry(requestedExport))
+                {
+                    return (null, "The resolved entry is not a WwiseEvent or WwiseStream");
+                }
+
+                if (Soundpanel.ResolveAudioExport(requestedExport) is null)
+                {
+                    return requestedExport.ClassName == "WwiseEvent"
+                        ? (null, "Could not resolve a unique WwiseStream referenced by this WwiseEvent")
+                        : (null, "The selected WwiseStream cannot be previewed");
+                }
+
+                return (requestedExport, null);
+            }
+            catch (Exception exception)
+            {
+                return (null, $"Could not load audio preview: {exception.Message}");
+            }
+        }
+
+        private void LoadAudioPreview(ExportEntry audioExport)
+        {
+            SetAudioPreviewMessage("Loading audio preview…");
+            AudioPreviewPlayer.LoadExport(audioExport);
+            SetAudioPreviewMessage(AudioPreviewPlayer.CurrentLoadedExport is null
+                ? "Could not load audio for the selected entry"
+                : null);
+        }
+
+        private void SetAudioPreviewMessage(string message)
+        {
+            AudioPreviewMessage.Text = message;
+            AudioPreviewMessage.Visibility = string.IsNullOrWhiteSpace(message)
+                ? Visibility.Collapsed
+                : Visibility.Visible;
+        }
+
         private void SynchronizeEntrySelectionFromSequencePreview(ExportEntry entry)
         {
             if (entry is null
@@ -434,6 +619,7 @@ namespace LegendaryExplorer.Dialogs
             DataContext = this;
             LoadCommands();
             InitializeComponent();
+            InitializeAudioPreview();
             if (!string.IsNullOrWhiteSpace(windowTitle))
             {
                 Title = windowTitle;
@@ -452,6 +638,7 @@ namespace LegendaryExplorer.Dialogs
             DataContext = this;
             LoadCommands();
             InitializeComponent();
+            InitializeAudioPreview();
             UpdateFilteredEntries();
             EntrySearchTextBox.Focus();
         }
@@ -667,6 +854,7 @@ namespace LegendaryExplorer.Dialogs
             {
                 List<object> results = ItemSearch(search).ToList();
                 AllEntriesList.ReplaceAll(results);
+                InitializeAudioPreview();
                 UpdateFilteredEntries();
                 if (SelectedEntryItem is not null)
                 {
@@ -827,6 +1015,16 @@ namespace LegendaryExplorer.Dialogs
                     if (texturePreviewPackageCache is not null)
                     {
                         TexturePreviewResolutionTask.ContinueWith(_ => texturePreviewPackageCache.Dispose(),
+                            TaskScheduler.Default);
+                    }
+                    AudioPreviewPlayer?.Dispose();
+                    AudioPreviewPlayer = null;
+                    Interlocked.Increment(ref AudioPreviewRequestVersion);
+                    PackageCache audioPreviewPackageCache = AudioPreviewPackageCache;
+                    AudioPreviewPackageCache = null;
+                    if (audioPreviewPackageCache is not null)
+                    {
+                        AudioPreviewResolutionTask.ContinueWith(_ => audioPreviewPackageCache.Dispose(),
                             TaskScheduler.Default);
                     }
                     if (PreviewHost is not null)
