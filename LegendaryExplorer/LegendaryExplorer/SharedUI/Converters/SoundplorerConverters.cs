@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Globalization;
+using System.Linq;
 using System.Windows;
 using System.Windows.Data;
 using AudioStreamHelper = LegendaryExplorer.UnrealExtensions.AudioStreamHelper;
@@ -75,9 +76,11 @@ namespace LegendaryExplorer.SharedUI.Converters
         {
             if (parameter != null && value != null)
             {
-                int iparameter = int.Parse((string)parameter);
                 HIRCDisplayObject ho = (HIRCDisplayObject)value;
-                return iparameter == ho.ObjType ? Visibility.Visible : Visibility.Collapsed;
+                bool typeMatches = parameter.ToString()
+                    .Split(',')
+                    .Any(type => int.TryParse(type, out int parsedType) && parsedType == ho.ObjType);
+                return typeMatches ? Visibility.Visible : Visibility.Collapsed;
             }
             return Visibility.Collapsed;
         }

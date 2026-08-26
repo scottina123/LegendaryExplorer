@@ -22,6 +22,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         //typeinfo
         public uint unk1, AudioID, SourceID;//scope,atype;
         public List<uint> EventIDs { get; set; }
+        public WwiseBankParsed.EventActionType EventActionType { get; set; }
+        public uint ReferencedObjectID { get; set; }
 
         private byte[] _data;
         public byte[] Data
@@ -76,6 +78,10 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     break;
                 case WwiseBankParsed.Event eventHIRC:
                     EventIDs = eventHIRC.EventActions.Clone();
+                    break;
+                case WwiseBankParsed.EventAction eventAction:
+                    EventActionType = eventAction.ActionType;
+                    ReferencedObjectID = eventAction.ReferencedObjectID;
                     break;
             }
         }

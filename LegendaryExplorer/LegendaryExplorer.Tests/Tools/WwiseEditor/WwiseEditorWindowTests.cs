@@ -226,6 +226,33 @@ public class WwiseEditorWindowTests
             stopExport.GetBinaryData<CoreWwiseEvent>().Links[0].WwiseStreams);
     }
 
+    [TestMethod]
+    public void WwiseEventGraphLabelIncludesResolvedTlkText()
+    {
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("WwiseEventGraphLabelTest.pcc", MEGame.LE3);
+        ExportEntry wwiseEvent = package.CreateExport("VO_788349_m_Play", "WwiseEvent", indexed: false);
+
+        string label = WExport.BuildDisplayValue(wwiseEvent, (tlkId, lookupPackage) =>
+        {
+            Assert.AreEqual(788349, tlkId);
+            Assert.AreSame(package, lookupPackage);
+            return "The resolved subtitle";
+        });
+
+        Assert.AreEqual($"#{wwiseEvent.UIndex} VO_788349_m_Play\nTLK 788349: The resolved subtitle", label);
+    }
+
+    [TestMethod]
+    public void WwiseEventGraphLabelKeepsExportNameWhenTlkCannotBeResolved()
+    {
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("WwiseEventGraphLabelTest.pcc", MEGame.LE3);
+        ExportEntry wwiseEvent = package.CreateExport("VO_788349_m_Play", "WwiseEvent", indexed: false);
+
+        string label = WExport.BuildDisplayValue(wwiseEvent, (_, _) => "No Data");
+
+        Assert.AreEqual($"#{wwiseEvent.UIndex} VO_788349_m_Play", label);
+    }
+
     private static void AssertStopEventCoversSounds(ME3Tweaks.Wwiser.WwiseBank bank,
         IReadOnlyCollection<WwiserSound> expectedSounds)
     {

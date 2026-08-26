@@ -1,11 +1,14 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Drawing;
 using System.Linq;
 using System.Windows.Forms;
 using LegendaryExplorer.Misc;
+using LegendaryExplorer.Tools.TlkManagerNS;
 using LegendaryExplorerCore.Gammtek.Extensions;
 using LegendaryExplorerCore.Packages;
+using LegendaryExplorerCore.Sound.Wwise;
 using LegendaryExplorerCore.Unreal;
 using LegendaryExplorerCore.Unreal.BinaryConverters;
 using LegendaryExplorerCore.Helpers;
@@ -339,7 +342,33 @@ namespace LegendaryExplorer.Tools.WwiseEditor
             comment.Text = "";
         }
 
-        public string GetValue() => $"#{Export.UIndex} {Export.ObjectName.Instanced}";
+        public string GetValue() => BuildDisplayValue(Export, TLKManagerWPF.GlobalFindStrRefbyID);
+
+        internal static string BuildDisplayValue(ExportEntry export, Func<int, IMEPackage, string> resolveTlk)
+        {
+            string exportLabel = $"#{export.UIndex} {export.ObjectName.Instanced}";
+            if (export.ClassName != "WwiseEvent"
+                || WwiseHelper.GetTlkIdFromWwiseEventName(export.ObjectName.Name) is not int tlkId)
+            {
+                return exportLabel;
+            }
+
+            try
+            {
+                string tlkText = resolveTlk(tlkId, export.FileRef);
+                if (!string.IsNullOrWhiteSpace(tlkText)
+                    && !tlkText.Equals("No Data", StringComparison.OrdinalIgnoreCase))
+                {
+                    return $"{exportLabel}\nTLK {tlkId}: {tlkText.Trim().WordWrap(60)}";
+                }
+            }
+            catch (Exception exception)
+            {
+                Debug.WriteLine($"Wwise Editor: Could not resolve TLK {tlkId}: {exception.Message}");
+            }
+
+            return exportLabel;
+        }
 
         private bool _isSelected;
         public override bool IsSelected

@@ -35,11 +35,14 @@ using LegendaryExplorerCore.Sound.ISACT;
 using LegendaryExplorerCore.Sound.Wwise;
 using LegendaryExplorerCore.Unreal;
 using LegendaryExplorerCore.Unreal.BinaryConverters;
+using ME3Tweaks.Wwiser;
 using Microsoft.Win32;
 using NAudio.Wave;
 using NAudio.WaveFormRenderer;
 using AudioStreamHelper = LegendaryExplorer.UnrealExtensions.AudioStreamHelper;
 using WwiseStream = LegendaryExplorerCore.Unreal.BinaryConverters.WwiseStream;
+using WwiserSound = ME3Tweaks.Wwiser.Model.Hierarchy.Sound;
+using WwiserStreamType = ME3Tweaks.Wwiser.Model.Hierarchy.Enums.StreamType;
 using Color = System.Drawing.Color;
 using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
 
@@ -72,6 +75,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         private bool SeekUpdatingDueToTimer;
         private bool SeekDragging;
         Stream audioStream;
+        private ExportEntry HircWwiseStreamPlaybackSource;
         private HexBox SoundpanelHIRC_Hexbox;
         private ReadOptimizedByteProvider hircHexProvider;
 
@@ -452,6 +456,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 ClearNavigationTargets();
                 AllWems.Clear();
                 CurrentLoadedWwisebank = null;
+                HircWwiseStreamPlaybackSource = null;
                 StopPlaying();
                 CurrentLoadedExport = null;
                 exportEntry = ResolveAudioExport(exportEntry);
@@ -560,8 +565,26 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     var wb = CurrentLoadedWwisebank = exportEntry.GetBinaryData<WwiseBankParsed>();
                     ExportInformationList.Add($"#{exportEntry.UIndex} {exportEntry.ClassName} : {exportEntry.ObjectName.Instanced} (Bank ID 0x{wb.ID:X8})");
 
+                    var hircDisplayObjects = wb.HIRCObjects.Values
+                        .Select((ho, i) => new HIRCDisplayObject(i, ho, exportEntry.Game))
+                        .ToList();
+                    if (exportEntry.Game.IsLEGame())
+                    {
+                        try
+                        {
+                            using var input = new MemoryStream(wb.BnkFile, false);
+                            var wwiserBank = WwiseBankParser.Deserialize(input);
+                            ApplyWwiserSoundMetadata(hircDisplayObjects,
+                                wwiserBank.HIRC?.Items.Select(item => item.Item).OfType<WwiserSound>() ?? [], wb.ID);
+                        }
+                        catch (Exception exception)
+                        {
+                            Debug.WriteLine($"Soundpanel: Could not parse LE Wwise sound metadata: {exception.Message}");
+                        }
+                    }
+
                     HIRCObjects.Clear();
-                    HIRCObjects.AddRange(wb.HIRCObjects.Values.Select((ho, i) => new HIRCDisplayObject(i, ho, exportEntry.Game)));
+                    HIRCObjects.AddRange(hircDisplayObjects);
 
                     if (wb.EmbeddedFiles.Count > 0)
                     {
@@ -735,6 +758,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             //infoTextBox.Text = "Select an export";
             waveformImage.Source = null;
             ClearNavigationTargets();
+            HircWwiseStreamPlaybackSource = null;
             CurrentLoadedExport = null;
         }
 
@@ -831,6 +855,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             ExportInformationList.ClearEx();
             ClearNavigationTargets();
             AllWems.Clear();
+            HircWwiseStreamPlaybackSource = null;
 
             ExportInformationList.Add($"Audio file in Audio File Cache");
             ExportInformationList.Add($"Filename : {aEntry.AFCPath}");
@@ -914,6 +939,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             {
                 ExportInformationList.Clear();
                 AllWems.Clear();
+                HircWwiseStreamPlaybackSource = null;
 
                 CurrentLoadedISACTEntry = entry;
             }
@@ -948,7 +974,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 return AudioStreamHelper.CreateWaveStreamFromRaw(CurrentLoadedAFCFileEntry.AFCPath, CurrentLoadedAFCFileEntry.Offset, CurrentLoadedAFCFileEntry.DataSize, CurrentLoadedAFCFileEntry.ME2);
             }
 
-            ExportEntry localCurrentExport = forcedWwiseStreamExport ?? CurrentLoadedExport;
+            ExportEntry localCurrentExport = forcedWwiseStreamExport ?? HircWwiseStreamPlaybackSource ?? CurrentLoadedExport;
             if (localCurrentExport != null || forcedWemFile != null)
             {
                 if (localCurrentExport?.ClassName == "WwiseStream")
@@ -997,31 +1023,113 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         private void PlayHIRC(object obj)
         {
-            if (obj is HIRCDisplayObject hirc && hirc.ObjType == 0x2)
+            if (obj is HIRCDisplayObject hirc && SelectHircPlaybackSource(hirc))
             {
-                var wems = ExportInformationList.OfType<EmbeddedWEMFile>().ToList();
-                foreach (var v in wems.OrderBy(x => x.Id))
+                StopPlayback(null);
+                if (CanStartPlayback())
                 {
-                    Debug.WriteLine(v.Id.ToString("X8"));
-                }
-
-                var playItem = ExportInformationList.OfType<EmbeddedWEMFile>().FirstOrDefault(x => x.Id == hirc.AudioID);
-                if (playItem != null)
-                {
-                    // Found the matching item
-                    ExportInfoListBox.SelectedItem = playItem;
-                    StopPlayback(null);
-                    if (CanStartPlayback())
-                    {
-                        StartPlayback();
-                    }
+                    StartPlayback();
                 }
             }
         }
 
         private bool CanPlayHIRC(object obj)
         {
-            return obj is HIRCDisplayObject { ObjType: 0x2 } hirc && CurrentLoadedWwisebank != null && hirc.SourceID == CurrentLoadedWwisebank.ID;
+            return obj is HIRCDisplayObject hirc
+                   && CurrentLoadedWwisebank != null
+                   && ResolvePlayableHircSound(hirc, HIRCObjects) is { } playableSound
+                   && ResolveHircAudioSource(playableSound) is not null;
+        }
+
+        private object ResolveHircAudioSource(HIRCDisplayObject playableSound)
+        {
+            if (playableSound is null || playableSound.AudioID == 0)
+            {
+                return null;
+            }
+
+            uint audioId = playableSound.AudioID;
+            return ExportInformationList.OfType<EmbeddedWEMFile>().FirstOrDefault(wem => wem.Id == audioId)
+                   ?? (object)FindWwiseStreamById(CurrentLoadedExport?.FileRef, audioId);
+        }
+
+        private bool SelectHircPlaybackSource(HIRCDisplayObject selectedHirc)
+        {
+            HIRCDisplayObject playableSound = ResolvePlayableHircSound(selectedHirc, HIRCObjects);
+            object audioSource = ResolveHircAudioSource(playableSound);
+            HircWwiseStreamPlaybackSource = audioSource as ExportEntry;
+            ExportInfoListBox.SelectedItem = audioSource as EmbeddedWEMFile;
+            CommandManager.InvalidateRequerySuggested();
+            return audioSource is not null;
+        }
+
+        internal static ExportEntry FindWwiseStreamById(IMEPackage package, uint audioId)
+        {
+            return audioId == 0
+                ? null
+                : package?.Exports.FirstOrDefault(export => export.ClassName == "WwiseStream"
+                    && unchecked((uint)(export.GetProperty<IntProperty>("Id")?.Value ?? 0)) == audioId);
+        }
+
+        internal static HIRCDisplayObject ResolvePlayableHircSound(HIRCDisplayObject selectedHirc,
+            IEnumerable<HIRCDisplayObject> hircObjects)
+        {
+            if (selectedHirc?.ObjType == (byte)HIRCType.SoundSXFSoundVoice)
+            {
+                return selectedHirc;
+            }
+
+            if (selectedHirc?.ObjType != (byte)HIRCType.Event || selectedHirc.EventIDs is null)
+            {
+                return null;
+            }
+
+            var objectsById = hircObjects
+                .GroupBy(hirc => hirc.ID)
+                .ToDictionary(group => group.Key, group => group.First());
+            foreach (uint eventActionId in selectedHirc.EventIDs)
+            {
+                if (!objectsById.TryGetValue(eventActionId, out HIRCDisplayObject eventAction)
+                    || eventAction.ObjType != (byte)HIRCType.EventAction
+                    || eventAction.EventActionType is not (WwiseBankParsed.EventActionType.Play
+                        or WwiseBankParsed.EventActionType.Play_LE)
+                    || !objectsById.TryGetValue(eventAction.ReferencedObjectID, out HIRCDisplayObject referencedObject)
+                    || referencedObject.ObjType != (byte)HIRCType.SoundSXFSoundVoice)
+                {
+                    continue;
+                }
+
+                return referencedObject;
+            }
+
+            return null;
+        }
+
+        internal static void ApplyWwiserSoundMetadata(IEnumerable<HIRCDisplayObject> hircObjects,
+            IEnumerable<WwiserSound> wwiserSounds, uint bankId)
+        {
+            var soundsById = wwiserSounds
+                .GroupBy(sound => sound.Id)
+                .ToDictionary(group => group.Key, group => group.First());
+            foreach (HIRCDisplayObject hircObject in hircObjects.Where(hirc =>
+                         hirc.ObjType == (byte)HIRCType.SoundSXFSoundVoice))
+            {
+                if (!soundsById.TryGetValue(hircObject.ID, out WwiserSound sound))
+                {
+                    continue;
+                }
+
+                hircObject.AudioID = sound.BankSourceData.MediaInformation.SourceId;
+                hircObject.State = (uint)(sound.BankSourceData.StreamType.Value switch
+                {
+                    WwiserStreamType.StreamTypeInner.DataBnk => WwiseBankParsed.SoundState.Embed,
+                    WwiserStreamType.StreamTypeInner.PrefetchStreaming => WwiseBankParsed.SoundState.StreamPrefetched,
+                    _ => WwiseBankParsed.SoundState.Streamed
+                });
+                hircObject.SourceID = sound.BankSourceData.StreamType.Value == WwiserStreamType.StreamTypeInner.DataBnk
+                    ? bankId
+                    : 0;
+            }
         }
 
         private void StartPlayback()
@@ -1066,7 +1174,14 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                         UpdateAudioStream();
                     }
 
-                    if (CurrentLoadedExport != null)
+                    if (HircWwiseStreamPlaybackSource != null)
+                    {
+                        if (CachedStreamSource != HircWwiseStreamPlaybackSource)
+                        {
+                            UpdateAudioStream();
+                        }
+                    }
+                    else if (CurrentLoadedExport != null)
                     {
                         //check if cached is the same as what we want to play
                         if (CurrentLoadedExport.ClassName == "WwiseStream" && CachedStreamSource != CurrentLoadedExport)
@@ -1143,7 +1258,11 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 CachedStreamSource = CurrentLoadedAFCFileEntry;
             }
 
-            if (CurrentLoadedExport != null)
+            if (HircWwiseStreamPlaybackSource != null)
+            {
+                CachedStreamSource = HircWwiseStreamPlaybackSource;
+            }
+            else if (CurrentLoadedExport != null)
             {
                 switch (CurrentLoadedExport.ClassName)
                 {
@@ -1174,6 +1293,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             if (CurrentLoadedExport == null && CurrentLoadedISACTEntry == null && CurrentLoadedAFCFileEntry == null) return false;
             if (CurrentLoadedISACTEntry != null) return true;
             if (CurrentLoadedAFCFileEntry != null) return true;
+            if (HircWwiseStreamPlaybackSource != null) return true;
             if (CurrentLoadedExport?.ClassName == "WwiseStream") return true;
 
             if (CurrentLoadedExport?.ClassName == "WwiseBank")
@@ -2158,6 +2278,11 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         private void ExportInfoListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             object currentSelectedItem = ExportInfoListBox.SelectedItem;
+            if (currentSelectedItem is EmbeddedWEMFile)
+            {
+                HircWwiseStreamPlaybackSource = null;
+            }
+
             if (_playbackState == PlaybackState.Playing && 
                 (currentSelectedItem is EmbeddedWEMFile || currentSelectedItem is ISACTListBankChunk bankEntry && bankEntry.SampleData != null))
             {
@@ -2378,6 +2503,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
                         break;
                 }
+                SelectHircPlaybackSource(h);
                 HIRCObjectSelected?.Invoke(h.ID);
             }
             else
@@ -2388,6 +2514,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 });
 
                 OriginalHIRCHex = null;
+                HircWwiseStreamPlaybackSource = null;
+                CommandManager.InvalidateRequerySuggested();
                 hircHexProvider.Clear();
                 SoundpanelHIRC_Hexbox.Refresh();
             }
@@ -2551,6 +2679,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             SoundpanelHIRC_Hexbox = null;
             HIRC_Hexbox_Host?.Child?.Dispose();
             HIRC_Hexbox_Host?.Dispose();
+            HircWwiseStreamPlaybackSource = null;
             CurrentLoadedWwisebank = null;
         }
 

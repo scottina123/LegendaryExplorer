@@ -8,6 +8,8 @@ using LegendaryExplorerCore.Sound.Wwise;
 using LegendaryExplorerCore.Unreal;
 using LegendaryExplorerCore.Unreal.BinaryConverters;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using WwiserSound = ME3Tweaks.Wwiser.Model.Hierarchy.Sound;
+using WwiserStreamType = ME3Tweaks.Wwiser.Model.Hierarchy.Enums.StreamType;
 
 namespace LegendaryExplorer.Tests.Audio;
 
@@ -121,5 +123,65 @@ public class WwiseHelperTests
         Assert.IsNull(Soundpanel.ResolveAudioExport(wwiseEvent));
         Assert.IsFalse(Soundpanel.CanParseStatic(wwiseEvent));
         CollectionAssert.AreEqual(new[] { singleStreamEvent }, WwiseHelper.GetMatchingWwiseEvents(firstStream).ToArray());
+    }
+
+    [TestMethod]
+    public void ResolvesPlayableSoundFromHircEvent()
+    {
+        const uint eventId = 0x0AA1A555;
+        const uint stopActionId = 0x11111111;
+        const uint playActionId = 0x144590D7;
+        const uint soundId = 0x0A4B0329;
+        const uint audioId = 0x12345678;
+        const uint bankId = 0x87654321;
+        var hircObjects = new[]
+        {
+            new HIRCDisplayObject(0, new WwiseBankParsed.Event
+            {
+                Type = HIRCType.Event,
+                ID = eventId,
+                EventActions = [stopActionId, playActionId]
+            }, MEGame.LE3),
+            new HIRCDisplayObject(1, new WwiseBankParsed.EventAction
+            {
+                Type = HIRCType.EventAction,
+                ID = stopActionId,
+                ActionType = WwiseBankParsed.EventActionType.Stop_LE,
+                ReferencedObjectID = soundId,
+                unparsed = []
+            }, MEGame.LE3),
+            new HIRCDisplayObject(2, new WwiseBankParsed.EventAction
+            {
+                Type = HIRCType.EventAction,
+                ID = playActionId,
+                ActionType = WwiseBankParsed.EventActionType.Play_LE,
+                ReferencedObjectID = soundId,
+                unparsed = []
+            }, MEGame.LE3),
+            new HIRCDisplayObject(3, new WwiseBankParsed.HIRCObject
+            {
+                Type = HIRCType.SoundSXFSoundVoice,
+                ID = soundId,
+                unparsed = []
+            }, MEGame.LE3)
+        };
+        var wwiserSound = new WwiserSound { Id = soundId };
+        wwiserSound.BankSourceData.StreamType.Value = WwiserStreamType.StreamTypeInner.Streaming;
+        wwiserSound.BankSourceData.MediaInformation.SourceId = audioId;
+
+        Soundpanel.ApplyWwiserSoundMetadata(hircObjects, [wwiserSound], bankId);
+
+        HIRCDisplayObject playableSound = Soundpanel.ResolvePlayableHircSound(hircObjects[0], hircObjects);
+
+        Assert.IsNotNull(playableSound);
+        Assert.AreEqual(soundId, playableSound.ID);
+        Assert.AreEqual(audioId, playableSound.AudioID);
+        Assert.AreEqual((uint)WwiseBankParsed.SoundState.Streamed, playableSound.State);
+        Assert.AreEqual(0U, playableSound.SourceID);
+
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("HircPlaybackTest.pcc", MEGame.LE3);
+        ExportEntry wwiseStream = package.CreateExport("Stream", "WwiseStream", indexed: false);
+        wwiseStream.WriteProperty(new IntProperty(unchecked((int)audioId), "Id"));
+        Assert.AreSame(wwiseStream, Soundpanel.FindWwiseStreamById(package, audioId));
     }
 }

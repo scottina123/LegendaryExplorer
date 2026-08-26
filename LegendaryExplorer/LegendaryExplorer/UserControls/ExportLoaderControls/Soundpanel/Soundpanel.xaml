@@ -232,10 +232,15 @@
                                         <Button Content="PLAY" DockPanel.Dock="Right" 
                                                 VerticalAlignment="Center"
                                                 Padding="5"
-                                                Visibility="{Binding Converter={StaticResource HIRCObjectTypeVisibilityConverter},ConverterParameter=2}"
                                                 Command="{Binding PlayHIRCCommand, RelativeSource={RelativeSource FindAncestor, AncestorType={x:Type exportLoaderControls:Soundpanel}}}"
                                                 CommandParameter="{Binding}">
-
+                                            <Button.Visibility>
+                                                <Binding Converter="{StaticResource HIRCObjectTypeVisibilityConverter}">
+                                                    <Binding.ConverterParameter>
+                                                        <s:String>2,4</s:String>
+                                                    </Binding.ConverterParameter>
+                                                </Binding>
+                                            </Button.Visibility>
                                         </Button>
                                         <Border Margin="0" DockPanel.Dock="Bottom" Padding="2,0,2,0" BorderThickness="1" BorderBrush="{DynamicResource MediaStateBorderBrush}" Background="{DynamicResource MediaStateBackgroundBrush}" 
                                                 CornerRadius="2" HorizontalAlignment="Left" 
