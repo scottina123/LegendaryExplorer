@@ -423,6 +423,7 @@ namespace LegendaryExplorer.Tools.WwiseEditor
         public ICommand SaveAsCommand { get; set; }
         public ICommand SaveImageCommand { get; set; }
         public ICommand SaveViewCommand { get; set; }
+        public ICommand AutoLayoutCommand { get; set; }
 
         private void LoadCommands()
         {
@@ -431,6 +432,7 @@ namespace LegendaryExplorer.Tools.WwiseEditor
             SaveAsCommand = new GenericCommand(SavePackageAs, IsPackageLoaded);
             SaveImageCommand = new GenericCommand(SaveImage, () => CurrentObjects.Any);
             SaveViewCommand = new GenericCommand(() => SaveView(), () => CurrentObjects.Any);
+            AutoLayoutCommand = new GenericCommand(AutoLayout, () => CurrentObjects.Any);
         }
 
         private bool IsPackageLoaded() => Pcc != null;

@@ -35,6 +35,7 @@
         <KeyBinding Key="O" Modifiers="Control" Command="{Binding OpenCommand}"/>
         <KeyBinding Key="S" Modifiers="Control" Command="{Binding SaveCommand}"/>
         <KeyBinding Key="S" Modifiers="Control+Shift" Command="{Binding SaveAsCommand}"/>
+        <KeyBinding Key="L" Modifiers="Control" Command="{Binding AutoLayoutCommand}"/>
     </Window.InputBindings>
     <!-- This windows has a BusyIndicator, it's just tucked at the bottom, inside the Grid. It needs to be that way to not cause problems with the Piccolo control -->
     <Grid>
@@ -58,6 +59,12 @@
                 <MenuItem Header="Tools" Padding="4">
                     <MenuItem Header="Save View" Command="{Binding SaveViewCommand}" ToolTip="Save the node layout" />
                     <MenuItem Header="Save Image" Command="{Binding SaveImageCommand}" ToolTip="Save image of full Sequence" />
+                    <Separator />
+                    <MenuItem Header="Layout">
+                        <MenuItem Header="Re-Run Auto Layout" Command="{Binding AutoLayoutCommand}"
+                                  InputGestureText="Ctrl+L"
+                                  ToolTip="Attempt to layout Wwise objects in a comprehensible fashion" />
+                    </MenuItem>
                     <Separator />
                     <MenuItem Header="Adjust Bank Settings..." Click="AdjustBankSettings_Click"
                               IsEnabled="{Binding CurrentExport, Converter={StaticResource NullEnabledConverter}}"
