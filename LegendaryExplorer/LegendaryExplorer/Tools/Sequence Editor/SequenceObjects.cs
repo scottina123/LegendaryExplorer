@@ -456,6 +456,7 @@ namespace LegendaryExplorer.Tools.SequenceObjects
         private readonly PPath shape;
         private readonly PPath connectionHandle;
         private readonly VariableConnectionDragHandler variableConnectionDragHandler;
+        internal PPath ConnectionHandle => connectionHandle;
         public string Value
         {
             get => val.Text;
@@ -512,6 +513,7 @@ namespace LegendaryExplorer.Tools.SequenceObjects
             connectionHandle.Brush = new SolidBrush(GetColor(Type));
             connectionHandle.Tag = SequenceGraphEditor.NonDraggableNodeTag;
             connectionHandle.AddInputEventListener(variableConnectionDragHandler);
+            connectionHandle.MouseEnter += ConnectionHandle_MouseEnter;
             AddChild(connectionHandle);
             MouseEnter += OnMouseEnter;
             MouseLeave += OnMouseLeave;
@@ -807,6 +809,15 @@ namespace LegendaryExplorer.Tools.SequenceObjects
             }
         }
 
+        private void ConnectionHandle_MouseEnter(object sender, PInputEventArgs e)
+        {
+            if (draggingVarlink)
+            {
+                shape.Pen = SelectedPen;
+                DragTarget = this;
+            }
+        }
+
         private void OnMouseLeave(object sender, PInputEventArgs e)
         {
             if (draggingVarlink)
@@ -821,6 +832,7 @@ namespace LegendaryExplorer.Tools.SequenceObjects
             if (variableConnectionDragHandler != null)
             {
                 connectionHandle.RemoveInputEventListener(variableConnectionDragHandler);
+                connectionHandle.MouseEnter -= ConnectionHandle_MouseEnter;
             }
             g = null;
             Pcc = null;
@@ -1005,7 +1017,7 @@ namespace LegendaryExplorer.Tools.SequenceObjects
                             ((List<VarEdge>)p1.Tag).Add(edge);
                             destVar.Connections.Add(edge);
                             edge.Start = p1;
-                            edge.End = destVar;
+                            edge.End = destVar.ConnectionHandle;
                             edge.Originator = this;
                             edge.SourceConnectionIndex = linkIndex;
                             g.addEdge(edge);
