@@ -28,6 +28,7 @@ namespace LegendaryExplorer.Tools.SequenceObjects
         public PNode Start;
         public PNode End;
         public SBox Originator;
+        public int SourceConnectionIndex;
     }
     public class VarEdge : SeqEdEdge
     {
@@ -66,9 +67,12 @@ namespace LegendaryExplorer.Tools.SequenceObjects
           private static Color _boxTextColor = Color.FromArgb(0, 0, 0); // Black text
           private static Color _connectionColor = Color.Black; // Base connection line color (black for light mode, white for dark mode)
           private static Color _varLinkColor = Color.Black; // Default color for untyped variable links (Extern, etc.)
-           protected static bool draggingOutlink;
+          protected static bool draggingOutlink;
+          protected static bool draggingInputlink;
           protected static bool draggingVarlink;
+          protected static bool draggingVarlinkFromVariable;
           protected static bool draggingEventlink;
+          protected static bool draggingEventlinkFromEvent;
           protected static PNode DragTarget;
           public static bool OutputNumbers;
          
@@ -450,6 +454,8 @@ namespace LegendaryExplorer.Tools.SequenceObjects
         private VarTypes Type { get; }
         private readonly SText val;
         private readonly PPath shape;
+        private readonly PPath connectionHandle;
+        private readonly VariableConnectionDragHandler variableConnectionDragHandler;
         public string Value
         {
             get => val.Text;
@@ -459,6 +465,7 @@ namespace LegendaryExplorer.Tools.SequenceObjects
         public SVar(ExportEntry entry, SequenceGraphEditor grapheditor)
             : base(entry, grapheditor)
         {
+            variableConnectionDragHandler = new VariableConnectionDragHandler(grapheditor, this);
             PropertyCollection properties = export.GetProperties();
             string s = export.ObjectName;
             s = s.Replace("BioSeqVar_", "");
@@ -500,8 +507,70 @@ namespace LegendaryExplorer.Tools.SequenceObjects
                 varName.SetBounds(w / 2 - varName.Width / 2, h, varName.Width, varName.Height);
                 AddChild(varName);
             }
+
+            connectionHandle = PPath.CreateRectangle(w / 2 - 5, -5, 10, 10, OutlinePen);
+            connectionHandle.Brush = new SolidBrush(GetColor(Type));
+            connectionHandle.Tag = SequenceGraphEditor.NonDraggableNodeTag;
+            connectionHandle.AddInputEventListener(variableConnectionDragHandler);
+            AddChild(connectionHandle);
             MouseEnter += OnMouseEnter;
             MouseLeave += OnMouseLeave;
+        }
+
+        private sealed class VariableConnectionDragHandler : PDragEventHandler
+        {
+            private readonly SequenceGraphEditor graphEditor;
+            private readonly SVar variable;
+            private VarEdge activeEdge;
+
+            public VariableConnectionDragHandler(SequenceGraphEditor graphEditor, SVar variable)
+            {
+                this.graphEditor = graphEditor;
+                this.variable = variable;
+            }
+
+            public override bool DoesAcceptEvent(PInputEventArgs e) =>
+                e.IsMouseEvent && (e.Button != MouseButtons.None || e.IsMouseEnterOrMouseLeave) && !e.Handled;
+
+            protected override void OnStartDrag(object sender, PInputEventArgs e)
+            {
+                e.Handled = true;
+                DragTarget = null;
+                var dragger = (PNode)sender;
+                activeEdge = new VarEdge
+                {
+                    Pen = new Pen(GetColor(variable.Type)),
+                    Start = dragger,
+                    End = variable
+                };
+                graphEditor.addEdge(activeEdge);
+                base.OnStartDrag(sender, e);
+                draggingVarlinkFromVariable = true;
+            }
+
+            protected override void OnDrag(object sender, PInputEventArgs e)
+            {
+                base.OnDrag(sender, e);
+                e.Handled = true;
+                SequenceGraphEditor.UpdateEdge(activeEdge);
+            }
+
+            protected override void OnEndDrag(object sender, PInputEventArgs e)
+            {
+                var dragger = (PNode)sender;
+                dragger.SetOffset(0, 0);
+                graphEditor.edgeLayer.RemoveChild(activeEdge);
+                activeEdge = null;
+                base.OnEndDrag(sender, e);
+                draggingVarlinkFromVariable = false;
+                if (DragTarget != null)
+                {
+                    PNode target = DragTarget;
+                    SBox.RestoreVarLinkTargetPen(target);
+                    DragTarget = null;
+                    SBox.CreateVarlink(target, variable);
+                }
+            }
         }
 
         private string GetValue(PropertyCollection props)
@@ -749,6 +818,10 @@ namespace LegendaryExplorer.Tools.SequenceObjects
 
         public override void Dispose()
         {
+            if (variableConnectionDragHandler != null)
+            {
+                connectionHandle.RemoveInputEventListener(variableConnectionDragHandler);
+            }
             g = null;
             Pcc = null;
             export = null;
@@ -902,6 +975,7 @@ namespace LegendaryExplorer.Tools.SequenceObjects
                             edge.End = destAction;
                             edge.Originator = this;
                             edge.InputIndex = outLink.InputIndices[j];
+                            edge.SourceConnectionIndex = j;
                             g.addEdge(edge);
                             outLink.Edges.Add(edge);
                         }
@@ -910,8 +984,9 @@ namespace LegendaryExplorer.Tools.SequenceObjects
             }
             foreach (VarLink varLink in Varlinks)
             {
-                foreach (int link in varLink.Links)
+                for (int linkIndex = 0; linkIndex < varLink.Links.Count; linkIndex++)
                 {
+                    int link = varLink.Links[linkIndex];
                     foreach (SVar destVar in vars)
                     {
                         if (destVar.UIndex == link)
@@ -932,6 +1007,7 @@ namespace LegendaryExplorer.Tools.SequenceObjects
                             edge.Start = p1;
                             edge.End = destVar;
                             edge.Originator = this;
+                            edge.SourceConnectionIndex = linkIndex;
                             g.addEdge(edge);
                             varLink.Edges.Add(edge);
                         }
@@ -940,8 +1016,9 @@ namespace LegendaryExplorer.Tools.SequenceObjects
             }
             foreach (EventLink eventLink in EventLinks)
             {
-                foreach (int link in eventLink.Links)
+                for (int linkIndex = 0; linkIndex < eventLink.Links.Count; linkIndex++)
                 {
+                    int link = eventLink.Links[linkIndex];
                     foreach (SEvent destEvent in events)
                     {
                         if (destEvent.UIndex == link)
@@ -952,7 +1029,8 @@ namespace LegendaryExplorer.Tools.SequenceObjects
                                 Pen = new Pen(EventColor),
                                 Start = p1,
                                 End = destEvent,
-                                Originator = this
+                                Originator = this,
+                                SourceConnectionIndex = linkIndex
                             };
                             p1.Tag ??= new List<EventEdge>();
                             ((List<EventEdge>)p1.Tag).Add(edge);
@@ -1077,6 +1155,8 @@ namespace LegendaryExplorer.Tools.SequenceObjects
                         dragger.Brush = MostlyTransparentBrush;
                         dragger.SetBounds(l.Node.X, l.Node.Y, dragger.Width, dragger.Height);
                         dragger.AddInputEventListener(varDragHandler);
+                        dragger.MouseEnter += ReverseVarLinkTarget_MouseEnter;
+                        dragger.MouseLeave += (sender, e) => ReverseLinkTarget_MouseLeave(sender, e, varPen);
                         AttachEditLinkHandler(dragger, "VariableLinks", Varlinks.Count);
                         AttachRemoveLinkHandler(dragger, "VariableLinks", Varlinks.Count);
                         l.Node.AddChild(dragger);
@@ -1153,6 +1233,8 @@ namespace LegendaryExplorer.Tools.SequenceObjects
                         dragger.Brush = MostlyTransparentBrush;
                         dragger.SetBounds(l.Node.X, l.Node.Y, dragger.Width, dragger.Height);
                         dragger.AddInputEventListener(eventDragHandler);
+                        dragger.MouseEnter += ReverseEventLinkTarget_MouseEnter;
+                        dragger.MouseLeave += (sender, e) => ReverseLinkTarget_MouseLeave(sender, e, eventPen);
                         l.Node.AddChild(dragger);
                         EventLinks.Add(l);
                     }
@@ -1190,6 +1272,9 @@ namespace LegendaryExplorer.Tools.SequenceObjects
                         dragger.Brush = MostlyTransparentBrush;
                         dragger.SetBounds(l.Node.X, l.Node.Y, dragger.Width, dragger.Height);
                         dragger.AddInputEventListener(outputDragHandler);
+                        dragger.MouseEnter += ReverseOutputLinkTarget_MouseEnter;
+                        var normalPen = (Pen)l.Node.Pen.Clone();
+                        dragger.MouseLeave += (sender, e) => ReverseLinkTarget_MouseLeave(sender, e, normalPen);
                         AttachEditLinkHandler(dragger, "OutputLinks", Outlinks.Count);
                         AttachRemoveLinkHandler(dragger, "OutputLinks", Outlinks.Count);
                         l.Node.AddChild(dragger);
@@ -1233,6 +1318,9 @@ namespace LegendaryExplorer.Tools.SequenceObjects
                         dragger.Brush = MostlyTransparentBrush;
                         dragger.SetBounds(l.Node.X, l.Node.Y, dragger.Width, dragger.Height);
                         dragger.AddInputEventListener(outputDragHandler);
+                        dragger.MouseEnter += ReverseOutputLinkTarget_MouseEnter;
+                        var normalPen = (Pen)l.Node.Pen.Clone();
+                        dragger.MouseLeave += (sender, e) => ReverseLinkTarget_MouseLeave(sender, e, normalPen);
                         AttachEditLinkHandler(dragger, "OutputLinks", Outlinks.Count);
                         AttachRemoveLinkHandler(dragger, "OutputLinks", Outlinks.Count);
                         l.Node.AddChild(dragger);
@@ -1260,6 +1348,7 @@ namespace LegendaryExplorer.Tools.SequenceObjects
             {
                 sObj.MoveToBack();
                 e.Handled = true;
+                DragTarget = null;
                 PNode p1 = ((PNode)sender).Parent;
                 PNode p2 = (PNode)sender;
                 var edge = new ActionEdge();
@@ -1365,6 +1454,7 @@ namespace LegendaryExplorer.Tools.SequenceObjects
             {
                 sObj.MoveToBack();
                 e.Handled = true;
+                DragTarget = null;
                 PNode p1 = ((PNode)sender).Parent;
                 PNode p2 = (PNode)sender;
                 var edge = new VarEdge();
@@ -1427,6 +1517,7 @@ namespace LegendaryExplorer.Tools.SequenceObjects
             {
                 sObj.MoveToBack();
                 e.Handled = true;
+                DragTarget = null;
                 PNode p1 = ((PNode)sender).Parent;
                 PNode p2 = (PNode)sender;
                 var edge = new EventEdge();
@@ -1493,22 +1584,79 @@ namespace LegendaryExplorer.Tools.SequenceObjects
             }
         }
 
-        private static void CreateOutlink(PNode n1, PNode n2)
+        private static void ReverseOutputLinkTarget_MouseEnter(object sender, PInputEventArgs e)
+        {
+            if (draggingInputlink && sender is PNode { Parent: PPath linkNode })
+            {
+                linkNode.Pen = SelectedPen;
+                DragTarget = linkNode;
+            }
+        }
+
+        private static void ReverseVarLinkTarget_MouseEnter(object sender, PInputEventArgs e)
+        {
+            if (draggingVarlinkFromVariable && sender is PNode { Parent: PPath linkNode })
+            {
+                linkNode.Pen = SelectedPen;
+                DragTarget = linkNode;
+            }
+        }
+
+        private static void ReverseEventLinkTarget_MouseEnter(object sender, PInputEventArgs e)
+        {
+            if (draggingEventlinkFromEvent && sender is PNode { Parent: PPath linkNode })
+            {
+                linkNode.Pen = SelectedPen;
+                DragTarget = linkNode;
+            }
+        }
+
+        private static void ReverseLinkTarget_MouseLeave(object sender, PInputEventArgs e, Pen normalPen)
+        {
+            if ((draggingInputlink || draggingVarlinkFromVariable || draggingEventlinkFromEvent)
+                && sender is PNode { Parent: PPath linkNode })
+            {
+                linkNode.Pen = normalPen;
+                if (ReferenceEquals(DragTarget, linkNode))
+                {
+                    DragTarget = null;
+                }
+            }
+        }
+
+        internal static void RestoreVarLinkTargetPen(PNode target)
+        {
+            var owner = target?.Parent?.Parent?.Parent as SBox;
+            if (owner == null)
+            {
+                return;
+            }
+
+            foreach (VarLink link in owner.Varlinks)
+            {
+                if (ReferenceEquals(link.Node, target))
+                {
+                    ((PPath)target).Pen = new Pen(GetColor(link.Type));
+                    return;
+                }
+            }
+        }
+
+        internal static void CreateOutlink(PNode n1, PNode n2)
         {
             var start = (SBox)n1.Parent.Parent.Parent;
             var end = (SAction)n2.Parent.Parent.Parent;
-            string linkDesc = null;
-            foreach (OutputLink l in start.Outlinks)
+            int outputIndex = -1;
+            for (int i = 0; i < start.Outlinks.Count; i++)
             {
+                OutputLink l = start.Outlinks[i];
                 if (l.Node == n1)
                 {
-                    if (l.Links.Contains(end.UIndex))
-                        return;
-                    linkDesc = l.Desc;
+                    outputIndex = i;
                     break;
                 }
             }
-            if (linkDesc == null)
+            if (outputIndex < 0)
                 return;
             int inputIndex = -1;
             foreach (InputLink l in end.InLinks)
@@ -1520,85 +1668,101 @@ namespace LegendaryExplorer.Tools.SequenceObjects
             }
             if (inputIndex == -1)
                 return;
+            OutputLink outputLink = start.Outlinks[outputIndex];
+            for (int i = 0; i < outputLink.Links.Count; i++)
+            {
+                if (outputLink.Links[i] == end.UIndex && outputLink.InputIndices[i] == inputIndex)
+                    return;
+            }
             if (start.export.IsA("SFXSceneShopNode"))
             {
-                CreateSFXSceneShopOutlink(start.export, linkDesc, end.export, inputIndex);
+                CreateSFXSceneShopOutlink(start.export, outputIndex, end.export, inputIndex);
             }
-            else
+            else if (start.export.GetProperty<ArrayProperty<StructProperty>>("OutputLinks") is { } outputLinks
+                     && outputIndex < outputLinks.Count)
             {
-                KismetHelper.CreateOutputLink(start.export, linkDesc, end.export, inputIndex);
+                var links = outputLinks[outputIndex].GetProp<ArrayProperty<StructProperty>>("Links");
+                links?.Add(new StructProperty("SeqOpOutputInputLink", false,
+                    new ObjectProperty(end.export, "LinkedOp"),
+                    new IntProperty(inputIndex, "InputLinkIdx")));
+                start.export.WriteProperty(outputLinks);
             }
         }
 
-        private static void CreateSFXSceneShopOutlink(ExportEntry source, string pinName, ExportEntry destExport, int inputIndex)
+        private static void CreateSFXSceneShopOutlink(ExportEntry source, int outputIndex, ExportEntry destExport, int inputIndex)
         {
             var outputPins = source.GetProperty<ArrayProperty<StructProperty>>("m_aOutputPins");
-            if (outputPins != null)
+            if (outputPins != null && outputIndex >= 0 && outputIndex < outputPins.Count)
             {
-                foreach (StructProperty pin in outputPins)
-                {
-                    if ((pin.GetProp<StrProperty>("sLinkName")?.Value ?? "Pin") == pinName)
-                    {
-                        var pinLinks = pin.GetProp<ArrayProperty<StructProperty>>("aLinks")
-                                       ?? new ArrayProperty<StructProperty>("aLinks");
-                        pinLinks.Add(new StructProperty("SFXSSNodePinLink", false,
-                            new ObjectProperty(destExport, "pLinkedNode"),
-                            new IntProperty(inputIndex, "nLinkedIndex")));
-                        pin.Properties.AddOrReplaceProp(pinLinks);
-                        source.WriteProperty(outputPins);
-                        return;
-                    }
-                }
+                StructProperty pin = outputPins[outputIndex];
+                var pinLinks = pin.GetProp<ArrayProperty<StructProperty>>("aLinks")
+                               ?? new ArrayProperty<StructProperty>("aLinks");
+                pinLinks.Add(new StructProperty("SFXSSNodePinLink", false,
+                    new ObjectProperty(destExport, "pLinkedNode"),
+                    new IntProperty(inputIndex, "nLinkedIndex")));
+                pin.Properties.AddOrReplaceProp(pinLinks);
+                source.WriteProperty(outputPins);
             }
         }
 
-        private static void CreateVarlink(PNode p1, SVar end)
+        internal static void CreateVarlink(PNode p1, SVar end)
         {
             var start = (SBox)p1.Parent.Parent.Parent;
-            string linkDesc = null;
-            foreach (VarLink l in start.Varlinks)
+            int variableIndex = -1;
+            for (int i = 0; i < start.Varlinks.Count; i++)
             {
+                VarLink l = start.Varlinks[i];
                 if (l.Node == p1)
                 {
                     if (l.Links.Contains(end.UIndex))
                         return;
-                    linkDesc = l.Desc;
+                    variableIndex = i;
                     break;
                 }
             }
-            if (linkDesc == null)
+            if (variableIndex < 0)
                 return;
             if (start.export.IsA("SFXSceneShopNode"))
             {
                 // SFXSceneShopNode var links are direct object properties
-                if (linkDesc == "Scene")
+                if (start.Varlinks[variableIndex].Desc == "Scene")
                 {
                     start.export.WriteProperty(new ObjectProperty(end.UIndex, "m_pLinkedScene"));
                 }
             }
-            else
+            else if (start.export.GetProperty<ArrayProperty<StructProperty>>("VariableLinks") is { } variableLinks
+                     && variableIndex < variableLinks.Count)
             {
-                KismetHelper.CreateVariableLink(start.export, linkDesc, end.Export);
+                variableLinks[variableIndex].GetProp<ArrayProperty<ObjectProperty>>("LinkedVariables")
+                    ?.Add(new ObjectProperty(end.Export));
+                start.export.WriteProperty(variableLinks);
             }
         }
 
-        private static void CreateEventlink(PNode p1, SEvent end)
+        internal static void CreateEventlink(PNode p1, SEvent end)
         {
             var start = (SBox)p1.Parent.Parent.Parent;
-            string linkDesc = null;
-            foreach (EventLink l in start.EventLinks)
+            int eventIndex = -1;
+            for (int i = 0; i < start.EventLinks.Count; i++)
             {
+                EventLink l = start.EventLinks[i];
                 if (l.Node == p1)
                 {
                     if (l.Links.Contains(end.UIndex))
                         return;
-                    linkDesc = l.Desc;
+                    eventIndex = i;
                     break;
                 }
             }
-            if (linkDesc == null)
+            if (eventIndex < 0)
                 return;
-            KismetHelper.CreateEventLink(start.export, linkDesc, end.export);
+            if (start.export.GetProperty<ArrayProperty<StructProperty>>("EventLinks") is { } eventLinks
+                && eventIndex < eventLinks.Count)
+            {
+                eventLinks[eventIndex].GetProp<ArrayProperty<ObjectProperty>>("LinkedEvents")
+                    ?.Add(new ObjectProperty(end.export));
+                start.export.WriteProperty(eventLinks);
+            }
         }
         public void RemoveOutlink(ActionEdge edge)
         {
@@ -1610,7 +1774,7 @@ namespace LegendaryExplorer.Tools.SequenceObjects
                     ActionEdge actionEdge = outLink.Edges[j];
                     if (actionEdge == edge)
                     {
-                        RemoveOutlink(i, j);
+                        RemoveOutlink(i, actionEdge.SourceConnectionIndex);
                         return;
                     }
                 }
@@ -1619,40 +1783,29 @@ namespace LegendaryExplorer.Tools.SequenceObjects
 
         public void RemoveOutlink(int linkconnection, int linkIndex)
         {
-            string linkDesc = Outlinks[linkconnection].Desc;
             if (export.IsA("SFXSceneShopNode"))
             {
                 var outputPins = export.GetProperty<ArrayProperty<StructProperty>>("m_aOutputPins");
-                if (outputPins != null)
+                if (outputPins != null && linkconnection >= 0 && linkconnection < outputPins.Count)
                 {
-                    foreach (StructProperty pin in outputPins)
+                    var pinLinks = outputPins[linkconnection].GetProp<ArrayProperty<StructProperty>>("aLinks");
+                    if (pinLinks != null && linkIndex >= 0 && linkIndex < pinLinks.Count)
                     {
-                        if ((pin.GetProp<StrProperty>("sLinkName")?.Value ?? "Pin") == linkDesc)
-                        {
-                            var pinLinks = pin.GetProp<ArrayProperty<StructProperty>>("aLinks");
-                            if (pinLinks != null && linkIndex < pinLinks.Count)
-                            {
-                                pinLinks.RemoveAt(linkIndex);
-                                export.WriteProperty(outputPins);
-                            }
-                            return;
-                        }
+                        pinLinks.RemoveAt(linkIndex);
+                        export.WriteProperty(outputPins);
                     }
                 }
             }
             else
             {
                 var outLinksProp = export.GetProperty<ArrayProperty<StructProperty>>("OutputLinks");
-                if (outLinksProp != null)
+                if (outLinksProp != null && linkconnection >= 0 && linkconnection < outLinksProp.Count)
                 {
-                    foreach (StructProperty prop in outLinksProp)
+                    var links = outLinksProp[linkconnection].GetProp<ArrayProperty<StructProperty>>("Links");
+                    if (links != null && linkIndex >= 0 && linkIndex < links.Count)
                     {
-                        if (prop.GetProp<StrProperty>("LinkDesc") == linkDesc)
-                        {
-                            prop.GetProp<ArrayProperty<StructProperty>>("Links").RemoveAt(linkIndex);
-                            export.WriteProperty(outLinksProp);
-                            return;
-                        }
+                        links.RemoveAt(linkIndex);
+                        export.WriteProperty(outLinksProp);
                     }
                 }
             }
@@ -1668,7 +1821,7 @@ namespace LegendaryExplorer.Tools.SequenceObjects
                     VarEdge varEdge = varlink.Edges[j];
                     if (varEdge == edge)
                     {
-                        RemoveVarlink(i, j);
+                        RemoveVarlink(i, varEdge.SourceConnectionIndex);
                         return;
                     }
                 }
@@ -1677,27 +1830,24 @@ namespace LegendaryExplorer.Tools.SequenceObjects
 
         public void RemoveVarlink(int linkconnection, int linkIndex)
         {
-            string linkDesc = Varlinks[linkconnection].Desc;
             if (export.IsA("SFXSceneShopNode"))
             {
                 // SFXSceneShopNode var links are direct object properties (e.g. m_pLinkedScene)
-                if (linkDesc == "Scene")
+                if (linkconnection >= 0 && linkconnection < Varlinks.Count && Varlinks[linkconnection].Desc == "Scene")
                 {
                     export.WriteProperty(new ObjectProperty(0, "m_pLinkedScene"));
                 }
                 return;
             }
             var varLinksProp = export.GetProperty<ArrayProperty<StructProperty>>("VariableLinks");
-            if (varLinksProp != null)
+            if (varLinksProp != null && linkconnection >= 0 && linkconnection < varLinksProp.Count)
             {
-                foreach (var prop in varLinksProp)
+                var linkedVariables = varLinksProp[linkconnection]
+                    .GetProp<ArrayProperty<ObjectProperty>>("LinkedVariables");
+                if (linkedVariables != null && linkIndex >= 0 && linkIndex < linkedVariables.Count)
                 {
-                    if (prop.GetProp<StrProperty>("LinkDesc") == linkDesc)
-                    {
-                        prop.GetProp<ArrayProperty<ObjectProperty>>("LinkedVariables").RemoveAt(linkIndex);
-                        export.WriteProperty(varLinksProp);
-                        return;
-                    }
+                    linkedVariables.RemoveAt(linkIndex);
+                    export.WriteProperty(varLinksProp);
                 }
             }
         }
@@ -1712,7 +1862,7 @@ namespace LegendaryExplorer.Tools.SequenceObjects
                     EventEdge eventEdge = eventLink.Edges[j];
                     if (eventEdge == edge)
                     {
-                        RemoveEventlink(i, j);
+                        RemoveEventlink(i, eventEdge.SourceConnectionIndex);
                         return;
                     }
                 }
@@ -1721,18 +1871,15 @@ namespace LegendaryExplorer.Tools.SequenceObjects
 
         public void RemoveEventlink(int linkconnection, int linkIndex)
         {
-            string linkDesc = EventLinks[linkconnection].Desc;
             var eventLinksProp = export.GetProperty<ArrayProperty<StructProperty>>("EventLinks");
-            if (eventLinksProp != null)
+            if (eventLinksProp != null && linkconnection >= 0 && linkconnection < eventLinksProp.Count)
             {
-                foreach (StructProperty prop in eventLinksProp)
+                var linkedEvents = eventLinksProp[linkconnection]
+                    .GetProp<ArrayProperty<ObjectProperty>>("LinkedEvents");
+                if (linkedEvents != null && linkIndex >= 0 && linkIndex < linkedEvents.Count)
                 {
-                    if (prop.GetProp<StrProperty>("LinkDesc") == linkDesc)
-                    {
-                        prop.GetProp<ArrayProperty<ObjectProperty>>("LinkedEvents").RemoveAt(linkIndex);
-                        export.WriteProperty(eventLinksProp);
-                        return;
-                    }
+                    linkedEvents.RemoveAt(linkIndex);
+                    export.WriteProperty(eventLinksProp);
                 }
             }
         }
@@ -1761,10 +1908,13 @@ namespace LegendaryExplorer.Tools.SequenceObjects
     {
         public readonly List<EventEdge> Connections = new();
         public override IEnumerable<SeqEdEdge> Edges => Connections.Union(base.Edges);
+        private readonly PPath connectionHandle;
+        private readonly EventConnectionDragHandler eventConnectionDragHandler;
 
         public SEvent(ExportEntry entry, SequenceGraphEditor grapheditor)
             : base(entry, grapheditor)
         {
+            eventConnectionDragHandler = new EventConnectionDragHandler(grapheditor, this);
             OutlinePen = new Pen(EventColor);
             string s = export.ObjectName.Instanced;
             s = s.Replace("BioSeqEvt_", "");
@@ -1848,8 +1998,69 @@ namespace LegendaryExplorer.Tools.SequenceObjects
             AddChild(TitleBox);
             AddChild(VarLinkBox);
             AddChild(OutLinkBox);
+            connectionHandle = PPath.CreateRectangle(TitleBox.Width / 2 - 5, -5, 10, 10, new Pen(EventColor));
+            connectionHandle.Brush = MostlyTransparentBrush;
+            connectionHandle.Tag = SequenceGraphEditor.NonDraggableNodeTag;
+            connectionHandle.AddInputEventListener(eventConnectionDragHandler);
+            AddChild(connectionHandle);
             MouseEnter += OnMouseEnter;
             MouseLeave += OnMouseLeave;
+        }
+
+        private sealed class EventConnectionDragHandler : PDragEventHandler
+        {
+            private readonly SequenceGraphEditor graphEditor;
+            private readonly SEvent sequenceEvent;
+            private EventEdge activeEdge;
+
+            public EventConnectionDragHandler(SequenceGraphEditor graphEditor, SEvent sequenceEvent)
+            {
+                this.graphEditor = graphEditor;
+                this.sequenceEvent = sequenceEvent;
+            }
+
+            public override bool DoesAcceptEvent(PInputEventArgs e) =>
+                e.IsMouseEvent && (e.Button != MouseButtons.None || e.IsMouseEnterOrMouseLeave) && !e.Handled;
+
+            protected override void OnStartDrag(object sender, PInputEventArgs e)
+            {
+                e.Handled = true;
+                DragTarget = null;
+                var dragger = (PNode)sender;
+                activeEdge = new EventEdge
+                {
+                    Pen = new Pen(EventColor),
+                    Start = dragger,
+                    End = sequenceEvent
+                };
+                graphEditor.addEdge(activeEdge);
+                base.OnStartDrag(sender, e);
+                draggingEventlinkFromEvent = true;
+            }
+
+            protected override void OnDrag(object sender, PInputEventArgs e)
+            {
+                base.OnDrag(sender, e);
+                e.Handled = true;
+                SequenceGraphEditor.UpdateEdge(activeEdge);
+            }
+
+            protected override void OnEndDrag(object sender, PInputEventArgs e)
+            {
+                var dragger = (PNode)sender;
+                dragger.SetOffset(0, 0);
+                graphEditor.edgeLayer.RemoveChild(activeEdge);
+                activeEdge = null;
+                base.OnEndDrag(sender, e);
+                draggingEventlinkFromEvent = false;
+                if (DragTarget != null)
+                {
+                    PNode target = DragTarget;
+                    ((PPath)target).Pen = new Pen(EventColor);
+                    DragTarget = null;
+                    SBox.CreateEventlink(target, sequenceEvent);
+                }
+            }
         }
 
         private bool _isSelected;
@@ -1894,6 +2105,12 @@ namespace LegendaryExplorer.Tools.SequenceObjects
             }
         }
 
+        public override void Dispose()
+        {
+            connectionHandle?.RemoveInputEventListener(eventConnectionDragHandler);
+            base.Dispose();
+        }
+
         //public override bool Intersects(RectangleF bounds)
         //{
         //    Region hitregion = new Region(outLinkBox.PathReference);
@@ -1912,11 +2129,12 @@ namespace LegendaryExplorer.Tools.SequenceObjects
         private PNode inputLinkBox;
         private PPath box;
 
-        private readonly InputDragHandler inputDragHandler = new();
+        private readonly InputDragHandler inputDragHandler;
 
         public SAction(ExportEntry entry, SequenceGraphEditor grapheditor)
             : base(entry, grapheditor)
         {
+            inputDragHandler = new InputDragHandler(grapheditor, this);
             PropertyCollection properties = export.GetProperties();
             GetVarLinks(properties);
             GetEventLinks(properties);
@@ -2127,8 +2345,9 @@ namespace LegendaryExplorer.Tools.SequenceObjects
                     Edges = new List<ActionEdge>()
                 };
                 l.Node.Brush = OutputBrush;
-                l.Node.MouseEnter += OnMouseEnter;
-                l.Node.MouseLeave += OnMouseLeave;
+                l.Node.Tag = SequenceGraphEditor.NonDraggableNodeTag;
+                l.Node.MouseEnter += InputLinkTarget_MouseEnter;
+                l.Node.MouseLeave += InputLinkTarget_MouseLeave;
                 l.Node.AddInputEventListener(inputDragHandler);
                 AttachEditLinkHandler(l.Node, "InputLinks", idx);
                 AttachRemoveLinkHandler(l.Node, "InputLinks", idx);
@@ -2201,6 +2420,18 @@ namespace LegendaryExplorer.Tools.SequenceObjects
 
         private sealed class InputDragHandler : PDragEventHandler
         {
+            private readonly SequenceGraphEditor graphEditor;
+            private readonly SAction action;
+            private ActionEdge activeEdge;
+            private InputLink activeInputLink;
+            private PNode fixedAnchor;
+
+            public InputDragHandler(SequenceGraphEditor graphEditor, SAction action)
+            {
+                this.graphEditor = graphEditor;
+                this.action = action;
+            }
+
             public override bool DoesAcceptEvent(PInputEventArgs e)
             {
                 return (e.IsMouseEnterOrMouseLeave || (e.IsMouseEvent && e.Button == MouseButtons.Left)) && !e.Handled;
@@ -2208,33 +2439,83 @@ namespace LegendaryExplorer.Tools.SequenceObjects
 
             protected override void OnStartDrag(object sender, PInputEventArgs e)
             {
+                action.MoveToBack();
                 e.Handled = true;
+                DragTarget = null;
+                var inputNode = (PPath)sender;
+                activeInputLink = action.InLinks.First(link => ReferenceEquals(link.Node, inputNode));
+                fixedAnchor = new PNode { Pickable = false };
+                fixedAnchor.SetBounds(inputNode.X, inputNode.Y, inputNode.Width, inputNode.Height);
+                inputNode.Parent.AddChild(fixedAnchor);
+                fixedAnchor.MoveToBack();
+                activeEdge = new ActionEdge
+                {
+                    Pen = new Pen(ConnectionColor),
+                    Start = inputNode,
+                    End = fixedAnchor,
+                    InputIndex = activeInputLink.Index
+                };
+                graphEditor.addEdge(activeEdge);
+                base.OnStartDrag(sender, e);
+                draggingInputlink = true;
             }
 
             protected override void OnDrag(object sender, PInputEventArgs e)
             {
+                base.OnDrag(sender, e);
                 e.Handled = true;
+                SequenceGraphEditor.UpdateEdge(activeEdge);
+                foreach (ActionEdge edge in activeInputLink.Edges)
+                {
+                    SequenceGraphEditor.UpdateEdge(edge);
+                }
             }
 
             protected override void OnEndDrag(object sender, PInputEventArgs e)
             {
+                var inputNode = (PPath)sender;
+                inputNode.SetOffset(0, 0);
+                foreach (ActionEdge edge in activeInputLink.Edges)
+                {
+                    SequenceGraphEditor.UpdateEdge(edge);
+                }
+                graphEditor.edgeLayer.RemoveChild(activeEdge);
+                fixedAnchor.Parent.RemoveChild(fixedAnchor);
+                activeEdge = null;
+                activeInputLink = default;
+                fixedAnchor = null;
+                base.OnEndDrag(sender, e);
                 e.Handled = true;
+                draggingInputlink = false;
+                if (DragTarget != null)
+                {
+                    PNode target = DragTarget;
+                    ((PPath)target).Pen = new Pen(Color.Black);
+                    DragTarget = null;
+                    SBox.CreateOutlink(target, inputNode);
+                }
             }
         }
 
-        private static void OnMouseEnter(object sender, PInputEventArgs e)
+        private static void InputLinkTarget_MouseEnter(object sender, PInputEventArgs e)
         {
-            if (draggingOutlink)
+            if (draggingOutlink && sender is PPath inputNode)
             {
-                ((PPath)sender).Pen = SelectedPen;
-                DragTarget = (PPath)sender;
+                inputNode.Pen = SelectedPen;
+                DragTarget = inputNode;
             }
         }
 
-        private void OnMouseLeave(object sender, PInputEventArgs e)
+        private void InputLinkTarget_MouseLeave(object sender, PInputEventArgs e)
         {
-            ((PPath)sender).Pen = OutlinePen;
-            DragTarget = null;
+            if (sender is PPath inputNode)
+            {
+                inputNode.Pen = OutlinePen;
+                if (ReferenceEquals(DragTarget, inputNode))
+                {
+                    DragTarget = null;
+                }
+            }
         }
 
         public override void Dispose()

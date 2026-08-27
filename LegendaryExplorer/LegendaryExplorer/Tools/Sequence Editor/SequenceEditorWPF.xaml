@@ -145,10 +145,11 @@
             <MenuItem Header="Clone InterpData tree" Click="CloneInterpData_Clicked" Name="cloneInterpDataMenuItem" ToolTip="Clone InterpData and all of its children"/>
             <MenuItem Header="Edit Comment" Click="EditComment_Click" ToolTip="Add or edit this node's comment"/>
             <MenuItem Header="Break Links" Name="breakLinksMenuItem">
+                <MenuItem Header="Input Links" Name="inputLinksMenuItem"/>
                 <MenuItem Header="Output Links" Name="outputLinksMenuItem"/>
-                <MenuItem Header="Var Links" Name="varLinksMenuItem"/>
+                <MenuItem Header="Variable Links" Name="varLinksMenuItem"/>
                 <MenuItem Header="Event Links" Name="eventLinksMenuItem"/>
-                <MenuItem Header="Break All" Name="breakAllLinksMenuItem" Click="removeAllLinks"/>
+                <MenuItem Header="Break All Incoming and Outgoing" Name="breakAllLinksMenuItem" Click="removeAllLinks"/>
             </MenuItem>
             <MenuItem Header="Skip sequence element" Name="skipObjMenuItem"/>
             <MenuItem Header="Repoint incoming references" Name="repointIncomingReferences" Click="RepointIncomingReferences_Click"/>

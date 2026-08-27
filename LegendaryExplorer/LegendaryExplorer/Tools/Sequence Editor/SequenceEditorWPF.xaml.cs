@@ -4760,19 +4760,53 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                 // BREAK LINKS CODE
                 if (contextMenu.GetChild("breakLinksMenuItem") is MenuItem breakLinksMenuItem)
                 {
-                    if (obj is SBox sBox && (sBox.Varlinks.Any() || sBox.Outlinks.Any() || sBox.EventLinks.Any()))
+                    bool hasLinks = false;
+
+                    if (breakLinksMenuItem.GetChild("inputLinksMenuItem") is MenuItem inputLinksMenuItem)
                     {
-                        bool hasLinks = false;
-                        if (breakLinksMenuItem.GetChild("outputLinksMenuItem") is MenuItem outputLinksMenuItem)
+                        inputLinksMenuItem.Visibility = Visibility.Collapsed;
+                        inputLinksMenuItem.Items.Clear();
+                        if (obj is SAction action)
                         {
-                            outputLinksMenuItem.Visibility = Visibility.Collapsed;
-                            outputLinksMenuItem.Items.Clear();
+                            foreach (var inputLink in action.InLinks)
+                            {
+                                foreach (ActionEdge edge in inputLink.Edges)
+                                {
+                                    inputLinksMenuItem.Visibility = Visibility.Visible;
+                                    hasLinks = true;
+                                    string sourceName = edge.Originator.Export.ObjectName.Instanced;
+                                    var temp = new MenuItem
+                                    {
+                                        Header = $"Break link to {inputLink.Desc} from #{edge.Originator.UIndex} {sourceName}"
+                                    };
+                                    temp.Click += (o, args) => edge.Originator.RemoveOutlink(edge);
+                                    inputLinksMenuItem.Items.Add(temp);
+                                }
+                            }
+
+                            if (inputLinksMenuItem.Items.Count > 0)
+                            {
+                                inputLinksMenuItem.Items.Add(new Separator());
+                                var temp = new MenuItem { Header = "Break all incoming links" };
+                                temp.Click += (o, args) => ClearAllIncomingConnections(action);
+                                inputLinksMenuItem.Items.Add(temp);
+                            }
+                        }
+                    }
+
+                    if (breakLinksMenuItem.GetChild("outputLinksMenuItem") is MenuItem outputLinksMenuItem)
+                    {
+                        outputLinksMenuItem.Visibility = Visibility.Collapsed;
+                        outputLinksMenuItem.Items.Clear();
+                        if (obj is SBox sBox)
+                        {
                             for (int i = 0; i < sBox.Outlinks.Count; i++)
                             {
                                 for (int j = 0; j < sBox.Outlinks[i].Links.Count; j++)
                                 {
                                     outputLinksMenuItem.Visibility = Visibility.Visible;
                                     hasLinks = true;
+
                                     string targetStr = null;
                                     if (Pcc.TryGetEntry(sBox.Outlinks[i].Links[j], out var target))
                                     {
@@ -4781,66 +4815,95 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
 
                                     var temp = new MenuItem
                                     {
-                                        Header =
-                                            $"Break link from {sBox.Outlinks[i].Desc} to {sBox.Outlinks[i].Links[j]} {targetStr}"
+                                        Header = $"Break link from {sBox.Outlinks[i].Desc} to {sBox.Outlinks[i].Links[j]} {targetStr}"
                                     };
                                     int linkConnection = i;
                                     int linkIndex = j;
-                                    temp.Click += (o, args) => { sBox.RemoveOutlink(linkConnection, linkIndex); };
+                                    temp.Click += (o, args) => sBox.RemoveOutlink(linkConnection, linkIndex);
                                     outputLinksMenuItem.Items.Add(temp);
                                 }
                             }
 
                             if (outputLinksMenuItem.Items.Count > 0)
                             {
-                                var temp = new MenuItem { Header = "Break All", Tag = obj.Export };
+                                outputLinksMenuItem.Items.Add(new Separator());
+                                var temp = new MenuItem { Header = "Break all outgoing links", Tag = obj.Export };
                                 temp.Click += removeAllOutputLinks;
                                 outputLinksMenuItem.Items.Add(temp);
                             }
                         }
+                    }
 
-                        if (breakLinksMenuItem.GetChild("varLinksMenuItem") is MenuItem varLinksMenuItem)
+                    if (breakLinksMenuItem.GetChild("varLinksMenuItem") is MenuItem varLinksMenuItem)
+                    {
+                        varLinksMenuItem.Visibility = Visibility.Collapsed;
+                        varLinksMenuItem.Items.Clear();
+                        if (obj is SBox sBox)
                         {
-                            varLinksMenuItem.Visibility = Visibility.Collapsed;
-                            varLinksMenuItem.Items.Clear();
                             for (int i = 0; i < sBox.Varlinks.Count; i++)
                             {
                                 for (int j = 0; j < sBox.Varlinks[i].Links.Count; j++)
                                 {
                                     varLinksMenuItem.Visibility = Visibility.Visible;
                                     hasLinks = true;
-
-                                    string targetStr = null;
-                                    if (Pcc.TryGetEntry(sBox.Varlinks[i].Links[j], out var target))
-                                    {
-                                        targetStr = target.ObjectName.Instanced;
-                                    }
-
+                                    string targetStr = Pcc.TryGetEntry(sBox.Varlinks[i].Links[j], out var target)
+                                        ? target.ObjectName.Instanced
+                                        : null;
                                     var temp = new MenuItem
                                     {
-                                        Header =
-                                            $"Break link from {sBox.Varlinks[i].Desc} to {sBox.Varlinks[i].Links[j]} {targetStr}"
+                                        Header = $"Break link from {sBox.Varlinks[i].Desc} to {sBox.Varlinks[i].Links[j]} {targetStr}"
                                     };
-
                                     int linkConnection = i;
                                     int linkIndex = j;
-                                    temp.Click += (o, args) => { sBox.RemoveVarlink(linkConnection, linkIndex); };
+                                    temp.Click += (o, args) => sBox.RemoveVarlink(linkConnection, linkIndex);
                                     varLinksMenuItem.Items.Add(temp);
                                 }
                             }
 
                             if (varLinksMenuItem.Items.Count > 0)
                             {
-                                var temp = new MenuItem { Header = "Break All", Tag = obj.Export };
+                                varLinksMenuItem.Items.Add(new Separator());
+                                var temp = new MenuItem { Header = "Break all outgoing variable links", Tag = obj.Export };
                                 temp.Click += removeAllVarLinks;
                                 varLinksMenuItem.Items.Add(temp);
                             }
                         }
 
-                        if (breakLinksMenuItem.GetChild("eventLinksMenuItem") is MenuItem eventLinksMenuItem)
+                        if (obj is SVar variable)
                         {
-                            eventLinksMenuItem.Visibility = Visibility.Collapsed;
-                            eventLinksMenuItem.Items.Clear();
+                            if (varLinksMenuItem.Items.Count > 0 && variable.Connections.Count > 0)
+                            {
+                                varLinksMenuItem.Items.Add(new Separator());
+                            }
+
+                            foreach (VarEdge edge in variable.Connections)
+                            {
+                                varLinksMenuItem.Visibility = Visibility.Visible;
+                                hasLinks = true;
+                                var temp = new MenuItem
+                                {
+                                    Header = $"Break incoming link from #{edge.Originator.UIndex} {edge.Originator.Export.ObjectName.Instanced}"
+                                };
+                                temp.Click += (o, args) => edge.Originator.RemoveVarlink(edge);
+                                varLinksMenuItem.Items.Add(temp);
+                            }
+
+                            if (variable.Connections.Count > 0)
+                            {
+                                varLinksMenuItem.Items.Add(new Separator());
+                                var temp = new MenuItem { Header = "Break all incoming variable links" };
+                                temp.Click += (o, args) => ClearAllIncomingConnections(variable);
+                                varLinksMenuItem.Items.Add(temp);
+                            }
+                        }
+                    }
+
+                    if (breakLinksMenuItem.GetChild("eventLinksMenuItem") is MenuItem eventLinksMenuItem)
+                    {
+                        eventLinksMenuItem.Visibility = Visibility.Collapsed;
+                        eventLinksMenuItem.Items.Clear();
+                        if (obj is SBox sBox)
+                        {
                             for (int i = 0; i < sBox.EventLinks.Count; i++)
                             {
                                 for (int j = 0; j < sBox.EventLinks[i].Links.Count; j++)
@@ -4849,42 +4912,59 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                                     hasLinks = true;
                                     var temp = new MenuItem
                                     {
-                                        Header =
-                                            $"Break link from {sBox.EventLinks[i].Desc} to {sBox.EventLinks[i].Links[j]}"
+                                        Header = $"Break link from {sBox.EventLinks[i].Desc} to {sBox.EventLinks[i].Links[j]}"
                                     };
                                     int linkConnection = i;
                                     int linkIndex = j;
-                                    temp.Click += (o, args) => { sBox.RemoveEventlink(linkConnection, linkIndex); };
+                                    temp.Click += (o, args) => sBox.RemoveEventlink(linkConnection, linkIndex);
                                     eventLinksMenuItem.Items.Add(temp);
                                 }
                             }
 
                             if (eventLinksMenuItem.Items.Count > 0)
                             {
-                                var temp = new MenuItem { Header = "Break All", Tag = obj.Export };
+                                eventLinksMenuItem.Items.Add(new Separator());
+                                var temp = new MenuItem { Header = "Break all outgoing event links", Tag = obj.Export };
                                 temp.Click += removeAllEventLinks;
                                 eventLinksMenuItem.Items.Add(temp);
                             }
                         }
 
-                        if (breakLinksMenuItem.GetChild("breakAllLinksMenuItem") is MenuItem breakAllLinksMenuItem)
+                        if (obj is SEvent sequenceEvent)
                         {
-                            if (hasLinks)
+                            if (eventLinksMenuItem.Items.Count > 0 && sequenceEvent.Connections.Count > 0)
                             {
-                                breakLinksMenuItem.Visibility = Visibility.Visible;
-                                breakAllLinksMenuItem.Visibility = Visibility.Visible;
-                                breakAllLinksMenuItem.Tag = obj.Export;
+                                eventLinksMenuItem.Items.Add(new Separator());
                             }
-                            else
+
+                            foreach (EventEdge edge in sequenceEvent.Connections)
                             {
-                                breakLinksMenuItem.Visibility = Visibility.Collapsed;
-                                breakAllLinksMenuItem.Visibility = Visibility.Collapsed;
+                                eventLinksMenuItem.Visibility = Visibility.Visible;
+                                hasLinks = true;
+                                var temp = new MenuItem
+                                {
+                                    Header = $"Break incoming link from #{edge.Originator.UIndex} {edge.Originator.Export.ObjectName.Instanced}"
+                                };
+                                temp.Click += (o, args) => edge.Originator.RemoveEventlink(edge);
+                                eventLinksMenuItem.Items.Add(temp);
+                            }
+
+                            if (sequenceEvent.Connections.Count > 0)
+                            {
+                                eventLinksMenuItem.Items.Add(new Separator());
+                                var temp = new MenuItem { Header = "Break all incoming event links" };
+                                temp.Click += (o, args) => ClearAllIncomingConnections(sequenceEvent);
+                                eventLinksMenuItem.Items.Add(temp);
                             }
                         }
                     }
-                    else
+
+                    if (breakLinksMenuItem.GetChild("breakAllLinksMenuItem") is MenuItem breakAllLinksMenuItem)
                     {
-                        breakLinksMenuItem.Visibility = Visibility.Collapsed;
+                        hasLinks |= HasIncomingConnections(obj);
+                        breakLinksMenuItem.Visibility = hasLinks ? Visibility.Visible : Visibility.Collapsed;
+                        breakAllLinksMenuItem.Visibility = hasLinks ? Visibility.Visible : Visibility.Collapsed;
+                        breakAllLinksMenuItem.Tag = obj;
                     }
                 }
 
@@ -5514,12 +5594,170 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             return (pastedCount, skippedCount);
         }
 
-        private static void ClearAllIncomingConnections(SAction action)
+        private void ClearAllIncomingConnections(SObj obj)
         {
-            foreach (var edge in action.InputEdges.ToList())
+            int targetUIndex = obj.UIndex;
+            bool isAction = obj is SAction;
+            bool isVariable = obj is SVar;
+            bool isEvent = obj is SEvent;
+
+            foreach (ExportEntry source in Pcc.Exports)
             {
-                edge.Originator.RemoveOutlink(edge);
+                if (isAction)
+                {
+                    if (source.IsA("SFXSceneShopNode"))
+                    {
+                        var outputPins = source.GetProperty<ArrayProperty<StructProperty>>("m_aOutputPins");
+                        bool changed = false;
+                        if (outputPins != null)
+                        {
+                            foreach (StructProperty pin in outputPins)
+                            {
+                                var links = pin.GetProp<ArrayProperty<StructProperty>>("aLinks");
+                                for (int i = (links?.Count ?? 0) - 1; i >= 0; i--)
+                                {
+                                    if (links[i].GetProp<ObjectProperty>("pLinkedNode")?.Value == targetUIndex)
+                                    {
+                                        links.RemoveAt(i);
+                                        changed = true;
+                                    }
+                                }
+                            }
+
+                            if (changed)
+                            {
+                                source.WriteProperty(outputPins);
+                            }
+                        }
+                    }
+                    else if (source.GetProperty<ArrayProperty<StructProperty>>("OutputLinks") is { } outputLinks)
+                    {
+                        bool changed = false;
+                        foreach (StructProperty outputLink in outputLinks)
+                        {
+                            var links = outputLink.GetProp<ArrayProperty<StructProperty>>("Links");
+                            for (int i = (links?.Count ?? 0) - 1; i >= 0; i--)
+                            {
+                                if (links[i].GetProp<ObjectProperty>("LinkedOp")?.Value == targetUIndex)
+                                {
+                                    links.RemoveAt(i);
+                                    changed = true;
+                                }
+                            }
+                        }
+
+                        if (changed)
+                        {
+                            source.WriteProperty(outputLinks);
+                        }
+                    }
+                }
+                else if (isVariable)
+                {
+                    if (source.IsA("SFXSceneShopNode"))
+                    {
+                        if (source.GetProperty<ObjectProperty>("m_pLinkedScene") is { } linkedScene
+                            && linkedScene.Value == targetUIndex)
+                        {
+                            source.WriteProperty(new ObjectProperty(0, "m_pLinkedScene"));
+                        }
+                    }
+                    else if (source.GetProperty<ArrayProperty<StructProperty>>("VariableLinks") is { } variableLinks)
+                    {
+                        bool changed = false;
+                        foreach (StructProperty variableLink in variableLinks)
+                        {
+                            var linkedVariables = variableLink.GetProp<ArrayProperty<ObjectProperty>>("LinkedVariables");
+                            for (int i = (linkedVariables?.Count ?? 0) - 1; i >= 0; i--)
+                            {
+                                if (linkedVariables[i].Value == targetUIndex)
+                                {
+                                    linkedVariables.RemoveAt(i);
+                                    changed = true;
+                                }
+                            }
+                        }
+
+                        if (changed)
+                        {
+                            source.WriteProperty(variableLinks);
+                        }
+                    }
+                }
+                else if (isEvent
+                         && source.GetProperty<ArrayProperty<StructProperty>>("EventLinks") is { } eventLinks)
+                {
+                    bool changed = false;
+                    foreach (StructProperty eventLink in eventLinks)
+                    {
+                        var linkedEvents = eventLink.GetProp<ArrayProperty<ObjectProperty>>("LinkedEvents");
+                        for (int i = (linkedEvents?.Count ?? 0) - 1; i >= 0; i--)
+                        {
+                            if (linkedEvents[i].Value == targetUIndex)
+                            {
+                                linkedEvents.RemoveAt(i);
+                                changed = true;
+                            }
+                        }
+                    }
+
+                    if (changed)
+                    {
+                        source.WriteProperty(eventLinks);
+                    }
+                }
             }
+        }
+
+        private bool HasIncomingConnections(SObj obj)
+        {
+            int targetUIndex = obj.UIndex;
+            foreach (ExportEntry source in Pcc.Exports)
+            {
+                if (obj is SAction)
+                {
+                    if (source.IsA("SFXSceneShopNode"))
+                    {
+                        if (source.GetProperty<ArrayProperty<StructProperty>>("m_aOutputPins")?.Any(pin =>
+                                pin.GetProp<ArrayProperty<StructProperty>>("aLinks")?.Any(link =>
+                                    link.GetProp<ObjectProperty>("pLinkedNode")?.Value == targetUIndex) == true) == true)
+                        {
+                            return true;
+                        }
+                    }
+                    else if (source.GetProperty<ArrayProperty<StructProperty>>("OutputLinks")?.Any(outputLink =>
+                                 outputLink.GetProp<ArrayProperty<StructProperty>>("Links")?.Any(link =>
+                                     link.GetProp<ObjectProperty>("LinkedOp")?.Value == targetUIndex) == true) == true)
+                    {
+                        return true;
+                    }
+                }
+                else if (obj is SVar)
+                {
+                    if (source.IsA("SFXSceneShopNode"))
+                    {
+                        if (source.GetProperty<ObjectProperty>("m_pLinkedScene")?.Value == targetUIndex)
+                        {
+                            return true;
+                        }
+                    }
+                    else if (source.GetProperty<ArrayProperty<StructProperty>>("VariableLinks")?.Any(variableLink =>
+                                 variableLink.GetProp<ArrayProperty<ObjectProperty>>("LinkedVariables")?.Any(link =>
+                                     link.Value == targetUIndex) == true) == true)
+                    {
+                        return true;
+                    }
+                }
+                else if (obj is SEvent
+                         && source.GetProperty<ArrayProperty<StructProperty>>("EventLinks")?.Any(eventLink =>
+                             eventLink.GetProp<ArrayProperty<ObjectProperty>>("LinkedEvents")?.Any(link =>
+                                 link.Value == targetUIndex) == true) == true)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private void CopyInputConnections_Clicked(object sender, RoutedEventArgs e)
@@ -5718,7 +5956,18 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
 
         private void removeAllLinks(object sender, RoutedEventArgs args)
         {
-            ExportEntry export = (ExportEntry)((MenuItem)sender).Tag;
+            if (((MenuItem)sender).Tag is not SObj obj)
+            {
+                return;
+            }
+
+            ExportEntry export = obj.Export;
+            ClearAllIncomingConnections(obj);
+            ClearAllOwnedConnections(export);
+        }
+
+        private void ClearAllOwnedConnections(ExportEntry export)
+        {
             if (export.IsA("SFXSceneShopNode"))
             {
                 removeAllSFXSceneShopPinLinks(export, "m_aOutputPins");
@@ -5813,33 +6062,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             if (CurrentObjects_ListBox.SelectedItem is SObj sObj)
             {
                 //remove incoming connections
-                switch (sObj)
-                {
-                    case SVar sVar:
-                        foreach (VarEdge edge in sVar.Connections)
-                        {
-                            edge.Originator.RemoveVarlink(edge);
-                        }
-
-                        break;
-                    case SAction sAction:
-                        foreach (SBox.InputLink inLink in sAction.InLinks)
-                        {
-                            foreach (ActionEdge edge in inLink.Edges)
-                            {
-                                edge.Originator.RemoveOutlink(edge);
-                            }
-                        }
-
-                        break;
-                    case SEvent sEvent:
-                        foreach (EventEdge edge in sEvent.Connections)
-                        {
-                            edge.Originator.RemoveEventlink(edge);
-                        }
-
-                        break;
-                }
+                ClearAllIncomingConnections(sObj);
 
                 //remove outgoing links
                 if (sObj.Export.IsA("SFXSceneShopNode"))
