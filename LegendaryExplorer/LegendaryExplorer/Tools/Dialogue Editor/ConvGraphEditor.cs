@@ -226,6 +226,7 @@ namespace LegendaryExplorer.DialogueEditor
                 }
 
                 if (!DObj.draggingOutlink
+                    && !DObj.draggingInputlink
                     && Control.ModifierKeys.HasFlag(Keys.Shift)
                     && GetDraggedNode(e.PickedNode) is DiagNode draggedDialogueNode
                     && graph.Owner != null)
@@ -246,7 +247,7 @@ namespace LegendaryExplorer.DialogueEditor
 
                 base.OnStartDrag(sender, e);
                 e.Handled = true;
-                if (!DObj.draggingOutlink)
+                if (!DObj.draggingOutlink && !DObj.draggingInputlink)
                 {
                     (GetDraggedNode(e.PickedNode) ?? e.PickedNode).MoveToFront();
                 }

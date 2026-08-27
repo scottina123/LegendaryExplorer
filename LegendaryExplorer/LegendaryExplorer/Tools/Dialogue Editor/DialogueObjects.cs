@@ -101,6 +101,8 @@ namespace LegendaryExplorer.DialogueEditor
         private const int DefaultConnectionAlpha = 255;
         private const int DimmedConnectionAlpha = 72;
         public static bool draggingOutlink;
+        public static bool draggingInputlink;
+        public static int draggedInputIndex = -1;
         public static PNode dragTarget;
         public static bool OutputNumbers;
 
@@ -326,7 +328,9 @@ namespace LegendaryExplorer.DialogueEditor
                         {
                             foreach (var inputLink in destAction.InLinks)
                             {
-                                inputLink.Edges?.Remove(e);
+                                while (inputLink.Edges?.Remove(e) == true)
+                                {
+                                }
                             }
                         }
                     }
@@ -486,6 +490,7 @@ namespace LegendaryExplorer.DialogueEditor
             {
                 DObj.MoveToBack();
                 e.Handled = true;
+                dragTarget = null;
                 PNode p1 = ((PNode)sender).Parent;
                 PNode p2 = (PNode)sender;
                 var edge = new DiagEdEdge();
@@ -556,7 +561,7 @@ namespace LegendaryExplorer.DialogueEditor
                     DiagEdEdge DiagEdEdge = outLink.Edges[j];
                     if (DiagEdEdge == edge)
                     {
-                        RemoveOutlink(i, j);
+                        RemoveOutlinks(new[] { i });
                         return;
                     }
                 }
@@ -564,6 +569,63 @@ namespace LegendaryExplorer.DialogueEditor
         }
 
         public virtual void RemoveOutlink(int linkconnection, int linkIndex) { }
+
+        public virtual void RemoveOutlinks(IEnumerable<int> linkConnections)
+        {
+            foreach (int linkConnection in linkConnections.Distinct().OrderByDescending(index => index))
+            {
+                RemoveOutlink(linkConnection, 0);
+            }
+        }
+
+        public int FindOutlinkIndex(DiagEdEdge edge) =>
+            Outlinks.FindIndex(outlink => outlink.Edges.Contains(edge));
+
+        protected void AttachOutputDragHandler(PPath linkNode, PPath dragger)
+        {
+            Color normalColor = linkNode.Pen?.Color ?? connectionColor;
+            dragger.AddInputEventListener(outputDragHandler);
+            dragger.MouseEnter += ReverseOutputLinkTarget_MouseEnter;
+            dragger.MouseLeave += (sender, e) => ReverseOutputLinkTarget_MouseLeave(sender, e, normalColor);
+        }
+
+        private static void ReverseOutputLinkTarget_MouseEnter(object sender, PInputEventArgs e)
+        {
+            if (draggingInputlink
+                && sender is PNode { Parent: PPath linkNode }
+                && FindAncestor<DBox>(linkNode) is DBox owner
+                && owner.Outlinks.Any(link => ReferenceEquals(link.node, linkNode) && link.InputIndices == draggedInputIndex))
+            {
+                linkNode.Pen = selectedPen;
+                dragTarget = linkNode;
+            }
+        }
+
+        private static void ReverseOutputLinkTarget_MouseLeave(object sender, PInputEventArgs e, Color normalColor)
+        {
+            if (draggingInputlink && sender is PNode { Parent: PPath linkNode })
+            {
+                linkNode.Pen = new Pen(normalColor);
+                if (ReferenceEquals(dragTarget, linkNode))
+                {
+                    dragTarget = null;
+                }
+            }
+        }
+
+        internal static void RestoreOutputLinkTargetPen(PNode target)
+        {
+            if (target is not PPath linkNode || FindAncestor<DBox>(linkNode) is not DBox owner)
+            {
+                return;
+            }
+
+            OutputLink? outputLink = owner.Outlinks.FirstOrDefault(link => ReferenceEquals(link.node, linkNode));
+            if (outputLink.HasValue)
+            {
+                linkNode.Pen = new Pen(owner.getColor(outputLink.Value.RCat));
+            }
+        }
 
         public override void Dispose()
         {
@@ -620,7 +682,7 @@ namespace LegendaryExplorer.DialogueEditor
             dragger.Pen = new Pen(connectionColor);
             dragger.X = l.node.X;
             dragger.Y = l.node.Y;
-            dragger.AddInputEventListener(outputDragHandler);
+            AttachOutputDragHandler(l.node, dragger);
             l.node.AddChild(dragger);
             Outlinks.Add(l);
             outLinkBox = new PPath();
@@ -683,8 +745,70 @@ namespace LegendaryExplorer.DialogueEditor
                 MessageBox.Show("You cannot link start nodes to replies.\r\nStarts must link to entries.", "Dialogue Editor");
                 return;
             }
-            Editor.SelectedConv.StartingList[Order] = end.NodeID;
-            Editor.RecreateNodesToProperties(Editor.SelectedConv);
+            Editor.RetargetStartLinkInPlace(this, (DiagNodeEntry)end);
+        }
+
+        internal void RetargetLinkInPlace(DiagNodeEntry end)
+        {
+            if (end == null || Outlinks.Count == 0)
+            {
+                return;
+            }
+
+            OutputLink outLink = Outlinks[0];
+            StartNumber = end.NodeID;
+            NodeUID = 2000 + StartNumber;
+            listname = $"{DialogueEditorWindow.AddOrdinal(Order + 1)} Start Node: {StartNumber}";
+            outLink.Desc = $"Out {StartNumber}";
+            outLink.Links.Clear();
+            outLink.Links.Add(StartNumber);
+            Outlinks[0] = outLink;
+
+            if (titleBox != null && titleBox.Count() > 0 && titleBox[0] is DText titleText)
+            {
+                titleText.Text = listname;
+            }
+            if (outLinkBox != null && outLinkBox.Count() > 0 && outLinkBox[0] is DText linkText)
+            {
+                linkText.Text = $"{StartNumber} :";
+            }
+
+            foreach (DiagEdEdge edge in outLink.Edges.Distinct())
+            {
+                if (edge.GetEndOwner() is DiagNode oldEnd)
+                {
+                    oldEnd.InputEdges.Remove(edge);
+                    if (oldEnd.InLinks != null)
+                    {
+                        foreach (InputLink inputLink in oldEnd.InLinks)
+                        {
+                            while (inputLink.Edges.Remove(edge))
+                            {
+                            }
+                        }
+                    }
+                }
+
+                edge.inputIndex = 0;
+                edge.end = end.InLinks[0].node;
+                if (!end.InputEdges.Contains(edge))
+                {
+                    end.InputEdges.Add(edge);
+                }
+                if (!end.InLinks[0].Edges.Contains(edge))
+                {
+                    end.InLinks[0].Edges.Add(edge);
+                }
+                ConvGraphEditor.UpdateEdge(edge);
+            }
+
+            if (outLink.Edges.Count == 0)
+            {
+                RecreateConnections(Editor.CurrentObjects);
+            }
+
+            InvalidateFullBounds();
+            InvalidatePaint();
         }
 
         public void OnMouseEnter(object sender, PInputEventArgs e)
@@ -713,7 +837,7 @@ namespace LegendaryExplorer.DialogueEditor
         public int NodeID;
         public ObservableCollectionExtended<ReplyChoiceNode> Links = new ObservableCollectionExtended<ReplyChoiceNode>();
         static readonly Color insideTextColor = Color.FromArgb(213, 213, 213);//white
-        protected InputDragHandler inputDragHandler = new InputDragHandler();
+        protected readonly InputDragHandler inputDragHandler;
         protected DialogueEditorWindow Editor;
         private RectangleF lineStrRefEditorBounds;
         private readonly List<PlotFieldEditorInfo> plotFieldEditors = [];
@@ -737,6 +861,7 @@ namespace LegendaryExplorer.DialogueEditor
             pcc = editor.Pcc;
             originalX = x;
             originalY = y;
+            inputDragHandler = new InputDragHandler(ConvGraphEditor, this);
 
             plotSectionStateKey = $"{editor.SelectedConv?.Export?.UIndex}:{node.IsReply}:{node.NodeCount}";
             if (plotSectionStates.TryGetValue(plotSectionStateKey, out var savedState))
@@ -1966,47 +2091,117 @@ namespace LegendaryExplorer.DialogueEditor
                     if (inputNum >= 0)
                     {
                         edge.end = InLinks[inputNum].node;
-                        InLinks[inputNum].Edges.Add(edge);
+                        if (!InLinks[inputNum].Edges.Contains(edge))
+                        {
+                            InLinks[inputNum].Edges.Add(edge);
+                        }
                     }
                 }
             }
         }
         public void RefreshInputLinks()
         {
-            if (InputEdges.Any() && InLinks != null)
+            if (InLinks == null)
             {
-                foreach (DiagEdEdge edge in InputEdges)
+                return;
+            }
+
+            foreach (InputLink inputLink in InLinks)
+            {
+                inputLink.Edges.Clear();
+            }
+
+            foreach (DiagEdEdge edge in InputEdges.Distinct())
+            {
+                int inputNum = edge.inputIndex;
+                if (inputNum >= 0 && inputNum < InLinks.Count)
                 {
-                    int inputNum = edge.inputIndex;
-                    if (inputNum >= 0)
-                    {
-                        edge.end = InLinks[inputNum].node;
-                        InLinks[inputNum].Edges.Add(edge);
-                    }
+                    edge.end = InLinks[inputNum].node;
+                    InLinks[inputNum].Edges.Add(edge);
                 }
             }
         }
 
-        public class InputDragHandler : PDragEventHandler
+        protected sealed class InputDragHandler : PDragEventHandler
         {
+            private readonly ConvGraphEditor graphEditor;
+            private readonly DiagNode owner;
+            private DiagEdEdge activeEdge;
+            private InputLink activeInputLink;
+            private PNode fixedAnchor;
+
+            public InputDragHandler(ConvGraphEditor graphEditor, DiagNode owner)
+            {
+                this.graphEditor = graphEditor;
+                this.owner = owner;
+            }
+
             public override bool DoesAcceptEvent(PInputEventArgs e)
             {
-                return e.IsMouseEvent && (e.Button != MouseButtons.None || e.IsMouseEnterOrMouseLeave) && !e.Handled;
+                return (e.IsMouseEnterOrMouseLeave || (e.IsMouseEvent && e.Button == MouseButtons.Left)) && !e.Handled;
             }
 
             protected override void OnStartDrag(object sender, PInputEventArgs e)
             {
+                owner.MoveToBack();
                 e.Handled = true;
+                dragTarget = null;
+                var inputNode = (PPath)sender;
+                activeInputLink = owner.InLinks.First(link => ReferenceEquals(link.node, inputNode));
+                draggedInputIndex = owner.InLinks.FindIndex(link => ReferenceEquals(link.node, inputNode));
+                fixedAnchor = new PNode { Pickable = false };
+                fixedAnchor.SetBounds(inputNode.X, inputNode.Y, inputNode.Width, inputNode.Height);
+                inputNode.Parent.AddChild(fixedAnchor);
+                fixedAnchor.MoveToBack();
+                activeEdge = new DiagEdEdge
+                {
+                    BaseColor = connectionColor,
+                    start = inputNode,
+                    end = fixedAnchor,
+                    inputIndex = activeInputLink.index
+                };
+                activeEdge.ApplyVisualState(isHighlighted: false, isDimmed: false);
+                graphEditor.addEdge(activeEdge);
+                base.OnStartDrag(sender, e);
+                draggingInputlink = true;
             }
 
             protected override void OnDrag(object sender, PInputEventArgs e)
             {
+                base.OnDrag(sender, e);
                 e.Handled = true;
+                ConvGraphEditor.UpdateEdge(activeEdge);
+                foreach (DiagEdEdge edge in activeInputLink.Edges.Distinct())
+                {
+                    ConvGraphEditor.UpdateEdge(edge);
+                }
             }
 
             protected override void OnEndDrag(object sender, PInputEventArgs e)
             {
+                var inputNode = (PPath)sender;
+                inputNode.SetOffset(0, 0);
+                foreach (DiagEdEdge edge in activeInputLink.Edges.Distinct())
+                {
+                    ConvGraphEditor.UpdateEdge(edge);
+                }
+                graphEditor.edgeLayer.RemoveChild(activeEdge);
+                fixedAnchor.Parent.RemoveChild(fixedAnchor);
+                activeEdge = null;
+                activeInputLink = default;
+                fixedAnchor = null;
+                base.OnEndDrag(sender, e);
                 e.Handled = true;
+                draggingInputlink = false;
+                draggedInputIndex = -1;
+
+                if (dragTarget != null)
+                {
+                    PNode target = dragTarget;
+                    DBox.RestoreOutputLinkTargetPen(target);
+                    dragTarget = null;
+                    FindAncestor<DBox>(target)?.CreateOutlink(target, inputNode);
+                }
             }
         }
 
@@ -2021,8 +2216,11 @@ namespace LegendaryExplorer.DialogueEditor
 
         public void OnMouseLeave(object sender, PInputEventArgs e)
         {
-            ((PPath)sender).Pen = outlinePen;
-            dragTarget = null;
+            ((PPath)sender).Pen = new Pen(connectionColor);
+            if (ReferenceEquals(dragTarget, sender))
+            {
+                dragTarget = null;
+            }
         }
 
         public override void Dispose()
@@ -2142,7 +2340,7 @@ namespace LegendaryExplorer.DialogueEditor
                         dragger.Pen = new Pen(getColor(reply.RCategory));
                         dragger.X = l.node.X;
                         dragger.Y = l.node.Y;
-                        dragger.AddInputEventListener(outputDragHandler);
+                        AttachOutputDragHandler(l.node, dragger);
                         l.node.AddChild(dragger);
                         Outlinks.Add(l);
                         n++;
@@ -2168,7 +2366,7 @@ namespace LegendaryExplorer.DialogueEditor
                     dragger.Pen = new Pen(connectionColor);
                     dragger.X = l.node.X;
                     dragger.Y = l.node.Y;
-                    dragger.AddInputEventListener(outputDragHandler);
+                    AttachOutputDragHandler(l.node, dragger);
                     l.node.AddChild(dragger);
                     Outlinks.Add(l);
                 }
@@ -2187,11 +2385,32 @@ namespace LegendaryExplorer.DialogueEditor
         }
         public override void RemoveOutlink(int linkconnection, int linkIndex)
         {
-            var oldEntriesProp = NodeProp.GetProp<ArrayProperty<StructProperty>>("ReplyListNew");
-            oldEntriesProp.RemoveAt(linkconnection);
-            NodeProp.Properties.AddOrReplaceProp(oldEntriesProp);
-            //Editor.RecreateNodesToProperties(Editor.SelectedConv);
-            Editor.PushLocalGraphChanges(this);
+            RemoveOutlinks(new[] { linkconnection });
+        }
+
+        public override void RemoveOutlinks(IEnumerable<int> linkConnections)
+        {
+            var replyList = NodeProp.GetProp<ArrayProperty<StructProperty>>("ReplyListNew");
+            if (replyList == null)
+            {
+                return;
+            }
+
+            bool removed = false;
+            foreach (int linkConnection in linkConnections.Distinct().OrderByDescending(index => index))
+            {
+                if (linkConnection >= 0 && linkConnection < replyList.Count)
+                {
+                    replyList.RemoveAt(linkConnection);
+                    removed = true;
+                }
+            }
+
+            if (removed)
+            {
+                NodeProp.Properties.AddOrReplaceProp(replyList);
+                Editor.PushLocalGraphChanges(this);
+            }
         }
 
         public override void CreateLink(DiagNode start, DiagNode end)
@@ -2230,7 +2449,7 @@ namespace LegendaryExplorer.DialogueEditor
 
             start.NodeProp.Properties.AddOrReplaceProp(newReplyListProp);
             Editor.EnsureInterruptTrackForReplyCategory(start.Node, linkOptions.SelectedCategory);
-            Editor.PushLocalGraphChanges(this);
+            Editor.PushLocalGraphChanges(start);
         }
     }
 
@@ -2296,7 +2515,7 @@ namespace LegendaryExplorer.DialogueEditor
                             dragger.Pen = new Pen(connectionColor);
                             dragger.X = l.node.X;
                             dragger.Y = l.node.Y;
-                            dragger.AddInputEventListener(outputDragHandler);
+                            AttachOutputDragHandler(l.node, dragger);
                             l.node.AddChild(dragger);
                             Outlinks.Add(l);
                             n++;
@@ -2329,7 +2548,7 @@ namespace LegendaryExplorer.DialogueEditor
                         dragger.Pen = new Pen(connectionColor);
                         dragger.X = l.node.X;
                         dragger.Y = l.node.Y;
-                        dragger.AddInputEventListener(outputDragHandler);
+                        AttachOutputDragHandler(l.node, dragger);
                         l.node.AddChild(dragger);
                         Outlinks.Add(l);
                     }
@@ -2349,10 +2568,32 @@ namespace LegendaryExplorer.DialogueEditor
         }
         public override void RemoveOutlink(int linkconnection, int linkIndex)
         {
-            var oldEntriesProp = NodeProp.GetProp<ArrayProperty<IntProperty>>("EntryList");
-            oldEntriesProp.RemoveAt(linkconnection);
-            NodeProp.Properties.AddOrReplaceProp(oldEntriesProp);
-            Editor.PushLocalGraphChanges(this);
+            RemoveOutlinks(new[] { linkconnection });
+        }
+
+        public override void RemoveOutlinks(IEnumerable<int> linkConnections)
+        {
+            var entryList = NodeProp.GetProp<ArrayProperty<IntProperty>>("EntryList");
+            if (entryList == null)
+            {
+                return;
+            }
+
+            bool removed = false;
+            foreach (int linkConnection in linkConnections.Distinct().OrderByDescending(index => index))
+            {
+                if (linkConnection >= 0 && linkConnection < entryList.Count)
+                {
+                    entryList.RemoveAt(linkConnection);
+                    removed = true;
+                }
+            }
+
+            if (removed)
+            {
+                NodeProp.Properties.AddOrReplaceProp(entryList);
+                Editor.PushLocalGraphChanges(this);
+            }
         }
 
         public override void CreateLink(DiagNode start, DiagNode end)
@@ -2384,7 +2625,7 @@ namespace LegendaryExplorer.DialogueEditor
             newEntriesProp.Insert(Math.Clamp(insertionIndex, 0, newEntriesProp.Count), new IntProperty(endNode));
             start.NodeProp.Properties.AddOrReplaceProp(newEntriesProp);  //Push to Property
 
-            Editor.PushLocalGraphChanges(this);
+            Editor.PushLocalGraphChanges(start);
         }
     }
     public class DText : PText

@@ -2143,8 +2143,8 @@ namespace LegendaryExplorer.DialogueEditor
             float newX = obj.X + obj.OffsetX;
             float newY = obj.Y + obj.OffsetY;
             obj.SyncIdentityFromNode();
-            obj.RemoveAllChildren();
             obj.RemoveConnections();
+            obj.RemoveAllChildren();
             obj.GetOutputLinks(obj.Node);
             obj.Layout(newX, newY);
             obj.RecreateConnections(CurrentObjects);
@@ -2154,6 +2154,26 @@ namespace LegendaryExplorer.DialogueEditor
                 ConvGraphEditor.UpdateEdge(edge);
             }
 
+            UpdateSelectedConnectionHighlighting();
+            if (inlineLinkEditorNode?.NodeUID == obj.NodeUID)
+            {
+                LoadInlineLinkEditor(obj);
+            }
+            graphEditor.Refresh();
+        }
+
+        public void RetargetStartLinkInPlace(DStart start, DiagNodeEntry end)
+        {
+            if (start == null || end == null || SelectedConv == null || !SelectedConv.StartingList.ContainsKey(start.Order))
+            {
+                return;
+            }
+
+            IsLocalUpdate = true;
+            SelectedConv.StartingList[start.Order] = end.Node.NodeCount;
+            start.RetargetLinkInPlace(end);
+            RecreateNodesToProperties(SelectedConv);
+            Start_ListBoxUpdate();
             UpdateSelectedConnectionHighlighting();
             graphEditor.Refresh();
         }
@@ -10919,38 +10939,56 @@ namespace LegendaryExplorer.DialogueEditor
                 return;
             }
 
-            bool linksCleared = false;
-            if (SelectedDialogueNode.IsReply)
-            {
-                var entrylinklist = SelectedDialogueNode.NodeProp.GetProp<ArrayProperty<IntProperty>>("EntryList");
-                if (entrylinklist != null && entrylinklist.Count > 0)
-                {
-                    entrylinklist.Clear();
-                    linksCleared = true;
-                }
-            }
-            else
-            {
-                var replylinklist = SelectedDialogueNode.NodeProp.GetProp<ArrayProperty<StructProperty>>("ReplyListNew");
-                if (replylinklist != null && replylinklist.Count > 0)
-                {
-                    replylinklist.Clear();
-                    linksCleared = true;
-                }
-            }
-
-            if (!linksCleared)
+            DiagNode selectedGraphNode = SelectedObjects.OfType<DiagNode>()
+                .FirstOrDefault(node => ReferenceEquals(node.Node, SelectedDialogueNode))
+                ?? CurrentObjects.OfType<DiagNode>()
+                    .FirstOrDefault(node => ReferenceEquals(node.Node, SelectedDialogueNode));
+            if (selectedGraphNode == null)
             {
                 return;
             }
 
-            IsLocalUpdate = true;
-            RecreateNodesToProperties(SelectedConv);
-            RefreshNodeInGraph(SelectedDialogueNode, persistConversation: false);
+            var removalsBySource = new Dictionary<DiagNode, HashSet<int>>();
 
-            if (SelectedObjects.FirstOrDefault() is DiagNode selectedNode && inlineLinkEditorNode?.NodeUID == selectedNode.NodeUID)
+            void AddRemoval(DiagNode source, int linkIndex)
             {
-                LoadInlineLinkEditor(selectedNode);
+                if (source == null || linkIndex < 0)
+                {
+                    return;
+                }
+
+                if (!removalsBySource.TryGetValue(source, out HashSet<int> linkIndices))
+                {
+                    linkIndices = [];
+                    removalsBySource[source] = linkIndices;
+                }
+                linkIndices.Add(linkIndex);
+            }
+
+            for (int i = 0; i < selectedGraphNode.Outlinks.Count; i++)
+            {
+                if (selectedGraphNode.Outlinks[i].Links.Count > 0)
+                {
+                    AddRemoval(selectedGraphNode, i);
+                }
+            }
+
+            foreach (DiagEdEdge inputEdge in selectedGraphNode.InputEdges.Distinct().ToArray())
+            {
+                if (inputEdge.originator is DiagNode source)
+                {
+                    AddRemoval(source, source.FindOutlinkIndex(inputEdge));
+                }
+            }
+
+            foreach ((DiagNode source, HashSet<int> linkIndices) in removalsBySource)
+            {
+                source.RemoveOutlinks(linkIndices);
+            }
+
+            if (inlineLinkEditorNode?.NodeUID == selectedGraphNode.NodeUID)
+            {
+                LoadInlineLinkEditor(selectedGraphNode);
             }
         }
 
@@ -12459,6 +12497,75 @@ namespace LegendaryExplorer.DialogueEditor
                     SelectedSpeakerList.Select(speaker => speaker.SpeakerName).ToArray())
                 : null;
 
+        private static string GetDialogueGraphNodeLabel(DiagNode node) =>
+            node is DiagNodeReply ? $"R{node.NodeID - 1000}" : $"E{node.NodeID}";
+
+        private void PopulateDialogueNodeBreakLinksMenu(
+            ContextMenu contextMenu,
+            DiagNode node,
+            string breakLinksMenuName,
+            string inputLinksMenuName,
+            string outputLinksMenuName,
+            string breakAllLinksMenuName)
+        {
+            if (contextMenu.GetChild(breakLinksMenuName) is not MenuItem breakLinksMenuItem
+                || breakLinksMenuItem.GetChild(inputLinksMenuName) is not MenuItem inputLinksMenuItem
+                || breakLinksMenuItem.GetChild(outputLinksMenuName) is not MenuItem outputLinksMenuItem
+                || breakLinksMenuItem.GetChild(breakAllLinksMenuName) is not MenuItem breakAllLinksMenuItem)
+            {
+                return;
+            }
+
+            inputLinksMenuItem.Items.Clear();
+            outputLinksMenuItem.Items.Clear();
+
+            foreach (DiagEdEdge edge in node.InputEdges.Distinct().ToArray())
+            {
+                // Start links are managed by the start-node editor because a conversation must retain a start.
+                if (edge.originator is not DiagNode source || source.FindOutlinkIndex(edge) < 0)
+                {
+                    continue;
+                }
+
+                var item = new MenuItem
+                {
+                    Header = $"Break link from {GetDialogueGraphNodeLabel(source)} to {GetDialogueGraphNodeLabel(node)}"
+                };
+                item.Click += (_, _) =>
+                {
+                    source.RemoveOutlink(edge);
+                    if (inlineLinkEditorNode?.NodeUID == node.NodeUID)
+                    {
+                        LoadInlineLinkEditor(node);
+                    }
+                };
+                inputLinksMenuItem.Items.Add(item);
+            }
+
+            for (int i = 0; i < node.Outlinks.Count; i++)
+            {
+                for (int j = 0; j < node.Outlinks[i].Links.Count; j++)
+                {
+                    int targetNodeId = node.Outlinks[i].Links[j];
+                    string targetLabel = targetNodeId >= 1000 ? $"R{targetNodeId - 1000}" : $"E{targetNodeId}";
+                    var item = new MenuItem
+                    {
+                        Header = $"Break link from {GetDialogueGraphNodeLabel(node)} to {targetLabel}"
+                    };
+                    int linkConnection = i;
+                    int linkIndex = j;
+                    item.Click += (_, _) => node.RemoveOutlink(linkConnection, linkIndex);
+                    outputLinksMenuItem.Items.Add(item);
+                }
+            }
+
+            inputLinksMenuItem.Visibility = inputLinksMenuItem.Items.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+            outputLinksMenuItem.Visibility = outputLinksMenuItem.Items.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+            bool hasLinks = inputLinksMenuItem.Items.Count > 0 || outputLinksMenuItem.Items.Count > 0;
+            breakLinksMenuItem.Visibility = hasLinks ? Visibility.Visible : Visibility.Collapsed;
+            breakAllLinksMenuItem.Visibility = hasLinks ? Visibility.Visible : Visibility.Collapsed;
+        }
+
         public void OpenNodeContextMenu(DObj obj)
         {
             if (obj is DStart dStart)
@@ -12492,46 +12599,7 @@ namespace LegendaryExplorer.DialogueEditor
                     {
                         editHeader.Background = new System.Windows.Media.SolidColorBrush(DObj.replyColor.ToWPFColor());
                     }
-                    if (dreply.Outlinks.Any()
-                     && contextMenu.GetChild("breakLinksMenuItem") is MenuItem breakLinksMenuItem)
-                    {
-                        bool hasLinks = false;
-                        if (breakLinksMenuItem.GetChild("outputLinksMenuItem") is MenuItem outputLinksMenuItem)
-                        {
-                            outputLinksMenuItem.Visibility = Visibility.Collapsed;
-                            outputLinksMenuItem.Items.Clear();
-                            for (int i = 0; i < dreply.Outlinks.Count; i++)
-                            {
-                                for (int j = 0; j < dreply.Outlinks[i].Links.Count; j++)
-                                {
-                                    outputLinksMenuItem.Visibility = Visibility.Visible;
-                                    hasLinks = true;
-                                    var temp = new MenuItem
-                                    {
-                                        Header = $"Break link from R{dreply.NodeID - 1000} to E{dreply.Outlinks[i].Links[j]}"
-                                    };
-                                    int linkConnection = i;
-                                    int linkIndex = j;
-                                    temp.Click += (o, args) => { dreply.RemoveOutlink(linkConnection, linkIndex); };
-                                    outputLinksMenuItem.Items.Add(temp);
-                                }
-                            }
-                        }
-
-                        if (breakLinksMenuItem.GetChild("breakAllLinksMenuItem") is MenuItem breakAllLinksMenuItem)
-                        {
-                            if (hasLinks)
-                            {
-                                breakLinksMenuItem.Visibility = Visibility.Visible;
-                                breakAllLinksMenuItem.Visibility = Visibility.Visible;
-                            }
-                            else
-                            {
-                                breakLinksMenuItem.Visibility = Visibility.Collapsed;
-                                breakAllLinksMenuItem.Visibility = Visibility.Collapsed;
-                            }
-                        }
-                    }
+                    PopulateDialogueNodeBreakLinksMenu(contextMenu, dreply, "breakLinksMenuItem", "inputLinksMenuItem", "outputLinksMenuItem", "breakAllLinksMenuItem");
                     DialogueNode_Selected(dreply);
                     contextMenu.DataContext = this;
                     contextMenu.IsOpen = true;
@@ -12551,46 +12619,7 @@ namespace LegendaryExplorer.DialogueEditor
                         editHeader.Background = new System.Windows.Media.SolidColorBrush(DObj.entryColor.ToWPFColor());
                     }
 
-                    if (dentry.Outlinks.Any()
-                     && contextMenu.GetChild("ebreakLinksMenuItem") is MenuItem breakLinksMenuItem)
-                    {
-                        bool hasLinks = false;
-                        if (breakLinksMenuItem.GetChild("eoutputLinksMenuItem") is MenuItem outputLinksMenuItem)
-                        {
-                            outputLinksMenuItem.Visibility = Visibility.Collapsed;
-                            outputLinksMenuItem.Items.Clear();
-                            for (int i = 0; i < dentry.Outlinks.Count; i++)
-                            {
-                                for (int j = 0; j < dentry.Outlinks[i].Links.Count; j++)
-                                {
-                                    outputLinksMenuItem.Visibility = Visibility.Visible;
-                                    hasLinks = true;
-                                    var temp = new MenuItem
-                                    {
-                                        Header = $"Break link from E{dentry.NodeID} to R{dentry.Outlinks[i].Links[j] - 1000}"
-                                    };
-                                    int linkConnection = i;
-                                    int linkIndex = j;
-                                    temp.Click += (o, args) => { dentry.RemoveOutlink(linkConnection, linkIndex); };
-                                    outputLinksMenuItem.Items.Add(temp);
-                                }
-                            }
-                        }
-
-                        if (breakLinksMenuItem.GetChild("ebreakAllLinksMenuItem") is MenuItem breakAllLinksMenuItem)
-                        {
-                            if (hasLinks)
-                            {
-                                breakLinksMenuItem.Visibility = Visibility.Visible;
-                                breakAllLinksMenuItem.Visibility = Visibility.Visible;
-                            }
-                            else
-                            {
-                                breakLinksMenuItem.Visibility = Visibility.Collapsed;
-                                breakAllLinksMenuItem.Visibility = Visibility.Collapsed;
-                            }
-                        }
-                    }
+                    PopulateDialogueNodeBreakLinksMenu(contextMenu, dentry, "ebreakLinksMenuItem", "einputLinksMenuItem", "eoutputLinksMenuItem", "ebreakAllLinksMenuItem");
                     DialogueNode_Selected(dentry);
                     contextMenu.DataContext = this;
                     contextMenu.IsOpen = true;

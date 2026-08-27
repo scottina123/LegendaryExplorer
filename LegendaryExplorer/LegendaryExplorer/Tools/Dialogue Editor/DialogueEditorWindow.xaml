@@ -114,8 +114,9 @@
             </MenuItem>
             <Separator />
             <MenuItem Header="Break Links" Name="breakLinksMenuItem">
-                <MenuItem Header="Individual Links" Name="outputLinksMenuItem"></MenuItem>
-                <MenuItem Header="Break All Links" Name="breakAllLinksMenuItem" Command="{Binding NodeDeleteAllLinksCommand}" IsEnabled="{Binding SelectedDialogueNode, Converter={StaticResource NullEnabledConverter}}"/>
+                <MenuItem Header="Input Links" Name="inputLinksMenuItem" />
+                <MenuItem Header="Output Links" Name="outputLinksMenuItem" />
+                <MenuItem Header="Break All Incoming and Outgoing" Name="breakAllLinksMenuItem" Command="{Binding NodeDeleteAllLinksCommand}" IsEnabled="{Binding SelectedDialogueNode, Converter={StaticResource NullEnabledConverter}}"/>
             </MenuItem>
             <MenuItem Header="Remove from Dialogue" Command="{Binding NodeRemoveCommand}"/>
             <Separator/>
@@ -182,8 +183,9 @@
             </MenuItem>
             <Separator />
             <MenuItem Header="Break Links" Name="ebreakLinksMenuItem">
-                <MenuItem Header="Individual Links" Name="eoutputLinksMenuItem"></MenuItem>
-                <MenuItem Header="Break All Links" Name="ebreakAllLinksMenuItem" Command="{Binding NodeDeleteAllLinksCommand}" IsEnabled="{Binding SelectedDialogueNode, Converter={StaticResource NullEnabledConverter}}"/>
+                <MenuItem Header="Input Links" Name="einputLinksMenuItem" />
+                <MenuItem Header="Output Links" Name="eoutputLinksMenuItem" />
+                <MenuItem Header="Break All Incoming and Outgoing" Name="ebreakAllLinksMenuItem" Command="{Binding NodeDeleteAllLinksCommand}" IsEnabled="{Binding SelectedDialogueNode, Converter={StaticResource NullEnabledConverter}}"/>
             </MenuItem>
             <MenuItem Header="Remove from Dialogue" Command="{Binding NodeRemoveCommand}"/>
             <Separator/>
