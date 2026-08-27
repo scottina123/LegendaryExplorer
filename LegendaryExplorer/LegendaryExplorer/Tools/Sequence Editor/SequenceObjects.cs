@@ -536,6 +536,7 @@ namespace LegendaryExplorer.Tools.SequenceObjects
 
             protected override void OnStartDrag(object sender, PInputEventArgs e)
             {
+                variable.MoveToBack();
                 e.Handled = true;
                 DragTarget = null;
                 var dragger = (PNode)sender;
