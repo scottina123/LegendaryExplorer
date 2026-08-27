@@ -37,9 +37,11 @@ using ME3Tweaks.Wwiser.Model.Hierarchy.Enums;
 using ME3Tweaks.Wwiser.Model.ParameterNode;
 using ME3Tweaks.Wwiser.Model.RTPC;
 using WwiserAction = ME3Tweaks.Wwiser.Model.Hierarchy.Action;
+using WwiserAttenuation = ME3Tweaks.Wwiser.Model.Hierarchy.Attenuation;
 using WwiserActiveFlags = ME3Tweaks.Wwiser.Model.Action.Specific.ActiveFlags;
 using WwiserPauseResume = ME3Tweaks.Wwiser.Model.Action.Specific.PauseResume;
 using WwiserEvent = ME3Tweaks.Wwiser.Model.Hierarchy.Event;
+using WwiserHircItem = ME3Tweaks.Wwiser.Model.Hierarchy.HircItem;
 using WwiserHircItemContainer = ME3Tweaks.Wwiser.Model.Hierarchy.HircItemContainer;
 using WwiserIHasNode = ME3Tweaks.Wwiser.Model.Hierarchy.IHasNode;
 using WwiserSound = ME3Tweaks.Wwiser.Model.Hierarchy.Sound;
@@ -513,145 +515,323 @@ namespace LegendaryExplorer.Tools.WwiseEditor
                     .Select(item => item.Item)
                     .OfType<WwiserSound>()
                     .ToList() ?? [];
-                bool? loopAudio = GetLoopAudioState(sounds);
-                bool factoryRadioEffect = HasEffectOnAllScopes(effectScopeNodes, WwiseBankEffectPresets.FactoryRadio);
-                bool helmetEffect = HasEffectOnAllScopes(effectScopeNodes, WwiseBankEffectPresets.HelmetFilter) &&
-                                    WwiseBankEffectPresets.HasHelmetRtpcOnAllScopes(effectScopeNodes);
-                bool bioWareRadioEffect = !helmetEffect &&
-                                           HasEffectOnAllScopes(effectScopeNodes, WwiseBankEffectPresets.BioWareRadio);
-                bool qecEffect = HasEffectOnAllScopes(effectScopeNodes, WwiseBankEffectPresets.HackettQec);
-                bool canApplyFactoryRadioEffect = CanApplyEffect(bank, effectScopeNodes, WwiseBankEffectPresets.FactoryRadio);
-                bool canApplyBioWareRadioEffect = Pcc.Game == MEGame.LE3 &&
-                                                   CanApplyEffect(bank, effectScopeNodes, WwiseBankEffectPresets.BioWareRadio);
-                bool canApplyQecEffect = Pcc.Game == MEGame.LE3 &&
-                                         CanApplyEffect(bank, effectScopeNodes, WwiseBankEffectPresets.HackettQec);
-                bool canApplyHelmetEffect = Pcc.Game == MEGame.LE3 &&
-                                            CanApplyEffect(bank, effectScopeNodes, WwiseBankEffectPresets.HelmetFilter);
-                bool stopAllEventExists = HasCompleteStopAllEvent(bank, CurrentExport, sounds);
-                bool canCreateStopAllEvent = Pcc.Game == MEGame.LE3 && CanCreateStopAllEvent(bank, CurrentExport, sounds);
-                float currentVolume = GetNodeVolume(rootNodes[0]);
-                var settingsDialog = new WwiseBankVolumeDialog(currentVolume, loopAudio,
-                    factoryRadioEffect, canApplyFactoryRadioEffect,
-                    bioWareRadioEffect, canApplyBioWareRadioEffect,
-                    qecEffect, canApplyQecEffect,
-                    helmetEffect, canApplyHelmetEffect,
-                    stopAllEventExists, canCreateStopAllEvent)
-                {
-                    Owner = this
-                };
-                if (settingsDialog.ShowDialog() != true)
-                {
-                    return;
-                }
-
-                bool volumeChanged = settingsDialog.SelectedVolume != currentVolume;
-                bool loopChanged = settingsDialog.LoopAudio.HasValue && settingsDialog.LoopAudio != loopAudio;
-                bool factoryRadioChanged = settingsDialog.FactoryRadioEffect != factoryRadioEffect;
-                bool bioWareRadioChanged = settingsDialog.BioWareRadioEffect != bioWareRadioEffect;
-                bool qecChanged = settingsDialog.QecEffect != qecEffect;
-                bool helmetChanged = settingsDialog.HelmetEffect != helmetEffect;
-                bool createStopAllEvent = settingsDialog.CreateStopAllEvent;
-                if (!volumeChanged && !loopChanged && !factoryRadioChanged && !bioWareRadioChanged &&
-                    !qecChanged && !helmetChanged && !createStopAllEvent)
-                {
-                    return;
-                }
-
-                foreach (var (enabled, changed, name, effectChain) in new[]
-                         {
-                             (settingsDialog.FactoryRadioEffect, factoryRadioChanged,
-                                 "Dual_Filters_Radio_Comm", WwiseBankEffectPresets.FactoryRadio),
-                             (settingsDialog.BioWareRadioEffect, bioWareRadioChanged,
-                                 "BioWare radio", WwiseBankEffectPresets.BioWareRadio),
-                             (settingsDialog.QecEffect, qecChanged,
-                                 "Hackett QEC", WwiseBankEffectPresets.HackettQec),
-                             (settingsDialog.HelmetEffect, helmetChanged,
-                                 "helmet voice", WwiseBankEffectPresets.HelmetFilter)
-                         })
-                {
-                    if (changed && enabled && !WwiseBankEffectPresets.EnsureEffectData(bank, effectChain))
-                    {
-                        MessageBox.Show(this,
-                            $"The {name} effect data could not be added to this bank version.",
-                            "Effect unavailable", MessageBoxButton.OK, MessageBoxImage.Warning);
-                        return;
-                    }
-                }
-
-                foreach (var node in rootNodes)
-                {
-                    if (volumeChanged)
-                    {
-                        SetInitialParameter(node.NodeBaseParameters.InitialParams62, PropId.Volume,
-                            settingsDialog.SelectedVolume, true);
-                    }
-                }
-
-                if (factoryRadioChanged && settingsDialog.FactoryRadioEffect)
-                {
-                    SetEffectPresetOnScopes(effectScopeNodes, WwiseBankEffectPresets.FactoryRadio);
-                }
-                else if (bioWareRadioChanged && settingsDialog.BioWareRadioEffect)
-                {
-                    SetEffectPresetOnScopes(effectScopeNodes, WwiseBankEffectPresets.BioWareRadio);
-                }
-                else if (qecChanged && settingsDialog.QecEffect)
-                {
-                    SetEffectPresetOnScopes(effectScopeNodes, WwiseBankEffectPresets.HackettQec);
-                }
-                else if (helmetChanged && settingsDialog.HelmetEffect)
-                {
-                    SetEffectPresetOnScopes(effectScopeNodes, WwiseBankEffectPresets.HelmetFilter);
-                }
-                else
-                {
-                    if (factoryRadioChanged)
-                    {
-                        SetEffectOnScopes(effectScopeNodes, WwiseBankEffectPresets.FactoryRadio, false);
-                    }
-                    if (bioWareRadioChanged)
-                    {
-                        SetEffectOnScopes(effectScopeNodes, WwiseBankEffectPresets.BioWareRadio, false);
-                    }
-                    if (qecChanged)
-                    {
-                        SetEffectOnScopes(effectScopeNodes, WwiseBankEffectPresets.HackettQec, false);
-                    }
-                    if (helmetChanged)
-                    {
-                        SetEffectOnScopes(effectScopeNodes, WwiseBankEffectPresets.HelmetFilter, false);
-                        WwiseBankEffectPresets.SetHelmetRtpcOnScopes(effectScopeNodes, false);
-                    }
-                }
-
-                if (loopChanged)
-                {
-                    foreach (var sound in sounds)
-                    {
-                        SetLoopAudio(sound, settingsDialog.LoopAudio == true);
-                    }
-                }
-
-                if (createStopAllEvent)
-                {
-                    EnsureStopAllEventInBank(bank, sounds);
-                }
-
-                using var output = new MemoryStream();
-                WwiseBankParser.Serialize(bank, output);
-                CoreWwiseBank.WriteBankRaw(output.ToArray(), CurrentExport);
-                if (createStopAllEvent)
-                {
-                    EnsureStopAllEventExport(CurrentExport, sounds);
-                }
-                RefreshView();
-                StatusBar_LeftMostText.Text = $"Updated settings for {CurrentExport.ObjectName}";
+                EditAudioSettings(bank, CurrentExport.ObjectName.Instanced, true, rootNodes,
+                    effectScopeNodes, sounds, parameterNodes, StopAllEventId, "Stop");
             }
             catch (Exception ex)
             {
                 MessageBox.Show(this, $"Unable to adjust bank settings:\n{ex.Message}", "Bank settings failed",
                     MessageBoxButton.OK, MessageBoxImage.Error);
             }
+        }
+
+        private void AdjustEventSettings_Click(object sender, RoutedEventArgs e)
+        {
+            if (CurrentExport == null || SelectedNode is not WExport { Export.ClassName: "WwiseEvent" } eventNode)
+            {
+                return;
+            }
+
+            try
+            {
+                var rawBank = CurrentExport.GetBinaryData<CoreWwiseBank>();
+                using var input = new MemoryStream(rawBank.BnkFile, false);
+                var bank = WwiseBankParser.Deserialize(input);
+                uint eventId = WExport.GetExportId(eventNode.Export);
+                var parameterNodes = bank.HIRC?.Items
+                    .Where(item => item.Item is WwiserIHasNode)
+                    .Select(item => (item.Item.Id, Node: (WwiserIHasNode)item.Item))
+                    .ToList() ?? [];
+                var targetSounds = GetEventTargetSounds(bank, eventId, parameterNodes);
+                if (targetSounds.Count == 0)
+                {
+                    MessageBox.Show(this,
+                        "This WwiseEvent has no editable Sound targets. Only Play actions that resolve to Sound nodes can be adjusted.",
+                        "Event settings unavailable", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+
+                var targetNodes = targetSounds.Cast<WwiserIHasNode>().ToList();
+                string stopEventName = GetStopEventName(eventNode.Export.ObjectName.Name, Pcc.Game);
+                uint stopEventId = WwiseOutputBusOptions.GenerateShortId(stopEventName);
+                EditAudioSettings(bank, eventNode.Export.ObjectName.Instanced, false, targetNodes,
+                    targetNodes, targetSounds, parameterNodes, stopEventId, stopEventName);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, $"Unable to adjust event settings:\n{ex.Message}", "Event settings failed",
+                    MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private void EditAudioSettings(ME3Tweaks.Wwiser.WwiseBank bank, string scopeName, bool isBankWide,
+            IReadOnlyCollection<WwiserIHasNode> settingNodes,
+            IReadOnlyCollection<WwiserIHasNode> effectScopeNodes,
+            IReadOnlyCollection<WwiserSound> sounds,
+            IReadOnlyCollection<(uint Id, WwiserIHasNode Node)> parameterNodes,
+            uint stopEventId, string stopEventName)
+        {
+            float currentVolume = GetCommonNodeVolume(settingNodes, out bool volumeIsMixed);
+            uint? currentOutputBusId = GetCommonOutputBusId(settingNodes);
+            bool? currentLoopAudio = GetLoopAudioState(sounds.ToList());
+            WwiseEditorEffectPreset currentEffect = GetCurrentEffectPreset(effectScopeNodes, Pcc.Game);
+            bool? currentDucking = GetDuckingState(bank, settingNodes, Pcc.Game);
+            bool? currentAttenuation = GetAttenuationState(bank, settingNodes,
+                out double currentAttenuationScalePercent);
+            bool stopEventExists = HasCompleteStopEvent(bank, CurrentExport, sounds, stopEventId);
+            bool canCreateStopEvent = CanCreateStopEvent(bank, CurrentExport, sounds, stopEventId, stopEventName);
+            bool supportsPresetData = bank.BKHD.BankGeneratorVersion == WwiseBankEffectPresets.BankVersion &&
+                                      Pcc.Game is MEGame.LE2 or MEGame.LE3;
+
+            string effectiveInheritedOutputBus = null;
+            if (!isBankWide)
+            {
+                var inheritedNames = settingNodes.Select(node =>
+                        GetEffectiveOutputBusName(node, parameterNodes, Pcc.Game))
+                    .Distinct(StringComparer.Ordinal)
+                    .ToList();
+                if (inheritedNames.Count == 1)
+                {
+                    effectiveInheritedOutputBus = inheritedNames[0];
+                }
+            }
+
+            var settings = new WwiseEditorAudioSettings
+            {
+                Game = Pcc.Game,
+                ScopeName = scopeName,
+                TargetSummary = isBankWide
+                    ? $"Changes apply to {sounds.Count} Sound object(s) in this bank."
+                    : $"Changes apply to {sounds.Count} Sound object(s) reached by this event. Other events that reuse the same Sound objects will hear the same changes.",
+                IsBankWide = isBankWide,
+                Volume = currentVolume,
+                VolumeIsMixed = volumeIsMixed,
+                OutputBusId = currentOutputBusId,
+                EffectiveInheritedOutputBus = effectiveInheritedOutputBus,
+                LoopAudio = currentLoopAudio,
+                EffectPreset = currentEffect,
+                DuckAudio = currentDucking,
+                Attenuation = currentAttenuation,
+                AttenuationScalePercent = currentAttenuationScalePercent,
+                CanApplyEffects = supportsPresetData,
+                CanApplyDucking = supportsPresetData,
+                CanApplyAttenuation = supportsPresetData,
+                StopEventExists = stopEventExists,
+                CanCreateStopEvent = canCreateStopEvent
+            };
+            var settingsDialog = new WwiseBankVolumeDialog(settings) { Owner = this };
+            if (settingsDialog.ShowDialog() != true)
+            {
+                return;
+            }
+
+            bool volumeChanged = settingsDialog.VolumeWasEdited;
+            bool outputBusChanged = settingsDialog.OutputBusWasEdited && settingsDialog.SelectedOutputBusId.HasValue;
+            bool loopChanged = settingsDialog.LoopAudio.HasValue &&
+                               settingsDialog.LoopAudio != currentLoopAudio;
+            bool effectChanged = settingsDialog.SelectedEffectPreset != WwiseEditorEffectPreset.Preserve &&
+                                 settingsDialog.SelectedEffectPreset != currentEffect;
+            bool duckingChanged = settingsDialog.DuckAudio.HasValue &&
+                                  settingsDialog.DuckAudio != currentDucking;
+            bool attenuationChanged = settingsDialog.Attenuation.HasValue &&
+                                      settingsDialog.Attenuation != currentAttenuation;
+            bool attenuationScaleChanged = settingsDialog.Attenuation == true &&
+                                           Math.Abs(settingsDialog.AttenuationScalePercent -
+                                                    currentAttenuationScalePercent) > 0.0001;
+            bool createStopEvent = settingsDialog.CreateStopEvent;
+            if (!volumeChanged && !outputBusChanged && !loopChanged && !effectChanged &&
+                !duckingChanged && !attenuationChanged && !attenuationScaleChanged && !createStopEvent)
+            {
+                return;
+            }
+
+            if (effectChanged && settingsDialog.SelectedEffectPreset != WwiseEditorEffectPreset.NoneOrInherited)
+            {
+                var (effectName, effectChain, _) = GetEffectDefinition(settingsDialog.SelectedEffectPreset);
+                if (!CanApplyEffect(bank, effectScopeNodes, effectChain) ||
+                    !WwiseBankEffectPresets.EnsureEffectData(bank, effectChain))
+                {
+                    MessageBox.Show(this,
+                        $"The {effectName} effect data could not be added to this bank version or the target has no free effect slots.",
+                        "Effect unavailable", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+            }
+
+            if (duckingChanged && settingsDialog.DuckAudio == true)
+            {
+                bool duckingDataReady = Pcc.Game == MEGame.LE2
+                    ? WwiseBankEffectPresets.SetLe2MusicDuckingOnTargets(bank,
+                        settingNodes.Select(GetNodeId).ToList(), true)
+                    : WwiseBankEffectPresets.EnsureMusicDuckingData(bank);
+                if (!duckingDataReady)
+                {
+                    MessageBox.Show(this, "The shipped music ducking data conflicts with an object already in this bank.",
+                        "Ducking unavailable", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+            }
+
+            if (volumeChanged)
+            {
+                foreach (var node in settingNodes)
+                {
+                    SetInitialParameter(node.NodeBaseParameters.InitialParams62, PropId.Volume,
+                        settingsDialog.SelectedVolume, true);
+                }
+            }
+
+            if (outputBusChanged)
+            {
+                foreach (var node in settingNodes)
+                {
+                    node.NodeBaseParameters.OverrideBusId = settingsDialog.SelectedOutputBusId.Value;
+                }
+            }
+
+            if (effectChanged)
+            {
+                ApplyEffectPresetToScopes(effectScopeNodes, settingsDialog.SelectedEffectPreset, Pcc.Game);
+            }
+
+            if (loopChanged)
+            {
+                foreach (var sound in sounds)
+                {
+                    SetLoopAudio(sound, settingsDialog.LoopAudio == true);
+                }
+            }
+
+            if (duckingChanged)
+            {
+                if (Pcc.Game == MEGame.LE2)
+                {
+                    if (settingsDialog.DuckAudio != true)
+                    {
+                        WwiseBankEffectPresets.SetLe2MusicDuckingOnTargets(bank,
+                            settingNodes.Select(GetNodeId).ToList(), false);
+                    }
+                }
+                else
+                {
+                    WwiseBankEffectPresets.SetMusicDuckingOnScopes(settingNodes,
+                        settingsDialog.DuckAudio == true);
+                }
+            }
+
+            if (attenuationChanged || attenuationScaleChanged)
+            {
+                if (settingsDialog.Attenuation == true)
+                {
+                    float distanceScale = checked((float)(settingsDialog.AttenuationScalePercent / 100d));
+                    if (isBankWide)
+                    {
+                        if (!WwiseBankEffectPresets.EnsureStandardAttenuationData(bank, Pcc.Game,
+                                distanceScale, out uint attenuationId))
+                        {
+                            throw new InvalidOperationException("The standard attenuation data could not be added to this bank.");
+                        }
+                        WwiseBankEffectPresets.SetStandardAttenuationOnScopes(settingNodes, attenuationId, true,
+                            enableDiffraction: Pcc.Game == MEGame.LE2);
+                    }
+                    else
+                    {
+                        foreach (var node in settingNodes)
+                        {
+                            uint nodeId = GetNodeId(node);
+                            if (!WwiseBankEffectPresets.EnsureStandardAttenuationDataForScope(bank, Pcc.Game,
+                                    distanceScale, nodeId, out uint attenuationId))
+                            {
+                                throw new InvalidOperationException(
+                                    $"The standard attenuation data could not be added for Sound 0x{nodeId:X8}.");
+                            }
+                            WwiseBankEffectPresets.SetStandardAttenuationOnScopes([node], attenuationId, true,
+                                enableDiffraction: Pcc.Game == MEGame.LE2);
+                        }
+                    }
+                }
+                else
+                {
+                    WwiseBankEffectPresets.SetStandardAttenuationOnScopes(settingNodes, 0, false);
+                }
+            }
+
+            if (createStopEvent)
+            {
+                EnsureStopEventInBank(bank, stopEventId, stopEventName, sounds);
+            }
+
+            using var output = new MemoryStream();
+            WwiseBankParser.Serialize(bank, output);
+            CoreWwiseBank.WriteBankRaw(output.ToArray(), CurrentExport);
+            if (createStopEvent)
+            {
+                EnsureStopEventExport(CurrentExport, stopEventId, stopEventName, sounds);
+            }
+            RefreshView();
+            StatusBar_LeftMostText.Text = $"Updated settings for {scopeName}";
+        }
+
+        private static uint GetNodeId(WwiserIHasNode node) => ((WwiserHircItem)node).Id;
+
+        private static List<WwiserSound> GetEventTargetSounds(ME3Tweaks.Wwiser.WwiseBank bank, uint eventId,
+            IReadOnlyCollection<(uint Id, WwiserIHasNode Node)> parameterNodes)
+        {
+            if (bank.HIRC?.Items.FirstOrDefault(item => item.Item.Id == eventId)?.Item is not WwiserEvent hircEvent)
+            {
+                return [];
+            }
+
+            var actionsById = bank.HIRC.Items.Select(item => item.Item).OfType<WwiserAction>()
+                .ToDictionary(action => action.Id);
+            var nodesById = parameterNodes.ToDictionary(item => item.Id, item => item.Node);
+            var childIdsByParent = parameterNodes
+                .Where(item => item.Node.NodeBaseParameters.DirectParentId != 0)
+                .ToLookup(item => item.Node.NodeBaseParameters.DirectParentId, item => item.Id);
+            var targetIds = hircEvent.ActionIds
+                .Where(actionsById.ContainsKey)
+                .Select(actionId => actionsById[actionId])
+                .Where(action => action.Type.Value is ActionTypeValue.Play or ActionTypeValue.PlayAndContinue)
+                .Select(action => action.TargetId)
+                .Distinct();
+
+            var queue = new Queue<uint>(targetIds);
+            var visited = new HashSet<uint>();
+            var sounds = new List<WwiserSound>();
+            while (queue.TryDequeue(out uint targetId))
+            {
+                if (!visited.Add(targetId) || !nodesById.TryGetValue(targetId, out var targetNode))
+                {
+                    continue;
+                }
+
+                if (targetNode is WwiserSound sound)
+                {
+                    sounds.Add(sound);
+                    continue;
+                }
+
+                foreach (uint childId in childIdsByParent[targetId])
+                {
+                    queue.Enqueue(childId);
+                }
+            }
+
+            return sounds;
+        }
+
+        private static string GetStopEventName(string playEventName, MEGame game)
+        {
+            string soundName = playEventName;
+            if (soundName.EndsWith("_Play", StringComparison.OrdinalIgnoreCase))
+            {
+                soundName = soundName[..^5];
+            }
+            else if (soundName.StartsWith("Play_", StringComparison.OrdinalIgnoreCase))
+            {
+                soundName = soundName[5..];
+            }
+            return WwiseEventNaming.GetPerAudioStopEventName(game, soundName);
         }
 
         private void WwiseBanks_ListBox_ContextMenuOpening(object sender, ContextMenuEventArgs e)
@@ -673,6 +853,227 @@ namespace LegendaryExplorer.Tools.WwiseEditor
             var parameters = node.NodeBaseParameters.InitialParams62;
             int volumeIndex = parameters.ParameterIds.FindIndex(id => id.PropValue == PropId.Volume);
             return volumeIndex >= 0 ? parameters.ParameterValues[volumeIndex].Value : 0;
+        }
+
+        private static float GetCommonNodeVolume(IReadOnlyCollection<WwiserIHasNode> nodes,
+            out bool isMixed)
+        {
+            float volume = nodes.Count == 0 ? 0 : GetNodeVolume(nodes.First());
+            isMixed = nodes.Any(node => Math.Abs(GetNodeVolume(node) - volume) > 0.0001f);
+            return volume;
+        }
+
+        private static uint? GetCommonOutputBusId(IReadOnlyCollection<WwiserIHasNode> nodes)
+        {
+            if (nodes.Count == 0)
+            {
+                return 0;
+            }
+
+            uint outputBusId = nodes.First().NodeBaseParameters.OverrideBusId;
+            return nodes.All(node => node.NodeBaseParameters.OverrideBusId == outputBusId)
+                ? outputBusId
+                : null;
+        }
+
+        private static string GetEffectiveOutputBusName(WwiserIHasNode node,
+            IReadOnlyCollection<(uint Id, WwiserIHasNode Node)> parameterNodes, MEGame game)
+        {
+            var nodesById = parameterNodes.ToDictionary(item => item.Id, item => item.Node);
+            var visited = new HashSet<uint>();
+            WwiserIHasNode current = node;
+            while (current != null)
+            {
+                uint outputBusId = current.NodeBaseParameters.OverrideBusId;
+                if (outputBusId != 0)
+                {
+                    return WwiseOutputBusOptions.GetOutputBusName(game, outputBusId);
+                }
+
+                uint parentId = current.NodeBaseParameters.DirectParentId;
+                if (parentId == 0 || !visited.Add(parentId) || !nodesById.TryGetValue(parentId, out current))
+                {
+                    return WwiseOutputBusOptions.MasterAudioBus;
+                }
+            }
+
+            return WwiseOutputBusOptions.MasterAudioBus;
+        }
+
+        private static bool? GetDuckingState(ME3Tweaks.Wwiser.WwiseBank bank,
+            IReadOnlyCollection<WwiserIHasNode> nodes, MEGame game)
+        {
+            var states = nodes.Select(node => game == MEGame.LE2
+                    ? WwiseBankEffectPresets.HasLe2MusicDuckingOnAllTargets(bank, [GetNodeId(node)])
+                    : WwiseBankEffectPresets.HasMusicDuckingOnAllScopes([node]))
+                .ToList();
+            return GetMixedBooleanState(states);
+        }
+
+        private static bool? GetAttenuationState(ME3Tweaks.Wwiser.WwiseBank bank,
+            IReadOnlyCollection<WwiserIHasNode> nodes, out double distanceScalePercent)
+        {
+            var attenuationIds = nodes.Select(GetEnabledAttenuationId).ToList();
+            var enabledStates = attenuationIds.Select(id => id.HasValue).ToList();
+            bool? state = GetMixedBooleanState(enabledStates);
+            distanceScalePercent = 100;
+
+            var distinctIds = attenuationIds.Where(id => id.HasValue).Select(id => id.Value).Distinct().ToList();
+            if (distinctIds.Count == 1 && bank.HIRC?.Items.FirstOrDefault(item =>
+                    item.Item.Id == distinctIds[0])?.Item is WwiserAttenuation attenuation)
+            {
+                float maximumDistance = attenuation.Curves.SelectMany(curve => curve.Graph)
+                    .Select(point => point.From)
+                    .DefaultIfEmpty(WwiseBankEffectPresets.StandardAttenuationOriginalMaxDistance)
+                    .Max();
+                distanceScalePercent = maximumDistance /
+                                       WwiseBankEffectPresets.StandardAttenuationOriginalMaxDistance * 100d;
+            }
+
+            return state;
+        }
+
+        private static uint? GetEnabledAttenuationId(WwiserIHasNode node)
+        {
+            var initialParams = node.NodeBaseParameters.InitialParams62;
+            for (int index = 0; index < initialParams.ParameterIds.Count; index++)
+            {
+                if (initialParams.ParameterIds[index].PropValue != PropId.AttenuationID)
+                {
+                    continue;
+                }
+
+                uint attenuationId = initialParams.ParameterValues[index].StoredAsFloat
+                    ? BitConverter.SingleToUInt32Bits(initialParams.ParameterValues[index].Float)
+                    : initialParams.ParameterValues[index].Integer;
+                if (WwiseBankEffectPresets.HasStandardAttenuationOnAllScopes([node], attenuationId))
+                {
+                    return attenuationId;
+                }
+            }
+
+            return null;
+        }
+
+        private static bool? GetMixedBooleanState(IReadOnlyCollection<bool> states)
+        {
+            if (states.Count == 0 || states.All(state => !state))
+            {
+                return false;
+            }
+            return states.All(state => state) ? true : null;
+        }
+
+        private static WwiseEditorEffectPreset GetCurrentEffectPreset(
+            IReadOnlyCollection<WwiserIHasNode> effectScopeNodes, MEGame game)
+        {
+            if (game == MEGame.LE2)
+            {
+                if (HasEffectOnAllScopes(effectScopeNodes, WwiseBankEffectPresets.Le2HelmetFilter) &&
+                    WwiseBankEffectPresets.HasLe2HelmetRtpcOnAllScopes(effectScopeNodes))
+                {
+                    return WwiseEditorEffectPreset.Le2Helmet;
+                }
+                if (HasEffectOnAllScopes(effectScopeNodes, WwiseBankEffectPresets.Le2Radio))
+                {
+                    return WwiseEditorEffectPreset.Le2Radio;
+                }
+                if (HasEffectOnAllScopes(effectScopeNodes, WwiseBankEffectPresets.Le2Hologram))
+                {
+                    return WwiseEditorEffectPreset.Le2Hologram;
+                }
+            }
+            else
+            {
+                bool helmetEffect = HasEffectOnAllScopes(effectScopeNodes,
+                                        WwiseBankEffectPresets.HelmetFilter) &&
+                                    WwiseBankEffectPresets.HasHelmetRtpcOnAllScopes(effectScopeNodes);
+                if (helmetEffect)
+                {
+                    return WwiseEditorEffectPreset.Helmet;
+                }
+                if (HasEffectOnAllScopes(effectScopeNodes, WwiseBankEffectPresets.BioWareRadio))
+                {
+                    return WwiseEditorEffectPreset.BioWareRadio;
+                }
+                if (HasEffectOnAllScopes(effectScopeNodes, WwiseBankEffectPresets.HackettQec))
+                {
+                    return WwiseEditorEffectPreset.Qec;
+                }
+            }
+
+            if (HasEffectOnAllScopes(effectScopeNodes, WwiseBankEffectPresets.FactoryRadio))
+            {
+                return WwiseEditorEffectPreset.FactoryRadio;
+            }
+
+            return effectScopeNodes.All(node =>
+                node.NodeBaseParameters.FxParams.FxChunks.Count == 0 &&
+                !node.NodeBaseParameters.FxParams.IsOverrideParentFx)
+                ? WwiseEditorEffectPreset.NoneOrInherited
+                : WwiseEditorEffectPreset.Preserve;
+        }
+
+        private static (string Name, IReadOnlyList<WwiseBankEffect> Chain, bool HelmetRtpc)
+            GetEffectDefinition(WwiseEditorEffectPreset preset) => preset switch
+            {
+                WwiseEditorEffectPreset.FactoryRadio =>
+                    ("Dual_Filters_Radio_Comm", WwiseBankEffectPresets.FactoryRadio, false),
+                WwiseEditorEffectPreset.BioWareRadio =>
+                    ("BioWare radio", WwiseBankEffectPresets.BioWareRadio, false),
+                WwiseEditorEffectPreset.Qec =>
+                    ("Hackett QEC", WwiseBankEffectPresets.HackettQec, false),
+                WwiseEditorEffectPreset.Helmet =>
+                    ("helmet voice", WwiseBankEffectPresets.HelmetFilter, true),
+                WwiseEditorEffectPreset.Le2Radio =>
+                    ("LE2 radio", WwiseBankEffectPresets.Le2Radio, false),
+                WwiseEditorEffectPreset.Le2Helmet =>
+                    ("LE2 helmet voice", WwiseBankEffectPresets.Le2HelmetFilter, true),
+                WwiseEditorEffectPreset.Le2Hologram =>
+                    ("Illusive Man hologram", WwiseBankEffectPresets.Le2Hologram, false),
+                _ => throw new InvalidOperationException($"{preset} does not identify an effect preset.")
+            };
+
+        private static void ApplyEffectPresetToScopes(IEnumerable<WwiserIHasNode> effectScopeNodes,
+            WwiseEditorEffectPreset preset, MEGame game)
+        {
+            var scopes = effectScopeNodes.Distinct().ToList();
+            foreach (var effectChain in GetKnownEffectChains())
+            {
+                SetEffectOnScopes(scopes, effectChain, false);
+            }
+            WwiseBankEffectPresets.SetHelmetRtpcOnScopes(scopes, false);
+            WwiseBankEffectPresets.SetLe2HelmetRtpcOnScopes(scopes, false);
+
+            if (preset == WwiseEditorEffectPreset.NoneOrInherited)
+            {
+                return;
+            }
+
+            var (_, selectedEffectChain, helmetRtpc) = GetEffectDefinition(preset);
+            SetEffectOnScopes(scopes, selectedEffectChain, true);
+            if (helmetRtpc)
+            {
+                if (game == MEGame.LE2)
+                {
+                    WwiseBankEffectPresets.SetLe2HelmetRtpcOnScopes(scopes, true);
+                }
+                else
+                {
+                    WwiseBankEffectPresets.SetHelmetRtpcOnScopes(scopes, true);
+                }
+            }
+        }
+
+        private static IEnumerable<IReadOnlyList<WwiseBankEffect>> GetKnownEffectChains()
+        {
+            yield return WwiseBankEffectPresets.FactoryRadio;
+            yield return WwiseBankEffectPresets.BioWareRadio;
+            yield return WwiseBankEffectPresets.HackettQec;
+            yield return WwiseBankEffectPresets.HelmetFilter;
+            yield return WwiseBankEffectPresets.Le2Radio;
+            yield return WwiseBankEffectPresets.Le2HelmetFilter;
+            yield return WwiseBankEffectPresets.Le2Hologram;
         }
 
         private static bool? GetLoopAudioState(List<WwiserSound> sounds)
@@ -759,10 +1160,8 @@ namespace LegendaryExplorer.Tools.WwiseEditor
                 return false;
             }
 
-            var replaceableEffectIds = WwiseBankEffectPresets.FactoryRadio
-                .Concat(WwiseBankEffectPresets.BioWareRadio)
-                .Concat(WwiseBankEffectPresets.HackettQec)
-                .Concat(WwiseBankEffectPresets.HelmetFilter)
+            var replaceableEffectIds = GetKnownEffectChains()
+                .SelectMany(chain => chain)
                 .Select(effect => effect.Id)
                 .ToHashSet();
             return effectScopeNodes.All(node =>
@@ -832,10 +1231,14 @@ namespace LegendaryExplorer.Tools.WwiseEditor
         }
 
         private static bool HasCompleteStopAllEvent(ME3Tweaks.Wwiser.WwiseBank bank,
-            ExportEntry bankExport, IReadOnlyCollection<WwiserSound> sounds)
+            ExportEntry bankExport, IReadOnlyCollection<WwiserSound> sounds) =>
+            HasCompleteStopEvent(bank, bankExport, sounds, StopAllEventId);
+
+        private static bool HasCompleteStopEvent(ME3Tweaks.Wwiser.WwiseBank bank,
+            ExportEntry bankExport, IReadOnlyCollection<WwiserSound> sounds, uint stopEventId)
         {
             if (bank.HIRC == null || sounds.Count == 0 ||
-                bank.HIRC.Items.FirstOrDefault(item => item.Item.Id == StopAllEventId)?.Item is not WwiserEvent stopEvent)
+                bank.HIRC.Items.FirstOrDefault(item => item.Item.Id == stopEventId)?.Item is not WwiserEvent stopEvent)
             {
                 return false;
             }
@@ -850,11 +1253,16 @@ namespace LegendaryExplorer.Tools.WwiseEditor
                 .Where(action => action.Type.Value == ActionTypeValue.Stop)
                 .Select(action => action.TargetId)
                 .ToHashSet();
-            return sounds.All(sound => stoppedSoundIds.Contains(sound.Id)) && HasStopAllEventExport(bankExport);
+            return sounds.All(sound => stoppedSoundIds.Contains(sound.Id)) &&
+                   HasStopEventExport(bankExport, stopEventId);
         }
 
         private static bool CanCreateStopAllEvent(ME3Tweaks.Wwiser.WwiseBank bank,
-            ExportEntry bankExport, IReadOnlyCollection<WwiserSound> sounds)
+            ExportEntry bankExport, IReadOnlyCollection<WwiserSound> sounds) =>
+            CanCreateStopEvent(bank, bankExport, sounds, StopAllEventId, "Stop");
+
+        private static bool CanCreateStopEvent(ME3Tweaks.Wwiser.WwiseBank bank,
+            ExportEntry bankExport, IReadOnlyCollection<WwiserSound> sounds, uint stopEventId, string stopEventName)
         {
             if (bank.HIRC == null || bank.BKHD.BankGeneratorVersion != WwiseBankEffectPresets.BankVersion ||
                 sounds.Count == 0)
@@ -862,19 +1270,24 @@ namespace LegendaryExplorer.Tools.WwiseEditor
                 return false;
             }
 
-            var existingHirc = bank.HIRC.Items.FirstOrDefault(item => item.Item.Id == StopAllEventId);
+            var existingHirc = bank.HIRC.Items.FirstOrDefault(item => item.Item.Id == stopEventId);
             if (existingHirc != null && existingHirc.Item is not WwiserEvent)
             {
                 return false;
             }
 
             var existingExport = bankExport.FileRef.Exports.FirstOrDefault(export =>
-                export.Parent == bankExport.Parent && export.ObjectNameString == "Stop");
-            return existingExport == null || existingExport.ClassName == "WwiseEvent";
+                export.Parent == bankExport.Parent && export.ObjectNameString == stopEventName);
+            return existingExport == null || existingExport.ClassName == "WwiseEvent" &&
+                   WExport.GetExportId(existingExport) == stopEventId;
         }
 
         private static void EnsureStopAllEventInBank(ME3Tweaks.Wwiser.WwiseBank bank,
-            IReadOnlyCollection<WwiserSound> sounds)
+            IReadOnlyCollection<WwiserSound> sounds) =>
+            EnsureStopEventInBank(bank, StopAllEventId, "Stop", sounds);
+
+        private static void EnsureStopEventInBank(ME3Tweaks.Wwiser.WwiseBank bank, uint stopEventId,
+            string stopEventName, IReadOnlyCollection<WwiserSound> sounds)
         {
             if (bank.HIRC == null)
             {
@@ -882,14 +1295,14 @@ namespace LegendaryExplorer.Tools.WwiseEditor
             }
 
             var usedIds = bank.HIRC.Items.Select(item => item.Item.Id).ToHashSet();
-            var stopEventItem = bank.HIRC.Items.FirstOrDefault(item => item.Item.Id == StopAllEventId);
+            var stopEventItem = bank.HIRC.Items.FirstOrDefault(item => item.Item.Id == stopEventId);
             WwiserEvent stopEvent;
             bool addStopEvent = false;
             if (stopEventItem == null)
             {
                 stopEvent = new WwiserEvent
                 {
-                    Id = StopAllEventId,
+                    Id = stopEventId,
                     ActionCount = new VarCount(),
                     ActionIds = []
                 };
@@ -899,7 +1312,7 @@ namespace LegendaryExplorer.Tools.WwiseEditor
                     Item = stopEvent
                 };
                 addStopEvent = true;
-                usedIds.Add(StopAllEventId);
+                usedIds.Add(stopEventId);
             }
             else if (stopEventItem.Item is WwiserEvent existingStopEvent)
             {
@@ -907,7 +1320,7 @@ namespace LegendaryExplorer.Tools.WwiseEditor
             }
             else
             {
-                throw new InvalidOperationException($"HIRC ID {StopAllEventId} is already used by another object.");
+                throw new InvalidOperationException($"HIRC ID {stopEventId} is already used by another object.");
             }
 
             var actionsById = bank.HIRC.Items
@@ -923,7 +1336,7 @@ namespace LegendaryExplorer.Tools.WwiseEditor
 
             foreach (var sound in sounds.Where(sound => !stoppedSoundIds.Contains(sound.Id)))
             {
-                uint actionId = GenerateUniqueHircId($"Stop_{sound.Id}_StopAction", usedIds);
+                uint actionId = GenerateUniqueHircId($"{stopEventName}_{sound.Id}_StopAction", usedIds);
                 var stopAction = new WwiserAction
                 {
                     Id = actionId,
@@ -966,30 +1379,40 @@ namespace LegendaryExplorer.Tools.WwiseEditor
         }
 
         private static bool HasStopAllEventExport(ExportEntry bankExport) =>
+            HasStopEventExport(bankExport, StopAllEventId);
+
+        private static bool HasStopEventExport(ExportEntry bankExport, uint stopEventId) =>
             bankExport.FileRef.Exports.Any(export => export.ClassName == "WwiseEvent" &&
                 export.Parent == bankExport.Parent &&
-                unchecked((uint)(export.GetProperty<IntProperty>("Id")?.Value ?? 0)) == StopAllEventId &&
-                export.GetProperty<StructProperty>("Relationships")?.Properties
-                    .GetProp<ObjectProperty>("Bank")?.Value == bankExport.UIndex);
+                WExport.GetExportId(export) == stopEventId && EventReferencesBank(export, bankExport));
+
+        private static bool EventReferencesBank(ExportEntry eventExport, ExportEntry bankExport)
+        {
+            if (eventExport.FileRef.Game == MEGame.LE2)
+            {
+                return eventExport.GetProperty<ArrayProperty<StructProperty>>("References")?.Any(reference =>
+                    reference.Properties.GetProp<StructProperty>("Relationships")?.Properties
+                        .GetProp<ObjectProperty>("Bank")?.Value == bankExport.UIndex) == true;
+            }
+
+            return eventExport.GetProperty<StructProperty>("Relationships")?.Properties
+                .GetProp<ObjectProperty>("Bank")?.Value == bankExport.UIndex;
+        }
 
         private static void EnsureStopAllEventExport(ExportEntry bankExport,
-            IReadOnlyCollection<WwiserSound> sounds)
+            IReadOnlyCollection<WwiserSound> sounds) =>
+            EnsureStopEventExport(bankExport, StopAllEventId, "Stop", sounds);
+
+        private static void EnsureStopEventExport(ExportEntry bankExport, uint stopEventId,
+            string stopEventName, IReadOnlyCollection<WwiserSound> sounds)
         {
             var package = bankExport.FileRef;
             var eventExport = package.Exports.FirstOrDefault(export => export.ClassName == "WwiseEvent" &&
                                   export.Parent == bankExport.Parent &&
-                                  unchecked((uint)(export.GetProperty<IntProperty>("Id")?.Value ?? 0)) == StopAllEventId)
-                              ?? package.FindExport($"{bankExport.Parent.InstancedFullPath}.Stop", "WwiseEvent")
-                              ?? ExportCreator.CreateExport(package, "Stop", "WwiseEvent", bankExport.Parent, indexed: false);
-
-            var properties = eventExport.GetProperties();
-            properties.AddOrReplaceProp(new StructProperty("WwiseRelationships", false,
-                new ObjectProperty(bankExport, "Bank")) { Name = "Relationships" });
-            properties.AddOrReplaceProp(new IntProperty(unchecked((int)StopAllEventId), "Id"));
-            if (bankExport.GetProperty<BoolProperty>("IsLocalised")?.Value == true)
-            {
-                properties.AddOrReplaceProp(new BoolProperty(true, "IsLocalised"));
-            }
+                                  WExport.GetExportId(export) == stopEventId)
+                              ?? package.FindExport($"{bankExport.Parent.InstancedFullPath}.{stopEventName}", "WwiseEvent")
+                              ?? ExportCreator.CreateExport(package, stopEventName, "WwiseEvent", bankExport.Parent,
+                                  indexed: false);
 
             var sourceIds = sounds.Select(sound => sound.BankSourceData.MediaInformation.SourceId).ToHashSet();
             var streamIndexes = package.Exports
@@ -997,8 +1420,38 @@ namespace LegendaryExplorer.Tools.WwiseEditor
                                  sourceIds.Contains(unchecked((uint)(export.GetProperty<IntProperty>("Id")?.Value ?? 0))))
                 .Select(export => export.UIndex)
                 .ToList();
+
+            var properties = eventExport.GetProperties();
             var eventBinary = CoreWwiseEvent.Create();
-            eventBinary.Links[0].WwiseStreams = streamIndexes;
+            if (package.Game == MEGame.LE2)
+            {
+                var references = new ArrayProperty<StructProperty>("References");
+                var relationshipProperties = new PropertyCollection
+                {
+                    new ArrayProperty<ObjectProperty>(streamIndexes.Select(index => new ObjectProperty(index)),
+                        "Streams"),
+                    new ObjectProperty(bankExport, "Bank")
+                };
+                var platformProperties = new PropertyCollection
+                {
+                    new StructProperty("WwiseRelationships", relationshipProperties, "Relationships"),
+                    new IntProperty(1, "Platform")
+                };
+                references.Add(new StructProperty("WwisePlatformRelationships", platformProperties));
+                properties.AddOrReplaceProp(references);
+                eventBinary.WwiseEventID = stopEventId;
+            }
+            else
+            {
+                properties.AddOrReplaceProp(new StructProperty("WwiseRelationships", false,
+                    new ObjectProperty(bankExport, "Bank")) { Name = "Relationships" });
+                properties.AddOrReplaceProp(new IntProperty(unchecked((int)stopEventId), "Id"));
+                if (bankExport.GetProperty<BoolProperty>("IsLocalised")?.Value == true)
+                {
+                    properties.AddOrReplaceProp(new BoolProperty(true, "IsLocalised"));
+                }
+                eventBinary.Links[0].WwiseStreams = streamIndexes;
+            }
             eventExport.WritePropertiesAndBinary(properties, eventBinary);
         }
 
@@ -1190,7 +1643,7 @@ namespace LegendaryExplorer.Tools.WwiseEditor
                     switch (exportEntry.ClassName)
                     {
                         case "WwiseEvent":
-                            wwiseEvents.AddToListAt((exportEntry.GetProperty<IntProperty>("Id")?.Value ?? 0).ReinterpretAsUint(), exportEntry);
+                            wwiseEvents.AddToListAt(WExport.GetExportId(exportEntry), exportEntry);
                             break;
                         case "WwiseStream":
                             wwiseStreams.TryAdd((exportEntry.GetProperty<IntProperty>("Id")?.Value ?? 0).ReinterpretAsUint(), exportEntry);
@@ -1442,6 +1895,14 @@ namespace LegendaryExplorer.Tools.WwiseEditor
             if (FindResource("nodeContextMenu") is ContextMenu contextMenu)
             {
                 bool showContextMenu = false;
+                if (contextMenu.GetChild("adjustEventSettingsMenuItem") is MenuItem adjustEventSettingsMenuItem)
+                {
+                    bool canAdjustEvent = obj is WExport { Export.ClassName: "WwiseEvent" };
+                    adjustEventSettingsMenuItem.Visibility = canAdjustEvent
+                        ? Visibility.Visible
+                        : Visibility.Collapsed;
+                    showContextMenu |= canAdjustEvent;
+                }
                 if (contextMenu.GetChild("openInPackEdMenuItem") is MenuItem openInPackEdMenuItem)
                 {
                     if (obj is WExport)

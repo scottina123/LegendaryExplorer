@@ -313,7 +313,7 @@ namespace LegendaryExplorer.Tools.WwiseEditor
             : base(null, grapheditor)
         {
             Export = entry;
-            ID = (Export.GetProperty<IntProperty>("Id")?.Value ?? 0).ReinterpretAsUint();
+            ID = GetExportId(Export);
             const float w = RADIUS * 2;
             const float h = RADIUS * 2;
             shape = PPath.CreateEllipse(0, 0, w, h);
@@ -343,6 +343,16 @@ namespace LegendaryExplorer.Tools.WwiseEditor
         }
 
         public string GetValue() => BuildDisplayValue(Export, TLKManagerWPF.GlobalFindStrRefbyID);
+
+        internal static uint GetExportId(ExportEntry export)
+        {
+            if (export.ClassName == "WwiseEvent" && export.FileRef.Game == MEGame.LE2)
+            {
+                return export.GetBinaryData<WwiseEvent>().WwiseEventID;
+            }
+
+            return (export.GetProperty<IntProperty>("Id")?.Value ?? 0).ReinterpretAsUint();
+        }
 
         internal static string BuildDisplayValue(ExportEntry export, Func<int, IMEPackage, string> resolveTlk)
         {

@@ -10,6 +10,7 @@ using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.Unreal;
 using LegendaryExplorerCore.Unreal.BinaryConverters;
 using ME3Tweaks.Wwiser;
+using ME3Tweaks.Wwiser.Formats;
 using ME3Tweaks.Wwiser.Model.Action;
 using ME3Tweaks.Wwiser.Model.Hierarchy.Enums;
 using ME3Tweaks.Wwiser.Model.ParameterNode;
@@ -17,6 +18,7 @@ using ME3Tweaks.Wwiser.Model.RTPC;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using WwiserAction = ME3Tweaks.Wwiser.Model.Hierarchy.Action;
 using WwiserEvent = ME3Tweaks.Wwiser.Model.Hierarchy.Event;
+using WwiserHircItemContainer = ME3Tweaks.Wwiser.Model.Hierarchy.HircItemContainer;
 using WwiserIHasNode = ME3Tweaks.Wwiser.Model.Hierarchy.IHasNode;
 using WwiserSound = ME3Tweaks.Wwiser.Model.Hierarchy.Sound;
 using CoreWwiseEvent = LegendaryExplorerCore.Unreal.BinaryConverters.WwiseEvent;
@@ -224,6 +226,106 @@ public class WwiseEditorWindowTests
         Assert.IsTrue(stopExport.GetProperty<BoolProperty>("IsLocalised")?.Value);
         CollectionAssert.AreEquivalent(expectedStreamIndexes,
             stopExport.GetBinaryData<CoreWwiseEvent>().Links[0].WwiseStreams);
+    }
+
+    [TestMethod]
+    public void Le2WwiseEventIdComesFromBinaryData()
+    {
+        const uint eventId = 0xF1234567;
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("Le2WwiseEventIdTest.pcc", MEGame.LE2);
+        ExportEntry wwiseEvent = package.CreateExport("Test_Play", "WwiseEvent", indexed: false);
+        wwiseEvent.WritePropertiesAndBinary(new PropertyCollection(), new CoreWwiseEvent
+        {
+            WwiseEventID = eventId,
+            Links = []
+        });
+
+        Assert.AreEqual(eventId, WExport.GetExportId(wwiseEvent));
+    }
+
+    [TestMethod]
+    public void EventTargetsResolvePlayActionsThroughHierarchyToSoundNodes()
+    {
+        var bank = LoadTestBank();
+        var sound = bank.HIRC.Items.Select(item => item.Item).OfType<WwiserSound>().First();
+        uint playTargetId = sound.NodeBaseParameters.DirectParentId;
+        Assert.AreNotEqual(0u, playTargetId);
+        const uint actionId = 0xF0000001;
+        const uint eventId = 0xF0000002;
+        var playAction = new WwiserAction
+        {
+            Id = actionId,
+            Type = new ActionType { Value = ActionTypeValue.Play },
+            TargetId = playTargetId,
+            ActionParams = new Active
+            {
+                SpecificParams = new ME3Tweaks.Wwiser.Model.Action.Specific.Action()
+            }
+        };
+        var playEvent = new WwiserEvent
+        {
+            Id = eventId,
+            ActionCount = new VarCount { Value = 1 },
+            ActionIds = [actionId]
+        };
+        bank.HIRC.Items.Add(new WwiserHircItemContainer
+        {
+            Type = new HircSmartType { Value = HircType.Action },
+            Item = playAction
+        });
+        bank.HIRC.Items.Add(new WwiserHircItemContainer
+        {
+            Type = new HircSmartType { Value = HircType.Event },
+            Item = playEvent
+        });
+
+        var targets = InvokePrivate<List<WwiserSound>>("GetEventTargetSounds", bank, eventId,
+            GetParameterNodes(bank));
+
+        CollectionAssert.Contains(targets, sound);
+    }
+
+    [TestMethod]
+    public void Le2StopEventExportStoresIdAndRelationshipsInLe2Layout()
+    {
+        var sourceBank = LoadTestBank();
+        var sounds = sourceBank.HIRC.Items.Select(item => item.Item).OfType<WwiserSound>()
+            .GroupBy(sound => sound.BankSourceData.MediaInformation.SourceId)
+            .Select(group => group.First())
+            .Take(2)
+            .ToList();
+        Assert.HasCount(2, sounds);
+
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("Le2WwiseSettingsTest.pcc", MEGame.LE2);
+        ExportEntry parent = package.CreatePackageExport("Audio", forcedExport: false);
+        ExportEntry bankExport = package.CreateExport("TestBank", "WwiseBank", parent, indexed: false);
+        var expectedStreamIndexes = new List<int>();
+        foreach (var sound in sounds)
+        {
+            ExportEntry stream = package.CreateExport($"Stream_{sound.Id}", "WwiseStream", parent, indexed: false);
+            stream.WriteProperty(new IntProperty(
+                unchecked((int)sound.BankSourceData.MediaInformation.SourceId), "Id"));
+            expectedStreamIndexes.Add(stream.UIndex);
+        }
+
+        InvokePrivate("EnsureStopAllEventExport", bankExport, sounds);
+        InvokePrivate("EnsureStopAllEventExport", bankExport, sounds);
+
+        var stopExports = package.Exports.Where(export => export.ClassName == "WwiseEvent" &&
+            export.Parent == parent && export.ObjectNameString == "Stop").ToList();
+        Assert.HasCount(1, stopExports);
+        ExportEntry stopExport = stopExports[0];
+        Assert.AreEqual(StopAllEventId, WExport.GetExportId(stopExport));
+        Assert.AreEqual(StopAllEventId, stopExport.GetBinaryData<CoreWwiseEvent>().WwiseEventID);
+        var reference = stopExport.GetProperty<ArrayProperty<StructProperty>>("References")?.Single();
+        Assert.IsNotNull(reference);
+        var relationships = reference.Properties.GetProp<StructProperty>("Relationships");
+        Assert.IsNotNull(relationships);
+        Assert.AreEqual(bankExport.UIndex,
+            relationships.Properties.GetProp<ObjectProperty>("Bank")?.Value);
+        CollectionAssert.AreEquivalent(expectedStreamIndexes,
+            relationships.Properties.GetProp<ArrayProperty<ObjectProperty>>("Streams")
+                ?.Select(stream => stream.Value).ToList());
     }
 
     [TestMethod]

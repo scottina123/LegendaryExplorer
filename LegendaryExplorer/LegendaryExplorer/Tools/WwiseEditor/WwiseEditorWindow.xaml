@@ -28,6 +28,7 @@
         <converters:InverseVisibilityConverter x:Key="InverseVisibilityConverter"/>
         <converters:GameTypeConverter x:Key="GameTypeConverter"/>
         <ContextMenu x:Key="nodeContextMenu" Closed="ContextMenu_Closed">
+            <MenuItem Header="Adjust Event Settings..." Click="AdjustEventSettings_Click" Name="adjustEventSettingsMenuItem"/>
             <MenuItem Header="Open in Package Editor" Click="OpenInPackageEditor_Clicked" Name="openInPackEdMenuItem"/>
         </ContextMenu>
     </Window.Resources>
@@ -68,7 +69,7 @@
                     <Separator />
                     <MenuItem Header="Adjust Bank Settings..." Click="AdjustBankSettings_Click"
                               IsEnabled="{Binding CurrentExport, Converter={StaticResource NullEnabledConverter}}"
-                              ToolTip="View and set volume, looping, and effects for this bank" />
+                              ToolTip="View and set routing, volume, looping, effects, ducking, attenuation, and Stop-event behavior for this bank" />
                 </MenuItem>
 
                 <MenuItem Header="View Options" Padding="4">

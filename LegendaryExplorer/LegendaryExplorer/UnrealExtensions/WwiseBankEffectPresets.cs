@@ -172,6 +172,19 @@ internal static class WwiseBankEffectPresets
     internal static bool HasHelmetRtpcOnAllScopes(IReadOnlyCollection<IHasNode> scopes) =>
         scopes.Count > 0 && scopes.All(scope => scope.NodeBaseParameters.Rtpc.Rtpcs.Any(IsHelmetRtpc));
 
+    internal static bool HasLe2HelmetRtpcOnAllScopes(IReadOnlyCollection<IHasNode> scopes) =>
+        scopes.Count > 0 && scopes.All(scope =>
+        {
+            var helmetRtpcs = scope.NodeBaseParameters.Rtpc.Rtpcs
+                .Where(rtpc => rtpc.RtpcId == Le2HelmetRtpcId)
+                .ToList();
+            return helmetRtpcs.Count == 2 &&
+                   helmetRtpcs.Any(rtpc => IsHelmetRtpc(rtpc, Le2HelmetRtpcId,
+                       ParameterId.RtpcParameterId.BypassFX0)) &&
+                   helmetRtpcs.Any(rtpc => IsHelmetRtpc(rtpc, Le2HelmetRtpcId,
+                       ParameterId.RtpcParameterId.BypassFX1));
+        });
+
     internal static bool EnsureStandardAttenuationData(ME3Tweaks.Wwiser.WwiseBank bank,
         float distanceScale, out uint attenuationId) =>
         EnsureStandardAttenuationData(bank, MEGame.LE3, distanceScale, out attenuationId);
@@ -399,6 +412,78 @@ internal static class WwiseBankEffectPresets
     internal static bool EnsureLe2MusicDuckingData(ME3Tweaks.Wwiser.WwiseBank bank,
         uint targetActorMixerId) => EnsureLe2MusicDuckingDataForTargets(bank, [targetActorMixerId]);
 
+    internal static bool HasLe2MusicDuckingOnAllTargets(ME3Tweaks.Wwiser.WwiseBank bank,
+        IReadOnlyCollection<uint> targetNodeIds)
+    {
+        var targets = targetNodeIds.Where(targetId => targetId != 0).Distinct().ToHashSet();
+        if (bank.HIRC == null || targets.Count == 0)
+        {
+            return false;
+        }
+
+        var actionsById = bank.HIRC.Items.Select(item => item.Item).OfType<HircAction>()
+            .ToDictionary(action => action.Id);
+        var duckEvent = bank.HIRC.Items.Select(item => item.Item).OfType<HircEvent>()
+            .FirstOrDefault(item => item.Id == Le2MusicDuckEventId);
+        var resetEvent = bank.HIRC.Items.Select(item => item.Item).OfType<HircEvent>()
+            .FirstOrDefault(item => item.Id == Le2MusicResetEventId);
+        if (duckEvent == null || resetEvent == null)
+        {
+            return false;
+        }
+
+        var duckTargets = duckEvent.ActionIds.Where(actionsById.ContainsKey)
+            .Select(actionId => actionsById[actionId].TargetId).ToHashSet();
+        var resetTargets = resetEvent.ActionIds.Where(actionsById.ContainsKey)
+            .Select(actionId => actionsById[actionId].TargetId).ToHashSet();
+        return targets.All(targetId => duckTargets.Contains(targetId) && resetTargets.Contains(targetId));
+    }
+
+    internal static bool SetLe2MusicDuckingOnTargets(ME3Tweaks.Wwiser.WwiseBank bank,
+        IReadOnlyCollection<uint> targetNodeIds, bool enabled)
+    {
+        var targets = targetNodeIds.Where(targetId => targetId != 0).Distinct().ToHashSet();
+        if (bank.HIRC == null || targets.Count == 0)
+        {
+            return false;
+        }
+
+        if (enabled)
+        {
+            return EnsureLe2MusicDuckingDataForTargets(bank, targets);
+        }
+
+        var actionsById = bank.HIRC.Items.Select(item => item.Item).OfType<HircAction>()
+            .ToDictionary(action => action.Id);
+        var removedActionIds = new HashSet<uint>();
+        foreach (uint eventId in new[] { Le2MusicDuckEventId, Le2MusicResetEventId })
+        {
+            var eventContainer = bank.HIRC.Items.FirstOrDefault(item => item.Item.Id == eventId);
+            if (eventContainer?.Item is not HircEvent hircEvent)
+            {
+                continue;
+            }
+
+            foreach (uint actionId in hircEvent.ActionIds
+                         .Where(actionId => actionsById.TryGetValue(actionId, out var action) &&
+                                            targets.Contains(action.TargetId)).ToList())
+            {
+                hircEvent.ActionIds.Remove(actionId);
+                removedActionIds.Add(actionId);
+            }
+
+            hircEvent.ActionCount.Value = checked((uint)hircEvent.ActionIds.Count);
+            if (hircEvent.ActionIds.Count == 0)
+            {
+                bank.HIRC.Items.Remove(eventContainer);
+            }
+        }
+
+        bank.HIRC.Items.RemoveAll(item => removedActionIds.Contains(item.Item.Id));
+        bank.HIRC.ItemCount = checked((uint)bank.HIRC.Items.Count);
+        return true;
+    }
+
     internal static bool EnsureLe2MusicDuckingDataForTargets(ME3Tweaks.Wwiser.WwiseBank bank,
         IReadOnlyCollection<uint> targetNodeIds)
     {
@@ -526,13 +611,17 @@ internal static class WwiseBankEffectPresets
         }
     }
 
-    private static bool IsHelmetRtpc(Rtpc rtpc)
+    private static bool IsHelmetRtpc(Rtpc rtpc) =>
+        IsHelmetRtpc(rtpc, HelmetRtpcId, ParameterId.RtpcParameterId.BypassFX0);
+
+    private static bool IsHelmetRtpc(Rtpc rtpc, uint rtpcId,
+        ParameterId.RtpcParameterId bypassParameter)
     {
         var graph = rtpc.RtpcConversionTable.Graph;
-        return rtpc.RtpcId == HelmetRtpcId &&
+        return rtpc.RtpcId == rtpcId &&
                rtpc.RtpcType.Value == RtpcType.RtpcTypeInner.GameParameter &&
                rtpc.RtpcAccum.Value == AccumType.AccumTypeInner.Boolean &&
-               rtpc.ParamId.ParamId == ParameterId.RtpcParameterId.BypassFX0 &&
+               rtpc.ParamId.ParamId == bypassParameter &&
                rtpc.RtpcConversionTable.Scaling.Value == CurveScaling.CurveScalingInner.None &&
                graph.Count == 2 &&
                graph[0].From == 0 && graph[0].To == 1 && graph[0].Interp == CurveInterpolation.Constant &&

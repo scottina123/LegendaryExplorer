@@ -1,98 +1,232 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using LegendaryExplorer.SharedUI;
+using LegendaryExplorer.UnrealExtensions;
+using LegendaryExplorerCore.Packages;
 
 namespace LegendaryExplorer.Dialogs
 {
+    internal enum WwiseEditorEffectPreset
+    {
+        Preserve,
+        NoneOrInherited,
+        FactoryRadio,
+        BioWareRadio,
+        Qec,
+        Helmet,
+        Le2Radio,
+        Le2Helmet,
+        Le2Hologram
+    }
+
+    internal sealed record WwiseEditorEffectOption(string Name, WwiseEditorEffectPreset Preset);
+
+    internal sealed class WwiseEditorAudioSettings
+    {
+        internal MEGame Game { get; init; }
+        internal string ScopeName { get; init; }
+        internal string TargetSummary { get; init; }
+        internal bool IsBankWide { get; init; }
+        internal float Volume { get; init; }
+        internal bool VolumeIsMixed { get; init; }
+        internal uint? OutputBusId { get; init; }
+        internal string EffectiveInheritedOutputBus { get; init; }
+        internal bool? LoopAudio { get; init; }
+        internal WwiseEditorEffectPreset EffectPreset { get; init; }
+        internal bool? DuckAudio { get; init; }
+        internal bool? Attenuation { get; init; }
+        internal double AttenuationScalePercent { get; init; } = 100;
+        internal bool CanApplyEffects { get; init; }
+        internal bool CanApplyDucking { get; init; }
+        internal bool CanApplyAttenuation { get; init; }
+        internal bool StopEventExists { get; init; }
+        internal bool CanCreateStopEvent { get; init; }
+    }
+
+    internal sealed record WwiseEditorOutputBusOption(string Name, uint? Id, string ResolvedName);
+
     public partial class WwiseBankVolumeDialog : Window
     {
         private bool _updatingVolume;
-        private bool _initializingEffects;
-        private readonly bool _stopAllEventExists;
+        private bool _initializing;
+        private readonly WwiseEditorAudioSettings _settings;
 
         public float SelectedVolume => (float)VolumeSlider.Value;
+        public bool VolumeWasEdited { get; private set; }
+        internal uint? SelectedOutputBusId =>
+            (OutputBusComboBox.SelectedItem as WwiseEditorOutputBusOption)?.Id;
+        public bool OutputBusWasEdited { get; private set; }
         public bool? LoopAudio => LoopAudioCheckBox.IsChecked;
-        public bool FactoryRadioEffect => FactoryRadioEffectCheckBox.IsChecked == true;
-        public bool BioWareRadioEffect => BioWareRadioEffectCheckBox.IsChecked == true;
-        public bool QecEffect => QecEffectCheckBox.IsChecked == true;
-        public bool HelmetEffect => HelmetEffectCheckBox.IsChecked == true;
-        public bool CreateStopAllEvent => !_stopAllEventExists && StopAllEventCheckBox.IsChecked == true;
+        internal WwiseEditorEffectPreset SelectedEffectPreset =>
+            (EffectPresetComboBox.SelectedItem as WwiseEditorEffectOption)?.Preset ??
+            WwiseEditorEffectPreset.Preserve;
+        public bool? DuckAudio => DuckAudioCheckBox.IsChecked;
+        public bool? Attenuation => AttenuationCheckBox.IsChecked;
+        public double AttenuationScalePercent => AttenuationScaleSlider.Value;
+        public bool CreateStopEvent => !_settings.StopEventExists && StopEventCheckBox.IsChecked == true;
 
-        public WwiseBankVolumeDialog(float currentVolume, bool? loopAudio,
-            bool factoryRadioEffect, bool canApplyFactoryRadioEffect,
-            bool bioWareRadioEffect, bool canApplyBioWareRadioEffect,
-            bool qecEffect, bool canApplyQecEffect,
-            bool helmetEffect, bool canApplyHelmetEffect,
-            bool stopAllEventExists, bool canCreateStopAllEvent)
+        internal WwiseBankVolumeDialog(WwiseEditorAudioSettings settings)
         {
+            _settings = settings;
             InitializeComponent();
             CustomWindowChrome.ApplyCustomChrome(this);
-            _stopAllEventExists = stopAllEventExists;
 
-            VolumeSlider.Minimum = Math.Min(-96, currentVolume);
-            VolumeSlider.Maximum = Math.Max(12, currentVolume);
+            _initializing = true;
+            Title = settings.IsBankWide ? "Adjust Bank Settings" : "Adjust Wwise Event Settings";
+            DescriptionText.Text = settings.IsBankWide
+                ? $"Set routing and audio processing for bank {settings.ScopeName}."
+                : $"Set routing and audio processing for event {settings.ScopeName}.";
+            TargetSummaryText.Text = settings.TargetSummary;
+
+            VolumeSlider.Minimum = Math.Min(-96, settings.Volume);
+            VolumeSlider.Maximum = Math.Max(12, settings.Volume);
             _updatingVolume = true;
-            VolumeSlider.Value = currentVolume;
-            VolumeTextBox.Text = currentVolume.ToString("0.##", CultureInfo.InvariantCulture);
+            VolumeSlider.Value = settings.Volume;
+            VolumeTextBox.Text = settings.Volume.ToString("0.##", CultureInfo.InvariantCulture);
             _updatingVolume = false;
-            CurrentVolumeRun.Text = $"{currentVolume.ToString("0.0", CultureInfo.InvariantCulture)} dB";
-            LoopAudioCheckBox.IsChecked = loopAudio;
+            CurrentVolumeRun.Text = settings.VolumeIsMixed
+                ? $"mixed (showing {settings.Volume.ToString("0.0", CultureInfo.InvariantCulture)} dB)"
+                : $"{settings.Volume.ToString("0.0", CultureInfo.InvariantCulture)} dB";
 
-            _initializingEffects = true;
-            FactoryRadioEffectCheckBox.IsChecked = factoryRadioEffect;
-            BioWareRadioEffectCheckBox.IsChecked = bioWareRadioEffect;
-            QecEffectCheckBox.IsChecked = qecEffect;
-            HelmetEffectCheckBox.IsChecked = helmetEffect;
-            _initializingEffects = false;
+            PopulateOutputBuses(settings);
+            PopulateEffects(settings);
+            LoopAudioCheckBox.IsChecked = settings.LoopAudio;
+            DuckAudioCheckBox.IsChecked = settings.DuckAudio;
+            AttenuationCheckBox.IsChecked = settings.Attenuation;
+            AttenuationScaleSlider.Value = Math.Clamp(settings.AttenuationScalePercent, 10, 500);
 
-            FactoryRadioEffectCheckBox.IsEnabled = canApplyFactoryRadioEffect || factoryRadioEffect;
-            BioWareRadioEffectCheckBox.IsEnabled = canApplyBioWareRadioEffect || bioWareRadioEffect;
-            QecEffectCheckBox.IsEnabled = canApplyQecEffect || qecEffect;
-            HelmetEffectCheckBox.IsEnabled = canApplyHelmetEffect || helmetEffect;
-            StopAllEventCheckBox.IsChecked = stopAllEventExists;
-            StopAllEventCheckBox.IsEnabled = !stopAllEventExists && canCreateStopAllEvent;
-            if (stopAllEventExists)
+            EffectPresetComboBox.IsEnabled = settings.CanApplyEffects ||
+                                             settings.EffectPreset != WwiseEditorEffectPreset.NoneOrInherited;
+            AttenuationCheckBox.IsEnabled = settings.CanApplyAttenuation || settings.Attenuation != false;
+            StopEventCheckBox.IsChecked = settings.StopEventExists;
+            StopEventCheckBox.IsEnabled = !settings.StopEventExists && settings.CanCreateStopEvent;
+            StopEventCheckBox.Content = settings.StopEventExists
+                ? settings.IsBankWide
+                    ? "A shared Stop event already covers all bank audio"
+                    : "A matching Stop event already covers this event's audio"
+                : settings.IsBankWide
+                    ? "Create one Stop event for all bank audio"
+                    : "Create a Stop event for this event's audio";
+
+            var unavailable = new List<string>();
+            if (!settings.CanApplyEffects)
             {
-                StopAllEventCheckBox.Content = "Stop event for all bank audio already exists";
+                unavailable.Add("shipped effect presets");
+            }
+            if (!settings.CanApplyDucking)
+            {
+                unavailable.Add("music ducking");
+            }
+            if (!settings.CanApplyAttenuation)
+            {
+                unavailable.Add("standard attenuation");
+            }
+            if (unavailable.Count > 0)
+            {
+                UnavailableText.Text = $"Unavailable for this bank version or target: {string.Join(", ", unavailable)}.";
+                UnavailableText.Visibility = Visibility.Visible;
             }
 
-            EffectUnavailableText.Visibility = canApplyFactoryRadioEffect || canApplyBioWareRadioEffect ||
-                                               canApplyQecEffect || canApplyHelmetEffect || canCreateStopAllEvent
-                ? Visibility.Collapsed
-                : Visibility.Visible;
+            UpdateDuckingAvailability();
+            UpdateAttenuationDisplay();
+            _initializing = false;
         }
 
-        private void EffectCheckBox_Checked(object sender, RoutedEventArgs e)
+        private void PopulateOutputBuses(WwiseEditorAudioSettings settings)
         {
-            if (_initializingEffects)
+            var options = new List<WwiseEditorOutputBusOption>();
+            if (!settings.OutputBusId.HasValue)
+            {
+                options.Add(new WwiseEditorOutputBusOption("Mixed output buses (preserve)", null, null));
+            }
+
+            if (!settings.IsBankWide)
+            {
+                options.Add(new WwiseEditorOutputBusOption("Bank-wide/default (inherit)", 0,
+                    settings.EffectiveInheritedOutputBus));
+            }
+
+            foreach (string outputBus in WwiseOutputBusOptions.GetOutputBuses(settings.Game))
+            {
+                if (!settings.IsBankWide && outputBus == WwiseOutputBusOptions.MasterAudioBus)
+                {
+                    continue;
+                }
+
+                options.Add(new WwiseEditorOutputBusOption(outputBus,
+                    WwiseOutputBusOptions.GetOutputBusId(outputBus), outputBus));
+            }
+
+            if (settings.OutputBusId is uint currentId && currentId != 0 &&
+                options.All(option => option.Id != currentId))
+            {
+                options.Insert(0, new WwiseEditorOutputBusOption($"Unknown bus 0x{currentId:X8} (preserve)",
+                    currentId, null));
+            }
+
+            OutputBusComboBox.ItemsSource = options;
+            OutputBusComboBox.SelectedItem = options.FirstOrDefault(option => option.Id == settings.OutputBusId)
+                                                  ?? options[0];
+        }
+
+        private void PopulateEffects(WwiseEditorAudioSettings settings)
+        {
+            string defaultName = settings.IsBankWide ? "No shipped preset" : "Bank-wide/default (inherit)";
+            var options = new List<WwiseEditorEffectOption>
+            {
+                new(defaultName, WwiseEditorEffectPreset.NoneOrInherited)
+            };
+            if (settings.Game == MEGame.LE2)
+            {
+                options.Add(new WwiseEditorEffectOption("LE2 radio", WwiseEditorEffectPreset.Le2Radio));
+                options.Add(new WwiseEditorEffectOption("Helmet", WwiseEditorEffectPreset.Le2Helmet));
+                options.Add(new WwiseEditorEffectOption("Illusive Man hologram", WwiseEditorEffectPreset.Le2Hologram));
+            }
+            else
+            {
+                options.Add(new WwiseEditorEffectOption("BioWare radio", WwiseEditorEffectPreset.BioWareRadio));
+                options.Add(new WwiseEditorEffectOption("Hackett QEC", WwiseEditorEffectPreset.Qec));
+                options.Add(new WwiseEditorEffectOption("Helmet", WwiseEditorEffectPreset.Helmet));
+            }
+            options.Add(new WwiseEditorEffectOption("Dual_Filters_Radio_Comm", WwiseEditorEffectPreset.FactoryRadio));
+
+            if (settings.EffectPreset == WwiseEditorEffectPreset.Preserve)
+            {
+                options.Insert(0, new WwiseEditorEffectOption("Mixed/custom effects (preserve)",
+                    WwiseEditorEffectPreset.Preserve));
+            }
+
+            EffectPresetComboBox.ItemsSource = options;
+            EffectPresetComboBox.SelectedItem = options.First(option => option.Preset == settings.EffectPreset);
+        }
+
+        private void OutputBusComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (!_initializing)
+            {
+                OutputBusWasEdited = true;
+            }
+            UpdateDuckingAvailability();
+        }
+
+        private void UpdateDuckingAvailability()
+        {
+            if (DuckAudioCheckBox == null)
             {
                 return;
             }
 
-            _initializingEffects = true;
-            if (sender != FactoryRadioEffectCheckBox)
+            string outputBus = (OutputBusComboBox?.SelectedItem as WwiseEditorOutputBusOption)?.ResolvedName;
+            bool busSupportsDucking = WwiseOutputBusOptions.SupportsMusicDucking(_settings.Game, outputBus);
+            DuckAudioCheckBox.IsEnabled = _settings.DuckAudio != false ||
+                                          _settings.CanApplyDucking && busSupportsDucking;
+            if (!_initializing && !DuckAudioCheckBox.IsEnabled)
             {
-                FactoryRadioEffectCheckBox.IsChecked = false;
-            }
-            if (sender != BioWareRadioEffectCheckBox)
-            {
-                BioWareRadioEffectCheckBox.IsChecked = false;
-            }
-            if (sender != QecEffectCheckBox)
-            {
-                QecEffectCheckBox.IsChecked = false;
-            }
-            if (sender != HelmetEffectCheckBox)
-            {
-                HelmetEffectCheckBox.IsChecked = false;
-            }
-            _initializingEffects = false;
-
-            if (sender == BioWareRadioEffectCheckBox)
-            {
-                VolumeSlider.Value = 12;
+                DuckAudioCheckBox.IsChecked = false;
             }
         }
 
@@ -107,6 +241,10 @@ namespace LegendaryExplorer.Dialogs
             VolumeTextBox.Text = e.NewValue.ToString("0.##", CultureInfo.InvariantCulture);
             VolumeTextBox.CaretIndex = VolumeTextBox.Text.Length;
             _updatingVolume = false;
+            if (!_initializing)
+            {
+                VolumeWasEdited = true;
+            }
             SetValidationState(true, null);
         }
 
@@ -117,7 +255,8 @@ namespace LegendaryExplorer.Dialogs
                 return;
             }
 
-            if (!double.TryParse(VolumeTextBox.Text, NumberStyles.Float, CultureInfo.InvariantCulture, out double volume))
+            if (!double.TryParse(VolumeTextBox.Text, NumberStyles.Float, CultureInfo.InvariantCulture,
+                    out double volume))
             {
                 SetValidationState(false, "Enter a valid number using a period as the decimal separator.");
                 return;
@@ -125,14 +264,35 @@ namespace LegendaryExplorer.Dialogs
 
             if (volume < VolumeSlider.Minimum || volume > VolumeSlider.Maximum)
             {
-                SetValidationState(false, $"Volume must be between {VolumeSlider.Minimum:0.##} and {VolumeSlider.Maximum:0.##} dB.");
+                SetValidationState(false,
+                    $"Volume must be between {VolumeSlider.Minimum:0.##} and {VolumeSlider.Maximum:0.##} dB.");
                 return;
             }
 
             _updatingVolume = true;
             VolumeSlider.Value = volume;
             _updatingVolume = false;
+            if (!_initializing)
+            {
+                VolumeWasEdited = true;
+            }
             SetValidationState(true, null);
+        }
+
+        private void AttenuationScaleSlider_ValueChanged(object sender,
+            RoutedPropertyChangedEventArgs<double> e) => UpdateAttenuationDisplay();
+
+        private void UpdateAttenuationDisplay()
+        {
+            if (AttenuationScaleValueTextBlock == null || AttenuationScaleSlider == null)
+            {
+                return;
+            }
+
+            double maximumDistance = WwiseBankEffectPresets.StandardAttenuationOriginalMaxDistance *
+                                     AttenuationScaleSlider.Value / 100d;
+            AttenuationScaleValueTextBlock.Text =
+                $"{AttenuationScaleSlider.Value:0}% ({maximumDistance:0.#} max)";
         }
 
         private void SetValidationState(bool isValid, string message)
@@ -147,9 +307,6 @@ namespace LegendaryExplorer.Dialogs
             ValidationText.Visibility = isValid ? Visibility.Collapsed : Visibility.Visible;
         }
 
-        private void ApplyButton_Click(object sender, RoutedEventArgs e)
-        {
-            DialogResult = true;
-        }
+        private void ApplyButton_Click(object sender, RoutedEventArgs e) => DialogResult = true;
     }
 }

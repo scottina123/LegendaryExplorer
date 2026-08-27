@@ -154,114 +154,6 @@ namespace LegendaryExplorer.Dialogs
         public bool IsIndividualMusicDuckingAvailable { get; private set; }
         public event PropertyChangedEventHandler PropertyChanged;
 
-        private static readonly string[] Le3OutputBuses =
-        {
-            "Master Audio Bus",
-            "Env-VO-Conversation",
-            "Env-VO-Ambient-Duck",
-            "Env-VO-Ambient-NonDuck",
-            "Env-VO-Ambient-Critical",
-            "Env-VO-SoundSet-Duck",
-            "Env-VO-SoundSet-NonDuck",
-            "Env-VO-Exertions",
-            "Env-Music",
-            "Env-Snd-0-CineDesign",
-            "Env-Snd-0-CineAnim",
-            "Env-Snd-0-CineD-SkipKill",
-            "Env-Snd-0-CineD-SkipNoKill",
-            "Env-Snd-0-LevelEvents",
-            "Env-Snd-0-LevelTransitions",
-            "Env-Snd-0-ProceduralFoley",
-            "Env-Snd-1-Amb-Stream",
-            "Env-Snd-1-Amb-NonStream",
-            "Env-Snd-1-Creatures",
-            "Env-Snd-1-Foley",
-            "Env-Snd-1-Footsteps",
-            "Env-Snd-1-Physics",
-            "Env-Snd-1-Placeables",
-            "Env-Snd-1-Powers",
-            "Env-Snd-1-Vehicles",
-            "Env-Snd-1-VFX",
-            "Env-Snd-1-Weapons",
-            "Env-Snd-1-Bullets",
-            "Env-Snd-2-PlayerWeapons",
-            "Env-Snd-2-PlayerPowers",
-            "Env-Snd-3-CreatureCritical",
-            "Env-Snd-4-Explosions",
-            "Env-Snd-5-Critical",
-            "NonEnv-Snd-0-CineAnim",
-            "NonEnv-Snd-0-CineDes",
-            "NonEnv-Snd-0-LevelEvents",
-            "NonEnv-VO-Radio-Convo",
-            "NonEnv-VO-Radio-Critical",
-            "NonSlowdown-GUI Sounds",
-            "NonSlowdown-Music",
-            "NonSlowdown-Dialog",
-        };
-
-        /// <summary>
-        /// LE2 bus names copied from the game hierarchy in the LEX Test LE2 authoring project.
-        /// Wwise derives the runtime bus ShortID from these exact names.
-        /// </summary>
-        private static readonly string[] Le2OutputBuses =
-        {
-            "Master Audio Bus",
-            "Game Speed Affected",
-            "Capture Buss",
-            "Enviromental",
-            "Migrated",
-            "UnDucked Bus",
-            "Ducked Bus",
-            "Dialog",
-            "Ambient - Does Duck Ambiences",
-            "Conversation",
-            "SoundSet",
-            "Ambient - Doesn't Duck Ambiences",
-            "Ambient-Ducked By Conversation VO",
-            "Conversation - Critical",
-            "Music-Diegetic",
-            "Sound Effects",
-            "Foley",
-            "Ambiences - Streaming",
-            "Physics",
-            "Particle Emitters",
-            "Gunshots",
-            "Bullet Impacts",
-            "Ambiences - NonStreaming",
-            "Creatures",
-            "Cine Design",
-            "Skipping Killed",
-            "Skipping Not Killed",
-            "Cine Anim",
-            "Vehicles",
-            "Powers",
-            "Placeables",
-            "Non-Environmental",
-            "UnDucked Bus_01",
-            "UnDucked Music",
-            "UnDucked Sound Effects",
-            "UnDucked LFE",
-            "GUI Sounds",
-            "Ducked Bus_01",
-            "Sound Effects_01",
-            "Ambiences - Streaming_01",
-            "Ambiences - NonStreaming_01",
-            "Cine Anim_01",
-            "Ducked LFE",
-            "Cine Design_01",
-            "Skipping Killed_01",
-            "Skipping Not Killed_01",
-            "Cine Anim_01_NoAffectedByStopCineDesign",
-            "Dialog_01",
-            "Music",
-            "Not Game Speed Affected",
-            "Sound Effects_02",
-            "GUI Sounds_01",
-            "Music_01",
-            "Dialog_02",
-            "Combat Ducking Control Bus",
-        };
-
         /// <summary>
         /// Output buses for the package's game. Non-master buses are injected into the temporary
         /// Wwise project so the generated ActorMixer receives the game bus's name-derived ShortID.
@@ -318,7 +210,7 @@ namespace LegendaryExplorer.Dialogs
 
             bool isLe2 = _package.Game == MEGame.LE2;
             IndividualEffectOptions = GetIndividualEffectOptions(_package.Game);
-            OutputBuses.AddRange(isLe2 ? Le2OutputBuses : Le3OutputBuses);
+            OutputBuses.AddRange(WwiseOutputBusOptions.GetOutputBuses(_package.Game));
             OutputBusesView = CollectionViewSource.GetDefaultView(OutputBuses);
             OutputBusesView.Filter = item => item is string outputBus &&
                                                    MatchesOutputBusFilter(outputBus, OutputBusFilterText);
@@ -643,13 +535,10 @@ namespace LegendaryExplorer.Dialogs
         }
 
         private static bool DefaultsToHelmetEffect(MEGame game, string outputBus) =>
-            (game == MEGame.LE3 && string.Equals(outputBus, ConversationOutputBus, StringComparison.Ordinal)) ||
-            (game == MEGame.LE2 && string.Equals(outputBus, Le2ConversationOutputBus, StringComparison.Ordinal));
+            WwiseOutputBusOptions.DefaultsToHelmetEffect(game, outputBus);
 
         private static bool SupportsMusicDucking(MEGame game, string outputBus) =>
-            (game is MEGame.LE2 or MEGame.LE3) && !string.IsNullOrWhiteSpace(outputBus) &&
-            (outputBus.Contains("Music", StringComparison.OrdinalIgnoreCase) ||
-             outputBus.StartsWith("Mus-", StringComparison.OrdinalIgnoreCase));
+            WwiseOutputBusOptions.SupportsMusicDucking(game, outputBus);
 
         private static bool SupportsStandardAttenuation(MEGame game) => game is MEGame.LE2 or MEGame.LE3;
 

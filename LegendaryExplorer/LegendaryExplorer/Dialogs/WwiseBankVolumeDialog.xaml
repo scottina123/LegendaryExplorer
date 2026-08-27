@@ -1,68 +1,89 @@
 <Window x:Class="LegendaryExplorer.Dialogs.WwiseBankVolumeDialog"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Adjust Bank Settings" Width="540" Height="490"
-        ResizeMode="NoResize" WindowStartupLocation="CenterOwner">
+        Title="Adjust Audio Settings" Width="620" Height="720" MinWidth="560" MinHeight="620"
+        WindowStartupLocation="CenterOwner">
     <Grid Margin="12">
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <TextBlock Text="Set the volume and audio processing applied to this bank."
-                   TextWrapping="Wrap" Margin="0,0,0,10"/>
-        <TextBlock Grid.Row="1" Margin="0,0,0,4">
-            <Run Text="Current volume: "/>
-            <Run x:Name="CurrentVolumeRun" FontWeight="Bold"/>
-        </TextBlock>
-        <Grid Grid.Row="2">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="70"/>
-                <ColumnDefinition Width="Auto"/>
-            </Grid.ColumnDefinitions>
-            <Slider x:Name="VolumeSlider" Minimum="-96" Maximum="12" TickFrequency="1"
-                    SmallChange="0.5" LargeChange="5" VerticalAlignment="Center"
-                    ToolTip="Bank volume in decibels" ValueChanged="VolumeSlider_ValueChanged"/>
-            <TextBox x:Name="VolumeTextBox" Grid.Column="1" Margin="8,0,4,0" Padding="4,2"
-                     HorizontalContentAlignment="Right" VerticalContentAlignment="Center"
-                     TextChanged="VolumeTextBox_TextChanged" ToolTip="Enter the bank volume manually"/>
-            <TextBlock Grid.Column="2" Text="dB" VerticalAlignment="Center"/>
-        </Grid>
-        <StackPanel Grid.Row="3" Margin="0,8,0,0">
-            <CheckBox x:Name="LoopAudioCheckBox" Margin="0,4"
-                      Content="Loop imported audio infinitely" IsThreeState="True"
-                      ToolTip="Checked applies infinite looping to all sounds. An indeterminate value preserves mixed loop settings."/>
-            <TextBlock Text="Effect preset:" FontWeight="SemiBold" Margin="0,8,0,2"/>
-            <CheckBox x:Name="FactoryRadioEffectCheckBox" Margin="0,4"
-                      Checked="EffectCheckBox_Checked"
-                      Content="Apply Dual_Filters_Radio_Comm effect"
-                      ToolTip="Applies the imported Wwise Parametric EQ radio communication filter throughout the bank's effect-inheritance scopes."/>
-            <CheckBox x:Name="BioWareRadioEffectCheckBox" Margin="0,4"
-                      Checked="EffectCheckBox_Checked"
-                      Content="Apply BioWare radio communication effect"
-                      ToolTip="Applies the exact FutzBox and Parametric EQ chain from cit001_postbridge_lovei_b_dlg throughout the bank and sets volume to +12 dB."/>
-            <CheckBox x:Name="QecEffectCheckBox" Margin="0,4"
-                      Checked="EffectCheckBox_Checked"
-                      Content="Apply Hackett QEC transmission effect"
-                      ToolTip="Applies the exact McDSP FutzBox and Wwise Flanger chain used for Admiral Hackett over the QEC."/>
-            <CheckBox x:Name="HelmetEffectCheckBox" Margin="0,4"
-                      Checked="EffectCheckBox_Checked"
-                      Content="Apply helmet voice filter"
-                      ToolTip="Adds the LE3 helmet FutzBox and Helmet RTPC. RTPC value 0 bypasses the filter; value 1 enables it."/>
-            <CheckBox x:Name="StopAllEventCheckBox" Margin="0,8,0,4"
-                      Content="Create one Stop event for all bank audio"
-                      ToolTip="Adds a postable WwiseEvent named Stop with a stop action for every Sound object in this bank."/>
-            <TextBlock x:Name="EffectUnavailableText" Margin="24,0,0,0" Opacity="0.7"
-                       Text="These exact effect presets and Stop-event creation require an LE3 version-134 bank."
-                       TextWrapping="Wrap" Visibility="Collapsed"/>
-            <TextBlock x:Name="ValidationText" Foreground="Red" Margin="0,4,0,0"
-                       Visibility="Collapsed"/>
-        </StackPanel>
-        <Grid Grid.Row="4" Margin="0,12,0,0">
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+            <StackPanel>
+                <TextBlock x:Name="DescriptionText" TextWrapping="Wrap" Margin="0,0,0,10"/>
+                <TextBlock x:Name="TargetSummaryText" TextWrapping="Wrap" Opacity="0.75" Margin="0,0,0,10"/>
+
+                <GroupBox Header="Routing and volume" Padding="8" Margin="0,0,0,8">
+                    <StackPanel>
+                        <TextBlock Margin="0,0,0,4">
+                            <Run Text="Current volume: "/>
+                            <Run x:Name="CurrentVolumeRun" FontWeight="Bold"/>
+                        </TextBlock>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="70"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <Slider x:Name="VolumeSlider" Minimum="-96" Maximum="12" TickFrequency="1"
+                                    SmallChange="0.5" LargeChange="5" VerticalAlignment="Center"
+                                    ToolTip="Volume in decibels" ValueChanged="VolumeSlider_ValueChanged"/>
+                            <TextBox x:Name="VolumeTextBox" Grid.Column="1" Margin="8,0,4,0" Padding="4,2"
+                                     HorizontalContentAlignment="Right" VerticalContentAlignment="Center"
+                                     TextChanged="VolumeTextBox_TextChanged" ToolTip="Enter the volume manually"/>
+                            <TextBlock Grid.Column="2" Text="dB" VerticalAlignment="Center"/>
+                        </Grid>
+
+                        <TextBlock Text="Output bus:" FontWeight="SemiBold" Margin="0,10,0,3"/>
+                        <ComboBox x:Name="OutputBusComboBox" DisplayMemberPath="Name" Padding="3"
+                                  SelectionChanged="OutputBusComboBox_SelectionChanged"
+                                  ToolTip="Select a game-native output bus. Wwise stores this as the bus name's ShortID."/>
+                    </StackPanel>
+                </GroupBox>
+
+                <GroupBox Header="Audio processing" Padding="8" Margin="0,0,0,8">
+                    <StackPanel>
+                        <CheckBox x:Name="LoopAudioCheckBox" Margin="0,3" IsThreeState="True"
+                                  Content="Loop audio infinitely"
+                                  ToolTip="An indeterminate value preserves mixed loop settings."/>
+                        <TextBlock Text="Effect preset:" FontWeight="SemiBold" Margin="0,8,0,3"/>
+                        <ComboBox x:Name="EffectPresetComboBox" DisplayMemberPath="Name" Padding="3"
+                                  ToolTip="Select a shipped game-specific effect preset, or inherit the bank-wide/default effect for an individual event."/>
+                        <CheckBox x:Name="DuckAudioCheckBox" Margin="0,10,0,3" IsThreeState="True"
+                                  Content="Apply shipped music ducking"
+                                  ToolTip="Available for music output buses. An indeterminate value preserves mixed settings."/>
+                        <CheckBox x:Name="AttenuationCheckBox" Margin="0,3" IsThreeState="True"
+                                  Content="Apply standard BioWare distance attenuation"
+                                  ToolTip="An indeterminate value preserves mixed attenuation settings."/>
+                        <Grid Margin="20,4,0,0" IsEnabled="{Binding ElementName=AttenuationCheckBox, Path=IsChecked}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="105"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Distance scale:" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                            <Slider Grid.Column="1" x:Name="AttenuationScaleSlider" Minimum="10" Maximum="500" Value="100"
+                                    TickFrequency="25" SmallChange="5" LargeChange="25" Margin="0,0,8,0"
+                                    AutoToolTipPlacement="TopLeft" AutoToolTipPrecision="0"
+                                    ValueChanged="AttenuationScaleSlider_ValueChanged"
+                                    ToolTip="Scales every distance point together. 100% preserves the shipped curve."/>
+                            <TextBlock Grid.Column="2" x:Name="AttenuationScaleValueTextBlock" Text="100% (70 max)"
+                                       VerticalAlignment="Center"/>
+                        </Grid>
+                    </StackPanel>
+                </GroupBox>
+
+                <CheckBox x:Name="StopEventCheckBox" Margin="0,4"
+                          ToolTip="Creates a postable WwiseEvent with stop actions for the affected Sound objects."/>
+                <TextBlock x:Name="UnavailableText" Margin="0,5,0,0" Opacity="0.7"
+                           TextWrapping="Wrap" Visibility="Collapsed"/>
+                <TextBlock x:Name="ValidationText" Foreground="Red" Margin="0,5,0,0"
+                           Visibility="Collapsed"/>
+            </StackPanel>
+        </ScrollViewer>
+
+        <Grid Grid.Row="1" Margin="0,12,0,0">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="Auto"/>
