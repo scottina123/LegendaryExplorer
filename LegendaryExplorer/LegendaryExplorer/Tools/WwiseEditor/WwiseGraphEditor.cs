@@ -204,14 +204,18 @@ namespace LegendaryExplorer.Tools.WwiseEditor
         {
             public override bool DoesAcceptEvent(PInputEventArgs e)
             {
-                return e.IsMouseEvent && (e.Button != MouseButtons.None || e.IsMouseEnterOrMouseLeave);
+                return FindOwningNode(e.PickedNode) != null
+                       && e.IsMouseEvent
+                       && (e.Button != MouseButtons.None || e.IsMouseEnterOrMouseLeave);
             }
 
             protected override void OnStartDrag(object sender, PInputEventArgs e)
             {
+                WwiseHircObjNode owningNode = FindOwningNode(e.PickedNode);
                 base.OnStartDrag(sender, e);
+                DraggedNode = owningNode;
                 e.Handled = true;
-                e.PickedNode.MoveToFront();
+                owningNode.MoveToFront();
             }
 
             protected override void OnDrag(object sender, PInputEventArgs e)
@@ -220,7 +224,7 @@ namespace LegendaryExplorer.Tools.WwiseEditor
                 {
                     var edgesToUpdate = new HashSet<WwiseEdEdge>();
                     base.OnDrag(sender, e);
-                    if (e.PickedNode is WwiseHircObjNode sObj)
+                    if (DraggedNode is WwiseHircObjNode sObj)
                     {
                         foreach (WwiseEdEdge edge in sObj.Edges)
                         {
@@ -232,7 +236,7 @@ namespace LegendaryExplorer.Tools.WwiseEditor
                     {
                         foreach (PNode node in g.nodeLayer)
                         {
-                            if (node is WwiseHircObjNode { IsSelected: true } obj && obj != e.PickedNode)
+                            if (node is WwiseHircObjNode { IsSelected: true } obj && obj != DraggedNode)
                             {
                                 SizeF s = e.GetDeltaRelativeTo(obj);
                                 s = obj.LocalToParent(s);
@@ -250,6 +254,16 @@ namespace LegendaryExplorer.Tools.WwiseEditor
                         UpdateEdge(edge);
                     }
                 }
+            }
+
+            internal static WwiseHircObjNode FindOwningNode(PNode pickedNode)
+            {
+                while (pickedNode != null && pickedNode is not WwiseHircObjNode)
+                {
+                    pickedNode = pickedNode.Parent;
+                }
+
+                return pickedNode as WwiseHircObjNode;
             }
         }
 

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -16,6 +17,7 @@ using ME3Tweaks.Wwiser.Model.Hierarchy.Enums;
 using ME3Tweaks.Wwiser.Model.ParameterNode;
 using ME3Tweaks.Wwiser.Model.RTPC;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Piccolo;
 using WwiserAction = ME3Tweaks.Wwiser.Model.Hierarchy.Action;
 using WwiserEvent = ME3Tweaks.Wwiser.Model.Hierarchy.Event;
 using WwiserHircItemContainer = ME3Tweaks.Wwiser.Model.Hierarchy.HircItemContainer;
@@ -387,6 +389,139 @@ public class WwiseEditorWindowTests
         string label = WExport.BuildDisplayValue(wwiseEvent, (_, _) => "No Data");
 
         Assert.AreEqual($"#{wwiseEvent.UIndex} VO_788349_m_Play", label);
+    }
+
+    [TestMethod]
+    public void WwiseGraphSelectionMapsHircNodesByIdInsteadOfGraphOrder()
+    {
+        uint[] soundPanelOrder = [0xAAAA0001, 0xBBBB0002, 0xCCCC0003];
+
+        Assert.AreEqual(1, WwiseEditorWindow.FindHircListIndexById(soundPanelOrder, 0xBBBB0002));
+        Assert.AreEqual(-1, WwiseEditorWindow.FindHircListIndexById(soundPanelOrder, 0xDDDD0004));
+    }
+
+    [TestMethod]
+    public void WwiseAutoLayoutPlacesEventActionVoiceChainsOnStackedRows()
+    {
+        var firstEvent = new PNode { Bounds = new RectangleF(-20, 0, 140, 80) };
+        var firstEventExport = new PNode { Bounds = new RectangleF(-60, 0, 220, 50) };
+        var firstAction = new PNode { Bounds = new RectangleF(0, 0, 180, 70) };
+        var firstVoice = new PNode { Bounds = new RectangleF(-30, 0, 200, 90) };
+        var firstStream = new PNode { Bounds = new RectangleF(-90, 0, 320, 50) };
+        var secondEvent = new PNode { Bounds = new RectangleF(0, 0, 160, 80) };
+        var secondAction = new PNode { Bounds = new RectangleF(0, 0, 180, 70) };
+        var secondVoice = new PNode { Bounds = new RectangleF(0, 0, 200, 90) };
+        var rows = new[]
+        {
+            new[]
+            {
+                (0, (IReadOnlyList<PNode>)new[] { firstEvent, firstEventExport }),
+                (1, (IReadOnlyList<PNode>)new[] { firstAction }),
+                (2, (IReadOnlyList<PNode>)new[] { firstVoice, firstStream })
+            },
+            new[]
+            {
+                (0, (IReadOnlyList<PNode>)new[] { secondEvent }),
+                (1, (IReadOnlyList<PNode>)new[] { secondAction }),
+                (2, (IReadOnlyList<PNode>)new[] { secondVoice })
+            }
+        };
+
+        WwiseEditorWindow.ArrangeNodeRows(rows, 80, 100, 20);
+
+        Assert.AreEqual(firstEvent.GlobalFullBounds.Top, firstAction.GlobalFullBounds.Top);
+        Assert.AreEqual(firstAction.GlobalFullBounds.Top, firstVoice.GlobalFullBounds.Top);
+        Assert.IsGreaterThan(firstEvent.GlobalFullBounds.Right + 80, firstAction.GlobalFullBounds.Left - 0.01f);
+        Assert.IsGreaterThan(firstAction.GlobalFullBounds.Right + 80, firstVoice.GlobalFullBounds.Left - 0.01f);
+        Assert.IsGreaterThanOrEqualTo(firstEventExport.GlobalFullBounds.Top,
+            firstEvent.GlobalFullBounds.Bottom + 20);
+        Assert.IsGreaterThanOrEqualTo(firstStream.GlobalFullBounds.Top,
+            firstVoice.GlobalFullBounds.Bottom + 20);
+        Assert.IsGreaterThanOrEqualTo(secondEvent.GlobalFullBounds.Top,
+            firstStream.GlobalFullBounds.Bottom + 100);
+        Assert.AreEqual(secondEvent.GlobalFullBounds.Top, secondAction.GlobalFullBounds.Top);
+        Assert.AreEqual(secondAction.GlobalFullBounds.Top, secondVoice.GlobalFullBounds.Top);
+
+        PNode[] allNodes =
+        [
+            firstEvent, firstEventExport, firstAction, firstVoice, firstStream,
+            secondEvent, secondAction, secondVoice
+        ];
+        for (int first = 0; first < allNodes.Length; first++)
+        {
+            for (int second = first + 1; second < allNodes.Length; second++)
+            {
+                AssertBoundsHaveSpacing(allNodes[first].GlobalFullBounds, allNodes[second].GlobalFullBounds, 20);
+            }
+        }
+    }
+
+    [TestMethod]
+    public void WwiseAutoLayoutHandlesDenseBanksWithoutQuadraticCollisionPass()
+    {
+        const int nodeCount = 500;
+        const float nodeHeight = 60;
+        const float rowSpacing = 100;
+        var nodes = Enumerable.Range(0, nodeCount)
+            .Select(_ => new PNode { Bounds = new RectangleF(0, 0, 60, nodeHeight) })
+            .ToList();
+        var rows = nodes.Select(node => new[]
+        {
+            (0, (IReadOnlyList<PNode>)new[] { node })
+        });
+
+        WwiseEditorWindow.ArrangeNodeRows(rows, 80, rowSpacing, 20);
+
+        Assert.AreEqual((nodeCount - 1) * (nodeHeight + rowSpacing), nodes[^1].GlobalFullBounds.Top);
+    }
+
+    [TestMethod]
+    public void WwiseDragTargetsOwningNodeWhenChildVisualIsPicked()
+    {
+        var owner = new TestWwiseNode();
+        var child = new PNode();
+        var grandchild = new PNode();
+        owner.AddChild(child);
+        child.AddChild(grandchild);
+
+        Assert.AreSame(owner, WwiseGraphEditor.NodeDragHandler.FindOwningNode(grandchild));
+        Assert.IsNull(WwiseGraphEditor.NodeDragHandler.FindOwningNode(new PNode()));
+    }
+
+    [TestMethod]
+    public void WwiseExportLabelOutsideCircleIsDraggable()
+    {
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("WwiseEventHitTest.pcc", MEGame.LE3);
+        ExportEntry wwiseEvent = package.CreateExport(
+            "This_Is_A_Very_Long_Wwise_Event_Name_That_Extends_Beyond_The_Circle", "WwiseEvent", indexed: false);
+        using var node = new WExport(wwiseEvent, 0, 0, null);
+        RectangleF renderedBounds = node.GlobalFullBounds;
+        var labelHit = new RectangleF(renderedBounds.Left + 1, WExport.RADIUS - 1, 2, 2);
+
+        Assert.IsLessThan(0, renderedBounds.Left);
+        Assert.IsTrue(node.Intersects(labelHit));
+    }
+
+    private static void AssertBoundsHaveSpacing(RectangleF first, RectangleF second, float spacing)
+    {
+        AssertBoundsHaveSpacing(first, second, spacing, spacing);
+    }
+
+    private static void AssertBoundsHaveSpacing(RectangleF first, RectangleF second,
+        float horizontalSpacing, float verticalSpacing)
+    {
+        bool separated = first.Right + horizontalSpacing <= second.Left
+                         || second.Right + horizontalSpacing <= first.Left
+                         || first.Bottom + verticalSpacing <= second.Top
+                         || second.Bottom + verticalSpacing <= first.Top;
+        Assert.IsTrue(separated, $"Node bounds {first} and {second} are too close.");
+    }
+
+    private sealed class TestWwiseNode : WwiseHircObjNode
+    {
+        public TestWwiseNode() : base(null, null)
+        {
+        }
     }
 
     private static void AssertStopEventCoversSounds(ME3Tweaks.Wwiser.WwiseBank bank,

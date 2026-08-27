@@ -412,10 +412,30 @@ namespace LegendaryExplorer.Tools.WwiseEditor
 
                     if (!(value is WExport))
                     {
-                        soundPanel.HIRC_ListBox.SelectedIndex = CurrentObjects.IndexOf(value);
+                        int hircIndex = FindHircListIndexById(soundPanel.HIRCObjects.Select(hirc => hirc.ID), value.ID);
+                        if (hircIndex >= 0)
+                        {
+                            soundPanel.HIRC_ListBox.SelectedItem = soundPanel.HIRCObjects[hircIndex];
+                        }
                     }
                 }
             }
+        }
+
+        internal static int FindHircListIndexById(IEnumerable<uint> hircIds, uint selectedId)
+        {
+            int index = 0;
+            foreach (uint hircId in hircIds)
+            {
+                if (hircId == selectedId)
+                {
+                    return index;
+                }
+
+                index++;
+            }
+
+            return -1;
         }
 
         private WwiseBankParsed CurrentWwiseBank;
@@ -1822,124 +1842,257 @@ namespace LegendaryExplorer.Tools.WwiseEditor
                 obj.SetOffset(0, 0); //remove existing positioning
             }
 
-            const float HORIZONTAL_SPACING = 40;
-            const float VERTICAL_SPACING = 20;
-            const float VAR_SPACING = 10;
-            var visitedNodes = new HashSet<uint>();
+            const float HORIZONTAL_SPACING = 80;
+            const float VERTICAL_SPACING = 100;
+            const float ATTACHMENT_SPACING = 20;
             var eventNodes = CurrentObjects.OfType<WEvent>().ToList();
-            WwiseHircObjNode firstNode = eventNodes.FirstOrDefault();
-            var varNodeLookup = CurrentObjects.OfType<WExport>().ToDictionary(obj => obj.Export.UIndex);
-            var opNodeLookup = CurrentObjects.OfType<WGeneric>().ToDictionary(obj => obj.ID);
-            var rootTree = new List<WwiseHircObjNode>();
-            //WEvents are natural root nodes. ALmost everything will proceed from one of these
+            var exportNodeLookup = CurrentObjects.OfType<WExport>()
+                .GroupBy(node => node.Export.UIndex)
+                .ToDictionary(group => group.Key, group => group.First());
+            var operationNodeLookup = CurrentObjects.OfType<WGeneric>()
+                .GroupBy(node => node.ID)
+                .ToDictionary(group => group.Key, group => group.First());
+            var placedNodes = new HashSet<WwiseHircObjNode>();
+            var rows = new List<List<(int Column, IReadOnlyList<PNode> Nodes)>>();
+
+            // Each event/action/voice path is a horizontal chain. Independent paths are stacked vertically.
             foreach (WEvent eventNode in eventNodes)
             {
-                LayoutTree(eventNode, 5 * VERTICAL_SPACING);
-            }
+                var actionNodes = eventNode.Event.EventActions
+                    .Select(id => operationNodeLookup.TryGetValue(id, out WGeneric node) ? node : null)
+                    .Where(node => node != null)
+                    .ToList();
 
-            //Find WGenerics with no inputs. These will not have been reached from an WEvent
-            var orphanRoots = CurrentObjects.OfType<WGeneric>().Where(node => node.InputEdges.IsEmpty());
-            foreach (WGeneric orphan in orphanRoots)
-            {
-                if (!visitedNodes.Contains(orphan.ID))
+                if (actionNodes.Count == 0)
                 {
-                    LayoutTree(orphan, VERTICAL_SPACING);
+                    AddRow(eventNode);
+                    continue;
+                }
+
+                bool eventPlaced = false;
+                foreach (WGeneric actionNode in actionNodes)
+                {
+                    foreach (List<WGeneric> path in BuildOperationPaths(actionNode, []))
+                    {
+                        var row = new List<(int Column, IReadOnlyList<PNode> Nodes)>();
+                        if (!eventPlaced)
+                        {
+                            AddCell(row, 0, eventNode);
+                            eventPlaced = true;
+                        }
+
+                        for (int column = 0; column < path.Count; column++)
+                        {
+                            AddCell(row, column + 1, path[column]);
+                        }
+
+                        if (row.Count > 0)
+                        {
+                            rows.Add(row);
+                        }
+                    }
+                }
+
+                if (!eventPlaced)
+                {
+                    AddRow(eventNode);
                 }
             }
 
-            //It's possible that there are groups of otherwise unconnected WGenerics that form cycles.
-            //Might be possible to make a better heuristic for choosing a root than sequence order, but this situation is so rare it's not worth the effort
-            var cycleNodes = CurrentObjects.OfType<WGeneric>().Where(node => !visitedNodes.Contains(node.ID));
-            foreach (WGeneric cycleNode in cycleNodes)
+            // Lay out operation chains that are not reachable from an event after the event rows.
+            var orphanRoots = CurrentObjects.OfType<WGeneric>().Where(node => node.InputEdges.IsEmpty()).ToList();
+            foreach (WGeneric orphan in orphanRoots)
             {
-                LayoutTree(cycleNode, VERTICAL_SPACING);
+                if (!placedNodes.Contains(orphan))
+                {
+                    AddOperationRows(orphan);
+                }
             }
 
-            if (firstNode != null) CurrentObjects.OffsetBy(0, -firstNode.OffsetY);
+            // Cover cyclic or otherwise disconnected HIRC objects without recursing indefinitely.
+            foreach (WGeneric remainingNode in CurrentObjects.OfType<WGeneric>().Where(node => !placedNodes.Contains(node)))
+            {
+                AddOperationRows(remainingNode);
+            }
+
+            foreach (WwiseHircObjNode remainingNode in CurrentObjects.Where(node => !placedNodes.Contains(node)))
+            {
+                AddRow(remainingNode);
+            }
+
+            ArrangeNodeRows(rows, HORIZONTAL_SPACING, VERTICAL_SPACING, ATTACHMENT_SPACING);
+
+            if (eventNodes.FirstOrDefault() is { } firstEvent)
+            {
+                graphEditor.Camera.ViewScale = Math.Max(graphEditor.Camera.ViewScale, 0.75f);
+                graphEditor.Camera.AnimateViewToCenterBounds(firstEvent.GlobalFullBounds, false, 0);
+            }
 
             foreach (WwiseEdEdge edge in graphEditor.edgeLayer)
                 WwiseGraphEditor.UpdateEdge(edge);
 
-            void LayoutTree(WwiseHircObjNode WGeneric, float verticalSpacing)
+            void AddRow(WwiseHircObjNode node)
             {
-                if (firstNode == null) firstNode = WGeneric;
-                visitedNodes.Add(WGeneric.ID);
-                var subTree = LayoutSubTree(WGeneric);
-                float width = subTree.BoundingRect().Width + HORIZONTAL_SPACING;
-                //ignore nodes that are further to the right than this subtree is wide. This allows tighter spacing
-                float dy = rootTree.Where(node => node.GlobalFullBounds.Left < width).BoundingRect().Bottom;
-                if (dy > 0) dy += verticalSpacing;
-                subTree.OffsetBy(0, dy);
-                rootTree.AddRange(subTree);
+                var row = new List<(int Column, IReadOnlyList<PNode> Nodes)>();
+                if (AddCell(row, 0, node))
+                {
+                    rows.Add(row);
+                }
             }
 
-            List<WwiseHircObjNode> LayoutSubTree(WwiseHircObjNode root)
+            bool AddCell(List<(int Column, IReadOnlyList<PNode> Nodes)> row, int column,
+                WwiseHircObjNode node)
             {
-                var tree = new List<WwiseHircObjNode>();
-                var vars = new List<WwiseHircObjNode>();
-                foreach (var varLink in root.Varlinks)
+                if (!placedNodes.Add(node))
                 {
-                    float dx = varLink.node.GlobalFullBounds.X - WExport.RADIUS;
-                    float dy = root.GlobalFullHeight + VAR_SPACING;
-                    foreach (uint id in varLink.Links.Where(id => !visitedNodes.Contains(id)))
+                    return false;
+                }
+
+                var cellNodes = new List<PNode> { node };
+                foreach (uint id in node.Varlinks.SelectMany(link => link.Links))
+                {
+                    if (exportNodeLookup.TryGetValue(unchecked((int)id), out WExport exportNode)
+                        && placedNodes.Add(exportNode))
                     {
-                        visitedNodes.Add(id);
-                        if (varNodeLookup.TryGetValue((int)id, out WExport WExport))
-                        {
-                            WExport.OffsetBy(dx, dy);
-                            dy += WExport.GlobalFullHeight + VAR_SPACING;
-                            vars.Add(WExport);
-                        }
-                        else if (opNodeLookup.TryGetValue(id, out WGeneric node))
-                        {
-                            node.OffsetBy(dx, dy);
-                            dy += node.GlobalFullHeight + VAR_SPACING;
-                            vars.Add(node);
-                        }
+                        cellNodes.Add(exportNode);
+                    }
+                    else if (operationNodeLookup.TryGetValue(id, out WGeneric linkedNode)
+                             && placedNodes.Add(linkedNode))
+                    {
+                        cellNodes.Add(linkedNode);
                     }
                 }
 
-                var childTrees = new List<List<WwiseHircObjNode>>();
-                var children = root.Outlinks.SelectMany(link => link.Links).Where(id => !visitedNodes.Contains(id));
-                foreach (uint id in children)
+                row.Add((column, cellNodes));
+                return true;
+            }
+
+            void AddOperationRows(WGeneric root)
+            {
+                foreach (List<WGeneric> path in BuildOperationPaths(root, []))
                 {
-                    visitedNodes.Add(id);
-                    if (opNodeLookup.TryGetValue(id, out WGeneric node))
+                    var row = new List<(int Column, IReadOnlyList<PNode> Nodes)>();
+                    for (int column = 0; column < path.Count; column++)
                     {
-                        List<WwiseHircObjNode> subTree = LayoutSubTree(node);
-                        childTrees.Add(subTree);
+                        AddCell(row, column, path[column]);
+                    }
+
+                    if (row.Count > 0)
+                    {
+                        rows.Add(row);
+                    }
+                }
+            }
+
+            List<List<WGeneric>> BuildOperationPaths(WGeneric root, HashSet<uint> pathIds)
+            {
+                if (!pathIds.Add(root.ID))
+                {
+                    return [];
+                }
+
+                var paths = new List<List<WGeneric>>();
+                var children = root.Outlinks.SelectMany(link => link.Links)
+                    .Distinct()
+                    .Where(id => !pathIds.Contains(id))
+                    .Select(id => operationNodeLookup.TryGetValue(id, out WGeneric node) ? node : null)
+                    .Where(node => node != null)
+                    .ToList();
+                foreach (WGeneric child in children)
+                {
+                    foreach (List<WGeneric> childPath in BuildOperationPaths(child, new HashSet<uint>(pathIds)))
+                    {
+                        childPath.Insert(0, root);
+                        paths.Add(childPath);
                     }
                 }
 
-                if (childTrees.Any())
+                if (paths.Count == 0)
                 {
-                    float dx = root.GlobalFullWidth + (HORIZONTAL_SPACING * (1 + childTrees.Count * 0.4f));
-                    foreach (List<WwiseHircObjNode> subTree in childTrees)
-                    {
-                        float subTreeWidth = subTree.BoundingRect().Width + HORIZONTAL_SPACING + dx;
-                        //ignore nodes that are further to the right than this subtree is wide. This allows tighter spacing
-                        float dy = tree.Where(node => node.GlobalFullBounds.Left < subTreeWidth).BoundingRect().Bottom;
-                        if (dy > 0) dy += VERTICAL_SPACING;
-                        subTree.OffsetBy(dx, dy);
-                        //TODO: fix this so it doesn't screw up some sequences. eg: BioD_ProEar_310BigFall.pcc
-                        /*float treeWidth = tree.BoundingRect().Width + HORIZONTAL_SPACING;
-                        //tighten spacing when this subtree is wider than existing tree. 
-                        dy -= subTree.Where(node => node.GlobalFullBounds.Left < treeWidth).BoundingRect().Top;
-                        if (dy < 0) dy += VERTICAL_SPACING;
-                        subTree.OffsetBy(0, dy);*/
-
-                        tree.AddRange(subTree);
-                    }
-
-                    //center the root on its children
-                    float centerOffset = tree.OfType<WGeneric>().BoundingRect().Height / 2 - root.GlobalFullHeight / 2;
-                    root.OffsetBy(0, centerOffset);
-                    vars.OffsetBy(0, centerOffset);
+                    paths.Add([root]);
                 }
 
-                tree.AddRange(vars);
-                tree.Add(root);
-                return tree;
+                return paths;
+            }
+        }
+
+        /// <summary>
+        /// Places each relationship path on one horizontal row and stacks subsequent paths vertically.
+        /// A cell's first node is the HIRC object; any remaining nodes are linked package exports shown below it.
+        /// </summary>
+        internal static void ArrangeNodeRows(
+            IEnumerable<IEnumerable<(int Column, IReadOnlyList<PNode> Nodes)>> nodeRows,
+            float horizontalSpacing, float verticalSpacing, float attachmentSpacing)
+        {
+            if (horizontalSpacing < 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(horizontalSpacing));
+            }
+            if (verticalSpacing < 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(verticalSpacing));
+            }
+            if (attachmentSpacing < 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(attachmentSpacing));
+            }
+
+            var rows = nodeRows
+                .Select(row => row
+                    .Where(cell => cell.Column >= 0 && cell.Nodes?.Count > 0)
+                    .OrderBy(cell => cell.Column)
+                    .Select(cell =>
+                    {
+                        var nodes = cell.Nodes.Where(node => node != null).Distinct().ToList();
+                        var bounds = nodes.Select(node => node.GlobalFullBounds)
+                            .Where(bounds => bounds != RectangleF.Empty)
+                            .ToList();
+                        return (cell.Column, Nodes: nodes, Bounds: bounds,
+                            Width: bounds.Count > 0 ? bounds.Max(bounds => bounds.Width) : 0,
+                            Height: bounds.Sum(bounds => bounds.Height)
+                                    + Math.Max(0, bounds.Count - 1) * attachmentSpacing);
+                    })
+                    .Where(cell => cell.Nodes.Count > 0 && cell.Width > 0 && cell.Height > 0)
+                    .ToList())
+                .Where(row => row.Count > 0)
+                .ToList();
+            if (rows.Count == 0)
+            {
+                return;
+            }
+
+            int columnCount = rows.SelectMany(row => row).Max(cell => cell.Column) + 1;
+            var columnWidths = new float[columnCount];
+            foreach (var cell in rows.SelectMany(row => row))
+            {
+                columnWidths[cell.Column] = Math.Max(columnWidths[cell.Column], cell.Width);
+            }
+
+            var columnLefts = new float[columnCount];
+            for (int column = 1; column < columnCount; column++)
+            {
+                columnLefts[column] = columnLefts[column - 1] + columnWidths[column - 1] + horizontalSpacing;
+            }
+
+            float rowTop = 0;
+            foreach (var row in rows)
+            {
+                float rowHeight = row.Max(cell => cell.Height);
+                foreach (var cell in row)
+                {
+                    float cellLeft = columnLefts[cell.Column]
+                                     + (columnWidths[cell.Column] - cell.Width) / 2;
+                    float nodeTop = rowTop;
+                    foreach (PNode node in cell.Nodes)
+                    {
+                        RectangleF bounds = node.GlobalFullBounds;
+                        float nodeLeft = cellLeft + (cell.Width - bounds.Width) / 2;
+                        node.OffsetBy(nodeLeft - bounds.Left, nodeTop - bounds.Top);
+                        nodeTop += bounds.Height + attachmentSpacing;
+                    }
+                }
+
+                rowTop += rowHeight + verticalSpacing;
             }
         }
 

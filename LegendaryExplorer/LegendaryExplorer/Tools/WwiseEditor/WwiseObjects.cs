@@ -401,8 +401,8 @@ namespace LegendaryExplorer.Tools.WwiseEditor
 
         public override bool Intersects(RectangleF bounds)
         {
-            var ellipseRegion = new Region(shape.PathReference);
-            return ellipseRegion.IsVisible(bounds);
+            using var ellipseRegion = new Region(shape.PathReference);
+            return ellipseRegion.IsVisible(bounds) || val.FullBounds.IntersectsWith(bounds);
         }
 
         public void OnMouseEnter(object sender, PInputEventArgs e)
