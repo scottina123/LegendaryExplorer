@@ -143,6 +143,8 @@
             <MenuItem Header="Add Gesture Track to Favorites..." ToolTip="Save this BioEvtSysTrackGesture as a named favorite" Command="{Binding AddGestureTrackFavoriteCommand}" SharedUI:Bindings.VisibilityToEnabled="True"/>
             <MenuItem Header="Open in Pathfinding Editor" Command="{Binding OpenExportInCommand}" CommandParameter="PathfindingEditor" SharedUI:Bindings.VisibilityToEnabled="True"/>
             <MenuItem Header="Open in WwiseEditor" Command="{Binding OpenExportInCommand}" CommandParameter="WwiseEditor" SharedUI:Bindings.VisibilityToEnabled="True"/>
+            <MenuItem Header="Adjust Bank Settings..." ToolTip="Adjust routing and audio processing for this WwiseBank" Click="AdjustWwiseSettings_Click" Tag="AdjustWwiseBankSettings" Visibility="Collapsed"/>
+            <MenuItem Header="Adjust Event Settings..." ToolTip="Adjust routing and audio processing for the Sound objects played by this WwiseEvent" Click="AdjustWwiseSettings_Click" Tag="AdjustWwiseEventSettings" Visibility="Collapsed"/>
             <MenuItem Header="Go to WwiseStream" ToolTip="Go to the WwiseStream referenced by this WwiseEvent" Click="GoToWwiseStream_Click" Tag="GoToWwiseStream" Visibility="Collapsed"/>
             <MenuItem Header="Go to WwiseEvent" ToolTip="Go to the WwiseEvent that plays this WwiseStream" Click="GoToWwiseEvent_Click" Tag="GoToWwiseEvent" Visibility="Collapsed"/>
             <MenuItem Header="Open in Level Editor" Command="{Binding OpenExportInCommand}" CommandParameter="LevelEditor" SharedUI:Bindings.VisibilityToEnabled="True"/>

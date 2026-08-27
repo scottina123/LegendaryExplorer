@@ -8338,6 +8338,37 @@ namespace LegendaryExplorer.Tools.PackageEditor
             }
         }
 
+        private void AdjustWwiseSettings_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is not MenuItem { Parent: ContextMenu contextMenu } ||
+                !TryGetContextMenuExport(contextMenu, out var export))
+            {
+                return;
+            }
+
+            Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, new Action(() =>
+            {
+                bool changed = export.ClassName switch
+                {
+                    "WwiseBank" => WwiseEditor.WwiseEditorWindow.TryAdjustBankSettings(this, export),
+                    "WwiseEvent" => WwiseEditor.WwiseEditorWindow.TryAdjustEventSettings(this, export),
+                    _ => false
+                };
+                if (!changed)
+                {
+                    return;
+                }
+
+                StatusBar_LeftMostText.Text = $"Updated settings for {export.ObjectName.Instanced}";
+                if (ReferenceEquals(export, SelectedItem?.Entry) ||
+                    GetSelected(out int selectedIndex) && selectedIndex == export.UIndex)
+                {
+                    Preview(true);
+                }
+            }));
+            e.Handled = true;
+        }
+
         private void EntryContextMenu_Opened(object sender, RoutedEventArgs e)
         {
             if (sender is not ContextMenu contextMenu)
@@ -8379,7 +8410,13 @@ namespace LegendaryExplorer.Tools.PackageEditor
             var goToWwiseEventMenuItem = contextMenu.Items
                 .OfType<MenuItem>()
                 .FirstOrDefault(item => Equals(item.Tag, "GoToWwiseEvent"));
-            if (changeLinksMenuItem is null && matchMicMenuItem is null && restoreMaterialMenuItem is null && addMissingTexturesMenuItem is null && stripLightmapMenuItem is null && stripShadowmapMenuItem is null && copyObjectNameMenuItem is null && copyFullPathMenuItem is null && renameObjectMenuItem is null && goToWwiseStreamMenuItem is null && goToWwiseEventMenuItem is null)
+            var adjustWwiseBankSettingsMenuItem = contextMenu.Items
+                .OfType<MenuItem>()
+                .FirstOrDefault(item => Equals(item.Tag, "AdjustWwiseBankSettings"));
+            var adjustWwiseEventSettingsMenuItem = contextMenu.Items
+                .OfType<MenuItem>()
+                .FirstOrDefault(item => Equals(item.Tag, "AdjustWwiseEventSettings"));
+            if (changeLinksMenuItem is null && matchMicMenuItem is null && restoreMaterialMenuItem is null && addMissingTexturesMenuItem is null && stripLightmapMenuItem is null && stripShadowmapMenuItem is null && copyObjectNameMenuItem is null && copyFullPathMenuItem is null && renameObjectMenuItem is null && goToWwiseStreamMenuItem is null && goToWwiseEventMenuItem is null && adjustWwiseBankSettingsMenuItem is null && adjustWwiseEventSettingsMenuItem is null)
             {
                 return;
             }
@@ -8459,6 +8496,20 @@ namespace LegendaryExplorer.Tools.PackageEditor
             if (goToWwiseEventMenuItem is not null)
             {
                 ConfigureWwiseEventNavigationMenu(goToWwiseEventMenuItem, export);
+            }
+
+            if (adjustWwiseBankSettingsMenuItem is not null)
+            {
+                adjustWwiseBankSettingsMenuItem.Visibility = export?.ClassName == "WwiseBank"
+                    ? Visibility.Visible
+                    : Visibility.Collapsed;
+            }
+
+            if (adjustWwiseEventSettingsMenuItem is not null)
+            {
+                adjustWwiseEventSettingsMenuItem.Visibility = export?.ClassName == "WwiseEvent"
+                    ? Visibility.Visible
+                    : Visibility.Collapsed;
             }
         }
 

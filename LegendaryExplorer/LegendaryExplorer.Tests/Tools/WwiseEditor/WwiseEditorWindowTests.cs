@@ -244,6 +244,40 @@ public class WwiseEditorWindowTests
     }
 
     [TestMethod]
+    public void Le3WwiseEventFindsReferencedBankForPackageEditorSettings()
+    {
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("Le3WwiseEventBankTest.pcc", MEGame.LE3);
+        ExportEntry parent = package.CreatePackageExport("Audio", forcedExport: false);
+        ExportEntry bank = package.CreateExport("TestBank", "WwiseBank", parent, indexed: false);
+        ExportEntry wwiseEvent = package.CreateExport("Test_Play", "WwiseEvent", parent, indexed: false);
+        wwiseEvent.WriteProperty(new StructProperty("WwiseRelationships", false,
+            new ObjectProperty(bank, "Bank")) { Name = "Relationships" });
+
+        Assert.AreSame(bank, InvokePrivate<ExportEntry>("FindReferencedBank", wwiseEvent));
+    }
+
+    [TestMethod]
+    public void Le2WwiseEventFindsReferencedBankForPackageEditorSettings()
+    {
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("Le2WwiseEventBankTest.pcc", MEGame.LE2);
+        ExportEntry parent = package.CreatePackageExport("Audio", forcedExport: false);
+        ExportEntry bank = package.CreateExport("TestBank", "WwiseBank", parent, indexed: false);
+        ExportEntry wwiseEvent = package.CreateExport("Test_Play", "WwiseEvent", parent, indexed: false);
+        var references = new ArrayProperty<StructProperty>("References");
+        references.Add(new StructProperty("WwisePlatformRelationships", new PropertyCollection
+        {
+            new StructProperty("WwiseRelationships", new PropertyCollection
+            {
+                new ObjectProperty(bank, "Bank")
+            }, "Relationships"),
+            new IntProperty(1, "Platform")
+        }));
+        wwiseEvent.WriteProperty(references);
+
+        Assert.AreSame(bank, InvokePrivate<ExportEntry>("FindReferencedBank", wwiseEvent));
+    }
+
+    [TestMethod]
     public void EventTargetsResolvePlayActionsThroughHierarchyToSoundNodes()
     {
         var bank = LoadTestBank();

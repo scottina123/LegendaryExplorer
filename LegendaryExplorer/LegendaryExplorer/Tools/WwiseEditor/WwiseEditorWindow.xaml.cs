@@ -482,14 +482,23 @@ namespace LegendaryExplorer.Tools.WwiseEditor
 
         private void AdjustBankSettings_Click(object sender, RoutedEventArgs e)
         {
-            if (CurrentExport == null)
+            if (TryAdjustBankSettings(this, CurrentExport))
             {
-                return;
+                RefreshView();
+                StatusBar_LeftMostText.Text = $"Updated settings for {CurrentExport.ObjectName.Instanced}";
+            }
+        }
+
+        internal static bool TryAdjustBankSettings(Window owner, ExportEntry bankExport)
+        {
+            if (bankExport?.ClassName != "WwiseBank")
+            {
+                return false;
             }
 
             try
             {
-                var rawBank = CurrentExport.GetBinaryData<CoreWwiseBank>();
+                var rawBank = bankExport.GetBinaryData<CoreWwiseBank>();
                 using var input = new MemoryStream(rawBank.BnkFile, false);
                 var bank = WwiseBankParser.Deserialize(input);
                 var parameterNodes = bank.HIRC?.Items
@@ -506,38 +515,59 @@ namespace LegendaryExplorer.Tools.WwiseEditor
 
                 if (rootNodes.Count == 0)
                 {
-                    MessageBox.Show(this, "No editable audio nodes were found in this bank.", "Settings not adjusted",
+                    MessageBox.Show(owner, "No editable audio nodes were found in this bank.", "Settings not adjusted",
                         MessageBoxButton.OK, MessageBoxImage.Warning);
-                    return;
+                    return false;
                 }
 
                 var sounds = bank.HIRC?.Items
                     .Select(item => item.Item)
                     .OfType<WwiserSound>()
                     .ToList() ?? [];
-                EditAudioSettings(bank, CurrentExport.ObjectName.Instanced, true, rootNodes,
-                    effectScopeNodes, sounds, parameterNodes, StopAllEventId, "Stop");
+                return EditAudioSettings(owner, bankExport, bank, bankExport.ObjectName.Instanced, true,
+                    rootNodes, effectScopeNodes, sounds, parameterNodes, StopAllEventId, "Stop");
             }
             catch (Exception ex)
             {
-                MessageBox.Show(this, $"Unable to adjust bank settings:\n{ex.Message}", "Bank settings failed",
+                MessageBox.Show(owner, $"Unable to adjust bank settings:\n{ex.Message}", "Bank settings failed",
                     MessageBoxButton.OK, MessageBoxImage.Error);
+                return false;
             }
         }
 
         private void AdjustEventSettings_Click(object sender, RoutedEventArgs e)
         {
-            if (CurrentExport == null || SelectedNode is not WExport { Export.ClassName: "WwiseEvent" } eventNode)
+            if (SelectedNode is WExport { Export.ClassName: "WwiseEvent" } eventNode &&
+                TryAdjustEventSettings(this, eventNode.Export, CurrentExport))
             {
-                return;
+                RefreshView();
+                StatusBar_LeftMostText.Text = $"Updated settings for {eventNode.Export.ObjectName.Instanced}";
+            }
+        }
+
+        internal static bool TryAdjustEventSettings(Window owner, ExportEntry eventExport,
+            ExportEntry bankExport = null)
+        {
+            if (eventExport?.ClassName != "WwiseEvent")
+            {
+                return false;
             }
 
             try
             {
-                var rawBank = CurrentExport.GetBinaryData<CoreWwiseBank>();
+                bankExport ??= FindReferencedBank(eventExport);
+                if (bankExport == null)
+                {
+                    MessageBox.Show(owner,
+                        "The WwiseBank referenced by this event could not be found in the package.",
+                        "Event settings unavailable", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return false;
+                }
+
+                var rawBank = bankExport.GetBinaryData<CoreWwiseBank>();
                 using var input = new MemoryStream(rawBank.BnkFile, false);
                 var bank = WwiseBankParser.Deserialize(input);
-                uint eventId = WExport.GetExportId(eventNode.Export);
+                uint eventId = WExport.GetExportId(eventExport);
                 var parameterNodes = bank.HIRC?.Items
                     .Where(item => item.Item is WwiserIHasNode)
                     .Select(item => (item.Item.Id, Node: (WwiserIHasNode)item.Item))
@@ -545,49 +575,104 @@ namespace LegendaryExplorer.Tools.WwiseEditor
                 var targetSounds = GetEventTargetSounds(bank, eventId, parameterNodes);
                 if (targetSounds.Count == 0)
                 {
-                    MessageBox.Show(this,
+                    MessageBox.Show(owner,
                         "This WwiseEvent has no editable Sound targets. Only Play actions that resolve to Sound nodes can be adjusted.",
                         "Event settings unavailable", MessageBoxButton.OK, MessageBoxImage.Warning);
-                    return;
+                    return false;
                 }
 
                 var targetNodes = targetSounds.Cast<WwiserIHasNode>().ToList();
-                string stopEventName = GetStopEventName(eventNode.Export.ObjectName.Name, Pcc.Game);
+                string stopEventName = GetStopEventName(eventExport.ObjectName.Name, eventExport.Game);
                 uint stopEventId = WwiseOutputBusOptions.GenerateShortId(stopEventName);
-                EditAudioSettings(bank, eventNode.Export.ObjectName.Instanced, false, targetNodes,
-                    targetNodes, targetSounds, parameterNodes, stopEventId, stopEventName);
+                return EditAudioSettings(owner, bankExport, bank, eventExport.ObjectName.Instanced, false,
+                    targetNodes, targetNodes, targetSounds, parameterNodes, stopEventId, stopEventName);
             }
             catch (Exception ex)
             {
-                MessageBox.Show(this, $"Unable to adjust event settings:\n{ex.Message}", "Event settings failed",
+                MessageBox.Show(owner, $"Unable to adjust event settings:\n{ex.Message}", "Event settings failed",
                     MessageBoxButton.OK, MessageBoxImage.Error);
+                return false;
             }
         }
 
-        private void EditAudioSettings(ME3Tweaks.Wwiser.WwiseBank bank, string scopeName, bool isBankWide,
+        private static ExportEntry FindReferencedBank(ExportEntry eventExport)
+        {
+            int bankIndex = 0;
+            if (eventExport.Game == MEGame.LE2)
+            {
+                bankIndex = eventExport.GetProperty<ArrayProperty<StructProperty>>("References")?
+                    .Select(reference => reference.Properties.GetProp<StructProperty>("Relationships")?.Properties
+                        .GetProp<ObjectProperty>("Bank")?.Value ?? 0)
+                    .FirstOrDefault(index => index > 0) ?? 0;
+            }
+            else if (eventExport.Game.IsGame3())
+            {
+                bankIndex = eventExport.GetProperty<StructProperty>("Relationships")?.Properties
+                    .GetProp<ObjectProperty>("Bank")?.Value ?? 0;
+            }
+            else if (eventExport.Game == MEGame.ME2)
+            {
+                bankIndex = eventExport.GetBinaryData<CoreWwiseEvent>().Links?
+                    .SelectMany(link => link.WwiseBanks ?? [])
+                    .FirstOrDefault(index => index > 0) ?? 0;
+            }
+
+            if (eventExport.FileRef.TryGetUExport(bankIndex, out ExportEntry referencedBank) &&
+                referencedBank.ClassName == "WwiseBank")
+            {
+                return referencedBank;
+            }
+
+            uint eventId = WExport.GetExportId(eventExport);
+            var matchingBanks = new List<ExportEntry>();
+            foreach (ExportEntry candidate in eventExport.FileRef.Exports.Where(export =>
+                         export.ClassName == "WwiseBank"))
+            {
+                try
+                {
+                    var rawBank = candidate.GetBinaryData<CoreWwiseBank>();
+                    using var input = new MemoryStream(rawBank.BnkFile, false);
+                    var bank = WwiseBankParser.Deserialize(input);
+                    if (bank.HIRC?.Items.Any(item => item.Item is WwiserEvent && item.Item.Id == eventId) == true)
+                    {
+                        matchingBanks.Add(candidate);
+                    }
+                }
+                catch
+                {
+                    // Ignore unrelated banks that cannot be parsed by this Wwise bank model.
+                }
+            }
+
+            return matchingBanks.Count == 1 ? matchingBanks[0] : null;
+        }
+
+        private static bool EditAudioSettings(Window owner, ExportEntry bankExport,
+            ME3Tweaks.Wwiser.WwiseBank bank, string scopeName, bool isBankWide,
             IReadOnlyCollection<WwiserIHasNode> settingNodes,
             IReadOnlyCollection<WwiserIHasNode> effectScopeNodes,
             IReadOnlyCollection<WwiserSound> sounds,
             IReadOnlyCollection<(uint Id, WwiserIHasNode Node)> parameterNodes,
             uint stopEventId, string stopEventName)
         {
+            MEGame game = bankExport.Game;
             float currentVolume = GetCommonNodeVolume(settingNodes, out bool volumeIsMixed);
             uint? currentOutputBusId = GetCommonOutputBusId(settingNodes);
             bool? currentLoopAudio = GetLoopAudioState(sounds.ToList());
-            WwiseEditorEffectPreset currentEffect = GetCurrentEffectPreset(effectScopeNodes, Pcc.Game);
-            bool? currentDucking = GetDuckingState(bank, settingNodes, Pcc.Game);
+            WwiseEditorEffectPreset currentEffect = GetCurrentEffectPreset(effectScopeNodes, game);
+            bool? currentDucking = GetDuckingState(bank, settingNodes, game);
             bool? currentAttenuation = GetAttenuationState(bank, settingNodes,
                 out double currentAttenuationScalePercent);
-            bool stopEventExists = HasCompleteStopEvent(bank, CurrentExport, sounds, stopEventId);
-            bool canCreateStopEvent = CanCreateStopEvent(bank, CurrentExport, sounds, stopEventId, stopEventName);
+            bool stopEventExists = HasCompleteStopEvent(bank, bankExport, sounds, stopEventId);
+            bool canCreateStopEvent = CanCreateStopEvent(bank, bankExport, sounds, stopEventId, stopEventName);
             bool supportsPresetData = bank.BKHD.BankGeneratorVersion == WwiseBankEffectPresets.BankVersion &&
-                                      Pcc.Game is MEGame.LE2 or MEGame.LE3;
+                                      game is MEGame.LE2 or MEGame.LE3;
 
             string effectiveInheritedOutputBus = null;
             if (!isBankWide)
             {
                 var inheritedNames = settingNodes.Select(node =>
-                        GetEffectiveOutputBusName(node, parameterNodes, Pcc.Game))
+                        GetEffectiveOutputBusName(node, parameterNodes, game))
                     .Distinct(StringComparer.Ordinal)
                     .ToList();
                 if (inheritedNames.Count == 1)
@@ -598,7 +683,7 @@ namespace LegendaryExplorer.Tools.WwiseEditor
 
             var settings = new WwiseEditorAudioSettings
             {
-                Game = Pcc.Game,
+                Game = game,
                 ScopeName = scopeName,
                 TargetSummary = isBankWide
                     ? $"Changes apply to {sounds.Count} Sound object(s) in this bank."
@@ -619,10 +704,10 @@ namespace LegendaryExplorer.Tools.WwiseEditor
                 StopEventExists = stopEventExists,
                 CanCreateStopEvent = canCreateStopEvent
             };
-            var settingsDialog = new WwiseBankVolumeDialog(settings) { Owner = this };
+            var settingsDialog = new WwiseBankVolumeDialog(settings) { Owner = owner };
             if (settingsDialog.ShowDialog() != true)
             {
-                return;
+                return false;
             }
 
             bool volumeChanged = settingsDialog.VolumeWasEdited;
@@ -642,7 +727,7 @@ namespace LegendaryExplorer.Tools.WwiseEditor
             if (!volumeChanged && !outputBusChanged && !loopChanged && !effectChanged &&
                 !duckingChanged && !attenuationChanged && !attenuationScaleChanged && !createStopEvent)
             {
-                return;
+                return false;
             }
 
             if (effectChanged && settingsDialog.SelectedEffectPreset != WwiseEditorEffectPreset.NoneOrInherited)
@@ -651,24 +736,24 @@ namespace LegendaryExplorer.Tools.WwiseEditor
                 if (!CanApplyEffect(bank, effectScopeNodes, effectChain) ||
                     !WwiseBankEffectPresets.EnsureEffectData(bank, effectChain))
                 {
-                    MessageBox.Show(this,
+                    MessageBox.Show(owner,
                         $"The {effectName} effect data could not be added to this bank version or the target has no free effect slots.",
                         "Effect unavailable", MessageBoxButton.OK, MessageBoxImage.Warning);
-                    return;
+                    return false;
                 }
             }
 
             if (duckingChanged && settingsDialog.DuckAudio == true)
             {
-                bool duckingDataReady = Pcc.Game == MEGame.LE2
+                bool duckingDataReady = game == MEGame.LE2
                     ? WwiseBankEffectPresets.SetLe2MusicDuckingOnTargets(bank,
                         settingNodes.Select(GetNodeId).ToList(), true)
                     : WwiseBankEffectPresets.EnsureMusicDuckingData(bank);
                 if (!duckingDataReady)
                 {
-                    MessageBox.Show(this, "The shipped music ducking data conflicts with an object already in this bank.",
+                    MessageBox.Show(owner, "The shipped music ducking data conflicts with an object already in this bank.",
                         "Ducking unavailable", MessageBoxButton.OK, MessageBoxImage.Warning);
-                    return;
+                    return false;
                 }
             }
 
@@ -691,7 +776,7 @@ namespace LegendaryExplorer.Tools.WwiseEditor
 
             if (effectChanged)
             {
-                ApplyEffectPresetToScopes(effectScopeNodes, settingsDialog.SelectedEffectPreset, Pcc.Game);
+                ApplyEffectPresetToScopes(effectScopeNodes, settingsDialog.SelectedEffectPreset, game);
             }
 
             if (loopChanged)
@@ -704,7 +789,7 @@ namespace LegendaryExplorer.Tools.WwiseEditor
 
             if (duckingChanged)
             {
-                if (Pcc.Game == MEGame.LE2)
+                if (game == MEGame.LE2)
                 {
                     if (settingsDialog.DuckAudio != true)
                     {
@@ -726,27 +811,27 @@ namespace LegendaryExplorer.Tools.WwiseEditor
                     float distanceScale = checked((float)(settingsDialog.AttenuationScalePercent / 100d));
                     if (isBankWide)
                     {
-                        if (!WwiseBankEffectPresets.EnsureStandardAttenuationData(bank, Pcc.Game,
+                        if (!WwiseBankEffectPresets.EnsureStandardAttenuationData(bank, game,
                                 distanceScale, out uint attenuationId))
                         {
                             throw new InvalidOperationException("The standard attenuation data could not be added to this bank.");
                         }
                         WwiseBankEffectPresets.SetStandardAttenuationOnScopes(settingNodes, attenuationId, true,
-                            enableDiffraction: Pcc.Game == MEGame.LE2);
+                            enableDiffraction: game == MEGame.LE2);
                     }
                     else
                     {
                         foreach (var node in settingNodes)
                         {
                             uint nodeId = GetNodeId(node);
-                            if (!WwiseBankEffectPresets.EnsureStandardAttenuationDataForScope(bank, Pcc.Game,
+                            if (!WwiseBankEffectPresets.EnsureStandardAttenuationDataForScope(bank, game,
                                     distanceScale, nodeId, out uint attenuationId))
                             {
                                 throw new InvalidOperationException(
                                     $"The standard attenuation data could not be added for Sound 0x{nodeId:X8}.");
                             }
                             WwiseBankEffectPresets.SetStandardAttenuationOnScopes([node], attenuationId, true,
-                                enableDiffraction: Pcc.Game == MEGame.LE2);
+                                enableDiffraction: game == MEGame.LE2);
                         }
                     }
                 }
@@ -763,13 +848,12 @@ namespace LegendaryExplorer.Tools.WwiseEditor
 
             using var output = new MemoryStream();
             WwiseBankParser.Serialize(bank, output);
-            CoreWwiseBank.WriteBankRaw(output.ToArray(), CurrentExport);
+            CoreWwiseBank.WriteBankRaw(output.ToArray(), bankExport);
             if (createStopEvent)
             {
-                EnsureStopEventExport(CurrentExport, stopEventId, stopEventName, sounds);
+                EnsureStopEventExport(bankExport, stopEventId, stopEventName, sounds);
             }
-            RefreshView();
-            StatusBar_LeftMostText.Text = $"Updated settings for {scopeName}";
+            return true;
         }
 
         private static uint GetNodeId(WwiserIHasNode node) => ((WwiserHircItem)node).Id;
