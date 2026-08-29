@@ -181,21 +181,21 @@
                                 </DataTemplate>
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
-                        <DataGridTemplateColumn Header="Emotion (v3)" Width="120">
+                        <DataGridTemplateColumn Header="Emotion" Width="120">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
                                     <ComboBox ItemsSource="{Binding DataContext.EmotionOptions, RelativeSource={RelativeSource AncestorType=Window}}"
                                               SelectedItem="{Binding Emotion, UpdateSourceTrigger=PropertyChanged}" Padding="3"
-                                              ToolTip="Eleven v3 emotion audio tag prepended to this line."/>
+                                              ToolTip="V3 uses an audio tag. Older models receive a spoken direction that LEX removes using ElevenLabs character timing."/>
                                 </DataTemplate>
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
-                        <DataGridTemplateColumn Header="Accent (v3)" Width="145">
+                        <DataGridTemplateColumn Header="Accent" Width="145">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
                                     <ComboBox ItemsSource="{Binding DataContext.AccentOptions, RelativeSource={RelativeSource AncestorType=Window}}"
                                               SelectedItem="{Binding Accent, UpdateSourceTrigger=PropertyChanged}" Padding="3"
-                                              ToolTip="Eleven v3 experimental [strong X accent] audio tag prepended to this line."/>
+                                              ToolTip="V3 uses an experimental [strong X accent] tag. Older models receive a spoken direction that LEX removes using ElevenLabs character timing."/>
                                 </DataTemplate>
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>

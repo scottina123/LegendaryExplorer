@@ -188,6 +188,39 @@ public class ElevenLabsApiClientTests
     }
 
     [TestMethod]
+    public async Task ReadsAudioAndCharacterAlignmentFromTimestampGeneration()
+    {
+        Uri requestUri = null;
+        var handler = new StubHttpMessageHandler(request =>
+        {
+            requestUri = request.RequestUri;
+            var response = JsonResponse("""
+                {
+                  "audio_base64":"AQID",
+                  "alignment":{
+                    "characters":["A","B"],
+                    "character_start_times_seconds":[0.1,0.2],
+                    "character_end_times_seconds":[0.2,0.3]
+                  }
+                }
+                """);
+            response.Headers.TryAddWithoutValidation("character-cost", "12");
+            return response;
+        });
+        using var httpClient = new HttpClient(handler) { BaseAddress = new Uri("https://api.elevenlabs.io/") };
+        using var client = new ElevenLabsApiClient("test-key", httpClient);
+
+        ElevenLabsTimedSpeechResult result = await client.GenerateSpeechWithTimestampsAsync("voice",
+            new ElevenLabsSpeechRequest { Text = "AB", ModelId = "eleven_multilingual_v2" });
+
+        Assert.AreEqual("/v1/text-to-speech/voice/with-timestamps", requestUri.AbsolutePath);
+        CollectionAssert.AreEqual(new byte[] { 1, 2, 3 }, result.Audio);
+        CollectionAssert.AreEqual(new[] { "A", "B" }, result.Alignment.Characters);
+        Assert.AreEqual(0.2, result.Alignment.CharacterStartTimesSeconds[1]);
+        Assert.AreEqual(12, result.CreditCost);
+    }
+
+    [TestMethod]
     public void BuildsImportReadyGenderedNamesWithoutTakeSuffix()
     {
         Assert.AreEqual("VO_1850000_f_take2.mp3",
@@ -196,6 +229,10 @@ public class ElevenLabsApiClientTests
             ElevenLabsGenerationDialog.BuildImportFileName(1850000, true));
         Assert.AreEqual("VO_1850000_m.mp3",
             ElevenLabsGenerationDialog.BuildImportFileName(1850000, false));
+        Assert.AreEqual("VO_1850000_m_take1.wav",
+            ElevenLabsGenerationDialog.BuildTakeFileName(1850000, false, 1, ".wav"));
+        Assert.AreEqual("VO_1850000_f.wav",
+            ElevenLabsGenerationDialog.BuildImportFileName(1850000, true, ".wav"));
     }
 
     [TestMethod]
@@ -211,6 +248,33 @@ public class ElevenLabsApiClientTests
             ElevenLabsGenerationDialog.BuildPromptedText("Hello, stranger.", "Flirty", "None"));
         Assert.AreEqual("[strong Irish accent] [romantic] I missed you.",
             ElevenLabsGenerationDialog.BuildPromptedText("I missed you.", "Romantic", "Irish"));
+    }
+
+    [TestMethod]
+    public void BuildsAndTimesRemovablePreV3AccentAndEmotionDirections()
+    {
+        ElevenLabsSpeechPrompt prompt = ElevenLabsGenerationDialog.BuildSpeechPrompt(
+            "I missed you.", "Romantic", "Russian", isElevenV3: false);
+        Assert.AreEqual(
+            "They spoke in a Russian accent. They spoke with a romantic emotion. I missed you.",
+            prompt.Text);
+        Assert.IsTrue(prompt.RequiresPrefixTrim);
+        Assert.AreEqual(prompt.Text.IndexOf("I missed you.", StringComparison.Ordinal),
+            prompt.TrimPrefixCharacterCount);
+
+        var alignment = new ElevenLabsSpeechAlignment
+        {
+            Characters = prompt.Text.Select(character => character.ToString()).ToList(),
+            CharacterStartTimesSeconds = Enumerable.Range(0, prompt.Text.Length)
+                .Select(index => index / 100d).ToList()
+        };
+        Assert.AreEqual(prompt.TrimPrefixCharacterCount / 100d,
+            ElevenLabsGenerationDialog.GetTrimStartSeconds(alignment, prompt.TrimPrefixCharacterCount));
+
+        ElevenLabsSpeechPrompt romanian = ElevenLabsGenerationDialog.BuildSpeechPrompt(
+            "Bună.", "Angry", "Romanian", isElevenV3: false);
+        Assert.AreEqual("They spoke in a Romanian accent. They spoke with an angry emotion. Bună.",
+            romanian.Text);
     }
 
     private static HttpResponseMessage JsonResponse(string json) => new(HttpStatusCode.OK)

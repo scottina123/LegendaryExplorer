@@ -108,32 +108,74 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.ElevenLabs
             ArgumentException.ThrowIfNullOrWhiteSpace(request.Text);
             ArgumentException.ThrowIfNullOrWhiteSpace(request.ModelId);
 
-            string path = $"v1/text-to-speech/{Uri.EscapeDataString(voiceId)}" +
-                          $"?output_format=mp3_44100_128&enable_logging={request.EnableLogging.ToString().ToLowerInvariant()}";
-            if (!IsElevenV3(request.ModelId) && request.OptimizeStreamingLatency is >= 1 and <= 4)
-            {
-                path += $"&optimize_streaming_latency={request.OptimizeStreamingLatency.Value}";
-            }
-
-            var payload = new ElevenLabsSpeechPayload
-            {
-                Text = request.Text,
-                ModelId = request.ModelId,
-                LanguageCode = NullIfWhiteSpace(request.LanguageCode),
-                VoiceSettings = GetCompatibleVoiceSettings(request.ModelId, request.VoiceSettings),
-                Seed = request.Seed,
-                PreviousText = NullIfWhiteSpace(request.PreviousText),
-                NextText = NullIfWhiteSpace(request.NextText),
-                ApplyTextNormalization = request.ApplyTextNormalization,
-                ApplyLanguageTextNormalization = request.ApplyLanguageTextNormalization
-            };
-
+            string path = BuildSpeechPath(voiceId, request, withTimestamps: false);
+            ElevenLabsSpeechPayload payload = BuildSpeechPayload(request);
             using var response = await SendAsync(HttpMethod.Post, path, payload, cancellationToken);
             byte[] audio = await response.Content.ReadAsByteArrayAsync(cancellationToken);
             int? creditCost = TryReadIntHeader(response, "character-cost");
             string requestId = TryReadHeader(response, "request-id");
             return new ElevenLabsSpeechResult(audio, creditCost, requestId);
         }
+
+        public async Task<ElevenLabsTimedSpeechResult> GenerateSpeechWithTimestampsAsync(string voiceId,
+            ElevenLabsSpeechRequest request, CancellationToken cancellationToken = default)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(voiceId);
+            ArgumentNullException.ThrowIfNull(request);
+            ArgumentException.ThrowIfNullOrWhiteSpace(request.Text);
+            ArgumentException.ThrowIfNullOrWhiteSpace(request.ModelId);
+
+            string path = BuildSpeechPath(voiceId, request, withTimestamps: true);
+            ElevenLabsSpeechPayload payload = BuildSpeechPayload(request);
+            using var response = await SendAsync(HttpMethod.Post, path, payload, cancellationToken);
+            var timedResponse = await DeserializeAsync<ElevenLabsTimedSpeechResponse>(response, cancellationToken);
+            if (string.IsNullOrWhiteSpace(timedResponse.AudioBase64))
+            {
+                throw new ElevenLabsApiException(response.StatusCode,
+                    "ElevenLabs returned timestamp data without audio.");
+            }
+
+            byte[] audio;
+            try
+            {
+                audio = Convert.FromBase64String(timedResponse.AudioBase64);
+            }
+            catch (FormatException exception)
+            {
+                throw new ElevenLabsApiException(response.StatusCode,
+                    $"ElevenLabs returned invalid base64 audio: {exception.Message}");
+            }
+
+            int? creditCost = TryReadIntHeader(response, "character-cost");
+            string requestId = TryReadHeader(response, "request-id");
+            return new ElevenLabsTimedSpeechResult(audio, timedResponse.Alignment,
+                timedResponse.NormalizedAlignment, creditCost, requestId);
+        }
+
+        private static string BuildSpeechPath(string voiceId, ElevenLabsSpeechRequest request, bool withTimestamps)
+        {
+            string suffix = withTimestamps ? "/with-timestamps" : string.Empty;
+            string path = $"v1/text-to-speech/{Uri.EscapeDataString(voiceId)}{suffix}" +
+                          $"?output_format=mp3_44100_128&enable_logging={request.EnableLogging.ToString().ToLowerInvariant()}";
+            if (!IsElevenV3(request.ModelId) && request.OptimizeStreamingLatency is >= 1 and <= 4)
+            {
+                path += $"&optimize_streaming_latency={request.OptimizeStreamingLatency.Value}";
+            }
+            return path;
+        }
+
+        private static ElevenLabsSpeechPayload BuildSpeechPayload(ElevenLabsSpeechRequest request) => new()
+        {
+            Text = request.Text,
+            ModelId = request.ModelId,
+            LanguageCode = NullIfWhiteSpace(request.LanguageCode),
+            VoiceSettings = GetCompatibleVoiceSettings(request.ModelId, request.VoiceSettings),
+            Seed = request.Seed,
+            PreviousText = NullIfWhiteSpace(request.PreviousText),
+            NextText = NullIfWhiteSpace(request.NextText),
+            ApplyTextNormalization = request.ApplyTextNormalization,
+            ApplyLanguageTextNormalization = request.ApplyLanguageTextNormalization
+        };
 
         private static bool IsElevenV3(string modelId) =>
             string.Equals(modelId, "eleven_v3", StringComparison.OrdinalIgnoreCase);
@@ -264,6 +306,13 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.ElevenLabs
             public string ApplyTextNormalization { get; set; }
             public bool ApplyLanguageTextNormalization { get; set; }
         }
+
+        private sealed class ElevenLabsTimedSpeechResponse
+        {
+            public string AudioBase64 { get; set; }
+            public ElevenLabsSpeechAlignment Alignment { get; set; }
+            public ElevenLabsSpeechAlignment NormalizedAlignment { get; set; }
+        }
     }
 
     public sealed class ElevenLabsApiException : Exception
@@ -377,4 +426,14 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.ElevenLabs
     }
 
     public sealed record ElevenLabsSpeechResult(byte[] Audio, int? CreditCost, string RequestId);
+
+    public sealed record ElevenLabsTimedSpeechResult(byte[] Audio, ElevenLabsSpeechAlignment Alignment,
+        ElevenLabsSpeechAlignment NormalizedAlignment, int? CreditCost, string RequestId);
+
+    public sealed class ElevenLabsSpeechAlignment
+    {
+        public List<string> Characters { get; set; } = [];
+        public List<double> CharacterStartTimesSeconds { get; set; } = [];
+        public List<double> CharacterEndTimesSeconds { get; set; } = [];
+    }
 }

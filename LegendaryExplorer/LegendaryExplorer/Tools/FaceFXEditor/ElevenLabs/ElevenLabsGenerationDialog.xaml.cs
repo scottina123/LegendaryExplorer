@@ -14,11 +14,17 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using LegendaryExplorer.SharedUI;
+using NAudio.Wave;
+using NAudio.Wave.SampleProviders;
 using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
 
 namespace LegendaryExplorer.Tools.FaceFXEditor.ElevenLabs
 {
     public sealed record ElevenLabsLineSeed(int TlkId, string Text);
+    public sealed record ElevenLabsSpeechPrompt(string Text, int TrimPrefixCharacterCount)
+    {
+        public bool RequiresPrefixTrim => TrimPrefixCharacterCount > 0;
+    }
 
     public partial class ElevenLabsGenerationDialog : Window, INotifyPropertyChanged
     {
@@ -84,6 +90,8 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.ElevenLabs
                 ["French"] = "[strong French accent]",
                 ["Irish"] = "[strong Irish accent]",
                 ["New York"] = "[strong New York accent]",
+                ["Romanian"] = "[strong Romanian accent]",
+                ["Russian"] = "[strong Russian accent]",
                 ["Scottish"] = "[strong Scottish accent]",
                 ["Southern American"] = "[strong Southern American accent]"
             };
@@ -294,7 +302,9 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.ElevenLabs
             get
             {
                 int lineCount = Lines.Count;
-                int characters = Lines.Sum(line => BuildPromptedText(line.Text, line.Emotion, line.Accent).Length);
+                int characters = Lines.Sum(line => SelectedModel == null
+                    ? line.Text?.Length ?? 0
+                    : BuildSpeechPrompt(line.Text, line.Emotion, line.Accent, IsElevenV3).Text.Length);
                 if (lineCount == 0)
                 {
                     return "No lines to generate";
@@ -533,27 +543,54 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.ElevenLabs
                         if (allLinesIndex >= 0 && allLinesIndex + 1 < Lines.Count) nextText = Lines[allLinesIndex + 1].Text;
                     }
 
-                    string promptedText = BuildPromptedText(line.Text, line.Emotion, line.Accent);
+                    ElevenLabsSpeechPrompt prompt = BuildSpeechPrompt(line.Text, line.Emotion, line.Accent,
+                        IsElevenV3);
                     for (int take = 1; take <= 2; take++)
                     {
                         line.Status = $"Generating take {take} of 2...";
                         StatusText = $"Line {targetIndex + 1:N0} of {linesToGenerate.Count:N0}, take {take} of 2";
                         try
                         {
-                            var request = BuildSpeechRequest(promptedText, seed, take, previousText, nextText);
-                            ElevenLabsSpeechResult result = await _client.GenerateSpeechAsync(SelectedVoice.VoiceId,
-                                request, cancellationToken);
-                            if (result.Audio == null || result.Audio.Length == 0)
+                            var request = BuildSpeechRequest(prompt.Text, seed, take, previousText, nextText);
+                            byte[] audio;
+                            int? creditCost;
+                            double? trimStartSeconds = null;
+                            if (prompt.RequiresPrefixTrim)
+                            {
+                                ElevenLabsTimedSpeechResult result = await _client.GenerateSpeechWithTimestampsAsync(
+                                    SelectedVoice.VoiceId, request, cancellationToken);
+                                audio = result.Audio;
+                                creditCost = result.CreditCost;
+                                trimStartSeconds = GetTrimStartSeconds(result.Alignment,
+                                    prompt.TrimPrefixCharacterCount);
+                            }
+                            else
+                            {
+                                ElevenLabsSpeechResult result = await _client.GenerateSpeechAsync(
+                                    SelectedVoice.VoiceId, request, cancellationToken);
+                                audio = result.Audio;
+                                creditCost = result.CreditCost;
+                            }
+
+                            if (audio == null || audio.Length == 0)
                             {
                                 throw new InvalidDataException("ElevenLabs returned an empty audio file.");
                             }
 
+                            string extension = trimStartSeconds.HasValue ? ".wav" : ".mp3";
                             string path = Path.Combine(OutputFolder,
-                                BuildTakeFileName(line.TlkId, _isFemaleAsset, take));
-                            await File.WriteAllBytesAsync(path, result.Audio, cancellationToken);
+                                BuildTakeFileName(line.TlkId, _isFemaleAsset, take, extension));
+                            if (trimStartSeconds.HasValue)
+                            {
+                                WriteTrimmedMp3AsPcmWave(audio, trimStartSeconds.Value, path);
+                            }
+                            else
+                            {
+                                await File.WriteAllBytesAsync(path, audio, cancellationToken);
+                            }
                             line.SetTake(take, path);
                             completedTakes++;
-                            reportedCreditCost += result.CreditCost ?? 0;
+                            reportedCreditCost += creditCost ?? 0;
                         }
                         catch (OperationCanceledException)
                         {
@@ -682,7 +719,7 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.ElevenLabs
             foreach (ElevenLabsLineItem line in selected)
             {
                 string destination = Path.Combine(importDirectory,
-                    BuildImportFileName(line.TlkId, _isFemaleAsset));
+                    BuildImportFileName(line.TlkId, _isFemaleAsset, Path.GetExtension(line.SelectedTakePath)));
                 File.Copy(line.SelectedTakePath, destination, false);
                 files.Add(destination);
                 texts[line.TlkId] = line.Text;
@@ -813,19 +850,10 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.ElevenLabs
                 return false;
             }
 
-            if (!SelectedModel.ModelId.Equals("eleven_v3", StringComparison.OrdinalIgnoreCase) &&
-                linesToGenerate.Any(HasPerformanceTag))
-            {
-                MessageBox.Show(this,
-                    "Emotion and accent use Eleven v3 audio tags. Select the Eleven v3 model or set the affected rows to Neutral and None.",
-                    "Eleven v3 required", MessageBoxButton.OK, MessageBoxImage.Warning);
-                return false;
-            }
-
             int maxCharacters = GetModelCharacterLimit();
             ElevenLabsLineItem tooLong = maxCharacters > 0
                 ? linesToGenerate.FirstOrDefault(line =>
-                    BuildPromptedText(line.Text, line.Emotion, line.Accent).Length > maxCharacters)
+                    BuildSpeechPrompt(line.Text, line.Emotion, line.Accent, IsElevenV3).Text.Length > maxCharacters)
                 : null;
             if (tooLong != null)
             {
@@ -1007,10 +1035,6 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.ElevenLabs
             return next;
         }
 
-        private static bool HasPerformanceTag(ElevenLabsLineItem line) =>
-            !string.Equals(line.Emotion, "Neutral", StringComparison.Ordinal) ||
-            !string.Equals(line.Accent, "None", StringComparison.Ordinal);
-
         public static string BuildPromptedText(string text, string emotion, string accent)
         {
             var parts = new List<string>(3);
@@ -1026,11 +1050,94 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.ElevenLabs
             return string.Join(" ", parts.Where(part => part.Length > 0));
         }
 
-        public static string BuildTakeFileName(int tlkId, bool isFemaleAsset, int take) =>
-            $"VO_{tlkId}_{(isFemaleAsset ? "f" : "m")}_take{take}.mp3";
+        public static ElevenLabsSpeechPrompt BuildSpeechPrompt(string text, string emotion, string accent,
+            bool isElevenV3)
+        {
+            string spokenText = text?.Trim() ?? string.Empty;
+            if (isElevenV3)
+            {
+                return new ElevenLabsSpeechPrompt(BuildPromptedText(spokenText, emotion, accent), 0);
+            }
 
-        public static string BuildImportFileName(int tlkId, bool isFemaleAsset) =>
-            $"VO_{tlkId}_{(isFemaleAsset ? "f" : "m")}.mp3";
+            var directions = new List<string>(2);
+            if (!string.IsNullOrWhiteSpace(accent) && !string.Equals(accent, "None", StringComparison.Ordinal))
+            {
+                directions.Add($"They spoke in {GetIndefiniteArticle(accent)} {accent} accent.");
+            }
+            if (!string.IsNullOrWhiteSpace(emotion) && !string.Equals(emotion, "Neutral", StringComparison.Ordinal))
+            {
+                string lowerEmotion = emotion.ToLowerInvariant();
+                directions.Add($"They spoke with {GetIndefiniteArticle(lowerEmotion)} {lowerEmotion} emotion.");
+            }
+
+            if (directions.Count == 0)
+            {
+                return new ElevenLabsSpeechPrompt(spokenText, 0);
+            }
+
+            string prefix = string.Join(" ", directions) + " ";
+            return new ElevenLabsSpeechPrompt(prefix + spokenText, prefix.Length);
+        }
+
+        private static string GetIndefiniteArticle(string value) =>
+            !string.IsNullOrWhiteSpace(value) && "AEIOUaeiou".Contains(value[0]) ? "an" : "a";
+
+        public static double GetTrimStartSeconds(ElevenLabsSpeechAlignment alignment, int prefixCharacterCount)
+        {
+            if (alignment?.Characters == null || alignment.CharacterStartTimesSeconds == null ||
+                prefixCharacterCount <= 0 || prefixCharacterCount >= alignment.Characters.Count ||
+                prefixCharacterCount >= alignment.CharacterStartTimesSeconds.Count)
+            {
+                throw new InvalidDataException(
+                    "ElevenLabs did not return enough character timing data to remove the spoken accent/emotion direction.");
+            }
+
+            double startSeconds = alignment.CharacterStartTimesSeconds[prefixCharacterCount];
+            if (!double.IsFinite(startSeconds) || startSeconds < 0d)
+            {
+                throw new InvalidDataException(
+                    "ElevenLabs returned an invalid audio boundary for the spoken accent/emotion direction.");
+            }
+
+            return startSeconds;
+        }
+
+        private static void WriteTrimmedMp3AsPcmWave(byte[] mp3Audio, double trimStartSeconds,
+            string destinationPath)
+        {
+            try
+            {
+                using var stream = new MemoryStream(mp3Audio, writable: false);
+                using var reader = new Mp3FileReader(stream);
+                var trimmed = new OffsetSampleProvider(reader.ToSampleProvider())
+                {
+                    SkipOver = TimeSpan.FromSeconds(trimStartSeconds)
+                };
+                WaveFileWriter.CreateWaveFile16(destinationPath, trimmed);
+                if (new FileInfo(destinationPath).Length <= 44)
+                {
+                    throw new InvalidDataException("Removing the spoken direction produced an empty audio file.");
+                }
+            }
+            catch
+            {
+                if (File.Exists(destinationPath))
+                {
+                    File.Delete(destinationPath);
+                }
+                throw;
+            }
+        }
+
+        public static string BuildTakeFileName(int tlkId, bool isFemaleAsset, int take,
+            string extension = ".mp3") =>
+            $"VO_{tlkId}_{(isFemaleAsset ? "f" : "m")}_take{take}{NormalizeAudioExtension(extension)}";
+
+        public static string BuildImportFileName(int tlkId, bool isFemaleAsset, string extension = ".mp3") =>
+            $"VO_{tlkId}_{(isFemaleAsset ? "f" : "m")}{NormalizeAudioExtension(extension)}";
+
+        private static string NormalizeAudioExtension(string extension) =>
+            string.Equals(extension, ".wav", StringComparison.OrdinalIgnoreCase) ? ".wav" : ".mp3";
 
         private static string GetShortMessage(Exception exception)
         {
