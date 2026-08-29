@@ -1,0 +1,27 @@
+<Window x:Class="LegendaryExplorer.Tools.FaceFXEditor.ElevenLabs.ElevenLabsBulkAddLinesDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Bulk Add ElevenLabs Lines" Width="680" Height="520" MinWidth="500" MinHeight="360"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False">
+    <Grid Margin="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        <TextBlock Grid.Row="0" Text="Paste one spoken line per row. Blank rows are ignored and TLK IDs increment by one."
+                   TextWrapping="Wrap" Margin="0,0,0,10"/>
+        <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,8">
+            <TextBlock Text="Starting TLK ID:" VerticalAlignment="Center" Margin="0,0,8,0"/>
+            <TextBox x:Name="StartingTlkIdTextBox" Width="140" Padding="4"/>
+        </StackPanel>
+        <TextBox Grid.Row="2" x:Name="LinesTextBox" AcceptsReturn="True" AcceptsTab="False"
+                 VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
+                 TextWrapping="Wrap" Padding="6"/>
+        <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
+            <Button Content="Add lines" Width="95" Height="30" IsDefault="True" Click="AddButton_Click" Margin="0,0,8,0"/>
+            <Button Content="Cancel" Width="80" Height="30" IsCancel="True"/>
+        </StackPanel>
+    </Grid>
+</Window>

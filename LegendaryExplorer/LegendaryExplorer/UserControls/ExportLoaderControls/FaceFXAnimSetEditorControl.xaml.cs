@@ -3209,12 +3209,59 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         }
 
         /// <summary>
-        /// Combined workflow: imports WAV files via Wwise (BulkAudioImportDialog), adds the
-        /// resulting WwiseEvents as FaceFX lines, and then bulk-generates lip sync animations.
+        /// Combined workflow: imports WAV files via Wwise (BulkAudioImportDialog), adds or relinks
+        /// the resulting WwiseEvents as FaceFX lines, and then bulk-generates lip sync animations.
         /// LE2 stores the bank, events, and streams in the dialogue's paired _S package. LE3 keeps
         /// its established audio/int package layout beside the FaceFX asset.
         /// </summary>
         private void ImportAudioAndGenerateFaceFX_Click(object sender, RoutedEventArgs e)
+        {
+            RunImportAudioAndGenerateFaceFX();
+        }
+
+        private void GenerateElevenLabsAudioAndImport_Click(object sender, RoutedEventArgs e)
+        {
+            if (CurrentLoadedExport == null) return;
+
+            bool isFemaleAsset = CurrentLoadedExport.ObjectName.Name.EndsWith("_F", StringComparison.OrdinalIgnoreCase);
+            bool isMaleAsset = CurrentLoadedExport.ObjectName.Name.EndsWith("_M", StringComparison.OrdinalIgnoreCase);
+            if (!isFemaleAsset && !isMaleAsset)
+            {
+                MessageBox.Show("This FaceFX asset does not end with '_F' or '_M'. Cannot determine the generated audio gender.",
+                    "Gender not found", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            if (CurrentLoadedExport.Game != MEGame.LE2 && CurrentLoadedExport.Game != MEGame.LE3)
+            {
+                MessageBox.Show("ElevenLabs audio import currently supports LE2 and LE3 packages.",
+                    "Unsupported game", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            var seeds = Lines
+                .Where(line => line.TLKID > 0)
+                .Select(line => new Tools.FaceFXEditor.ElevenLabs.ElevenLabsLineSeed(line.TLKID,
+                    line.TLKString ?? string.Empty))
+                .ToList();
+            var dialog = new Tools.FaceFXEditor.ElevenLabs.ElevenLabsGenerationDialog(
+                seeds, SelectedLineEntry?.TLKID ?? -1, isFemaleAsset, Window.GetWindow(this));
+            if (dialog.ShowDialog() == true && dialog.SelectedAudioFiles.Count > 0)
+            {
+                if (dialog.MirrorOppositeGender)
+                {
+                    RunImportAudioIntoMirroredFaceFXAssets(dialog.SelectedAudioFiles,
+                        dialog.SelectedTextsByTlkId);
+                }
+                else
+                {
+                    RunImportAudioAndGenerateFaceFX(dialog.SelectedAudioFiles, dialog.SelectedTextsByTlkId);
+                }
+            }
+        }
+
+        private void RunImportAudioAndGenerateFaceFX(IEnumerable<string> initialAudioFiles = null,
+            IReadOnlyDictionary<int, string> textOverrides = null)
         {
             if (CurrentLoadedExport == null) return;
 
@@ -3244,6 +3291,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             // Step 1: Show BulkAudioImportDialog to import WAV files
             var importDialog = new BulkAudioImportDialog(Pcc, audioFolderExport.InstancedFullPath,
                 bankStreamingAudioPackageName: streamingPackageName,
+                initialWavFiles: initialAudioFiles,
                 isDialogueBank: Pcc.Game == MEGame.LE2)
             {
                 Owner = Window.GetWindow(this)
@@ -3252,18 +3300,23 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             if (importDialog.ShowDialog() != true)
                 return;
 
-            // Step 2: Add the newly imported WwiseEvents as FaceFX lines.
-            int linesAdded = AddAudioFromFolderExport(audioFolderExport, isFemaleAsset);
-            if (linesAdded == 0)
+            // Step 2: Add or relink only the WwiseEvents created from this import. Existing FaceFX
+            // lines are deliberately included so ElevenLabs can replace their audio in-place.
+            var importedEventNames = BuildImportedGenderedEventNameSet(importDialog.WavFiles, Pcc.Game);
+            var affectedLines = AddAudioFromFolderExportToAsset(CurrentLoadedExport, FaceFX, audioFolderExport,
+                isFemaleAsset, updateCurrentUi: true, importedEventNames);
+            ApplyFaceFxTextOverrides(affectedLines, textOverrides);
+
+            if (affectedLines.Count == 0)
             {
-                MessageBox.Show("No new FaceFX lines were added from the imported audio. Skipping FaceFX generation.",
-                    "No Lines Added", MessageBoxButton.OK, MessageBoxImage.Information);
+                MessageBox.Show("No matching FaceFX lines were added or relinked from the imported audio. Skipping FaceFX generation.",
+                    "No Lines Matched", MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
             }
 
-            // Step 3: Bulk generate FaceFX for all lines
+            // Step 3: Use the existing bulk settings for the lines affected by this import.
             var bulkDialog = new Tools.FaceFXEditor.AutoFaceFXGenerator.BulkFaceFXGenerationDialog(
-                Lines.Count, Window.GetWindow(this), game: CurrentLoadedExport.Game,
+                affectedLines.Count, Window.GetWindow(this), game: CurrentLoadedExport.Game,
                 targetFaceFxExport: CurrentLoadedExport);
             if (bulkDialog.ShowDialog() != true || !bulkDialog.Confirmed)
                 return;
@@ -3278,7 +3331,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             int errorCount = 0;
             var errors = new List<string>();
 
-            foreach (var lineEntry in Lines)
+            foreach (var lineEntry in affectedLines)
             {
                 if (string.IsNullOrWhiteSpace(lineEntry.TLKString))
                 {
@@ -3293,7 +3346,9 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     var options = new Tools.FaceFXEditor.AutoFaceFXGenerator.FaceFXGenerationOptions
                     {
                         Game = CurrentLoadedExport.Game,
-                        CharacterType = Tools.FaceFXEditor.AutoFaceFXGenerator.CharacterType.HumanFemale,
+                        CharacterType = isFemaleAsset
+                            ? Tools.FaceFXEditor.AutoFaceFXGenerator.CharacterType.HumanFemale
+                            : Tools.FaceFXEditor.AutoFaceFXGenerator.CharacterType.HumanMale,
                         Species = selectedSpecies,
                         GenerateJawAnimation = true,
                         GenerateBlinkAnimation = generateBlinkAnimation,
@@ -3330,7 +3385,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             CurrentLoadedExport?.WriteBinary(FaceFX.Binary);
             if (SelectedLineEntry != null) UpdateAnimListBox();
 
-            string message = $"Import and generation complete.\n\nLines added: {linesAdded}\nFaceFX generated: {successCount}\nSkipped (no TLK text): {skipCount}\nErrors: {errorCount}";
+            string message = $"Import and generation complete.\n\nLines added or relinked: {affectedLines.Count}\nFaceFX generated: {successCount}\nSkipped (no TLK text): {skipCount}\nErrors: {errorCount}";
             if (errors.Count > 0 && errors.Count <= 10)
                 message += "\n\nErrors:\n" + string.Join("\n", errors);
             else if (errors.Count > 10)
@@ -3350,7 +3405,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             RunImportAudioIntoMirroredFaceFXAssets();
         }
 
-        private void RunImportAudioIntoMirroredFaceFXAssets()
+        private void RunImportAudioIntoMirroredFaceFXAssets(IEnumerable<string> initialAudioFiles = null,
+            IReadOnlyDictionary<int, string> textOverrides = null)
         {
             if (CurrentLoadedExport == null) return;
 
@@ -3380,7 +3436,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
             var importDialog = new BulkAudioImportDialog(Pcc, audioFolderExport.InstancedFullPath,
                 bankStreamingAudioPackageName: streamingPackageName,
-                isDialogueBank: true, generateGenderedEvents: true, allowFaceFxAssetCreation: false)
+                isDialogueBank: true, generateGenderedEvents: true, allowFaceFxAssetCreation: false,
+                initialWavFiles: initialAudioFiles)
             {
                 Owner = Window.GetWindow(this)
             };
@@ -3406,6 +3463,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 isFemaleAsset: true, updateCurrentUi: currentIsFemale, importedEventNames);
             var maleLines = AddAudioFromFolderExportToAsset(maleExport, maleFaceFx, audioFolderExport,
                 isFemaleAsset: false, updateCurrentUi: !currentIsFemale, importedEventNames);
+            ApplyFaceFxTextOverrides(femaleLines, textOverrides);
+            ApplyFaceFxTextOverrides(maleLines, textOverrides);
 
             if (femaleLines.Count == 0 && maleLines.Count == 0)
             {
@@ -3452,6 +3511,23 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             else
             {
                 MessageBox.Show(message, "Audio Imported", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+        }
+
+        private static void ApplyFaceFxTextOverrides(IEnumerable<FaceFXLineEntry> lines,
+            IReadOnlyDictionary<int, string> textOverrides)
+        {
+            if (textOverrides == null)
+            {
+                return;
+            }
+
+            foreach (var line in lines)
+            {
+                if (textOverrides.TryGetValue(line.TLKID, out string text) && !string.IsNullOrWhiteSpace(text))
+                {
+                    line.TLKString = text;
+                }
             }
         }
 

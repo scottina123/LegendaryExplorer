@@ -1,0 +1,251 @@
+<Window x:Class="LegendaryExplorer.Tools.FaceFXEditor.ElevenLabs.ElevenLabsGenerationDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="ElevenLabs Text to Speech for FaceFX"
+        Width="1500" Height="880" MinWidth="1180" MinHeight="720"
+        WindowStartupLocation="CenterOwner">
+    <Grid Margin="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <GroupBox Grid.Row="0" Header="ElevenLabs account" Padding="8" Margin="0,0,0,8">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="340"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <TextBlock Grid.Row="0" Grid.Column="0" Text="API key:" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                <PasswordBox Grid.Row="0" Grid.Column="1" x:Name="ApiKeyPasswordBox" Padding="5" Margin="0,0,8,0"
+                             ToolTip="Use a restricted ElevenLabs key with a credit quota. The key is sent only to api.elevenlabs.io; if remembered, it is encrypted for this Windows account."/>
+                <Button Grid.Row="0" Grid.Column="2" x:Name="ConnectButton" Content="Connect / Refresh" Width="125" Height="28"
+                        Click="ConnectButton_Click" IsEnabled="{Binding CanConnect}" Margin="0,0,12,0"/>
+                <TextBlock Grid.Row="0" Grid.Column="3" Text="{Binding CreditsText}" FontWeight="SemiBold"
+                           VerticalAlignment="Center" TextWrapping="Wrap"/>
+                <CheckBox Grid.Row="1" Grid.Column="1" x:Name="RememberApiKeyCheckBox" Margin="0,6,0,0"
+                          Content="Remember for this Windows user (encrypted)"/>
+                <TextBlock Grid.Row="1" Grid.Column="3" Text="{Binding AccountStatusText}" Margin="0,6,0,0"
+                           Opacity="0.8" TextWrapping="Wrap"/>
+            </Grid>
+        </GroupBox>
+
+        <GroupBox Grid.Row="1" Header="Voice, model, and generation settings" Padding="8" Margin="0,0,0,8"
+                  IsEnabled="{Binding IsConnected}">
+            <StackPanel>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="2*"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="2*"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="Voice:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                    <ComboBox Grid.Column="1" ItemsSource="{Binding Voices}" SelectedItem="{Binding SelectedVoice}"
+                              DisplayMemberPath="DisplayName" TextSearch.TextPath="DisplayName"
+                              IsTextSearchEnabled="True" SelectionChanged="VoiceComboBox_SelectionChanged"
+                              MinWidth="240" Margin="0,0,12,0" Padding="4"/>
+                    <TextBlock Grid.Column="2" Text="Model:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                    <ComboBox Grid.Column="3" ItemsSource="{Binding Models}" SelectedItem="{Binding SelectedModel}"
+                              DisplayMemberPath="DisplayName" TextSearch.TextPath="DisplayName"
+                              IsTextSearchEnabled="True" SelectionChanged="ModelComboBox_SelectionChanged"
+                              MinWidth="240" Margin="0,0,12,0" Padding="4"/>
+                    <TextBlock Grid.Column="4" Text="Language:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                    <ComboBox Grid.Column="5" ItemsSource="{Binding Languages}" SelectedItem="{Binding SelectedLanguage}"
+                              DisplayMemberPath="DisplayName" MinWidth="130" Padding="4"
+                              ToolTip="Optional language hint. Leave Automatic selected when no hint is needed."/>
+                </Grid>
+
+                <WrapPanel Margin="0,10,0,0">
+                    <StackPanel Width="200" Margin="0,0,12,5">
+                        <DockPanel>
+                            <TextBlock Text="Stability"/>
+                            <TextBlock Text="{Binding Stability, StringFormat={}{0:0.00}}" HorizontalAlignment="Right"/>
+                        </DockPanel>
+                        <Slider Minimum="0" Maximum="1" Value="{Binding Stability}" TickFrequency="0.05"
+                                AutoToolTipPlacement="TopLeft" AutoToolTipPrecision="2"/>
+                    </StackPanel>
+                    <StackPanel Width="200" Margin="0,0,12,5" IsEnabled="{Binding CanUseSimilarity}">
+                        <DockPanel>
+                            <TextBlock Text="Similarity"/>
+                            <TextBlock Text="{Binding SimilarityBoost, StringFormat={}{0:0.00}}" HorizontalAlignment="Right"/>
+                        </DockPanel>
+                        <Slider Minimum="0" Maximum="1" Value="{Binding SimilarityBoost}" TickFrequency="0.05"
+                                AutoToolTipPlacement="TopLeft" AutoToolTipPrecision="2"/>
+                    </StackPanel>
+                    <StackPanel Width="200" Margin="0,0,12,5" IsEnabled="{Binding CanUseStyle}">
+                        <DockPanel>
+                            <TextBlock Text="Style exaggeration"/>
+                            <TextBlock Text="{Binding Style, StringFormat={}{0:0.00}}" HorizontalAlignment="Right"/>
+                        </DockPanel>
+                        <Slider Minimum="0" Maximum="1" Value="{Binding Style}" TickFrequency="0.05"
+                                AutoToolTipPlacement="TopLeft" AutoToolTipPrecision="2"/>
+                    </StackPanel>
+                    <StackPanel Width="200" Margin="0,0,12,5">
+                        <DockPanel>
+                            <TextBlock Text="Speed"/>
+                            <TextBlock Text="{Binding Speed, StringFormat={}{0:0.00}}" HorizontalAlignment="Right"/>
+                        </DockPanel>
+                        <Slider Minimum="0.7" Maximum="1.2" Value="{Binding Speed}" TickFrequency="0.05"
+                                AutoToolTipPlacement="TopLeft" AutoToolTipPrecision="2"/>
+                    </StackPanel>
+                    <CheckBox Content="Speaker boost" IsChecked="{Binding UseSpeakerBoost}"
+                              IsEnabled="{Binding CanUseSpeakerBoost}" VerticalAlignment="Center" Margin="0,0,18,5"/>
+                </WrapPanel>
+
+                <Expander Header="Advanced request settings" Margin="0,3,0,0">
+                    <WrapPanel Margin="0,8,0,0">
+                        <StackPanel Orientation="Horizontal" Margin="0,0,18,5">
+                            <TextBlock Text="Text normalization:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                            <ComboBox Width="95" ItemsSource="{Binding TextNormalizationOptions}"
+                                      SelectedItem="{Binding ApplyTextNormalization}" Padding="3"/>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,18,5">
+                            <TextBlock Text="Seed:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                            <TextBox Width="110" Text="{Binding SeedText, UpdateSourceTrigger=PropertyChanged}" Padding="3"
+                                     ToolTip="Blank uses random sampling. When set, take 2 uses the next seed."/>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,18,5" IsEnabled="{Binding CanUseLatencyOptimization}">
+                            <TextBlock Text="Latency optimization:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                            <ComboBox Width="55" SelectedIndex="{Binding OptimizeStreamingLatency}" Padding="3"
+                                      ToolTip="Deprecated ElevenLabs control. 0 preserves maximum quality; 1-4 progressively reduce latency.">
+                                <ComboBoxItem Content="0" Tag="0"/>
+                                <ComboBoxItem Content="1" Tag="1"/>
+                                <ComboBoxItem Content="2" Tag="2"/>
+                                <ComboBoxItem Content="3" Tag="3"/>
+                                <ComboBoxItem Content="4" Tag="4"/>
+                            </ComboBox>
+                        </StackPanel>
+                        <CheckBox Content="Use adjacent selected lines as context" IsChecked="{Binding UseAdjacentTextContext}"
+                                  Margin="0,0,18,5" ToolTip="Sends previous_text and next_text to improve continuity. Eleven v3 ignores request stitching."/>
+                        <CheckBox Content="Language-aware normalization (Japanese)" IsChecked="{Binding ApplyLanguageTextNormalization}"
+                                  Margin="0,0,18,5"/>
+                        <CheckBox Content="Keep generation in ElevenLabs history" IsChecked="{Binding EnableLogging}"
+                                  Margin="0,0,18,5" ToolTip="Disabling this requests zero-retention mode, which requires an eligible enterprise account."/>
+                    </WrapPanel>
+                </Expander>
+                <TextBlock Text="{Binding SelectedModelDescription}" TextWrapping="Wrap" Opacity="0.72" Margin="0,6,0,0"/>
+            </StackPanel>
+        </GroupBox>
+
+        <GroupBox Grid.Row="2" Header="FaceFX lines — every line generates two charged takes" Padding="6"
+                  IsEnabled="{Binding CanEditLines}">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+                <DockPanel Grid.Row="0" Margin="0,0,0,6">
+                    <StackPanel Orientation="Horizontal" DockPanel.Dock="Left">
+                        <Button Content="Add line" Width="85" Click="AddLineButton_Click" Margin="0,0,5,0"/>
+                        <Button Content="Bulk add lines..." Width="115" Click="BulkAddLinesButton_Click" Margin="0,0,5,0"/>
+                        <Button Content="Remove selected" Width="115" Click="RemoveLinesButton_Click" Margin="0,0,5,0"/>
+                        <Button Content="Clear all lines" Width="105" Click="ClearAllLinesButton_Click"/>
+                    </StackPanel>
+                    <TextBlock Text="{Binding BatchEstimateText}" HorizontalAlignment="Right" VerticalAlignment="Center"
+                               FontWeight="SemiBold" TextWrapping="Wrap"/>
+                </DockPanel>
+                <WrapPanel Grid.Row="1" Margin="0,0,0,6" VerticalAlignment="Center">
+                    <TextBlock Text="Set every line's emotion:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                    <ComboBox ItemsSource="{Binding EmotionOptions}" SelectedItem="{Binding BulkEmotion}"
+                              Width="125" Padding="3" Margin="0,0,5,0"/>
+                    <Button Content="Apply emotion to all" Width="135" Click="ApplyEmotionToAllButton_Click"
+                            Margin="0,0,20,0"/>
+                    <TextBlock Text="Set every line's accent:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                    <ComboBox ItemsSource="{Binding AccentOptions}" SelectedItem="{Binding BulkAccent}"
+                              Width="155" Padding="3" Margin="0,0,5,0"/>
+                    <Button Content="Apply accent to all" Width="130" Click="ApplyAccentToAllButton_Click"/>
+                </WrapPanel>
+                <DataGrid Grid.Row="2" x:Name="LinesGrid" ItemsSource="{Binding Lines}" AutoGenerateColumns="False"
+                          CanUserAddRows="False" SelectionMode="Extended" SelectionUnit="FullRow"
+                          RowHeight="68" HeadersVisibility="Column" IsReadOnly="{Binding IsBusy}">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="TLK ID" Binding="{Binding TlkId, UpdateSourceTrigger=PropertyChanged}" Width="90"/>
+                        <DataGridTemplateColumn Header="Text sent to ElevenLabs" Width="*">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <TextBox Text="{Binding Text, UpdateSourceTrigger=PropertyChanged}" TextWrapping="Wrap"
+                                             AcceptsReturn="True" VerticalScrollBarVisibility="Auto" Padding="3"/>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                        <DataGridTemplateColumn Header="Emotion (v3)" Width="120">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <ComboBox ItemsSource="{Binding DataContext.EmotionOptions, RelativeSource={RelativeSource AncestorType=Window}}"
+                                              SelectedItem="{Binding Emotion, UpdateSourceTrigger=PropertyChanged}" Padding="3"
+                                              ToolTip="Eleven v3 emotion audio tag prepended to this line."/>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                        <DataGridTemplateColumn Header="Accent (v3)" Width="145">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <ComboBox ItemsSource="{Binding DataContext.AccentOptions, RelativeSource={RelativeSource AncestorType=Window}}"
+                                              SelectedItem="{Binding Accent, UpdateSourceTrigger=PropertyChanged}" Padding="3"
+                                              ToolTip="Eleven v3 experimental [strong X accent] audio tag prepended to this line."/>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                        <DataGridTextColumn Header="Status" Binding="{Binding Status}" IsReadOnly="True" Width="150"/>
+                        <DataGridTemplateColumn Header="Audition, choose, or regenerate" Width="335">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                        <Button Content="Play 1" Tag="1" Click="PlayTakeButton_Click" IsEnabled="{Binding HasTake1}"
+                                                Width="58" Margin="0,0,5,0"/>
+                                        <Button Content="Play 2" Tag="2" Click="PlayTakeButton_Click" IsEnabled="{Binding HasTake2}"
+                                                Width="58" Margin="0,0,8,0"/>
+                                        <ComboBox Width="105" SelectedIndex="{Binding SelectedTakeIndex}" IsEnabled="{Binding HasAnyTake}" Padding="3">
+                                            <ComboBoxItem Content="Use take 1"/>
+                                            <ComboBoxItem Content="Use take 2"/>
+                                        </ComboBox>
+                                        <Button Content="Regenerate" Click="RegenerateLineButton_Click" Width="82" Margin="8,0,0,0"
+                                                IsEnabled="{Binding DataContext.CanGenerate, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                ToolTip="Generate two new takes for only this row."/>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </Grid>
+        </GroupBox>
+
+        <StackPanel Grid.Row="3" Margin="0,8,0,8">
+            <TextBlock Text="{Binding StatusText}" TextWrapping="Wrap"/>
+            <TextBlock Text="{Binding OutputFolderText}" TextWrapping="Wrap" Opacity="0.72" Margin="0,3,0,0"/>
+            <ProgressBar Height="5" IsIndeterminate="True" Visibility="{Binding BusyVisibility}" Margin="0,5,0,0"/>
+        </StackPanel>
+
+        <DockPanel Grid.Row="4">
+            <StackPanel Orientation="Horizontal" DockPanel.Dock="Left">
+                <Button Content="Open output folder" Width="125" Height="30" Click="OpenOutputFolderButton_Click"
+                        IsEnabled="{Binding HasOutputFolder}"/>
+                <CheckBox Content="Mirror import to the opposite-gender FaceFX asset" IsChecked="{Binding MirrorOppositeGender}"
+                          VerticalAlignment="Center" Margin="16,0,0,0"
+                          ToolTip="Imports the same chosen audio into the paired _F/_M FaceFX asset with matching TLK names."/>
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button Content="Generate two takes for all lines" Width="220" Height="32"
+                        Click="GenerateButton_Click" IsEnabled="{Binding CanGenerate}" Margin="0,0,8,0"/>
+                <Button Content="Import chosen takes..." Width="165" Height="32"
+                        Click="ImportButton_Click" IsEnabled="{Binding CanImport}" Margin="0,0,8,0"
+                        ToolTip="Copies the chosen take for every line to an import-ready TLK filename, then opens LEX's existing bulk audio and FaceFX settings."/>
+                <Button Content="Close" Width="80" Height="32" Click="CloseButton_Click" IsEnabled="{Binding CanClose}" IsCancel="True"/>
+            </StackPanel>
+        </DockPanel>
+    </Grid>
+</Window>
