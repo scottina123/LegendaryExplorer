@@ -167,6 +167,11 @@
 	</ItemGroup>
 
 	<ItemGroup>
+		<None Update="Tools\FaceFXEditor\ElevenLabs\Rvc\rvc_lex_infer.py">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+			<CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+			<TargetPath>rvc_lex_infer.py</TargetPath>
+		</None>
 		<None Update="MainWindow\SettingsWindow.tt">
 			<Generator>TextTemplatingFileGenerator</Generator>
 			<LastGenOutput>SettingsWindow.xaml</LastGenOutput>

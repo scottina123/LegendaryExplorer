@@ -26,6 +26,19 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.ElevenLabs
         public int OptimizeStreamingLatency { get; set; }
         public string Seed { get; set; }
         public bool MirrorOppositeGender { get; set; }
+        public bool? RvcEnabled { get; set; }
+        public string RvcRootPath { get; set; }
+        public string RvcModelPath { get; set; }
+        public string RvcIndexSelection { get; set; } = "__automatic__";
+        public string RvcF0Method { get; set; } = "rmvpe";
+        public string RvcF0CurvePath { get; set; }
+        public int RvcSpeakerId { get; set; }
+        public int RvcPitch { get; set; }
+        public double RvcIndexRate { get; set; } = 0.75d;
+        public int RvcFilterRadius { get; set; } = 3;
+        public int RvcResampleSampleRate { get; set; }
+        public double RvcRmsMixRate { get; set; } = 0.25d;
+        public double RvcProtect { get; set; } = 0.33d;
     }
 
     internal static class ElevenLabsPreferencesStore

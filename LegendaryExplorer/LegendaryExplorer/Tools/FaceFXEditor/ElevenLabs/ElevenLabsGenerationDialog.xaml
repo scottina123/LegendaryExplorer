@@ -2,10 +2,11 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="ElevenLabs Text to Speech for FaceFX"
-        Width="1500" Height="880" MinWidth="1180" MinHeight="720"
+        Width="1500" Height="980" MinWidth="1180" MinHeight="780"
         WindowStartupLocation="CenterOwner">
     <Grid Margin="12">
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
@@ -139,7 +140,107 @@
             </StackPanel>
         </GroupBox>
 
-        <GroupBox Grid.Row="2" Header="FaceFX lines — every line generates two charged takes" Padding="6"
+        <GroupBox Grid.Row="2" Header="RVC voice conversion after ElevenLabs" Padding="8" Margin="0,0,0,8">
+            <StackPanel>
+                <DockPanel>
+                    <CheckBox Content="Run every generated take through RVC" IsChecked="{Binding RvcEnabled}"
+                              IsEnabled="{Binding CanEditLines}" VerticalAlignment="Center" Margin="0,0,14,0"
+                              ToolTip="Uses the selected .pth inference voice after ElevenLabs generation and before audition/import."/>
+                    <Button Content="Refresh voices" Width="105" DockPanel.Dock="Right" Margin="6,0,0,0"
+                            Click="RefreshRvcButton_Click" IsEnabled="{Binding CanEditLines}"/>
+                    <Button Content="Select RVC folder..." Width="125" DockPanel.Dock="Right" Margin="6,0,0,0"
+                            Click="BrowseRvcRootButton_Click" IsEnabled="{Binding CanEditLines}"/>
+                    <TextBlock Text="Package path:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                    <TextBox Text="{Binding RvcRootPath, Mode=OneWay}" IsReadOnly="True" Padding="4" VerticalAlignment="Center"
+                             ToolTip="Root of the extracted RVC20240604Nvidia50x0 WebUI package. LEX uses its bundled runtime\python.exe and does not require a separate PyTorch installation."/>
+                </DockPanel>
+
+                <Grid Margin="0,8,0,0" IsEnabled="{Binding RvcSettingsEnabled}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="2*"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="2*"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="Inference voice:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                    <ComboBox Grid.Column="1" ItemsSource="{Binding RvcVoices}" SelectedItem="{Binding SelectedRvcVoice}"
+                              DisplayMemberPath="DisplayName" MinWidth="210" Padding="4" Margin="0,0,12,0"
+                              ToolTip="Models are read only from the package's assets\weights folder. Use trusted .pth files."/>
+                    <TextBlock Grid.Column="2" Text="Feature index:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                    <ComboBox Grid.Column="3" ItemsSource="{Binding RvcIndexes}" SelectedItem="{Binding SelectedRvcIndex}"
+                              DisplayMemberPath="DisplayName" MinWidth="230" Padding="4" Margin="0,0,12,0"
+                              ToolTip="Indexes are read from assets\indices and logs. Automatic matches the selected model name."/>
+                    <TextBlock Grid.Column="4" Text="Pitch extraction:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                    <ComboBox Grid.Column="5" ItemsSource="{Binding RvcF0Methods}" SelectedItem="{Binding RvcF0Method}"
+                              MinWidth="105" Padding="4" ToolTip="RMVPE is the recommended default. Availability depends on the selected RVC WebUI package."/>
+                </Grid>
+
+                <Expander Header="All RVC model-inference settings" Margin="0,6,0,0"
+                          IsEnabled="{Binding RvcSettingsEnabled}">
+                    <StackPanel Margin="0,7,0,0">
+                        <WrapPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,18,6">
+                                <TextBlock Text="Speaker ID:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                <TextBox Width="58" Text="{Binding RvcSpeakerId, UpdateSourceTrigger=PropertyChanged}" Padding="3"
+                                         ToolTip="0 for normal single-speaker models; choose the trained ID for multi-speaker checkpoints."/>
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,18,6">
+                                <TextBlock Text="Pitch (semitones):" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                <TextBox Width="58" Text="{Binding RvcPitch, UpdateSourceTrigger=PropertyChanged}" Padding="3"
+                                         ToolTip="Use positive values to raise and negative values to lower pitch (-48 to 48)."/>
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,18,6">
+                                <TextBlock Text="Harvest filter radius:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                <TextBox Width="50" Text="{Binding RvcFilterRadius, UpdateSourceTrigger=PropertyChanged}" Padding="3"
+                                         ToolTip="0-7. Values of 3 or greater median-filter Harvest pitch results."/>
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,18,6">
+                                <TextBlock Text="Output sample rate:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                <TextBox Width="75" Text="{Binding RvcResampleSampleRate, UpdateSourceTrigger=PropertyChanged}" Padding="3"
+                                         ToolTip="0 keeps the model rate; otherwise use 16000-192000 Hz."/>
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,18,6">
+                                <TextBlock Text="Custom F0 curve:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                <TextBox Width="235" Text="{Binding RvcF0CurvePath, Mode=OneWay}" IsReadOnly="True" Padding="3"/>
+                                <Button Content="..." Width="28" Margin="4,0,0,0" Click="BrowseRvcF0CurveButton_Click"/>
+                                <Button Content="Clear" Width="45" Margin="4,0,0,0" Click="ClearRvcF0CurveButton_Click"/>
+                            </StackPanel>
+                        </WrapPanel>
+                        <WrapPanel>
+                            <StackPanel Width="235" Margin="0,0,18,3">
+                                <DockPanel>
+                                    <TextBlock Text="Index/retrieval rate"/>
+                                    <TextBlock Text="{Binding RvcIndexRate, StringFormat={}{0:0.00}}" HorizontalAlignment="Right"/>
+                                </DockPanel>
+                                <Slider Minimum="0" Maximum="1" Value="{Binding RvcIndexRate}" TickFrequency="0.05"
+                                        AutoToolTipPlacement="TopLeft" AutoToolTipPrecision="2"/>
+                            </StackPanel>
+                            <StackPanel Width="235" Margin="0,0,18,3">
+                                <DockPanel>
+                                    <TextBlock Text="RMS envelope mix"/>
+                                    <TextBlock Text="{Binding RvcRmsMixRate, StringFormat={}{0:0.00}}" HorizontalAlignment="Right"/>
+                                </DockPanel>
+                                <Slider Minimum="0" Maximum="1" Value="{Binding RvcRmsMixRate}" TickFrequency="0.05"
+                                        AutoToolTipPlacement="TopLeft" AutoToolTipPrecision="2"/>
+                            </StackPanel>
+                            <StackPanel Width="235" Margin="0,0,18,3">
+                                <DockPanel>
+                                    <TextBlock Text="Consonant/breath protection"/>
+                                    <TextBlock Text="{Binding RvcProtect, StringFormat={}{0:0.00}}" HorizontalAlignment="Right"/>
+                                </DockPanel>
+                                <Slider Minimum="0" Maximum="0.5" Value="{Binding RvcProtect}" TickFrequency="0.01"
+                                        AutoToolTipPlacement="TopLeft" AutoToolTipPrecision="2"/>
+                            </StackPanel>
+                        </WrapPanel>
+                    </StackPanel>
+                </Expander>
+                <TextBlock Text="{Binding RvcStatusText}" TextWrapping="Wrap" Opacity="0.75" Margin="0,5,0,0"/>
+            </StackPanel>
+        </GroupBox>
+
+        <GroupBox Grid.Row="3" Header="FaceFX lines — every line generates two charged takes" Padding="6"
                   IsEnabled="{Binding CanEditLines}">
             <Grid>
                 <Grid.RowDefinitions>
@@ -224,13 +325,13 @@
             </Grid>
         </GroupBox>
 
-        <StackPanel Grid.Row="3" Margin="0,8,0,8">
+        <StackPanel Grid.Row="4" Margin="0,8,0,8">
             <TextBlock Text="{Binding StatusText}" TextWrapping="Wrap"/>
             <TextBlock Text="{Binding OutputFolderText}" TextWrapping="Wrap" Opacity="0.72" Margin="0,3,0,0"/>
             <ProgressBar Height="5" IsIndeterminate="True" Visibility="{Binding BusyVisibility}" Margin="0,5,0,0"/>
         </StackPanel>
 
-        <DockPanel Grid.Row="4">
+        <DockPanel Grid.Row="5">
             <StackPanel Orientation="Horizontal" DockPanel.Dock="Left">
                 <Button Content="Open output folder" Width="125" Height="30" Click="OpenOutputFolderButton_Click"
                         IsEnabled="{Binding HasOutputFolder}"/>
@@ -239,6 +340,9 @@
                           ToolTip="Imports the same chosen audio into the paired _F/_M FaceFX asset with matching TLK names."/>
             </StackPanel>
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button Content="Cancel generation" Width="125" Height="32"
+                        Click="CancelGenerationButton_Click" IsEnabled="{Binding CanCancel}"
+                        Visibility="{Binding BusyVisibility}" Margin="0,0,8,0"/>
                 <Button Content="Generate two takes for all lines" Width="220" Height="32"
                         Click="GenerateButton_Click" IsEnabled="{Binding CanGenerate}" Margin="0,0,8,0"/>
                 <Button Content="Import chosen takes..." Width="165" Height="32"

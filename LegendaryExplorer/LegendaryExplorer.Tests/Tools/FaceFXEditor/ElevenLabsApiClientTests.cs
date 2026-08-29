@@ -233,6 +233,8 @@ public class ElevenLabsApiClientTests
             ElevenLabsGenerationDialog.BuildTakeFileName(1850000, false, 1, ".wav"));
         Assert.AreEqual("VO_1850000_f.wav",
             ElevenLabsGenerationDialog.BuildImportFileName(1850000, true, ".wav"));
+        Assert.AreEqual("VO_1850000_f_take2_rvc.wav",
+            ElevenLabsGenerationDialog.BuildRvcTakeFileName(1850000, true, 2));
     }
 
     [TestMethod]

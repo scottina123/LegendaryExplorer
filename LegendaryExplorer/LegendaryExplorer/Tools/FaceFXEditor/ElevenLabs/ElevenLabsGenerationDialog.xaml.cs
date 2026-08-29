@@ -14,9 +14,12 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using LegendaryExplorer.SharedUI;
+using LegendaryExplorer.Tools.FaceFXEditor.ElevenLabs.Rvc;
+using Microsoft.WindowsAPICodePack.Dialogs;
 using NAudio.Wave;
 using NAudio.Wave.SampleProviders;
 using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
+using OpenFileDialog = Microsoft.Win32.OpenFileDialog;
 
 namespace LegendaryExplorer.Tools.FaceFXEditor.ElevenLabs
 {
@@ -33,6 +36,8 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.ElevenLabs
         private readonly MediaPlayer _mediaPlayer = new();
         private CancellationTokenSource _cancellationTokenSource;
         private ElevenLabsApiClient _client;
+        private RvcInferenceClient _rvcClient;
+        private string _rvcClientRootPath;
         private ElevenLabsSubscription _subscription;
         private bool _suppressSelectionEvents;
         private bool _isBusy;
@@ -59,6 +64,20 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.ElevenLabs
         private int _nextTlkId = 1;
         private string _bulkEmotion = "Neutral";
         private string _bulkAccent = "None";
+        private bool _rvcEnabled;
+        private string _rvcRootPath;
+        private string _rvcStatusText = "Select the extracted RVC20240604Nvidia50x0 folder.";
+        private RvcVoiceModel _selectedRvcVoice;
+        private RvcIndexChoice _selectedRvcIndex;
+        private string _rvcF0Method = "rmvpe";
+        private string _rvcF0CurvePath;
+        private int _rvcSpeakerId;
+        private int _rvcPitch;
+        private double _rvcIndexRate = 0.75d;
+        private int _rvcFilterRadius = 3;
+        private int _rvcResampleSampleRate;
+        private double _rvcRmsMixRate = 0.25d;
+        private double _rvcProtect = 0.33d;
 
         private static readonly IReadOnlyDictionary<string, string> EmotionTags =
             new Dictionary<string, string>(StringComparer.Ordinal)
@@ -110,6 +129,7 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.ElevenLabs
             RememberApiKeyCheckBox.IsChecked = _preferences.RememberApiKey;
             ApiKeyPasswordBox.Password = ElevenLabsPreferencesStore.TryDecryptApiKey(_preferences) ?? string.Empty;
             ApplyPreferences();
+            RefreshRvcInstallation(_preferences.RvcModelPath, _preferences.RvcIndexSelection);
 
             var seedLines = (initialLines ?? []).Where(seed => seed.TlkId > 0)
                          .GroupBy(seed => seed.TlkId)
@@ -140,9 +160,12 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.ElevenLabs
         public ObservableCollection<ElevenLabsModel> Models { get; } = [];
         public ObservableCollection<ElevenLabsLanguage> Languages { get; } = [];
         public ObservableCollection<ElevenLabsLineItem> Lines { get; } = [];
+        public ObservableCollection<RvcVoiceModel> RvcVoices { get; } = [];
+        public ObservableCollection<RvcIndexChoice> RvcIndexes { get; } = [];
         public IReadOnlyList<string> TextNormalizationOptions { get; } = ["auto", "on", "off"];
         public IReadOnlyList<string> EmotionOptions { get; } = EmotionTags.Keys.ToList();
         public IReadOnlyList<string> AccentOptions { get; } = AccentTags.Keys.ToList();
+        public IReadOnlyList<string> RvcF0Methods { get; } = RvcInstallation.F0Methods;
         public IReadOnlyList<string> SelectedAudioFiles { get; private set; } = [];
         public IReadOnlyDictionary<int, string> SelectedTextsByTlkId { get; private set; } =
             new Dictionary<int, string>();
@@ -158,8 +181,10 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.ElevenLabs
                     OnPropertyChanged(nameof(CanGenerate));
                     OnPropertyChanged(nameof(CanImport));
                     OnPropertyChanged(nameof(CanClose));
+                    OnPropertyChanged(nameof(CanCancel));
                     OnPropertyChanged(nameof(CanEditLines));
                     OnPropertyChanged(nameof(BusyVisibility));
+                    OnPropertyChanged(nameof(RvcSettingsEnabled));
                 }
             }
         }
@@ -178,10 +203,11 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.ElevenLabs
 
         public bool CanConnect => !IsBusy;
         public bool CanClose => !IsBusy;
+        public bool CanCancel => IsBusy;
         public bool CanEditLines => !IsBusy;
         public Visibility BusyVisibility => IsBusy ? Visibility.Visible : Visibility.Collapsed;
         public bool CanGenerate => IsConnected && !IsBusy && SelectedVoice != null && SelectedModel != null &&
-                                   Lines.Count > 0;
+                                   Lines.Count > 0 && (!RvcEnabled || IsRvcReady);
         public bool CanImport => !IsBusy && Lines.Count > 0 &&
                                  Lines.All(line => line.SelectedTakePath != null);
         public bool HasOutputFolder => !string.IsNullOrWhiteSpace(OutputFolder) && Directory.Exists(OutputFolder);
@@ -296,6 +322,70 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.ElevenLabs
         public bool MirrorOppositeGender { get => _mirrorOppositeGender; set => SetProperty(ref _mirrorOppositeGender, value); }
         public string BulkEmotion { get => _bulkEmotion; set => SetProperty(ref _bulkEmotion, value); }
         public string BulkAccent { get => _bulkAccent; set => SetProperty(ref _bulkAccent, value); }
+
+        public bool RvcEnabled
+        {
+            get => _rvcEnabled;
+            set
+            {
+                if (SetProperty(ref _rvcEnabled, value))
+                {
+                    OnPropertyChanged(nameof(CanGenerate));
+                    OnPropertyChanged(nameof(RvcSettingsEnabled));
+                }
+            }
+        }
+
+        public bool RvcSettingsEnabled => RvcEnabled && !IsBusy;
+        public bool IsRvcReady => RvcInstallation.IsCompatibleRoot(RvcRootPath, out _) && SelectedRvcVoice != null;
+
+        public string RvcRootPath
+        {
+            get => _rvcRootPath;
+            private set
+            {
+                if (SetProperty(ref _rvcRootPath, value))
+                {
+                    OnPropertyChanged(nameof(IsRvcReady));
+                    OnPropertyChanged(nameof(CanGenerate));
+                }
+            }
+        }
+
+        public string RvcStatusText { get => _rvcStatusText; private set => SetProperty(ref _rvcStatusText, value); }
+
+        public RvcVoiceModel SelectedRvcVoice
+        {
+            get => _selectedRvcVoice;
+            set
+            {
+                if (SetProperty(ref _selectedRvcVoice, value))
+                {
+                    OnPropertyChanged(nameof(IsRvcReady));
+                    OnPropertyChanged(nameof(CanGenerate));
+                    UpdateRvcStatus();
+                }
+            }
+        }
+
+        public RvcIndexChoice SelectedRvcIndex
+        {
+            get => _selectedRvcIndex;
+            set
+            {
+                if (SetProperty(ref _selectedRvcIndex, value)) UpdateRvcStatus();
+            }
+        }
+
+        public string RvcF0Method { get => _rvcF0Method; set => SetProperty(ref _rvcF0Method, value); }
+        public string RvcF0CurvePath { get => _rvcF0CurvePath; private set => SetProperty(ref _rvcF0CurvePath, value); }
+        public int RvcSpeakerId { get => _rvcSpeakerId; set => SetProperty(ref _rvcSpeakerId, value); }
+        public int RvcPitch { get => _rvcPitch; set => SetProperty(ref _rvcPitch, value); }
+        public double RvcIndexRate { get => _rvcIndexRate; set => SetProperty(ref _rvcIndexRate, value); }
+        public int RvcFilterRadius { get => _rvcFilterRadius; set => SetProperty(ref _rvcFilterRadius, value); }
+        public int RvcResampleSampleRate { get => _rvcResampleSampleRate; set => SetProperty(ref _rvcResampleSampleRate, value); }
+        public double RvcRmsMixRate { get => _rvcRmsMixRate; set => SetProperty(ref _rvcRmsMixRate, value); }
+        public double RvcProtect { get => _rvcProtect; set => SetProperty(ref _rvcProtect, value); }
 
         public string BatchEstimateText
         {
@@ -530,6 +620,10 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.ElevenLabs
             int reportedCreditCost = 0;
             try
             {
+                if (RvcEnabled)
+                {
+                    EnsureRvcClient();
+                }
                 for (int targetIndex = 0; targetIndex < linesToGenerate.Count; targetIndex++)
                 {
                     ElevenLabsLineItem line = linesToGenerate[targetIndex];
@@ -588,9 +682,22 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.ElevenLabs
                             {
                                 await File.WriteAllBytesAsync(path, audio, cancellationToken);
                             }
+
+                            reportedCreditCost += creditCost ?? 0;
+                            if (RvcEnabled)
+                            {
+                                line.Status = $"Converting take {take} of 2 with RVC...";
+                                StatusText = $"Line {targetIndex + 1:N0} of {linesToGenerate.Count:N0}, " +
+                                             $"RVC take {take} of 2 ({SelectedRvcVoice.DisplayName})";
+                                string rvcPath = Path.Combine(OutputFolder,
+                                    BuildRvcTakeFileName(line.TlkId, _isFemaleAsset, take));
+                                await ConvertWithRvcProgressAsync(BuildRvcRequest(path, rvcPath), line,
+                                    targetIndex, linesToGenerate.Count, take, cancellationToken);
+                                path = rvcPath;
+                            }
+
                             line.SetTake(take, path);
                             completedTakes++;
-                            reportedCreditCost += creditCost ?? 0;
                         }
                         catch (OperationCanceledException)
                         {
@@ -629,8 +736,9 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.ElevenLabs
                     ? $" ElevenLabs reported {reportedCreditCost:N0} credits used."
                     : string.Empty;
                 string operation = isRegeneration ? "Regeneration" : "Generation";
+                string rvcText = RvcEnabled ? $" RVC voice: {SelectedRvcVoice.DisplayName}." : string.Empty;
                 StatusText = $"{operation} complete: {completedTakes:N0} take(s) ready, {failedTakes:N0} failed.{costText} " +
-                             "Audition each pair, choose a take, then import it.";
+                             $"Audition each pair, choose a take, then import it.{rvcText}";
             }
             catch (OperationCanceledException)
             {
@@ -641,6 +749,63 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.ElevenLabs
                 IsBusy = false;
                 UpdateBatchState();
             }
+        }
+
+        private void EnsureRvcClient()
+        {
+            string rootPath = Path.GetFullPath(RvcRootPath);
+            if (_rvcClient != null && string.Equals(_rvcClientRootPath, rootPath,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            _rvcClient?.Dispose();
+            _rvcClient = new RvcInferenceClient(rootPath);
+            _rvcClientRootPath = rootPath;
+        }
+
+        private RvcInferenceRequest BuildRvcRequest(string inputPath, string outputPath)
+        {
+            string indexPath = RvcInstallation.ResolveIndexPath(SelectedRvcIndex, SelectedRvcVoice, RvcIndexes);
+            return new RvcInferenceRequest
+            {
+                ModelPath = SelectedRvcVoice.FilePath,
+                InputPath = inputPath,
+                OutputPath = outputPath,
+                SpeakerId = RvcSpeakerId,
+                Pitch = RvcPitch,
+                F0Method = RvcF0Method,
+                F0CurvePath = string.IsNullOrWhiteSpace(RvcF0CurvePath) ? null : RvcF0CurvePath,
+                IndexPath = indexPath,
+                IndexRate = SelectedRvcIndex?.Kind == RvcIndexSelectionKind.Disabled ? 0d : RvcIndexRate,
+                FilterRadius = RvcFilterRadius,
+                ResampleSampleRate = RvcResampleSampleRate,
+                RmsMixRate = RvcRmsMixRate,
+                Protect = RvcProtect
+            };
+        }
+
+        private async Task ConvertWithRvcProgressAsync(RvcInferenceRequest request, ElevenLabsLineItem line,
+            int targetIndex, int totalLines, int take, CancellationToken cancellationToken)
+        {
+            string stage = "Starting the bundled RVC worker";
+            var progress = new Progress<string>(value => stage = value);
+            var stopwatch = Stopwatch.StartNew();
+            Task conversion = _rvcClient.ConvertAsync(request, cancellationToken, progress);
+            while (!conversion.IsCompleted)
+            {
+                await Task.WhenAny(conversion, Task.Delay(TimeSpan.FromSeconds(1)));
+                if (conversion.IsCompleted) break;
+
+                string elapsed = stopwatch.Elapsed.ToString(@"m\:ss", CultureInfo.InvariantCulture);
+                line.Status = $"RVC take {take} of 2 — {stage} ({elapsed})";
+                StatusText = $"Line {targetIndex + 1:N0} of {totalLines:N0}, RVC take {take} of 2 " +
+                             $"({SelectedRvcVoice.DisplayName}) — {stage} ({elapsed}); " +
+                             "use Cancel generation to stop";
+            }
+
+            await conversion;
         }
 
         private ElevenLabsSpeechRequest BuildSpeechRequest(string text, uint? seed, int take,
@@ -813,7 +978,46 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.ElevenLabs
             }
         }
 
+        private void BrowseRvcRootButton_Click(object sender, RoutedEventArgs e)
+        {
+            using var dialog = new CommonOpenFileDialog("Select the extracted RVC20240604Nvidia50x0 folder")
+            {
+                IsFolderPicker = true,
+                InitialDirectory = Directory.Exists(RvcRootPath) ? RvcRootPath : null
+            };
+            if (dialog.ShowDialog(this) != CommonFileDialogResult.Ok) return;
+            RvcRootPath = dialog.FileName;
+            RefreshRvcInstallation(null, RvcIndexChoice.AutomaticKey);
+            SavePreferences();
+        }
+
+        private void RefreshRvcButton_Click(object sender, RoutedEventArgs e)
+        {
+            RefreshRvcInstallation(SelectedRvcVoice?.FilePath, SelectedRvcIndex?.SelectionKey);
+            SavePreferences();
+        }
+
+        private void BrowseRvcF0CurveButton_Click(object sender, RoutedEventArgs e)
+        {
+            var dialog = new OpenFileDialog
+            {
+                Title = "Select an optional RVC F0 curve",
+                Filter = "F0 curve text files|*.txt;*.csv|All files|*.*",
+                CheckFileExists = true
+            };
+            if (dialog.ShowDialog(this) == true) RvcF0CurvePath = dialog.FileName;
+        }
+
+        private void ClearRvcF0CurveButton_Click(object sender, RoutedEventArgs e) => RvcF0CurvePath = null;
+
         private void CloseButton_Click(object sender, RoutedEventArgs e) => Close();
+
+        private void CancelGenerationButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (!IsBusy) return;
+            StatusText = "Cancelling generation and stopping the RVC worker...";
+            _cancellationTokenSource?.Cancel();
+        }
 
         private bool TryValidateGeneration(IReadOnlyCollection<ElevenLabsLineItem> linesToGenerate, out uint? seed)
         {
@@ -876,6 +1080,33 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.ElevenLabs
                 seed = parsedSeed;
             }
 
+            if (RvcEnabled)
+            {
+                if (!IsRvcReady)
+                {
+                    MessageBox.Show(this,
+                        "Select a valid extracted RVC20240604Nvidia50x0 folder and an inference voice first.",
+                        "RVC is not ready", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return false;
+                }
+                if (!RvcInstallation.F0Methods.Contains(RvcF0Method, StringComparer.Ordinal) ||
+                    RvcSpeakerId < 0 || RvcPitch is < -48 or > 48 || RvcIndexRate is < 0d or > 1d ||
+                    RvcFilterRadius is < 0 or > 7 ||
+                    (RvcResampleSampleRate != 0 && RvcResampleSampleRate is < 16000 or > 192000) ||
+                    RvcRmsMixRate is < 0d or > 1d || RvcProtect is < 0d or > 0.5d)
+                {
+                    MessageBox.Show(this, "One or more RVC inference settings are outside their supported range.",
+                        "Invalid RVC settings", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return false;
+                }
+                if (!string.IsNullOrWhiteSpace(RvcF0CurvePath) && !File.Exists(RvcF0CurvePath))
+                {
+                    MessageBox.Show(this, "The selected custom F0 curve file does not exist.",
+                        "Missing F0 curve", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return false;
+                }
+            }
+
             return true;
         }
 
@@ -910,6 +1141,71 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.ElevenLabs
             OnPropertyChanged(nameof(SelectedModelDescription));
         }
 
+        private void RefreshRvcInstallation(string preferredModelPath, string preferredIndexSelection)
+        {
+            if (string.IsNullOrWhiteSpace(RvcRootPath))
+            {
+                RvcRootPath = RvcInstallation.FindDefaultRoot();
+            }
+
+            RvcVoices.Clear();
+            RvcIndexes.Clear();
+            if (!RvcInstallation.IsCompatibleRoot(RvcRootPath, out string problem))
+            {
+                SelectedRvcVoice = null;
+                SelectedRvcIndex = null;
+                RvcStatusText = problem;
+                OnPropertyChanged(nameof(IsRvcReady));
+                OnPropertyChanged(nameof(CanGenerate));
+                return;
+            }
+
+            foreach (RvcVoiceModel voice in RvcInstallation.DiscoverVoiceModels(RvcRootPath))
+                RvcVoices.Add(voice);
+            foreach (RvcIndexChoice index in RvcInstallation.DiscoverIndexes(RvcRootPath))
+                RvcIndexes.Add(index);
+
+            SelectedRvcVoice = RvcVoices.FirstOrDefault(voice =>
+                                   string.Equals(voice.FilePath, preferredModelPath,
+                                       StringComparison.OrdinalIgnoreCase));
+            SelectedRvcIndex = RvcIndexes.FirstOrDefault(index =>
+                                   string.Equals(index.SelectionKey, preferredIndexSelection,
+                                       StringComparison.OrdinalIgnoreCase))
+                               ?? RvcIndexes.FirstOrDefault();
+            UpdateRvcStatus();
+            OnPropertyChanged(nameof(IsRvcReady));
+            OnPropertyChanged(nameof(CanGenerate));
+        }
+
+        private void UpdateRvcStatus()
+        {
+            if (!RvcInstallation.IsCompatibleRoot(RvcRootPath, out string problem))
+            {
+                RvcStatusText = problem;
+                return;
+            }
+            if (RvcVoices.Count == 0)
+            {
+                RvcStatusText = @"RVC is installed, but assets\weights contains no .pth inference voices.";
+                return;
+            }
+            if (SelectedRvcVoice == null)
+            {
+                RvcStatusText = $"Self-contained runtime ready; {RvcVoices.Count:N0} voice model(s). Choose an inference voice.";
+                return;
+            }
+
+            string indexPath = RvcInstallation.ResolveIndexPath(SelectedRvcIndex, SelectedRvcVoice, RvcIndexes);
+            string indexText = SelectedRvcIndex?.Kind switch
+            {
+                RvcIndexSelectionKind.Disabled => "Index disabled.",
+                RvcIndexSelectionKind.Automatic when indexPath == null => "No matching index found; inference will run without one.",
+                RvcIndexSelectionKind.Automatic => $"Auto index: {Path.GetFileName(indexPath)}.",
+                _ => $"Index: {Path.GetFileName(indexPath)}."
+            };
+            RvcStatusText = $"Self-contained runtime ready; {RvcVoices.Count:N0} voice model(s). {indexText}";
+        }
+
         private void ApplyPreferences()
         {
             Stability = _preferences.Stability;
@@ -926,6 +1222,22 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.ElevenLabs
             OptimizeStreamingLatency = Math.Clamp(_preferences.OptimizeStreamingLatency, 0, 4);
             SeedText = _preferences.Seed;
             MirrorOppositeGender = _preferences.MirrorOppositeGender;
+            RvcRootPath = string.IsNullOrWhiteSpace(_preferences.RvcRootPath)
+                ? RvcInstallation.FindDefaultRoot()
+                : _preferences.RvcRootPath;
+            RvcEnabled = _preferences.RvcEnabled ?? RvcInstallation.IsCompatibleRoot(RvcRootPath, out _);
+            RvcF0Method = RvcInstallation.F0Methods.Contains(_preferences.RvcF0Method,
+                StringComparer.Ordinal) ? _preferences.RvcF0Method : "rmvpe";
+            RvcF0CurvePath = _preferences.RvcF0CurvePath;
+            RvcSpeakerId = Math.Max(0, _preferences.RvcSpeakerId);
+            RvcPitch = Math.Clamp(_preferences.RvcPitch, -48, 48);
+            RvcIndexRate = Math.Clamp(_preferences.RvcIndexRate, 0d, 1d);
+            RvcFilterRadius = Math.Clamp(_preferences.RvcFilterRadius, 0, 7);
+            RvcResampleSampleRate = _preferences.RvcResampleSampleRate == 0
+                ? 0
+                : Math.Clamp(_preferences.RvcResampleSampleRate, 16000, 192000);
+            RvcRmsMixRate = Math.Clamp(_preferences.RvcRmsMixRate, 0d, 1d);
+            RvcProtect = Math.Clamp(_preferences.RvcProtect, 0d, 0.5d);
         }
 
         private void SavePreferences()
@@ -946,6 +1258,19 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.ElevenLabs
             _preferences.OptimizeStreamingLatency = OptimizeStreamingLatency;
             _preferences.Seed = SeedText;
             _preferences.MirrorOppositeGender = MirrorOppositeGender;
+            _preferences.RvcEnabled = RvcEnabled;
+            _preferences.RvcRootPath = RvcRootPath;
+            _preferences.RvcModelPath = SelectedRvcVoice?.FilePath;
+            _preferences.RvcIndexSelection = SelectedRvcIndex?.SelectionKey ?? RvcIndexChoice.AutomaticKey;
+            _preferences.RvcF0Method = RvcF0Method;
+            _preferences.RvcF0CurvePath = RvcF0CurvePath;
+            _preferences.RvcSpeakerId = RvcSpeakerId;
+            _preferences.RvcPitch = RvcPitch;
+            _preferences.RvcIndexRate = RvcIndexRate;
+            _preferences.RvcFilterRadius = RvcFilterRadius;
+            _preferences.RvcResampleSampleRate = RvcResampleSampleRate;
+            _preferences.RvcRmsMixRate = RvcRmsMixRate;
+            _preferences.RvcProtect = RvcProtect;
 
             try
             {
@@ -1133,6 +1458,9 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.ElevenLabs
             string extension = ".mp3") =>
             $"VO_{tlkId}_{(isFemaleAsset ? "f" : "m")}_take{take}{NormalizeAudioExtension(extension)}";
 
+        public static string BuildRvcTakeFileName(int tlkId, bool isFemaleAsset, int take) =>
+            $"VO_{tlkId}_{(isFemaleAsset ? "f" : "m")}_take{take}_rvc.wav";
+
         public static string BuildImportFileName(int tlkId, bool isFemaleAsset, string extension = ".mp3") =>
             $"VO_{tlkId}_{(isFemaleAsset ? "f" : "m")}{NormalizeAudioExtension(extension)}";
 
@@ -1158,6 +1486,7 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.ElevenLabs
         {
             _cancellationTokenSource?.Dispose();
             _client?.Dispose();
+            _rvcClient?.Dispose();
             base.OnClosed(e);
         }
 
