@@ -49,6 +49,37 @@ public class GltfImportTests
             mesh.kDOPTreeME3UDKLE.Triangles.Select(triangle => triangle.MaterialIndex).ToArray());
     }
 
+    [TestMethod]
+    public void HeadAndEyelashPartsCanBeExcludedAndSharedMaterialSectionsAreMerged()
+    {
+        var scene = new SceneBuilder();
+        var root = new NodeBuilder("Root");
+        scene.AddNode(root);
+        AddTrianglePart(scene, root, "Body", "BodyMaterial", 0);
+        AddTrianglePart(scene, root, "BodyPanel", "BodyMaterial", 1);
+        AddTrianglePart(scene, root, "CC_Base_Body1_Std_Skin_Head_0_0", "HeadMaterial", 2);
+        AddTrianglePart(scene, root, "CC_Base_Body1_Std_Eyelash_0_0", "EyelashMaterial", 3);
+        AddTrianglePart(scene, root, "Headgear", "HeadgearMaterial", 4);
+
+        var gltf = scene.ToGltf2();
+        CollectionAssert.AreEqual(new[]
+        {
+            "CC_Base_Body1_Std_Skin_Head_0_0",
+            "CC_Base_Body1_Std_Eyelash_0_0"
+        }, GLTF.GetHeadRelatedMeshPartNames(gltf).ToArray());
+
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("HeadlessGltfTest.pcc", MEGame.LE3);
+        GLTF.ConvertGltfToMesh(gltf, package, combinedMeshName: "BodyWithoutHead", includeHeadMeshes: false);
+
+        ExportEntry meshExport = package.Exports.Single(export => export.ClassName == "StaticMesh");
+        StaticMesh mesh = meshExport.GetBinaryData<StaticMesh>();
+        Assert.AreEqual((uint)9, mesh.LODModels[0].NumVertices);
+        Assert.AreEqual(2, mesh.LODModels[0].Elements.Length);
+        Assert.AreEqual((uint)2, mesh.LODModels[0].Elements[0].NumTriangles);
+        CollectionAssert.AreEqual(new[] { 0, 1 },
+            mesh.LODModels[0].Elements.Select(element => element.MaterialIndex).ToArray());
+    }
+
     private static void AddTrianglePart(SceneBuilder scene, NodeBuilder root, string meshName, string materialName, float xOffset)
     {
         var material = new MaterialBuilder(materialName);

@@ -44,6 +44,9 @@ namespace LegendaryExplorerCore.Unreal
         [GeneratedRegex(@"^(?<name>.*)_LOD(?<index>\d+)$", RegexOptions.IgnoreCase)]
         private static partial Regex LodNameSuffixRegex { get; }
 
+        [GeneratedRegex(@"(?:^|[^A-Za-z0-9])(?:head|eyelash|eyelashes|lash|lashes)(?:$|[^A-Za-z0-9])", RegexOptions.IgnoreCase)]
+        private static partial Regex HeadRelatedMeshPartNameRegex { get; }
+
         #region export
         public enum MaterialExportLevel
         {
@@ -955,6 +958,14 @@ namespace LegendaryExplorerCore.Unreal
             staticMeshes = staticParts.Count > 0 ? [staticParts[0].BaseName] : [];
         }
 
+        public static IReadOnlyList<string> GetHeadRelatedMeshPartNames(ModelRoot gltf)
+        {
+            ArgumentNullException.ThrowIfNull(gltf);
+            CollectMeshParts(gltf, out var skeletalParts, out var staticParts, out _);
+            return [.. skeletalParts.Concat(staticParts).Where(IsHeadRelatedMeshPart)
+                .Select(part => part.Name).Distinct(StringComparer.OrdinalIgnoreCase)];
+        }
+
         /// <summary>
         /// Takes a gltf object and imports one or more mesh from it into the given file.
         /// </summary>
@@ -964,8 +975,10 @@ namespace LegendaryExplorerCore.Unreal
         /// <param name="specificMesh">Optional source mesh name filter. When omitted, compatible mesh nodes are combined.</param>
         /// <param name="confirmDecimation">Called before any package changes when one or more LODs exceed the 16-bit vertex limit.</param>
         /// <param name="combinedMeshName">The name to use when the glTF mesh nodes are combined into a new export.</param>
+        /// <param name="includeHeadMeshes">Whether separately named head mesh parts should be included in the combined mesh.</param>
         public static void ConvertGltfToMesh(ModelRoot gltf, IMEPackage pcc, ExportEntry existingMesh = null, string specificMesh = null,
-            Func<IReadOnlyList<MeshLodVertexLimitInfo>, bool> confirmDecimation = null, string combinedMeshName = null)
+            Func<IReadOnlyList<MeshLodVertexLimitInfo>, bool> confirmDecimation = null, string combinedMeshName = null,
+            bool includeHeadMeshes = true)
         {
             CollectMeshParts(gltf, out var skeletalParts, out var staticParts, out var collisionNodes);
             if (skeletalParts.Count == 0 && staticParts.Count == 0)
@@ -983,6 +996,16 @@ namespace LegendaryExplorerCore.Unreal
                                                               || part.Name.Equals(cleanedSpecificMesh, StringComparison.OrdinalIgnoreCase))];
                 staticParts = [.. staticParts.Where(part => part.BaseName.Equals(cleanedSpecificMesh, StringComparison.OrdinalIgnoreCase)
                                                           || part.Name.Equals(cleanedSpecificMesh, StringComparison.OrdinalIgnoreCase))];
+            }
+
+            if (!includeHeadMeshes)
+            {
+                skeletalParts.RemoveAll(IsHeadRelatedMeshPart);
+                staticParts.RemoveAll(IsHeadRelatedMeshPart);
+                if (skeletalParts.Count == 0 && staticParts.Count == 0)
+                {
+                    throw new InvalidOperationException("The glTF does not contain any non-head mesh parts to import after removing head and eyelash geometry.");
+                }
             }
 
             if (existingMesh != null)
@@ -1047,6 +1070,11 @@ namespace LegendaryExplorerCore.Unreal
                 {
                     DecimateToVertexLimit(mesh);
                 }
+            }
+
+            foreach (IntermediateMesh mesh in intermediateStaticMeshes)
+            {
+                MergeStaticMeshSectionsByMaterial(mesh);
             }
 
             foreach (IntermediateMesh intermediateMesh in intermediateSkeletalMeshes)
@@ -1484,6 +1512,33 @@ namespace LegendaryExplorerCore.Unreal
 
                 var part = new GltfMeshPart(name, baseName, lodIndex, node);
                 (node.Skin != null ? skeletalParts : staticParts).Add(part);
+            }
+        }
+
+        private static bool IsHeadRelatedMeshPart(GltfMeshPart part) =>
+            HeadRelatedMeshPartNameRegex.IsMatch(part.Name) || HeadRelatedMeshPartNameRegex.IsMatch(part.BaseName);
+
+        private static void MergeStaticMeshSectionsByMaterial(IntermediateMesh mesh)
+        {
+            foreach (IntermediateLOD lod in mesh.LODs)
+            {
+                List<IntermediateMeshSection> mergedSections = [];
+                Dictionary<int, IntermediateMeshSection> sectionsByMaterial = [];
+                foreach (IntermediateMeshSection sourceSection in lod.Sections)
+                {
+                    if (!sectionsByMaterial.TryGetValue(sourceSection.MaterialIndex, out IntermediateMeshSection mergedSection))
+                    {
+                        mergedSection = new IntermediateMeshSection
+                        {
+                            MaterialIndex = sourceSection.MaterialIndex,
+                            Vertices = sourceSection.Vertices
+                        };
+                        sectionsByMaterial.Add(sourceSection.MaterialIndex, mergedSection);
+                        mergedSections.Add(mergedSection);
+                    }
+                    mergedSection.Triangles.AddRange(sourceSection.Triangles);
+                }
+                lod.Sections = mergedSections;
             }
         }
 

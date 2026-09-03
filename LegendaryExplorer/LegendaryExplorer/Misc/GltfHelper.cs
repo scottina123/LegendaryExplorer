@@ -126,8 +126,13 @@ namespace LegendaryExplorer.Misc
                         return;
                     }
                 }
+                if (!TryChooseHeadMeshImport(window, gltf, out bool includeHeadMeshes))
+                {
+                    return;
+                }
                 RunGltfImport(window, () => GLTF.ConvertGltfToMesh(gltf, window.Pcc, selectedMeshToReplace,
-                    confirmDecimation: oversizedLods => window.Dispatcher.Invoke(() => ConfirmMeshDecimation(window, oversizedLods))));
+                    confirmDecimation: oversizedLods => window.Dispatcher.Invoke(() => ConfirmMeshDecimation(window, oversizedLods)),
+                    includeHeadMeshes: includeHeadMeshes));
             }
         }
 
@@ -153,9 +158,14 @@ namespace LegendaryExplorer.Misc
                     ShowError("The gltf you are trying to import does not contain any meshes.");
                     return;
                 }
+                if (!TryChooseHeadMeshImport(window, gltf, out bool includeHeadMeshes))
+                {
+                    return;
+                }
                 RunGltfImport(window, () => GLTF.ConvertGltfToMesh(gltf, window.Pcc,
                     confirmDecimation: oversizedLods => window.Dispatcher.Invoke(() => ConfirmMeshDecimation(window, oversizedLods)),
-                    combinedMeshName: Path.GetFileNameWithoutExtension(filePath)));
+                    combinedMeshName: Path.GetFileNameWithoutExtension(filePath),
+                    includeHeadMeshes: includeHeadMeshes));
             }
         }
 
@@ -199,6 +209,39 @@ namespace LegendaryExplorer.Misc
                              $"Decimate {(oversizedLods.Count == 1 ? "this LOD" : "these LODs")} to the limit and continue importing?";
             return MessageBox.Show(window, message, "Mesh exceeds vertex limit", MessageBoxButton.YesNo,
                        MessageBoxImage.Warning) == MessageBoxResult.Yes;
+        }
+
+        private static bool TryChooseHeadMeshImport(WPFBase window, SharpGLTF.Schema2.ModelRoot gltf, out bool includeHeadMeshes)
+        {
+            includeHeadMeshes = true;
+            IReadOnlyList<string> headParts = GLTF.GetHeadRelatedMeshPartNames(gltf);
+            if (headParts.Count == 0)
+            {
+                return true;
+            }
+
+            StringBuilder details = new();
+            foreach (string headPart in headParts.Take(8))
+            {
+                details.AppendLine($"• {headPart}");
+            }
+            if (headParts.Count > 8)
+            {
+                details.AppendLine($"• …and {headParts.Count - 8} more");
+            }
+
+            string message = "The glTF contains separately named head-related mesh parts:\n\n" + details
+                             + "\nMass Effect body and head meshes are usually separate. "
+                             + "Exclude the head and eyelash parts from the combined body mesh?\n\n"
+                             + "Yes — exclude head parts\nNo — keep head parts\nCancel — stop importing";
+            MessageBoxResult result = MessageBox.Show(window, message, "Import head mesh?",
+                MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
+            if (result == MessageBoxResult.Cancel || result == MessageBoxResult.None)
+            {
+                return false;
+            }
+            includeHeadMeshes = result == MessageBoxResult.No;
+            return true;
         }
 
         private static bool FilterSelectedItem(IEntry selectedItem, string[] expectedTypes, out ExportEntry entry)
