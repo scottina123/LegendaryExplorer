@@ -317,6 +317,10 @@ namespace LegendaryExplorer.Tools.Meshplorer
                         if (className == "SkeletalMesh")
                         {
                             SkeletalMesh newMesh = ObjectBinary.From<SkeletalMesh>(meshExport);
+                            if (!GltfHelper.PrepareMeshForImport(this, newMesh, meshExport.ObjectName.Instanced))
+                            {
+                                return;
+                            }
                             SkeletalMesh originalMesh = ObjectBinary.From<SkeletalMesh>(CurrentExport);
 
                             if (newMesh.RefSkeleton.Length != originalMesh.RefSkeleton.Length)
@@ -452,6 +456,11 @@ namespace LegendaryExplorer.Tools.Meshplorer
                                 originalMesh = ObjectBinary.From<StaticMesh>(CurrentExport);
                             }
 
+                            if (!GltfHelper.PrepareMeshForImport(this, newMesh, meshExport.ObjectName.Instanced))
+                            {
+                                return;
+                            }
+
                             newMesh.BodySetup = 0;
                             if (originalMesh.LODModels.Any())
                             {
@@ -497,6 +506,10 @@ namespace LegendaryExplorer.Tools.Meshplorer
                     if (EntrySelector.GetEntry<ExportEntry>(this, udk, "Select mesh to import:", exp => meshClasses.Contains(exp.ClassName)) is ExportEntry meshExport)
                     {
                         ObjectBinary objBin = ObjectBinary.From(meshExport);
+                        if (!GltfHelper.PrepareMeshForImport(this, objBin, meshExport.ObjectName.Instanced))
+                        {
+                            return;
+                        }
                         objBin.ForEachUIndex(MEGame.UDK, new UIndexZeroer());
                         meshExport.WritePropertiesAndBinary(new PropertyCollection(), objBin);
                         var results = EntryImporter.ImportAndRelinkEntries(EntryImporter.PortingOption.AddSingularAsChild, meshExport, Pcc,
@@ -629,10 +642,12 @@ namespace LegendaryExplorer.Tools.Meshplorer
 
         public override void HandleUpdate(List<PackageUpdate> updates)
         {
-            if (updates.Any(update => update.Change == PackageChange.ExportData && update.Index == CurrentExport.UIndex)
-             && Mesh3DViewer.CanParse(CurrentExport))
+            ExportEntry currentExport = CurrentExport;
+            if (currentExport != null
+             && updates.Any(update => update.Change == PackageChange.ExportData && update.Index == currentExport.UIndex)
+             && Mesh3DViewer.CanParse(currentExport))
             {
-                CurrentExport = CurrentExport;//trigger propertyset stuff
+                CurrentExport = currentExport;//trigger propertyset stuff
             }
 
             List<PackageUpdate> exportUpdates = updates.Where(upd => upd.Change.HasFlag(PackageChange.Export)).ToList();

@@ -4,11 +4,16 @@ using LegendaryExplorer.UserControls.ExportLoaderControls;
 using LegendaryExplorerCore.Helpers;
 using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.Unreal;
+using LegendaryExplorerCore.Unreal.BinaryConverters;
 using LegendaryExplorerCore.Unreal.ObjectInfo;
 using Microsoft.Win32;
+using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Text;
 using System.Threading.Tasks;
 using System.Windows;
+using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
 
 namespace LegendaryExplorer.Misc
 {
@@ -103,7 +108,6 @@ namespace LegendaryExplorer.Misc
             {
                 FilterSelectedItem(selectedEntry, ["SkeletalMesh", "StaticMesh"], out ExportEntry selectedMeshToReplace);
                 GLTF.QueryMeshes(gltf, out var skeletalMeshes, out var staticMeshes);
-                string specificMesh = null;
                 if (selectedMeshToReplace.ClassName == "SkeletalMesh")
                 {
                     var meshCount = skeletalMeshes.Count();
@@ -111,17 +115,6 @@ namespace LegendaryExplorer.Misc
                     {
                         ShowError("You are trying to replace a skeletal mesh but the glTF file does not contain any skeletal meshes.");
                         return;
-                    }
-                    else if (meshCount > 1)
-                    {
-                        var prompt = new DropdownPromptDialog("Select which mesh to use to replace your mesh.",
-                            "Select mesh", "Mesh", skeletalMeshes, window);
-                        prompt.ShowDialog();
-                        if (prompt.DialogResult == true)
-                        {
-                            specificMesh = prompt.Response;
-                        }
-                        else { return; }
                     }
                 }
                 else if (selectedMeshToReplace.ClassName == "StaticMesh")
@@ -132,19 +125,9 @@ namespace LegendaryExplorer.Misc
                         ShowError("You are trying to replace a static mesh but the glTF file does not contain any static meshes.");
                         return;
                     }
-                    else if (meshCount > 1)
-                    {
-                        var prompt = new DropdownPromptDialog("Select which mesh to use to replace your mesh.",
-                        "Select mesh", "Mesh", staticMeshes, window);
-                        prompt.ShowDialog();
-                        if (prompt.DialogResult == true)
-                        {
-                            specificMesh = prompt.Response;
-                        }
-                        else { return; }
-                    }
                 }
-                GLTF.ConvertGltfToMesh(gltf, window.Pcc, selectedMeshToReplace, specificMesh);
+                RunGltfImport(window, () => GLTF.ConvertGltfToMesh(gltf, window.Pcc, selectedMeshToReplace,
+                    confirmDecimation: oversizedLods => window.Dispatcher.Invoke(() => ConfirmMeshDecimation(window, oversizedLods))));
             }
         }
 
@@ -162,7 +145,7 @@ namespace LegendaryExplorer.Misc
             {
                 ShowError("This experiment does not support UDK files;");
             }
-            if (GetGltfFromFile(out var gltf, out string _))
+            if (GetGltfFromFile(out var gltf, out string filePath))
             {
                 GLTF.QueryMeshes(gltf, out var skeletalMeshes, out var staticMeshes);
                 if (!skeletalMeshes.Any() && !staticMeshes.Any())
@@ -170,8 +153,52 @@ namespace LegendaryExplorer.Misc
                     ShowError("The gltf you are trying to import does not contain any meshes.");
                     return;
                 }
-                GLTF.ConvertGltfToMesh(gltf, window.Pcc);
+                RunGltfImport(window, () => GLTF.ConvertGltfToMesh(gltf, window.Pcc,
+                    confirmDecimation: oversizedLods => window.Dispatcher.Invoke(() => ConfirmMeshDecimation(window, oversizedLods)),
+                    combinedMeshName: Path.GetFileNameWithoutExtension(filePath)));
             }
+        }
+
+        private static void RunGltfImport(WPFBase window, System.Action import)
+        {
+            window.SetBusy("Importing glTF mesh...");
+            Task.Run(import).ContinueWithOnUIThread(task =>
+            {
+                window.EndBusy();
+                if (task.Exception != null)
+                {
+                    ShowError(task.Exception.FlattenException());
+                }
+            });
+        }
+
+        public static bool PrepareMeshForImport(WPFBase window, ObjectBinary mesh, string meshName)
+        {
+            IReadOnlyList<MeshLodVertexLimitInfo> oversizedLods = MeshDecimator.GetOversizedLods(mesh, meshName);
+            if (oversizedLods.Count == 0)
+            {
+                return true;
+            }
+            if (!ConfirmMeshDecimation(window, oversizedLods))
+            {
+                return false;
+            }
+            MeshDecimator.DecimateToVertexLimit(mesh);
+            return true;
+        }
+
+        private static bool ConfirmMeshDecimation(WPFBase window, IReadOnlyList<MeshLodVertexLimitInfo> oversizedLods)
+        {
+            StringBuilder details = new();
+            foreach (MeshLodVertexLimitInfo lod in oversizedLods)
+            {
+                details.AppendLine($"• {lod.MeshName}, LOD {lod.LodIndex}: {lod.VertexCount:N0} vertices");
+            }
+            string message = $"The following mesh LOD{(oversizedLods.Count == 1 ? "" : "s")} exceed{(oversizedLods.Count == 1 ? "s" : "")} " +
+                             $"Mass Effect's {MeshDecimator.MaxSupportedVertexCount:N0}-vertex limit:\n\n{details}\n" +
+                             $"Decimate {(oversizedLods.Count == 1 ? "this LOD" : "these LODs")} to the limit and continue importing?";
+            return MessageBox.Show(window, message, "Mesh exceeds vertex limit", MessageBoxButton.YesNo,
+                       MessageBoxImage.Warning) == MessageBoxResult.Yes;
         }
 
         private static bool FilterSelectedItem(IEntry selectedItem, string[] expectedTypes, out ExportEntry entry)

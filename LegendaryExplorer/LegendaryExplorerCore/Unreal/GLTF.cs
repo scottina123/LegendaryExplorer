@@ -41,6 +41,9 @@ namespace LegendaryExplorerCore.Unreal
         [GeneratedRegex(@"\.\d+$")]
         private static partial Regex BlenderNameSuffixRegex { get; }
 
+        [GeneratedRegex(@"^(?<name>.*)_LOD(?<index>\d+)$", RegexOptions.IgnoreCase)]
+        private static partial Regex LodNameSuffixRegex { get; }
+
         #region export
         public enum MaterialExportLevel
         {
@@ -947,9 +950,9 @@ namespace LegendaryExplorerCore.Unreal
         /// <param name="staticMeshes">the names of any contained static meshes</param>
         public static void QueryMeshes(ModelRoot gltf, out IEnumerable<string> skeletalMeshes, out IEnumerable<string> staticMeshes)
         {
-            CollectMeshes(gltf, out var skelMeshTemp, out var staticMeshTemp);
-            skeletalMeshes = skelMeshTemp.Select(x => x.Item1);
-            staticMeshes = staticMeshTemp.Select(x => x.Item1);
+            CollectMeshParts(gltf, out var skeletalParts, out var staticParts, out _);
+            skeletalMeshes = skeletalParts.Count > 0 ? [skeletalParts[0].BaseName] : [];
+            staticMeshes = staticParts.Count > 0 ? [staticParts[0].BaseName] : [];
         }
 
         /// <summary>
@@ -958,91 +961,101 @@ namespace LegendaryExplorerCore.Unreal
         /// <param name="gltf">the glTF object to get the mesh data from</param>
         /// <param name="pcc">the package the meshes should be added to.</param>
         /// <param name="existingMesh">The existing mesh export to be replaced (optional)</param>
-        /// <param name="specificMesh">the name of the mesh to use as the replacement in the case that there are more than one. (optional)</param>
-        /// <exception cref="ArgumentException">If you try to replace a mesh when there are more than one mesh to replace it with without specifying which one to use, or if you specify an invalid one</exception>
-        public static void ConvertGltfToMesh(ModelRoot gltf, IMEPackage pcc, ExportEntry existingMesh = null, string specificMesh = null)
+        /// <param name="specificMesh">Optional source mesh name filter. When omitted, compatible mesh nodes are combined.</param>
+        /// <param name="confirmDecimation">Called before any package changes when one or more LODs exceed the 16-bit vertex limit.</param>
+        /// <param name="combinedMeshName">The name to use when the glTF mesh nodes are combined into a new export.</param>
+        public static void ConvertGltfToMesh(ModelRoot gltf, IMEPackage pcc, ExportEntry existingMesh = null, string specificMesh = null,
+            Func<IReadOnlyList<MeshLodVertexLimitInfo>, bool> confirmDecimation = null, string combinedMeshName = null)
         {
-            CollectMeshes(gltf, out var skeletalMeshes, out var staticMeshes);
-            if (skeletalMeshes.Count == 0 && staticMeshes.Count == 0)
+            CollectMeshParts(gltf, out var skeletalParts, out var staticParts, out var collisionNodes);
+            if (skeletalParts.Count == 0 && staticParts.Count == 0)
             {
                 // TODO show a warning or something?
                 return;
             }
-            // if there is an existing mesh to replace, make sure we know which one to replace it with
+
+            // A Mass Effect mesh export contains all of its pieces as sections. Keep an explicitly
+            // selected source for API compatibility, but otherwise combine every compatible glTF node.
+            if (specificMesh != null)
+            {
+                string cleanedSpecificMesh = CleanupName(specificMesh);
+                skeletalParts = [.. skeletalParts.Where(part => part.BaseName.Equals(cleanedSpecificMesh, StringComparison.OrdinalIgnoreCase)
+                                                              || part.Name.Equals(cleanedSpecificMesh, StringComparison.OrdinalIgnoreCase))];
+                staticParts = [.. staticParts.Where(part => part.BaseName.Equals(cleanedSpecificMesh, StringComparison.OrdinalIgnoreCase)
+                                                          || part.Name.Equals(cleanedSpecificMesh, StringComparison.OrdinalIgnoreCase))];
+            }
+
             if (existingMesh != null)
             {
                 if (existingMesh.ClassName == "SkeletalMesh")
                 {
-                    if (skeletalMeshes.Count == 0)
+                    if (skeletalParts.Count == 0)
                     {
                         // this is fine, continue with any static meshes and ignore the selected mesh to replace
                         existingMesh = null;
                     }
-                    else if (skeletalMeshes.Count == 1)
+                    else
                     {
-                        // great, use this one, ignore any static meshes
-                        staticMeshes = [];
-                    }
-                    else if (skeletalMeshes.Count > 1)
-                    {
-                        // there is more than one and they didn't specify which one to use
-                        if (specificMesh == null)
-                        {
-                            throw new ArgumentException("you are trying to replace a skeletal mesh, but there is more than one skeletal mesh in this glTF and you have not specified which one to use as the replacement.");
-                        }
-                        var specificSkelMesh = skeletalMeshes.FirstOrDefault(x => x.Item1 == specificMesh);
-                        if (specificSkelMesh == default)
-                        {
-                            // they specified one, but it wasn't found
-                            throw new ArgumentException("you are trying to replace a skeletal mesh, but there is more than one skeletal mesh in this glTF and you have specified an invalid one to use as the replacement.");
-                        }
-                        // they specified one and it was found; use that, ignore any static meshes
-                        skeletalMeshes = [specificSkelMesh];
-                        staticMeshes = [];
+                        staticParts = [];
                     }
                 }
                 else if (existingMesh.ClassName == "StaticMesh")
                 {
-                    if (staticMeshes.Count == 0)
+                    if (staticParts.Count == 0)
                     {
                         // this is fine, continue with any skeletal meshes and ignore the selected mesh to replace
                         existingMesh = null;
                     }
-                    else if (staticMeshes.Count == 1)
+                    else
                     {
-                        // great, use this one, ignore any skeletal meshes
-                        skeletalMeshes = [];
-                    }
-                    else if (staticMeshes.Count > 1)
-                    {
-                        // there is more than one and they didn't specify which one to use
-                        if (specificMesh == null)
-                        {
-                            throw new ArgumentException("you are trying to replace a static mesh, but there is more than one static mesh in this glTF and you have not specified which one to use as the replacement.");
-                        }
-                        var specificStatMesh = staticMeshes.FirstOrDefault(x => x.Item1 == specificMesh);
-                        if (specificStatMesh == default)
-                        {
-                            // they specified one, but it wasn't found
-                            throw new ArgumentException("you are trying to replace a skeletal mesh, but there is more than one skeletal mesh in this glTF and you have specified an invalid one to use as the replacement.");
-                        }
-                        // they specified one and it was found; use that, ignore any skeletal meshes
-                        staticMeshes = [specificStatMesh];
-                        skeletalMeshes = [];
+                        skeletalParts = [];
                     }
                 }
             }
-            foreach (var skelMesh in skeletalMeshes)
+
+            string outputName = CleanupName(combinedMeshName)
+                                ?? existingMesh?.ObjectName.Name
+                                ?? staticParts.FirstOrDefault()?.BaseName
+                                ?? skeletalParts.FirstOrDefault()?.BaseName
+                                ?? "gltfMesh";
+            List<IntermediateMesh> intermediateSkeletalMeshes = [];
+            if (skeletalParts.Count > 0)
             {
-                var intermediateMesh = ToIntermediateMesh(skelMesh.Item1, skelMesh.Item2);
-                CleanUpIntermediateMesh(intermediateMesh);
+                string skeletalName = staticParts.Count > 0 ? $"{outputName}_Skeletal" : outputName;
+                intermediateSkeletalMeshes.Add(CombineMeshParts(skeletalName, skeletalParts, []));
+            }
+            List<IntermediateMesh> intermediateStaticMeshes = [];
+            if (staticParts.Count > 0)
+            {
+                string staticName = skeletalParts.Count > 0 ? $"{outputName}_Static" : outputName;
+                intermediateStaticMeshes.Add(CombineMeshParts(staticName, staticParts, collisionNodes));
+            }
+
+            List<IntermediateMesh> allMeshes = [.. intermediateSkeletalMeshes, .. intermediateStaticMeshes];
+            IReadOnlyList<MeshLodVertexLimitInfo> oversizedLods = GetOversizedLods(allMeshes);
+            if (oversizedLods.Count > 0)
+            {
+                if (confirmDecimation == null)
+                {
+                    throw new InvalidOperationException($"One or more mesh LODs exceed the {MeshDecimator.MaxSupportedVertexCount:N0}-vertex limit.");
+                }
+                if (!confirmDecimation(oversizedLods))
+                {
+                    return;
+                }
+                foreach (IntermediateMesh mesh in allMeshes)
+                {
+                    DecimateToVertexLimit(mesh);
+                }
+            }
+
+            foreach (IntermediateMesh intermediateMesh in intermediateSkeletalMeshes)
+            {
                 var exportEntry = ToSkeletalMesh(intermediateMesh, pcc, existingMesh);
                 CalculateClothData(intermediateMesh, exportEntry);
             }
-            foreach (var statMesh in staticMeshes)
+            foreach (IntermediateMesh intermediateMesh in intermediateStaticMeshes)
             {
-                var intermediateMesh = ToIntermediateMesh(statMesh.Item1, statMesh.Item2);
-                CleanUpIntermediateMesh(intermediateMesh);
                 ToStaticMesh(intermediateMesh, pcc, existingMesh);
             }
         }
@@ -1444,53 +1457,207 @@ namespace LegendaryExplorerCore.Unreal
             return first - second < 0.00001;
         }
 
-        private static void CollectMeshes(ModelRoot modelRoot, out List<(string, Node[])> skeletalMeshes, out List<(string, Node[])> staticMeshes)
+        private static void CollectMeshParts(ModelRoot modelRoot, out List<GltfMeshPart> skeletalParts,
+            out List<GltfMeshPart> staticParts, out List<Node> collisionNodes)
         {
-            // sort all the nodes that have a mesh into groups by visual parent (or none; that's also a group)
-            // there will be a parent for each armature exported from Blender, with all meshes under that armature sharing the parent and the same skin
-            var meshes = modelRoot.LogicalNodes.Where(node => node.Mesh != null).GroupBy(node => node.VisualParent);
-            skeletalMeshes = [];
-            staticMeshes = [];
-            foreach (var meshGroup in meshes)
+            skeletalParts = [];
+            staticParts = [];
+            collisionNodes = [];
+
+            foreach (Node node in modelRoot.LogicalNodes.Where(node => node.Mesh != null))
             {
-                foreach (var node in meshGroup)
+                string name = CleanupName(node.Name) ?? $"Mesh_{node.LogicalIndex}";
+                if (node.Skin == null && name.Contains("collision", StringComparison.OrdinalIgnoreCase))
                 {
-                    node.Name = CleanupName(node.Name);
+                    collisionNodes.Add(node);
+                    continue;
                 }
-                // do I want descending?
-                var sorted = meshGroup.OrderBy(x => x.Name);
-                var currentLOD0 = sorted.First();
-                List<Node> currentLODs = [];
-                foreach (var node in sorted)
+
+                string baseName = name;
+                int lodIndex = 0;
+                Match lodMatch = LodNameSuffixRegex.Match(name);
+                if (lodMatch.Success && int.TryParse(lodMatch.Groups["index"].Value, out int parsedLodIndex))
                 {
-                    // collect them in a list as long as they have the same name prefix and skin
-                    if (node.Skin == currentLOD0.Skin && node.Name.StartsWith(currentLOD0.Name))
+                    baseName = lodMatch.Groups["name"].Value;
+                    lodIndex = parsedLodIndex;
+                }
+
+                var part = new GltfMeshPart(name, baseName, lodIndex, node);
+                (node.Skin != null ? skeletalParts : staticParts).Add(part);
+            }
+        }
+
+        private static IntermediateMesh CombineMeshParts(string name, IReadOnlyList<GltfMeshPart> parts, IReadOnlyList<Node> collisionNodes)
+        {
+            if (parts.Count == 0)
+            {
+                throw new ArgumentException("At least one glTF mesh part is required.", nameof(parts));
+            }
+
+            List<ConvertedGltfMeshPart> convertedParts = [];
+            foreach (GltfMeshPart part in parts)
+            {
+                IntermediateMesh mesh = CleanUpIntermediateMesh(ToIntermediateMesh(part.Name, [part.Node]));
+                if (mesh.LODs.Count != 1)
+                {
+                    throw new InvalidOperationException($"glTF mesh part '{part.Name}' did not produce exactly one LOD.");
+                }
+                convertedParts.Add(new ConvertedGltfMeshPart(part, mesh));
+            }
+
+            IntermediateMesh firstMesh = convertedParts[0].Mesh;
+            var combinedMesh = new IntermediateMesh
+            {
+                Name = name,
+                Skeleton = firstMesh.Skeleton,
+                CollisionMeshElements = collisionNodes.Count > 0
+                    ? [.. collisionNodes.Select(ToIntermediateCollisionElement)]
+                    : []
+            };
+
+            if (combinedMesh.Skeleton != null)
+            {
+                foreach (ConvertedGltfMeshPart part in convertedParts.Skip(1))
+                {
+                    EnsureCompatibleSkeletons(combinedMesh.Skeleton, part.Mesh.Skeleton, part.Part.Name);
+                }
+            }
+
+            foreach (ConvertedGltfMeshPart part in convertedParts)
+            {
+                foreach (IntermediateSocket socket in part.Mesh.Sockets)
+                {
+                    if (!combinedMesh.Sockets.Any(existing => existing.Name.Equals(socket.Name, StringComparison.OrdinalIgnoreCase)))
                     {
-                        currentLODs.Add(node);
+                        combinedMesh.Sockets.Add(socket);
                     }
-                    // when they don't add that list to the output list and start a new one
+                }
+            }
+
+            Dictionary<IntermediateMesh, int[]> materialMaps = [];
+            foreach (ConvertedGltfMeshPart part in convertedParts)
+            {
+                int[] materialMap = new int[part.Mesh.Materials.Count];
+                for (int i = 0; i < materialMap.Length; i++)
+                {
+                    IntermediateMaterial material = part.Mesh.Materials[i];
+                    int combinedIndex = combinedMesh.Materials.FindIndex(existing =>
+                        existing.Name.Equals(material.Name, StringComparison.OrdinalIgnoreCase));
+                    if (combinedIndex < 0)
+                    {
+                        combinedIndex = combinedMesh.Materials.Count;
+                        combinedMesh.Materials.Add(material);
+                    }
+                    materialMap[i] = combinedIndex;
+                }
+                materialMaps.Add(part.Mesh, materialMap);
+            }
+
+            List<IGrouping<string, ConvertedGltfMeshPart>> logicalParts = [.. convertedParts
+                .GroupBy(part => part.Part.BaseName, StringComparer.OrdinalIgnoreCase)];
+            int highestLodIndex = convertedParts.Max(part => part.Part.LodIndex);
+            for (int lodIndex = 0; lodIndex <= highestLodIndex; lodIndex++)
+            {
+                List<ConvertedGltfMeshPart> lodParts = [];
+                foreach (IGrouping<string, ConvertedGltfMeshPart> logicalPart in logicalParts)
+                {
+                    int sourceLodIndex;
+                    if (logicalPart.Any(part => part.Part.LodIndex == lodIndex))
+                    {
+                        sourceLodIndex = lodIndex;
+                    }
                     else
                     {
-                        if (currentLOD0.Skin != null)
-                        {
-                            skeletalMeshes.Add(currentLOD0.Name, [.. currentLODs]);
-                        }
-                        else
-                        {
-                            staticMeshes.Add(currentLOD0.Name, [.. currentLODs]);
-                        }
-                        currentLOD0 = node;
-                        currentLODs = [node];
+                        int[] lowerLods = [.. logicalPart.Where(part => part.Part.LodIndex < lodIndex)
+                            .Select(part => part.Part.LodIndex)];
+                        sourceLodIndex = lowerLods.Length > 0
+                            ? lowerLods.Max()
+                            : logicalPart.Min(part => part.Part.LodIndex);
                     }
+                    lodParts.AddRange(logicalPart.Where(part => part.Part.LodIndex == sourceLodIndex));
                 }
-                // add the final list
-                if (currentLOD0.Skin != null)
+                combinedMesh.LODs.Add(CombineLod(lodIndex, lodParts, materialMaps, combinedMesh.Skeleton != null));
+            }
+
+            return combinedMesh;
+        }
+
+        private static IntermediateLOD CombineLod(int lodIndex, IReadOnlyList<ConvertedGltfMeshPart> parts,
+            IReadOnlyDictionary<IntermediateMesh, int[]> materialMaps, bool isSkeletal)
+        {
+            List<IntermediateVertex> vertices = [];
+            var combinedLod = new IntermediateLOD { Index = lodIndex };
+
+            foreach (ConvertedGltfMeshPart part in parts)
+            {
+                IntermediateLOD sourceLod = part.Mesh.LODs[0];
+                List<IntermediateVertex> sourceVertices = GetAllVertices(sourceLod);
+                int vertexOffset = vertices.Count;
+                foreach (IntermediateVertex sourceVertex in sourceVertices)
                 {
-                    skeletalMeshes.Add(currentLOD0.Name, [.. currentLODs]);
+                    IntermediateVertex vertex = sourceVertex;
+                    vertex.UVs = [.. sourceVertex.UVs];
+                    vertex.Influences = [.. sourceVertex.Influences];
+                    vertex.OriginalIndex = vertices.Count;
+                    vertices.Add(vertex);
                 }
-                else
+
+                foreach (IntermediateMeshSection sourceSection in sourceLod.Sections.Where(section => section.Triangles.Count > 0))
                 {
-                    staticMeshes.Add(currentLOD0.Name, [.. currentLODs]);
+                    var section = new IntermediateMeshSection
+                    {
+                        MaterialIndex = materialMaps[part.Mesh][sourceSection.MaterialIndex],
+                        Triangles = [.. sourceSection.Triangles.Select(triangle => new IntermediateTriangle
+                        {
+                            VertIndex1 = triangle.VertIndex1 + vertexOffset,
+                            VertIndex2 = triangle.VertIndex2 + vertexOffset,
+                            VertIndex3 = triangle.VertIndex3 + vertexOffset
+                        })]
+                    };
+                    combinedLod.Sections.Add(section);
+                }
+            }
+
+            if (vertices.Count == 0 || combinedLod.Sections.Count == 0)
+            {
+                throw new InvalidOperationException($"The combined glTF mesh has no usable geometry in LOD {lodIndex}.");
+            }
+
+            int requiredUvCount = vertices.Max(vertex => vertex.UVs.Count);
+            if (isSkeletal)
+            {
+                requiredUvCount = Math.Max(1, requiredUvCount);
+            }
+            for (int i = 0; i < vertices.Count; i++)
+            {
+                IntermediateVertex vertex = vertices[i];
+                while (vertex.UVs.Count < requiredUvCount)
+                {
+                    vertex.UVs.Add(Vector2.Zero);
+                }
+                vertices[i] = vertex;
+            }
+            foreach (IntermediateMeshSection section in combinedLod.Sections)
+            {
+                section.Vertices = vertices;
+            }
+
+            return combinedLod;
+        }
+
+        private static void EnsureCompatibleSkeletons(IReadOnlyList<IntermediateBone> expected,
+            IReadOnlyList<IntermediateBone> actual, string meshPartName)
+        {
+            if (actual == null || expected.Count != actual.Count)
+            {
+                throw new InvalidOperationException($"Skeletal mesh part '{meshPartName}' uses a different skeleton and cannot be combined.");
+            }
+            for (int i = 0; i < expected.Count; i++)
+            {
+                if (expected[i].ParentIndex != actual[i].ParentIndex
+                    || !expected[i].Name.Equals(actual[i].Name, StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new InvalidOperationException($"Skeletal mesh part '{meshPartName}' uses a different skeleton and cannot be combined.");
                 }
             }
         }
@@ -1931,7 +2098,7 @@ namespace LegendaryExplorerCore.Unreal
             var tris = new kDOPCollisionTriangle[staticMesh.LODModels[0].IndexBuffer.Length / 3];
             for (int i = 0, elIdx = 0, triCount = 0; i < staticMesh.LODModels[0].IndexBuffer.Length; i += 3, ++triCount)
             {
-                if (triCount > staticMesh.LODModels[0].Elements[elIdx].NumTriangles)
+                if (triCount >= staticMesh.LODModels[0].Elements[elIdx].NumTriangles)
                 {
                     triCount = 0;
                     ++elIdx;
@@ -2487,6 +2654,34 @@ namespace LegendaryExplorerCore.Unreal
         #endregion
 
         #region intermediate
+        private sealed class GltfMeshPart
+        {
+            public string Name { get; }
+            public string BaseName { get; }
+            public int LodIndex { get; }
+            public Node Node { get; }
+
+            public GltfMeshPart(string name, string baseName, int lodIndex, Node node)
+            {
+                Name = name;
+                BaseName = baseName;
+                LodIndex = lodIndex;
+                Node = node;
+            }
+        }
+
+        private sealed class ConvertedGltfMeshPart
+        {
+            public GltfMeshPart Part { get; }
+            public IntermediateMesh Mesh { get; }
+
+            public ConvertedGltfMeshPart(GltfMeshPart part, IntermediateMesh mesh)
+            {
+                Part = part;
+                Mesh = mesh;
+            }
+        }
+
         private class IntermediateMesh
         {
             public string Name;

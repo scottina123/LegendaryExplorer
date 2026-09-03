@@ -197,12 +197,12 @@ namespace LegendaryExplorerCore.Unreal.BinaryConverters
             {
                 float mean = 0;
                 float variance = 0;
-                for (int j = 0; j < start + numTris; ++j)
+                for (int j = start; j < start + numTris; ++j)
                 {
                     mean += Vector3.Dot(triangles[j].Centroid, PlaneNormals[i]);
                 }
                 mean /= numTris;
-                for (int j = 0; j<start + numTris; ++j)
+                for (int j = start; j < start + numTris; ++j)
                 {
                     float dotProd = Vector3.Dot(triangles[j].Centroid, PlaneNormals[i]);
                     variance += (dotProd - mean) * (dotProd - mean);
@@ -222,13 +222,17 @@ namespace LegendaryExplorerCore.Unreal.BinaryConverters
             while (start < end)
             {
                 int pivot = Partition((start + end) / 2);
-                if (pivot<split)
+                if (pivot < split)
+                {
+                    start = pivot + 1;
+                }
+                else if (pivot > split)
                 {
                     end = pivot - 1;
                 }
                 else
                 {
-                    start = pivot + 1;
+                    return;
                 }
             }
 
