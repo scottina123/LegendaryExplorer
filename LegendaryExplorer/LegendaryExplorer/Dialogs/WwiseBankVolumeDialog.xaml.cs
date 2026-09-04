@@ -13,7 +13,8 @@ namespace LegendaryExplorer.Dialogs
     internal enum WwiseEditorEffectPreset
     {
         Preserve,
-        NoneOrInherited,
+        Inherit,
+        None,
         FactoryRadio,
         BioWareRadio,
         Qec,
@@ -38,6 +39,7 @@ namespace LegendaryExplorer.Dialogs
         internal bool? LoopAudio { get; init; }
         internal bool CanLoopAudio { get; init; }
         internal WwiseEditorEffectPreset EffectPreset { get; init; }
+        internal string EffectSummary { get; init; }
         internal bool? DuckAudio { get; init; }
         internal bool? Attenuation { get; init; }
         internal double AttenuationScalePercent { get; init; } = 100;
@@ -102,7 +104,8 @@ namespace LegendaryExplorer.Dialogs
             AttenuationScaleSlider.Value = Math.Clamp(settings.AttenuationScalePercent, 10, 500);
 
             EffectPresetComboBox.IsEnabled = settings.CanApplyEffects ||
-                                             settings.EffectPreset != WwiseEditorEffectPreset.NoneOrInherited;
+                                             settings.EffectPreset is not (WwiseEditorEffectPreset.Inherit or
+                                                 WwiseEditorEffectPreset.None);
             AttenuationCheckBox.IsEnabled = settings.CanApplyAttenuation || settings.Attenuation != false;
             StopEventCheckBox.IsChecked = settings.StopEventExists;
             StopEventCheckBox.IsEnabled = !settings.StopEventExists && settings.CanCreateStopEvent;
@@ -177,11 +180,16 @@ namespace LegendaryExplorer.Dialogs
 
         private void PopulateEffects(WwiseEditorAudioSettings settings)
         {
-            string defaultName = settings.IsBankWide ? "No shipped preset" : "Bank-wide/default (inherit)";
-            var options = new List<WwiseEditorEffectOption>
+            CurrentEffectRun.Text = settings.EffectSummary;
+            var options = new List<WwiseEditorEffectOption>();
+            if (!settings.IsBankWide)
             {
-                new(defaultName, WwiseEditorEffectPreset.NoneOrInherited)
-            };
+                options.Add(new WwiseEditorEffectOption("Bank-wide/default (inherit)",
+                    WwiseEditorEffectPreset.Inherit));
+            }
+            options.Add(new WwiseEditorEffectOption(
+                settings.IsBankWide ? "No effects" : "No effects (override inherited)",
+                WwiseEditorEffectPreset.None));
             if (settings.Game == MEGame.LE2)
             {
                 options.Add(new WwiseEditorEffectOption("LE2 radio", WwiseEditorEffectPreset.Le2Radio));

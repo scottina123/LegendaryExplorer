@@ -43,6 +43,7 @@ using NAudio.WaveFormRenderer;
 using AudioStreamHelper = LegendaryExplorer.UnrealExtensions.AudioStreamHelper;
 using WwiseStream = LegendaryExplorerCore.Unreal.BinaryConverters.WwiseStream;
 using WwiserHircItem = ME3Tweaks.Wwiser.Model.Hierarchy.HircItem;
+using WwiserHircItemContainer = ME3Tweaks.Wwiser.Model.Hierarchy.HircItemContainer;
 using WwiserIHasNode = ME3Tweaks.Wwiser.Model.Hierarchy.IHasNode;
 using WwiserSound = ME3Tweaks.Wwiser.Model.Hierarchy.Sound;
 using WwiserStreamType = ME3Tweaks.Wwiser.Model.Hierarchy.Enums.StreamType;
@@ -595,8 +596,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                         {
                             using var input = new MemoryStream(wb.BnkFile, false);
                             var wwiserBank = WwiseBankParser.Deserialize(input);
-                            ApplyWwiserHircMetadata(hircDisplayObjects,
-                                wwiserBank.HIRC?.Items.Select(item => item.Item) ?? [], wb.ID);
+                            ApplyWwiserHircContainerMetadata(hircDisplayObjects,
+                                wwiserBank.HIRC?.Items ?? [], wb.ID, exportEntry.Game);
                         }
                         catch (Exception exception)
                         {
@@ -1127,22 +1128,53 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         }
 
         internal static void ApplyWwiserHircMetadata(IEnumerable<HIRCDisplayObject> hircObjects,
-            IEnumerable<WwiserHircItem> wwiserItems, uint bankId)
+            IEnumerable<WwiserHircItem> wwiserItems, uint bankId, MEGame? game = null)
         {
-            var displayObjectsById = hircObjects
+            var displayObjects = hircObjects.ToList();
+            var displayObjectsById = displayObjects
                 .GroupBy(hirc => hirc.ID)
                 .ToDictionary(group => group.Key, group => group.First());
             var items = wwiserItems.ToList();
             foreach (WwiserHircItem item in items)
             {
-                if (item is WwiserIHasNode parameterNode &&
-                    displayObjectsById.TryGetValue(item.Id, out HIRCDisplayObject displayObject))
+                if (!displayObjectsById.TryGetValue(item.Id, out HIRCDisplayObject displayObject))
+                {
+                    continue;
+                }
+
+                WwiseHircSemanticInfo info = WwiseHircSemanticFormatter.GetInfo(item, game);
+                displayObject.SemanticTypeName = info.TypeName;
+                displayObject.SemanticDescription = info.Description;
+                if (item is WwiserIHasNode parameterNode)
                 {
                     displayObject.DirectParentID = parameterNode.NodeBaseParameters.DirectParentId;
                 }
             }
 
-            ApplyWwiserSoundMetadata(hircObjects, items.OfType<WwiserSound>(), bankId);
+            ApplyWwiserSoundMetadata(displayObjects, items.OfType<WwiserSound>(), bankId);
+        }
+
+        internal static void ApplyWwiserHircContainerMetadata(IEnumerable<HIRCDisplayObject> hircObjects,
+            IEnumerable<WwiserHircItemContainer> wwiserContainers, uint bankId, MEGame? game = null)
+        {
+            var displayObjects = hircObjects.ToList();
+            var containers = wwiserContainers.ToList();
+            ApplyWwiserHircMetadata(displayObjects, containers.Select(container => container.Item), bankId, game);
+
+            var displayObjectsById = displayObjects
+                .GroupBy(hirc => hirc.ID)
+                .ToDictionary(group => group.Key, group => group.First());
+            foreach (WwiserHircItemContainer container in containers)
+            {
+                if (!displayObjectsById.TryGetValue(container.Item.Id, out HIRCDisplayObject displayObject))
+                {
+                    continue;
+                }
+
+                WwiseHircSemanticInfo info = WwiseHircSemanticFormatter.GetInfo(container, game);
+                displayObject.SemanticTypeName = info.TypeName;
+                displayObject.SemanticDescription = info.Description;
+            }
         }
 
         internal static void ApplyWwiserSoundMetadata(IEnumerable<HIRCDisplayObject> hircObjects,
@@ -2471,7 +2503,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 hirc.Index.ToString(CultureInfo.InvariantCulture),
                 hirc.ID.ToString(CultureInfo.InvariantCulture),
                 $"HIRC 0x{hirc.ID:X8}",
-                AudioStreamHelper.GetHircObjTypeString(hirc.ObjType),
+                hirc.SemanticTypeName ?? AudioStreamHelper.GetHircObjTypeString(hirc.ObjType),
+                hirc.SemanticDescription ?? string.Empty,
                 hirc.EventActionType.ToString(),
                 playbackState,
                 hirc.AudioID.ToString(CultureInfo.InvariantCulture),
@@ -2501,7 +2534,9 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     CreateHircObjectFromHex(hircHexProvider.Span.ToArray()), Pcc.Game)
                 {
                     DataChanged = true,
-                    EventPreview = selectedHirc.EventPreview
+                    EventPreview = selectedHirc.EventPreview,
+                    SemanticTypeName = selectedHirc.SemanticTypeName,
+                    SemanticDescription = selectedHirc.SemanticDescription
                 };
                 HIRCObjects[idx] = replacement;
                 HIRC_ListBox.SelectedItem = replacement;
@@ -2830,7 +2865,9 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 var cloneDisplay = new HIRCDisplayObject(HIRCObjects.Count, clone, Pcc.Game)
                 {
                     DataChanged = true,
-                    EventPreview = h.EventPreview
+                    EventPreview = h.EventPreview,
+                    SemanticTypeName = h.SemanticTypeName,
+                    SemanticDescription = h.SemanticDescription
                 };
                 HIRCObjects.Add(cloneDisplay);
                 if (!HIRCObjectsView.Contains(cloneDisplay))

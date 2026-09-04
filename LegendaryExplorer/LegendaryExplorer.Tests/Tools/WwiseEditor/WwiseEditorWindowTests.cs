@@ -140,6 +140,132 @@ public class WwiseEditorWindowTests
     }
 
     [TestMethod]
+    public void InheritedVanillaEffectsAreShownAndCanBeSuppressedPerEvent()
+    {
+        foreach ((MEGame game, WwiseEditorEffectPreset expectedPreset, uint[] effectIds) in new[]
+                 {
+                     (MEGame.LE3, WwiseEditorEffectPreset.BioWareRadio, BioWareRadioEffectIds),
+                     (MEGame.LE2, WwiseEditorEffectPreset.Le2Radio, Le2RadioEffectIds)
+                 })
+        {
+            const uint mixerId = 0xF0000040;
+            const uint soundId = 0xF0000041;
+            var mixer = new WwiserActorMixer { Id = mixerId };
+            mixer.NodeBaseParameters.FxParams.FxChunks.AddRange(effectIds.Select((id, index) =>
+                new FxChunk { FxIndex = checked((byte)index), Id = id, IsShareSet = true }));
+            mixer.NodeBaseParameters.FxParams.NumFx = checked((byte)effectIds.Length);
+            mixer.NodeBaseParameters.FxParams.IsOverrideParentFx = true;
+            var sound = new WwiserSound
+            {
+                Id = soundId,
+                NodeBaseParameters = new NodeBaseParameters { DirectParentId = mixerId }
+            };
+            var nodes = new List<(uint Id, WwiserIHasNode Node)>
+            {
+                (mixerId, mixer), (soundId, sound)
+            };
+            var targets = new List<WwiserIHasNode> { sound };
+
+            Assert.AreEqual(expectedPreset, InvokePrivate<WwiseEditorEffectPreset>(
+                "GetCurrentEffectPreset", targets, nodes, game, false));
+            string summary = InvokePrivate<string>("GetCurrentEffectSummary", targets, nodes, game);
+            StringAssert.Contains(summary, "inherited");
+            foreach (uint effectId in effectIds)
+            {
+                StringAssert.Contains(summary, $"0x{effectId:X8}");
+            }
+
+            InvokePrivate("ApplyEffectPresetToScopes", targets, WwiseEditorEffectPreset.None,
+                game, null);
+            Assert.IsTrue(sound.NodeBaseParameters.FxParams.IsOverrideParentFx);
+            Assert.IsEmpty(sound.NodeBaseParameters.FxParams.FxChunks);
+            CollectionAssert.AreEqual(effectIds,
+                mixer.NodeBaseParameters.FxParams.FxChunks.Select(chunk => chunk.Id).ToArray());
+            Assert.AreEqual(WwiseEditorEffectPreset.None, InvokePrivate<WwiseEditorEffectPreset>(
+                "GetCurrentEffectPreset", targets, nodes, game, false));
+
+            InvokePrivate("ApplyEffectPresetToScopes", targets, WwiseEditorEffectPreset.Inherit,
+                game, null);
+            Assert.IsFalse(sound.NodeBaseParameters.FxParams.IsOverrideParentFx);
+            Assert.AreEqual(expectedPreset, InvokePrivate<WwiseEditorEffectPreset>(
+                "GetCurrentEffectPreset", targets, nodes, game, false));
+        }
+    }
+
+    [TestMethod]
+    public void RemovingVanillaBankEffectsClearsEveryNodeAndKeepsLeafOverridesEmpty()
+    {
+        const uint mixerId = 0xF0000050;
+        const uint soundId = 0xF0000051;
+        const uint customEffectId = 0x12345678;
+        var mixer = new WwiserActorMixer { Id = mixerId };
+        mixer.NodeBaseParameters.FxParams.FxChunks.Add(new FxChunk
+        {
+            FxIndex = 0,
+            Id = customEffectId,
+            IsShareSet = true
+        });
+        mixer.NodeBaseParameters.FxParams.NumFx = 1;
+        mixer.NodeBaseParameters.FxParams.IsOverrideParentFx = true;
+        var sound = new WwiserSound
+        {
+            Id = soundId,
+            NodeBaseParameters = new NodeBaseParameters { DirectParentId = mixerId }
+        };
+        var nodes = new List<(uint Id, WwiserIHasNode Node)>
+        {
+            (mixerId, mixer), (soundId, sound)
+        };
+        var leafScopes = new List<WwiserIHasNode> { sound };
+
+        string summary = InvokePrivate<string>("GetCurrentEffectSummary", leafScopes, nodes, MEGame.LE3);
+        StringAssert.Contains(summary, $"0x{customEffectId:X8}");
+        InvokePrivate("ApplyEffectPresetToScopes", leafScopes, WwiseEditorEffectPreset.None,
+            MEGame.LE3, nodes.Select(item => item.Node).ToList());
+
+        Assert.IsEmpty(mixer.NodeBaseParameters.FxParams.FxChunks);
+        Assert.IsFalse(mixer.NodeBaseParameters.FxParams.IsOverrideParentFx);
+        Assert.IsEmpty(sound.NodeBaseParameters.FxParams.FxChunks);
+        Assert.IsTrue(sound.NodeBaseParameters.FxParams.IsOverrideParentFx);
+        Assert.AreEqual(WwiseEditorEffectPreset.None, InvokePrivate<WwiseEditorEffectPreset>(
+            "GetCurrentEffectPreset", leafScopes, nodes, MEGame.LE3, true));
+    }
+
+    [TestMethod]
+    public void EmptyEventEffectOverrideRoundTripsWithoutRemovingParentEffect()
+    {
+        var bank = LoadTestBank();
+        var parameterNodes = GetParameterNodes(bank);
+        var sound = bank.HIRC.Items.Select(item => item.Item).OfType<WwiserSound>()
+            .First(item => item.NodeBaseParameters.DirectParentId != 0);
+        uint soundId = sound.Id;
+        uint parentId = sound.NodeBaseParameters.DirectParentId;
+        var parent = parameterNodes.Single(item => item.Id == parentId).Node;
+        parent.NodeBaseParameters.FxParams.FxChunks.Clear();
+        parent.NodeBaseParameters.FxParams.FxChunks.AddRange(BioWareRadioEffectIds.Select((id, index) =>
+            new FxChunk { FxIndex = checked((byte)index), Id = id, IsShareSet = true }));
+        parent.NodeBaseParameters.FxParams.NumFx = checked((byte)BioWareRadioEffectIds.Length);
+        parent.NodeBaseParameters.FxParams.IsOverrideParentFx = true;
+        sound.NodeBaseParameters.FxParams.FxChunks.Clear();
+        sound.NodeBaseParameters.FxParams.NumFx = 0;
+        sound.NodeBaseParameters.FxParams.IsOverrideParentFx = false;
+
+        InvokePrivate("ApplyEffectPresetToScopes", new List<WwiserIHasNode> { sound },
+            WwiseEditorEffectPreset.None, MEGame.LE3, null);
+
+        var reparsed = RoundTrip(bank);
+        var reparsedNodes = GetParameterNodes(reparsed).ToDictionary(item => item.Id, item => item.Node);
+        var reparsedSound = reparsedNodes[soundId];
+        var reparsedParent = reparsedNodes[parentId];
+        Assert.IsTrue(reparsedSound.NodeBaseParameters.FxParams.IsOverrideParentFx);
+        Assert.IsEmpty(reparsedSound.NodeBaseParameters.FxParams.FxChunks);
+        Assert.IsTrue(reparsedParent.NodeBaseParameters.FxParams.IsOverrideParentFx);
+        CollectionAssert.AreEqual(BioWareRadioEffectIds,
+            reparsedParent.NodeBaseParameters.FxParams.FxChunks.OrderBy(chunk => chunk.FxIndex)
+                .Select(chunk => chunk.Id).ToArray());
+    }
+
+    [TestMethod]
     public void BioWareRadioEffectAppliesToEveryInheritanceScopeAndPreservesOtherEffects()
     {
         var bank = LoadTestBank();

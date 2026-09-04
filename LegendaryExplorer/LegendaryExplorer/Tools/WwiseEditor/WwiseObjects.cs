@@ -6,6 +6,7 @@ using System.Linq;
 using System.Windows.Forms;
 using LegendaryExplorer.Misc;
 using LegendaryExplorer.Tools.TlkManagerNS;
+using LegendaryExplorer.UnrealExtensions;
 using LegendaryExplorerCore.Gammtek.Extensions;
 using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.Sound.Wwise;
@@ -67,6 +68,7 @@ namespace LegendaryExplorer.Tools.WwiseEditor
         public virtual bool IsSelected { get; set; }
 
         protected WwiseBankParsed.HIRCObject hircObject;
+        protected readonly WwiseHircSemanticInfo? SemanticInfo;
         protected Pen outlinePen;
         protected SText comment;
 
@@ -74,9 +76,11 @@ namespace LegendaryExplorer.Tools.WwiseEditor
 
         public string Comment => comment.Text;
 
-        protected WwiseHircObjNode(WwiseBankParsed.HIRCObject hircObj, WwiseGraphEditor grapheditor)
+        protected WwiseHircObjNode(WwiseBankParsed.HIRCObject hircObj, WwiseGraphEditor grapheditor,
+            WwiseHircSemanticInfo? semanticInfo = null)
         {
             hircObject = hircObj;
+            SemanticInfo = semanticInfo;
             g = grapheditor;
             comment = new SText(GetComment(), commentColor, false)
             {
@@ -580,8 +584,9 @@ namespace LegendaryExplorer.Tools.WwiseEditor
 
         protected InputDragHandler inputDragHandler = new ();
 
-        public WGeneric(WwiseBankParsed.HIRCObject hircO, float x, float y, WwiseGraphEditor grapheditor)
-            : base(hircO, grapheditor)
+        public WGeneric(WwiseBankParsed.HIRCObject hircO, float x, float y, WwiseGraphEditor grapheditor,
+            WwiseHircSemanticInfo? semanticInfo = null)
+            : base(hircO, grapheditor, semanticInfo)
         {
             originalX = x;
             originalY = y;
@@ -619,6 +624,19 @@ namespace LegendaryExplorer.Tools.WwiseEditor
             string s = GetTitle();
             float starty = 8;
             float w = 20;
+            string description = GetDescription();
+            SText descriptionText = null;
+            if (!string.IsNullOrWhiteSpace(description))
+            {
+                descriptionText = new SText(description)
+                {
+                    X = 5,
+                    Y = starty,
+                    Pickable = false
+                };
+                w = Math.Max(w, descriptionText.Width + 10);
+                starty += descriptionText.Height + 5;
+            }
             varLinkBox = new PPath();
             for (int i = 0; i < Varlinks.Count; i++)
             {
@@ -660,7 +678,12 @@ namespace LegendaryExplorer.Tools.WwiseEditor
             outLinkBox.Pickable = false;
             inputLinkBox = new PNode();
             float inW = 0;
-            float inY = 8;
+            float inY = starty;
+            if (descriptionText != null)
+            {
+                inputLinkBox.AddChild(descriptionText);
+                inW = descriptionText.Width + 10;
+            }
             for (int i = 0; i < InLinks.Count; i++)
             {
                 var t2 = new SText(InLinks[i].Desc);
@@ -706,8 +729,10 @@ namespace LegendaryExplorer.Tools.WwiseEditor
 
         protected virtual string GetTitle()
         {
-            return WwiseStreamHelper.GetHircObjTypeString(hircObject.Type);
+            return SemanticInfo?.TypeName ?? WwiseStreamHelper.GetHircObjTypeString(hircObject.Type);
         }
+
+        protected virtual string GetDescription() => SemanticInfo?.Description;
 
         public class InputDragHandler : PDragEventHandler
         {
@@ -761,15 +786,20 @@ namespace LegendaryExplorer.Tools.WwiseEditor
     {
         public WwiseBankParsed.EventAction  EventAction => (WwiseBankParsed.EventAction)hircObject;
 
-        public WEventAction(WwiseBankParsed.EventAction evtAct, float x, float y, WwiseGraphEditor grapheditor) : base(evtAct, x, y, grapheditor)
+        public WEventAction(WwiseBankParsed.EventAction evtAct, float x, float y, WwiseGraphEditor grapheditor,
+            WwiseHircSemanticInfo? semanticInfo = null) : base(evtAct, x, y, grapheditor, semanticInfo)
         {
             GetLinks();
         }
 
         protected override string GetTitle()
         {
-            return $"{base.GetTitle()}: {WwiseStreamHelper.GetEventActionTypeString(EventAction.ActionType)}";
+            string actionName = SemanticInfo?.Description ??
+                                WwiseStreamHelper.GetEventActionTypeString(EventAction.ActionType);
+            return $"{base.GetTitle()}: {actionName}";
         }
+
+        protected override string GetDescription() => null;
 
         protected override void GetLinks()
         {
@@ -799,7 +829,9 @@ namespace LegendaryExplorer.Tools.WwiseEditor
     {
         public WwiseBankParsed.SoundSFXVoice SoundSFXVoice => (WwiseBankParsed.SoundSFXVoice)hircObject;
 
-        public WSoundSFXVoice(WwiseBankParsed.SoundSFXVoice ssfxv, float x, float y, WwiseGraphEditor grapheditor) : base(ssfxv, x, y, grapheditor)
+        public WSoundSFXVoice(WwiseBankParsed.SoundSFXVoice ssfxv, float x, float y,
+            WwiseGraphEditor grapheditor, WwiseHircSemanticInfo? semanticInfo = null)
+            : base(ssfxv, x, y, grapheditor, semanticInfo)
         {
             GetLinks();
         }

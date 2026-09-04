@@ -47,9 +47,13 @@
                         <CheckBox x:Name="LoopAudioCheckBox" Margin="0,3" IsThreeState="True"
                                   Content="Loop audio infinitely"
                                   ToolTip="An indeterminate value preserves mixed loop settings."/>
-                        <TextBlock Text="Effect preset:" FontWeight="SemiBold" Margin="0,8,0,3"/>
+                        <TextBlock Margin="0,8,0,3" TextWrapping="Wrap">
+                            <Run Text="Current effects: "/>
+                            <Run x:Name="CurrentEffectRun" FontWeight="Bold"/>
+                        </TextBlock>
+                        <TextBlock Text="Effect preset:" FontWeight="SemiBold" Margin="0,3,0,3"/>
                         <ComboBox x:Name="EffectPresetComboBox" DisplayMemberPath="Name" Padding="3"
-                                  ToolTip="Select a shipped game-specific effect preset, or inherit the bank-wide/default effect for an individual event."/>
+                                  ToolTip="Select a shipped game-specific effect preset, inherit the parent effect, or explicitly suppress inherited effects."/>
                         <CheckBox x:Name="DuckAudioCheckBox" Margin="0,10,0,3" IsThreeState="True"
                                   Content="Apply shipped music ducking"
                                   ToolTip="Available for music output buses. An indeterminate value preserves mixed settings."/>

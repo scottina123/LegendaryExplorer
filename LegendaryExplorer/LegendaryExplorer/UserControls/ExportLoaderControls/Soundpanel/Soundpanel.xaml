@@ -253,7 +253,9 @@
                                             <TextBlock Text="{Binding State,Converter={StaticResource HIRCMediaFetchTypeConverter}}" FontWeight="Bold"/>
                                         </Border>
                                         <StackPanel>
-                                            <TextBlock Text="{Binding Path=ObjType, Converter={StaticResource HIRCObjectTypeConverter}}" FontStyle="Italic"/>
+                                            <TextBlock Text="{Binding SemanticTypeName}" FontStyle="Italic"/>
+                                            <TextBlock Text="{Binding SemanticDescription}" TextWrapping="Wrap" MaxWidth="400"
+                                                       Foreground="{DynamicResource SecondaryTextBrush}"/>
                                             <TextBlock Text="{Binding EventPreview}" TextWrapping="Wrap" MaxWidth="400"
                                                        Foreground="{DynamicResource SecondaryTextBrush}"/>
                                         </StackPanel>

@@ -691,7 +691,9 @@ namespace LegendaryExplorer.Tools.WwiseEditor
             float currentVolume = GetCommonNodeVolume(settingNodes, out bool volumeIsMixed);
             uint? currentOutputBusId = GetCommonOutputBusId(settingNodes);
             bool? currentLoopAudio = GetLoopAudioState(sounds.ToList());
-            WwiseEditorEffectPreset currentEffect = GetCurrentEffectPreset(effectScopeNodes, game);
+            WwiseEditorEffectPreset currentEffect = GetCurrentEffectPreset(effectScopeNodes,
+                parameterNodes, game, isBankWide);
+            string currentEffectSummary = GetCurrentEffectSummary(effectScopeNodes, parameterNodes, game);
             bool? currentDucking = GetDuckingState(bank, settingNodes, game);
             bool? currentAttenuation = GetAttenuationState(bank, settingNodes,
                 out double currentAttenuationScalePercent);
@@ -732,6 +734,7 @@ namespace LegendaryExplorer.Tools.WwiseEditor
                 LoopAudio = currentLoopAudio,
                 CanLoopAudio = sounds.Count > 0,
                 EffectPreset = currentEffect,
+                EffectSummary = currentEffectSummary,
                 DuckAudio = currentDucking,
                 Attenuation = currentAttenuation,
                 AttenuationScalePercent = currentAttenuationScalePercent,
@@ -767,7 +770,8 @@ namespace LegendaryExplorer.Tools.WwiseEditor
                 return false;
             }
 
-            if (effectChanged && settingsDialog.SelectedEffectPreset != WwiseEditorEffectPreset.NoneOrInherited)
+            if (effectChanged && settingsDialog.SelectedEffectPreset is not
+                    (WwiseEditorEffectPreset.Inherit or WwiseEditorEffectPreset.None))
             {
                 var (effectName, effectChain, _) = GetEffectDefinition(settingsDialog.SelectedEffectPreset);
                 if (!CanApplyEffect(bank, effectScopeNodes, effectChain) ||
@@ -1222,54 +1226,160 @@ namespace LegendaryExplorer.Tools.WwiseEditor
             return states.All(state => state) ? true : null;
         }
 
+        private readonly record struct EffectiveEffectState(WwiserIHasNode Target, WwiserIHasNode Source);
+
         private static WwiseEditorEffectPreset GetCurrentEffectPreset(
-            IReadOnlyCollection<WwiserIHasNode> effectScopeNodes, MEGame game)
+            IReadOnlyCollection<WwiserIHasNode> effectScopeNodes,
+            IReadOnlyCollection<(uint Id, WwiserIHasNode Node)> parameterNodes,
+            MEGame game, bool isBankWide)
         {
+            var effectStates = GetEffectiveEffectStates(effectScopeNodes, parameterNodes);
+            var effectiveEffectNodes = effectStates
+                .Select(state => state.Source ?? state.Target)
+                .ToList();
             if (game == MEGame.LE2)
             {
-                if (HasEffectOnAllScopes(effectScopeNodes, WwiseBankEffectPresets.Le2HelmetFilter) &&
-                    WwiseBankEffectPresets.HasLe2HelmetRtpcOnAllScopes(effectScopeNodes))
+                if (HasEffectOnAllScopes(effectiveEffectNodes, WwiseBankEffectPresets.Le2HelmetFilter) &&
+                    WwiseBankEffectPresets.HasLe2HelmetRtpcOnAllScopes(effectiveEffectNodes))
                 {
                     return WwiseEditorEffectPreset.Le2Helmet;
                 }
-                if (HasEffectOnAllScopes(effectScopeNodes, WwiseBankEffectPresets.Le2Radio))
+                if (HasEffectOnAllScopes(effectiveEffectNodes, WwiseBankEffectPresets.Le2Radio))
                 {
                     return WwiseEditorEffectPreset.Le2Radio;
                 }
-                if (HasEffectOnAllScopes(effectScopeNodes, WwiseBankEffectPresets.Le2Hologram))
+                if (HasEffectOnAllScopes(effectiveEffectNodes, WwiseBankEffectPresets.Le2Hologram))
                 {
                     return WwiseEditorEffectPreset.Le2Hologram;
                 }
             }
             else
             {
-                bool helmetEffect = HasEffectOnAllScopes(effectScopeNodes,
+                bool helmetEffect = HasEffectOnAllScopes(effectiveEffectNodes,
                                         WwiseBankEffectPresets.HelmetFilter) &&
-                                    WwiseBankEffectPresets.HasHelmetRtpcOnAllScopes(effectScopeNodes);
+                                    WwiseBankEffectPresets.HasHelmetRtpcOnAllScopes(effectiveEffectNodes);
                 if (helmetEffect)
                 {
                     return WwiseEditorEffectPreset.Helmet;
                 }
-                if (HasEffectOnAllScopes(effectScopeNodes, WwiseBankEffectPresets.BioWareRadio))
+                if (HasEffectOnAllScopes(effectiveEffectNodes, WwiseBankEffectPresets.BioWareRadio))
                 {
                     return WwiseEditorEffectPreset.BioWareRadio;
                 }
-                if (HasEffectOnAllScopes(effectScopeNodes, WwiseBankEffectPresets.HackettQec))
+                if (HasEffectOnAllScopes(effectiveEffectNodes, WwiseBankEffectPresets.HackettQec))
                 {
                     return WwiseEditorEffectPreset.Qec;
                 }
             }
 
-            if (HasEffectOnAllScopes(effectScopeNodes, WwiseBankEffectPresets.FactoryRadio))
+            if (HasEffectOnAllScopes(effectiveEffectNodes, WwiseBankEffectPresets.FactoryRadio))
             {
                 return WwiseEditorEffectPreset.FactoryRadio;
             }
 
-            return effectScopeNodes.All(node =>
-                node.NodeBaseParameters.FxParams.FxChunks.Count == 0 &&
-                !node.NodeBaseParameters.FxParams.IsOverrideParentFx)
-                ? WwiseEditorEffectPreset.NoneOrInherited
-                : WwiseEditorEffectPreset.Preserve;
+            if (effectStates.All(state => state.Source?.NodeBaseParameters.FxParams.FxChunks.Count is null or 0))
+            {
+                bool allExplicitlyEmpty = effectStates.All(state =>
+                    ReferenceEquals(state.Source, state.Target) &&
+                    state.Target.NodeBaseParameters.FxParams.IsOverrideParentFx);
+                return isBankWide || allExplicitlyEmpty
+                    ? WwiseEditorEffectPreset.None
+                    : WwiseEditorEffectPreset.Inherit;
+            }
+
+            return WwiseEditorEffectPreset.Preserve;
+        }
+
+        private static List<EffectiveEffectState> GetEffectiveEffectStates(
+            IReadOnlyCollection<WwiserIHasNode> effectScopeNodes,
+            IReadOnlyCollection<(uint Id, WwiserIHasNode Node)> parameterNodes)
+        {
+            var nodesById = parameterNodes
+                .GroupBy(item => item.Id)
+                .ToDictionary(group => group.Key, group => group.First().Node);
+            var states = new List<EffectiveEffectState>();
+            foreach (WwiserIHasNode target in effectScopeNodes)
+            {
+                WwiserIHasNode current = target;
+                WwiserIHasNode source = null;
+                var visited = new HashSet<uint>();
+                while (current != null)
+                {
+                    var effects = current.NodeBaseParameters.FxParams;
+                    if (effects.IsOverrideParentFx || effects.FxChunks.Count > 0)
+                    {
+                        source = current;
+                        break;
+                    }
+
+                    uint parentId = current.NodeBaseParameters.DirectParentId;
+                    if (parentId == 0 || !visited.Add(parentId) ||
+                        !nodesById.TryGetValue(parentId, out current))
+                    {
+                        break;
+                    }
+                }
+
+                states.Add(new EffectiveEffectState(target, source));
+            }
+            return states;
+        }
+
+        private static string GetCurrentEffectSummary(
+            IReadOnlyCollection<WwiserIHasNode> effectScopeNodes,
+            IReadOnlyCollection<(uint Id, WwiserIHasNode Node)> parameterNodes, MEGame game)
+        {
+            var descriptions = GetEffectiveEffectStates(effectScopeNodes, parameterNodes)
+                .Select(state =>
+                {
+                    if (state.Source == null || state.Source.NodeBaseParameters.FxParams.FxChunks.Count == 0)
+                    {
+                        return state.Source != null ? "None (explicit override)" : "None";
+                    }
+
+                    uint[] effectIds = state.Source.NodeBaseParameters.FxParams.FxChunks
+                        .OrderBy(chunk => chunk.FxIndex)
+                        .Select(chunk => chunk.Id)
+                        .ToArray();
+                    string knownName = GetKnownEffectChainName(effectIds, game);
+                    string idList = string.Join(" + ", effectIds.Select(id => $"0x{id:X8}"));
+                    string inherited = ReferenceEquals(state.Source, state.Target) ? string.Empty : " (inherited)";
+                    return string.IsNullOrEmpty(knownName)
+                        ? $"{idList}{inherited}"
+                        : $"{knownName} [{idList}]{inherited}";
+                })
+                .Distinct(StringComparer.Ordinal)
+                .ToList();
+            return descriptions.Count switch
+            {
+                0 => "None",
+                1 => descriptions[0],
+                _ => $"Mixed: {string.Join("; ", descriptions)}"
+            };
+        }
+
+        private static string GetKnownEffectChainName(IReadOnlyList<uint> effectIds, MEGame game)
+        {
+            var candidates = game == MEGame.LE2
+                ? new[]
+                {
+                    WwiseEditorEffectPreset.Le2Radio, WwiseEditorEffectPreset.Le2Helmet,
+                    WwiseEditorEffectPreset.Le2Hologram, WwiseEditorEffectPreset.FactoryRadio
+                }
+                : new[]
+                {
+                    WwiseEditorEffectPreset.BioWareRadio, WwiseEditorEffectPreset.Qec,
+                    WwiseEditorEffectPreset.Helmet, WwiseEditorEffectPreset.FactoryRadio
+                };
+            foreach (WwiseEditorEffectPreset candidate in candidates)
+            {
+                var (name, chain, _) = GetEffectDefinition(candidate);
+                if (effectIds.SequenceEqual(chain.Select(effect => effect.Id)))
+                {
+                    return name;
+                }
+            }
+            return null;
         }
 
         private static (string Name, IReadOnlyList<WwiseBankEffect> Chain, bool HelmetRtpc)
@@ -1297,6 +1407,29 @@ namespace LegendaryExplorer.Tools.WwiseEditor
             IEnumerable<WwiserIHasNode> additionalCleanupNodes = null)
         {
             var scopes = effectScopeNodes.Distinct().ToList();
+            if (preset == WwiseEditorEffectPreset.Inherit)
+            {
+                ClearEffectsOnScopes(scopes, false);
+                WwiseBankEffectPresets.SetHelmetRtpcOnScopes(scopes, false);
+                WwiseBankEffectPresets.SetLe2HelmetRtpcOnScopes(scopes, false);
+                return;
+            }
+
+            if (preset == WwiseEditorEffectPreset.None)
+            {
+                var allBankNodes = additionalCleanupNodes?.Distinct().ToList();
+                if (allBankNodes != null)
+                {
+                    ClearEffectsOnScopes(allBankNodes, false);
+                    WwiseBankEffectPresets.SetHelmetRtpcOnScopes(allBankNodes, false);
+                    WwiseBankEffectPresets.SetLe2HelmetRtpcOnScopes(allBankNodes, false);
+                }
+                ClearEffectsOnScopes(scopes, true);
+                WwiseBankEffectPresets.SetHelmetRtpcOnScopes(scopes, false);
+                WwiseBankEffectPresets.SetLe2HelmetRtpcOnScopes(scopes, false);
+                return;
+            }
+
             // Clean up root-level effects written by older WwiseEditor builds before applying the
             // replacement to the runtime-effective BioWare branch scopes.
             var cleanupScopes = scopes.Concat(additionalCleanupNodes ?? []).Distinct().ToList();
@@ -1306,11 +1439,6 @@ namespace LegendaryExplorer.Tools.WwiseEditor
             }
             WwiseBankEffectPresets.SetHelmetRtpcOnScopes(cleanupScopes, false);
             WwiseBankEffectPresets.SetLe2HelmetRtpcOnScopes(cleanupScopes, false);
-
-            if (preset == WwiseEditorEffectPreset.NoneOrInherited)
-            {
-                return;
-            }
 
             var (_, selectedEffectChain, helmetRtpc) = GetEffectDefinition(preset);
             SetEffectOnScopes(scopes, selectedEffectChain, true);
@@ -1324,6 +1452,19 @@ namespace LegendaryExplorer.Tools.WwiseEditor
                 {
                     WwiseBankEffectPresets.SetHelmetRtpcOnScopes(scopes, true);
                 }
+            }
+        }
+
+        private static void ClearEffectsOnScopes(IEnumerable<WwiserIHasNode> effectScopeNodes,
+            bool overrideParent)
+        {
+            foreach (WwiserIHasNode node in effectScopeNodes.Distinct())
+            {
+                var effects = node.NodeBaseParameters.FxParams;
+                effects.FxChunks.Clear();
+                effects.NumFx = 0;
+                effects.BitsFxBypass = 0;
+                effects.IsOverrideParentFx = overrideParent;
             }
         }
 
@@ -1895,15 +2036,35 @@ namespace LegendaryExplorer.Tools.WwiseEditor
 
         private void GetObjects(WwiseBankParsed bank)
         {
+            IReadOnlyDictionary<uint, WwiseHircSemanticInfo> semanticInfoById =
+                new Dictionary<uint, WwiseHircSemanticInfo>();
+            try
+            {
+                using var input = new MemoryStream(bank.BnkFile, false);
+                var wwiserBank = WwiseBankParser.Deserialize(input);
+                semanticInfoById = WwiseHircSemanticFormatter.BuildInfoById(wwiserBank.HIRC?.Items ?? [],
+                    CurrentExport?.Game);
+            }
+            catch (Exception exception)
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    $"Wwise Editor: Could not decode semantic HIRC information: {exception.Message}");
+            }
+
             var newObjs = new List<WwiseHircObjNode>();
             foreach ((uint id, WwiseBankParsed.HIRCObject hircObject) in CurrentWwiseBank.HIRCObjects)
             {
+                WwiseHircSemanticInfo? semanticInfo = semanticInfoById.TryGetValue(id, out var info)
+                    ? info
+                    : null;
                 newObjs.Add(hircObject switch
                 {
                     WwiseBankParsed.Event evt => new WEvent(evt, 0, 0, graphEditor),
-                    WwiseBankParsed.EventAction evtAct => new WEventAction(evtAct, 0, 0, graphEditor),
-                    WwiseBankParsed.SoundSFXVoice sfxvoice => new WSoundSFXVoice(sfxvoice, 0, 0, graphEditor),
-                    _ => new WGeneric(hircObject, 0, 0, graphEditor)
+                    WwiseBankParsed.EventAction evtAct => new WEventAction(evtAct, 0, 0, graphEditor,
+                        semanticInfo),
+                    WwiseBankParsed.SoundSFXVoice sfxvoice => new WSoundSFXVoice(sfxvoice, 0, 0,
+                        graphEditor, semanticInfo),
+                    _ => new WGeneric(hircObject, 0, 0, graphEditor, semanticInfo)
                 });
             }
 

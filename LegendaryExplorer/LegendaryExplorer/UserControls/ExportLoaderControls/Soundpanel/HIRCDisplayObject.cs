@@ -1,6 +1,7 @@
 ﻿using System.Collections.Generic;
 using System.Linq;
 using LegendaryExplorer.Misc;
+using LegendaryExplorer.UnrealExtensions;
 using LegendaryExplorerCore.Helpers;
 using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.Unreal.BinaryConverters;
@@ -12,6 +13,10 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         public int Index { get; set; }
 
         public byte ObjType { get; set; }
+
+        public string SemanticTypeName { get; internal set; }
+
+        public string SemanticDescription { get; internal set; }
 
         public uint ID { get; set; }
 
@@ -74,6 +79,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             Data = src.ToBytes(game);
             Index = i;
             ObjType = (byte)src.Type;
+            SemanticTypeName = AudioStreamHelper.GetHircObjTypeString(src.Type);
             ID = src.ID;
             switch (src)
             {

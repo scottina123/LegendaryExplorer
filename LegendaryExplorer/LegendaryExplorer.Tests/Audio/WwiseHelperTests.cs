@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using LegendaryExplorer.UserControls.ExportLoaderControls;
+using LegendaryExplorer.UnrealExtensions;
 using LegendaryExplorerCore;
 using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.Sound.Wwise;
@@ -10,6 +11,11 @@ using LegendaryExplorerCore.Unreal.BinaryConverters;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using WwiserSound = ME3Tweaks.Wwiser.Model.Hierarchy.Sound;
 using WwiserActorMixer = ME3Tweaks.Wwiser.Model.Hierarchy.ActorMixer;
+using WwiserEmptyHircItem = ME3Tweaks.Wwiser.Model.Hierarchy.EmptyHircItem;
+using WwiserFxShareSet = ME3Tweaks.Wwiser.Model.Hierarchy.FxShareSet;
+using WwiserHircItemContainer = ME3Tweaks.Wwiser.Model.Hierarchy.HircItemContainer;
+using WwiserHircSmartType = ME3Tweaks.Wwiser.Model.Hierarchy.Enums.HircSmartType;
+using WwiserHircType = ME3Tweaks.Wwiser.Model.Hierarchy.Enums.HircType;
 using WwiserStreamType = ME3Tweaks.Wwiser.Model.Hierarchy.Enums.StreamType;
 
 namespace LegendaryExplorer.Tests.Audio;
@@ -205,6 +211,73 @@ public class WwiseHelperTests
         Assert.IsTrue(Soundpanel.MatchesHircFilter(hirc, "VO_17251537_f"));
         Assert.IsTrue(Soundpanel.MatchesHircFilter(hirc, string.Empty));
         Assert.IsFalse(Soundpanel.MatchesHircFilter(hirc, "streamed"));
+    }
+
+    [TestMethod]
+    public void UsesVersionAwareSemanticHircTypesAndKnownEffectNames()
+    {
+        const uint effectId = 0x0777BB08;
+        Assert.AreEqual(WwiserHircType.FxShareSet,
+            WwiserHircSmartType.DeserializeStatic(new System.IO.MemoryStream([0x10]), 134));
+        Assert.AreEqual(WwiserHircType.FeedbackBus,
+            WwiserHircSmartType.DeserializeStatic(new System.IO.MemoryStream([0x10]), 126));
+        var effectDisplay = new HIRCDisplayObject(0, new WwiseBankParsed.HIRCObject
+        {
+            // The legacy enum calls serialized type 0x10 a Motion Bus. In an LE v134 bank,
+            // Wwise reused that value for an Effect ShareSet.
+            Type = HIRCType.MotionBus,
+            ID = effectId,
+            unparsed = []
+        }, MEGame.LE3);
+        var effectContainer = new WwiserHircItemContainer
+        {
+            Type = new WwiserHircSmartType { Value = WwiserHircType.FxShareSet },
+            Item = new WwiserFxShareSet
+            {
+                Id = effectId,
+                Plugin = new ME3Tweaks.Wwiser.Model.Plugins.Plugin { PluginId = 0x006E1003 }
+            }
+        };
+
+        Soundpanel.ApplyWwiserHircContainerMetadata([effectDisplay], [effectContainer], 0);
+
+        Assert.AreEqual("Effect ShareSet", effectDisplay.SemanticTypeName);
+        Assert.AreEqual("BioWare FutzBox / Helmet Filter", effectDisplay.SemanticDescription);
+        Assert.IsTrue(Soundpanel.MatchesHircFilter(effectDisplay, "effect helmet"));
+        Assert.IsFalse(Soundpanel.MatchesHircFilter(effectDisplay, "motion bus"));
+
+        var motionContainer = new WwiserHircItemContainer
+        {
+            Type = new WwiserHircSmartType { Value = WwiserHircType.FeedbackBus },
+            Item = new WwiserEmptyHircItem { Id = 1 }
+        };
+        Assert.AreEqual("Motion Bus / Feedback Bus",
+            WwiseHircSemanticFormatter.GetInfo(motionContainer).TypeName);
+
+        var actorMixer = new WwiserActorMixer { Id = 2 };
+        actorMixer.Children.ChildrenValues.AddRange([3, 4]);
+        actorMixer.NodeBaseParameters.FxParams.FxChunks.Add(new ME3Tweaks.Wwiser.Model.ParameterNode.FxChunk
+        {
+            FxIndex = 0,
+            Id = effectId,
+            IsShareSet = true
+        });
+        WwiseHircSemanticInfo mixerInfo = WwiseHircSemanticFormatter.GetInfo(actorMixer, MEGame.LE3);
+        Assert.AreEqual("Actor-Mixer", mixerInfo.TypeName);
+        StringAssert.Contains(mixerInfo.Description, "2 children");
+        StringAssert.Contains(mixerInfo.Description, "Effects: BioWare FutzBox / Helmet Filter");
+    }
+
+    [TestMethod]
+    public void HasReadableNamesForEveryKnownHircType()
+    {
+        foreach (WwiserHircType type in System.Enum.GetValues<WwiserHircType>().Where(type =>
+                     type != WwiserHircType.None))
+        {
+            string typeName = WwiseHircSemanticFormatter.GetTypeName(type);
+            Assert.IsFalse(typeName.StartsWith("Unknown", System.StringComparison.Ordinal),
+                $"No semantic name is defined for {type}.");
+        }
     }
 
     [TestMethod]
