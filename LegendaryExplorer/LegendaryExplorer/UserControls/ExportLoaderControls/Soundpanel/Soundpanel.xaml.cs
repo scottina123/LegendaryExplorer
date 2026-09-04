@@ -42,6 +42,8 @@ using NAudio.Wave;
 using NAudio.WaveFormRenderer;
 using AudioStreamHelper = LegendaryExplorer.UnrealExtensions.AudioStreamHelper;
 using WwiseStream = LegendaryExplorerCore.Unreal.BinaryConverters.WwiseStream;
+using WwiserHircItem = ME3Tweaks.Wwiser.Model.Hierarchy.HircItem;
+using WwiserIHasNode = ME3Tweaks.Wwiser.Model.Hierarchy.IHasNode;
 using WwiserSound = ME3Tweaks.Wwiser.Model.Hierarchy.Sound;
 using WwiserStreamType = ME3Tweaks.Wwiser.Model.Hierarchy.Enums.StreamType;
 using Color = System.Drawing.Color;
@@ -593,8 +595,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                         {
                             using var input = new MemoryStream(wb.BnkFile, false);
                             var wwiserBank = WwiseBankParser.Deserialize(input);
-                            ApplyWwiserSoundMetadata(hircDisplayObjects,
-                                wwiserBank.HIRC?.Items.Select(item => item.Item).OfType<WwiserSound>() ?? [], wb.ID);
+                            ApplyWwiserHircMetadata(hircDisplayObjects,
+                                wwiserBank.HIRC?.Items.Select(item => item.Item) ?? [], wb.ID);
                         }
                         catch (Exception exception)
                         {
@@ -1122,6 +1124,25 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             }
 
             return null;
+        }
+
+        internal static void ApplyWwiserHircMetadata(IEnumerable<HIRCDisplayObject> hircObjects,
+            IEnumerable<WwiserHircItem> wwiserItems, uint bankId)
+        {
+            var displayObjectsById = hircObjects
+                .GroupBy(hirc => hirc.ID)
+                .ToDictionary(group => group.Key, group => group.First());
+            var items = wwiserItems.ToList();
+            foreach (WwiserHircItem item in items)
+            {
+                if (item is WwiserIHasNode parameterNode &&
+                    displayObjectsById.TryGetValue(item.Id, out HIRCDisplayObject displayObject))
+                {
+                    displayObject.DirectParentID = parameterNode.NodeBaseParameters.DirectParentId;
+                }
+            }
+
+            ApplyWwiserSoundMetadata(hircObjects, items.OfType<WwiserSound>(), bankId);
         }
 
         internal static void ApplyWwiserSoundMetadata(IEnumerable<HIRCDisplayObject> hircObjects,
@@ -2322,18 +2343,98 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         public event Action<uint> HIRCObjectSelected;
 
+        /// <summary>
+        /// Requests that the hosting tool open settings for a Wwise Event selected in the HIRC list.
+        /// The context action is hidden when the host does not subscribe.
+        /// </summary>
+        public event Action<uint> HIRCEventSettingsRequested;
+
         public void SetHircEventPreviews(IReadOnlyDictionary<uint, string> eventPreviews)
         {
+            IReadOnlyDictionary<uint, string> connectedPreviews = BuildConnectedHircEventPreviews(
+                HIRCObjects, eventPreviews);
             foreach (HIRCDisplayObject hirc in HIRCObjects)
             {
-                hirc.EventPreview = hirc.ObjType == (byte)HIRCType.Event
-                                    && eventPreviews != null
-                                    && eventPreviews.TryGetValue(hirc.ID, out string preview)
+                hirc.EventPreview = connectedPreviews.TryGetValue(hirc.ID, out string preview)
                     ? preview
                     : null;
             }
 
             HIRCObjectsView.Refresh();
+        }
+
+        internal static IReadOnlyDictionary<uint, string> BuildConnectedHircEventPreviews(
+            IEnumerable<HIRCDisplayObject> hircObjects, IReadOnlyDictionary<uint, string> eventPreviews)
+        {
+            var objects = hircObjects?.ToList() ?? [];
+            if (eventPreviews == null || eventPreviews.Count == 0 || objects.Count == 0)
+            {
+                return new Dictionary<uint, string>();
+            }
+
+            var objectsById = objects
+                .GroupBy(hirc => hirc.ID)
+                .ToDictionary(group => group.Key, group => group.First());
+            var childIdsByParent = objects
+                .Where(hirc => hirc.DirectParentID != 0)
+                .ToLookup(hirc => hirc.DirectParentID, hirc => hirc.ID);
+            var previewsByHirc = new Dictionary<uint, List<string>>();
+
+            void AddPreview(uint hircId, string preview)
+            {
+                if (!previewsByHirc.TryGetValue(hircId, out List<string> previews))
+                {
+                    previews = [];
+                    previewsByHirc.Add(hircId, previews);
+                }
+
+                if (!previews.Contains(preview, StringComparer.Ordinal))
+                {
+                    previews.Add(preview);
+                }
+            }
+
+            foreach (HIRCDisplayObject eventHirc in objects.Where(hirc =>
+                         hirc.ObjType == (byte)HIRCType.Event && hirc.EventIDs != null))
+            {
+                if (!eventPreviews.TryGetValue(eventHirc.ID, out string preview) ||
+                    string.IsNullOrWhiteSpace(preview))
+                {
+                    continue;
+                }
+
+                AddPreview(eventHirc.ID, preview);
+                var visitedHierarchyIds = new HashSet<uint>();
+                foreach (uint eventActionId in eventHirc.EventIDs)
+                {
+                    AddPreview(eventActionId, preview);
+                    if (!objectsById.TryGetValue(eventActionId, out HIRCDisplayObject eventAction) ||
+                        eventAction.ObjType != (byte)HIRCType.EventAction ||
+                        eventAction.ReferencedObjectID == 0)
+                    {
+                        continue;
+                    }
+
+                    var pendingHierarchyIds = new Queue<uint>();
+                    pendingHierarchyIds.Enqueue(eventAction.ReferencedObjectID);
+                    while (pendingHierarchyIds.TryDequeue(out uint hircId))
+                    {
+                        if (!visitedHierarchyIds.Add(hircId) || !objectsById.ContainsKey(hircId))
+                        {
+                            continue;
+                        }
+
+                        AddPreview(hircId, preview);
+                        foreach (uint childId in childIdsByParent[hircId])
+                        {
+                            pendingHierarchyIds.Enqueue(childId);
+                        }
+                    }
+                }
+            }
+
+            return previewsByHirc.ToDictionary(pair => pair.Key,
+                pair => string.Join(Environment.NewLine, pair.Value));
         }
 
         public void SelectHircObject(uint id)
@@ -2738,6 +2839,37 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 }
                 HIRC_ListBox.ScrollIntoView(cloneDisplay);
                 HIRC_ListBox.SelectedItem = cloneDisplay;
+            }
+        }
+
+        private void HIRCItemContextMenu_Opened(object sender, RoutedEventArgs e)
+        {
+            if (sender is not ContextMenu contextMenu ||
+                contextMenu.PlacementTarget is not FrameworkElement placementTarget ||
+                placementTarget.DataContext is not HIRCDisplayObject hirc)
+            {
+                return;
+            }
+
+            HIRC_ListBox.SelectedItem = hirc;
+            bool canAdjustEvent = hirc.ObjType == (byte)HIRCType.Event &&
+                                  HIRCEventSettingsRequested != null;
+            if (contextMenu.Items[0] is MenuItem adjustEventSettings)
+            {
+                adjustEventSettings.Visibility = canAdjustEvent ? Visibility.Visible : Visibility.Collapsed;
+            }
+            if (contextMenu.Items[1] is Separator separator)
+            {
+                separator.Visibility = canAdjustEvent ? Visibility.Visible : Visibility.Collapsed;
+            }
+        }
+
+        private void AdjustHIRCEventSettings_Click(object sender, RoutedEventArgs e)
+        {
+            if (HIRC_ListBox.SelectedItem is HIRCDisplayObject hirc &&
+                hirc.ObjType == (byte)HIRCType.Event)
+            {
+                HIRCEventSettingsRequested?.Invoke(hirc.ID);
             }
         }
 

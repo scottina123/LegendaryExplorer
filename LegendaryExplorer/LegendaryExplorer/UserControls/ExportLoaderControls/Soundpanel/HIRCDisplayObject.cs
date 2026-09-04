@@ -24,6 +24,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         public List<uint> EventIDs { get; set; }
         public WwiseBankParsed.EventActionType EventActionType { get; set; }
         public uint ReferencedObjectID { get; set; }
+        public uint DirectParentID { get; internal set; }
 
         private string _eventPreview;
         public string EventPreview

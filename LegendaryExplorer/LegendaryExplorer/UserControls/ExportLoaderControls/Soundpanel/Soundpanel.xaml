@@ -258,7 +258,13 @@
                                                        Foreground="{DynamicResource SecondaryTextBrush}"/>
                                         </StackPanel>
                                         <DockPanel.ContextMenu>
-                                            <ContextMenu>
+                                            <ContextMenu Opened="HIRCItemContextMenu_Opened">
+                                                <MenuItem x:Name="AdjustHIRCEventSettingsMenuItem"
+                                                          Header="Adjust Event Settings..."
+                                                          Click="AdjustHIRCEventSettings_Click"
+                                                          Visibility="Collapsed"/>
+                                                <Separator x:Name="AdjustHIRCEventSettingsSeparator"
+                                                           Visibility="Collapsed"/>
                                                 <MenuItem Click="CloneHIRCObject" ToolTip="Clones HIRC object">
                                                     <MenuItem.Header>
                                                         <TextBlock Text="Clone" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrush}}"/>

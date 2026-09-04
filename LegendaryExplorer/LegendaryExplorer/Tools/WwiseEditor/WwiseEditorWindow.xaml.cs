@@ -123,6 +123,7 @@ namespace LegendaryExplorer.Tools.WwiseEditor
 
             soundPanel.SoundPanel_TabsControl.SelectedIndex = 1;
             soundPanel.HIRCObjectSelected += SoundPanel_HIRCObjectSelected;
+            soundPanel.HIRCEventSettingsRequested += SoundPanel_HIRCEventSettingsRequested;
         }
 
         public WwiseEditorWindow(ExportEntry exportToLoad) : this()
@@ -2289,6 +2290,35 @@ namespace LegendaryExplorer.Tools.WwiseEditor
             }
         }
 
+        private void SoundPanel_HIRCEventSettingsRequested(uint eventId)
+        {
+            ExportEntry eventExport = FindEventExportForBank(Pcc?.Exports, eventId, CurrentExport);
+            if (eventExport == null)
+            {
+                MessageBox.Show(this,
+                    $"No WwiseEvent export linked to HIRC event 0x{eventId:X8} was found for this bank.",
+                    "Event settings unavailable", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            if (TryAdjustEventSettings(this, eventExport, CurrentExport))
+            {
+                RefreshView();
+                StatusBar_LeftMostText.Text = $"Updated settings for {eventExport.ObjectName.Instanced}";
+            }
+        }
+
+        private static ExportEntry FindEventExportForBank(IEnumerable<ExportEntry> exports,
+            uint eventId, ExportEntry bankExport)
+        {
+            var candidates = exports?.Where(export => export.ClassName == "WwiseEvent" &&
+                                                       WExport.GetExportId(export) == eventId)
+                .ToList() ?? [];
+            ExportEntry linkedCandidate = candidates.FirstOrDefault(candidate =>
+                ReferenceEquals(FindReferencedBank(candidate), bankExport));
+            return linkedCandidate ?? (candidates.Count == 1 ? candidates[0] : null);
+        }
+
         private bool panToSelection = true;
         protected void Node_MouseDown(object sender, PInputEventArgs e)
         {
@@ -2571,6 +2601,7 @@ namespace LegendaryExplorer.Tools.WwiseEditor
             Misc.AppSettings.Settings.WwiseGraphEditor_AutoSaveView = AutoSaveView_MenuItem.IsChecked;
             ThemeManager.ThemeChanged -= OnThemeChanged;
             soundPanel.HIRCObjectSelected -= SoundPanel_HIRCObjectSelected;
+            soundPanel.HIRCEventSettingsRequested -= SoundPanel_HIRCEventSettingsRequested;
             soundPanel.Dispose();
             
             foreach (var x in CurrentObjects)

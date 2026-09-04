@@ -362,6 +362,32 @@ public class WwiseEditorWindowTests
     }
 
     [TestMethod]
+    public void RightColumnEventLookupUsesClickedHircIdAndCurrentBank()
+    {
+        const uint eventId = 0xF00000A1;
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("RightColumnEventTest.pcc", MEGame.LE3);
+        ExportEntry parent = package.CreatePackageExport("Audio", forcedExport: false);
+        ExportEntry firstBank = package.CreateExport("FirstBank", "WwiseBank", parent, indexed: false);
+        ExportEntry secondBank = package.CreateExport("SecondBank", "WwiseBank", parent, indexed: false);
+        ExportEntry firstEvent = package.CreateExport("FirstEvent", "WwiseEvent", parent, indexed: false);
+        ExportEntry secondEvent = package.CreateExport("SecondEvent", "WwiseEvent", parent, indexed: false);
+        foreach ((ExportEntry eventExport, ExportEntry bankExport) in new[]
+                 {
+                     (firstEvent, firstBank), (secondEvent, secondBank)
+                 })
+        {
+            eventExport.WriteProperty(new IntProperty(unchecked((int)eventId), "Id"));
+            eventExport.WriteProperty(new StructProperty("WwiseRelationships", false,
+                new ObjectProperty(bankExport, "Bank")) { Name = "Relationships" });
+        }
+
+        ExportEntry resolved = InvokePrivate<ExportEntry>("FindEventExportForBank",
+            package.Exports, eventId, secondBank);
+
+        Assert.AreSame(secondEvent, resolved);
+    }
+
+    [TestMethod]
     public void EventLeafScopesRoundTripEveryEditableAudioSetting()
     {
         var bank = LoadTestBank();

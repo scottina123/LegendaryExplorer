@@ -9,6 +9,7 @@ using LegendaryExplorerCore.Unreal;
 using LegendaryExplorerCore.Unreal.BinaryConverters;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using WwiserSound = ME3Tweaks.Wwiser.Model.Hierarchy.Sound;
+using WwiserActorMixer = ME3Tweaks.Wwiser.Model.Hierarchy.ActorMixer;
 using WwiserStreamType = ME3Tweaks.Wwiser.Model.Hierarchy.Enums.StreamType;
 
 namespace LegendaryExplorer.Tests.Audio;
@@ -205,4 +206,68 @@ public class WwiseHelperTests
         Assert.IsTrue(Soundpanel.MatchesHircFilter(hirc, string.Empty));
         Assert.IsFalse(Soundpanel.MatchesHircFilter(hirc, "streamed"));
     }
+
+    [TestMethod]
+    public void PropagatesEventPreviewToActionsAndReferencedHierarchy()
+    {
+        const uint eventId = 0x11111111;
+        const uint secondEventId = 0x22222222;
+        const uint actionId = 0x33333333;
+        const uint secondActionId = 0x44444444;
+        const uint actorMixerId = 0x55555555;
+        const uint soundId = 0x66666666;
+        var hircObjects = new[]
+        {
+            CreateEventDisplay(0, eventId, actionId),
+            CreateEventDisplay(1, secondEventId, secondActionId),
+            CreateActionDisplay(2, actionId, actorMixerId),
+            CreateActionDisplay(3, secondActionId, actorMixerId),
+            CreateGenericDisplay(4, HIRCType.ActorMixer, actorMixerId),
+            CreateGenericDisplay(5, HIRCType.SoundSXFSoundVoice, soundId)
+        };
+        var actorMixer = new WwiserActorMixer { Id = actorMixerId };
+        var sound = new WwiserSound { Id = soundId };
+        sound.NodeBaseParameters.DirectParentId = actorMixerId;
+        Soundpanel.ApplyWwiserHircMetadata(hircObjects, [actorMixer, sound], 0);
+
+        IReadOnlyDictionary<uint, string> connectedPreviews = Soundpanel.BuildConnectedHircEventPreviews(
+            hircObjects, new Dictionary<uint, string>
+            {
+                [eventId] = "TLK 100: First line.",
+                [secondEventId] = "TLK 200: Second line."
+            });
+
+        Assert.AreEqual("TLK 100: First line.", connectedPreviews[actionId]);
+        Assert.AreEqual("TLK 200: Second line.", connectedPreviews[secondActionId]);
+        Assert.AreEqual($"TLK 100: First line.{System.Environment.NewLine}TLK 200: Second line.",
+            connectedPreviews[actorMixerId]);
+        Assert.AreEqual(connectedPreviews[actorMixerId], connectedPreviews[soundId]);
+        Assert.AreEqual(actorMixerId, hircObjects[^1].DirectParentID);
+    }
+
+    private static HIRCDisplayObject CreateEventDisplay(int index, uint eventId, uint actionId) =>
+        new(index, new WwiseBankParsed.Event
+        {
+            Type = HIRCType.Event,
+            ID = eventId,
+            EventActions = [actionId]
+        }, MEGame.LE3);
+
+    private static HIRCDisplayObject CreateActionDisplay(int index, uint actionId, uint targetId) =>
+        new(index, new WwiseBankParsed.EventAction
+        {
+            Type = HIRCType.EventAction,
+            ID = actionId,
+            ActionType = WwiseBankParsed.EventActionType.Play_LE,
+            ReferencedObjectID = targetId,
+            unparsed = []
+        }, MEGame.LE3);
+
+    private static HIRCDisplayObject CreateGenericDisplay(int index, HIRCType type, uint id) =>
+        new(index, new WwiseBankParsed.HIRCObject
+        {
+            Type = type,
+            ID = id,
+            unparsed = []
+        }, MEGame.LE3);
 }
