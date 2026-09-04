@@ -169,53 +169,58 @@
                     </StackPanel>
                     <sharedToolControls:RecentsControl x:Name="RecentsController" HorizontalAlignment="Center" Margin="20,0,20,15" Grid.Column="3"
                                              Visibility="{Binding Pcc, RelativeSource={RelativeSource FindAncestor, AncestorType={x:Type bases:WPFBase}}, Converter={StaticResource NullVisibilityConverter}, ConverterParameter='Reversed'}"/>
-                    <ListBox Name="WwiseBanks_ListBox" Grid.Column="0" Grid.Row="0"
-                             ItemsSource="{Binding WwiseBankExports}"
-                             SelectedItem="{Binding CurrentExport}"
-                             HorizontalContentAlignment="Stretch"
-                             SelectionMode="Extended"
-                              ContextMenuOpening="WwiseBanks_ListBox_ContextMenuOpening"
-                             Visibility="{Binding Pcc, Converter={StaticResource NullVisibilityConverter}}">
-                        <ListBox.ContextMenu>
-                            <ContextMenu>
-                                <MenuItem Header="Adjust Bank Settings..." Click="AdjustBankSettings_Click"/>
-                                <MenuItem Header="Open in Package Editor" Click="OpenSelectedBankInPackageEditor_Click"/>
-                            </ContextMenu>
-                        </ListBox.ContextMenu>
-                        <ListBox.ItemTemplate>
-                            <DataTemplate DataType="{x:Type packages:ExportEntry}">
-                                <Grid Margin="0,0,5,0">
-                                    <Grid.Style>
-                                        <Style TargetType="{x:Type Grid}">
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding EntryHasPendingChanges}"
-                                                            Value="true">
-                                                    <Setter Property="Background" Value="#50D4A020" />
-                                                    <Setter Property="ToolTip"
-                                                        Value="This export has been modified but the file has not yet been saved" />
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </Grid.Style>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="40" />
-                                        <ColumnDefinition Width="*" />
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Text="{Binding UIndex}" />
-                                    <TextBlock Grid.Column="1" Text="{Binding ObjectName.Instanced}" />
-                                </Grid>
-                            </DataTemplate>
-                        </ListBox.ItemTemplate>
-                        <ListBox.ItemContainerStyle>
-                            <Style>
-                                <Style.Triggers>
-                                    <Trigger Property="Selector.IsSelected" Value="True">
-                                        <Setter Property="TextElement.FontWeight" Value="Bold" />
-                                    </Trigger>
-                                </Style.Triggers>
-                            </Style>
-                        </ListBox.ItemContainerStyle>
-                    </ListBox>
+                    <DockPanel Grid.Column="0" Grid.Row="0"
+                               Visibility="{Binding Pcc, Converter={StaticResource NullVisibilityConverter}}">
+                        <Button DockPanel.Dock="Top" Content="New Bank..." Click="CreateNewBank_Click"
+                                Margin="4" Padding="8,4"
+                                ToolTip="Create a new WwiseBank with the Bulk Audio Importer"/>
+                        <ListBox Name="WwiseBanks_ListBox"
+                                 ItemsSource="{Binding WwiseBankExports}"
+                                 SelectedItem="{Binding CurrentExport}"
+                                 HorizontalContentAlignment="Stretch"
+                                 SelectionMode="Extended"
+                                 ContextMenuOpening="WwiseBanks_ListBox_ContextMenuOpening">
+                            <ListBox.ContextMenu>
+                                <ContextMenu>
+                                    <MenuItem Header="Adjust Bank Settings..." Click="AdjustBankSettings_Click"/>
+                                    <MenuItem Header="Open in Package Editor" Click="OpenSelectedBankInPackageEditor_Click"/>
+                                </ContextMenu>
+                            </ListBox.ContextMenu>
+                            <ListBox.ItemTemplate>
+                                <DataTemplate DataType="{x:Type packages:ExportEntry}">
+                                    <Grid Margin="0,0,5,0">
+                                        <Grid.Style>
+                                            <Style TargetType="{x:Type Grid}">
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding EntryHasPendingChanges}"
+                                                                Value="true">
+                                                        <Setter Property="Background" Value="#50D4A020" />
+                                                        <Setter Property="ToolTip"
+                                                            Value="This export has been modified but the file has not yet been saved" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Grid.Style>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="40" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="{Binding UIndex}" />
+                                        <TextBlock Grid.Column="1" Text="{Binding ObjectName.Instanced}" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                            <ListBox.ItemContainerStyle>
+                                <Style>
+                                    <Style.Triggers>
+                                        <Trigger Property="Selector.IsSelected" Value="True">
+                                            <Setter Property="TextElement.FontWeight" Value="Bold" />
+                                        </Trigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </ListBox.ItemContainerStyle>
+                        </ListBox>
+                    </DockPanel>
                     <GridSplitter Grid.Row="0" Grid.Column="1" Width="5" HorizontalAlignment="Stretch"
                                     Visibility="{Binding Pcc, Converter={StaticResource NullVisibilityConverter}}" />
                     <TabControl TabStripPlacement="Left" Grid.Row="0" Grid.Column="2" Grid.ColumnSpan="2"

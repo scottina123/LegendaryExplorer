@@ -1129,6 +1129,46 @@ namespace LegendaryExplorer.Tools.WwiseEditor
             }
         }
 
+        private void CreateNewBank_Click(object sender, RoutedEventArgs e)
+        {
+            if (Pcc == null)
+            {
+                return;
+            }
+
+            var existingBankIndexes = Pcc.Exports
+                .Where(export => export.ClassName == "WwiseBank")
+                .Select(export => export.UIndex)
+                .ToHashSet();
+            var dialog = new BulkAudioImportDialog(Pcc)
+            {
+                Owner = this
+            };
+
+            if (dialog.ShowDialog() != true)
+            {
+                return;
+            }
+
+            WwiseBankExports.ReplaceAll(Pcc.Exports.Where(export => export.ClassName == "WwiseBank"));
+            string bankName = dialog.BankName?.Trim();
+            var createdBank = WwiseBankExports.FirstOrDefault(bank => !existingBankIndexes.Contains(bank.UIndex))
+                              ?? WwiseBankExports.LastOrDefault(bank =>
+                                  bank.ObjectNameString.Equals(bankName, StringComparison.OrdinalIgnoreCase));
+            if (createdBank != null)
+            {
+                CurrentExport = createdBank;
+            }
+            else
+            {
+                RefreshView();
+            }
+
+            StatusBar_LeftMostText.Text = string.IsNullOrWhiteSpace(bankName)
+                ? "Created Wwise bank"
+                : $"Created Wwise bank {bankName}";
+        }
+
         private void AddAudioToCurrentBank_Click(object sender, RoutedEventArgs e)
         {
             if (Pcc == null || CurrentExport is not { ClassName: "WwiseBank" } bankExport)
