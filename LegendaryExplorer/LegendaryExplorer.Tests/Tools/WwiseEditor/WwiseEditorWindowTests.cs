@@ -18,6 +18,7 @@ using ME3Tweaks.Wwiser.Formats;
 using ME3Tweaks.Wwiser.Model.Action;
 using ME3Tweaks.Wwiser.Model.Hierarchy.Enums;
 using ME3Tweaks.Wwiser.Model.ParameterNode;
+using ME3Tweaks.Wwiser.Model.ParameterNode.Positioning;
 using ME3Tweaks.Wwiser.Model.RTPC;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Piccolo;
@@ -41,6 +42,7 @@ public class WwiseEditorWindowTests
     private const uint HelmetRtpcId = 0xAA2B753F;
     private static readonly uint[] BioWareRadioEffectIds = [125287176, 1177780410];
     private static readonly uint[] HackettQecEffectIds = [1827713496, 1487904704];
+    private static readonly uint[] Le2RadioEffectIds = [0x85ABA16D, 0xF4D30DBA];
 
     [ClassInitialize]
     public static void Initialize(TestContext _) => LegendaryExplorerCoreLib.InitLib(TaskScheduler.Default);
@@ -483,6 +485,76 @@ public class WwiseEditorWindowTests
             Assert.IsTrue(InvokePrivate<bool>("IsLooping", (WwiserSound)target));
         }
         AssertStopEventCoversSounds(reparsed, targetSounds);
+    }
+
+    [TestMethod]
+    public void Le2BankLeafScopesRoundTripEveryEditableAudioSetting()
+    {
+        var bank = LoadTestBank();
+        var parameterNodes = GetParameterNodes(bank);
+        var scopes = InvokePrivate<List<WwiserIHasNode>>("GetRuntimeOverrideNodes", parameterNodes);
+        var sounds = bank.HIRC.Items.Select(item => item.Item).OfType<WwiserSound>().ToList();
+        var parentIds = parameterNodes.Select(item => item.Node.NodeBaseParameters.DirectParentId).ToHashSet();
+
+        Assert.IsNotEmpty(scopes);
+        Assert.IsTrue(scopes.All(scope => scope is WwiserSound ||
+            !parentIds.Contains(((ME3Tweaks.Wwiser.Model.Hierarchy.HircItem)scope).Id)));
+
+        const float volume = -9.5f;
+        const uint outputBusId = 0x23456789;
+        foreach (var scope in scopes)
+        {
+            InvokePrivate("SetInitialParameter", scope.NodeBaseParameters.InitialParams62,
+                PropId.Volume, volume, true);
+            scope.NodeBaseParameters.OverrideBusId = outputBusId;
+        }
+        foreach (var sound in sounds)
+        {
+            InvokePrivate("SetLoopAudio", sound, true);
+        }
+
+        object le2Radio = GetPreset("Le2Radio");
+        Assert.IsTrue(InvokePresetMethod("EnsureEffectData", bank, le2Radio));
+        InvokePrivate("ApplyEffectPresetToScopes", scopes, WwiseEditorEffectPreset.Le2Radio,
+            MEGame.LE2, parameterNodes.Select(item => item.Node).ToList());
+
+        var scopeIds = scopes.Select(scope =>
+            ((ME3Tweaks.Wwiser.Model.Hierarchy.HircItem)scope).Id).ToList();
+        Assert.IsTrue(WwiseBankEffectPresets.SetLe2MusicDuckingOnTargets(bank, scopeIds, true));
+        Assert.IsTrue(WwiseBankEffectPresets.EnsureStandardAttenuationData(
+            bank, MEGame.LE2, 1.25f, out uint attenuationId));
+        WwiseBankEffectPresets.SetStandardAttenuationOnScopes(scopes, attenuationId, true,
+            enableDiffraction: true);
+        InvokePrivate("EnsureStopEventInBank", bank, StopAllEventId, "Stop", sounds);
+
+        var reparsed = RoundTrip(bank);
+        var reparsedScopes = reparsed.HIRC.Items.Select(item => item.Item).OfType<WwiserIHasNode>()
+            .Where(scope => scopeIds.Contains(
+                ((ME3Tweaks.Wwiser.Model.Hierarchy.HircItem)scope).Id))
+            .ToList();
+        Assert.HasCount(scopes.Count, reparsedScopes);
+        foreach (var scope in reparsedScopes)
+        {
+            Assert.AreEqual(volume, InvokePrivate<float>("GetNodeVolume", scope));
+            Assert.AreEqual(outputBusId, scope.NodeBaseParameters.OverrideBusId);
+            Assert.IsTrue(scope.NodeBaseParameters.FxParams.IsOverrideParentFx);
+            CollectionAssert.AreEqual(Le2RadioEffectIds,
+                scope.NodeBaseParameters.FxParams.FxChunks.OrderBy(chunk => chunk.FxIndex)
+                    .Select(chunk => chunk.Id).ToArray());
+            Assert.IsTrue(WwiseBankEffectPresets.HasStandardAttenuationOnAllScopes(
+                [scope], attenuationId));
+            Assert.IsTrue(scope.NodeBaseParameters.PositioningChunk.Flags
+                .HasFlag(PositioningChunk.PositioningFlags.PositioningInfoOverrideParent));
+            Assert.IsTrue(scope.NodeBaseParameters.PositioningChunk.Mode
+                .HasFlag(SpatializationMode.EnableDiffraction));
+            if (scope is WwiserSound sound)
+            {
+                Assert.IsTrue(InvokePrivate<bool>("IsLooping", sound));
+            }
+        }
+
+        Assert.IsTrue(WwiseBankEffectPresets.HasLe2MusicDuckingOnAllTargets(reparsed, scopeIds));
+        AssertStopEventCoversSounds(reparsed, sounds);
     }
 
     [TestMethod]
