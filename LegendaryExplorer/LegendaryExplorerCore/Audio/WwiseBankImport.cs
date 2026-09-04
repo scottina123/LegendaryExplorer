@@ -43,10 +43,31 @@ namespace LegendaryExplorerCore.Audio
             string wwiseLanguage = null,
             XDocument preloadedInfoDoc = null,
             string bankPackageName = null,
-            string bankStreamingAudioPackageName = null)
+            string bankStreamingAudioPackageName = null,
+            string afcName = null,
+            ExportEntry targetBankExport = null)
         {
             var bankName = Path.GetFileNameWithoutExtension(bankPath);
             var bankNameWithExtension = Path.GetFileName(bankPath);
+            bool hasExplicitAfcName = !string.IsNullOrWhiteSpace(afcName);
+            string requestedAfcName = hasExplicitAfcName ? afcName.Trim() : bankName;
+            string afcBaseName = requestedAfcName.EndsWith(".afc", StringComparison.OrdinalIgnoreCase)
+                ? requestedAfcName[..^4]
+                : requestedAfcName;
+            if (string.IsNullOrWhiteSpace(afcBaseName) || afcBaseName is "." or ".." ||
+                !string.Equals(requestedAfcName, Path.GetFileName(requestedAfcName), StringComparison.Ordinal) ||
+                afcBaseName.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
+            {
+                return "AFC name must be a valid file name without a directory path.";
+            }
+
+            if (targetBankExport != null &&
+                (targetBankExport.ClassName != "WwiseBank" ||
+                 !ReferenceEquals(targetBankExport.FileRef, package) ||
+                 !targetBankExport.ObjectNameString.Equals(bankName, StringComparison.OrdinalIgnoreCase)))
+            {
+                return "The selected target bank does not match the generated bank.";
+            }
 
             // Preprocessing
             var generatedDir = Directory.GetParent(bankPath).FullName;
@@ -126,9 +147,11 @@ namespace LegendaryExplorerCore.Audio
 
             // Check if the bank exists as an import in the requested scope. When no explicit
             // package is supplied, retain the legacy name-only check.
-            ImportEntry bankImport = requestedBankPath != null
-                ? package.FindImport(requestedBankPath)
-                : package.Imports.FirstOrDefault(i => i.ObjectNameString == bankName);
+            ImportEntry bankImport = targetBankExport == null
+                ? requestedBankPath != null
+                    ? package.FindImport(requestedBankPath)
+                    : package.Imports.FirstOrDefault(i => i.ObjectNameString == bankName)
+                : null;
             if(bankImport != null)
             {
                 return "Bank Import found with that name, process can only work with local banks. Terminated.";
@@ -136,12 +159,12 @@ namespace LegendaryExplorerCore.Audio
 
             // An explicit package path is authoritative. This prevents a same-named bank under
             // another package (for example an old _D.audio import) from stealing an _S import.
-            ExportEntry bankExport = requestedBankPath != null
+            ExportEntry bankExport = targetBankExport ?? (requestedBankPath != null
                 ? package.FindExport(requestedBankPath, "WwiseBank")
-                : package.Exports.FirstOrDefault(x => x.ObjectNameString == bankName);
-            var parentPackage = requestedBankPath != null
+                : package.Exports.FirstOrDefault(x => x.ObjectNameString == bankName));
+            var parentPackage = targetBankExport?.Parent ?? (requestedBankPath != null
                 ? package.FindEntry(bankPackageName)
-                : bankExport?.Parent;
+                : bankExport?.Parent);
             if (parentPackage == null)
             {
                 parentPackage = package.FindEntry(bankPackageName ?? bankName);
@@ -158,21 +181,27 @@ namespace LegendaryExplorerCore.Audio
                 bankExport = ExportCreator.CreateExport(package, bankName, "WwiseBank", parentPackage, indexed: false);
             }
 
-            bankExport.WriteProperty(new ObjectProperty(GetInitBankReference(package), "Parent"));
-            // Id is stored as uint - we read as uint and then write as int as it's the same.
-            bankExport.WriteProperty(new IntProperty((int)uint.Parse(soundBankChunk.Attribute("Id").Value), "Id"));
+            if (targetBankExport == null)
+            {
+                bankExport.WriteProperty(new ObjectProperty(GetInitBankReference(package), "Parent"));
+                // Id is stored as uint - we read as uint and then write as int as it's the same.
+                bankExport.WriteProperty(new IntProperty((int)uint.Parse(soundBankChunk.Attribute("Id").Value), "Id"));
+            }
             WwiseBank.WriteBankRaw(File.ReadAllBytes(bankPath), bankExport);
 
             // Prepare the AFC
-            var afcPath = Path.Combine(Directory.GetParent(package.FilePath).FullName, $"{bankName}"); // Will need changed if localized!
             if (localization != MELocalization.None)
             {
                 bankExport.WriteProperty(new BoolProperty(true, "IsLocalised")); // ME3/LE3. Unsure of LE2
-                afcPath += $"_{localization.ToString().ToLower()}";
+                if (!hasExplicitAfcName)
+                {
+                    afcBaseName += $"_{localization.ToString().ToLower()}";
+                }
             }
 
-            afcPath += ".afc";
+            var afcPath = Path.Combine(Directory.GetParent(package.FilePath).FullName, afcBaseName + ".afc");
             using var afcStream = File.Open(afcPath, FileMode.OpenOrCreate);
+            afcStream.Seek(0, SeekOrigin.End);
 
             // Import the streams
             List<ExportEntry> streamExports = new List<ExportEntry>();
@@ -220,14 +249,14 @@ namespace LegendaryExplorerCore.Audio
                         if (package.Game == MEGame.LE3)
                         {
                             // LE3
-                            p.Add(new NameProperty(Path.GetFileNameWithoutExtension(afcPath), "Filename"));
+                            p.Add(new NameProperty(afcBaseName, "Filename"));
                             p.Add(new IntProperty((int)streamInfo.Id, "Id"));
                         }
                         else
                         {
                             // LE2
-                            p.Add(new NameProperty(Path.GetFileNameWithoutExtension(afcPath), "Filename"));
-                            p.Add(new NameProperty(Path.GetFileNameWithoutExtension(afcPath), "BankName"));
+                            p.Add(new NameProperty(afcBaseName, "Filename"));
+                            p.Add(new NameProperty(afcBaseName, "BankName"));
                             p.Add(new IntProperty((int)streamInfo.Id, "Id"));
                         }
                     }
@@ -257,7 +286,7 @@ namespace LegendaryExplorerCore.Audio
                         var wemData = File.ReadAllBytes(wemPath);
                         afcStream.Write(wemData);
                         ws.DataSize = wemData.Length;
-                        ws.Filename = bankName; // This is needed internally for serialization
+                        ws.Filename = afcBaseName; // This is needed internally for serialization
                         ws.BulkDataFlags = 0x1; // Stored externally, uncompressed
 
                         if (package.Game == MEGame.LE2)

@@ -1129,6 +1129,31 @@ namespace LegendaryExplorer.Tools.WwiseEditor
             }
         }
 
+        private void AddAudioToCurrentBank_Click(object sender, RoutedEventArgs e)
+        {
+            if (Pcc == null || CurrentExport is not { ClassName: "WwiseBank" } bankExport)
+            {
+                return;
+            }
+
+            var dialog = new BulkAudioImportDialog(
+                Pcc,
+                bankPackageName: bankExport.Parent?.InstancedFullPath,
+                bankStreamingAudioPackageName: BulkAudioImportDialog.GetSuggestedStreamingPackageName(bankExport),
+                initialBankName: bankExport.ObjectNameString,
+                allowFaceFxAssetCreation: false,
+                targetBankExport: bankExport)
+            {
+                Owner = this
+            };
+
+            if (dialog.ShowDialog() == true)
+            {
+                RefreshView();
+                StatusBar_LeftMostText.Text = $"Added audio to {bankExport.ObjectName.Instanced}";
+            }
+        }
+
         private static float GetNodeVolume(WwiserIHasNode node)
         {
             var parameters = node.NodeBaseParameters.InitialParams62;

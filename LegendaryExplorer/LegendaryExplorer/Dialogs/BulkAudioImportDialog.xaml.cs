@@ -26,7 +26,10 @@ using Microsoft.Win32;
 using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
 using LegendaryExplorerCore.Helpers;
 using ME3Tweaks.Wwiser;
+using ME3Tweaks.Wwiser.Model;
 using ME3Tweaks.Wwiser.Model.ParameterNode;
+using CoreWwiseBank = LegendaryExplorerCore.Unreal.BinaryConverters.WwiseBank;
+using WwiserBank = ME3Tweaks.Wwiser.WwiseBank;
 using WwiserActorMixer = ME3Tweaks.Wwiser.Model.Hierarchy.ActorMixer;
 using WwiserIHasNode = ME3Tweaks.Wwiser.Model.Hierarchy.IHasNode;
 using WwiserSound = ME3Tweaks.Wwiser.Model.Hierarchy.Sound;
@@ -38,6 +41,7 @@ namespace LegendaryExplorer.Dialogs
         public ObservableCollection<AudioImportItem> WavFileItems { get; } = new();
         public ICollectionView WavFileItemsView { get; }
         public IEnumerable<string> WavFiles => WavFileItems.Select(item => item.FilePath);
+        public ObservableCollection<string> AvailableAfcNames { get; } = new();
 
         private string _audioFileFilterText;
         public string AudioFileFilterText
@@ -184,11 +188,58 @@ namespace LegendaryExplorer.Dialogs
         private readonly IMEPackage _package;
         private readonly string _bankPackageName;
         private readonly string _bankStreamingAudioPackageName;
+        private readonly ExportEntry _targetBankExport;
         private readonly bool _allowFaceFxAssetCreation;
         private const string ConversationOutputBus = "Env-VO-Conversation";
         private const string Le2ConversationOutputBus = "Conversation";
         private bool _syncFaceFxAssetNames = true;
         private bool _updatingFaceFxAssetNames;
+        private bool _syncAfcName = true;
+        private bool _updatingAfcNameFromBank;
+
+        private string _bankName;
+        public string BankName
+        {
+            get => _bankName;
+            set
+            {
+                if (_bankName == value)
+                {
+                    return;
+                }
+
+                _bankName = value;
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(BankName)));
+                if (_syncAfcName)
+                {
+                    _updatingAfcNameFromBank = true;
+                    AfcName = value;
+                    _updatingAfcNameFromBank = false;
+                }
+            }
+        }
+
+        private string _afcName;
+        public string AfcName
+        {
+            get => _afcName;
+            set
+            {
+                if (_afcName == value)
+                {
+                    return;
+                }
+
+                _afcName = value;
+                if (!_updatingAfcNameFromBank)
+                {
+                    _syncAfcName = false;
+                }
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(AfcName)));
+            }
+        }
+
+        public bool IsExistingBankTarget => _targetBankExport != null;
 
         public BulkAudioImportDialog(
             IMEPackage package,
@@ -198,12 +249,28 @@ namespace LegendaryExplorer.Dialogs
             string initialBankName = null,
             bool? isDialogueBank = null,
             bool? generateGenderedEvents = null,
-            bool allowFaceFxAssetCreation = true)
+            bool allowFaceFxAssetCreation = true,
+            string initialAfcName = null,
+            ExportEntry targetBankExport = null)
         {
             _package = package;
             _bankPackageName = bankPackageName;
             _bankStreamingAudioPackageName = bankStreamingAudioPackageName;
+            _targetBankExport = targetBankExport;
             _allowFaceFxAssetCreation = allowFaceFxAssetCreation;
+            _bankName = string.IsNullOrWhiteSpace(initialBankName) ? "NewBank" : initialBankName;
+
+            var referencedAfcNames = FindReferencedAfcNames(targetBankExport);
+            foreach (string existingAfcName in referencedAfcNames
+                         .Concat(FindPackageAfcNames(package))
+                         .Distinct(StringComparer.OrdinalIgnoreCase))
+            {
+                AvailableAfcNames.Add(existingAfcName);
+            }
+
+            string preferredAfcName = initialAfcName ?? referencedAfcNames.FirstOrDefault();
+            _afcName = string.IsNullOrWhiteSpace(preferredAfcName) ? _bankName : preferredAfcName;
+            _syncAfcName = string.IsNullOrWhiteSpace(preferredAfcName);
             WavFileItemsView = CollectionViewSource.GetDefaultView(WavFileItems);
             WavFileItemsView.Filter = item =>
                 item is AudioImportItem audioItem && MatchesAudioFileFilter(audioItem, AudioFileFilterText);
@@ -242,11 +309,6 @@ namespace LegendaryExplorer.Dialogs
                 SetNamedElementVisibility("MaleFaceFXAssetNameTextBox", Visibility.Collapsed);
             }
 
-            if (!string.IsNullOrWhiteSpace(initialBankName))
-            {
-                BankNameTextBox.Text = initialBankName;
-            }
-
             if (initialWavFiles != null)
             {
                 foreach (var file in initialWavFiles
@@ -265,6 +327,112 @@ namespace LegendaryExplorer.Dialogs
             if (generateGenderedEvents.HasValue)
             {
                 GenerateGenderedEventsCheckBox.IsChecked = generateGenderedEvents.Value;
+            }
+        }
+
+        internal static IReadOnlyList<string> FindReferencedAfcNames(ExportEntry bankExport) =>
+            FindReferencedStreamExports(bankExport)
+                .Select(GetStreamAfcName)
+                .Where(name => !string.IsNullOrWhiteSpace(name))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+        internal static string GetSuggestedStreamingPackageName(ExportEntry bankExport)
+        {
+            IEntry bankParent = bankExport?.Parent;
+            IEntry streamParent = FindReferencedStreamExports(bankExport)
+                .Select(stream => stream.Parent)
+                .FirstOrDefault(parent => parent != null);
+            if (streamParent == null || ReferenceEquals(streamParent, bankParent))
+            {
+                return null;
+            }
+
+            return ReferenceEquals(streamParent.Parent, bankParent)
+                ? streamParent.ObjectName.Instanced
+                : null;
+        }
+
+        private static IReadOnlyList<ExportEntry> FindReferencedStreamExports(ExportEntry bankExport)
+        {
+            if (bankExport?.ClassName != "WwiseBank")
+            {
+                return [];
+            }
+
+            try
+            {
+                var rawBank = bankExport.GetBinaryData<CoreWwiseBank>();
+                using var input = new MemoryStream(rawBank.BnkFile, false);
+                var bank = WwiseBankParser.Deserialize(input);
+                var sourceIds = bank.HIRC?.Items
+                    .Select(container => container.Item)
+                    .OfType<WwiserSound>()
+                    .Select(sound => sound.BankSourceData.MediaInformation.SourceId)
+                    .Where(id => id != 0)
+                    .ToHashSet() ?? [];
+
+                if (sourceIds.Count == 0)
+                {
+                    return [];
+                }
+
+                var streams = new List<ExportEntry>();
+                foreach (ExportEntry streamExport in bankExport.FileRef.Exports.Where(export =>
+                             export.ClassName == "WwiseStream"))
+                {
+                    try
+                    {
+                        var stream = streamExport.GetBinaryData<WwiseStream>();
+                        if (sourceIds.Contains(unchecked((uint)stream.Id)))
+                        {
+                            streams.Add(streamExport);
+                        }
+                    }
+                    catch
+                    {
+                        // Ignore malformed WwiseStream exports while finding suggestions.
+                    }
+                }
+
+                return streams;
+            }
+            catch
+            {
+                return [];
+            }
+        }
+
+        private static IReadOnlyList<string> FindPackageAfcNames(IMEPackage package)
+        {
+            if (package == null)
+            {
+                return [];
+            }
+
+            var names = new List<string>();
+            foreach (ExportEntry streamExport in package.Exports.Where(export =>
+                         export.ClassName == "WwiseStream"))
+            {
+                string name = GetStreamAfcName(streamExport);
+                if (!string.IsNullOrWhiteSpace(name))
+                {
+                    names.Add(name);
+                }
+            }
+
+            return names.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        }
+
+        private static string GetStreamAfcName(ExportEntry streamExport)
+        {
+            try
+            {
+                return streamExport.GetBinaryData<WwiseStream>().Filename;
+            }
+            catch
+            {
+                return null;
             }
         }
 
@@ -726,10 +894,17 @@ namespace LegendaryExplorer.Dialogs
                 return;
             }
 
-            var bankName = BankNameTextBox.Text.Trim();
+            var bankName = BankName?.Trim();
             if (string.IsNullOrEmpty(bankName))
             {
                 MessageBox.Show("Please enter a bank name.", "Missing bank name", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            if (!TryNormalizeAfcName(AfcName, out string afcName))
+            {
+                MessageBox.Show("Please enter a valid AFC file name. Enter a name only, without a directory path.",
+                    "Invalid AFC name", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
 
@@ -812,7 +987,7 @@ namespace LegendaryExplorer.Dialogs
 
             try
             {
-                var result = await Task.Run(() => RunBulkAudioImport(bankName, isDialogue, volume, outputBusName,
+                var result = await Task.Run(() => RunBulkAudioImport(bankName, afcName, isDialogue, volume, outputBusName,
                     generateGenderedEvents, loopAudio, applyRadioEffect, applyQecEffect, applyHelmetEffect,
                     applyHologramEffect, applyMusicDucking, applyStandardAttenuation, attenuationDistanceScale,
                     createSharedStopEvent, createFaceFxAssets, topFolderName,
@@ -843,7 +1018,7 @@ namespace LegendaryExplorer.Dialogs
             }
         }
 
-        private string RunBulkAudioImport(string bankName, bool isDialogue, double volume, string outputBusName,
+        private string RunBulkAudioImport(string bankName, string afcName, bool isDialogue, double volume, string outputBusName,
             bool generateGenderedEvents, bool loopAudio, bool applyRadioEffect, bool applyQecEffect,
             bool applyHelmetEffect, bool applyHologramEffect, bool applyMusicDucking, bool applyStandardAttenuation,
             double attenuationDistanceScale, bool createSharedStopEvent, bool createFaceFxAssets,
@@ -991,6 +1166,11 @@ namespace LegendaryExplorer.Dialogs
                     return $"Generated bank '{bankName}.bnk' not found in output. Available files: {availableFiles}";
                 }
 
+                if (_targetBankExport != null)
+                {
+                    EnsureGeneratedRootActorMixerIdsDoNotCollide(bnkPath, _targetBankExport);
+                }
+
                 if (applyRadioEffect)
                 {
                     ApplyBioWareRadioEffectToBank(bnkPath, _package.Game);
@@ -1030,6 +1210,11 @@ namespace LegendaryExplorer.Dialogs
                     ApplyStandardAttenuationToBank(bnkPath, attenuationDistanceScale, _package.Game);
                 }
 
+                if (_targetBankExport != null)
+                {
+                    MergeGeneratedBankIntoExistingBank(bnkPath, _targetBankExport);
+                }
+
                 Dispatcher.Invoke(() => StatusTextBlock.Text = "Importing soundbank into package...");
 
                 var effectiveBankPackageName = _bankPackageName;
@@ -1049,7 +1234,10 @@ namespace LegendaryExplorer.Dialogs
                 //     directly under that package. WwiseStreams use the optional stream subfolder;
                 //     LE2 Dialogue/FaceFX workflows pass none so all three export types live in _S.
                 var importResult = WwiseBankImport.ImportBank(bnkPath, isDialogue, _package,
-                    bankPackageName: effectiveBankPackageName, bankStreamingAudioPackageName: effectiveStreamingAudioPackageName);
+                    bankPackageName: effectiveBankPackageName,
+                    bankStreamingAudioPackageName: effectiveStreamingAudioPackageName,
+                    afcName: afcName,
+                    targetBankExport: _targetBankExport);
 
                 // 11. Set DurationSeconds on events from WAV file headers.
                 //     This is critical for dialogue: without DurationSeconds the game's dialogue
@@ -2485,6 +2673,212 @@ namespace LegendaryExplorer.Dialogs
                     maxNum = num;
             }
             return maxNum;
+        }
+
+        private static bool TryNormalizeAfcName(string value, out string afcName)
+        {
+            afcName = value?.Trim();
+            if (string.IsNullOrWhiteSpace(afcName) ||
+                !string.Equals(afcName, Path.GetFileName(afcName), StringComparison.Ordinal) ||
+                afcName.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
+            {
+                return false;
+            }
+
+            if (afcName.EndsWith(".afc", StringComparison.OrdinalIgnoreCase))
+            {
+                afcName = afcName[..^4];
+            }
+
+            return !string.IsNullOrWhiteSpace(afcName) && afcName is not "." and not "..";
+        }
+
+        private static void MergeGeneratedBankIntoExistingBank(string generatedBankPath,
+            ExportEntry targetBankExport)
+        {
+            var rawExistingBank = targetBankExport.GetBinaryData<CoreWwiseBank>();
+            WwiserBank existingBank;
+            using (var existingInput = new MemoryStream(rawExistingBank.BnkFile, false))
+            {
+                existingBank = WwiseBankParser.Deserialize(existingInput);
+            }
+
+            WwiserBank generatedBank;
+            using (var generatedInput = File.OpenRead(generatedBankPath))
+            {
+                generatedBank = WwiseBankParser.Deserialize(generatedInput);
+            }
+
+            WwiserBank mergedBank = MergeGeneratedBank(existingBank, generatedBank);
+            using var output = new MemoryStream();
+            WwiseBankParser.Serialize(mergedBank, output);
+            File.WriteAllBytes(generatedBankPath, output.ToArray());
+        }
+
+        private static void EnsureGeneratedRootActorMixerIdsDoNotCollide(string generatedBankPath,
+            ExportEntry targetBankExport)
+        {
+            var rawExistingBank = targetBankExport.GetBinaryData<CoreWwiseBank>();
+            WwiserBank existingBank;
+            using (var existingInput = new MemoryStream(rawExistingBank.BnkFile, false))
+            {
+                existingBank = WwiseBankParser.Deserialize(existingInput);
+            }
+
+            WwiserBank generatedBank;
+            using (var generatedInput = File.OpenRead(generatedBankPath))
+            {
+                generatedBank = WwiseBankParser.Deserialize(generatedInput);
+            }
+
+            if (!ReassignCollidingRootActorMixerIds(existingBank, generatedBank))
+            {
+                return;
+            }
+
+            using var output = new MemoryStream();
+            WwiseBankParser.Serialize(generatedBank, output);
+            File.WriteAllBytes(generatedBankPath, output.ToArray());
+        }
+
+        internal static bool ReassignCollidingRootActorMixerIds(WwiserBank existingBank,
+            WwiserBank generatedBank)
+        {
+            ArgumentNullException.ThrowIfNull(existingBank);
+            ArgumentNullException.ThrowIfNull(generatedBank);
+            if (existingBank.HIRC == null || generatedBank.HIRC == null)
+            {
+                return false;
+            }
+
+            var existingIds = existingBank.HIRC.Items.Select(container => container.Item.Id).ToHashSet();
+            var generatedIds = generatedBank.HIRC.Items.Select(container => container.Item.Id).ToHashSet();
+            var generatedActorMixerIds = generatedBank.HIRC.Items
+                .Select(container => container.Item)
+                .OfType<WwiserActorMixer>()
+                .Select(actorMixer => actorMixer.Id)
+                .ToHashSet();
+            var collidingRoots = generatedBank.HIRC.Items
+                .Select(container => container.Item)
+                .OfType<WwiserActorMixer>()
+                .Where(actorMixer =>
+                    (actorMixer.NodeBaseParameters.DirectParentId == 0 ||
+                     !generatedActorMixerIds.Contains(actorMixer.NodeBaseParameters.DirectParentId)) &&
+                    existingIds.Contains(actorMixer.Id))
+                .ToList();
+            if (collidingRoots.Count == 0)
+            {
+                return false;
+            }
+
+            var usedIds = existingIds.Concat(generatedIds).ToHashSet();
+            foreach (var actorMixer in collidingRoots)
+            {
+                uint oldId = actorMixer.Id;
+                uint newId;
+                do
+                {
+                    newId = GenerateShortId($"BulkAudioImport_{Guid.NewGuid():N}");
+                } while (newId == 0 || !usedIds.Add(newId));
+
+                actorMixer.Id = newId;
+                generatedIds.Remove(oldId);
+                generatedIds.Add(newId);
+                foreach (var child in generatedBank.HIRC.Items
+                             .Select(container => container.Item)
+                             .OfType<WwiserIHasNode>()
+                             .Where(node => node.NodeBaseParameters.DirectParentId == oldId))
+                {
+                    child.NodeBaseParameters.DirectParentId = newId;
+                }
+            }
+
+            return true;
+        }
+
+        internal static WwiserBank MergeGeneratedBank(WwiserBank existingBank, WwiserBank generatedBank)
+        {
+            ArgumentNullException.ThrowIfNull(existingBank);
+            ArgumentNullException.ThrowIfNull(generatedBank);
+            if (existingBank.BKHD.BankGeneratorVersion != generatedBank.BKHD.BankGeneratorVersion)
+            {
+                throw new InvalidOperationException(
+                    $"Cannot add generated version-{generatedBank.BKHD.BankGeneratorVersion} audio to a " +
+                    $"version-{existingBank.BKHD.BankGeneratorVersion} Wwise bank.");
+            }
+
+            if (generatedBank.HIRC != null)
+            {
+                if (existingBank.HIRC == null)
+                {
+                    existingBank.HIRC = generatedBank.HIRC;
+                }
+                else
+                {
+                    var existingIndexes = existingBank.HIRC.Items
+                        .Select((container, index) => (container.Item.Id, index))
+                        .GroupBy(item => item.Id)
+                        .ToDictionary(group => group.Key, group => group.First().index);
+                    foreach (var generatedContainer in generatedBank.HIRC.Items)
+                    {
+                        uint id = generatedContainer.Item.Id;
+                        if (existingIndexes.TryGetValue(id, out int existingIndex))
+                        {
+                            existingBank.HIRC.Items[existingIndex] = generatedContainer;
+                        }
+                        else
+                        {
+                            existingIndexes.Add(id, existingBank.HIRC.Items.Count);
+                            existingBank.HIRC.Items.Add(generatedContainer);
+                        }
+                    }
+
+                    existingBank.HIRC.ItemCount = checked((uint)existingBank.HIRC.Items.Count);
+                }
+            }
+
+            foreach (var generatedFile in generatedBank.EmbeddedFiles)
+            {
+                int existingIndex = existingBank.EmbeddedFiles.FindIndex(file => file.Id == generatedFile.Id);
+                if (existingIndex >= 0)
+                {
+                    existingBank.EmbeddedFiles[existingIndex] = generatedFile;
+                }
+                else
+                {
+                    existingBank.EmbeddedFiles.Add(generatedFile);
+                }
+            }
+
+            if (existingBank.INIT == null)
+            {
+                existingBank.INIT = generatedBank.INIT;
+            }
+            else if (generatedBank.INIT != null)
+            {
+                foreach (var generatedPlugin in generatedBank.INIT.AKPluginList)
+                {
+                    int existingIndex = existingBank.INIT.AKPluginList.FindIndex(plugin =>
+                        plugin.Plugin.PluginId == generatedPlugin.Plugin.PluginId);
+                    if (existingIndex >= 0)
+                    {
+                        existingBank.INIT.AKPluginList[existingIndex] = generatedPlugin;
+                    }
+                    else
+                    {
+                        existingBank.INIT.AKPluginList.Add(generatedPlugin);
+                    }
+                }
+
+                existingBank.INIT.PluginCount = checked((uint)existingBank.INIT.AKPluginList.Count);
+            }
+
+            existingBank.STID ??= generatedBank.STID;
+            existingBank.STMG ??= generatedBank.STMG;
+            existingBank.FXPR ??= generatedBank.FXPR;
+            existingBank.ENVS ??= generatedBank.ENVS;
+            existingBank.PLAT ??= generatedBank.PLAT;
+            return existingBank;
         }
 
         private static bool IsValidPackageObjectName(string name)

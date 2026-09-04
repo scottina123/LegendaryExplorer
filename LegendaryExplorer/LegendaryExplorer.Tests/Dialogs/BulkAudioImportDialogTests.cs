@@ -13,6 +13,7 @@ using LegendaryExplorerCore;
 using LegendaryExplorerCore.Audio;
 using LegendaryExplorerCore.Packages;
 using ME3Tweaks.Wwiser;
+using ME3Tweaks.Wwiser.Model;
 using HircAction = ME3Tweaks.Wwiser.Model.Hierarchy.Action;
 using HircEvent = ME3Tweaks.Wwiser.Model.Hierarchy.Event;
 using ME3Tweaks.Wwiser.Model.Hierarchy;
@@ -147,6 +148,97 @@ public class BulkAudioImportDialogTests
         Assert.IsTrue(BulkAudioImportDialog.MatchesOutputBusFilter("Master Audio Bus", ""));
         Assert.IsFalse(BulkAudioImportDialog.MatchesOutputBusFilter("Env-VO-Conversation", "music"));
         Assert.IsFalse(BulkAudioImportDialog.MatchesOutputBusFilter(null, "music"));
+    }
+
+    [TestMethod]
+    public void ExistingBankMergePreservesOldHircsAndAddsOrReplacesGeneratedHircs()
+    {
+        static HircItemContainer EventContainer(uint id, params uint[] actionIds) => new()
+        {
+            Type = new HircSmartType { Value = HircType.Event },
+            Item = new HircEvent { Id = id, ActionIds = actionIds.ToList() }
+        };
+
+        var existingBank = new WwiseBank
+        {
+            BKHD = new BankHeaderChunk { BankGeneratorVersion = 134, SoundBankId = 10 },
+            HIRC = new HierarchyChunk
+            {
+                ItemCount = 2,
+                Items = [EventContainer(1, 11), EventContainer(2, 22)]
+            }
+        };
+        var generatedBank = new WwiseBank
+        {
+            BKHD = new BankHeaderChunk { BankGeneratorVersion = 134, SoundBankId = 20 },
+            HIRC = new HierarchyChunk
+            {
+                ItemCount = 2,
+                Items = [EventContainer(2, 222), EventContainer(3, 33)]
+            }
+        };
+
+        WwiseBank result = BulkAudioImportDialog.MergeGeneratedBank(existingBank, generatedBank);
+
+        Assert.AreSame(existingBank, result);
+        Assert.AreEqual(10u, result.BKHD.SoundBankId);
+        Assert.AreEqual(3u, result.HIRC.ItemCount);
+        CollectionAssert.AreEquivalent(new uint[] { 1, 2, 3 },
+            result.HIRC.Items.Select(container => container.Item.Id).ToArray());
+        CollectionAssert.AreEqual(new uint[] { 11 },
+            ((HircEvent)result.HIRC.Items.Single(container => container.Item.Id == 1).Item).ActionIds);
+        CollectionAssert.AreEqual(new uint[] { 222 },
+            ((HircEvent)result.HIRC.Items.Single(container => container.Item.Id == 2).Item).ActionIds);
+    }
+
+    [TestMethod]
+    public void ExistingBankImportReassignsCollidingGeneratedRootActorMixer()
+    {
+        static HircItemContainer ActorMixerContainer(uint id, uint parentId, params uint[] childIds) => new()
+        {
+            Type = new HircSmartType { Value = HircType.ActorMixer },
+            Item = new ActorMixer
+            {
+                Id = id,
+                NodeBaseParameters = new NodeBaseParameters { DirectParentId = parentId },
+                Children = new Children
+                {
+                    ChildrenCount = checked((uint)childIds.Length),
+                    ChildrenValues = childIds.ToList()
+                }
+            }
+        };
+        static HircItemContainer SoundContainer(uint id, uint parentId) => new()
+        {
+            Type = new HircSmartType { Value = HircType.Sound },
+            Item = new Sound
+            {
+                Id = id,
+                NodeBaseParameters = new NodeBaseParameters { DirectParentId = parentId }
+            }
+        };
+
+        var existingBank = new WwiseBank
+        {
+            HIRC = new HierarchyChunk { ItemCount = 1, Items = [ActorMixerContainer(10, 0, 11)] }
+        };
+        var generatedBank = new WwiseBank
+        {
+            HIRC = new HierarchyChunk
+            {
+                ItemCount = 2,
+                Items = [ActorMixerContainer(10, 0, 20), SoundContainer(20, 10)]
+            }
+        };
+
+        Assert.IsTrue(BulkAudioImportDialog.ReassignCollidingRootActorMixerIds(existingBank, generatedBank));
+
+        var generatedMixer = (ActorMixer)generatedBank.HIRC.Items[0].Item;
+        var generatedSound = (Sound)generatedBank.HIRC.Items[1].Item;
+        Assert.AreNotEqual(10u, generatedMixer.Id);
+        Assert.AreEqual(generatedMixer.Id, generatedSound.NodeBaseParameters.DirectParentId);
+        CollectionAssert.AreEqual(new uint[] { 20 }, generatedMixer.Children.ChildrenValues);
+        Assert.AreEqual(10u, ((ActorMixer)existingBank.HIRC.Items[0].Item).Id);
     }
 
     [TestMethod]

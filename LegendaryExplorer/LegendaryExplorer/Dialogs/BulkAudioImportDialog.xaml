@@ -174,14 +174,24 @@
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
                 <Label Grid.Row="0" Grid.Column="0" Content="Bank Name:" VerticalAlignment="Center"/>
-                <TextBox Grid.Row="0" Grid.Column="1" x:Name="BankNameTextBox" Text="NewBank" Padding="4" Margin="5,2"/>
-                <Label Grid.Row="1" Grid.Column="0" Content="Volume (dB):" VerticalAlignment="Center"/>
-                <TextBox Grid.Row="1" Grid.Column="1" x:Name="VolumeTextBox" Text="-10" Padding="4" Margin="5,2"
+                <TextBox Grid.Row="0" Grid.Column="1" x:Name="BankNameTextBox"
+                         Text="{Binding BankName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                         IsReadOnly="{Binding IsExistingBankTarget}"
+                         Padding="4" Margin="5,2"/>
+                <Label Grid.Row="1" Grid.Column="0" Content="AFC Name:" VerticalAlignment="Center"/>
+                <ComboBox Grid.Row="1" Grid.Column="1" x:Name="AfcNameComboBox"
+                          ItemsSource="{Binding AvailableAfcNames}" IsEditable="True"
+                          Text="{Binding AfcName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                          Padding="4" Margin="5,2"
+                          ToolTip="Select an existing AFC to append to it, or type a new AFC name to create it."/>
+                <Label Grid.Row="2" Grid.Column="0" Content="Volume (dB):" VerticalAlignment="Center"/>
+                <TextBox Grid.Row="2" Grid.Column="1" x:Name="VolumeTextBox" Text="-10" Padding="4" Margin="5,2"
                          ToolTip="Volume offset in dB applied to the ActorMixer. Typical dialogue value is -10."/>
-                <Label Grid.Row="2" Grid.Column="0" Content="Output Bus:" VerticalAlignment="Top" Padding="5,8,5,5"/>
-                <Grid Grid.Row="2" Grid.Column="1" Margin="5,2">
+                <Label Grid.Row="3" Grid.Column="0" Content="Output Bus:" VerticalAlignment="Top" Padding="5,8,5,5"/>
+                <Grid Grid.Row="3" Grid.Column="1" Margin="5,2">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
@@ -199,31 +209,31 @@
                              ScrollViewer.VerticalScrollBarVisibility="Auto"
                              ToolTip="The game-specific Wwise output bus for the ActorMixer. The selected bus is injected into the temporary project automatically."/>
                 </Grid>
-                <Label Grid.Row="3" Grid.Column="0" Content="Dialogue Bank:" VerticalAlignment="Center"/>
-                <CheckBox Grid.Row="3" Grid.Column="1" x:Name="IsDialogueBankCheckBox" IsChecked="True" VerticalAlignment="Center" Margin="5,4"
+                <Label Grid.Row="4" Grid.Column="0" Content="Dialogue Bank:" VerticalAlignment="Center"/>
+                <CheckBox Grid.Row="4" Grid.Column="1" x:Name="IsDialogueBankCheckBox" IsChecked="True" VerticalAlignment="Center" Margin="5,4"
                           Content="Audio filenames contain TLK refs (e.g. VO_123456_m)" ToolTip="When checked, Wwise object names are retained for dialogue and FaceFX matching."/>
-                <Label Grid.Row="4" Grid.Column="0" Content="Gendered Events:" VerticalAlignment="Center"/>
-                <CheckBox Grid.Row="4" Grid.Column="1" x:Name="GenerateGenderedEventsCheckBox" IsChecked="True" VerticalAlignment="Center" Margin="5,4"
+                <Label Grid.Row="5" Grid.Column="0" Content="Gendered Events:" VerticalAlignment="Center"/>
+                <CheckBox Grid.Row="5" Grid.Column="1" x:Name="GenerateGenderedEventsCheckBox" IsChecked="True" VerticalAlignment="Center" Margin="5,4"
                           Content="Create both _m and _f event variants"/>
-                <Label Grid.Row="5" Grid.Column="0" x:Name="CreateFaceFXAssetsLabel" Content="FaceFX Assets:" VerticalAlignment="Center"/>
-                <CheckBox Grid.Row="5" Grid.Column="1" x:Name="CreateFaceFXAssetsCheckBox" IsChecked="False" VerticalAlignment="Center" Margin="5,4"
+                <Label Grid.Row="6" Grid.Column="0" x:Name="CreateFaceFXAssetsLabel" Content="FaceFX Assets:" VerticalAlignment="Center"/>
+                <CheckBox Grid.Row="6" Grid.Column="1" x:Name="CreateFaceFXAssetsCheckBox" IsChecked="False" VerticalAlignment="Center" Margin="5,4"
                            Content="Create male and female FaceFX assets and generate lines" ToolTip="When checked, imported audio is placed under the top folder's audio package, and matching male/female FaceFXAnimSet assets are created under the top folder."/>
-                <Label Grid.Row="6" Grid.Column="0" x:Name="TopFolderLabel" Content="Top Folder:"
+                <Label Grid.Row="7" Grid.Column="0" x:Name="TopFolderLabel" Content="Top Folder:"
                        VerticalAlignment="Center"
                        IsEnabled="{Binding IsChecked, ElementName=CreateFaceFXAssetsCheckBox}"/>
-                <TextBox Grid.Row="6" Grid.Column="1" x:Name="TopFolderTextBox" Text="NewAudioImport" Padding="4" Margin="5,2" TextChanged="TopFolderTextBox_TextChanged"
+                <TextBox Grid.Row="7" Grid.Column="1" x:Name="TopFolderTextBox" Text="NewAudioImport" Padding="4" Margin="5,2" TextChanged="TopFolderTextBox_TextChanged"
                          IsEnabled="{Binding IsChecked, ElementName=CreateFaceFXAssetsCheckBox}"
                          ToolTip="Package folder to create at the top level. The audio folder will be created under this folder, and generated FaceFX assets will be created directly under this folder."/>
-                <Label Grid.Row="7" Grid.Column="0" x:Name="FemaleFaceFXAssetNameLabel" Content="Female FaceFX:"
+                <Label Grid.Row="8" Grid.Column="0" x:Name="FemaleFaceFXAssetNameLabel" Content="Female FaceFX:"
                        VerticalAlignment="Center"
                        IsEnabled="{Binding IsChecked, ElementName=CreateFaceFXAssetsCheckBox}"/>
-                <TextBox Grid.Row="7" Grid.Column="1" x:Name="FemaleFaceFXAssetNameTextBox" Text="NewAudioImport_F" Padding="4" Margin="5,2" TextChanged="FaceFXAssetNameTextBox_TextChanged"
+                <TextBox Grid.Row="8" Grid.Column="1" x:Name="FemaleFaceFXAssetNameTextBox" Text="NewAudioImport_F" Padding="4" Margin="5,2" TextChanged="FaceFXAssetNameTextBox_TextChanged"
                          IsEnabled="{Binding IsChecked, ElementName=CreateFaceFXAssetsCheckBox}"
                          ToolTip="Name of the generated female FaceFXAnimSet asset under the top folder."/>
-                <Label Grid.Row="8" Grid.Column="0" x:Name="MaleFaceFXAssetNameLabel" Content="Male FaceFX:"
+                <Label Grid.Row="9" Grid.Column="0" x:Name="MaleFaceFXAssetNameLabel" Content="Male FaceFX:"
                        VerticalAlignment="Center"
                        IsEnabled="{Binding IsChecked, ElementName=CreateFaceFXAssetsCheckBox}"/>
-                <TextBox Grid.Row="8" Grid.Column="1" x:Name="MaleFaceFXAssetNameTextBox" Text="NewAudioImport_M" Padding="4" Margin="5,2" TextChanged="FaceFXAssetNameTextBox_TextChanged"
+                <TextBox Grid.Row="9" Grid.Column="1" x:Name="MaleFaceFXAssetNameTextBox" Text="NewAudioImport_M" Padding="4" Margin="5,2" TextChanged="FaceFXAssetNameTextBox_TextChanged"
                          IsEnabled="{Binding IsChecked, ElementName=CreateFaceFXAssetsCheckBox}"
                          ToolTip="Name of the generated male FaceFXAnimSet asset under the top folder."/>
             </Grid>

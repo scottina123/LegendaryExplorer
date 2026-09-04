@@ -38,6 +38,8 @@
             <MenuItem Header="Open in Package Editor" Click="OpenInPackageEditor_Clicked" Name="openInPackEdMenuItem"/>
         </ContextMenu>
         <ContextMenu x:Key="viewportContextMenu" Closed="ContextMenu_Closed">
+            <MenuItem Header="Add Audio to Bank..." Click="AddAudioToCurrentBank_Click"/>
+            <Separator/>
             <MenuItem Header="Adjust Bank Settings..." Click="AdjustBankSettings_Click"/>
             <MenuItem Header="Open Bank in Package Editor" Click="OpenCurrentBankInPackageEditor_Click"/>
         </ContextMenu>
