@@ -516,6 +516,31 @@ public class WwiseEditorWindowTests
     }
 
     [TestMethod]
+    public void ViewportPackageEditorLookupHandlesExportAndHircEventNodes()
+    {
+        const uint eventId = 0xF00000A2;
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("ViewportEventTest.pcc", MEGame.LE3);
+        ExportEntry parent = package.CreatePackageExport("Audio", forcedExport: false);
+        ExportEntry bank = package.CreateExport("Bank", "WwiseBank", parent, indexed: false);
+        ExportEntry eventExport = package.CreateExport("Event", "WwiseEvent", parent, indexed: false);
+        eventExport.WriteProperty(new IntProperty(unchecked((int)eventId), "Id"));
+        eventExport.WriteProperty(new StructProperty("WwiseRelationships", false,
+            new ObjectProperty(bank, "Bank")) { Name = "Relationships" });
+        using var exportNode = new WExport(eventExport, 0, 0, null);
+        using var hircEventNode = new WEvent(new WwiseBankParsed.Event
+        {
+            Type = HIRCType.Event,
+            ID = eventId,
+            EventActions = []
+        }, 0, 0, null);
+
+        Assert.AreSame(eventExport, WwiseEditorWindow.ResolvePackageEditorExport(
+            exportNode, package.Exports, bank));
+        Assert.AreSame(eventExport, WwiseEditorWindow.ResolvePackageEditorExport(
+            hircEventNode, package.Exports, bank));
+    }
+
+    [TestMethod]
     public void EventLeafScopesRoundTripEveryEditableAudioSetting()
     {
         var bank = LoadTestBank();

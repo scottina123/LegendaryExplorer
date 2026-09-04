@@ -109,6 +109,7 @@ namespace LegendaryExplorer.Tools.WwiseEditor
 
             graphEditor = (WwiseGraphEditor)GraphHost.Child;
             graphEditor.BackColor = GraphEditorBackColor;
+            graphEditor.Camera.MouseDown += GraphEditor_BackgroundMouseDown;
 
             AutoSaveView_MenuItem.IsChecked = Misc.AppSettings.Settings.WwiseGraphEditor_AutoSaveView;
 
@@ -124,6 +125,7 @@ namespace LegendaryExplorer.Tools.WwiseEditor
             soundPanel.SoundPanel_TabsControl.SelectedIndex = 1;
             soundPanel.HIRCObjectSelected += SoundPanel_HIRCObjectSelected;
             soundPanel.HIRCEventSettingsRequested += SoundPanel_HIRCEventSettingsRequested;
+            soundPanel.HIRCEventOpenInPackageEditorRequested += SoundPanel_HIRCEventOpenInPackageEditorRequested;
         }
 
         public WwiseEditorWindow(ExportEntry exportToLoad) : this()
@@ -1108,6 +1110,23 @@ namespace LegendaryExplorer.Tools.WwiseEditor
 
             item.IsSelected = true;
             CurrentExport = bankExport;
+        }
+
+        private void OpenSelectedBankInPackageEditor_Click(object sender, RoutedEventArgs e)
+        {
+            if (WwiseBanks_ListBox.SelectedItem is ExportEntry { ClassName: "WwiseBank" } bankExport)
+            {
+                OpenExportInPackageEditor(bankExport);
+            }
+        }
+
+        private void OpenCurrentBankInPackageEditor_Click(object sender, RoutedEventArgs e)
+        {
+            if (CurrentExport is { ClassName: "WwiseBank" } bankExport)
+            {
+                AllowWindowRefocus = false;
+                OpenExportInPackageEditor(bankExport);
+            }
         }
 
         private static float GetNodeVolume(WwiserIHasNode node)
@@ -2482,6 +2501,20 @@ namespace LegendaryExplorer.Tools.WwiseEditor
             }
         }
 
+        private void SoundPanel_HIRCEventOpenInPackageEditorRequested(uint eventId)
+        {
+            ExportEntry eventExport = FindEventExportForBank(Pcc?.Exports, eventId, CurrentExport);
+            if (eventExport == null)
+            {
+                MessageBox.Show(this,
+                    $"No WwiseEvent export linked to HIRC event 0x{eventId:X8} was found for this bank.",
+                    "WwiseEvent export unavailable", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            OpenExportInPackageEditor(eventExport);
+        }
+
         private static ExportEntry FindEventExportForBank(IEnumerable<ExportEntry> exports,
             uint eventId, ExportEntry bankExport)
         {
@@ -2494,6 +2527,24 @@ namespace LegendaryExplorer.Tools.WwiseEditor
         }
 
         private bool panToSelection = true;
+        private void GraphEditor_BackgroundMouseDown(object sender, PInputEventArgs e)
+        {
+            if (e.Button != System.Windows.Forms.MouseButtons.Right ||
+                e.PickedNode is not PCamera ||
+                CurrentExport?.ClassName != "WwiseBank")
+            {
+                return;
+            }
+
+            if (FindResource("viewportContextMenu") is ContextMenu contextMenu)
+            {
+                contextMenu.Placement = System.Windows.Controls.Primitives.PlacementMode.MousePoint;
+                contextMenu.IsOpen = true;
+                graphEditor.DisableDragging();
+                e.Handled = true;
+            }
+        }
+
         protected void Node_MouseDown(object sender, PInputEventArgs e)
         {
             if (sender is WwiseHircObjNode obj)
@@ -2530,15 +2581,11 @@ namespace LegendaryExplorer.Tools.WwiseEditor
                 }
                 if (contextMenu.GetChild("openInPackEdMenuItem") is MenuItem openInPackEdMenuItem)
                 {
-                    if (obj is WExport)
-                    {
-                        openInPackEdMenuItem.Visibility = Visibility.Visible;
-                        showContextMenu = true;
-                    }
-                    else
-                    {
-                        openInPackEdMenuItem.Visibility = Visibility.Collapsed;
-                    }
+                    bool canOpenInPackageEditor = GetPackageEditorExport(obj) != null;
+                    openInPackEdMenuItem.Visibility = canOpenInPackageEditor
+                        ? Visibility.Visible
+                        : Visibility.Collapsed;
+                    showContextMenu |= canOpenInPackageEditor;
                 }
 
                 if (showContextMenu)
@@ -2673,14 +2720,35 @@ namespace LegendaryExplorer.Tools.WwiseEditor
 
         private void OpenInPackageEditor_Clicked(object sender, RoutedEventArgs e)
         {
-            if (SelectedNode is WExport wExport)
+            if (GetPackageEditorExport(SelectedNode) is { } export)
             {
                 AllowWindowRefocus = false; //prevents flicker effect when windows try to focus and then package editor activates
-                var p = new PackageEditorWindow();
-                p.Show();
-                p.LoadFile(wExport.Export.FileRef.FilePath, wExport.Export.UIndex);
-                p.Activate(); //bring to front
+                OpenExportInPackageEditor(export);
             }
+        }
+
+        private ExportEntry GetPackageEditorExport(WwiseHircObjNode node) =>
+            ResolvePackageEditorExport(node, Pcc?.Exports, CurrentExport);
+
+        internal static ExportEntry ResolvePackageEditorExport(WwiseHircObjNode node,
+            IEnumerable<ExportEntry> exports, ExportEntry bankExport) => node switch
+        {
+            WExport wExport => wExport.Export,
+            WEvent wEvent => FindEventExportForBank(exports, wEvent.ID, bankExport),
+            _ => null
+        };
+
+        private static void OpenExportInPackageEditor(ExportEntry export)
+        {
+            if (export == null)
+            {
+                return;
+            }
+
+            var packageEditor = new PackageEditorWindow();
+            packageEditor.Show();
+            packageEditor.LoadFile(export.FileRef.FilePath, export.UIndex);
+            packageEditor.Activate();
         }
 
         public void RefreshView()
@@ -2887,7 +2955,9 @@ namespace LegendaryExplorer.Tools.WwiseEditor
             ThemeManager.ThemeChanged -= OnThemeChanged;
             soundPanel.HIRCObjectSelected -= SoundPanel_HIRCObjectSelected;
             soundPanel.HIRCEventSettingsRequested -= SoundPanel_HIRCEventSettingsRequested;
+            soundPanel.HIRCEventOpenInPackageEditorRequested -= SoundPanel_HIRCEventOpenInPackageEditorRequested;
             soundPanel.Dispose();
+            graphEditor.Camera.MouseDown -= GraphEditor_BackgroundMouseDown;
             
             foreach (var x in CurrentObjects)
             {

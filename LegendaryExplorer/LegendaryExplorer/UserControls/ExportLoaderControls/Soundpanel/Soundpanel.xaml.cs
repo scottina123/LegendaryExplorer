@@ -2383,6 +2383,12 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         /// </summary>
         public event Action<uint> HIRCEventSettingsRequested;
 
+        /// <summary>
+        /// Requests that the hosting tool open the package export matching a Wwise Event in the HIRC list.
+        /// The context action is hidden when the host does not subscribe.
+        /// </summary>
+        public event Action<uint> HIRCEventOpenInPackageEditorRequested;
+
         public void SetHircEventPreviews(IReadOnlyDictionary<uint, string> eventPreviews)
         {
             IReadOnlyDictionary<uint, string> connectedPreviews = BuildConnectedHircEventPreviews(
@@ -2903,13 +2909,24 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             HIRC_ListBox.SelectedItem = hirc;
             bool canAdjustEvent = hirc.ObjType == (byte)HIRCType.Event &&
                                   HIRCEventSettingsRequested != null;
-            if (contextMenu.Items[0] is MenuItem adjustEventSettings)
+            bool canOpenEvent = hirc.ObjType == (byte)HIRCType.Event &&
+                                HIRCEventOpenInPackageEditorRequested != null;
+            if (contextMenu.Items.OfType<MenuItem>().FirstOrDefault(item =>
+                    item.Name == "AdjustHIRCEventSettingsMenuItem") is { } adjustEventSettings)
             {
                 adjustEventSettings.Visibility = canAdjustEvent ? Visibility.Visible : Visibility.Collapsed;
             }
-            if (contextMenu.Items[1] is Separator separator)
+            if (contextMenu.Items.OfType<MenuItem>().FirstOrDefault(item =>
+                    item.Name == "OpenHIRCEventInPackageEditorMenuItem") is { } openInPackageEditor)
             {
-                separator.Visibility = canAdjustEvent ? Visibility.Visible : Visibility.Collapsed;
+                openInPackageEditor.Visibility = canOpenEvent ? Visibility.Visible : Visibility.Collapsed;
+            }
+            if (contextMenu.Items.OfType<Separator>().FirstOrDefault(item =>
+                    item.Name == "HIRCEventActionsSeparator") is { } separator)
+            {
+                separator.Visibility = canAdjustEvent || canOpenEvent
+                    ? Visibility.Visible
+                    : Visibility.Collapsed;
             }
         }
 
@@ -2919,6 +2936,15 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 hirc.ObjType == (byte)HIRCType.Event)
             {
                 HIRCEventSettingsRequested?.Invoke(hirc.ID);
+            }
+        }
+
+        private void OpenHIRCEventInPackageEditor_Click(object sender, RoutedEventArgs e)
+        {
+            if (HIRC_ListBox.SelectedItem is HIRCDisplayObject hirc &&
+                hirc.ObjType == (byte)HIRCType.Event)
+            {
+                HIRCEventOpenInPackageEditorRequested?.Invoke(hirc.ID);
             }
         }
 

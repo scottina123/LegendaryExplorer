@@ -37,6 +37,10 @@
             <MenuItem Header="Adjust Event Settings..." Click="AdjustEventSettings_Click" Name="adjustEventSettingsMenuItem"/>
             <MenuItem Header="Open in Package Editor" Click="OpenInPackageEditor_Clicked" Name="openInPackEdMenuItem"/>
         </ContextMenu>
+        <ContextMenu x:Key="viewportContextMenu" Closed="ContextMenu_Closed">
+            <MenuItem Header="Adjust Bank Settings..." Click="AdjustBankSettings_Click"/>
+            <MenuItem Header="Open Bank in Package Editor" Click="OpenCurrentBankInPackageEditor_Click"/>
+        </ContextMenu>
     </Window.Resources>
     <Window.InputBindings>
         <KeyBinding Key="O" Modifiers="Control" Command="{Binding OpenCommand}"/>
@@ -173,6 +177,7 @@
                         <ListBox.ContextMenu>
                             <ContextMenu>
                                 <MenuItem Header="Adjust Bank Settings..." Click="AdjustBankSettings_Click"/>
+                                <MenuItem Header="Open in Package Editor" Click="OpenSelectedBankInPackageEditor_Click"/>
                             </ContextMenu>
                         </ListBox.ContextMenu>
                         <ListBox.ItemTemplate>
