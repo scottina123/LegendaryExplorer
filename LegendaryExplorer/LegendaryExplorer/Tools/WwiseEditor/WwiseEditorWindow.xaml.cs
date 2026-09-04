@@ -2051,15 +2051,28 @@ namespace LegendaryExplorer.Tools.WwiseEditor
                     $"Wwise Editor: Could not decode semantic HIRC information: {exception.Message}");
             }
 
+            var displayInfoById = soundPanel.HIRCObjects
+                .GroupBy(hirc => hirc.ID)
+                .ToDictionary(group => group.Key, group => group.First());
             var newObjs = new List<WwiseHircObjNode>();
             foreach ((uint id, WwiseBankParsed.HIRCObject hircObject) in CurrentWwiseBank.HIRCObjects)
             {
                 WwiseHircSemanticInfo? semanticInfo = semanticInfoById.TryGetValue(id, out var info)
                     ? info
                     : null;
+                if (displayInfoById.TryGetValue(id, out var displayInfo))
+                {
+                    semanticInfo = semanticInfo is { } parsedInfo
+                        ? parsedInfo with { EventPreview = displayInfo.EventPreview }
+                        : new WwiseHircSemanticInfo(displayInfo.SemanticTypeName,
+                            displayInfo.SemanticDescription, ParentId: displayInfo.DirectParentID == 0
+                                ? null
+                                : displayInfo.DirectParentID, EventPreview: displayInfo.EventPreview);
+                }
+
                 newObjs.Add(hircObject switch
                 {
-                    WwiseBankParsed.Event evt => new WEvent(evt, 0, 0, graphEditor),
+                    WwiseBankParsed.Event evt => new WEvent(evt, 0, 0, graphEditor, semanticInfo),
                     WwiseBankParsed.EventAction evtAct => new WEventAction(evtAct, 0, 0, graphEditor,
                         semanticInfo),
                     WwiseBankParsed.SoundSFXVoice sfxvoice => new WSoundSFXVoice(sfxvoice, 0, 0,
@@ -2506,7 +2519,7 @@ namespace LegendaryExplorer.Tools.WwiseEditor
         {
             if (FindResource("nodeContextMenu") is ContextMenu contextMenu)
             {
-                bool showContextMenu = false;
+                bool showContextMenu = ConfigureHircNavigationMenu(contextMenu, obj);
                 if (contextMenu.GetChild("adjustEventSettingsMenuItem") is MenuItem adjustEventSettingsMenuItem)
                 {
                     bool canAdjustEvent = obj is WExport { Export.ClassName: "WwiseEvent" };
@@ -2533,6 +2546,117 @@ namespace LegendaryExplorer.Tools.WwiseEditor
                     contextMenu.IsOpen = true;
                     graphEditor.DisableDragging();
                 }
+            }
+        }
+
+        private bool ConfigureHircNavigationMenu(ContextMenu contextMenu, WwiseHircObjNode obj)
+        {
+            var hircNodesById = CurrentObjects
+                .Where(node => node is not WExport)
+                .GroupBy(node => node.ID)
+                .ToDictionary(group => group.Key, group => group.First());
+
+            bool hasParent = false;
+            if (contextMenu.GetChild("goToParentMenuItem") is MenuItem parentMenuItem)
+            {
+                if (obj.ParentId is uint parentId && hircNodesById.TryGetValue(parentId, out var parentNode))
+                {
+                    parentMenuItem.Header = $"Go to parent: {BuildHircNavigationLabel(parentNode)}";
+                    parentMenuItem.Tag = parentId;
+                    parentMenuItem.Visibility = Visibility.Visible;
+                    hasParent = true;
+                }
+                else
+                {
+                    parentMenuItem.Tag = null;
+                    parentMenuItem.Visibility = Visibility.Collapsed;
+                }
+            }
+
+            bool hasChildren = ConfigureNavigationSubmenu(contextMenu, "goToChildMenuItem",
+                "Go to child", obj.ChildIds, hircNodesById);
+            bool hasEffects = ConfigureNavigationSubmenu(contextMenu, "goToEffectMenuItem",
+                "Go to applied effect", obj.EffectIds, hircNodesById);
+            bool hasAttenuation = ConfigureNavigationSubmenu(contextMenu, "goToAttenuationMenuItem",
+                "Go to attenuation", obj.AttenuationId is uint attenuationId ? [attenuationId] : [],
+                hircNodesById);
+            bool hasOutputBus = ConfigureNavigationSubmenu(contextMenu, "goToOutputBusMenuItem",
+                "Go to output bus", obj.OutputBusId is uint outputBusId ? [outputBusId] : [],
+                hircNodesById);
+
+            bool hasNavigation = hasParent || hasChildren || hasEffects || hasAttenuation || hasOutputBus;
+            if (contextMenu.GetChild("hircNavigationSeparator") is Separator separator)
+            {
+                separator.Visibility = hasNavigation ? Visibility.Visible : Visibility.Collapsed;
+            }
+
+            return hasNavigation;
+        }
+
+        private bool ConfigureNavigationSubmenu(ContextMenu contextMenu, string menuName, string header,
+            IEnumerable<uint> targetIds, IReadOnlyDictionary<uint, WwiseHircObjNode> hircNodesById)
+        {
+            if (contextMenu.GetChild(menuName) is not MenuItem submenu)
+            {
+                return false;
+            }
+
+            submenu.Header = header;
+            submenu.Items.Clear();
+            foreach (uint targetId in targetIds.Distinct())
+            {
+                if (!hircNodesById.TryGetValue(targetId, out WwiseHircObjNode targetNode))
+                {
+                    continue;
+                }
+
+                var navigationItem = new MenuItem
+                {
+                    Header = BuildHircNavigationLabel(targetNode),
+                    Tag = targetId
+                };
+                navigationItem.Click += HircNavigationMenuItem_Click;
+                submenu.Items.Add(navigationItem);
+            }
+
+            submenu.Visibility = submenu.Items.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+            return submenu.Items.Count > 0;
+        }
+
+        internal static string BuildHircNavigationLabel(WwiseHircObjNode node)
+        {
+            string typeName = string.IsNullOrWhiteSpace(node.SemanticTypeName)
+                ? "HIRC"
+                : node.SemanticTypeName;
+            string preview = WGeneric.CompactEventPreview(node.EventPreview, 4);
+            return string.IsNullOrWhiteSpace(preview)
+                ? $"{typeName} 0x{WwiseHircObjNode.GetIDString(node.ID)}"
+                : $"{typeName} 0x{WwiseHircObjNode.GetIDString(node.ID)}{Environment.NewLine}{preview}";
+        }
+
+        private void HircNavigationMenuItem_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is not MenuItem { Tag: uint targetId })
+            {
+                return;
+            }
+
+            WwiseHircObjNode targetNode = CurrentObjects.FirstOrDefault(node =>
+                node is not WExport && node.ID == targetId);
+            if (targetNode == null)
+            {
+                return;
+            }
+
+            panToSelection = true;
+            if (ReferenceEquals(SelectedNode, targetNode))
+            {
+                graphEditor.Camera.AnimateViewToCenterBounds(targetNode.GlobalFullBounds, false, 100);
+                soundPanel.SelectHircObject(targetId);
+            }
+            else
+            {
+                SelectedNode = targetNode;
             }
         }
 

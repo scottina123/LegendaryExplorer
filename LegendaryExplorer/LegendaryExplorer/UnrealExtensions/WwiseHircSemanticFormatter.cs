@@ -10,7 +10,15 @@ using WwiserAction = ME3Tweaks.Wwiser.Model.Hierarchy.Action;
 
 namespace LegendaryExplorer.UnrealExtensions;
 
-public readonly record struct WwiseHircSemanticInfo(string TypeName, string Description = null);
+public readonly record struct WwiseHircSemanticInfo(
+    string TypeName,
+    string Description = null,
+    IReadOnlyList<uint> ChildIds = null,
+    IReadOnlyList<uint> EffectIds = null,
+    uint? AttenuationId = null,
+    uint? ParentId = null,
+    string EventPreview = null,
+    uint? OutputBusId = null);
 
 /// <summary>
 /// Produces user-facing HIRC labels from Wwiser's version-aware object types. The older
@@ -20,10 +28,52 @@ public readonly record struct WwiseHircSemanticInfo(string TypeName, string Desc
 internal static class WwiseHircSemanticFormatter
 {
     internal static IReadOnlyDictionary<uint, WwiseHircSemanticInfo> BuildInfoById(
-        IEnumerable<HircItemContainer> containers, MEGame? game = null) =>
-        containers
+        IEnumerable<HircItemContainer> containers, MEGame? game = null)
+    {
+        var containerList = containers.ToList();
+        var infoById = containerList
             .GroupBy(container => container.Item.Id)
             .ToDictionary(group => group.Key, group => GetInfo(group.First(), game));
+
+        // Also infer the reverse relationship from explicit child arrays. This covers banks
+        // whose child node does not serialize a usable DirectParentId.
+        foreach ((uint parentId, WwiseHircSemanticInfo parentInfo) in infoById.ToArray())
+        {
+            foreach (uint childId in parentInfo.ChildIds ?? [])
+            {
+                if (infoById.TryGetValue(childId, out WwiseHircSemanticInfo childInfo)
+                    && childInfo.ParentId == null)
+                {
+                    infoById[childId] = childInfo with { ParentId = parentId };
+                }
+            }
+        }
+
+        // Some bank versions expose a container's child list, while others only expose the
+        // child's DirectParentId. Merge both representations so graph/navigation relationships
+        // remain complete across LE2 and LE3 banks.
+        foreach (IGrouping<uint, HircItemContainer> group in containerList.GroupBy(container => container.Item.Id))
+        {
+            if (group.First().Item is not IHasNode { NodeBaseParameters.DirectParentId: not 0 } node)
+            {
+                continue;
+            }
+
+            uint parentId = node.NodeBaseParameters.DirectParentId;
+            if (!infoById.TryGetValue(parentId, out WwiseHircSemanticInfo parentInfo))
+            {
+                continue;
+            }
+
+            uint[] childIds = (parentInfo.ChildIds ?? [])
+                .Append(group.Key)
+                .Distinct()
+                .ToArray();
+            infoById[parentId] = parentInfo with { ChildIds = childIds };
+        }
+
+        return infoById;
+    }
 
     internal static WwiseHircSemanticInfo GetInfo(HircItemContainer container, MEGame? game = null) =>
         GetInfo(container.Type.Value, container.Item, game);
@@ -78,6 +128,11 @@ internal static class WwiseHircSemanticFormatter
 
     private static WwiseHircSemanticInfo GetInfo(HircType type, HircItem item, MEGame? game)
     {
+        IReadOnlyList<uint> childIds = GetChildIds(item);
+        IReadOnlyList<uint> effectIds = null;
+        uint? attenuationId = null;
+        uint? parentId = null;
+        uint? outputBusId = null;
         string objectDescription = item switch
         {
             FxBase effect => GetKnownEffectName(effect.Id) is { } effectName
@@ -110,8 +165,10 @@ internal static class WwiseHircSemanticFormatter
         if (item is IHasNode parameterNode)
         {
             NodeBaseParameters parameters = parameterNode.NodeBaseParameters;
+            parentId = parameters.DirectParentId == 0 ? null : parameters.DirectParentId;
             if (parameters.OverrideBusId != 0)
             {
+                outputBusId = parameters.OverrideBusId;
                 string busName = game.HasValue
                     ? WwiseOutputBusOptions.GetOutputBusName(game.Value, parameters.OverrideBusId)
                     : null;
@@ -122,6 +179,12 @@ internal static class WwiseHircSemanticFormatter
 
             if (parameters.FxParams.FxChunks.Count > 0)
             {
+                effectIds = parameters.FxParams.FxChunks
+                    .OrderBy(effect => effect.FxIndex)
+                    .Select(effect => effect.Id)
+                    .Where(id => id != 0)
+                    .Distinct()
+                    .ToArray();
                 string effects = string.Join(" + ", parameters.FxParams.FxChunks
                     .OrderBy(effect => effect.FxIndex)
                     .Select(effect => GetKnownEffectName(effect.Id) ?? $"0x{effect.Id:X8}"));
@@ -136,10 +199,34 @@ internal static class WwiseHircSemanticFormatter
             AddInitialParameterDescription(parameters, PropId.Pitch, "Pitch", " cents", descriptions);
             AddInitialParameterDescription(parameters, PropId.AttenuationID, "Attenuation", null,
                 descriptions, formatAsId: true);
+            attenuationId = GetInitialParameterId(parameters, PropId.AttenuationID);
         }
 
         return new WwiseHircSemanticInfo(GetTypeName(type),
-            descriptions.Count == 0 ? null : string.Join(Environment.NewLine, descriptions));
+            descriptions.Count == 0 ? null : string.Join(Environment.NewLine, descriptions),
+            childIds, effectIds, attenuationId, parentId, OutputBusId: outputBusId);
+    }
+
+    private static IReadOnlyList<uint> GetChildIds(HircItem item) => item switch
+    {
+        ActorMixer actorMixer => actorMixer.Children.ChildrenValues.Distinct().ToArray(),
+        RandSeqContainer container => container.Children.ChildrenValues.Distinct().ToArray(),
+        SwitchContainer container => container.Children.ChildrenValues.Distinct().ToArray(),
+        LayerContainer container => container.Children.ChildrenValues.Distinct().ToArray(),
+        _ => null
+    };
+
+    private static uint? GetInitialParameterId(NodeBaseParameters parameters, PropId property)
+    {
+        int index = parameters.InitialParams62.ParameterIds.FindIndex(id => id.PropValue == property);
+        if (index < 0 || index >= parameters.InitialParams62.ParameterValues.Count)
+        {
+            return null;
+        }
+
+        var value = parameters.InitialParams62.ParameterValues[index];
+        uint id = value.StoredAsFloat ? BitConverter.SingleToUInt32Bits(value.Float) : value.Integer;
+        return id == 0 ? null : id;
     }
 
     private static void AddInitialParameterDescription(NodeBaseParameters parameters, PropId property,

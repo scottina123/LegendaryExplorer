@@ -1164,16 +1164,18 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             var displayObjectsById = displayObjects
                 .GroupBy(hirc => hirc.ID)
                 .ToDictionary(group => group.Key, group => group.First());
-            foreach (WwiserHircItemContainer container in containers)
+            IReadOnlyDictionary<uint, WwiseHircSemanticInfo> semanticInfoById =
+                WwiseHircSemanticFormatter.BuildInfoById(containers, game);
+            foreach ((uint id, WwiseHircSemanticInfo info) in semanticInfoById)
             {
-                if (!displayObjectsById.TryGetValue(container.Item.Id, out HIRCDisplayObject displayObject))
+                if (!displayObjectsById.TryGetValue(id, out HIRCDisplayObject displayObject))
                 {
                     continue;
                 }
 
-                WwiseHircSemanticInfo info = WwiseHircSemanticFormatter.GetInfo(container, game);
                 displayObject.SemanticTypeName = info.TypeName;
                 displayObject.SemanticDescription = info.Description;
+                displayObject.DirectParentID = info.ParentId ?? 0;
             }
         }
 
@@ -2445,6 +2447,16 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                         eventAction.ReferencedObjectID == 0)
                     {
                         continue;
+                    }
+
+                    var visitedParentIds = new HashSet<uint>();
+                    uint parentId = eventAction.ReferencedObjectID;
+                    while (objectsById.TryGetValue(parentId, out HIRCDisplayObject hierarchyObject)
+                           && hierarchyObject.DirectParentID != 0
+                           && visitedParentIds.Add(hierarchyObject.DirectParentID))
+                    {
+                        parentId = hierarchyObject.DirectParentID;
+                        AddPreview(parentId, preview);
                     }
 
                     var pendingHierarchyIds = new Queue<uint>();

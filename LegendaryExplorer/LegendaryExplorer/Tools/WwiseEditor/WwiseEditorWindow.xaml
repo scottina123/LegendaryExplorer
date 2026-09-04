@@ -28,6 +28,12 @@
         <converters:InverseVisibilityConverter x:Key="InverseVisibilityConverter"/>
         <converters:GameTypeConverter x:Key="GameTypeConverter"/>
         <ContextMenu x:Key="nodeContextMenu" Closed="ContextMenu_Closed">
+            <MenuItem Header="Go to parent" Name="goToParentMenuItem" Click="HircNavigationMenuItem_Click"/>
+            <MenuItem Header="Go to child" Name="goToChildMenuItem"/>
+            <MenuItem Header="Go to applied effect" Name="goToEffectMenuItem"/>
+            <MenuItem Header="Go to attenuation" Name="goToAttenuationMenuItem"/>
+            <MenuItem Header="Go to output bus" Name="goToOutputBusMenuItem"/>
+            <Separator Name="hircNavigationSeparator"/>
             <MenuItem Header="Adjust Event Settings..." Click="AdjustEventSettings_Click" Name="adjustEventSettingsMenuItem"/>
             <MenuItem Header="Open in Package Editor" Click="OpenInPackageEditor_Clicked" Name="openInPackEdMenuItem"/>
         </ContextMenu>

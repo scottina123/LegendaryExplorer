@@ -34,6 +34,16 @@ namespace LegendaryExplorer.Tools.WwiseEditor
     public class ActionEdge : WwiseEdEdge
     {
     }
+
+    public enum WwiseHircReferenceKind
+    {
+        Operation,
+        HierarchyChild,
+        Effect,
+        Attenuation,
+        OutputBus
+    }
+
     public abstract class WwiseHircObjNode : PNode, IDisposable
     {
         public WwiseGraphEditor g;
@@ -73,6 +83,14 @@ namespace LegendaryExplorer.Tools.WwiseEditor
         protected SText comment;
 
         public virtual uint ID => hircObject?.ID ?? 0;
+
+        public string SemanticTypeName => SemanticInfo?.TypeName;
+        public string EventPreview => SemanticInfo?.EventPreview;
+        public IReadOnlyList<uint> ChildIds => SemanticInfo?.ChildIds ?? Array.Empty<uint>();
+        public IReadOnlyList<uint> EffectIds => SemanticInfo?.EffectIds ?? Array.Empty<uint>();
+        public uint? AttenuationId => SemanticInfo?.AttenuationId;
+        public uint? OutputBusId => SemanticInfo?.OutputBusId;
+        public uint? ParentId => SemanticInfo?.ParentId;
 
         public string Comment => comment.Text;
 
@@ -192,6 +210,7 @@ namespace LegendaryExplorer.Tools.WwiseEditor
             public List<uint> Links;
             public string Desc;
             public List<ActionEdge> Edges;
+            public WwiseHircReferenceKind ReferenceKind;
         }
 
         public struct VarLink
@@ -232,7 +251,8 @@ namespace LegendaryExplorer.Tools.WwiseEditor
                         {
                             PPath p1 = outLink.node;
                             var edge = new ActionEdge();
-                            edge.Pen = new Pen(_connectionColor);
+                            edge.Pen = new Pen(GetReferenceColor(outLink.ReferenceKind),
+                                outLink.ReferenceKind == WwiseHircReferenceKind.Operation ? 1 : 2);
                             p1.Tag ??= new List<ActionEdge>();
                             ((List<ActionEdge>)p1.Tag).Add(edge);
                             destObj.InputEdges.Add(edge);
@@ -296,6 +316,15 @@ namespace LegendaryExplorer.Tools.WwiseEditor
         }
 
         protected virtual void GetLinks(){}
+
+        internal static Color GetReferenceColor(WwiseHircReferenceKind kind) => kind switch
+        {
+            WwiseHircReferenceKind.HierarchyChild => Color.FromArgb(94, 183, 255),
+            WwiseHircReferenceKind.Effect => Color.FromArgb(255, 214, 64),
+            WwiseHircReferenceKind.Attenuation => Color.FromArgb(108, 210, 130),
+            WwiseHircReferenceKind.OutputBus => Color.FromArgb(210, 135, 255),
+            _ => _connectionColor
+        };
     }
     public sealed class WExport : WwiseHircObjNode
     {
@@ -437,8 +466,9 @@ namespace LegendaryExplorer.Tools.WwiseEditor
     {
         public WwiseBankParsed.Event Event => (WwiseBankParsed.Event)hircObject;
 
-        public WEvent(WwiseBankParsed.Event hircEvent, float x, float y, WwiseGraphEditor grapheditor)
-            : base(hircEvent, grapheditor)
+        public WEvent(WwiseBankParsed.Event hircEvent, float x, float y, WwiseGraphEditor grapheditor,
+            WwiseHircSemanticInfo? semanticInfo = null)
+            : base(hircEvent, grapheditor, semanticInfo)
         {
             outlinePen = new Pen(EventColor);
             const string s = "Event";
@@ -590,6 +620,7 @@ namespace LegendaryExplorer.Tools.WwiseEditor
         {
             originalX = x;
             originalY = y;
+            AddSemanticLinks();
         }
 
         private bool _isSelected;
@@ -732,7 +763,65 @@ namespace LegendaryExplorer.Tools.WwiseEditor
             return SemanticInfo?.TypeName ?? WwiseStreamHelper.GetHircObjTypeString(hircObject.Type);
         }
 
-        protected virtual string GetDescription() => SemanticInfo?.Description;
+        protected virtual string GetDescription() => JoinDescription(
+            SemanticInfo?.Description, CompactEventPreview(SemanticInfo?.EventPreview));
+
+        private void AddSemanticLinks()
+        {
+            AddSemanticLink("Children", ChildIds, WwiseHircReferenceKind.HierarchyChild);
+            AddSemanticLink("Effects", EffectIds, WwiseHircReferenceKind.Effect);
+            if (AttenuationId is uint attenuationId)
+            {
+                AddSemanticLink("Attenuation", [attenuationId], WwiseHircReferenceKind.Attenuation);
+            }
+            if (OutputBusId is uint outputBusId)
+            {
+                AddSemanticLink("Output bus", [outputBusId], WwiseHircReferenceKind.OutputBus);
+            }
+        }
+
+        private void AddSemanticLink(string description, IEnumerable<uint> ids,
+            WwiseHircReferenceKind referenceKind)
+        {
+            List<uint> links = ids?.Where(id => id != 0).Distinct().ToList() ?? [];
+            if (links.Count == 0)
+            {
+                return;
+            }
+
+            var linkNode = CreateActionLinkBox();
+            linkNode.Brush = new SolidBrush(GetReferenceColor(referenceKind));
+            linkNode.Pickable = false;
+            Outlinks.Add(new OutputLink
+            {
+                Desc = description,
+                Links = links,
+                Edges = [],
+                node = linkNode,
+                ReferenceKind = referenceKind
+            });
+        }
+
+        internal static string CompactEventPreview(string preview, int maximumLines = 6)
+        {
+            if (string.IsNullOrWhiteSpace(preview))
+            {
+                return null;
+            }
+
+            string[] lines = preview.Replace("\r\n", "\n", StringComparison.Ordinal)
+                .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            if (lines.Length <= maximumLines)
+            {
+                return string.Join(Environment.NewLine, lines);
+            }
+
+            return string.Join(Environment.NewLine, lines.Take(maximumLines))
+                   + $"{Environment.NewLine}… ({lines.Length - maximumLines} more lines)";
+        }
+
+        private static string JoinDescription(params string[] parts) => string.Join(Environment.NewLine,
+            parts.Where(part => !string.IsNullOrWhiteSpace(part)));
 
         public class InputDragHandler : PDragEventHandler
         {
@@ -799,7 +888,7 @@ namespace LegendaryExplorer.Tools.WwiseEditor
             return $"{base.GetTitle()}: {actionName}";
         }
 
-        protected override string GetDescription() => null;
+        protected override string GetDescription() => CompactEventPreview(SemanticInfo?.EventPreview);
 
         protected override void GetLinks()
         {

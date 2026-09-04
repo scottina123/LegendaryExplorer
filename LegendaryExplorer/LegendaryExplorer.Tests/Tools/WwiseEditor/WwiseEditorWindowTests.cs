@@ -963,6 +963,47 @@ public class WwiseEditorWindowTests
     }
 
     [TestMethod]
+    public void WwiseHierarchyNodesExposeColoredLinksAndTlkNavigationLabels()
+    {
+        const uint nodeId = 0x11111111;
+        const uint childId = 0x22222222;
+        const uint effectId = 0x33333333;
+        const uint attenuationId = 0x44444444;
+        const uint parentId = 0x55555555;
+        const uint outputBusId = 0x66666666;
+        var semanticInfo = new WwiseHircSemanticInfo("Actor-Mixer", "1 child",
+            [childId], [effectId], attenuationId, parentId,
+            "#7 VO_123_f_Play\nTLK 123: Preview text", outputBusId);
+        using var node = new WGeneric(new WwiseBankParsed.HIRCObject
+        {
+            Type = HIRCType.ActorMixer,
+            ID = nodeId,
+            unparsed = []
+        }, 0, 0, null, semanticInfo);
+
+        CollectionAssert.AreEqual(new[] { childId }, node.ChildIds.ToArray());
+        CollectionAssert.AreEqual(new[] { effectId }, node.EffectIds.ToArray());
+        Assert.AreEqual(attenuationId, node.AttenuationId);
+        Assert.AreEqual(outputBusId, node.OutputBusId);
+        Assert.AreEqual(parentId, node.ParentId);
+        CollectionAssert.AreEquivalent(
+            new[]
+            {
+                WwiseHircReferenceKind.HierarchyChild,
+                WwiseHircReferenceKind.Effect,
+                WwiseHircReferenceKind.Attenuation,
+                WwiseHircReferenceKind.OutputBus
+            },
+            node.Outlinks.Select(link => link.ReferenceKind).ToArray());
+        Assert.AreNotEqual(WwiseHircObjNode.GetReferenceColor(WwiseHircReferenceKind.HierarchyChild),
+            WwiseHircObjNode.GetReferenceColor(WwiseHircReferenceKind.Effect));
+
+        string label = WwiseEditorWindow.BuildHircNavigationLabel(node);
+        StringAssert.StartsWith(label, "Actor-Mixer 0x11111111");
+        StringAssert.Contains(label, "TLK 123: Preview text");
+    }
+
+    [TestMethod]
     public void WwiseAutoLayoutPlacesEventActionVoiceChainsOnStackedRows()
     {
         var firstEvent = new PNode { Bounds = new RectangleF(-20, 0, 140, 80) };

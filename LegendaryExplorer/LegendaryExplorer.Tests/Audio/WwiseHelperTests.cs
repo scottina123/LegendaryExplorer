@@ -266,6 +266,35 @@ public class WwiseHelperTests
         Assert.AreEqual("Actor-Mixer", mixerInfo.TypeName);
         StringAssert.Contains(mixerInfo.Description, "2 children");
         StringAssert.Contains(mixerInfo.Description, "Effects: BioWare FutzBox / Helmet Filter");
+        CollectionAssert.AreEqual(new uint[] { 3, 4 }, mixerInfo.ChildIds.ToArray());
+        CollectionAssert.AreEqual(new[] { effectId }, mixerInfo.EffectIds.ToArray());
+
+        var childSound = new WwiserSound { Id = 5 };
+        childSound.NodeBaseParameters.DirectParentId = actorMixer.Id;
+        var childWithInferredParent = new WwiserSound { Id = 3 };
+        IReadOnlyDictionary<uint, WwiseHircSemanticInfo> relationshipInfo =
+            WwiseHircSemanticFormatter.BuildInfoById(
+            [
+                new WwiserHircItemContainer
+                {
+                    Type = new WwiserHircSmartType { Value = WwiserHircType.ActorMixer },
+                    Item = actorMixer
+                },
+                new WwiserHircItemContainer
+                {
+                    Type = new WwiserHircSmartType { Value = WwiserHircType.Sound },
+                    Item = childSound
+                },
+                new WwiserHircItemContainer
+                {
+                    Type = new WwiserHircSmartType { Value = WwiserHircType.Sound },
+                    Item = childWithInferredParent
+                }
+            ], MEGame.LE3);
+        CollectionAssert.AreEquivalent(new uint[] { 3, 4, 5 },
+            relationshipInfo[actorMixer.Id].ChildIds.ToArray());
+        Assert.AreEqual(actorMixer.Id, relationshipInfo[childSound.Id].ParentId);
+        Assert.AreEqual(actorMixer.Id, relationshipInfo[childWithInferredParent.Id].ParentId);
     }
 
     [TestMethod]
@@ -294,7 +323,7 @@ public class WwiseHelperTests
             CreateEventDisplay(0, eventId, actionId),
             CreateEventDisplay(1, secondEventId, secondActionId),
             CreateActionDisplay(2, actionId, actorMixerId),
-            CreateActionDisplay(3, secondActionId, actorMixerId),
+            CreateActionDisplay(3, secondActionId, soundId),
             CreateGenericDisplay(4, HIRCType.ActorMixer, actorMixerId),
             CreateGenericDisplay(5, HIRCType.SoundSXFSoundVoice, soundId)
         };
@@ -343,4 +372,5 @@ public class WwiseHelperTests
             ID = id,
             unparsed = []
         }, MEGame.LE3);
+
 }
