@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Imaging;
@@ -140,7 +141,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         public static readonly DependencyProperty HostingControlProperty = DependencyProperty.Register(nameof(HostingControl), typeof( IBusyUIHost ), typeof( Soundpanel ));
 
-        public ObservableCollectionExtended<HIRCDisplayObject> HIRCObjects { get; set; } = new();
+        public ObservableCollectionExtended<HIRCDisplayObject> HIRCObjects { get; } = new();
+        public ICollectionView HIRCObjectsView { get; }
 
         /// <summary>
         /// Sets whether audio replacement should be allowed
@@ -238,6 +240,9 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         public Soundpanel() : base("Soundpanel")
         {
+            HIRCObjectsView = CollectionViewSource.GetDefaultView(HIRCObjects);
+            HIRCObjectsView.Filter = item => item is HIRCDisplayObject hirc
+                                                   && MatchesHircFilter(hirc, HIRCFilterText);
             PlayPauseIcon = EFontAwesomeIcon.Solid_Play;
             LoadCommands();
             CurrentVolume = 0.65f;
@@ -368,6 +373,19 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             private set => SetProperty(ref _searchStatusText, value);
         }
 
+        private string _hircFilterText;
+        public string HIRCFilterText
+        {
+            get => _hircFilterText;
+            set
+            {
+                if (SetProperty(ref _hircFilterText, value))
+                {
+                    HIRCObjectsView.Refresh();
+                }
+            }
+        }
+
         #endregion
 
         #region Commands
@@ -455,6 +473,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 ExportInformationList.ClearEx();
                 ClearNavigationTargets();
                 AllWems.Clear();
+                HIRCFilterText = string.Empty;
                 CurrentLoadedWwisebank = null;
                 HircWwiseStreamPlaybackSource = null;
                 StopPlaying();
@@ -2303,18 +2322,88 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         public event Action<uint> HIRCObjectSelected;
 
+        public void SetHircEventPreviews(IReadOnlyDictionary<uint, string> eventPreviews)
+        {
+            foreach (HIRCDisplayObject hirc in HIRCObjects)
+            {
+                hirc.EventPreview = hirc.ObjType == (byte)HIRCType.Event
+                                    && eventPreviews != null
+                                    && eventPreviews.TryGetValue(hirc.ID, out string preview)
+                    ? preview
+                    : null;
+            }
+
+            HIRCObjectsView.Refresh();
+        }
+
+        public void SelectHircObject(uint id)
+        {
+            HIRCDisplayObject hirc = HIRCObjects.FirstOrDefault(item => item.ID == id);
+            if (hirc == null)
+            {
+                return;
+            }
+
+            if (!HIRCObjectsView.Contains(hirc))
+            {
+                HIRCFilterText = string.Empty;
+            }
+
+            HIRC_ListBox.SelectedItem = hirc;
+        }
+
+        internal static bool MatchesHircFilter(HIRCDisplayObject hirc, string filterText)
+        {
+            if (hirc == null || string.IsNullOrWhiteSpace(filterText))
+            {
+                return hirc != null;
+            }
+
+            string playbackState = hirc.State switch
+            {
+                0 => "Embedded",
+                1 => "Streamed",
+                2 => "Streamed with prefetch",
+                _ => string.Empty
+            };
+            string searchableText = string.Join(Environment.NewLine,
+                hirc.Index.ToString(CultureInfo.InvariantCulture),
+                hirc.ID.ToString(CultureInfo.InvariantCulture),
+                $"HIRC 0x{hirc.ID:X8}",
+                AudioStreamHelper.GetHircObjTypeString(hirc.ObjType),
+                hirc.EventActionType.ToString(),
+                playbackState,
+                hirc.AudioID.ToString(CultureInfo.InvariantCulture),
+                $"0x{hirc.AudioID:X8}",
+                hirc.SourceID.ToString(CultureInfo.InvariantCulture),
+                $"0x{hirc.SourceID:X8}",
+                hirc.EventPreview ?? string.Empty);
+
+            return filterText.Split([' ', '\t', '\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
+                .All(term => searchableText.Contains(term, StringComparison.OrdinalIgnoreCase));
+        }
+
         private bool CanSaveHIRCHex() => HIRCHexChanged;
 
         private void SaveHIRCHex()
         {
-            int idx = HIRC_ListBox.SelectedIndex;
-            if (idx != -1)
+            if (HIRC_ListBox.SelectedItem is HIRCDisplayObject selectedHirc)
             {
-                //var dataBefore = hircHexProvider.Bytes.ToArray();
-                HIRCObjects[idx] = new HIRCDisplayObject(idx, CreateHircObjectFromHex(hircHexProvider.Span.ToArray()), Pcc.Game)
+                int idx = HIRCObjects.IndexOf(selectedHirc);
+                if (idx < 0)
                 {
-                    DataChanged = true
+                    return;
+                }
+
+                //var dataBefore = hircHexProvider.Bytes.ToArray();
+                var replacement = new HIRCDisplayObject(selectedHirc.Index,
+                    CreateHircObjectFromHex(hircHexProvider.Span.ToArray()), Pcc.Game)
+                {
+                    DataChanged = true,
+                    EventPreview = selectedHirc.EventPreview
                 };
+                HIRCObjects[idx] = replacement;
+                HIRC_ListBox.SelectedItem = replacement;
                 HIRCHexChanged = false;
                 OnPropertyChanged(nameof(HIRCHexChanged));
                 //var dataAfter = HIRCObjects[idx].Data;
@@ -2359,9 +2448,20 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         {
             if (CurrentLoadedWwisebank == null)
                 return;
-            int currentSelectedHIRCIndex = HIRC_ListBox.SelectedIndex;
-            if (currentSelectedHIRCIndex == -1)
+            var visibleHircs = HIRCObjectsView.Cast<HIRCDisplayObject>().ToList();
+            if (visibleHircs.Count == 0)
+            {
+                SearchStatusText = "No HIRCs match the filter";
+                return;
+            }
+
+            int currentSelectedHIRCIndex = HIRC_ListBox.SelectedItem is HIRCDisplayObject selectedHirc
+                ? visibleHircs.IndexOf(selectedHirc)
+                : 0;
+            if (currentSelectedHIRCIndex < 0)
+            {
                 currentSelectedHIRCIndex = 0;
+            }
             string hexString = SearchHIRCHex_TextBox.Text.Replace(" ", string.Empty);
             if (hexString.Length == 0)
                 return;
@@ -2383,15 +2483,16 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 buff[i] = Convert.ToByte(hexString.Substring(i * 2, 2), 16);
             }
 
-            int count = HIRCObjects.Count;
+            int count = visibleHircs.Count;
             int hexboxIndex = (int)SoundpanelHIRC_Hexbox.SelectionStart + 1;
             for (int i = 0; i < count; i++)
             {
-                byte[] hirc = HIRCObjects[(i + currentSelectedHIRCIndex) % count].Data; //search from selected index, and loop back around
+                HIRCDisplayObject hircObject = visibleHircs[(i + currentSelectedHIRCIndex) % count];
+                byte[] hirc = hircObject.Data; //search from selected index, and loop back around
                 int indexIn = hirc.IndexOfArray(buff, hexboxIndex);
                 if (indexIn > -1)
                 {
-                    HIRC_ListBox.SelectedIndex = (i + currentSelectedHIRCIndex) % count;
+                    HIRC_ListBox.SelectedItem = hircObject;
                     SoundpanelHIRC_Hexbox.Select(indexIn, buff.Length);
                     //searchHexStatus.Text = "";
                     return;
@@ -2625,12 +2726,18 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             if (HIRC_ListBox.SelectedItem is HIRCDisplayObject h)
             {
                 WwiseBankParsed.HIRCObject clone = CreateHircObjectFromHex(h.Data).Clone();
-                HIRCObjects.Add(new HIRCDisplayObject(HIRCObjects.Count, clone, Pcc.Game)
+                var cloneDisplay = new HIRCDisplayObject(HIRCObjects.Count, clone, Pcc.Game)
                 {
-                    DataChanged = true
-                });
-                HIRC_ListBox.ScrollIntoView(clone);
-                HIRC_ListBox.SelectedItem = clone;
+                    DataChanged = true,
+                    EventPreview = h.EventPreview
+                };
+                HIRCObjects.Add(cloneDisplay);
+                if (!HIRCObjectsView.Contains(cloneDisplay))
+                {
+                    HIRCFilterText = string.Empty;
+                }
+                HIRC_ListBox.ScrollIntoView(cloneDisplay);
+                HIRC_ListBox.SelectedItem = cloneDisplay;
             }
         }
 

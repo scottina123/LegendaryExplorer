@@ -184,4 +184,25 @@ public class WwiseHelperTests
         wwiseStream.WriteProperty(new IntProperty(unchecked((int)audioId), "Id"));
         Assert.AreSame(wwiseStream, Soundpanel.FindWwiseStreamById(package, audioId));
     }
+
+    [TestMethod]
+    public void FiltersHircObjectsByIdentityTypeAndEventPreview()
+    {
+        var hirc = new HIRCDisplayObject(9, new WwiseBankParsed.Event
+        {
+            Type = HIRCType.Event,
+            ID = 0x18F06680,
+            EventActions = []
+        }, MEGame.LE3)
+        {
+            EventPreview = "#2083 VO_17251537_f_Play\nTLK 17251537: Hold up."
+        };
+
+        Assert.IsTrue(Soundpanel.MatchesHircFilter(hirc, "18F06680"));
+        Assert.IsTrue(Soundpanel.MatchesHircFilter(hirc, "event hold"));
+        Assert.IsTrue(Soundpanel.MatchesHircFilter(hirc, "17251537"));
+        Assert.IsTrue(Soundpanel.MatchesHircFilter(hirc, "VO_17251537_f"));
+        Assert.IsTrue(Soundpanel.MatchesHircFilter(hirc, string.Empty));
+        Assert.IsFalse(Soundpanel.MatchesHircFilter(hirc, "streamed"));
+    }
 }

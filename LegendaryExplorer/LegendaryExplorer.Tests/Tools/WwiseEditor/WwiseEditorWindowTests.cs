@@ -392,6 +392,29 @@ public class WwiseEditorWindowTests
     }
 
     [TestMethod]
+    public void HircEventPreviewIncludesEveryMatchingWwiseEventAndTlkText()
+    {
+        const uint eventId = 0x18F06680;
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("WwiseEventPreviewTest.pcc", MEGame.LE3);
+        ExportEntry femaleEvent = package.CreateExport("VO_17251537_f_Play", "WwiseEvent", indexed: false);
+        femaleEvent.WriteProperty(new IntProperty(unchecked((int)eventId), "Id"));
+        ExportEntry maleEvent = package.CreateExport("VO_17251537_m_Play", "WwiseEvent", indexed: false);
+        maleEvent.WriteProperty(new IntProperty(unchecked((int)eventId), "Id"));
+
+        IReadOnlyDictionary<uint, string> previews = WwiseEditorWindow.BuildHircEventPreviews(
+            package.Exports, (tlkId, lookupPackage) =>
+            {
+                Assert.AreEqual(17251537, tlkId);
+                Assert.AreSame(package, lookupPackage);
+                return "Hold up.";
+            });
+
+        string preview = previews[eventId];
+        StringAssert.Contains(preview, $"#{femaleEvent.UIndex} VO_17251537_f_Play\nTLK 17251537: Hold up.");
+        StringAssert.Contains(preview, $"#{maleEvent.UIndex} VO_17251537_m_Play\nTLK 17251537: Hold up.");
+    }
+
+    [TestMethod]
     public void WwiseGraphSelectionMapsHircNodesByIdInsteadOfGraphOrder()
     {
         uint[] soundPanelOrder = [0xAAAA0001, 0xBBBB0002, 0xCCCC0003];

@@ -13,6 +13,7 @@ using LegendaryExplorer.Misc;
 using LegendaryExplorer.Misc.AppSettings;
 using LegendaryExplorer.Dialogs;
 using LegendaryExplorer.Tools.PackageEditor;
+using LegendaryExplorer.Tools.TlkManagerNS;
 using LegendaryExplorer.ToolsetDev.MemoryAnalyzer;
 using LegendaryExplorer.SharedUI.Bases;
 using LegendaryExplorer.SharedUI;
@@ -415,7 +416,7 @@ namespace LegendaryExplorer.Tools.WwiseEditor
                         int hircIndex = FindHircListIndexById(soundPanel.HIRCObjects.Select(hirc => hirc.ID), value.ID);
                         if (hircIndex >= 0)
                         {
-                            soundPanel.HIRC_ListBox.SelectedItem = soundPanel.HIRCObjects[hircIndex];
+                            soundPanel.SelectHircObject(value.ID);
                         }
                     }
                 }
@@ -1678,6 +1679,8 @@ namespace LegendaryExplorer.Tools.WwiseEditor
             Properties_InterpreterWPF.LoadExport(export);
             binaryInterpreter.LoadExport(export);
             soundPanel.LoadExport(export);
+            soundPanel.SetHircEventPreviews(BuildHircEventPreviews(
+                export.FileRef.Exports, TLKManagerWPF.GlobalFindStrRefbyID));
 
             if (fromFile)
             {
@@ -1734,6 +1737,17 @@ namespace LegendaryExplorer.Tools.WwiseEditor
             }
 
             CurrentObjects.ReplaceAll(newObjs);
+        }
+
+        internal static IReadOnlyDictionary<uint, string> BuildHircEventPreviews(
+            IEnumerable<ExportEntry> exports, Func<int, IMEPackage, string> resolveTlk)
+        {
+            return exports
+                .Where(export => export.ClassName == "WwiseEvent")
+                .GroupBy(WExport.GetExportId)
+                .ToDictionary(group => group.Key,
+                    group => string.Join(Environment.NewLine,
+                        group.Select(export => WExport.BuildDisplayValue(export, resolveTlk))));
         }
 
         public void Layout()

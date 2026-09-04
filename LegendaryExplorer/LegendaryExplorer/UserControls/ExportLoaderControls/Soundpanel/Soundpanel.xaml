@@ -208,6 +208,11 @@
                             </Button.Style>
                         </Button>
                         <Separator Margin="5,0,5,0"/>
+                        <xctk:WatermarkTextBox Watermark="Filter HIRCs" Width="140"
+                                                   Text="{Binding HIRCFilterText, UpdateSourceTrigger=PropertyChanged}"
+                                                   ToolTip="Filter by index, ID, type, event export, TLK ID, or TLK text"
+                                                   VerticalContentAlignment="Center"/>
+                        <Separator Margin="5,0,5,0"/>
                         <xctk:WatermarkTextBox Watermark="Search for hex" Name="SearchHIRCHex_TextBox" Width="90" KeyUp="Searchbox_OnKeyUpHandler" VerticalContentAlignment="Center"/>
                         <Button Content="Search" Command="{Binding SearchHIRCHexCommand}" Padding="10,0" VerticalAlignment="Stretch" Margin="5,0"/>
                         <!--<CheckBox Content="Search Big Endian" ToolTip="Searches bytes in reverse order endian (Big Endian). Search will read bytes as if they were text on a page, left to right."/>-->
@@ -220,7 +225,7 @@
                             <RowDefinition MinHeight="230"/>
                         </Grid.RowDefinitions>
 
-                        <ListBox ItemsSource="{Binding HIRCObjects}" 
+                        <ListBox ItemsSource="{Binding HIRCObjectsView}"
                              Name="HIRC_ListBox" SelectionChanged="HIRC_ListBox_SelectionChanged" 
                              HorizontalContentAlignment="Stretch"
                              Grid.Row="0" Grid.ColumnSpan="3">
@@ -247,7 +252,11 @@
                                                 Visibility="{Binding Converter={StaticResource HIRCObjectTypeVisibilityConverter},ConverterParameter=2}">
                                             <TextBlock Text="{Binding State,Converter={StaticResource HIRCMediaFetchTypeConverter}}" FontWeight="Bold"/>
                                         </Border>
-                                        <TextBlock Text="{Binding Path=ObjType, Converter={StaticResource HIRCObjectTypeConverter}}" FontStyle="Italic"/>
+                                        <StackPanel>
+                                            <TextBlock Text="{Binding Path=ObjType, Converter={StaticResource HIRCObjectTypeConverter}}" FontStyle="Italic"/>
+                                            <TextBlock Text="{Binding EventPreview}" TextWrapping="Wrap" MaxWidth="400"
+                                                       Foreground="{DynamicResource SecondaryTextBrush}"/>
+                                        </StackPanel>
                                         <DockPanel.ContextMenu>
                                             <ContextMenu>
                                                 <MenuItem Click="CloneHIRCObject" ToolTip="Clones HIRC object">

@@ -25,6 +25,13 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         public WwiseBankParsed.EventActionType EventActionType { get; set; }
         public uint ReferencedObjectID { get; set; }
 
+        private string _eventPreview;
+        public string EventPreview
+        {
+            get => _eventPreview;
+            internal set => SetProperty(ref _eventPreview, value);
+        }
+
         private byte[] _data;
         public byte[] Data
         {
