@@ -5,6 +5,8 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
+using BinarySerialization;
+using LegendaryExplorer.Dialogs;
 using LegendaryExplorer.Tools.WwiseEditor;
 using LegendaryExplorerCore;
 using LegendaryExplorerCore.Packages;
@@ -19,7 +21,9 @@ using ME3Tweaks.Wwiser.Model.RTPC;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Piccolo;
 using WwiserAction = ME3Tweaks.Wwiser.Model.Hierarchy.Action;
+using WwiserActorMixer = ME3Tweaks.Wwiser.Model.Hierarchy.ActorMixer;
 using WwiserEvent = ME3Tweaks.Wwiser.Model.Hierarchy.Event;
+using WwiserEmptyHircItem = ME3Tweaks.Wwiser.Model.Hierarchy.EmptyHircItem;
 using WwiserHircItemContainer = ME3Tweaks.Wwiser.Model.Hierarchy.HircItemContainer;
 using WwiserIHasNode = ME3Tweaks.Wwiser.Model.Hierarchy.IHasNode;
 using WwiserSound = ME3Tweaks.Wwiser.Model.Hierarchy.Sound;
@@ -35,27 +39,101 @@ public class WwiseEditorWindowTests
     private const uint HelmetFilterEffectId = 125287176;
     private const uint HelmetRtpcId = 0xAA2B753F;
     private static readonly uint[] BioWareRadioEffectIds = [125287176, 1177780410];
+    private static readonly uint[] HackettQecEffectIds = [1827713496, 1487904704];
 
     [ClassInitialize]
     public static void Initialize(TestContext _) => LegendaryExplorerCoreLib.InitLib(TaskScheduler.Default);
 
     [TestMethod]
-    public void EffectScopesIncludeNestedOverrideParentFxNodes()
+    public void BankEffectScopesUseUniqueLeavesAndOverrideEveryBioWareParent()
     {
-        var bank = LoadTestBank();
-        var nodes = GetParameterNodes(bank);
-        Assert.IsGreaterThanOrEqualTo(2, nodes.Count);
-
-        var root = nodes[0];
-        root.Node.NodeBaseParameters.DirectParentId = 0;
-        var nestedOverride = nodes[1];
-        nestedOverride.Node.NodeBaseParameters.DirectParentId = root.Id;
-        nestedOverride.Node.NodeBaseParameters.FxParams.IsOverrideParentFx = true;
+        const uint rootId = 0xF0000001;
+        const uint firstBranchId = 0xF0000002;
+        const uint secondBranchId = 0xF0000003;
+        const uint nestedOverrideId = 0xF0000004;
+        const uint firstSoundId = 0xF0000005;
+        const uint secondSoundId = 0xF0000006;
+        var root = new WwiserActorMixer { Id = rootId };
+        var firstBranch = new WwiserActorMixer
+        {
+            Id = firstBranchId,
+            NodeBaseParameters = new NodeBaseParameters { DirectParentId = rootId }
+        };
+        var secondBranch = new WwiserActorMixer
+        {
+            Id = secondBranchId,
+            NodeBaseParameters = new NodeBaseParameters { DirectParentId = rootId }
+        };
+        var nestedOverride = new WwiserActorMixer
+        {
+            Id = nestedOverrideId,
+            NodeBaseParameters = new NodeBaseParameters { DirectParentId = firstBranchId }
+        };
+        nestedOverride.NodeBaseParameters.FxParams.IsOverrideParentFx = true;
+        var firstSound = new WwiserSound
+        {
+            Id = firstSoundId,
+            NodeBaseParameters = new NodeBaseParameters { DirectParentId = nestedOverrideId }
+        };
+        var secondSound = new WwiserSound
+        {
+            Id = secondSoundId,
+            NodeBaseParameters = new NodeBaseParameters { DirectParentId = secondBranchId }
+        };
+        var nodes = new List<(uint Id, WwiserIHasNode Node)>
+        {
+            (rootId, root), (firstBranchId, firstBranch), (secondBranchId, secondBranch),
+            (nestedOverrideId, nestedOverride), (firstSoundId, firstSound), (secondSoundId, secondSound)
+        };
 
         var effectScopes = InvokePrivate<List<WwiserIHasNode>>("GetEffectScopeNodes", nodes);
 
-        CollectionAssert.Contains(effectScopes, root.Node);
-        CollectionAssert.Contains(effectScopes, nestedOverride.Node);
+        CollectionAssert.AreEqual(new List<WwiserIHasNode> { firstSound, secondSound }, effectScopes);
+
+        root.NodeBaseParameters.FxParams.FxChunks.AddRange(HackettQecEffectIds.Select((id, index) =>
+            new FxChunk { FxIndex = checked((byte)index), Id = id, IsShareSet = true }));
+        root.NodeBaseParameters.FxParams.NumFx = checked((byte)HackettQecEffectIds.Length);
+        InvokePrivate("ApplyEffectPresetToScopes", effectScopes, WwiseEditorEffectPreset.Qec, MEGame.LE3,
+            nodes.Select(item => item.Node).ToList());
+
+        foreach (var parent in new WwiserIHasNode[] { root, firstBranch, secondBranch, nestedOverride })
+        {
+            Assert.IsEmpty(parent.NodeBaseParameters.FxParams.FxChunks);
+        }
+        foreach (var scope in effectScopes)
+        {
+            Assert.IsTrue(scope.NodeBaseParameters.FxParams.IsOverrideParentFx);
+            CollectionAssert.AreEqual(HackettQecEffectIds,
+                scope.NodeBaseParameters.FxParams.FxChunks.OrderBy(chunk => chunk.FxIndex)
+                    .Select(chunk => chunk.Id).ToArray());
+        }
+    }
+
+    [TestMethod]
+    public void BankEffectScopesUseSoundLeavesForFlatImportedHierarchy()
+    {
+        const uint rootId = 0xF0000011;
+        const uint firstSoundId = 0xF0000012;
+        const uint secondSoundId = 0xF0000013;
+        var root = new WwiserActorMixer { Id = rootId };
+        var firstSound = new WwiserSound
+        {
+            Id = firstSoundId,
+            NodeBaseParameters = new NodeBaseParameters { DirectParentId = rootId }
+        };
+        var secondSound = new WwiserSound
+        {
+            Id = secondSoundId,
+            NodeBaseParameters = new NodeBaseParameters { DirectParentId = rootId }
+        };
+        var nodes = new List<(uint Id, WwiserIHasNode Node)>
+        {
+            (rootId, root), (firstSoundId, firstSound), (secondSoundId, secondSound)
+        };
+
+        var effectScopes = InvokePrivate<List<WwiserIHasNode>>("GetEffectScopeNodes", nodes);
+
+        CollectionAssert.AreEqual(new List<WwiserIHasNode> { firstSound, secondSound }, effectScopes);
     }
 
     [TestMethod]
@@ -66,6 +144,8 @@ public class WwiseEditorWindowTests
         Assert.IsGreaterThanOrEqualTo(2, nodes.Count);
 
         var scopes = new List<WwiserIHasNode> { nodes[0].Node, nodes[1].Node };
+        scopes[0].NodeBaseParameters.DirectParentId = 0;
+        scopes[1].NodeBaseParameters.DirectParentId = ((ME3Tweaks.Wwiser.Model.Hierarchy.HircItem)scopes[0]).Id;
         foreach (var scope in scopes)
         {
             scope.NodeBaseParameters.FxParams.FxChunks.Clear();
@@ -104,7 +184,8 @@ public class WwiseEditorWindowTests
             scopes[0].NodeBaseParameters.FxParams.FxChunks.Select(chunk => chunk.Id).ToArray());
         CollectionAssert.AreEqual(new[] { unrelatedEffectId }.Concat(BioWareRadioEffectIds).ToArray(),
             scopes[1].NodeBaseParameters.FxParams.FxChunks.Select(chunk => chunk.Id).ToArray());
-        Assert.IsTrue(scopes.All(scope => scope.NodeBaseParameters.FxParams.IsOverrideParentFx));
+        Assert.IsTrue(scopes[0].NodeBaseParameters.FxParams.IsOverrideParentFx);
+        Assert.IsTrue(scopes[1].NodeBaseParameters.FxParams.IsOverrideParentFx);
 
         var reparsed = RoundTrip(bank);
         foreach (var scopeId in scopes.Select(scope => ((ME3Tweaks.Wwiser.Model.Hierarchy.HircItem)scope).Id))
@@ -315,10 +396,187 @@ public class WwiseEditorWindowTests
             Item = playEvent
         });
 
-        var targets = InvokePrivate<List<WwiserSound>>("GetEventTargetSounds", bank, eventId,
+        var targets = InvokePrivate<List<WwiserIHasNode>>("GetEventTargetAudioNodes", bank, eventId,
             GetParameterNodes(bank));
 
         CollectionAssert.Contains(targets, sound);
+    }
+
+    [TestMethod]
+    public void EventEffectScopesUseUniqueSoundLeafToOverrideBioWareHierarchy()
+    {
+        const uint rootId = 0xF0000020;
+        const uint branchId = 0xF0000021;
+        const uint groupId = 0xF0000022;
+        const uint soundId = 0xF0000023;
+        var root = new WwiserActorMixer { Id = rootId };
+        var branch = new WwiserActorMixer
+        {
+            Id = branchId,
+            NodeBaseParameters = new NodeBaseParameters { DirectParentId = rootId }
+        };
+        var group = new WwiserActorMixer
+        {
+            Id = groupId,
+            NodeBaseParameters = new NodeBaseParameters { DirectParentId = branchId }
+        };
+        var sound = new WwiserSound
+        {
+            Id = soundId,
+            NodeBaseParameters = new NodeBaseParameters { DirectParentId = groupId }
+        };
+        var nodes = new List<(uint Id, WwiserIHasNode Node)>
+        {
+            (rootId, root), (branchId, branch), (groupId, group), (soundId, sound)
+        };
+
+        var scopes = InvokePrivate<List<WwiserIHasNode>>("GetEventEffectScopeNodes",
+            new List<WwiserIHasNode> { sound });
+
+        CollectionAssert.AreEqual(new List<WwiserIHasNode> { sound }, scopes);
+        InvokePrivate("SetEffectPresetOnScopes", scopes, GetPreset("HackettQec"));
+        Assert.IsTrue(sound.NodeBaseParameters.FxParams.IsOverrideParentFx);
+        CollectionAssert.AreEqual(HackettQecEffectIds,
+            sound.NodeBaseParameters.FxParams.FxChunks.OrderBy(chunk => chunk.FxIndex)
+                .Select(chunk => chunk.Id).ToArray());
+        Assert.IsTrue(new WwiserIHasNode[] { root, branch, group }
+            .All(parent => parent.NodeBaseParameters.FxParams.FxChunks.Count == 0));
+    }
+
+    [TestMethod]
+    public void EventEffectScopesKeepSoundForFlatImportedHierarchy()
+    {
+        const uint rootId = 0xF0000030;
+        const uint soundId = 0xF0000031;
+        var root = new WwiserActorMixer { Id = rootId };
+        var sound = new WwiserSound
+        {
+            Id = soundId,
+            NodeBaseParameters = new NodeBaseParameters { DirectParentId = rootId }
+        };
+        var nodes = new List<(uint Id, WwiserIHasNode Node)>
+        {
+            (rootId, root), (soundId, sound)
+        };
+
+        var scopes = InvokePrivate<List<WwiserIHasNode>>("GetEventEffectScopeNodes",
+            new List<WwiserIHasNode> { sound });
+
+        CollectionAssert.AreEqual(new List<WwiserIHasNode> { sound }, scopes);
+    }
+
+    [TestMethod]
+    public void EventSettingsApplyHackettQecToOpaqueMusicHierarchy()
+    {
+        var bank = LoadTestBank();
+        const uint playlistId = 0xF0000010;
+        const uint segmentId = 0xF0000011;
+        const uint trackId = 0xF0000012;
+        const uint actionId = 0xF0000013;
+        const uint eventId = 0xF0000014;
+        var playlist = CreateOpaqueMusicNode(playlistId, 0);
+        var segment = CreateOpaqueMusicNode(segmentId, playlistId);
+        var track = CreateOpaqueMusicTrackNode(trackId, segmentId);
+        var playAction = new WwiserAction
+        {
+            Id = actionId,
+            Type = new ActionType { Value = ActionTypeValue.Play },
+            TargetId = playlistId,
+            ActionParams = new Active
+            {
+                SpecificParams = new ME3Tweaks.Wwiser.Model.Action.Specific.Action()
+            }
+        };
+        var playEvent = new WwiserEvent
+        {
+            Id = eventId,
+            ActionCount = new VarCount { Value = 1 },
+            ActionIds = [actionId]
+        };
+        bank.HIRC.Items.Add(new WwiserHircItemContainer
+        {
+            Type = new HircSmartType { Value = HircType.MusicRandomSequence },
+            Item = playlist
+        });
+        bank.HIRC.Items.Add(new WwiserHircItemContainer
+        {
+            Type = new HircSmartType { Value = HircType.MusicSegment },
+            Item = segment
+        });
+        bank.HIRC.Items.Add(new WwiserHircItemContainer
+        {
+            Type = new HircSmartType { Value = HircType.MusicTrack },
+            Item = track
+        });
+        bank.HIRC.Items.Add(new WwiserHircItemContainer
+        {
+            Type = new HircSmartType { Value = HircType.Action },
+            Item = playAction
+        });
+        bank.HIRC.Items.Add(new WwiserHircItemContainer
+        {
+            Type = new HircSmartType { Value = HircType.Event },
+            Item = playEvent
+        });
+
+        var parameterNodes = InvokePrivate<List<(uint Id, WwiserIHasNode Node)>>(
+            "GetEditableParameterNodes", bank);
+        var targets = InvokePrivate<List<WwiserIHasNode>>("GetEventTargetAudioNodes", bank, eventId,
+            parameterNodes);
+        var effectScopes = InvokePrivate<List<WwiserIHasNode>>("GetEventEffectScopeNodes", targets);
+
+        Assert.HasCount(1, targets);
+        Assert.AreEqual(trackId,
+            ((ME3Tweaks.Wwiser.Model.Hierarchy.HircItem)targets[0]).Id);
+        Assert.HasCount(1, effectScopes);
+        Assert.AreEqual(trackId,
+            ((ME3Tweaks.Wwiser.Model.Hierarchy.HircItem)effectScopes[0]).Id);
+        targets[0].NodeBaseParameters.OverrideBusId = 0x12345678;
+        InvokePrivate("SetInitialParameter", targets[0].NodeBaseParameters.InitialParams62,
+            PropId.Volume, -6f, true);
+        object hackettQec = GetPreset("HackettQec");
+        Assert.IsTrue(InvokePresetMethod("EnsureEffectData", bank, hackettQec));
+        InvokePrivate("SetEffectPresetOnScopes", effectScopes, hackettQec);
+        InvokePrivate("CommitOpaqueMusicNodes", parameterNodes, bank.BKHD.BankGeneratorVersion);
+
+        using var nodeData = new MemoryStream(track.Data, false);
+        nodeData.Position = 13;
+        var committedNode = new BinarySerializer().Deserialize<NodeBaseParameters>(nodeData,
+            new BankSerializationContext(bank.BKHD.BankGeneratorVersion));
+        Assert.AreEqual(0x12345678u, committedNode.OverrideBusId);
+        int volumeIndex = committedNode.InitialParams62.ParameterIds.FindIndex(
+            parameter => parameter.PropValue == PropId.Volume);
+        Assert.IsGreaterThanOrEqualTo(volumeIndex, 0);
+        Assert.AreEqual(-6f, committedNode.InitialParams62.ParameterValues[volumeIndex].Float);
+        Assert.IsTrue(committedNode.FxParams.IsOverrideParentFx);
+        CollectionAssert.AreEqual(HackettQecEffectIds,
+            committedNode.FxParams.FxChunks.OrderBy(chunk => chunk.FxIndex)
+                .Select(chunk => chunk.Id).ToArray());
+        CollectionAssert.AreEqual(new byte[] { 0xAB, 0xCD }, track.Data[^2..]);
+
+        using var effectData = new MemoryStream(segment.Data, false);
+        effectData.Position = 1;
+        var committedEffectNode = new BinarySerializer().Deserialize<NodeBaseParameters>(effectData,
+            new BankSerializationContext(bank.BKHD.BankGeneratorVersion));
+        Assert.IsEmpty(committedEffectNode.FxParams.FxChunks);
+        CollectionAssert.AreEqual(new byte[] { 0xAB, 0xCD }, segment.Data[^2..]);
+
+        var reparsed = RoundTrip(bank);
+        Assert.IsInstanceOfType<WwiserEmptyHircItem>(reparsed.HIRC.Items
+            .Single(item => item.Item.Id == trackId).Item);
+        Assert.IsTrue(HackettQecEffectIds.All(id => reparsed.HIRC.Items.Any(item =>
+            item.Type.Value == HircType.FxShareSet && item.Item.Id == id)));
+        var reparsedNodes = InvokePrivate<List<(uint Id, WwiserIHasNode Node)>>(
+            "GetEditableParameterNodes", reparsed);
+        var reparsedTrack = reparsedNodes
+            .Single(item => item.Id == trackId).Node;
+        Assert.AreEqual(0x12345678u, reparsedTrack.NodeBaseParameters.OverrideBusId);
+        CollectionAssert.AreEqual(HackettQecEffectIds,
+            reparsedTrack.NodeBaseParameters.FxParams.FxChunks.OrderBy(chunk => chunk.FxIndex)
+                .Select(chunk => chunk.Id).ToArray());
+        var reparsedSegment = reparsedNodes
+            .Single(item => item.Id == segmentId).Node;
+        Assert.IsEmpty(reparsedSegment.NodeBaseParameters.FxParams.FxChunks);
     }
 
     [TestMethod]
@@ -577,6 +835,34 @@ public class WwiseEditorWindowTests
         WwiseBankParser.Serialize(bank, stream);
         stream.Position = 0;
         return WwiseBankParser.Deserialize(stream);
+    }
+
+    private static WwiserEmptyHircItem CreateOpaqueMusicNode(uint id, uint parentId)
+    {
+        var node = new NodeBaseParameters { DirectParentId = parentId };
+        using var nodeData = new MemoryStream();
+        new BinarySerializer().Serialize(nodeData, node, new BankSerializationContext(134));
+        return new WwiserEmptyHircItem
+        {
+            Id = id,
+            Data = new byte[] { 0 }.Concat(nodeData.ToArray()).Concat(new byte[] { 0xAB, 0xCD }).ToArray()
+        };
+    }
+
+    private static WwiserEmptyHircItem CreateOpaqueMusicTrackNode(uint id, uint parentId)
+    {
+        var node = new NodeBaseParameters { DirectParentId = parentId };
+        using var musicData = new MemoryStream();
+        using (var writer = new BinaryWriter(musicData, System.Text.Encoding.UTF8, true))
+        {
+            writer.Write((byte)0); // MIDI behavior
+            writer.Write(0u); // source count
+            writer.Write(0u); // time parameter count
+            writer.Write(0u); // curve count
+        }
+        new BinarySerializer().Serialize(musicData, node, new BankSerializationContext(134));
+        musicData.Write([0xAB, 0xCD]);
+        return new WwiserEmptyHircItem { Id = id, Data = musicData.ToArray() };
     }
 
     private static List<(uint Id, WwiserIHasNode Node)> GetParameterNodes(ME3Tweaks.Wwiser.WwiseBank bank) =>

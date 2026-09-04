@@ -36,6 +36,7 @@ namespace LegendaryExplorer.Dialogs
         internal uint? OutputBusId { get; init; }
         internal string EffectiveInheritedOutputBus { get; init; }
         internal bool? LoopAudio { get; init; }
+        internal bool CanLoopAudio { get; init; }
         internal WwiseEditorEffectPreset EffectPreset { get; init; }
         internal bool? DuckAudio { get; init; }
         internal bool? Attenuation { get; init; }
@@ -95,6 +96,7 @@ namespace LegendaryExplorer.Dialogs
             PopulateOutputBuses(settings);
             PopulateEffects(settings);
             LoopAudioCheckBox.IsChecked = settings.LoopAudio;
+            LoopAudioCheckBox.IsEnabled = settings.CanLoopAudio;
             DuckAudioCheckBox.IsChecked = settings.DuckAudio;
             AttenuationCheckBox.IsChecked = settings.Attenuation;
             AttenuationScaleSlider.Value = Math.Clamp(settings.AttenuationScalePercent, 10, 500);

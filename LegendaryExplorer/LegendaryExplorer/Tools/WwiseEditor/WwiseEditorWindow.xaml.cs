@@ -9,6 +9,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Threading;
+using BinarySerialization;
 using LegendaryExplorer.Misc;
 using LegendaryExplorer.Misc.AppSettings;
 using LegendaryExplorer.Dialogs;
@@ -40,8 +41,10 @@ using ME3Tweaks.Wwiser.Model.RTPC;
 using WwiserAction = ME3Tweaks.Wwiser.Model.Hierarchy.Action;
 using WwiserAttenuation = ME3Tweaks.Wwiser.Model.Hierarchy.Attenuation;
 using WwiserActiveFlags = ME3Tweaks.Wwiser.Model.Action.Specific.ActiveFlags;
+using WwiserBankSourceData = ME3Tweaks.Wwiser.Model.Hierarchy.BankSourceData;
 using WwiserPauseResume = ME3Tweaks.Wwiser.Model.Action.Specific.PauseResume;
 using WwiserEvent = ME3Tweaks.Wwiser.Model.Hierarchy.Event;
+using WwiserEmptyHircItem = ME3Tweaks.Wwiser.Model.Hierarchy.EmptyHircItem;
 using WwiserHircItem = ME3Tweaks.Wwiser.Model.Hierarchy.HircItem;
 using WwiserHircItemContainer = ME3Tweaks.Wwiser.Model.Hierarchy.HircItemContainer;
 using WwiserIHasNode = ME3Tweaks.Wwiser.Model.Hierarchy.IHasNode;
@@ -63,6 +66,24 @@ namespace LegendaryExplorer.Tools.WwiseEditor
     {
         private const uint StopAllEventId = 788884573;
         private const int MaximumEffectSlots = 4;
+
+        private sealed class EditableOpaqueMusicNode : WwiserHircItem, WwiserIHasNode
+        {
+            internal required WwiserEmptyHircItem SourceItem { get; init; }
+            internal required byte[] PrefixData { get; init; }
+            internal required byte[] SuffixData { get; init; }
+            internal required HircType SourceType { get; init; }
+            public NodeBaseParameters NodeBaseParameters { get; set; } = new();
+            public override HircType HircType => SourceType;
+
+            internal void Commit(uint version)
+            {
+                using var nodeData = new MemoryStream();
+                new BinarySerializer().Serialize(nodeData, NodeBaseParameters,
+                    new BankSerializationContext(version));
+                SourceItem.Data = PrefixData.Concat(nodeData.ToArray()).Concat(SuffixData).ToArray();
+            }
+        }
 
         private struct SaveData
         {
@@ -522,10 +543,7 @@ namespace LegendaryExplorer.Tools.WwiseEditor
                 var rawBank = bankExport.GetBinaryData<CoreWwiseBank>();
                 using var input = new MemoryStream(rawBank.BnkFile, false);
                 var bank = WwiseBankParser.Deserialize(input);
-                var parameterNodes = bank.HIRC?.Items
-                    .Where(item => item.Item is WwiserIHasNode)
-                    .Select(item => (item.Item.Id, Node: (WwiserIHasNode)item.Item))
-                    .ToList() ?? [];
+                var parameterNodes = GetEditableParameterNodes(bank);
                 var rootNodes = GetRootNodes(parameterNodes);
                 if (rootNodes.Count == 0)
                 {
@@ -589,24 +607,22 @@ namespace LegendaryExplorer.Tools.WwiseEditor
                 using var input = new MemoryStream(rawBank.BnkFile, false);
                 var bank = WwiseBankParser.Deserialize(input);
                 uint eventId = WExport.GetExportId(eventExport);
-                var parameterNodes = bank.HIRC?.Items
-                    .Where(item => item.Item is WwiserIHasNode)
-                    .Select(item => (item.Item.Id, Node: (WwiserIHasNode)item.Item))
-                    .ToList() ?? [];
-                var targetSounds = GetEventTargetSounds(bank, eventId, parameterNodes);
-                if (targetSounds.Count == 0)
+                var parameterNodes = GetEditableParameterNodes(bank);
+                var targetNodes = GetEventTargetAudioNodes(bank, eventId, parameterNodes);
+                if (targetNodes.Count == 0)
                 {
                     MessageBox.Show(owner,
-                        "This WwiseEvent has no editable Sound targets. Only Play actions that resolve to Sound nodes can be adjusted.",
+                        "This WwiseEvent has no editable audio targets. Only Play actions that resolve to audio hierarchy nodes can be adjusted.",
                         "Event settings unavailable", MessageBoxButton.OK, MessageBoxImage.Warning);
                     return false;
                 }
 
-                var targetNodes = targetSounds.Cast<WwiserIHasNode>().ToList();
+                var targetSounds = targetNodes.OfType<WwiserSound>().ToList();
+                var effectScopeNodes = GetEventEffectScopeNodes(targetNodes);
                 string stopEventName = GetStopEventName(eventExport.ObjectName.Name, eventExport.Game);
                 uint stopEventId = WwiseOutputBusOptions.GenerateShortId(stopEventName);
                 return EditAudioSettings(owner, bankExport, bank, eventExport.ObjectName.Instanced, false,
-                    targetNodes, targetNodes, targetSounds, parameterNodes, stopEventId, stopEventName);
+                    targetNodes, effectScopeNodes, targetSounds, parameterNodes, stopEventId, stopEventName);
             }
             catch (Exception ex)
             {
@@ -707,14 +723,19 @@ namespace LegendaryExplorer.Tools.WwiseEditor
                 Game = game,
                 ScopeName = scopeName,
                 TargetSummary = isBankWide
-                    ? $"Changes apply to {sounds.Count} Sound object(s) in this bank."
-                    : $"Changes apply to {sounds.Count} Sound object(s) reached by this event. Other events that reuse the same Sound objects will hear the same changes.",
+                    ? sounds.Count > 0
+                        ? $"Changes apply to {sounds.Count} Sound object(s) in this bank."
+                        : $"Changes apply across {settingNodes.Count} music hierarchy node(s) in this bank."
+                    : sounds.Count > 0
+                        ? $"Changes apply to {sounds.Count} Sound object(s) reached by this event. Other events that reuse the same Sound objects will hear the same changes."
+                        : $"Changes apply to {settingNodes.Count} music hierarchy node(s) reached by this event. Other events that reuse the same nodes will hear the same changes.",
                 IsBankWide = isBankWide,
                 Volume = currentVolume,
                 VolumeIsMixed = volumeIsMixed,
                 OutputBusId = currentOutputBusId,
                 EffectiveInheritedOutputBus = effectiveInheritedOutputBus,
                 LoopAudio = currentLoopAudio,
+                CanLoopAudio = sounds.Count > 0,
                 EffectPreset = currentEffect,
                 DuckAudio = currentDucking,
                 Attenuation = currentAttenuation,
@@ -797,7 +818,8 @@ namespace LegendaryExplorer.Tools.WwiseEditor
 
             if (effectChanged)
             {
-                ApplyEffectPresetToScopes(effectScopeNodes, settingsDialog.SelectedEffectPreset, game);
+                ApplyEffectPresetToScopes(effectScopeNodes, settingsDialog.SelectedEffectPreset, game,
+                    isBankWide ? parameterNodes.Select(item => item.Node) : null);
             }
 
             if (loopChanged)
@@ -867,6 +889,7 @@ namespace LegendaryExplorer.Tools.WwiseEditor
                 EnsureStopEventInBank(bank, stopEventId, stopEventName, sounds);
             }
 
+            CommitOpaqueMusicNodes(parameterNodes, bank.BKHD.BankGeneratorVersion);
             using var output = new MemoryStream();
             WwiseBankParser.Serialize(bank, output);
             CoreWwiseBank.WriteBankRaw(output.ToArray(), bankExport);
@@ -879,7 +902,141 @@ namespace LegendaryExplorer.Tools.WwiseEditor
 
         private static uint GetNodeId(WwiserIHasNode node) => ((WwiserHircItem)node).Id;
 
-        private static List<WwiserSound> GetEventTargetSounds(ME3Tweaks.Wwiser.WwiseBank bank, uint eventId,
+        private static List<(uint Id, WwiserIHasNode Node)> GetEditableParameterNodes(
+            ME3Tweaks.Wwiser.WwiseBank bank)
+        {
+            var parameterNodes = bank.HIRC?.Items
+                .Where(item => item.Item is WwiserIHasNode)
+                .Select(item => (item.Item.Id, Node: (WwiserIHasNode)item.Item))
+                .ToList() ?? [];
+            if (bank.BKHD.BankGeneratorVersion != WwiseBankEffectPresets.BankVersion || bank.HIRC == null)
+            {
+                return parameterNodes;
+            }
+
+            foreach (var item in bank.HIRC.Items.Where(item =>
+                         item.Item is WwiserEmptyHircItem &&
+                         item.Type.Value is HircType.MusicSegment or HircType.MusicTrack or
+                             HircType.MusicSwitch or HircType.MusicRandomSequence))
+            {
+                var sourceItem = (WwiserEmptyHircItem)item.Item;
+                if (!TryGetOpaqueMusicNodeOffset(item.Type.Value, sourceItem,
+                        bank.BKHD.BankGeneratorVersion, out int nodeOffset))
+                {
+                    continue;
+                }
+
+                try
+                {
+                    using var musicData = new MemoryStream(sourceItem.Data, false);
+                    musicData.Position = nodeOffset;
+                    var node = new BinarySerializer().Deserialize<NodeBaseParameters>(musicData,
+                        new BankSerializationContext(bank.BKHD.BankGeneratorVersion));
+                    parameterNodes.Add((sourceItem.Id, new EditableOpaqueMusicNode
+                    {
+                        Id = sourceItem.Id,
+                        SourceItem = sourceItem,
+                        SourceType = item.Type.Value,
+                        PrefixData = sourceItem.Data[..nodeOffset],
+                        NodeBaseParameters = node,
+                        SuffixData = sourceItem.Data[(int)musicData.Position..]
+                    }));
+                }
+                catch
+                {
+                    // Preserve music objects whose node prefix does not match the supported v134 layout.
+                }
+            }
+
+            return parameterNodes;
+        }
+
+        private static bool TryGetOpaqueMusicNodeOffset(HircType type, WwiserEmptyHircItem sourceItem,
+            uint version, out int nodeOffset)
+        {
+            nodeOffset = 0;
+            if (sourceItem.Data.Length <= 1)
+            {
+                return false;
+            }
+
+            if (type != HircType.MusicTrack)
+            {
+                nodeOffset = 1; // v134 music MIDI behavior byte
+                return true;
+            }
+
+            try
+            {
+                using var musicData = new MemoryStream(sourceItem.Data, false);
+                using var reader = new BinaryReader(musicData);
+                reader.ReadByte(); // MIDI behavior
+
+                uint sourceCount = reader.ReadUInt32();
+                ValidateMusicItemCount(sourceCount, musicData, 14);
+                var serializer = new BinarySerializer();
+                var context = new BankSerializationContext(version);
+                for (uint index = 0; index < sourceCount; index++)
+                {
+                    serializer.Deserialize<WwiserBankSourceData>(musicData, context);
+                }
+
+                uint timeParameterCount = reader.ReadUInt32();
+                ValidateMusicItemCount(timeParameterCount, musicData, 44);
+                SkipMusicData(musicData, checked((long)timeParameterCount * 44));
+                if (timeParameterCount > 0)
+                {
+                    SkipMusicData(musicData, sizeof(uint)); // sub-track count
+                }
+
+                uint curveCount = reader.ReadUInt32();
+                ValidateMusicItemCount(curveCount, musicData, 12);
+                for (uint index = 0; index < curveCount; index++)
+                {
+                    SkipMusicData(musicData, sizeof(uint) * 2); // time parameter index and curve type
+                    uint pointCount = reader.ReadUInt32();
+                    ValidateMusicItemCount(pointCount, musicData, 12);
+                    SkipMusicData(musicData, checked((long)pointCount * 12));
+                }
+
+                nodeOffset = checked((int)musicData.Position);
+                return nodeOffset < sourceItem.Data.Length;
+            }
+            catch
+            {
+                nodeOffset = 0;
+                return false;
+            }
+        }
+
+        private static void ValidateMusicItemCount(uint count, Stream stream, int minimumItemSize)
+        {
+            if (count > (stream.Length - stream.Position) / minimumItemSize)
+            {
+                throw new InvalidDataException("The music hierarchy item contains an invalid element count.");
+            }
+        }
+
+        private static void SkipMusicData(Stream stream, long byteCount)
+        {
+            if (byteCount < 0 || byteCount > stream.Length - stream.Position)
+            {
+                throw new EndOfStreamException();
+            }
+            stream.Position += byteCount;
+        }
+
+        private static void CommitOpaqueMusicNodes(
+            IEnumerable<(uint Id, WwiserIHasNode Node)> parameterNodes, uint version)
+        {
+            foreach (var musicNode in parameterNodes.Select(item => item.Node)
+                         .OfType<EditableOpaqueMusicNode>())
+            {
+                musicNode.Commit(version);
+            }
+        }
+
+        private static List<WwiserIHasNode> GetEventTargetAudioNodes(ME3Tweaks.Wwiser.WwiseBank bank, uint eventId,
             IReadOnlyCollection<(uint Id, WwiserIHasNode Node)> parameterNodes)
         {
             if (bank.HIRC?.Items.FirstOrDefault(item => item.Item.Id == eventId)?.Item is not WwiserEvent hircEvent)
@@ -902,7 +1059,7 @@ namespace LegendaryExplorer.Tools.WwiseEditor
 
             var queue = new Queue<uint>(targetIds);
             var visited = new HashSet<uint>();
-            var sounds = new List<WwiserSound>();
+            var targetNodes = new List<WwiserIHasNode>();
             while (queue.TryDequeue(out uint targetId))
             {
                 if (!visited.Add(targetId) || !nodesById.TryGetValue(targetId, out var targetNode))
@@ -910,19 +1067,20 @@ namespace LegendaryExplorer.Tools.WwiseEditor
                     continue;
                 }
 
-                if (targetNode is WwiserSound sound)
+                var childIds = childIdsByParent[targetId].ToList();
+                if (targetNode is WwiserSound || childIds.Count == 0)
                 {
-                    sounds.Add(sound);
+                    targetNodes.Add(targetNode);
                     continue;
                 }
 
-                foreach (uint childId in childIdsByParent[targetId])
+                foreach (uint childId in childIds)
                 {
                     queue.Enqueue(childId);
                 }
             }
 
-            return sounds;
+            return targetNodes;
         }
 
         private static string GetStopEventName(string playEventName, MEGame game)
@@ -1140,15 +1298,19 @@ namespace LegendaryExplorer.Tools.WwiseEditor
             };
 
         private static void ApplyEffectPresetToScopes(IEnumerable<WwiserIHasNode> effectScopeNodes,
-            WwiseEditorEffectPreset preset, MEGame game)
+            WwiseEditorEffectPreset preset, MEGame game,
+            IEnumerable<WwiserIHasNode> additionalCleanupNodes = null)
         {
             var scopes = effectScopeNodes.Distinct().ToList();
+            // Clean up root-level effects written by older WwiseEditor builds before applying the
+            // replacement to the runtime-effective BioWare branch scopes.
+            var cleanupScopes = scopes.Concat(additionalCleanupNodes ?? []).Distinct().ToList();
             foreach (var effectChain in GetKnownEffectChains())
             {
-                SetEffectOnScopes(scopes, effectChain, false);
+                SetEffectOnScopes(cleanupScopes, effectChain, false);
             }
-            WwiseBankEffectPresets.SetHelmetRtpcOnScopes(scopes, false);
-            WwiseBankEffectPresets.SetLe2HelmetRtpcOnScopes(scopes, false);
+            WwiseBankEffectPresets.SetHelmetRtpcOnScopes(cleanupScopes, false);
+            WwiseBankEffectPresets.SetLe2HelmetRtpcOnScopes(cleanupScopes, false);
 
             if (preset == WwiseEditorEffectPreset.NoneOrInherited)
             {
@@ -1215,13 +1377,27 @@ namespace LegendaryExplorer.Tools.WwiseEditor
         private static List<WwiserIHasNode> GetEffectScopeNodes(
             IReadOnlyCollection<(uint Id, WwiserIHasNode Node)> parameterNodes)
         {
-            var rootNodes = GetRootNodes(parameterNodes);
-            return rootNodes
-                .Concat(parameterNodes
-                    .Where(item => item.Node.NodeBaseParameters.FxParams.IsOverrideParentFx)
-                    .Select(item => item.Node))
+            var parentNodeIds = parameterNodes
+                .Select(item => item.Node.NodeBaseParameters.DirectParentId)
+                .ToHashSet();
+            // BioWare reuses its roots and Actor-Mixer hierarchy IDs in multiple banks. Those
+            // shared objects can be replaced when another bank is loaded. Leaf Sound/music IDs
+            // are bank-specific, so an explicit FX override there cannot be masked by any of the
+            // inherited buses, mixers, or duplicate parent definitions.
+            return parameterNodes
+                .Where(item => item.Node is WwiserSound || !parentNodeIds.Contains(item.Id))
+                .Select(item => item.Node)
                 .Distinct()
                 .ToList();
+        }
+
+        private static List<WwiserIHasNode> GetEventEffectScopeNodes(
+            IReadOnlyCollection<WwiserIHasNode> targetNodes)
+        {
+            // GetEventTargetAudioNodes already resolves each Play action through the hierarchy to
+            // its terminal Sound/music nodes. Override FX on those unique leaves so every inherited
+            // BioWare bus and Actor-Mixer definition is superseded for this event.
+            return targetNodes.Distinct().ToList();
         }
 
         private static void SetLoopAudio(WwiserSound sound, bool enabled)
