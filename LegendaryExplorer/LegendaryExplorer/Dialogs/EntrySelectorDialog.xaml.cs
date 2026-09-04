@@ -65,6 +65,12 @@ namespace LegendaryExplorer.Dialogs
         private PackageCache TexturePreviewPackageCache;
         private Task TexturePreviewResolutionTask = Task.CompletedTask;
         private int TexturePreviewRequestVersion;
+        private MeshRenderer MeshPreviewRenderer;
+        private TextBlock MeshPreviewHeader;
+        private TextBlock MeshPreviewMessage;
+        private PackageCache MeshPreviewPackageCache;
+        private Task MeshPreviewResolutionTask = Task.CompletedTask;
+        private int MeshPreviewRequestVersion;
         private Soundpanel AudioPreviewPlayer;
         private TextBlock AudioPreviewHeader;
         private TextBlock AudioPreviewMessage;
@@ -147,6 +153,7 @@ namespace LegendaryExplorer.Dialogs
                 }
 
                 UpdateTexturePreview(value as IEntry);
+                UpdateMeshPreview(value as IEntry);
                 UpdateAudioPreview(value as IEntry);
             }
         }
@@ -165,7 +172,7 @@ namespace LegendaryExplorer.Dialogs
             Predicate<IEntry> entryPredicate = null, bool supportRootSelection = false,
             string rootSelectionLabel = "[Package root]", string searchHelpText = null,
             Predicate<IEntry> initialEntryFilter = null, string showAllEntriesOptionLabel = null,
-            ExportEntry sequencePreview = null, bool texturePreview = false)
+            ExportEntry sequencePreview = null, bool texturePreview = false, bool meshPreview = false)
         {
             this.Pcc = pcc;
             this.SupportedInputTypes = supportedInputTypes;
@@ -207,6 +214,7 @@ namespace LegendaryExplorer.Dialogs
             InitializeComponent();
             InitializeSequencePreview(sequencePreview);
             InitializeTexturePreview(texturePreview);
+            InitializeMeshPreview(meshPreview);
             InitializeAudioPreview();
             UpdateFilteredEntries();
             EntrySearchTextBox.Focus();
@@ -382,11 +390,179 @@ namespace LegendaryExplorer.Dialogs
             TexturePreviewViewer.CannotShowTextureTextVisibility = Visibility.Visible;
         }
 
+        private void InitializeMeshPreview(bool forceMeshPreview = false)
+        {
+            if (MeshPreviewRenderer is not null
+                || SequencePreviewEditor is not null
+                || TexturePreviewViewer is not null
+                || AudioPreviewPlayer is not null)
+            {
+                return;
+            }
+
+            IEntry[] entries = [.. AllEntriesList.OfType<IEntry>()];
+            if (!forceMeshPreview
+                && (entries.Length == 0 || entries.Any(entry => !IsMeshPreviewEntry(entry))))
+            {
+                return;
+            }
+
+            ShowPreviewPane(new GridLength(4, GridUnitType.Star));
+            MeshPreviewPackageCache = new PackageCache();
+            MeshPreviewRenderer = new MeshRenderer();
+            MeshPreviewRenderer.Loaded += MeshPreviewRenderer_Loaded;
+            MeshPreviewHeader = new TextBlock
+            {
+                Text = "Mesh preview",
+                FontWeight = FontWeights.Bold,
+                Margin = new Thickness(0, 0, 0, 8),
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                ToolTip = "The currently selected mesh"
+            };
+            MeshPreviewMessage = new TextBlock
+            {
+                Foreground = SystemColors.GrayTextBrush,
+                Margin = new Thickness(0, 0, 0, 8),
+                TextWrapping = TextWrapping.Wrap
+            };
+
+            var previewPanel = new DockPanel();
+            DockPanel.SetDock(MeshPreviewHeader, Dock.Top);
+            DockPanel.SetDock(MeshPreviewMessage, Dock.Top);
+            previewPanel.Children.Add(MeshPreviewHeader);
+            previewPanel.Children.Add(MeshPreviewMessage);
+            previewPanel.Children.Add(MeshPreviewRenderer);
+            PreviewHost.Content = previewPanel;
+            SetMeshPreviewMessage("Select a mesh to preview");
+        }
+
+        private static bool IsMeshPreviewEntry(IEntry entry)
+            => entry?.ClassName is "SkeletalMesh" or "BioSocketSupermodel" or "StaticMesh" or "FracturedStaticMesh";
+
+        private void MeshPreviewRenderer_Loaded(object sender, RoutedEventArgs e)
+        {
+            MeshPreviewRenderer?.StartRendering();
+        }
+
+        private void UpdateMeshPreview(IEntry entry)
+        {
+            if (MeshPreviewRenderer is null)
+            {
+                return;
+            }
+
+            int requestVersion = Interlocked.Increment(ref MeshPreviewRequestVersion);
+            MeshPreviewRenderer.UnloadExport();
+            MeshPreviewHeader.Text = entry is null
+                ? "Mesh preview"
+                : $"Mesh preview — {entry.InstancedFullPath}";
+            MeshPreviewHeader.ToolTip = entry?.InstancedFullPath ?? "The currently selected mesh";
+
+            if (entry is null)
+            {
+                SetMeshPreviewMessage("No mesh selected");
+                return;
+            }
+
+            if (!IsMeshPreviewEntry(entry))
+            {
+                SetMeshPreviewMessage("The selected entry is not a previewable mesh");
+                return;
+            }
+
+            if (entry is ExportEntry meshExport)
+            {
+                LoadMeshPreview(meshExport);
+                return;
+            }
+
+            SetMeshPreviewMessage("Resolving mesh import…");
+            PackageCache packageCache = MeshPreviewPackageCache;
+            Task<(ExportEntry mesh, string error)> resolutionTask = MeshPreviewResolutionTask.ContinueWith(
+                _ => ResolveMeshPreview(entry, packageCache, requestVersion),
+                TaskScheduler.Default);
+            MeshPreviewResolutionTask = resolutionTask;
+            resolutionTask.ContinueWithOnUIThread(task =>
+            {
+                if (disposedValue || requestVersion != MeshPreviewRequestVersion)
+                {
+                    return;
+                }
+
+                if (task.IsFaulted)
+                {
+                    SetMeshPreviewMessage($"Could not load mesh preview: {task.Exception?.GetBaseException().Message}");
+                }
+                else if (task.Result.mesh is null)
+                {
+                    SetMeshPreviewMessage(task.Result.error ?? "Could not resolve the selected mesh");
+                }
+                else
+                {
+                    LoadMeshPreview(task.Result.mesh);
+                }
+            });
+        }
+
+        private (ExportEntry mesh, string error) ResolveMeshPreview(
+            IEntry entry, PackageCache packageCache, int requestVersion)
+        {
+            try
+            {
+                if (requestVersion != Volatile.Read(ref MeshPreviewRequestVersion))
+                {
+                    return (null, null);
+                }
+
+                ExportEntry meshExport = entry switch
+                {
+                    ExportEntry export => export,
+                    ImportEntry import when EntryImporter.TryResolveImport(import, out ExportEntry resolved,
+                        cache: packageCache) => resolved,
+                    _ => null
+                };
+                if (meshExport is null)
+                {
+                    return (null, "Could not resolve the selected mesh import");
+                }
+
+                return IsMeshPreviewEntry(meshExport) && MeshRenderer.CanParseStatic(meshExport)
+                    ? (meshExport, null)
+                    : (null, "The resolved entry is not a previewable mesh");
+            }
+            catch (Exception exception)
+            {
+                return (null, $"Could not load mesh preview: {exception.Message}");
+            }
+        }
+
+        private void LoadMeshPreview(ExportEntry meshExport)
+        {
+            if (!MeshRenderer.CanParseStatic(meshExport))
+            {
+                SetMeshPreviewMessage("The selected entry is not a previewable mesh");
+                return;
+            }
+
+            SetMeshPreviewMessage(null);
+            MeshPreviewRenderer.LoadExport(meshExport);
+            MeshPreviewRenderer.InvalidateMeasure();
+        }
+
+        private void SetMeshPreviewMessage(string message)
+        {
+            MeshPreviewMessage.Text = message;
+            MeshPreviewMessage.Visibility = string.IsNullOrWhiteSpace(message)
+                ? Visibility.Collapsed
+                : Visibility.Visible;
+        }
+
         private void InitializeAudioPreview()
         {
             if (AudioPreviewPlayer is not null
                 || SequencePreviewEditor is not null
                 || TexturePreviewViewer is not null
+                || MeshPreviewRenderer is not null
                 || !AllEntriesList.OfType<IEntry>().Any(IsWwiseAudioEntry))
             {
                 return;
@@ -619,6 +795,7 @@ namespace LegendaryExplorer.Dialogs
             DataContext = this;
             LoadCommands();
             InitializeComponent();
+            InitializeMeshPreview();
             InitializeAudioPreview();
             if (!string.IsNullOrWhiteSpace(windowTitle))
             {
@@ -638,6 +815,7 @@ namespace LegendaryExplorer.Dialogs
             DataContext = this;
             LoadCommands();
             InitializeComponent();
+            InitializeMeshPreview();
             InitializeAudioPreview();
             UpdateFilteredEntries();
             EntrySearchTextBox.Focus();
@@ -656,7 +834,8 @@ namespace LegendaryExplorer.Dialogs
             IMEPackage pcc, string directionsText = null, Predicate<T> predicate = null, object defaultItem = null,
             bool selectLastItemByDefault = false, string noOptionLabel = "[Package root]",
             Predicate<T> initialFilterPredicate = null, string showAllEntriesOptionLabel = null,
-            ExportEntry sequencePreview = null, bool texturePreview = false) where T : class, IEntry
+            ExportEntry sequencePreview = null, bool texturePreview = false,
+            bool meshPreview = false) where T : class, IEntry
         {
             SupportedTypes supportedInputTypes = SupportedTypes.ExportsAndImports;
             if (typeof(T) == typeof(ExportEntry))
@@ -679,7 +858,7 @@ namespace LegendaryExplorer.Dialogs
             using var dlg = new EntrySelector(owner, pcc, supportedInputTypes, directionsText, entryPredicate, true,
                 noOptionLabel, initialEntryFilter: initialEntryFilter,
                 showAllEntriesOptionLabel: showAllEntriesOptionLabel, sequencePreview: sequencePreview,
-                texturePreview: texturePreview);
+                texturePreview: texturePreview, meshPreview: meshPreview);
             dlg.SetInitialSelection(defaultItem, selectLastItemByDefault);
             if (dlg.ShowDialog() == true)
             {
@@ -702,7 +881,8 @@ namespace LegendaryExplorer.Dialogs
         public static T GetEntry<T>(Window owner, IMEPackage pcc, string directionsText = null,
             Predicate<T> predicate = null, IEntry defaultItem = null, bool selectLastItemByDefault = false,
             Predicate<T> initialFilterPredicate = null, string showAllEntriesOptionLabel = null,
-            ExportEntry sequencePreview = null, bool texturePreview = false) where T : class, IEntry
+            ExportEntry sequencePreview = null, bool texturePreview = false,
+            bool meshPreview = false) where T : class, IEntry
         {
             SupportedTypes supportedInputTypes = SupportedTypes.ExportsAndImports;
             if (typeof(T) == typeof(ExportEntry))
@@ -724,7 +904,7 @@ namespace LegendaryExplorer.Dialogs
                 : entry => initialFilterPredicate((T)entry);
             using var dlg = new EntrySelector(owner, pcc, supportedInputTypes, directionsText, entryPredicate,
                 initialEntryFilter: initialEntryFilter, showAllEntriesOptionLabel: showAllEntriesOptionLabel,
-                sequencePreview: sequencePreview, texturePreview: texturePreview);
+                sequencePreview: sequencePreview, texturePreview: texturePreview, meshPreview: meshPreview);
             dlg.SetInitialSelection(defaultItem, selectLastItemByDefault);
             if (dlg.ShowDialog() == true)
             {
@@ -854,6 +1034,7 @@ namespace LegendaryExplorer.Dialogs
             {
                 List<object> results = ItemSearch(search).ToList();
                 AllEntriesList.ReplaceAll(results);
+                InitializeMeshPreview();
                 InitializeAudioPreview();
                 UpdateFilteredEntries();
                 if (SelectedEntryItem is not null)
@@ -1015,6 +1196,22 @@ namespace LegendaryExplorer.Dialogs
                     if (texturePreviewPackageCache is not null)
                     {
                         TexturePreviewResolutionTask.ContinueWith(_ => texturePreviewPackageCache.Dispose(),
+                            TaskScheduler.Default);
+                    }
+                    if (MeshPreviewRenderer is not null)
+                    {
+                        MeshPreviewRenderer.Loaded -= MeshPreviewRenderer_Loaded;
+                        MeshPreviewRenderer.StopRendering();
+                        MeshPreviewRenderer.UnloadExport();
+                        MeshPreviewRenderer.Dispose();
+                        MeshPreviewRenderer = null;
+                    }
+                    Interlocked.Increment(ref MeshPreviewRequestVersion);
+                    PackageCache meshPreviewPackageCache = MeshPreviewPackageCache;
+                    MeshPreviewPackageCache = null;
+                    if (meshPreviewPackageCache is not null)
+                    {
+                        MeshPreviewResolutionTask.ContinueWith(_ => meshPreviewPackageCache.Dispose(),
                             TaskScheduler.Default);
                     }
                     AudioPreviewPlayer?.Dispose();

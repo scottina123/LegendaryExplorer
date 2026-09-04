@@ -3912,7 +3912,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     : entry => currentSequenceObjectUIndexes.Contains(entry.UIndex),
                 showAllEntriesOptionLabel: "Show full LinkedOp list",
                 sequencePreview: currentSequence,
-                texturePreview: showTexturePreview);
+                texturePreview: showTexturePreview,
+                meshPreview: targetNode.AssetReferenceClass is "SkeletalMesh" or "StaticMesh");
 
             if (!selectedNull && selectedEntry == null)
             {
