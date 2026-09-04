@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using BinarySerialization;
 using LegendaryExplorer.Dialogs;
 using LegendaryExplorer.Tools.WwiseEditor;
+using LegendaryExplorer.UnrealExtensions;
 using LegendaryExplorerCore;
 using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.Unreal;
@@ -86,7 +87,7 @@ public class WwiseEditorWindowTests
             (nestedOverrideId, nestedOverride), (firstSoundId, firstSound), (secondSoundId, secondSound)
         };
 
-        var effectScopes = InvokePrivate<List<WwiserIHasNode>>("GetEffectScopeNodes", nodes);
+        var effectScopes = InvokePrivate<List<WwiserIHasNode>>("GetRuntimeOverrideNodes", nodes);
 
         CollectionAssert.AreEqual(new List<WwiserIHasNode> { firstSound, secondSound }, effectScopes);
 
@@ -131,7 +132,7 @@ public class WwiseEditorWindowTests
             (rootId, root), (firstSoundId, firstSound), (secondSoundId, secondSound)
         };
 
-        var effectScopes = InvokePrivate<List<WwiserIHasNode>>("GetEffectScopeNodes", nodes);
+        var effectScopes = InvokePrivate<List<WwiserIHasNode>>("GetRuntimeOverrideNodes", nodes);
 
         CollectionAssert.AreEqual(new List<WwiserIHasNode> { firstSound, secondSound }, effectScopes);
     }
@@ -361,7 +362,7 @@ public class WwiseEditorWindowTests
     }
 
     [TestMethod]
-    public void EventTargetsResolvePlayActionsThroughHierarchyToSoundNodes()
+    public void EventLeafScopesRoundTripEveryEditableAudioSetting()
     {
         var bank = LoadTestBank();
         var sound = bank.HIRC.Items.Select(item => item.Item).OfType<WwiserSound>().First();
@@ -400,6 +401,62 @@ public class WwiseEditorWindowTests
             GetParameterNodes(bank));
 
         CollectionAssert.Contains(targets, sound);
+        Assert.IsTrue(targets.All(target => target is WwiserSound));
+        var targetSounds = targets.Cast<WwiserSound>().ToList();
+        var effectScopes = InvokePrivate<List<WwiserIHasNode>>("GetEventEffectScopeNodes", targets);
+        CollectionAssert.AreEquivalent(targets.ToList(), effectScopes);
+
+        const float volume = -7.5f;
+        const uint outputBusId = 0x12345678;
+        foreach (var target in targets)
+        {
+            InvokePrivate("SetInitialParameter", target.NodeBaseParameters.InitialParams62,
+                PropId.Volume, volume, true);
+            target.NodeBaseParameters.OverrideBusId = outputBusId;
+        }
+        foreach (var targetSound in targetSounds)
+        {
+            InvokePrivate("SetLoopAudio", targetSound, true);
+        }
+
+        object hackettQec = GetPreset("HackettQec");
+        Assert.IsTrue(InvokePresetMethod("EnsureEffectData", bank, hackettQec));
+        InvokePrivate("SetEffectPresetOnScopes", effectScopes, hackettQec);
+        Assert.IsTrue(WwiseBankEffectPresets.EnsureMusicDuckingData(bank));
+        WwiseBankEffectPresets.SetMusicDuckingOnScopes(targets, true);
+
+        var attenuationIds = new Dictionary<uint, uint>();
+        foreach (var target in targets)
+        {
+            uint targetId = ((ME3Tweaks.Wwiser.Model.Hierarchy.HircItem)target).Id;
+            Assert.IsTrue(WwiseBankEffectPresets.EnsureStandardAttenuationDataForScope(
+                bank, MEGame.LE3, 1.25f, targetId, out uint attenuationId));
+            attenuationIds[targetId] = attenuationId;
+            WwiseBankEffectPresets.SetStandardAttenuationOnScopes([target], attenuationId, true);
+        }
+        InvokePrivate("EnsureStopEventInBank", bank, StopAllEventId, "Stop", targetSounds);
+
+        var reparsed = RoundTrip(bank);
+        var reparsedTargets = reparsed.HIRC.Items.Select(item => item.Item).OfType<WwiserIHasNode>()
+            .Where(target => attenuationIds.ContainsKey(
+                ((ME3Tweaks.Wwiser.Model.Hierarchy.HircItem)target).Id))
+            .ToList();
+        Assert.HasCount(targets.Count, reparsedTargets);
+        foreach (var target in reparsedTargets)
+        {
+            uint targetId = ((ME3Tweaks.Wwiser.Model.Hierarchy.HircItem)target).Id;
+            Assert.AreEqual(volume, InvokePrivate<float>("GetNodeVolume", target));
+            Assert.AreEqual(outputBusId, target.NodeBaseParameters.OverrideBusId);
+            Assert.IsTrue(target.NodeBaseParameters.FxParams.IsOverrideParentFx);
+            CollectionAssert.AreEqual(HackettQecEffectIds,
+                target.NodeBaseParameters.FxParams.FxChunks.OrderBy(chunk => chunk.FxIndex)
+                    .Select(chunk => chunk.Id).ToArray());
+            Assert.IsTrue(WwiseBankEffectPresets.HasMusicDuckingOnAllScopes([target]));
+            Assert.IsTrue(WwiseBankEffectPresets.HasStandardAttenuationOnAllScopes(
+                [target], attenuationIds[targetId]));
+            Assert.IsTrue(InvokePrivate<bool>("IsLooping", (WwiserSound)target));
+        }
+        AssertStopEventCoversSounds(reparsed, targetSounds);
     }
 
     [TestMethod]

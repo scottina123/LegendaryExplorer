@@ -544,15 +544,9 @@ namespace LegendaryExplorer.Tools.WwiseEditor
                 using var input = new MemoryStream(rawBank.BnkFile, false);
                 var bank = WwiseBankParser.Deserialize(input);
                 var parameterNodes = GetEditableParameterNodes(bank);
-                var rootNodes = GetRootNodes(parameterNodes);
-                if (rootNodes.Count == 0)
-                {
-                    rootNodes.AddRange(parameterNodes.Select(item => item.Node));
-                }
+                var settingNodes = GetRuntimeOverrideNodes(parameterNodes);
 
-                var effectScopeNodes = GetEffectScopeNodes(parameterNodes);
-
-                if (rootNodes.Count == 0)
+                if (settingNodes.Count == 0)
                 {
                     MessageBox.Show(owner, "No editable audio nodes were found in this bank.", "Settings not adjusted",
                         MessageBoxButton.OK, MessageBoxImage.Warning);
@@ -564,7 +558,7 @@ namespace LegendaryExplorer.Tools.WwiseEditor
                     .OfType<WwiserSound>()
                     .ToList() ?? [];
                 return EditAudioSettings(owner, bankExport, bank, bankExport.ObjectName.Instanced, true,
-                    rootNodes, effectScopeNodes, sounds, parameterNodes, StopAllEventId, "Stop");
+                    settingNodes, settingNodes, sounds, parameterNodes, StopAllEventId, "Stop");
             }
             catch (Exception ex)
             {
@@ -1374,7 +1368,7 @@ namespace LegendaryExplorer.Tools.WwiseEditor
                 .ToList();
         }
 
-        private static List<WwiserIHasNode> GetEffectScopeNodes(
+        private static List<WwiserIHasNode> GetRuntimeOverrideNodes(
             IReadOnlyCollection<(uint Id, WwiserIHasNode Node)> parameterNodes)
         {
             var parentNodeIds = parameterNodes
