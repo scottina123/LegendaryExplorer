@@ -57,6 +57,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
     /// </summary>
     public partial class Soundpanel : ExportLoaderControl
     {
+        internal const string AllHircCategories = "All HIRC categories";
+
         public sealed class NavigationTarget
         {
             public string Label { get; }
@@ -72,6 +74,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         public ObservableCollectionExtended<object> ExportInformationList { get; } = new();
         public ObservableCollectionExtended<NavigationTarget> NavigationTargets { get; } = new();
         public ObservableCollectionExtended<HIRCNotableItem> HIRCNotableItems { get; } = new();
+        public ObservableCollectionExtended<string> HIRCCategoryOptions { get; } = new();
         private readonly List<EmbeddedWEMFile> AllWems = new(); //used only for rebuilding soundbank
         WwiseStream wwiseStream;
         public string afcPath = "";
@@ -243,9 +246,12 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         public Soundpanel() : base("Soundpanel")
         {
+            HIRCCategoryOptions.Add(AllHircCategories);
+            _selectedHircCategory = AllHircCategories;
             HIRCObjectsView = CollectionViewSource.GetDefaultView(HIRCObjects);
             HIRCObjectsView.Filter = item => item is HIRCDisplayObject hirc
-                                                   && MatchesHircFilter(hirc, HIRCFilterText);
+                                                   && MatchesHircFilter(hirc, HIRCFilterText,
+                                                       SelectedHIRCCategory);
             PlayPauseIcon = EFontAwesomeIcon.Solid_Play;
             LoadCommands();
             CurrentVolume = 0.65f;
@@ -389,6 +395,19 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             }
         }
 
+        private string _selectedHircCategory;
+        public string SelectedHIRCCategory
+        {
+            get => _selectedHircCategory;
+            set
+            {
+                if (SetProperty(ref _selectedHircCategory, value ?? AllHircCategories))
+                {
+                    HIRCObjectsView.Refresh();
+                }
+            }
+        }
+
         #endregion
 
         #region Commands
@@ -477,6 +496,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 ClearNavigationTargets();
                 AllWems.Clear();
                 HIRCFilterText = string.Empty;
+                SelectedHIRCCategory = AllHircCategories;
                 CurrentLoadedWwisebank = null;
                 HircWwiseStreamPlaybackSource = null;
                 StopPlaying();
@@ -607,6 +627,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
                     HIRCObjects.Clear();
                     HIRCObjects.AddRange(hircDisplayObjects);
+                    RefreshHircCategoryOptions();
 
                     if (wb.EmbeddedFiles.Count > 0)
                     {
@@ -2498,16 +2519,34 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             if (!HIRCObjectsView.Contains(hirc))
             {
                 HIRCFilterText = string.Empty;
+                SelectedHIRCCategory = AllHircCategories;
             }
 
             HIRC_ListBox.SelectedItem = hirc;
         }
 
         internal static bool MatchesHircFilter(HIRCDisplayObject hirc, string filterText)
+            => MatchesHircFilter(hirc, filterText, AllHircCategories);
+
+        internal static bool MatchesHircFilter(HIRCDisplayObject hirc, string filterText,
+            string selectedCategory)
         {
-            if (hirc == null || string.IsNullOrWhiteSpace(filterText))
+            if (hirc == null)
             {
-                return hirc != null;
+                return false;
+            }
+
+            string categoryName = GetHircCategoryName(hirc);
+            if (!string.IsNullOrWhiteSpace(selectedCategory) &&
+                !string.Equals(selectedCategory, AllHircCategories, StringComparison.Ordinal) &&
+                !string.Equals(selectedCategory, categoryName, StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            if (string.IsNullOrWhiteSpace(filterText))
+            {
+                return true;
             }
 
             string playbackState = hirc.State switch
@@ -2521,7 +2560,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 hirc.Index.ToString(CultureInfo.InvariantCulture),
                 hirc.ID.ToString(CultureInfo.InvariantCulture),
                 $"HIRC 0x{hirc.ID:X8}",
-                hirc.SemanticTypeName ?? AudioStreamHelper.GetHircObjTypeString(hirc.ObjType),
+                categoryName,
                 hirc.SemanticDescription ?? string.Empty,
                 hirc.EventActionType.ToString(),
                 playbackState,
@@ -2534,6 +2573,30 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             return filterText.Split([' ', '\t', '\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
                 .All(term => searchableText.Contains(term, StringComparison.OrdinalIgnoreCase));
         }
+
+        private void RefreshHircCategoryOptions()
+        {
+            string selectedCategory = SelectedHIRCCategory;
+            var categories = HIRCObjects
+                .Select(GetHircCategoryName)
+                .Where(category => !string.IsNullOrWhiteSpace(category))
+                .Distinct(StringComparer.Ordinal)
+                .OrderBy(category => category, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            HIRCCategoryOptions.ClearEx();
+            HIRCCategoryOptions.Add(AllHircCategories);
+            HIRCCategoryOptions.AddRange(categories);
+            SelectedHIRCCategory = categories.Contains(selectedCategory, StringComparer.Ordinal)
+                ? selectedCategory
+                : AllHircCategories;
+            HIRCObjectsView.Refresh();
+        }
+
+        internal static string GetHircCategoryName(HIRCDisplayObject hirc) =>
+            hirc?.SemanticTypeName ?? (hirc == null
+                ? string.Empty
+                : AudioStreamHelper.GetHircObjTypeString(hirc.ObjType));
 
         private bool CanSaveHIRCHex() => HIRCHexChanged;
 
@@ -2557,6 +2620,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     SemanticDescription = selectedHirc.SemanticDescription
                 };
                 HIRCObjects[idx] = replacement;
+                RefreshHircCategoryOptions();
                 HIRC_ListBox.SelectedItem = replacement;
                 HIRCHexChanged = false;
                 OnPropertyChanged(nameof(HIRCHexChanged));

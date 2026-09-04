@@ -213,6 +213,12 @@
                                                    ToolTip="Filter by index, ID, type, event export, TLK ID, or TLK text"
                                                    VerticalContentAlignment="Center"/>
                         <Separator Margin="5,0,5,0"/>
+                        <ComboBox Width="150"
+                                  ItemsSource="{Binding HIRCCategoryOptions}"
+                                  SelectedItem="{Binding SelectedHIRCCategory, Mode=TwoWay}"
+                                  ToolTip="Show all HIRCs or only one semantic HIRC category"
+                                  VerticalContentAlignment="Center"/>
+                        <Separator Margin="5,0,5,0"/>
                         <xctk:WatermarkTextBox Watermark="Search for hex" Name="SearchHIRCHex_TextBox" Width="90" KeyUp="Searchbox_OnKeyUpHandler" VerticalContentAlignment="Center"/>
                         <Button Content="Search" Command="{Binding SearchHIRCHexCommand}" Padding="10,0" VerticalAlignment="Stretch" Margin="5,0"/>
                         <!--<CheckBox Content="Search Big Endian" ToolTip="Searches bytes in reverse order endian (Big Endian). Search will read bytes as if they were text on a page, left to right."/>-->

@@ -245,6 +245,9 @@ public class WwiseHelperTests
         Assert.AreEqual("BioWare FutzBox / Helmet Filter", effectDisplay.SemanticDescription);
         Assert.IsTrue(Soundpanel.MatchesHircFilter(effectDisplay, "effect helmet"));
         Assert.IsFalse(Soundpanel.MatchesHircFilter(effectDisplay, "motion bus"));
+        Assert.IsTrue(Soundpanel.MatchesHircFilter(effectDisplay, string.Empty, "Effect ShareSet"));
+        Assert.IsFalse(Soundpanel.MatchesHircFilter(effectDisplay, string.Empty, "Motion Bus"));
+        Assert.IsTrue(Soundpanel.MatchesHircFilter(effectDisplay, "helmet", Soundpanel.AllHircCategories));
 
         var motionContainer = new WwiserHircItemContainer
         {
