@@ -2028,10 +2028,10 @@ namespace LegendaryExplorer.Tools.WwiseEditor
                 o.MouseDown += Node_MouseDown;
             }
 
-            if (SavedPositions.IsEmpty())
-            {
-                AutoLayout();
-            }
+            // HIRC node dimensions and relationships depend on the selected bank (including
+            // semantic details and TLK previews). Always recalculate the layout when a bank is
+            // loaded so stale saved coordinates cannot stack expanded nodes on top of each other.
+            AutoLayout();
         }
 
         private void GetObjects(WwiseBankParsed bank)
