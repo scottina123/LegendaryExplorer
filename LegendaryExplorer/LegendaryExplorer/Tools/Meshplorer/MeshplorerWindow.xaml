@@ -223,7 +223,33 @@
                     <exportLoaderControls:BinaryInterpreterWPF x:Name="BinaryInterpreterTab_BinaryInterpreter" Grid.Row="2" HideHexBox="True" AlwaysLoadRegardlessOfSize="True" HostingControl="{Binding RelativeSource={RelativeSource AncestorType=Window}}"/>
                 </Grid>
                 <GridSplitter Grid.Column="3" Width="5" HorizontalAlignment="Stretch"  Visibility="{Binding Pcc, Converter={StaticResource NullVisibilityConverter}, FallbackValue=Collapsed}"/>
-                <exportLoaderControls:MeshRenderer x:Name="Mesh3DViewer" Grid.Column="4" Visibility="{Binding Path=Pcc, RelativeSource={RelativeSource AncestorType={x:Type local:MeshplorerWindow}}, Converter={StaticResource NullVisibilityConverter}, FallbackValue=Collapsed}"/>
+                <DockPanel Grid.Column="4" Visibility="{Binding Pcc, Converter={StaticResource NullVisibilityConverter}}">
+                    <StackPanel DockPanel.Dock="Bottom" Margin="5"
+                                Visibility="{Binding IsSkeletalMesh, ElementName=Mesh3DViewer, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <DockPanel Margin="0,0,0,4" IsEnabled="{Binding IsRendererBusy, Converter={StaticResource BoolEnabledConverter}, ConverterParameter=Not}">
+                            <Button DockPanel.Dock="Left" Content="Choose animation..." Click="ChooseAnimation_Click" Padding="6,2"
+                                    ToolTip="Search all animation sequences in this game's Asset Database"/>
+                            <Button DockPanel.Dock="Right" Content="Clear" Click="ClearAnimation_Click" Padding="6,2" Margin="4,0,0,0"
+                                    ToolTip="Return the mesh to its reference pose"/>
+                            <TextBlock Text="{Binding SelectedAnimationName}" ToolTip="{Binding SelectedAnimationName}"
+                                       TextTrimming="CharacterEllipsis" VerticalAlignment="Center" Margin="6,0"/>
+                        </DockPanel>
+                        <DockPanel IsEnabled="{Binding HasPreviewAnimation, ElementName=Mesh3DViewer}">
+                            <Button DockPanel.Dock="Left" Content="{Binding AnimationPlayPauseText, ElementName=Mesh3DViewer}"
+                                    Click="AnimationPlayPause_Click" Width="50" Padding="4,2"/>
+                            <TextBlock DockPanel.Dock="Right" Text="{Binding AnimationPositionText, ElementName=Mesh3DViewer}"
+                                       VerticalAlignment="Center" Margin="5,0,0,0"/>
+                            <Slider Minimum="0" Maximum="{Binding AnimationDuration, ElementName=Mesh3DViewer}"
+                                    Value="{Binding AnimationPosition, ElementName=Mesh3DViewer, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                    Thumb.DragStarted="AnimationTimeline_DragStarted" Thumb.DragCompleted="AnimationTimeline_DragCompleted"
+                                    IsMoveToPointEnabled="True" VerticalAlignment="Center" Margin="5,0"
+                                    ToolTip="Drag to scrub the looping animation"/>
+                        </DockPanel>
+                        <TextBlock Text="{Binding AnimationPreviewStatus, ElementName=Mesh3DViewer}" TextWrapping="Wrap"
+                                   Visibility="{Binding AnimationPreviewStatus, ElementName=Mesh3DViewer, Converter={StaticResource NullVisibilityConverter}}"/>
+                    </StackPanel>
+                    <exportLoaderControls:MeshRenderer x:Name="Mesh3DViewer"/>
+                </DockPanel>
             </Grid>
         </DockPanel>
     </xctk:BusyIndicator>

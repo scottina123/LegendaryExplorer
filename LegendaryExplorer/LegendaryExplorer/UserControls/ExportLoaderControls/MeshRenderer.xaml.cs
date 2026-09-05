@@ -146,7 +146,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             {
                 if (SetProperty(ref _currentLOD, value))
                 {
-                    //SceneViewer.Context.RenderScene();
+                    _animationPoseDirty = true;
                 }
             }
         }
@@ -681,7 +681,10 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         public bool ShowSkeleton
         {
             get => _showSkeleton;
-            set => SetProperty(ref _showSkeleton, value);
+            set
+            {
+                if (SetProperty(ref _showSkeleton, value)) _animationPoseDirty = true;
+            }
         }
 
         private float _cameraPitch, _cameraYaw, _cameraX, _cameraY, _cameraZ, _cameraFOV, _cameraZNear, _cameraZFar;
@@ -871,6 +874,9 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             UnloadExport();
             if (exportEntry == null)
                 return; // Can reload due to static mesh component looking for static mesh
+
+            if (_previewAnimation != null && _previewAnimation.Export.Game != exportEntry.Game)
+                SetPreviewAnimation(null);
 
 
             //SceneViewer.Context.BackgroundColor = new SharpDX.Color(128, 128, 128);
@@ -1245,6 +1251,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                                     else
                                     {
                                         BuildSkeletonLineBuffer(skm);
+                                        InitializeAnimationPreview(skm);
                                     }
                                     break;
                                 case StructProperty structProp: //BrushComponent
@@ -1561,7 +1568,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             return new WorldMesh(SceneViewer.Context.Device, triangles, vertices);
         }
 
-        private void BuildSkeletonLineBuffer(SkeletalMesh skm)
+        private void BuildSkeletonLineBuffer(SkeletalMesh skm, Vector3[] animatedPositions = null)
         {
             SkeletonVertexBuffer?.Dispose();
             SkeletonVertexBuffer = null;
@@ -1595,6 +1602,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 worldPositions[i] = new Vector3(-bindPose[i].M41, bindPose[i].M43, bindPose[i].M42);
             }
 
+            worldPositions = animatedPositions ?? worldPositions;
             SkeletonBonePositions = worldPositions;
 
             // Build line vertex pairs: each bone draws a line to its parent
@@ -1717,6 +1725,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             // before the Direct3D context reports ready. Polling the one-shot action here guarantees
             // it is installed on the first render frame instead of remaining queued forever.
             TryRunViewportLoadAction();
+
+            UpdatePreviewAnimation(timeStep);
 
             if (ControlIsLoaded && Rotating)
             {
@@ -2496,6 +2506,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         public override void UnloadExport()
         {
+            UnloadAnimationPreview();
             IsBrush = false;
             IsSkeletalMesh = false;
             IsStaticMesh = false;
@@ -2532,6 +2543,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         public override void Dispose()
         {
+            _previewAnimation = null;
+            UnloadAnimationPreview();
             ThemeManager.ThemeChanged -= OnThemeChanged;
             if (Parent is TabItem { Parent: TabControl tc })
             {

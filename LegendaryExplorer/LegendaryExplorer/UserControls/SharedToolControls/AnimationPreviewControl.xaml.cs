@@ -840,6 +840,8 @@ internal sealed class LegacySkinnedMeshRenderer
     {
         public Vector3 BindPosition;
         public Vector3 BindNormal;
+        public Vector3 BindTangent;
+        public float NormalW;
         public Vector2 UV;
         public int Bone0;
         public int Bone1;
@@ -871,6 +873,8 @@ internal sealed class LegacySkinnedMeshRenderer
                 ref var skinVert = ref _skinVertices[v];
                 skinVert.BindPosition = sv.Position;
                 skinVert.BindNormal = (Vector3)sv.TangentZ;
+                skinVert.BindTangent = (Vector3)sv.TangentX;
+                skinVert.NormalW = ((Vector4)sv.TangentZ).W;
                 skinVert.UV = sv.UV;
                 ResolveInfluences(ref skinVert, sv.InfluenceBones, sv.InfluenceWeights, chunk, boneMap);
             }
@@ -884,6 +888,8 @@ internal sealed class LegacySkinnedMeshRenderer
                 ref var skinVert = ref _skinVertices[v];
                 skinVert.BindPosition = gv.Position;
                 skinVert.BindNormal = (Vector3)gv.TangentZ;
+                skinVert.BindTangent = (Vector3)gv.TangentX;
+                skinVert.NormalW = ((Vector4)gv.TangentZ).W;
                 skinVert.UV = gv.UV;
                 ResolveInfluences(ref skinVert, gv.InfluenceBones, gv.InfluenceWeights, chunk, boneMap);
             }
@@ -992,6 +998,28 @@ internal sealed class LegacySkinnedMeshRenderer
                 sv.UV);
         }
 
+        mesh.RebuildBuffer(context.Device);
+    }
+
+    public void UpdateSkinning(SharpDX.Direct3D11.DeviceContext context,
+        LegacyScene3D.Mesh<LegacyScene3D.LEVertex> mesh, AnimPlayer animPlayer, MEGame game)
+    {
+        if (_skinVertices == null || mesh == null) return;
+        var matrices = animPlayer.ComputeSkinningMatrices();
+        if (matrices is not { Length: > 0 }) return;
+        for (int i = 0; i < Math.Min(_skinVertices.Length, mesh.Vertices.Count); i++)
+        {
+            ref var vertex = ref _skinVertices[i];
+            var transform = BlendMatrix(matrices, vertex.Bone0, vertex.Weight0, vertex.Bone1, vertex.Weight1,
+                vertex.Bone2, vertex.Weight2, vertex.Bone3, vertex.Weight3);
+            Vector3 position = Vector3.Transform(vertex.BindPosition, transform);
+            Vector3 normal = Vector3.TransformNormal(vertex.BindNormal, transform);
+            Vector3 tangent = Vector3.TransformNormal(vertex.BindTangent, transform);
+            mesh.Vertices[i] = mesh.Vertices[i].WithSkinnedGeometry(game,
+                new Vector3(-position.X, position.Z, position.Y),
+                new Vector3(-tangent.X, tangent.Z, tangent.Y),
+                new Vector4(-normal.X, normal.Z, normal.Y, vertex.NormalW));
+        }
         mesh.RebuildBuffer(context.Device);
     }
 

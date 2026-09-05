@@ -194,6 +194,10 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
         public LEVertex WithPositionAndNormal(MEGame game, Vector3 newPosition, Vector4 newNormal) =>
             new(new Vector4(newPosition, position.W), tangent, EncodeShaderNormal(game, newNormal), color, uvs);
 
+        public LEVertex WithSkinnedGeometry(MEGame game, Vector3 newPosition, Vector3 newTangent, Vector4 newNormal) =>
+            new(new Vector4(newPosition, position.W), EncodeShaderNormal(game, newTangent),
+                EncodeShaderNormal(game, newNormal), color, uvs);
+
         public void ToFloats(Span<float> floats) => MemoryMarshal.CreateSpan(ref Unsafe.As<LEVertex, float>(ref this), Stride / 4).CopyTo(floats);
 
         public static IVertexBase Create(MEGame game, Vector3 position, Vector3 tangent, Vector4 normal, Fixed4<Vector4> uvs)

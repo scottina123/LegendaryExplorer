@@ -52,6 +52,9 @@ namespace LegendaryExplorer.Tools.Meshplorer
             get => _currentExport;
             set
             {
+                _animationLoading?.Cancel();
+                if (_loadedAnimation != null && value?.Game != _loadedAnimation.Sequence.Export.Game)
+                    ClearAnimation();
                 SetProperty(ref _currentExport, value);
                 if (value == null)
                 {
@@ -718,6 +721,9 @@ namespace LegendaryExplorer.Tools.Meshplorer
             if (e.Cancel)
                 return;
 
+            _animationWindowClosed = true;
+            ClearAnimation();
+            _animationCatalog = null;
             CurrentExport = null;
             Mesh3DViewer.IsBusyChanged -= RendererIsBusyChanged;
             BinaryInterpreterTab_BinaryInterpreter.Dispose();
