@@ -514,9 +514,25 @@ public partial class ActorPreviewControl : ExportLoaderControl, IActorEditorCont
         camera.FocusDepth = 0;
         camera.Pitch = 0;
         camera.Yaw = 0;
-        camera.Position = bounds.Origin + Vector3.UnitX * Math.Max(radius * 2.2f, 100f);
+        camera.Position = GetPreviewCameraPosition(_actor, bounds);
         camera.OrientTowards(bounds.Origin);
         RenderContext.CameraSpeed = Math.Max(radius * 1.5f, 50f);
+    }
+
+    internal static Vector3 GetPreviewCameraPosition(ActorProxy actor, BoxSphereBounds bounds)
+    {
+        // Meshes face local +X. Use the displayed mesh's complete transform so actor rotation,
+        // component rotation and animation-parent transforms all affect the initial view.
+        Matrix4x4 localToWorld = actor.Components.OfType<MeshComponentProxy>()
+            .FirstOrDefault(component => component.IsVisible)?.LocalToWorld ?? actor.LocalToWorld;
+        Vector3 forward = Vector3.TransformNormal(Vector3.UnitX, localToWorld);
+        float lengthSquared = forward.LengthSquared();
+        forward = float.IsFinite(lengthSquared) && lengthSquared > 1e-8f
+            ? Vector3.Normalize(forward)
+            : Vector3.UnitX;
+
+        float radius = Math.Max(bounds.SphereRadius, 1f);
+        return bounds.Origin + forward * Math.Max(radius * 2.2f, 100f);
     }
 
     private void SnapCameraToActor_Click(object sender, RoutedEventArgs e)
