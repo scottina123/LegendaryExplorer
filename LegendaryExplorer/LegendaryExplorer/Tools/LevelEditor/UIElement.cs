@@ -332,8 +332,8 @@ public sealed class LightIconOverlay : UIElement
 }
 
 /// <summary>
-/// Lightweight, hit-testable emitter marker. It remains visible alongside rendered particles, and still lets large
-/// levels expose and select every VFX placement without allocating or simulating the effects when VFX is disabled.
+/// Lightweight, hit-testable markers for emitters and lens flare sources. They expose VFX placements for editing
+/// without allocating or simulating the effects, including lens flares that do not have a preview renderer.
 /// </summary>
 public sealed class EmitterIconOverlay : UIElement
 {
@@ -344,8 +344,9 @@ public sealed class EmitterIconOverlay : UIElement
     private const int MaximumIcons = 500;
     private static readonly Vector4 OutlineColor = new(0.03f, 0.02f, 0.06f, 0.95f);
     private static readonly Vector4 IconColor = new(0.45f, 0.85f, 1f, 0.95f);
+    private static readonly Vector4 LensFlareColor = new(1f, 0.9f, 0.35f, 0.95f);
     private static readonly Vector4 SelectedColor = new(1f, 0.55f, 0.15f, 1f);
-    private readonly List<(EmitterActorProxy Actor, float DistanceSquared)> candidates = [];
+    private readonly List<(ActorProxy Actor, float DistanceSquared)> candidates = [];
     private Vector3 candidateCameraPosition = new(float.NaN);
     private int candidateSceneRevision = -1;
 
@@ -364,9 +365,10 @@ public sealed class EmitterIconOverlay : UIElement
             candidateCameraPosition = cameraPosition;
             candidates.Clear();
             float maximumDistanceSquared = MaximumDistance * MaximumDistance;
-            foreach (EmitterActorProxy actor in context.DrawList_3D.OfType<EmitterActorProxy>())
+            foreach (ActorProxy actor in context.DrawList_3D)
             {
-                float distanceSquared = Vector3.DistanceSquared(actor.LocalToWorld.Translation, cameraPosition);
+                if (actor is not (EmitterActorProxy or LensFlareSourceProxy)) continue;
+                float distanceSquared = Vector3.DistanceSquared(GetIconPosition(actor), cameraPosition);
                 if (distanceSquared <= maximumDistanceSquared)
                 {
                     candidates.Add((actor, distanceSquared));
@@ -379,13 +381,14 @@ public sealed class EmitterIconOverlay : UIElement
             });
         }
 
-        EmitterActorProxy selected = context.TransformWidget.Attach as EmitterActorProxy;
+        ActorProxy selected = context.TransformWidget.Attach is EmitterActorProxy or LensFlareSourceProxy
+            ? (ActorProxy)context.TransformWidget.Attach : null;
         bool selectedDrawn = false;
         int iconsDrawn = 0;
         for (int index = 0; index < candidates.Count && iconsDrawn < MaximumIcons; index++)
         {
-            EmitterActorProxy actor = candidates[index].Actor;
-            if (DrawEmitterIcon(context, actor))
+            ActorProxy actor = candidates[index].Actor;
+            if (DrawIcon(context, actor))
             {
                 iconsDrawn++;
                 selectedDrawn |= ReferenceEquals(actor, selected);
@@ -393,13 +396,17 @@ public sealed class EmitterIconOverlay : UIElement
         }
         if (!selectedDrawn && selected is not null)
         {
-            DrawEmitterIcon(context, selected);
+            DrawIcon(context, selected);
         }
     }
 
-    private static bool DrawEmitterIcon(LevelEditorRenderContext context, EmitterActorProxy actor)
+    private static Vector3 GetIconPosition(ActorProxy actor) =>
+        actor is LensFlareSourceProxy { LensFlareComp: { } component }
+            ? component.LocalToWorld.Translation : actor.LocalToWorld.Translation;
+
+    private static bool DrawIcon(LevelEditorRenderContext context, ActorProxy actor)
     {
-        Vector3 basePosition = actor.LocalToWorld.Translation;
+        Vector3 basePosition = GetIconPosition(actor);
         Vector4 screenPosition = context.WorldToScreen(basePosition);
         if (screenPosition.W <= 0f)
         {
@@ -418,7 +425,8 @@ public sealed class EmitterIconOverlay : UIElement
         }
 
         int hitId = actor.HitID;
-        Vector4 color = ReferenceEquals(actor, context.TransformWidget.Attach) ? SelectedColor : IconColor;
+        Vector4 color = ReferenceEquals(actor, context.TransformWidget.Attach) ? SelectedColor
+            : actor is LensFlareSourceProxy ? LensFlareColor : IconColor;
         DrawStar(context, center, right, up, OuterRadius + 1.5f, OutlineColor, hitId);
         DrawStar(context, center, right, up, OuterRadius, color, hitId);
         return true;

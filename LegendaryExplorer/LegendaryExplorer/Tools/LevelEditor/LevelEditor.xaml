@@ -586,7 +586,7 @@
                               ItemsSource="{Binding PropertiesExportList}"
                               SelectedItem="{Binding SelectedPropertiesExport}"
                               IsEnabled="{Binding SelectedActor, Converter={StaticResource NullEnabledConverter}}"
-                              ToolTip="Select the actor or one of its components to inspect">
+                              ToolTip="Select the actor or one of its child objects to inspect and edit">
                         <ComboBox.ItemTemplate>
                             <DataTemplate>
                                 <TextBlock FontFamily="{DynamicResource AudemusDataFont}" FontSize="11">

@@ -422,13 +422,16 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy, ITr
         "SFXDroppedAmmo",
         "SFXDroppedPickup",
         "Emitter",
+        "LensFlareSource",
         "DecalActor",
         "SFXPointOfInterest"
     }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
 
     public static bool CanCreate(ExportEntry actorExport)
     {
-        return actorExport.IsA(SupportedClasses);
+        // The single-class check also recognizes a custom subclass defined in the package.
+        return actorExport is not null
+               && (actorExport.IsA(SupportedClasses) || actorExport.IsA("LensFlareSource"));
     }
 
     //KEEP IN SYNC WITH CanCreate!
@@ -508,6 +511,10 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy, ITr
         {
             return new EmitterActorProxy(context, actorExport);
         }
+        if (actorExport.IsA("LensFlareSource"))
+        {
+            return new LensFlareSourceProxy(context, actorExport);
+        }
         if (GlobalUnrealObjectInfo.IsA(className, "DecalActor", actorExport.Game))
         {
             return new DecalActorProxy(context, actorExport);
@@ -584,6 +591,10 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy, ITr
     public int HitID { get; set; }
 
     public virtual int HitPriority => IHitProxy.StandardPriority;
+
+    /// <summary>Actor and child exports available in the Level Editor property dropdown.</summary>
+    public virtual IEnumerable<ExportEntry> GetPropertyExports() =>
+        new[] { Export }.Concat(Components.Select(component => component.Export)).Distinct();
 
     public virtual PropertyCollection GetPropertiesForInterpreter()
     {
@@ -847,6 +858,70 @@ public sealed class SFXPointOfInterestProxy : ActorProxy
     public SFXPointOfInterestProxy(IActorEditorContext context, ExportEntry actorExport) : base(context, actorExport)
     {
     }
+
+    public override IEnumerable<ExportEntry> GetPropertyExports()
+    {
+        yield return Export;
+        if (Export.GetProperty<ArrayProperty<ObjectProperty>>("Modules") is { } modules)
+        {
+            foreach (ObjectProperty moduleReference in modules)
+            {
+                if (Pcc.TryGetUExport(moduleReference.Value, out ExportEntry module)
+                    && module.ClassName == "SFXSimpleUseModule")
+                {
+                    yield return module;
+                }
+            }
+        }
+        foreach (ExportEntry component in base.GetPropertyExports().Where(export => export != Export))
+        {
+            yield return component;
+        }
+    }
+}
+
+public sealed class LensFlareSourceProxy : ActorProxy
+{
+    public PrimitiveComponentProxy LensFlareComp { get; private set; }
+
+    public LensFlareSourceProxy(IActorEditorContext context, ExportEntry actorExport) : base(context, actorExport)
+    {
+        LoadLensFlareComponent();
+    }
+
+    private void LoadLensFlareComponent()
+    {
+        LensFlareComp?.Dispose();
+        Components.Clear();
+        LensFlareComp = null;
+
+        ExportEntry componentExport = Properties.GetProp<ObjectProperty>("LensFlareComp")?.ResolveToEntry(Pcc) as ExportEntry;
+        if (componentExport?.IsA("LensFlareComponent") != true)
+        {
+            componentExport = Export.GetChildren<ExportEntry>()
+                .FirstOrDefault(child => child.IsA("LensFlareComponent"));
+        }
+        if (componentExport is not null)
+        {
+            LensFlareComp = PrimitiveComponentProxy.Create(Editor.RenderContext, componentExport, this);
+            Components.Add(LensFlareComp);
+        }
+        DisplaySubtitle = LensFlareComp?.Properties.GetProp<ObjectProperty>("Template")
+            ?.ResolveToEntry(Pcc)?.ObjectName.Instanced;
+    }
+
+    public override void RefreshFromExport()
+    {
+        base.RefreshFromExport();
+        // Component references can be changed in the embedded property editor as well as their values.
+        LoadLensFlareComponent();
+    }
+
+    public override IEnumerable<ExportEntry> GetPropertyExports() =>
+        base.GetPropertyExports().Concat(Export.GetAllDescendants().OfType<ExportEntry>()).Distinct();
+
+    public override bool TestUIndexes(HashSet<int> uIndexes) =>
+        GetPropertyExports().Any(export => uIndexes.Contains(export.UIndex));
 }
 
 public sealed class EmitterActorProxy : ActorProxy

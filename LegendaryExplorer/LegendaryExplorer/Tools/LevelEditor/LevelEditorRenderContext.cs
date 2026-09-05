@@ -366,7 +366,7 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
         {
             Interlocked.Increment(ref lightIconRevision);
         }
-        if (actor is EmitterActorProxy)
+        if (actor is EmitterActorProxy or LensFlareSourceProxy)
         {
             Interlocked.Increment(ref emitterIconRevision);
         }
@@ -792,7 +792,7 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
             CacheSceneLight(actor);
             QueueRenderResources(actor);
             lightsChanged |= actor.HasLightSettings;
-            emittersChanged |= actor is EmitterActorProxy;
+            emittersChanged |= actor is EmitterActorProxy or LensFlareSourceProxy;
             pointsOfInterestChanged |= actor is SFXPointOfInterestProxy;
         }
         StartRenderResourceWorker();

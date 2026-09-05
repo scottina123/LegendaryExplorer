@@ -2736,6 +2736,10 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
                 if (actor is not null && actor == SelectedActor)
                 {
                     _preEditSnapshot = SelectedActor.SnapshotTransform();
+                    if (!PropertiesExportList.SequenceEqual(actor.GetPropertyExports()))
+                    {
+                        RefreshPropertiesExportSelection(actor, PropertiesTabControl.SelectedIndex);
+                    }
                 }
             }
 
@@ -3499,28 +3503,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
     private void RefreshPropertiesExportSelection(ActorProxy actor, int tabIndex)
     {
         PropertiesExportList.Clear();
-        PropertiesExportList.Add(actor.Export);
-
-        if (actor is SFXPointOfInterestProxy
-            && actor.Export.GetProperty<ArrayProperty<ObjectProperty>>("Modules") is { } modules)
-        {
-            foreach (ObjectProperty moduleReference in modules)
-            {
-                if (actor.Export.FileRef.TryGetUExport(moduleReference.Value, out ExportEntry module)
-                    && module.ClassName == "SFXSimpleUseModule")
-                {
-                    PropertiesExportList.Add(module);
-                }
-            }
-        }
-
-        foreach (var component in actor.Components)
-        {
-            if (component.Export.UIndex != selectedActor.Export.UIndex)
-            {
-                PropertiesExportList.Add(component.Export);
-            }
-        }
+        PropertiesExportList.AddRange(actor.GetPropertyExports());
 
         ExportEntry exportToLoad = PropertiesExportList.FirstOrDefault(x => x.FileRef == _selectedPropertiesExportPackage && x.UIndex == _selectedPropertiesExportUIndex)
                                  ?? actor.Export;
