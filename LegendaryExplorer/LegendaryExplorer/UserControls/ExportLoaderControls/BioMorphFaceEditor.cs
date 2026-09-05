@@ -139,29 +139,33 @@ public partial class MeshRenderer
 
     public ObservableCollectionExtended<MorphFeatureEditorItem> MorphFeatureItems { get; } = [];
     public IEnumerable<MorphFeatureEditorItem> MatchedMorphFeatureItems =>
-        MorphFeatureItems.Where(feature => feature.HasMorphTarget && MatchesMorphEditorSearch(feature.Name)).ToArray();
+        MorphFeatureItems.Where(feature => feature.HasMorphTarget && MatchesMorphViewportFeature(feature) && MatchesMorphEditorSearch(feature.Name)).ToArray();
     public IEnumerable<MorphFeatureEditorItem> UnmatchedMorphFeatureItems =>
-        MorphFeatureItems.Where(feature => !feature.HasMorphTarget && MatchesMorphEditorSearch(feature.Name)).ToArray();
+        MorphFeatureItems.Where(feature => !feature.HasMorphTarget && MatchesMorphViewportFeature(feature) && MatchesMorphEditorSearch(feature.Name)).ToArray();
     public int UnmatchedMorphFeatureCount => UnmatchedMorphFeatureItems.Count();
     public bool HasUnmatchedMorphFeatures => UnmatchedMorphFeatureCount > 0;
     public ObservableCollectionExtended<MorphBoneEditorItem> MorphSkeletonItems { get; } = [];
     public IEnumerable<MorphBoneEditorItem> FilteredMorphSkeletonItems =>
-        MorphSkeletonItems.Where(bone => MatchesMorphEditorSearch(bone.Name)).ToArray();
+        MorphSkeletonItems.Where(bone => MatchesMorphViewportBone(bone) && MatchesMorphEditorSearch(bone.Name)).ToArray();
     public ObservableCollectionExtended<MorphScalarOverrideItem> MorphScalarOverrides { get; } = [];
     public IEnumerable<MorphScalarOverrideItem> FilteredMorphScalarOverrides =>
-        MorphScalarOverrides.Where(scalar => MatchesMorphEditorSearch(scalar.Name)).ToArray();
+        MorphScalarOverrides.Where(scalar => MatchesMorphViewportMaterial(scalar.Name, 0) && MatchesMorphEditorSearch(scalar.Name)).ToArray();
     public ObservableCollectionExtended<MorphColorOverrideItem> MorphColorOverrides { get; } = [];
     public IEnumerable<MorphColorOverrideItem> FilteredMorphColorOverrides =>
-        MorphColorOverrides.Where(color => MatchesMorphEditorSearch(color.Name)).ToArray();
+        MorphColorOverrides.Where(color => MatchesMorphViewportMaterial(color.Name, 1) && MatchesMorphEditorSearch(color.Name)).ToArray();
     public ObservableCollectionExtended<MorphTextureOverrideItem> MorphTextureOverrides { get; } = [];
     public IEnumerable<MorphTextureOverrideItem> FilteredMorphTextureOverrides => MorphTextureOverrides
-        .Where(texture => MatchesMorphEditorSearch(texture.Name, texture.ResolvedPath, texture.EntryIndex.ToString()))
+        .Where(texture => MatchesMorphViewportMaterial(texture.Name, 2) && MatchesMorphEditorSearch(texture.Name, texture.ResolvedPath, texture.EntryIndex.ToString()))
         .ToArray();
 
     public bool HideMorphHair
     {
         get => _hideMorphHair;
-        set => SetProperty(ref _hideMorphHair, value);
+        set
+        {
+            if (SetProperty(ref _hideMorphHair, value) && value && morphViewportHit?.Hair == true)
+                ClearMorphViewportSelection();
+        }
     }
 
     private string _morphEditorSearchText;
@@ -596,6 +600,7 @@ public partial class MeshRenderer
         }
         RefreshMorphFeatureGroups();
         MorphTargetStatus = PendingMorphTargetStatus;
+        if (morphViewportHit != null && MorphViewportPickMode == MorphViewportPickMode.Features) BuildMorphViewportMatches();
         SuppressMorphEditorChanges = true;
         try
         {
@@ -1765,7 +1770,7 @@ public partial class MeshRenderer
 
     private void AddMorphScalar_Click(object sender, RoutedEventArgs e)
     {
-        List<MaterialRenderProxy> materials = GetMorphMaterialPreviewTargets();
+        List<MaterialRenderProxy> materials = GetMorphMaterialSelectionTargets();
         var existingNames = MorphScalarOverrides.Select(item => item.Name)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
         var groups = materials
@@ -1804,7 +1809,7 @@ public partial class MeshRenderer
 
     private void AddMorphColor_Click(object sender, RoutedEventArgs e)
     {
-        List<MaterialRenderProxy> materials = GetMorphMaterialPreviewTargets();
+        List<MaterialRenderProxy> materials = GetMorphMaterialSelectionTargets();
         var existingNames = MorphColorOverrides.Select(item => item.Name)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
         var groups = materials
@@ -1880,6 +1885,7 @@ public partial class MeshRenderer
         {
             return;
         }
+        ClearMorphViewportSelection();
         UnloadMorphFaceFx();
         DisposeMorphHairPreview();
         MorphMaterialPreviewTimer?.Stop();
@@ -1949,6 +1955,8 @@ public sealed class MorphFeatureEditorItem : NotifyPropertyChangedBase
 
 public sealed class MorphBoneEditorItem : NotifyPropertyChangedBase
 {
+    private bool isViewportSelected;
+    public bool IsViewportSelected { get => isViewportSelected; internal set => SetProperty(ref isViewportSelected, value); }
     private readonly Action Changed;
     private string _name;
     private Vector3 ComputedPosition;

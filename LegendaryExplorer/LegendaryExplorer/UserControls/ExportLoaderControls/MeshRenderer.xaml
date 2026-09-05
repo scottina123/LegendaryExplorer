@@ -177,8 +177,36 @@
                                                    Text="{Binding MorphEditorSearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
                         </DockPanel>
 
-                        <TabControl>
-                            <TabItem Header="Features">
+                        <Border DockPanel.Dock="Top" Padding="6" Margin="0,0,0,5" BorderThickness="1"
+                                BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}">
+                            <StackPanel>
+                                <DockPanel>
+                                    <TextBlock Text="Select in viewport" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                    <ComboBox ItemsSource="{Binding MorphViewportPickModes}"
+                                              SelectedItem="{Binding MorphViewportPickMode, Mode=TwoWay}"/>
+                                </DockPanel>
+                                <TextBlock Text="{Binding MorphViewportPickHelp}" TextWrapping="Wrap" Opacity="0.75" Margin="0,3,0,3"/>
+                                <DockPanel Visibility="{Binding HasMorphViewportSelection, Converter={StaticResource BoolToVisibilityConverter}}">
+                                    <Button DockPanel.Dock="Right" Content="Clear" Click="ClearMorphViewportSelection_Click" Padding="5,1" Margin="5,0,0,0"/>
+                                    <TextBlock Text="{Binding MorphViewportSelectionLabel}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"
+                                               ToolTip="{Binding MorphViewportSelectionLabel}" VerticalAlignment="Center"/>
+                                </DockPanel>
+                                <ComboBox Margin="0,4,0,0" ItemsSource="{Binding MorphViewportMatches}" DisplayMemberPath="Label"
+                                          SelectedItem="{Binding SelectedMorphViewportMatch, Mode=TwoWay}"
+                                          Visibility="{Binding HasMorphViewportMatches, Converter={StaticResource BoolToVisibilityConverter}}"
+                                          ToolTip="Matching controls, strongest influence first. Choose a different match to edit it."/>
+                                <TextBlock Text="{Binding MorphViewportSelectionDetail}" TextWrapping="Wrap" MaxHeight="48" Margin="0,3,0,0"
+                                           ToolTip="{Binding MorphViewportSelectionDetail}"/>
+                                <CheckBox Content="Show selected controls only" IsChecked="{Binding FilterMorphViewportSelection}" Margin="0,4,0,0"
+                                          Visibility="{Binding HasMorphViewportMatches, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                                <Button Content="{Binding AddMorphViewportSelectionText}" Padding="5,3" HorizontalAlignment="Left" Margin="0,4,0,0"
+                                        Click="AddMorphViewportSelection_Click"
+                                        Visibility="{Binding CanAddMorphViewportSelection, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                            </StackPanel>
+                        </Border>
+
+                        <TabControl x:Name="MorphEditorTabs" SelectionChanged="MorphEditorTabs_SelectionChanged">
+                            <TabItem Header="Features" x:Name="MorphFeaturesTab">
                                 <DockPanel Margin="4">
                                     <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,4">
                                         <Button Content="Add feature…" HorizontalAlignment="Left" Padding="7,3"
@@ -199,7 +227,7 @@
                                 </DockPanel>
                             </TabItem>
 
-                            <TabItem Header="Skeleton">
+                            <TabItem Header="Skeleton" x:Name="MorphSkeletonTab">
                                 <DockPanel Margin="4">
                                     <Button DockPanel.Dock="Top" Content="Add bone…" HorizontalAlignment="Left" Padding="7,3" Margin="0,0,0,4"
                                             Click="AddMorphBone_Click"/>
@@ -207,7 +235,19 @@
                                         <ItemsControl ItemsSource="{Binding FilteredMorphSkeletonItems}">
                                             <ItemsControl.ItemTemplate>
                                                 <DataTemplate>
-                                                    <Expander IsExpanded="False" Margin="0,1">
+                                                    <Expander Margin="0,1">
+                                                        <Expander.Style>
+                                                            <Style TargetType="Expander">
+                                                                <Setter Property="IsExpanded" Value="False"/>
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding IsViewportSelected}" Value="True">
+                                                                        <Setter Property="IsExpanded" Value="True"/>
+                                                                        <Setter Property="BorderThickness" Value="1"/>
+                                                                        <Setter Property="BorderBrush" Value="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}"/>
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </Expander.Style>
                                                         <Expander.Header>
                                                             <DockPanel>
                                                                 <Button DockPanel.Dock="Right" Content="×" ToolTip="Remove bone" Padding="5,1" Margin="7,0,0,0"
@@ -243,7 +283,7 @@
                                 </DockPanel>
                             </TabItem>
 
-                            <TabItem Header="Material override">
+                            <TabItem Header="Materials" x:Name="MorphMaterialsTab">
                                 <ScrollViewer VerticalScrollBarVisibility="Auto" Margin="4">
                                     <StackPanel>
                                         <GroupBox Header="Scalar parameters" Margin="0,0,0,6">
@@ -591,6 +631,12 @@
                         </ItemsControl.Resources>
                     </ItemsControl>
                 </StackPanel>-->
+                <Canvas x:Name="MorphViewportMarker" Panel.ZIndex="2" IsHitTestVisible="False" Visibility="Collapsed" ClipToBounds="True">
+                    <Ellipse x:Name="MorphViewportMarkerDot" Width="14" Height="14" Stroke="#FFFFC34D" StrokeThickness="2.5" Fill="#55352A10"/>
+                    <Border x:Name="MorphViewportMarkerLabel" Background="#DD171D29" BorderBrush="#FFFFC34D" BorderThickness="1" Padding="6,3" CornerRadius="3">
+                        <TextBlock Text="{Binding MorphViewportSelectionLabel}" Foreground="White" FontWeight="SemiBold" MaxWidth="260" TextTrimming="CharacterEllipsis"/>
+                    </Border>
+                </Canvas>
                 <scene3D:LegacySceneRenderControl Canvas.ZIndex="0"  x:Name="SceneViewer" />
                 </Grid>
             </DockPanel>

@@ -146,6 +146,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             {
                 if (SetProperty(ref _currentLOD, value))
                 {
+                    if (morphViewportHit != null) ClearMorphViewportSelection();
                     _animationPoseDirty = true;
                     if (morphFaceFxPoseActive) ApplyMorphFaceFxPose();
                 }
@@ -1763,6 +1764,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             CameraFOV = MathUtil.RadiansToDegrees(MeshContext.Camera.FOV);
             CameraZNear = MeshContext.Camera.ZNear;
             CameraZFar = MeshContext.Camera.ZFar;
+            UpdateMorphViewportMarker();
         }
 
         private void BackgroundColorPicker_Changed(object sender, RoutedPropertyChangedEventArgs<System.Windows.Media.Color?> e)
@@ -1850,7 +1852,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         private void SceneViewer_PreviewMouseDownForMaterialPicking(object sender, MouseButtonEventArgs e)
         {
-            if (e.ChangedButton == MouseButton.Left && RenderGameShader && GameShaderPreview is not null)
+            if (e.ChangedButton == MouseButton.Left
+                && (ShowMorphEditorPanel && HasMorphEditorData || !IsMorphEditorMode && RenderGameShader && GameShaderPreview is not null))
             {
                 MaterialPickMouseDownPosition = e.GetPosition(SceneViewer);
             }
@@ -1866,7 +1869,13 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             MaterialPickMouseDownPosition = null;
             System.Windows.Point mouseUpPosition = e.GetPosition(SceneViewer);
             System.Windows.Vector clickMovement = mouseUpPosition - mouseDownPosition;
-            if (clickMovement.LengthSquared > 16 || !TryPickGameShaderMaterials(mouseUpPosition, out List<string> materialNames))
+            if (clickMovement.LengthSquared > 16) return;
+            if (IsMorphEditorMode)
+            {
+                PickMorphViewport(mouseUpPosition);
+                return;
+            }
+            if (!TryPickGameShaderMaterials(mouseUpPosition, out List<string> materialNames))
             {
                 return;
             }

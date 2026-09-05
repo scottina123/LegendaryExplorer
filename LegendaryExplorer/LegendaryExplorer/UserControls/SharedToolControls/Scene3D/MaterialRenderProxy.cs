@@ -72,6 +72,15 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
         /// </summary>
         public IReadOnlyDictionary<string, LinearColor> VectorParameters => VectorParameterValues;
 
+        // Morph overrides are broadcast to all previews, including names the material never declared.
+        // Picking must use the original definitions, not those temporary values.
+        internal bool DefinesScalarParameter(string name) => PreviewScalarBaselines.TryGetValue(name, out var baseline)
+            ? baseline.Exists : ScalarParameterValues.ContainsKey(name);
+        internal bool DefinesVectorParameter(string name) => PreviewVectorBaselines.TryGetValue(name, out var baseline)
+            ? baseline.Exists : VectorParameterValues.ContainsKey(name);
+        internal bool DefinesTextureParameter(string name) => PreviewTextureBaselines.TryGetValue(name, out var baseline)
+            ? baseline.Exists : TextureParameterValues.ContainsKey(name);
+
         public void SetScalarParameter(string parameterName, float value)
         {
             PreviewScalarBaselines.TryAdd(parameterName, ScalarParameterValues.TryGetValue(parameterName, out float baseline)
