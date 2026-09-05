@@ -221,6 +221,16 @@ public class MeshRenderContext : RenderContext
     private MouseButtons PressedMouseButton;
     protected bool HasActiveInput => PressedKeys is not KeyStates.None || PressedMouseButton is not MouseButtons.None;
     public float CameraSpeed { get; set; } = 500.0f; // Units per second
+    /// <summary>
+    /// Multiplier for the compiled in-game shader preview's neutral skylight.
+    /// </summary>
+    public float GameShaderLightScale { get; set; } = 1f;
+
+    /// <summary>
+    /// Gamma constant supplied to compiled in-game material shaders.
+    /// </summary>
+    public float GameShaderInvGamma { get; set; } = 1f;
+
     public float Time { get; private set; }
     public uint NumFrames { get; private set; }
 

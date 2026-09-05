@@ -243,6 +243,7 @@ public partial class ActorPreviewControl : ExportLoaderControl, IActorEditorCont
 
     public ActorPreviewControl() : base("Actor Preview")
     {
+        MorphPreviewSettings.Apply(RenderContext);
         DataContext = this;
         InitializeComponent();
         SceneViewer.Context = RenderContext;
