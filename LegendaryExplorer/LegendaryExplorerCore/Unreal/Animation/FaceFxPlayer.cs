@@ -59,6 +59,7 @@ public class FaceFxPlayer : AnimPlayer
         {
             Line = null;
             length = 0;
+            startTime = 0;
             return;
         }
         bool inAnimSet = AnimSet != null && AnimSet.Lines.Contains(line);
@@ -68,8 +69,8 @@ public class FaceFxPlayer : AnimPlayer
             ThrowHelper.ThrowArgumentException("Line is not in AnimSet or FxActor");
         }
         Line = line;
-        startTime = Line.Points.Min(p => p.time);
-        length = line.Points.Max(p => p.time) - startTime;
+        startTime = Line.Points.Count == 0 ? 0 : Line.Points.Min(p => p.time);
+        length = Line.Points.Count == 0 ? 0 : line.Points.Max(p => p.time) - startTime;
         CurrentTime = startTime;
     }
 

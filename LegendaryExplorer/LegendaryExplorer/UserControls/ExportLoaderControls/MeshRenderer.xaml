@@ -320,6 +320,64 @@
                                     </StackPanel>
                                 </ScrollViewer>
                             </TabItem>
+                            <TabItem Header="Lip sync">
+                                <DockPanel Margin="4">
+                                    <StackPanel DockPanel.Dock="Top">
+                                        <WrapPanel Margin="0,0,0,4">
+                                            <Button Content="Load lines from PCC…" Padding="6,3" Margin="0,0,6,0"
+                                                    IsEnabled="{Binding CanLoadMorphFaceFx}" Click="LoadMorphFaceFxPcc_Click"/>
+                                            <Button Content="Load rigs…" Padding="6,3"
+                                                    IsEnabled="{Binding CanLoadMorphFaceFx}" Click="LoadMorphFaceFxRig_Click"/>
+                                        </WrapPanel>
+                                        <TextBlock Text="{Binding MorphFaceFxSource}" TextTrimming="CharacterEllipsis"
+                                                   ToolTip="{Binding MorphFaceFxSource}" Opacity="0.75"/>
+                                        <TextBlock Text="FaceFX rig" Margin="0,4,0,2"/>
+                                        <ComboBox ItemsSource="{Binding MorphFaceFxRigs}" DisplayMemberPath="Label"
+                                                  SelectedItem="{Binding SelectedMorphFaceFxRig, Mode=TwoWay}"
+                                                  IsEnabled="{Binding CanLoadMorphFaceFx}"
+                                                  ToolTip="Choose the rig matching the morph's species and gender."/>
+                                        <xctk:WatermarkTextBox Margin="0,6,0,3" Padding="5,3"
+                                                               Watermark="Search TLK ID, TLK text, or line name"
+                                                               Text="{Binding MorphFaceFxSearchText, UpdateSourceTrigger=PropertyChanged}"/>
+                                        <TextBlock Text="{Binding MorphFaceFxLineCount}" Margin="0,0,0,3" Opacity="0.75"/>
+                                    </StackPanel>
+                                    <StackPanel DockPanel.Dock="Bottom" Margin="0,5,0,0">
+                                        <TextBox Text="{Binding SelectedMorphFaceFxLine.TLKString, Mode=OneWay}" IsReadOnly="True"
+                                                 TextWrapping="Wrap" MinHeight="35" MaxHeight="75" VerticalScrollBarVisibility="Auto"/>
+                                        <Slider Minimum="{Binding MorphFaceFxStart}" Maximum="{Binding MorphFaceFxEnd}" Margin="0,5,0,2"
+                                                Value="{Binding MorphFaceFxPosition, Mode=TwoWay}" IsMoveToPointEnabled="True"
+                                                IsEnabled="{Binding CanPlayMorphFaceFx}"/>
+                                        <DockPanel>
+                                            <TextBlock DockPanel.Dock="Right" Text="{Binding MorphFaceFxPositionText}" VerticalAlignment="Center"/>
+                                            <StackPanel Orientation="Horizontal">
+                                                <Button Content="{Binding MorphFaceFxPlayText}" MinWidth="60" Padding="6,3" Margin="0,0,5,0"
+                                                        IsEnabled="{Binding CanPlayMorphFaceFx}" Click="PlayMorphFaceFx_Click"/>
+                                                <Button Content="Stop" Padding="6,3" IsEnabled="{Binding CanPlayMorphFaceFx}"
+                                                        ToolTip="Stop playback and restore the edited morph pose." Click="StopMorphFaceFx_Click"/>
+                                            </StackPanel>
+                                        </DockPanel>
+                                        <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="65" Margin="0,4,0,0">
+                                            <TextBlock Text="{Binding MorphFaceFxStatus}" TextWrapping="Wrap"/>
+                                        </ScrollViewer>
+                                    </StackPanel>
+                                    <ListBox ItemsSource="{Binding FilteredMorphFaceFxLines}"
+                                             SelectedItem="{Binding SelectedMorphFaceFxLine, Mode=TwoWay}"
+                                             IsEnabled="{Binding CanLoadMorphFaceFx}"
+                                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                             VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling"
+                                             ScrollViewer.CanContentScroll="True">
+                                        <ListBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <StackPanel Margin="2,3" ToolTip="{Binding SourceLabel}">
+                                                    <TextBlock Text="{Binding DisplayLabel}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                                                    <TextBlock Text="{Binding TLKString}" TextTrimming="CharacterEllipsis"/>
+                                                    <TextBlock Text="{Binding SourceLabel}" FontSize="10" Opacity="0.65" TextTrimming="CharacterEllipsis"/>
+                                                </StackPanel>
+                                            </DataTemplate>
+                                        </ListBox.ItemTemplate>
+                                    </ListBox>
+                                </DockPanel>
+                            </TabItem>
                         </TabControl>
                     </DockPanel>
                 </Border>

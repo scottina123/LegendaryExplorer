@@ -704,7 +704,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             return clonedEvent;
         }
 
-        private List<ExportEntry> GetWwiseStreamsForEvent(IMEPackage sourcePcc, ExportEntry wwiseEventExport)
+        private static List<ExportEntry> GetWwiseStreamsForEvent(IMEPackage sourcePcc, ExportEntry wwiseEventExport)
         {
             var streams = new List<ExportEntry>();
             var seenStreams = new HashSet<int>();
@@ -3935,7 +3935,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             return result;
         }
 
-        private ExportEntry FindVoiceStreamFromExport(ExportEntry faceFxExport, FaceFXLineEntry selectedLine)
+        internal static ExportEntry FindVoiceStreamFromExport(ExportEntry faceFxExport, FaceFXLineEntry selectedLine)
         {
             if (faceFxExport?.Game.IsGame1() == true)
                 return FindSoundNodeWaveFromExport(faceFxExport, selectedLine);

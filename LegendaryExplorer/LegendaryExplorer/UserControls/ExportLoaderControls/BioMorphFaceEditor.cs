@@ -233,6 +233,7 @@ public partial class MeshRenderer
             {
                 OnPropertyChanged(nameof(CanOverrideMorph));
                 OnPropertyChanged(nameof(CanEditMorph));
+                OnPropertyChanged(nameof(CanLoadMorphFaceFx));
             }
         }
     }
@@ -741,12 +742,13 @@ public partial class MeshRenderer
         }
     }
 
-    private void UpdateMorphGeometryPreview()
+    private void UpdateMorphGeometryPreview(bool currentLodOnly = false)
     {
-        ApplyWorkingLodsToSkeletalMesh(MorphPreviewSkeletalMesh);
+        if (!currentLodOnly) ApplyWorkingLodsToSkeletalMesh(MorphPreviewSkeletalMesh);
         Matrix4x4[] skinningMatrices = ComputeMorphSkinningMatrices();
         for (int lodIndex = 0; lodIndex < WorkingMorphLods.Length; lodIndex++)
         {
+            if (currentLodOnly && lodIndex != CurrentLOD) continue;
             Vector3[] positions = WorkingMorphLods[lodIndex];
             if (positions is null)
             {
@@ -777,6 +779,8 @@ public partial class MeshRenderer
                         }
                         normal = new Vector4(deformedNormal, normal.W);
                     }
+                    if (morphFaceFxPoseActive)
+                        normal = new Vector4(SkinMorphNormal(new Vector3(normal.X, normal.Y, normal.Z), lodIndex, i, skinningMatrices), normal.W);
                     mesh.Vertices[i] = mesh.Vertices[i].WithPositionAndNormal(
                         CurrentLoadedExport.Game,
                         ToRendererSpace(skinnedPosition),
@@ -795,31 +799,47 @@ public partial class MeshRenderer
                 mesh.RebuildBuffer(MeshContext.Device);
             }
         }
-        UpdateMorphHairGeometryPreview();
+        UpdateMorphHairGeometryPreview(currentLodOnly);
+        if (ShowSkeleton && morphFaceFxPoseActive && morphFaceFxPlayer != null)
+        {
+            BuildSkeletonLineBuffer(MorphPreviewSkeletalMesh, morphFaceFxPlayer.BoneComponentSpaceTransforms
+                .Select(transform => ToRendererSpace(transform.Translation)).ToArray());
+        }
+        else if (ShowSkeleton && !currentLodOnly && MorphPreviewSkeletalMesh != null)
+        {
+            BuildSkeletonLineBuffer(MorphPreviewSkeletalMesh);
+        }
     }
 
-    private void UpdateMorphHairGeometryPreview()
+    private void UpdateMorphHairGeometryPreview(bool currentLodOnly = false)
     {
         if (MorphPreviewHairMesh is null || MorphHairBindSkeleton.Length == 0)
         {
             return;
         }
 
-        MeshBone[] editedSkeleton = CloneSkeleton(MorphHairBindSkeleton);
+        MeshBone[] editedSkeleton = morphFaceFxPoseActive && morphFaceFxHairSkeleton != null
+            ? morphFaceFxHairSkeleton : CloneSkeleton(MorphHairBindSkeleton);
         Dictionary<string, Vector3> editedPositions = MorphSkeletonItems
             .GroupBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(group => group.Key, group => group.Last().Position, StringComparer.OrdinalIgnoreCase);
-        foreach (MeshBone bone in editedSkeleton)
+        for (int i = 0; i < editedSkeleton.Length; i++)
         {
-            if (editedPositions.TryGetValue(bone.Name.Instanced, out Vector3 position))
-            {
-                bone.Position = position;
-            }
+            MeshBone bone = editedSkeleton[i];
+            bone.Position = editedPositions.TryGetValue(bone.Name.Instanced, out Vector3 position)
+                ? position : MorphHairBindSkeleton[i].Position;
         }
 
-        Matrix4x4[] skinningMatrices = ComputeSkinningMatrices(MorphHairBindSkeleton, editedSkeleton);
+        Matrix4x4[] skinningMatrices;
+        if (morphFaceFxPoseActive && morphHairFaceFxPlayer != null)
+        {
+            morphHairFaceFxPlayer.SetCurrentTime((float)morphFaceFxPosition);
+            skinningMatrices = morphHairFaceFxPlayer.ComputeSkinningMatrices();
+        }
+        else skinningMatrices = ComputeSkinningMatrices(MorphHairBindSkeleton, editedSkeleton);
         for (int lodIndex = 0; lodIndex < MorphHairBindLods.Length; lodIndex++)
         {
+            if (currentLodOnly && lodIndex != Math.Min(CurrentLOD, MorphHairBindLods.Length - 1)) continue;
             Vector3[] positions = MorphHairBindLods[lodIndex];
             if (MorphHairGameShaderPreview?.LODs.Count > lodIndex)
             {
@@ -847,7 +867,9 @@ public partial class MeshRenderer
     }
 
     private Matrix4x4[] ComputeMorphSkinningMatrices() =>
-        ComputeSkinningMatrices(MorphBindSkeleton, MorphPreviewSkeletalMesh?.RefSkeleton);
+        morphFaceFxPoseActive && morphFaceFxPlayer != null
+            ? morphFaceFxPlayer.ComputeSkinningMatrices()
+            : ComputeSkinningMatrices(MorphBindSkeleton, MorphPreviewSkeletalMesh?.RefSkeleton);
 
     private static Matrix4x4[] ComputeSkinningMatrices(MeshBone[] bindSkeleton, MeshBone[] editedSkeleton)
         => LegendaryExplorerCore.Unreal.Classes.BioMorphFace.ComputePreviewSkinningMatrices(
@@ -855,6 +877,20 @@ public partial class MeshRenderer
 
     private Vector3 SkinMorphPosition(Vector3 position, int lodIndex, int vertexIndex, Matrix4x4[] skinningMatrices)
         => SkinPosition(position, lodIndex, vertexIndex, skinningMatrices, MorphSkinningInfluences);
+
+    private Vector3 SkinMorphNormal(Vector3 normal, int lod, int vertex, Matrix4x4[] matrices)
+    {
+        if (lod >= MorphSkinningInfluences.Length || vertex >= MorphSkinningInfluences[lod].Length) return normal;
+        MorphSkinInfluences influence = MorphSkinningInfluences[lod][vertex];
+        Vector3 result = Transform(influence.Bone0, influence.Weight0)
+                         + Transform(influence.Bone1, influence.Weight1)
+                         + Transform(influence.Bone2, influence.Weight2)
+                         + Transform(influence.Bone3, influence.Weight3);
+        return result.LengthSquared() > float.Epsilon ? Vector3.Normalize(result) : normal;
+
+        Vector3 Transform(int bone, float weight) => weight <= 0 ? Vector3.Zero
+            : (bone >= 0 && bone < matrices.Length ? Vector3.TransformNormal(normal, matrices[bone]) : normal) * weight;
+    }
 
     private static Vector3 SkinPosition(Vector3 position, int lodIndex, int vertexIndex,
         Matrix4x4[] skinningMatrices, MorphSkinInfluences[][] influences)
@@ -997,7 +1033,7 @@ public partial class MeshRenderer
             }
         }
         UpdateMorphGeometryPreview();
-        if (MeshContext.IsReady)
+        if (MeshContext.IsReady && !morphFaceFxPoseActive)
         {
             BuildSkeletonLineBuffer(MorphPreviewSkeletalMesh);
         }
@@ -1844,6 +1880,7 @@ public partial class MeshRenderer
         {
             return;
         }
+        UnloadMorphFaceFx();
         DisposeMorphHairPreview();
         MorphMaterialPreviewTimer?.Stop();
         MorphTexturePreviewCache.Clear();

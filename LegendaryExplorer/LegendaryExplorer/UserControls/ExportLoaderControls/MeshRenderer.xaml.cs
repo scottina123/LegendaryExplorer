@@ -147,6 +147,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 if (SetProperty(ref _currentLOD, value))
                 {
                     _animationPoseDirty = true;
+                    if (morphFaceFxPoseActive) ApplyMorphFaceFxPose();
                 }
             }
         }
@@ -683,7 +684,11 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             get => _showSkeleton;
             set
             {
-                if (SetProperty(ref _showSkeleton, value)) _animationPoseDirty = true;
+                if (SetProperty(ref _showSkeleton, value))
+                {
+                    _animationPoseDirty = true;
+                    if (morphFaceFxPoseActive) ApplyMorphFaceFxPose();
+                }
             }
         }
 
@@ -1678,6 +1683,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         private void MeshRenderer_Unloaded(object sender, RoutedEventArgs e)
         {
+            PauseMorphFaceFx();
             Debug.WriteLine("MESHRENDERER UNLOADED");
             if (Parent is TabItem { Parent: TabControl tc })
             {
@@ -1722,6 +1728,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             TryRunViewportLoadAction();
 
             UpdatePreviewAnimation(timeStep);
+            UpdateMorphFaceFxPreview(timeStep);
 
             if (ControlIsLoaded && Rotating)
             {
@@ -2579,6 +2586,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 }
                 else if (e.RemovedItems.Contains(ti))
                 {
+                    PauseMorphFaceFx();
                     SceneViewer?.SetShouldRender(false);
                 }
             }
@@ -2602,7 +2610,11 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         /// <summary>
         /// Stops the continuous render loop. Call before closing the host window.
         /// </summary>
-        public void StopRendering() => SceneViewer?.SetShouldRender(false);
+        public void StopRendering()
+        {
+            PauseMorphFaceFx();
+            SceneViewer?.SetShouldRender(false);
+        }
 
         private void MeshRendererWPF_OnKeyUp(object sender, KeyEventArgs e)
         {
