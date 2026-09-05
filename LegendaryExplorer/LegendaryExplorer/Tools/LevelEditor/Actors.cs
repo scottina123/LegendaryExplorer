@@ -883,6 +883,7 @@ public sealed class SFXPointOfInterestProxy : ActorProxy
 public sealed class LensFlareSourceProxy : ActorProxy
 {
     public PrimitiveComponentProxy LensFlareComp { get; private set; }
+    internal bool IsFlareActive => Properties.GetProp<BoolProperty>("bCurrentlyActive")?.Value ?? true;
 
     public LensFlareSourceProxy(IActorEditorContext context, ExportEntry actorExport) : base(context, actorExport)
     {
@@ -917,8 +918,16 @@ public sealed class LensFlareSourceProxy : ActorProxy
         LoadLensFlareComponent();
     }
 
-    public override IEnumerable<ExportEntry> GetPropertyExports() =>
-        base.GetPropertyExports().Concat(Export.GetAllDescendants().OfType<ExportEntry>()).Distinct();
+    public override IEnumerable<ExportEntry> GetPropertyExports()
+    {
+        IEnumerable<ExportEntry> exports = base.GetPropertyExports().Concat(Export.GetAllDescendants().OfType<ExportEntry>());
+        if (LensFlareComp?.Properties.GetProp<ObjectProperty>("Template")?.ResolveToEntry(Pcc) is ExportEntry template
+            && template.FileRef == Pcc)
+        {
+            exports = exports.Append(template).Concat(template.GetAllDescendants().OfType<ExportEntry>());
+        }
+        return exports.Distinct();
+    }
 
     public override bool TestUIndexes(HashSet<int> uIndexes) =>
         GetPropertyExports().Any(export => uIndexes.Contains(export.UIndex));

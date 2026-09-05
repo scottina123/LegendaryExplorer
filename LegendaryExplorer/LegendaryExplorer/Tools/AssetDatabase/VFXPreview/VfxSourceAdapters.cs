@@ -1230,7 +1230,7 @@ public sealed class ParticleSystemSourceAdapter : IVfxSourceAdapter
         return new VfxConstantDistribution<float>(fallback);
     }
 
-    private static IVfxDistribution<float> ReadFloatDistribution(StructProperty raw, ExportEntry context, float fallback)
+    internal static IVfxDistribution<float> ReadFloatDistribution(StructProperty raw, ExportEntry context, float fallback)
     {
         ArrayPropertyBase lookup = GetArrayProperty(raw, "LookupTable");
         if (lookup is { Count: > 2 } && lookup.Properties.All(property => property is FloatProperty))
@@ -1270,6 +1270,11 @@ public sealed class ParticleSystemSourceAdapter : IVfxSourceAdapter
                 break;
             }
         }
+        return ReadVectorDistribution(raw, module, fallback);
+    }
+
+    internal static IVfxDistribution<Vector3> ReadVectorDistribution(StructProperty raw, ExportEntry module, Vector3 fallback)
+    {
         if (raw is null)
         {
             return new VfxConstantDistribution<Vector3>(fallback);

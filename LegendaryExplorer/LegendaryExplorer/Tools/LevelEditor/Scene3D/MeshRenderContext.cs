@@ -1294,6 +1294,11 @@ public class MeshRenderContext : RenderContext
                 ("TEXCOORD", 0, 4), ("TEXCOORD", 1, 4), ("TEXCOORD", 2, 4), ("TEXCOORD", 3, 4)
             ],
             "FParticleVertexFactory" => ParticleBaseInputs(),
+            "FLensFlareVertexFactory" =>
+            [
+                ("POSITION", 0, 4), ("TANGENT", 0, 4), ("BLENDWEIGHT", 0, 1),
+                ("TEXCOORD", 0, 2), ("TEXCOORD", 1, 4), ("TEXCOORD", 2, 4)
+            ],
             "FParticleSubUVVertexFactory" => [.. ParticleBaseInputs(), ("TEXCOORD", 2, 4)],
             "FParticleDynamicParameterVertexFactory" => [.. ParticleBaseInputs(), ("TEXCOORD", 3, 4)],
             "FParticleSubUVDynamicParameterVertexFactory" =>

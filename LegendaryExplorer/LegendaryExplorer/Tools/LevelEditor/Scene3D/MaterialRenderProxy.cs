@@ -68,6 +68,8 @@ public class MaterialRenderProxy : MaterialInstanceConstantLevelEditor, ILiveMat
     public PixelShaderType UnrealPixelShader;
     public string VertexFactoryType { get; private set; } = LocalVertexFactoryType;
     public ParticleVertexFactoryRenderParameters ParticleFactoryParameters { get; } = new();
+    public float LensFlareOcclusion { get; set; } = 1f;
+    public Vector3 LensFlareCameraPosition { get; set; }
     public ExportEntry MaterialExport { get; }
     public bool UseSrgbColorManagement { get; }
 

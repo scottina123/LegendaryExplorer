@@ -60,6 +60,7 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
     private readonly ConcurrentDictionary<ActorProxy, byte> pendingSceneLightRefreshes = [];
 
     internal LevelVfxRenderer VfxRenderer { get; }
+    internal LevelLensFlareRenderer LensFlareRenderer { get; }
 
     private USparseArray<IHitProxy> HitProxies = [];
 
@@ -77,6 +78,7 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
     private long lastUserActivityTimestamp;
     private long lastHitTestReadbackTimestamp;
     private int visibleEmitterInstanceCount;
+    private int visibleAnimatedFlareCount;
     private int lightIconRevision;
     private int emitterIconRevision;
     private int pointOfInterestIconRevision;
@@ -109,7 +111,8 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
     public override bool IsActivelyUpdating() => ForceContinuousRendering || base.IsActivelyUpdating()
         || TransformWidget.IsDragging || hasPendingViewportClick
         || !pendingActorVisualInvalidations.IsEmpty || !pendingSceneLightRefreshes.IsEmpty
-        || (ShowEmitterVfx && Volatile.Read(ref visibleEmitterInstanceCount) > 0);
+        || (ShowEmitterVfx && Volatile.Read(ref visibleEmitterInstanceCount) > 0)
+        || Volatile.Read(ref visibleAnimatedFlareCount) > 0;
 
     internal bool UseVfxSceneDepthFallback { get; set; }
     // Match the native VFX preview's far-depth fallback only while particles draw; other Level Editor materials
@@ -419,6 +422,7 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
         Camera.FirstPerson = !Settings.Global_UseOrbitCameraControls;
         TransformWidget = new Widget();
         VfxRenderer = new LevelVfxRenderer(this);
+        LensFlareRenderer = new LevelLensFlareRenderer(this);
         IsReadOnly = readOnly;
     }
 
@@ -427,6 +431,9 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
 
     internal void SetVisibleEmitterInstanceCount(int count)
         => Interlocked.Exchange(ref visibleEmitterInstanceCount, Math.Max(0, count));
+
+    internal void SetVisibleAnimatedFlareCount(int count)
+        => Interlocked.Exchange(ref visibleAnimatedFlareCount, Math.Max(0, count));
 
     internal BoxSphereBounds GetActorBounds(ActorProxy actor)
         => actorBoundsCache.GetOrAdd(actor, static candidate => candidate.GetBounds());
@@ -997,7 +1004,9 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
         }
         DrawList_3D.DisposeAndClear();
         VfxRenderer.Clear();
+        LensFlareRenderer.Clear();
         Interlocked.Exchange(ref visibleEmitterInstanceCount, 0);
+        Interlocked.Exchange(ref visibleAnimatedFlareCount, 0);
         DrawList_UI.Clear();
         SceneLights.Clear();
         sceneLightCache.Clear();
@@ -1040,6 +1049,7 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
     {
         StopRenderResourceWorker();
         VfxRenderer.Dispose();
+        LensFlareRenderer.Dispose();
         base.DisposeResources();
     }
 

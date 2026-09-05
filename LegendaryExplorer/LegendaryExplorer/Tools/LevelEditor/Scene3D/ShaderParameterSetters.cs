@@ -35,6 +35,9 @@ internal static class ShaderParameterSetters
             case FParticleInstancedMeshVertexFactoryShaderParameters instancedMeshVertexFactory:
                 instancedMeshVertexFactory.WriteValues(buffer, context, mesh, mat);
                 break;
+            case FLensFlareVertexFactoryShaderParameters lensFlareVertexFactory:
+                lensFlareVertexFactory.WriteValues(buffer, context, mesh, mat);
+                break;
             default:
                 throw new NotSupportedException($"{shader.VertexFactoryParameters.VertexFactoryType} is not supported by the renderer");
         }
@@ -78,7 +81,8 @@ internal static class ShaderParameterSetters
     public static void WriteValues<TVertex>(this ref FMaterialVertexShaderParameters p, Span<byte> buffer, MeshRenderContext context, Mesh<TVertex> mesh, MaterialRenderProxy mat)
         where TVertex : IVertexBase
     {
-        buffer.WriteVal(p.CameraWorldPosition, context.GetNativeShaderCameraPosition());
+        buffer.WriteVal(p.CameraWorldPosition, mat.VertexFactoryType == "FLensFlareVertexFactory"
+            ? mat.LensFlareCameraPosition : context.GetNativeShaderCameraPosition());
         buffer.WriteVal(p.ObjectWorldPositionAndRadius, new Vector4(
             context.GetNativeShaderWorldPosition(mesh.TransformedBounds.Origin), mesh.TransformedBounds.SphereRadius));
         buffer.WriteVal(p.ObjectOrientation, mesh.LocalToWorld.GetAxis(2).Normal());
@@ -99,7 +103,8 @@ internal static class ShaderParameterSetters
     public static void WriteValues<TVertex>(this ref FMaterialPixelShaderParameters p, Span<byte> buffer, MeshRenderContext context, Mesh<TVertex> mesh, MaterialRenderProxy mat)
         where TVertex : IVertexBase
     {
-        buffer.WriteVal(p.CameraWorldPosition, context.GetNativeShaderCameraPosition());
+        buffer.WriteVal(p.CameraWorldPosition, mat.VertexFactoryType == "FLensFlareVertexFactory"
+            ? mat.LensFlareCameraPosition : context.GetNativeShaderCameraPosition());
         buffer.WriteVal(p.ObjectWorldPositionAndRadius, new Vector4(
             context.GetNativeShaderWorldPosition(mesh.TransformedBounds.Origin), mesh.TransformedBounds.SphereRadius));
         buffer.WriteVal(p.ObjectOrientation, mesh.LocalToWorld.GetAxis(2).Normal());
@@ -156,7 +161,7 @@ internal static class ShaderParameterSetters
         buffer.WriteVal(p.ObjectPostProjectionPosition, Vector3.Zero);
         buffer.WriteVal(p.ObjectMacroUVScales, Vector4.Zero);
         buffer.WriteVal(p.ObjectNDCPosition, Vector3.Zero);
-        buffer.WriteVal(p.OcclusionPercentage, 0f);
+        buffer.WriteVal(p.OcclusionPercentage, mat.VertexFactoryType == "FLensFlareVertexFactory" ? mat.LensFlareOcclusion : 0f);
 
         const int isFading = 0;
         buffer.WriteVal(p.EnableScreenDoorFade, isFading);
@@ -266,6 +271,16 @@ internal static class ShaderParameterSetters
         buffer.WriteVal(p.InvNumVerticesPerInstance, 1f / vertexCount);
         buffer.WriteVal(p.NumVerticesPerInstance, vertexCount);
         buffer.WriteVal(p.InstancedPreViewTranslation, mat.ParticleFactoryParameters.InstancedPreViewTranslation);
+    }
+
+    public static void WriteValues<TVertex>(this FLensFlareVertexFactoryShaderParameters p, Span<byte> buffer,
+        MeshRenderContext context, Mesh<TVertex> mesh, MaterialRenderProxy mat) where TVertex : IVertexBase
+    {
+        // The cooked factory expands U along -CameraUp and V along CameraRight at zero rotation.
+        Matrix4x4.Invert(context.Camera.ViewMatrix, out Matrix4x4 viewToWorld);
+        buffer.WriteVal(p.CameraRight, new Vector4(-Vector3.TransformNormal(Vector3.UnitY, viewToWorld), 0));
+        buffer.WriteVal(p.CameraUp, new Vector4(-Vector3.TransformNormal(Vector3.UnitX, viewToWorld), 0));
+        buffer.WriteVal(p.LocalToWorld, mesh.LocalToWorld);
     }
 
 }

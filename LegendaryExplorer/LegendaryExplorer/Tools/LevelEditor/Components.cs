@@ -170,6 +170,10 @@ public class PrimitiveComponentProxy : NotifyPropertyChangedBase, IDisposable
         {
             return new DecalComponentProxy(decalContext, componentExport, parent);
         }
+        if (componentExport.IsA("LensFlareComponent") && context is LevelEditorRenderContext flareContext)
+        {
+            return new LensFlareComponentProxy(flareContext, componentExport, parent);
+        }
 
         return new PrimitiveComponentProxy(context, componentExport, parent);
     }

@@ -834,6 +834,9 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
             }
             RenderContext.SetVisibleEmitterInstanceCount(visibleEmitterCount);
         }
+        RenderContext.SetVisibleAnimatedFlareCount(RenderContext.DrawList_3D.OfType<LensFlareSourceProxy>()
+            .Count(source => source.IsFlareActive && source.LensFlareComp is LensFlareComponentProxy { HasAnimatedFlare: true }
+                && RenderContext.IsBoundsVisible(RenderContext.GetActorBounds(source))));
     }
 
     private void RenderScene(object sender, EventArgs e)
@@ -2703,15 +2706,16 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
             ExportEntry updatedPropertiesExport = file.Package.GetEntry(_selectedPropertiesExportUIndex) as ExportEntry;
             bool propertyEditorWrite = LevelEditorInterpreter.ConsumePendingPropertyWrite(
                 updatedPropertiesExport, out bool requiresActorRebuild);
-            if (file.Actors.FirstOrDefault(actor => actor.TestUIndexes(updatedExports)) is { } actor)
+            foreach (ActorProxy affectedActor in file.Actors.Where(actor => actor.TestUIndexes(updatedExports)).ToArray())
             {
+                ActorProxy actor = affectedActor;
                 int actorUIndex = actor.Export.UIndex;
                 bool rebuildMeshActor = actor is not CollectionActorComponentProxy
                                         && updatedPropertiesExport is not null
-                                        && (!propertyEditorWrite || requiresActorRebuild)
+                                        && (actor is LensFlareSourceProxy || (!propertyEditorWrite || requiresActorRebuild)
                                         && (updatedPropertiesExport.IsA("StaticMeshComponent")
                                             || updatedPropertiesExport.IsA("SkeletalMeshComponent")
-                                            || updatedPropertiesExport.IsA("ParticleSystemComponent"));
+                                            || updatedPropertiesExport.IsA("ParticleSystemComponent")));
                 _isRefreshingActorFromPackageUpdate = true;
                 try
                 {

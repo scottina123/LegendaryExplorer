@@ -259,7 +259,7 @@ public sealed class VfxGameShaderRenderer : IDisposable
         return false;
     }
 
-    private static Dictionary<string, PreviewTextureCache.TextureEntry> LoadMaterialTextures(
+    internal static Dictionary<string, PreviewTextureCache.TextureEntry> LoadMaterialTextures(
         MeshRenderContext context,
         MaterialRenderProxy material)
     {
@@ -606,7 +606,7 @@ public sealed class VfxGameShaderRenderer : IDisposable
             dynamicParameter);
     }
 
-    private static void RenderNativeMaterial<TVertex>(
+    internal static void RenderNativeMaterial<TVertex>(
         MeshRenderContext context,
         MaterialRenderProxy material,
         Mesh<TVertex> mesh,
@@ -634,7 +634,8 @@ public sealed class VfxGameShaderRenderer : IDisposable
         var vertexConstants = new LEVSConstants
         {
             ViewProjectionMatrix = camera.ViewMatrix * camera.ProjectionMatrix,
-            CameraPosition = new Vector4(camera.Position, 1),
+            CameraPosition = new Vector4(material.VertexFactoryType == "FLensFlareVertexFactory"
+                ? material.LensFlareCameraPosition : camera.Position, 1),
             PreViewTranslation = Vector4.Zero
         };
         float depthMultiplier = camera.ProjectionMatrix[2, 2];
@@ -848,7 +849,7 @@ public sealed class VfxGameShaderRenderer : IDisposable
         return new Mesh<ParticleBeamTrailVertex>(context.Device, triangles, vertices, isDynamic: true);
     }
 
-    private static RenderTargetBlendDescription CreateBlendDescription(EBlendMode blendMode) => blendMode switch
+    internal static RenderTargetBlendDescription CreateBlendDescription(EBlendMode blendMode) => blendMode switch
     {
         EBlendMode.BLEND_Opaque or EBlendMode.BLEND_Masked => DisabledBlend(),
         EBlendMode.BLEND_Translucent or EBlendMode.BLEND_SoftMasked => EnabledBlend(
