@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Numerics;
+using LegendaryExplorer.Misc;
 using LegendaryExplorerCore.Gammtek;
 using LegendaryExplorerCore.Gammtek.Extensions;
 using LegendaryExplorerCore.Unreal.BinaryConverters;
@@ -214,20 +215,5 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
             buffer.WriteVal(p.LocalToWorldRotDeterminantFlip, 1f);
         }
 
-        private static unsafe void WriteVal<T>(this Span<byte> buff, FShaderParameter param, T val) where T : unmanaged
-        {
-            if (!param.IsBound())
-            {
-                return;
-            }
-            //if (sizeof(T) != param.NumBytes 
-            //    && !(typeof(T) == typeof(Matrix3x3) && param.NumBytes == 44) 
-            //    && Debugger.IsAttached)
-            //{
-            //    Debugger.Break();
-            //}
-            int bytesToWrite = Math.Min(sizeof(T), param.NumBytes);
-            val.AsBytes()[..bytesToWrite].CopyTo(buff[param.BaseIndex..]);
-        }
     }
 }
