@@ -31,14 +31,13 @@ public sealed class MorphViewportMatch
 public partial class MeshRenderer
 {
     private sealed record MorphViewportHit(bool Hair, int Lod, int A, int B, int C, Vector3 Barycentric,
-        float Distance, string MaterialName, MaterialInstance Material);
+        float Distance, string MaterialName, MaterialInstance Material, int TriangleIndex = -1);
 
     private MorphViewportHit morphViewportHit;
     private MorphViewportPickMode morphViewportPickMode;
     private MorphViewportMatch selectedMorphViewportMatch;
     private bool filterMorphViewportSelection = true;
 
-    public IReadOnlyList<MorphViewportPickMode> MorphViewportPickModes { get; } = Enum.GetValues<MorphViewportPickMode>();
     public ObservableCollectionExtended<MorphViewportMatch> MorphViewportMatches { get; } = [];
     public bool HasMorphViewportMatches => MorphViewportMatches.Count > 0;
     public bool HasMorphViewportSelection => morphViewportHit != null;
@@ -49,9 +48,9 @@ public partial class MeshRenderer
         ? "Add selected bone override" : "Add selected feature";
     public string MorphViewportPickHelp => MorphViewportPickMode switch
     {
-        MorphViewportPickMode.Features => "Click a face region to find features that move it. Drag to orbit.",
-        MorphViewportPickMode.Skeleton => "Click the head or hair to find bones that influence that surface.",
-        _ => "Click a surface to select its material and show matching morph overrides."
+        MorphViewportPickMode.Features => "Click a colored area or its label to select the matching feature on the right. Drag to orbit.",
+        MorphViewportPickMode.Skeleton => "Colors match the bone overrides on the right. Click an area or label to select.",
+        _ => "Colored regions identify surface materials. Click to show their morph overrides."
     };
 
     private string morphViewportSelectionLabel = "No viewport selection";
@@ -74,6 +73,7 @@ public partial class MeshRenderer
         set
         {
             if (!SetProperty(ref morphViewportPickMode, value)) return;
+            InvalidateMorphRegions();
             OnPropertyChanged(nameof(MorphViewportPickHelp));
             OnPropertyChanged(nameof(AddMorphViewportSelectionText));
             ShowMorphViewportCategory();
@@ -108,6 +108,9 @@ public partial class MeshRenderer
                 ShowMorphViewportCategory();
             }
             RefreshMorphEditorFilters();
+            UpdateMorphEditorRegionAccents();
+            RevealMorphSelectedControl();
+            OnPropertyChanged(nameof(ShowMorphSelectedRegionLabel));
             OnPropertyChanged(nameof(CanAddMorphViewportSelection));
             UpdateMorphViewportMarker();
         }
@@ -170,7 +173,7 @@ public partial class MeshRenderer
             }
             PauseMorphFaceFx();
             morphViewportHit = hit;
-            BuildMorphViewportMatches();
+            BuildMorphViewportMatches(ShowMorphRegionLabels ? GetPaintedMorphRegion(hit) : null);
             OnPropertyChanged(nameof(HasMorphViewportSelection));
             UpdateMorphViewportMarker();
         }
@@ -223,17 +226,44 @@ public partial class MeshRenderer
                             vertices[c].Position, out float distance, out var barycentric)
                         || nearest != null && distance >= nearest.Distance) continue;
                     preview.Materials.TryGetValue(section.MaterialName, out var material);
-                    nearest = new MorphViewportHit(hair, lodIndex, a, b, c, barycentric, distance, section.MaterialName, material?.Material);
+                    nearest = new MorphViewportHit(hair, lodIndex, a, b, c, barycentric, distance, section.MaterialName, material?.Material, i);
                 }
             }
         }
     }
 
-    private void BuildMorphViewportMatches()
+    private void BuildMorphViewportMatches(MorphViewportRegion preferredRegion = null)
     {
         SelectedMorphViewportMatch = null;
         MorphViewportMatches.ClearEx();
         if (morphViewportHit is not { } hit) return;
+        MorphViewportMatches.ReplaceAll(GetMorphViewportMatches(hit));
+        var preferred = preferredRegion == null ? null : MorphViewportMatches.FirstOrDefault(match => match.Name.Equals(preferredRegion.Name, StringComparison.OrdinalIgnoreCase));
+        if (preferredRegion != null && preferred == null)
+        {
+            preferred = CreateMorphRegionMatch(preferredRegion);
+            if (preferred != null) MorphViewportMatches.Insert(0, preferred);
+        }
+        SelectedMorphViewportMatch = preferred ?? MorphViewportMatches.FirstOrDefault();
+        OnPropertyChanged(nameof(HasMorphViewportMatches));
+        if (SelectedMorphViewportMatch == null)
+        {
+            MorphViewportSelectionLabel = $"{MorphViewportPickMode}: no match";
+            MorphViewportSelectionDetail = GetMorphViewportNoMatchText(hit);
+        }
+    }
+
+    private string GetMorphViewportNoMatchText(MorphViewportHit hit) =>
+        hit.Hair && MorphViewportPickMode == MorphViewportPickMode.Features
+            ? "Hair mesh. Face features belong to the head; choose Skeleton or Materials for hair."
+            : MorphViewportPickMode == MorphViewportPickMode.Features && MorphTargets.Count == 0
+                ? "Morph targets are still loading or are unavailable."
+                : "No matching controls influence this surface.";
+
+    // Surface picks and region labels use the same ranking and material resolution.
+    private List<MorphViewportMatch> GetMorphViewportMatches(MorphViewportHit hit)
+    {
+        var matches = new List<MorphViewportMatch>();
         MorphSkinInfluences[][] influences = hit.Hair ? MorphHairSkinningInfluences : MorphSkinningInfluences;
         MeshBone[] skeleton = hit.Hair ? MorphHairBindSkeleton : MorphBindSkeleton;
         var weights = MorphViewportPicking.BlendBoneWeights(GetInfluences(hit.A), GetInfluences(hit.B), GetInfluences(hit.C), hit.Barycentric);
@@ -245,7 +275,7 @@ public partial class MeshRenderer
                 float strength = MorphViewportPicking.FeatureStrength(target.Lods.ElementAtOrDefault(hit.Lod)?.Vertices,
                     target.BoneOffsets, hit.A, hit.B, hit.C, hit.Barycentric, inheritedWeights);
                 if (strength <= 0.00001f) continue;
-                MorphViewportMatches.Add(new MorphViewportMatch
+                matches.Add(new MorphViewportMatch
                 {
                     Mode = MorphViewportPickMode.Features, TargetName = name, Strength = strength,
                     Feature = MorphFeatureItems.FirstOrDefault(item => item.Name.Equals(name, StringComparison.OrdinalIgnoreCase)),
@@ -258,7 +288,7 @@ public partial class MeshRenderer
             foreach (var (index, weight) in weights.Where(pair => pair.Key < skeleton.Length && pair.Value > 0.0001f))
             {
                 string name = skeleton[index].Name.Instanced;
-                MorphViewportMatches.Add(new MorphViewportMatch
+                matches.Add(new MorphViewportMatch
                 {
                     Mode = MorphViewportPickMode.Skeleton, TargetName = name, Strength = weight, BonePosition = skeleton[index].Position,
                     Bone = MorphSkeletonItems.FirstOrDefault(item => item.Name.Equals(name, StringComparison.OrdinalIgnoreCase)),
@@ -278,24 +308,13 @@ public partial class MeshRenderer
                 using var cache = new PackageCache();
                 material = new MaterialRenderProxy(export, cache);
             }
-            MorphViewportMatches.Add(new MorphViewportMatch
+            matches.Add(new MorphViewportMatch
             {
                 Mode = MorphViewportPickMode.Materials, TargetName = hit.Material?.Export?.ObjectName.Instanced ?? hit.MaterialName,
                 Material = material, Description = hit.Material?.Export?.InstancedFullPath ?? "Surface material"
             });
         }
-        MorphViewportMatches.ReplaceAll(MorphViewportMatches.OrderByDescending(item => item.Strength).ThenBy(item => item.Name).ToArray());
-        OnPropertyChanged(nameof(HasMorphViewportMatches));
-        SelectedMorphViewportMatch = MorphViewportMatches.FirstOrDefault();
-        if (SelectedMorphViewportMatch == null)
-        {
-            MorphViewportSelectionLabel = $"{MorphViewportPickMode}: no match";
-            MorphViewportSelectionDetail = hit.Hair && MorphViewportPickMode == MorphViewportPickMode.Features
-                ? "Hair mesh selected. Face features belong to the head; select Skeleton or Materials for hair."
-                : MorphViewportPickMode == MorphViewportPickMode.Features && MorphTargets.Count == 0
-                    ? "Morph targets are still loading or are unavailable."
-                    : "No matching controls influence the clicked surface.";
-        }
+        return matches.OrderByDescending(item => item.Strength).ThenBy(item => item.Name).ToList();
 
         (int Bone, float Weight)[] GetInfluences(int vertex)
         {
@@ -355,6 +374,10 @@ public partial class MeshRenderer
         if (clip.W <= 0 || clip.Z < 0 || clip.Z > clip.W || Math.Abs(clip.X) > clip.W || Math.Abs(clip.Y) > clip.W) return;
         double x = (clip.X / clip.W + 1) * SceneViewer.ActualWidth / 2;
         double y = (1 - clip.Y / clip.W) * SceneViewer.ActualHeight / 2;
+        Brush regionBrush = FindSelectedMorphRegion()?.Brush ?? Brushes.Goldenrod;
+        MorphViewportMarkerDot.Stroke = regionBrush;
+        MorphViewportMarkerLabel.BorderBrush = regionBrush;
+        if (MorphViewportMarkerLabel.Child is TextBlock caption) caption.Foreground = regionBrush;
         Canvas.SetLeft(MorphViewportMarkerDot, x - 7);
         Canvas.SetTop(MorphViewportMarkerDot, y - 7);
         Canvas.SetLeft(MorphViewportMarkerLabel, Math.Clamp(x + 12, 0, Math.Max(0, SceneViewer.ActualWidth - MorphViewportMarkerLabel.ActualWidth)));

@@ -18,15 +18,52 @@
              d:DataContext="{Binding RelativeSource={RelativeSource Self}}">
     <Control.Resources>
         <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
+        <Style x:Key="MorphRegionEditorRowStyle" TargetType="Border">
+            <Setter Property="Tag" Value="MorphRegionEditorRow"/>
+            <Setter Property="BorderBrush" Value="{Binding RegionBrush}"/>
+            <Setter Property="BorderThickness" Value="3,0,0,1"/>
+            <Setter Property="Padding" Value="5,5,2,5"/>
+            <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"/>
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsViewportSelected}" Value="True">
+                    <Setter Property="BorderThickness" Value="3,1,1,1"/>
+                    <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}"/>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+        <ItemsPanelTemplate x:Key="MorphRegionSwatchesPanel"><StackPanel Orientation="Horizontal"/></ItemsPanelTemplate>
+        <DataTemplate x:Key="MorphRegionSwatchTemplate">
+            <Border Background="{Binding Brush}" Width="16" Height="5" Margin="0,0,3,3" ToolTip="{Binding Detail}"/>
+        </DataTemplate>
+        <Style x:Key="MorphRegionCalloutStyle" TargetType="Button">
+            <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"/>
+            <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
+            <Setter Property="BorderBrush" Value="{Binding Brush}"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1.5" CornerRadius="3" Padding="5,2">
+                            <ContentPresenter VerticalAlignment="Center"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}"/></Trigger>
+                <Trigger Property="IsKeyboardFocused" Value="True"><Setter Property="FontWeight" Value="Bold"/></Trigger>
+            </Style.Triggers>
+        </Style>
         <DataTemplate x:Key="MorphFeatureEditorItemTemplate">
-            <Border BorderThickness="0,0,0,1" BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}" Padding="2,5">
+            <Border Style="{StaticResource MorphRegionEditorRowStyle}">
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
                     <StackPanel>
-                        <TextBox Text="{Binding Name, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" FontWeight="SemiBold"/>
+                        <ItemsControl ItemsSource="{Binding RegionSwatches}" ItemTemplate="{StaticResource MorphRegionSwatchTemplate}" ItemsPanel="{StaticResource MorphRegionSwatchesPanel}"/>
+                        <TextBox Text="{Binding Name, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" FontWeight="SemiBold" BorderBrush="{Binding RegionBrush}"/>
                         <TextBlock Text="Target found — slider deforms the stored face" Foreground="DarkSeaGreen" FontSize="11"
                                    Visibility="{Binding HasMorphTarget, Converter={StaticResource BoolToVisibilityConverter}}"/>
                         <TextBlock Text="No target found — value is metadata only" Foreground="DarkOrange" FontSize="11"
@@ -97,6 +134,10 @@
                                   ToolTip="Hide the m_oHairMesh preview"/>
                         <CheckBox Name="Shader_Checkbox" IsChecked="{Binding RenderGameShader}" Content="In-Game Shader (Experimental)"
                                   VerticalAlignment="Center" Margin="2,0"/>
+                        <CheckBox x:Name="MorphRegionLabelsCheckbox" Content="Show region labels" IsChecked="{Binding ShowMorphRegionLabels}"
+                                  Visibility="{Binding ShowMorphEditorPanel, Converter={StaticResource BoolToVisibilityConverter}}"
+                                  VerticalAlignment="Center" Margin="8,0,2,0"
+                                  ToolTip="Show persistent colored labels and matching affected areas on the morph"/>
                     </StackPanel>
                     <StackPanel Orientation="Horizontal" Margin="0,2">
                         <ComboBox Name="LODPicker_ComboBox" VerticalAlignment="Center" HorizontalAlignment="Left" FontSize="11" Width="55" ItemsSource="{Binding LODPicker}" 
@@ -180,11 +221,6 @@
                         <Border DockPanel.Dock="Top" Padding="6" Margin="0,0,0,5" BorderThickness="1"
                                 BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}">
                             <StackPanel>
-                                <DockPanel>
-                                    <TextBlock Text="Select in viewport" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                                    <ComboBox ItemsSource="{Binding MorphViewportPickModes}"
-                                              SelectedItem="{Binding MorphViewportPickMode, Mode=TwoWay}"/>
-                                </DockPanel>
                                 <TextBlock Text="{Binding MorphViewportPickHelp}" TextWrapping="Wrap" Opacity="0.75" Margin="0,3,0,3"/>
                                 <DockPanel Visibility="{Binding HasMorphViewportSelection, Converter={StaticResource BoolToVisibilityConverter}}">
                                     <Button DockPanel.Dock="Right" Content="Clear" Click="ClearMorphViewportSelection_Click" Padding="5,1" Margin="5,0,0,0"/>
@@ -235,7 +271,8 @@
                                         <ItemsControl ItemsSource="{Binding FilteredMorphSkeletonItems}">
                                             <ItemsControl.ItemTemplate>
                                                 <DataTemplate>
-                                                    <Expander Margin="0,1">
+                                                    <Border Style="{StaticResource MorphRegionEditorRowStyle}">
+                                                        <Expander Margin="0,1">
                                                         <Expander.Style>
                                                             <Style TargetType="Expander">
                                                                 <Setter Property="IsExpanded" Value="False"/>
@@ -252,7 +289,7 @@
                                                             <DockPanel>
                                                                 <Button DockPanel.Dock="Right" Content="×" ToolTip="Remove bone" Padding="5,1" Margin="7,0,0,0"
                                                                         Click="RemoveMorphBone_Click"/>
-                                                                <TextBox Text="{Binding Name, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" MinWidth="230" FontWeight="SemiBold"/>
+                                                                <TextBox Text="{Binding Name, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" MinWidth="230" FontWeight="SemiBold" BorderBrush="{Binding RegionBrush}"/>
                                                             </DockPanel>
                                                         </Expander.Header>
                                                         <StackPanel Margin="10,3,3,6">
@@ -276,6 +313,7 @@
                                                             </Grid>
                                                         </StackPanel>
                                                     </Expander>
+                                                    </Border>
                                                 </DataTemplate>
                                             </ItemsControl.ItemTemplate>
                                         </ItemsControl>
@@ -292,10 +330,12 @@
                                                 <ItemsControl ItemsSource="{Binding FilteredMorphScalarOverrides}">
                                                     <ItemsControl.ItemTemplate>
                                                         <DataTemplate>
-                                                            <Grid Margin="0,3">
+                                                            <Border Style="{StaticResource MorphRegionEditorRowStyle}">
+                                                                <Grid Margin="0,3">
                                                                 <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                                                                 <StackPanel>
-                                                                    <TextBox Text="{Binding Name, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" FontWeight="SemiBold"/>
+                                                                    <ItemsControl ItemsSource="{Binding RegionSwatches}" ItemTemplate="{StaticResource MorphRegionSwatchTemplate}" ItemsPanel="{StaticResource MorphRegionSwatchesPanel}"/>
+                                                                    <TextBox Text="{Binding Name, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" FontWeight="SemiBold" BorderBrush="{Binding RegionBrush}"/>
                                                                     <Grid Margin="0,2,0,0">
                                                                         <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="82"/></Grid.ColumnDefinitions>
                                                                         <Slider Minimum="{Binding Minimum}" Maximum="{Binding Maximum}" Value="{Binding Value, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" IsMoveToPointEnabled="True"/>
@@ -304,6 +344,7 @@
                                                                 </StackPanel>
                                                                 <Button Grid.Column="1" Content="×" Margin="5,0,0,0" VerticalAlignment="Top" Click="RemoveMorphScalar_Click"/>
                                                             </Grid>
+                                                            </Border>
                                                         </DataTemplate>
                                                     </ItemsControl.ItemTemplate>
                                                 </ItemsControl>
@@ -316,10 +357,12 @@
                                                 <ItemsControl ItemsSource="{Binding FilteredMorphColorOverrides}">
                                                     <ItemsControl.ItemTemplate>
                                                         <DataTemplate>
-                                                            <Grid Margin="0,4">
+                                                            <Border Style="{StaticResource MorphRegionEditorRowStyle}">
+                                                                <Grid Margin="0,4">
                                                                 <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                                                                 <StackPanel>
-                                                                    <TextBox Text="{Binding Name, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" FontWeight="SemiBold"/>
+                                                                    <ItemsControl ItemsSource="{Binding RegionSwatches}" ItemTemplate="{StaticResource MorphRegionSwatchTemplate}" ItemsPanel="{StaticResource MorphRegionSwatchesPanel}"/>
+                                                                    <TextBox Text="{Binding Name, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" FontWeight="SemiBold" BorderBrush="{Binding RegionBrush}"/>
                                                                     <xctk:ColorCanvas SelectedColor="{Binding PreviewColor, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" UsingAlphaChannel="True" Margin="0,3,0,2"
                                                                                       Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"/>
                                                                     <UniformGrid Columns="4">
@@ -331,6 +374,7 @@
                                                                 </StackPanel>
                                                                 <Button Grid.Column="1" Content="×" Margin="5,0,0,0" VerticalAlignment="Top" Click="RemoveMorphColor_Click"/>
                                                             </Grid>
+                                                            </Border>
                                                         </DataTemplate>
                                                     </ItemsControl.ItemTemplate>
                                                 </ItemsControl>
@@ -343,15 +387,18 @@
                                                 <ItemsControl ItemsSource="{Binding FilteredMorphTextureOverrides}">
                                                     <ItemsControl.ItemTemplate>
                                                         <DataTemplate>
-                                                            <Grid Margin="0,4">
+                                                            <Border Style="{StaticResource MorphRegionEditorRowStyle}">
+                                                                <Grid Margin="0,4">
                                                                 <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                                                                 <StackPanel>
-                                                                    <TextBox Text="{Binding Name, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" FontWeight="SemiBold"/>
+                                                                    <ItemsControl ItemsSource="{Binding RegionSwatches}" ItemTemplate="{StaticResource MorphRegionSwatchTemplate}" ItemsPanel="{StaticResource MorphRegionSwatchesPanel}"/>
+                                                                    <TextBox Text="{Binding Name, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" FontWeight="SemiBold" BorderBrush="{Binding RegionBrush}"/>
                                                                     <xctk:IntegerUpDown Value="{Binding EntryIndex, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Margin="0,2,0,0"/>
                                                                     <TextBlock Text="{Binding ResolvedPath}" TextWrapping="Wrap" Opacity="0.7" FontSize="11"/>
                                                                 </StackPanel>
                                                                 <Button Grid.Column="1" Content="×" Margin="5,0,0,0" VerticalAlignment="Top" Click="RemoveMorphTexture_Click"/>
                                                             </Grid>
+                                                            </Border>
                                                         </DataTemplate>
                                                     </ItemsControl.ItemTemplate>
                                                 </ItemsControl>
@@ -633,10 +680,15 @@
                 </StackPanel>-->
                 <Canvas x:Name="MorphViewportMarker" Panel.ZIndex="2" IsHitTestVisible="False" Visibility="Collapsed" ClipToBounds="True">
                     <Ellipse x:Name="MorphViewportMarkerDot" Width="14" Height="14" Stroke="#FFFFC34D" StrokeThickness="2.5" Fill="#55352A10"/>
-                    <Border x:Name="MorphViewportMarkerLabel" Background="#DD171D29" BorderBrush="#FFFFC34D" BorderThickness="1" Padding="6,3" CornerRadius="3">
+                    <Border x:Name="MorphViewportMarkerLabel" Background="#DD171D29" BorderBrush="#FFFFC34D" BorderThickness="1" Padding="6,3" CornerRadius="3"
+                            Visibility="{Binding ShowMorphSelectedRegionLabel, Converter={StaticResource BoolToVisibilityConverter}}">
                         <TextBlock Text="{Binding MorphViewportSelectionLabel}" Foreground="White" FontWeight="SemiBold" MaxWidth="260" TextTrimming="CharacterEllipsis"/>
                     </Border>
                 </Canvas>
+                <Grid Panel.ZIndex="4" Visibility="{Binding ShowMorphEditorPanel, Converter={StaticResource BoolToVisibilityConverter}}">
+                    <Canvas x:Name="MorphRegionCalloutCanvas" ClipToBounds="True"
+                            Visibility="{Binding ShowMorphRegionLabels, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                </Grid>
                 <scene3D:LegacySceneRenderControl Canvas.ZIndex="0"  x:Name="SceneViewer" />
                 </Grid>
             </DockPanel>

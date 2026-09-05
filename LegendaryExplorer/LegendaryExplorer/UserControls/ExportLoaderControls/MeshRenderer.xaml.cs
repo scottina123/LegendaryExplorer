@@ -479,6 +479,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 }
                 RenderMorphHairPreview(renderPass);
             }
+            RenderMorphRegions();
             if (RenderWireframe && LEXPreview is not null && CurrentLOD < LEXPreview.LODs.Count)
             {
                 MeshContext.Wireframe = true;
@@ -1684,6 +1685,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         private void MeshRenderer_Unloaded(object sender, RoutedEventArgs e)
         {
+            ResetMorphRegionCallouts();
             PauseMorphFaceFx();
             Debug.WriteLine("MESHRENDERER UNLOADED");
             if (Parent is TabItem { Parent: TabControl tc })
@@ -1730,6 +1732,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
             UpdatePreviewAnimation(timeStep);
             UpdateMorphFaceFxPreview(timeStep);
+            UpdateMorphRegionLabels();
+            UpdateMorphRegionCallouts();
 
             if (ControlIsLoaded && Rotating)
             {
@@ -2621,6 +2625,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         /// </summary>
         public void StopRendering()
         {
+            ResetMorphRegionCallouts();
             PauseMorphFaceFx();
             SceneViewer?.SetShouldRender(false);
         }

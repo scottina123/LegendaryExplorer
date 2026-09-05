@@ -594,6 +594,7 @@ public partial class MeshRenderer
 
     private void CompleteMorphEditorPreviewLoad()
     {
+        InvalidateMorphRegions();
         foreach (MorphFeatureEditorItem feature in MorphFeatureItems)
         {
             feature.HasMorphTarget = MorphTargets.ContainsKey(feature.Name);
@@ -1051,6 +1052,7 @@ public partial class MeshRenderer
             return;
         }
         QueueMorphMaterialOverridePreview();
+        UpdateMorphEditorRegionAccents();
         MarkMorphChanged();
     }
 
@@ -1885,6 +1887,7 @@ public partial class MeshRenderer
         {
             return;
         }
+        UnloadMorphRegionLabels();
         ClearMorphViewportSelection();
         UnloadMorphFaceFx();
         DisposeMorphHairPreview();
@@ -1932,7 +1935,7 @@ public partial class MeshRenderer
         source?.Select(lod => lod is null ? null : new Vector3[lod.Length]).ToArray() ?? [];
 }
 
-public sealed class MorphFeatureEditorItem : NotifyPropertyChangedBase
+public sealed class MorphFeatureEditorItem : MorphRegionEditorItem
 {
     private readonly Action Changed;
     private string _name;
@@ -1953,10 +1956,8 @@ public sealed class MorphFeatureEditorItem : NotifyPropertyChangedBase
     }
 }
 
-public sealed class MorphBoneEditorItem : NotifyPropertyChangedBase
+public sealed class MorphBoneEditorItem : MorphRegionEditorItem
 {
-    private bool isViewportSelected;
-    public bool IsViewportSelected { get => isViewportSelected; internal set => SetProperty(ref isViewportSelected, value); }
     private readonly Action Changed;
     private string _name;
     private Vector3 ComputedPosition;
@@ -2010,7 +2011,7 @@ public sealed class MorphBoneEditorItem : NotifyPropertyChangedBase
     }
 }
 
-public sealed class MorphScalarOverrideItem : NotifyPropertyChangedBase
+public sealed class MorphScalarOverrideItem : MorphRegionEditorItem
 {
     private readonly Action Changed;
     private string _name;
@@ -2028,7 +2029,7 @@ public sealed class MorphScalarOverrideItem : NotifyPropertyChangedBase
     }
 }
 
-public sealed class MorphColorOverrideItem : NotifyPropertyChangedBase
+public sealed class MorphColorOverrideItem : MorphRegionEditorItem
 {
     private readonly Action Changed;
     private string _name;
@@ -2085,7 +2086,7 @@ public sealed class MorphColorOverrideItem : NotifyPropertyChangedBase
     private static byte ToByte(float value) => (byte)Math.Clamp((int)MathF.Round(value * 255f), 0, 255);
 }
 
-public sealed class MorphTextureOverrideItem : NotifyPropertyChangedBase
+public sealed class MorphTextureOverrideItem : MorphRegionEditorItem
 {
     private readonly Action Changed;
     private string _name;
