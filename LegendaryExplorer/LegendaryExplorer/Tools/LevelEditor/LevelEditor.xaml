@@ -21,6 +21,7 @@
         AllowDrop="True"
         Loaded="LevelEditor_Loaded"
         Closing="LevelEditor_Closing"
+        KeyDown="LevelEditor_KeyDown"
         mc:Ignorable="d"
         DataContext="{Binding RelativeSource={RelativeSource Self}}"
         Title="LevelEditor" Height="800" Width="1000">
@@ -67,10 +68,6 @@
         <KeyBinding Key="S" Modifiers="Control+Shift" Command="{Binding SaveAsCommand}"/>
         <KeyBinding Key="Z" Modifiers="Control" Command="{Binding UndoCommand}"/>
         <KeyBinding Key="Y" Modifiers="Control" Command="{Binding RedoCommand}"/>
-        <KeyBinding Key="F" Command="{Binding FocusSelectedCommand}"/>
-        <KeyBinding Key="L" Modifiers="Shift" Command="{Binding ToggleLocalCoordsCommand}"/>
-        <KeyBinding Key="L" Command="{Binding ToggleLocalCoordsCommand}"/>
-        <KeyBinding Key="NumPad5" Command="{Binding ToggleOrthoViewCommand}"/>
     </Window.InputBindings>
     <xctk:BusyIndicator IsBusy="{Binding Path=IsBusy}" BusyContent="{Binding BusyText}">
         <xctk:BusyIndicator.ProgressBarStyle>

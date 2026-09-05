@@ -752,6 +752,30 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         ThemeManager.ThemeChanged += OnThemeChanged;
     }
 
+    private void LevelEditor_KeyDown(object sender, KeyEventArgs e)
+    {
+        // Window input bindings consume character keys before text input can reach the focused editor.
+        if (e.OriginalSource is TextBoxBase or PasswordBox or ComboBox { IsEditable: true }
+            || Keyboard.FocusedElement is TextBoxBase or PasswordBox or ComboBox { IsEditable: true })
+        {
+            return;
+        }
+
+        ICommand command = (e.Key, e.KeyboardDevice.Modifiers) switch
+        {
+            (Key.F, ModifierKeys.None) => FocusSelectedCommand,
+            (Key.L, ModifierKeys.None or ModifierKeys.Shift) => ToggleLocalCoordsCommand,
+            (Key.NumPad5, ModifierKeys.None) => ToggleOrthoViewCommand,
+            _ => null
+        };
+
+        if (command?.CanExecute(null) == true)
+        {
+            command.Execute(null);
+            e.Handled = true;
+        }
+    }
+
     private void OnThemeChanged(object sender, bool isDarkMode)
     {
         BackgroundColor = GetThemeDefaultBackgroundColor();
