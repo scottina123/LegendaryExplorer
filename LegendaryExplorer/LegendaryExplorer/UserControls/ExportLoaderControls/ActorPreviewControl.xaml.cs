@@ -146,6 +146,7 @@ public partial class ActorPreviewControl : ExportLoaderControl, IActorEditorCont
             {
                 OnPropertyChanged(nameof(ShowLiveMaterialEditor));
                 OnPropertyChanged(nameof(ShowPreviewToolbar));
+                OnPropertyChanged(nameof(CanPreviewActorAnimations));
             }
         }
     }
@@ -159,6 +160,7 @@ public partial class ActorPreviewControl : ExportLoaderControl, IActorEditorCont
             if (SetProperty(ref _isMorphEditorOnly, value))
             {
                 OnPropertyChanged(nameof(ShowPreviewToolbar));
+                OnPropertyChanged(nameof(CanPreviewActorAnimations));
                 if (value)
                 {
                     SceneViewer?.SetShouldRender(false);
@@ -349,6 +351,7 @@ public partial class ActorPreviewControl : ExportLoaderControl, IActorEditorCont
 
     private void OnUpdateScene(object sender, float deltaTime)
     {
+        UpdatePreviewAnimation(deltaTime);
         _actor?.UpdateScene(RenderContext, deltaTime);
     }
 
@@ -442,6 +445,7 @@ public partial class ActorPreviewControl : ExportLoaderControl, IActorEditorCont
                 FrameFirstPersonCamera(bounds);
                 ConfigureDepthRangeForBounds(bounds);
                 PopulateLiveMaterialEditor(_actor);
+                InitializeActorAnimationPreview(_actor);
                 UpdateActorMorphAvailability();
                 if (OpenMorphEditorOnLoad && HasActorMorph)
                 {
@@ -1425,6 +1429,7 @@ public partial class ActorPreviewControl : ExportLoaderControl, IActorEditorCont
     public override void UnloadExport()
     {
         _actorLoadVersion++;
+        UnloadActorAnimationPreview();
         CloseActorMorphEditor(unload: true);
         _actorMorphExport = null;
         HasActorMorph = false;
@@ -1449,6 +1454,9 @@ public partial class ActorPreviewControl : ExportLoaderControl, IActorEditorCont
     public override void Dispose()
     {
         _actorLoadVersion++;
+        _animationDisposed = true;
+        UnloadActorAnimationPreview();
+        _animationCatalog = null;
         DetachHostingTabSelectionHandler();
         ThemeManager.ThemeChanged -= OnThemeChanged;
         RenderContext.UpdateScene -= OnUpdateScene;

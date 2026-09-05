@@ -13,6 +13,7 @@
     d:DesignHeight="450" d:DesignWidth="800">
     <Control.Resources>
         <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
+        <converters:NullVisibilityConverter x:Key="NullVisibilityConverter"/>
         <Style x:Key="ActorMaterialParameterScrubberStyle" TargetType="Thumb">
             <Setter Property="Width" Value="34"/>
             <Setter Property="Height" Value="22"/>
@@ -245,6 +246,29 @@
                     </ScrollViewer>
                 </DockPanel>
             </Border>
+            <StackPanel DockPanel.Dock="Bottom" Margin="7"
+                        Visibility="{Binding CanPreviewActorAnimations, Converter={StaticResource BoolToVisibilityConverter}}">
+                <DockPanel Margin="0,0,0,4">
+                    <Button DockPanel.Dock="Left" Content="Choose animation..." Click="ChooseActorAnimation_Click" Padding="6,2"
+                            ToolTip="Search all animation sequences in this game's Asset Database"/>
+                    <Button DockPanel.Dock="Right" Content="Clear" Click="ClearActorAnimation_Click" Padding="6,2" Margin="4,0,0,0"
+                            ToolTip="Return the entire actor to its reference pose, preserving its morph"/>
+                    <TextBlock Text="{Binding SelectedAnimationName}" ToolTip="{Binding SelectedAnimationName}"
+                               TextTrimming="CharacterEllipsis" VerticalAlignment="Center" Margin="6,0"/>
+                </DockPanel>
+                <DockPanel IsEnabled="{Binding HasPreviewAnimation}">
+                    <Button DockPanel.Dock="Left" Content="{Binding AnimationPlayPauseText}"
+                            Click="ActorAnimationPlayPause_Click" Width="50" Padding="4,2"/>
+                    <TextBlock DockPanel.Dock="Right" Text="{Binding AnimationPositionText}" VerticalAlignment="Center" Margin="5,0,0,0"/>
+                    <Slider Minimum="0" Maximum="{Binding AnimationDuration}"
+                            Value="{Binding AnimationPosition, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                            Thumb.DragStarted="ActorAnimationTimeline_DragStarted" Thumb.DragCompleted="ActorAnimationTimeline_DragCompleted"
+                            IsMoveToPointEnabled="True" VerticalAlignment="Center" Margin="5,0"
+                            ToolTip="Drag to scrub the looping animation on the entire actor"/>
+                </DockPanel>
+                <TextBlock Text="{Binding AnimationPreviewStatus}" TextWrapping="Wrap" Margin="0,3,0,0"
+                           Visibility="{Binding AnimationPreviewStatus, Converter={StaticResource NullVisibilityConverter}}"/>
+            </StackPanel>
             <scene3D:SceneRenderControl x:Name="SceneViewer"
                                         Visibility="{Binding IsMaterialEditorOnly, Converter={StaticResource BoolToVisibilityConverter}, ConverterParameter=Not}"
                                         PreviewMouseDown="SceneViewer_PreviewMouseDownForMaterialPicking"

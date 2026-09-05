@@ -1244,6 +1244,44 @@ public class SkeletalMeshComponentProxy : MeshComponentProxy
         animPlayer = new AnimSequencePlayer(skeletalMesh);
     }
 
+    internal bool CanPreviewAnimation => skeletalMesh?.RefSkeleton is { Length: > 0 }
+                                         && skeletalMesh.LODModels.Length > LOD;
+
+    /// <summary>
+    /// Maps a user-selected preview animation to this component's skeleton while retaining its morph.
+    /// The caller owns the animation package and synchronizes the component players on one timeline.
+    /// </summary>
+    internal AnimSequencePlayer SetPreviewAnimation(AnimSequence animation)
+    {
+        lock (RenderResourceLock)
+        {
+            pendingPreviewAnimation = null;
+            if (animation is null && animPlayer is null) return null;
+            EnsureSkinningRenderer();
+            if (animPlayer is null) return null;
+
+            // Always remap a new selection: different packages can contain sequences with the same name.
+            animPlayer.SetAnimation(animation, renderContext.PackageCache,
+                animationDataIsPrepared: animation?.RawAnimationData is not null);
+            if (animation is not null && !skeletalMesh.RefSkeleton.Any(bone =>
+                    animation.Bones.Contains(bone.Name.Instanced, StringComparer.OrdinalIgnoreCase)))
+            {
+                animPlayer.SetAnimation(null);
+                animation = null;
+            }
+            animPlayer.IsLooping = true;
+            skinnedMeshRenderer.NeedsUpdate = true;
+            return animation is null ? null : animPlayer;
+        }
+    }
+
+    internal void SetPreviewAnimationTime(float time)
+    {
+        animPlayer?.SetCurrentTime(time);
+        if (skinnedMeshRenderer is not null)
+            skinnedMeshRenderer.NeedsUpdate = true;
+    }
+
     public void SetAnimation(AnimSequence animSequence, float pos)
     {
         if (animSequence is null)
@@ -1367,6 +1405,18 @@ public class SkeletalMeshComponentProxy : MeshComponentProxy
             Mesh?.UpdateLocalToWorld(LocalToWorld);
             GameShaderMesh?.UpdateLocalToWorld(LocalToWorld);
         }
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        lock (RenderResourceLock)
+        {
+            skinnedMeshRenderer?.Dispose();
+            skinnedMeshRenderer = null;
+            animPlayer = null;
+            pendingPreviewAnimation = null;
+        }
+        base.Dispose(disposing);
     }
 }
 
