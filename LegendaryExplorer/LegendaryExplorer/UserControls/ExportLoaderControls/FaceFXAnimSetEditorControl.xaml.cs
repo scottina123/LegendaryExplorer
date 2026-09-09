@@ -433,20 +433,43 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         private void BrowseSkelMesh_Click(object sender, RoutedEventArgs e)
         {
-            var ofd = AppDirectories.GetOpenPackageDialog();
-            if (DirectoryMemory.ShowDialog(ofd) != true) return;
-
-            using var pkg = MEPackageHandler.OpenMEPackage(ofd.FileName);
-            var export = EntrySelector.GetEntry<ExportEntry>(
-                Window.GetWindow(this), pkg,
-                "Select Skeletal Mesh",
-                x => x.ClassName == "SkeletalMesh" && !x.IsDefaultObject);
-
-            if (export != null)
+            if (CurrentLoadedExport == null) return;
+            bool isLE3 = CurrentLoadedExport.Game == MEGame.LE3;
+            string packagePath;
+            if (isLE3)
             {
-                animPreview?.LoadSkeletalMesh(export);
-                PreviewSkelMeshLabel = $"{Path.GetFileName(ofd.FileName)}: {export.ObjectNameString}";
-                UpdateAnimationPreview();
+                packagePath = Path.Combine(AppContext.BaseDirectory, "WwiseTestData", "LE3Morphs.pcc");
+            }
+            else
+            {
+                var ofd = AppDirectories.GetOpenPackageDialog();
+                if (DirectoryMemory.ShowDialog(ofd) != true) return;
+                packagePath = ofd.FileName;
+            }
+
+            try
+            {
+                using var pkg = MEPackageHandler.OpenMEPackage(packagePath);
+                if (isLE3 && pkg.Game != MEGame.LE3)
+                {
+                    throw new InvalidDataException("WwiseTestData/LE3Morphs.pcc must be an LE3 package.");
+                }
+                var export = EntrySelector.GetEntry<ExportEntry>(
+                    Window.GetWindow(this), pkg,
+                    isLE3 ? "Select a skeletal mesh from LE3Morphs.pcc" : "Select Skeletal Mesh",
+                    x => x.ClassName == "SkeletalMesh" && !x.IsDefaultObject);
+
+                if (export != null)
+                {
+                    animPreview?.LoadSkeletalMesh(export);
+                    PreviewSkelMeshLabel = $"{Path.GetFileName(packagePath)}: {export.ObjectNameString}";
+                    UpdateAnimationPreview();
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(Window.GetWindow(this), $"Could not load preview meshes from {packagePath}: {ex.Message}",
+                    "Select Skeletal Mesh");
             }
         }
 
@@ -483,8 +506,10 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             // Auto-detect SkeletalMesh only if no external mesh was manually picked.
             if (animPreview?.CurrentMesh == null)
             {
-                var skelMeshExport = CurrentLoadedExport.FileRef.Exports
-                    .FirstOrDefault(exp => exp.ClassName == "SkeletalMesh" && exp.ObjectNameString.Contains("HED"));
+                // LE3 meshes must be selected from the bundled LE3Morphs package.
+                var skelMeshExport = CurrentLoadedExport.Game == MEGame.LE3 ? null
+                    : CurrentLoadedExport.FileRef.Exports
+                        .FirstOrDefault(exp => exp.ClassName == "SkeletalMesh" && exp.ObjectNameString.Contains("HED"));
                 if (skelMeshExport != null)
                 {
                     animPreview?.LoadSkeletalMesh(skelMeshExport);

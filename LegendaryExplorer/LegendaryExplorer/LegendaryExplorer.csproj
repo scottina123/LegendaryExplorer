@@ -167,6 +167,10 @@
 	</ItemGroup>
 
 	<ItemGroup>
+		<None Update="WwiseTestData\LE3Morphs.pcc">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+			<CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+		</None>
 		<None Update="Tools\FaceFXEditor\ElevenLabs\Rvc\rvc_lex_infer.py">
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 			<CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
