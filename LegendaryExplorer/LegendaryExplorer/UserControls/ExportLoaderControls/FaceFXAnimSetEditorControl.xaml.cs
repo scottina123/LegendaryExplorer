@@ -6,6 +6,7 @@ using LegendaryExplorer.Tools.TlkManagerNS;
 using LegendaryExplorer.UnrealExtensions;
 using LegendaryExplorer.UserControls.SharedToolControls;
 using LegendaryExplorer.UserControls.SharedToolControls.Curves;
+using LegendaryExplorerCore.GameFilesystem;
 using LegendaryExplorerCore.Gammtek.Extensions;
 using LegendaryExplorerCore.Helpers;
 using LegendaryExplorerCore.Misc;
@@ -100,6 +101,12 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         /// The FaceFXAsset (face graph actor) used to drive the animation preview.
         /// </summary>
         private FaceFXAsset _fxActorForPreview;
+
+        private static readonly string[] LE3PreviewFxAssetPackages =
+        [
+            "BIOG_FaceFX_Assets.pcc",
+            "BioH_Nyreen_00.pcc"
+        ];
 
         private string _previewFxAssetLabel = "(none)";
         public string PreviewFxAssetLabel
@@ -337,6 +344,13 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         private void BrowseFxAsset_Click(object sender, RoutedEventArgs e)
         {
+            if (CurrentLoadedExport == null) return;
+            if (CurrentLoadedExport.Game == MEGame.LE3)
+            {
+                BrowseLE3FxAsset();
+                return;
+            }
+
             var ofd = AppDirectories.GetOpenPackageDialog();
             if (DirectoryMemory.ShowDialog(ofd) != true) return;
 
@@ -351,6 +365,69 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 _fxActorForPreview = export.GetBinaryData<FaceFXAsset>();
                 PreviewFxAssetLabel = $"{Path.GetFileName(ofd.FileName)}: {export.ObjectNameString}";
                 UpdateAnimationPreview();
+            }
+        }
+
+        private static bool IsPreviewFxAssetPackage(IMEPackage package) =>
+            package.Game != MEGame.LE3
+            || LE3PreviewFxAssetPackages.Contains(Path.GetFileName(package.FilePath), StringComparer.OrdinalIgnoreCase);
+
+        private void BrowseLE3FxAsset()
+        {
+            try
+            {
+                using var cache = new PackageCache { AlwaysOpenFromDisk = false };
+                var gameFiles = MELoadedFiles.GetFilesLoadedInGame(MEGame.LE3);
+                var candidates = new List<ExportEntry>();
+                string currentDirectory = Path.GetDirectoryName(Pcc.FilePath);
+                foreach (string packageName in LE3PreviewFxAssetPackages)
+                {
+                    IMEPackage package;
+                    if (packageName.Equals(Path.GetFileName(Pcc.FilePath), StringComparison.OrdinalIgnoreCase))
+                    {
+                        package = Pcc;
+                    }
+                    else
+                    {
+                        // Include DLC packages such as Nyreen's, respecting the game's mount order.
+                        if (!gameFiles.TryGetValue(packageName, out string packagePath) || !File.Exists(packagePath))
+                        {
+                            packagePath = string.IsNullOrEmpty(currentDirectory)
+                                ? null : Path.Combine(currentDirectory, packageName);
+                        }
+                        package = cache.GetCachedPackage(packagePath);
+                    }
+
+                    if (package?.Game == MEGame.LE3)
+                    {
+                        candidates.AddRange(package.Exports.Where(export =>
+                            export.ClassName == "FaceFXAsset" && !export.IsDefaultObject));
+                    }
+                }
+
+                if (candidates.Count == 0)
+                {
+                    MessageBox.Show(Window.GetWindow(this),
+                        "No LE3 FaceFX assets were found in BIOG_FaceFX_Assets.pcc or BioH_Nyreen_00.pcc. "
+                        + "Check the configured LE3 game path or place these packages beside the current file.",
+                        "Select FaceFX Asset");
+                    return;
+                }
+
+                var selected = EntrySelector.GetItem(Window.GetWindow(this),
+                    candidates.OrderBy(export => export.InstancedFullPath, StringComparer.OrdinalIgnoreCase),
+                    "Select a FaceFX asset from BIOG_FaceFX_Assets.pcc or BioH_Nyreen_00.pcc");
+                if (selected != null)
+                {
+                    _fxActorForPreview = selected.GetBinaryData<FaceFXAsset>();
+                    PreviewFxAssetLabel = $"{Path.GetFileName(selected.FileRef.FilePath)}: {selected.ObjectNameString}";
+                    UpdateAnimationPreview();
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(Window.GetWindow(this), $"Could not load LE3 FaceFX assets: {ex.Message}",
+                    "Select FaceFX Asset");
             }
         }
 
@@ -381,7 +458,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 case "FaceFXAnimSet":
                     FaceFX = new FaceFXAnimSetHandler(CurrentLoadedExport);
                     // Auto-detect only if no manual selection is active.
-                    if (_fxActorForPreview == null)
+                    if (_fxActorForPreview == null && IsPreviewFxAssetPackage(CurrentLoadedExport.FileRef))
                     {
                         var fxAssetExport = CurrentLoadedExport.FileRef.Exports
                             .FirstOrDefault(exp => exp.ClassName == "FaceFXAsset" && !exp.IsDefaultObject);
@@ -394,9 +471,12 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     break;
                 case "FaceFXAsset":
                     FaceFX = new FaceFXAssetHandler(CurrentLoadedExport);
-                    // The loaded export itself is the face actor.
-                    _fxActorForPreview = (FaceFXAsset)FaceFX.Binary;
-                    PreviewFxAssetLabel = CurrentLoadedExport.ObjectNameString;
+                    // LE3 preview rigs must come from one of the designated asset packages.
+                    if (IsPreviewFxAssetPackage(CurrentLoadedExport.FileRef))
+                    {
+                        _fxActorForPreview = (FaceFXAsset)FaceFX.Binary;
+                        PreviewFxAssetLabel = CurrentLoadedExport.ObjectNameString;
+                    }
                     break;
             }
 
