@@ -3320,6 +3320,17 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
 
         void IDropTarget.DragOver(IDropInfo dropInfo)
         {
+            if (dropInfo.VisualTarget == Sequences_TreeView)
+            {
+                dropInfo.Effects = DragDropEffects.None;
+                if (CanAcceptSequenceTreeDrop(dropInfo))
+                {
+                    dropInfo.DropTargetAdorner = DropTargetAdorners.Highlight;
+                    dropInfo.Effects = DragDropEffects.Copy;
+                }
+                return;
+            }
+
             if (dropInfo.TargetItem is TreeViewEntry && dropInfo.Data is TreeViewEntry { Parent: not null } sourceItem)
             {
                 dropInfo.DropTargetAdorner = DropTargetAdorners.Highlight;
@@ -3331,6 +3342,16 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
 
         void IDropTarget.Drop(IDropInfo dropInfo)
         {
+            if (dropInfo.VisualTarget == Sequences_TreeView)
+            {
+                if (CanAcceptSequenceTreeDrop(dropInfo))
+                {
+                    CopyDroppedSequence((ExportEntry)((TreeViewEntry)dropInfo.Data).Entry,
+                        (ExportEntry)((TreeViewEntry)dropInfo.TargetItem).Entry);
+                }
+                return;
+            }
+
             if (dropInfo.TargetItem is not TreeViewEntry targetItem || dropInfo.Data is not TreeViewEntry { Parent: not null } sourceItem)
             {
                 return;
@@ -3465,6 +3486,56 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             if ((relinkResults?.Count ?? 0) > 0)
             {
                 new ListDialog(relinkResults, "Relink report",
+                    "The following items reported relinking issues.", this).Show();
+            }
+        }
+
+        private bool CanAcceptSequenceTreeDrop(IDropInfo dropInfo)
+        {
+            return !isReadOnlyPreview && !IsBusy && Pcc != null
+                   && dropInfo.Data is TreeViewEntry { Entry: ExportEntry source }
+                   && dropInfo.TargetItem is TreeViewEntry { Entry: ExportEntry destination }
+                   && destination.FileRef == Pcc
+                   && SequenceTreeTransfer.CanCopy(source, destination);
+        }
+
+        private void CopyDroppedSequence(ExportEntry source, ExportEntry destination)
+        {
+            if (destination.Game.IsLEGame() != source.Game.IsLEGame() && !App.IsDebug && source.Game != MEGame.UDK)
+            {
+                MessageBox.Show(this,
+                    "Cannot port sequences between Original Trilogy (OT) games and Legendary Edition (LE) games in release builds of Legendary Explorer.",
+                    "Cannot port sequence", MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
+
+            using var cache = new PackageCache();
+            var rop = new RelinkerOptionsPackage(cache)
+            {
+                PortImportsMemorySafe = Settings.PackageEditor_DefaultMemorySafeImportPorting,
+            };
+            try
+            {
+                IsBusy = true;
+                BusyText = "Copying sequence and relinking its contents";
+                SequenceTreeTransfer.Copy(source, destination, rop);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, $"Could not copy the sequence:\n{ex.Message}",
+                    "Sequence copy failed", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+            finally
+            {
+                IsBusy = false;
+                SequenceExports.ClearEx();
+                LoadSequences();
+                GoToExport(destination);
+            }
+
+            if (rop.RelinkReport.Count > 0)
+            {
+                new ListDialog(rop.RelinkReport, "Relink report",
                     "The following items reported relinking issues.", this).Show();
             }
         }
