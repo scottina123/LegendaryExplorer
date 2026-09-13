@@ -150,6 +150,8 @@
                 <ListBox.ContextMenu>
                     <ContextMenu>
                         <MenuItem Header="Add Animation" Click="AddAnimation_Click"/>
+                        <MenuItem Header="Delete Selected Animations" Click="DeleteAnim_Click"/>
+                        <MenuItem Header="Delete All Keys in Selected Animations" Click="DeleteAnimKeys_Click"/>
                         <MenuItem Header="Replace All Animations" Click="ReplaceAnimations_Click"/>
                     </ContextMenu>
                 </ListBox.ContextMenu>
@@ -159,8 +161,8 @@
                             <TextBlock.ContextMenu>
                                 <ContextMenu>
                                     <MenuItem Header="Add Animation" Click="AddAnimation_Click"/>
-                                    <MenuItem Header="Delete" Click="DeleteAnim_Click"/>
-                                    <MenuItem Header="Delete All Keys" Click="DeleteAnimKeys_Click"/>
+                                    <MenuItem Header="Delete Selected Animations" Click="DeleteAnim_Click"/>
+                                    <MenuItem Header="Delete All Keys in Selected Animations" Click="DeleteAnimKeys_Click"/>
                                     <MenuItem Header="Set As Reference Curve" Click="SelectForCompare_Click"/>
                                     <MenuItem Header="Clone" Click="CloneAnimation_Click"/>
                                     <MenuItem Header="Change Name" Click="ChangeAnimName_Click"></MenuItem>

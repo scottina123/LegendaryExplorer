@@ -553,11 +553,13 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         private void animationListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            if (SelectedAnimation != null)
-            {
-                graph.SelectedCurve = SelectedAnimation.ToCurve(SaveChanges);
-                graph.Paint(true);
-            }
+            RefreshAnimationGraph();
+        }
+
+        private void RefreshAnimationGraph()
+        {
+            graph.SelectedCurve = SelectedAnimation?.ToCurve(SaveChanges) ?? new Curve();
+            graph.Paint(true);
         }
 
         private void UpdateAnimListBox()
@@ -1240,14 +1242,44 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         private void DeleteAnim_Click(object sender, RoutedEventArgs e)
         {
-            Animations.RemoveAt(animationListBox.SelectedIndex);
+            var selectedAnimations = animationListBox.SelectedItems.Cast<Animation>().ToList();
+            if (SelectedLine == null || selectedAnimations.Count == 0)
+            {
+                return;
+            }
+
+            if (selectedAnimations.Contains(ReferenceAnimation))
+            {
+                ReferenceAnimation = null;
+            }
+
+            foreach (Animation animation in selectedAnimations)
+            {
+                Animations.Remove(animation);
+            }
+
             SaveChanges();
+            RefreshAnimationGraph();
+            UpdateAnimationPreview();
         }
 
         private void DeleteAnimKeys_Click(object sender, RoutedEventArgs e)
         {
-            SelectedAnimation.Points = new LinkedList<CurvePoint>();
+            var selectedAnimations = animationListBox.SelectedItems.Cast<Animation>().ToList();
+            if (SelectedLine == null || selectedAnimations.Count == 0)
+            {
+                return;
+            }
+
+            foreach (Animation animation in selectedAnimations)
+            {
+                // Keep the graph and reference curve attached to the same point collection.
+                animation.Points.Clear();
+            }
+
             SaveChanges();
+            RefreshAnimationGraph();
+            UpdateAnimationPreview();
         }
 
         private void SelectForCompare_Click(object sender, RoutedEventArgs e)
