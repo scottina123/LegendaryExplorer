@@ -1260,6 +1260,42 @@ namespace LegendaryExplorer.DialogueEditor
             return container;
         }
 
+        private PNode CreateReplyStringRefPicker(int linkIndex, float x, float y, float width, float height)
+        {
+            var searchButton = PPath.CreateRectangle(x, y, width, height);
+            searchButton.Brush = new SolidBrush(Color.FromArgb(30, boxTextColor));
+            searchButton.Pen = new Pen(Color.FromArgb(150, boxTextColor));
+            searchButton.MouseDown += (_, e) =>
+            {
+                if (e.Button == MouseButtons.Left)
+                {
+                    e.Handled = true;
+                }
+            };
+            searchButton.Click += (_, e) =>
+            {
+                if (e.Button != MouseButtons.Left)
+                {
+                    return;
+                }
+
+                e.Handled = true;
+                Editor.SelectGraphOutgoingLinkStrRefFromTlkText(this, linkIndex);
+            };
+
+            var searchLabel = new DText("...", boxTextColor)
+            {
+                Pickable = false,
+                ConstrainWidthToTextWidth = false,
+                TextAlignment = StringAlignment.Center,
+                X = x,
+                Width = width
+            };
+            searchLabel.Y = y + (height - searchLabel.Height) / 2;
+            searchButton.AddChild(searchLabel);
+            return searchButton;
+        }
+
         private PNode CreateMatineeSection(float y, float width, out float sectionHeight)
         {
             var container = new PNode();
@@ -1896,10 +1932,22 @@ namespace LegendaryExplorer.DialogueEditor
                     t2.ConstrainHeightToTextHeight = true;
                     t2.Width = 180;
                 }
-                if (t2.Width + 10 > outW) outW = t2.Width + 10;
-                t2.X = 0 - t2.Width;
-                t2.Y = starty;
-                starty += t2.Height;
+                bool showTlkPicker = !Node.IsReply && i < Links.Count;
+                const float pickerWidth = 18;
+                const float pickerMargin = 4;
+                float pickerSpace = showTlkPicker ? pickerWidth + pickerMargin * 2 : 0;
+                float rowWidth = t2.Width + pickerSpace;
+                float pickerHeight = MathF.Max(18, GetLineStringRefEditorHeight(w));
+                float rowHeight = showTlkPicker ? MathF.Max(t2.Height, pickerHeight) : t2.Height;
+                if (rowWidth + 10 > outW) outW = rowWidth + 10;
+                t2.X = -rowWidth;
+                t2.Y = starty + (rowHeight - t2.Height) / 2;
+                if (showTlkPicker)
+                {
+                    outLinkBox.AddChild(CreateReplyStringRefPicker(i, -pickerWidth - pickerMargin,
+                        starty + (rowHeight - pickerHeight) / 2, pickerWidth, pickerHeight));
+                }
+                starty += rowHeight;
                 if (!t2.Pickable)
                 {
                     t2.Pickable = false;
@@ -1910,8 +1958,8 @@ namespace LegendaryExplorer.DialogueEditor
 
                 if (i < Outlinks.Count - 1)
                 {
-                    float dividerY = t2.Y + t2.Height + 1;
-                    PPath divider = PPath.CreateLine(-t2.Width, dividerY, 0, dividerY);
+                    float dividerY = starty + 1;
+                    PPath divider = PPath.CreateLine(-rowWidth, dividerY, 0, dividerY);
                     divider.Pen = new Pen(Color.FromArgb(120, boxTextColor));
                     divider.Pickable = false;
                     outLinkBox.AddChild(divider);

@@ -2912,7 +2912,9 @@ namespace LegendaryExplorer.DialogueEditor
                 FontWeight = FontWeights.Bold,
                 Margin = new Thickness(0, 0, 0, 4)
             });
-            var strRefTextBox = new TextBox { Margin = new Thickness(0, 0, 0, 4) };
+            var strRefTextBox = new TextBox();
+            var strRefInput = TlkStringRefSelector.CreatePickerInput(dialog, Pcc, strRefTextBox);
+            strRefInput.Margin = new Thickness(0, 0, 0, 4);
             var tlkPreview = new TextBlock
             {
                 Margin = new Thickness(0, 0, 0, 18),
@@ -2926,7 +2928,7 @@ namespace LegendaryExplorer.DialogueEditor
             }
             strRefTextBox.TextChanged += (_, _) => UpdateTlkPreview();
             UpdateTlkPreview();
-            rootPanel.Children.Add(strRefTextBox);
+            rootPanel.Children.Add(strRefInput);
             rootPanel.Children.Add(tlkPreview);
 
             var buttonPanel = new StackPanel
@@ -8762,6 +8764,30 @@ namespace LegendaryExplorer.DialogueEditor
             }
         }
 
+        public void SelectGraphOutgoingLinkStrRefFromTlkText(DiagNode graphNode, int linkIndex)
+        {
+            if (graphNode?.Node.IsReply != false || SelectedConv == null)
+            {
+                return;
+            }
+
+            var replyLinks = graphNode.NodeProp.GetProp<ArrayProperty<StructProperty>>("ReplyListNew");
+            if (replyLinks == null || linkIndex < 0 || linkIndex >= replyLinks.Count)
+            {
+                return;
+            }
+
+            EndInlineLineStrRefEdit(false);
+            if (TlkStringRefSelector.SelectStringRef(this, Pcc) is not int stringRef || stringRef <= 0
+                || replyLinks[linkIndex].GetProp<StringRefProperty>("srParaphrase")?.Value == stringRef)
+            {
+                return;
+            }
+
+            replyLinks[linkIndex].Properties.AddOrReplaceProp(new StringRefProperty(stringRef, "srParaphrase"));
+            PushLocalGraphChanges(graphNode);
+        }
+
         public void UpdateNodeExportIdFromGraph(DialogueNodeExtended node, int exportId)
         {
             if (node == null || SelectedConv == null || node.ExportID == exportId)
@@ -10103,7 +10129,7 @@ namespace LegendaryExplorer.DialogueEditor
             }
             replyStrRefTextBox.TextChanged += (_, _) => UpdateReplyPreview();
             UpdateReplyPreview();
-            tlkPanel.Children.Add(replyStrRefTextBox);
+            tlkPanel.Children.Add(TlkStringRefSelector.CreatePickerInput(dialog, Pcc, replyStrRefTextBox));
             tlkPanel.Children.Add(replyPreviewTextBlock);
             rootPanel.Children.Add(tlkPanel);
 
@@ -10513,6 +10539,7 @@ namespace LegendaryExplorer.DialogueEditor
 
             if (!DialogueLinkEditDialog.TryEditLink(
                     this,
+                    Pcc,
                     links,
                     currentSelection,
                     editableLinks.Select(link => DialogueLinkEditDialog.CreateOrderDisplayItem(link, sourceNodeIsReply)),

@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Windows;
+using System.Windows.Controls;
 using LegendaryExplorer.Dialogs;
 using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.TLK;
@@ -13,6 +15,35 @@ namespace LegendaryExplorer.Misc
 {
     internal static class TlkStringRefSelector
     {
+        public static Grid CreatePickerInput(Window owner, IMEPackage package, TextBox textBox)
+        {
+            var grid = new Grid();
+            grid.ColumnDefinitions.Add(new ColumnDefinition());
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            grid.Children.Add(textBox);
+
+            var pickerButton = new Button
+            {
+                Content = "...",
+                Width = 28,
+                Margin = new Thickness(6, 0, 0, 0),
+                ToolTip = "Find a StringRef by ID or text in the loaded TLKs"
+            };
+            System.Windows.Automation.AutomationProperties.SetName(pickerButton, "Pick TLK string reference");
+            pickerButton.Click += (_, _) =>
+            {
+                if (SelectStringRef(owner, package) is int stringRef)
+                {
+                    textBox.Text = stringRef.ToString(CultureInfo.InvariantCulture);
+                    textBox.CaretIndex = textBox.Text.Length;
+                    textBox.Focus();
+                }
+            };
+            Grid.SetColumn(pickerButton, 1);
+            grid.Children.Add(pickerButton);
+            return grid;
+        }
+
         public static int? SelectStringRef(Window owner, IMEPackage package)
         {
             if (package is null)

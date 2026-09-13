@@ -453,6 +453,7 @@ namespace LegendaryExplorer.DialogueEditor
 
             if (!DialogueLinkEditDialog.TryEditLink(
                     this,
+                    ParentWindow.Pcc,
                     links,
                     currentSelection,
                     editableLinks.Select(link => DialogueLinkEditDialog.CreateOrderDisplayItem(link, IsReply)),

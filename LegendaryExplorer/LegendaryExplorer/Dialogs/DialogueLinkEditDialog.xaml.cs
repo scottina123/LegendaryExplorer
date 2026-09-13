@@ -10,6 +10,7 @@ using LegendaryExplorer.DialogueEditor;
 using LegendaryExplorer.Misc;
 using LegendaryExplorer.SharedUI;
 using LegendaryExplorerCore.Dialogue;
+using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.Unreal;
 
 namespace LegendaryExplorer.Dialogs
@@ -61,6 +62,7 @@ namespace LegendaryExplorer.Dialogs
 
         private DialogueLinkEditDialog(
             Control owner,
+            IMEPackage package,
             IEnumerable<string> targetOptions,
             string selectedTarget,
             IEnumerable<DialogueLinkOrderDisplayItem> outgoingConnectionOrder,
@@ -233,7 +235,7 @@ namespace LegendaryExplorer.Dialogs
             {
                 Text = replyStrRef > 0 ? replyStrRef.ToString() : string.Empty
             };
-            replyOptionsPanel.Children.Add(replyStrRefTextBox);
+            replyOptionsPanel.Children.Add(TlkStringRefSelector.CreatePickerInput(this, package, replyStrRefTextBox));
             replyStrRefPreviewTextBlock = new TextBlock
             {
                 Margin = new Thickness(0, 6, 0, 0),
@@ -304,6 +306,7 @@ namespace LegendaryExplorer.Dialogs
 
         public static bool TryEditLink(
             Control owner,
+            IMEPackage package,
             IEnumerable<string> targetOptions,
             string selectedTarget,
             IEnumerable<DialogueLinkOrderDisplayItem> outgoingConnectionOrder,
@@ -315,7 +318,7 @@ namespace LegendaryExplorer.Dialogs
             string selectedCategory,
             out DialogueLinkEditDialogResult result)
         {
-            var dialog = new DialogueLinkEditDialog(owner, targetOptions, selectedTarget, outgoingConnectionOrder, selectedOrder, showReplyOptions, replyStrRef, replyTextResolver, replyCategories, selectedCategory);
+            var dialog = new DialogueLinkEditDialog(owner, package, targetOptions, selectedTarget, outgoingConnectionOrder, selectedOrder, showReplyOptions, replyStrRef, replyTextResolver, replyCategories, selectedCategory);
             result = dialog.ShowDialog() == true ? dialog.Result : null;
             return result != null;
         }
