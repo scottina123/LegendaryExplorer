@@ -24,6 +24,7 @@
         Icon="pack://application:,,,/Tools/Icons/16x16/SequenceEditor_Icon_16.ico"
         Loaded="SequenceEditorWPF_Loaded"
         Closing="SequenceEditorWPF_Closing"
+        PreviewMouseDown="SequenceEditor_CommitRenameOnOutsideClick"
         Title="Sequence Editor" Height="750" Width="1300" MinWidth="900" MinHeight="200"
         Style="{DynamicResource AudemusToolWindowStyle}">
     <Window.Resources>
@@ -165,7 +166,9 @@
         <ContextMenu x:Key="currentObjectsContextMenu">
             <MenuItem Header="Open in Package Editor" Click="CurrentObjects_OpenInPackageEditor_Click" />
         </ContextMenu>
-        <ContextMenu x:Key="sequencesTreeContextMenu">
+        <ContextMenu x:Key="sequencesTreeContextMenu" Opened="SequencesTreeContextMenu_Opened">
+            <MenuItem x:Name="RenameSequenceMenuItem" Header="Rename" Click="SequencesTree_Rename_Click"
+                      ToolTip="Edit the sequence name inline. Enter saves; Escape cancels." />
             <MenuItem Header="Open in Package Editor" Click="SequencesTree_OpenInPackageEditor_Click" />
         </ContextMenu>
         <system:Boolean x:Key="True">True</system:Boolean>
@@ -511,14 +514,13 @@
                                 dd:DragDrop.DropHandler="{Binding}"
                                 FocusManager.IsFocusScope="True"
                                 PreviewMouseRightButtonDown="Sequences_TreeView_PreviewMouseRightButtonDown"
-                                ContextMenu="{StaticResource sequencesTreeContextMenu}"
                                 SelectedValuePath="IsSelected">
                         <TreeView.Resources>
                             <HierarchicalDataTemplate DataType="{x:Type sharedUi:TreeViewEntry}"
                                                         ItemsSource="{Binding Sublinks}">
                                 <StackPanel Orientation="Horizontal">
                                     <StackPanel Orientation="Horizontal">
-                                        <TextBlock Text="{Binding DisplayName}" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=TreeViewItem}}">
+                                        <TextBlock x:Name="SequenceNameDisplay" Text="{Binding DisplayName}" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=TreeViewItem}}">
                                             <TextBlock.Style>
                                                 <Style TargetType="{x:Type TextBlock}">
                                                     <Style.Triggers>
@@ -531,7 +533,10 @@
                                                 </Style>
                                             </TextBlock.Style>
                                         </TextBlock>
-
+                                        <TextBox x:Name="SequenceNameEditor" Visibility="Collapsed" MinWidth="140"
+                                                 VerticalContentAlignment="Center"
+                                                 PreviewKeyDown="SequenceNameEditor_PreviewKeyDown"
+                                                 LostKeyboardFocus="SequenceNameEditor_LostKeyboardFocus" />
                                     </StackPanel>
                                     <b:Interaction.Triggers>
                                         <b:EventTrigger EventName="PreviewMouseRightButtonDown">
@@ -545,6 +550,7 @@
                         </TreeView.Resources>
                         <TreeView.ItemContainerStyle>
                             <Style TargetType="{x:Type TreeViewItem}">
+                                <Setter Property="ContextMenu" Value="{StaticResource sequencesTreeContextMenu}" />
                                 <Setter Property="IsSelected" Value="{Binding Path=IsSelected, Mode=TwoWay}" />
                                 <Setter Property="IsExpanded" Value="{Binding Path=IsExpanded, Mode=TwoWay}" />
                                 <Setter Property="peregrineTreeView:TreeViewItemHelper.BringSelectedItemIntoView" Value="True" />

@@ -299,7 +299,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
         {
         }
 
-        internal SequenceEditorWPF(bool enableRecents) : base("Sequence Editor")
+        internal SequenceEditorWPF(bool enableRecents, bool loadCustomSources = true) : base("Sequence Editor")
         {
             recentsEnabled = enableRecents;
             LoadCommands();
@@ -330,6 +330,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             graphEditor.Camera.MouseUp += back_MouseUp;
 
             graphEditor.Click += graphEditor_Click;
+            graphEditor.MouseDown += SequenceGraph_CommitRenameOnMouseDown;
             graphEditor.DragDrop += SequenceEditor_DragDrop;
             graphEditor.DragEnter += SequenceEditor_DragEnter;
 
@@ -363,7 +364,10 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             ClrPcker_Connection.SelectedColor = ConnectionColor.ToWPFColor();
             ClrPcker_VarLink.SelectedColor = VarLinkColor.ToWPFColor();
 
-            LoadRememberedCustomSequenceObjectSources();
+            if (loadCustomSources)
+            {
+                LoadRememberedCustomSequenceObjectSources();
+            }
         }
 
         private void InitializeExperimentsBrowser()
@@ -481,6 +485,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             graphEditor.Camera.MouseDown -= backMouseDown_Handler;
             graphEditor.Camera.MouseUp -= back_MouseUp;
             graphEditor.Click -= graphEditor_Click;
+            graphEditor.MouseDown -= SequenceGraph_CommitRenameOnMouseDown;
             graphEditor.DragDrop -= SequenceEditor_DragDrop;
             graphEditor.DragEnter -= SequenceEditor_DragEnter;
             graphEditor.AllowDrop = false;
@@ -1869,7 +1874,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                 switch (export.ClassName)
                 {
                     case "Sequence" when !(export.HasParent && export.Parent.IsSequence()):
-                        TreeViewRootNodes.Add(FindSequences(export, export.ObjectName != "Main_Sequence"));
+                        TreeViewRootNodes.Add(FindSequences(export));
                         SequenceExports.Add(export);
                         break;
                     case "Prefab":
@@ -1952,6 +1957,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
 
         private void ResetTreeView()
         {
+            EndInlineSequenceNameEdit(commit: false);
             foreach (TreeViewEntry tvi in TreeViewRootNodes.SelectMany(node => node.FlattenTree()))
             {
                 tvi.Dispose();
@@ -6382,6 +6388,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             graphEditor.Camera.MouseDown -= backMouseDown_Handler;
             graphEditor.Camera.MouseUp -= back_MouseUp;
             graphEditor.Click -= graphEditor_Click;
+            graphEditor.MouseDown -= SequenceGraph_CommitRenameOnMouseDown;
             graphEditor.DragDrop -= SequenceEditor_DragDrop;
             graphEditor.DragEnter -= SequenceEditor_DragEnter;
             CurrentObjects.ForEach(x =>
