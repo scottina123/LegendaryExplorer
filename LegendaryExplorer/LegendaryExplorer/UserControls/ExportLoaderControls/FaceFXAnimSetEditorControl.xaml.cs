@@ -345,9 +345,10 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         private void BrowseFxAsset_Click(object sender, RoutedEventArgs e)
         {
             if (CurrentLoadedExport == null) return;
+            Window owner = sender as Window ?? Window.GetWindow(this);
             if (CurrentLoadedExport.Game == MEGame.LE3)
             {
-                BrowseLE3FxAsset();
+                BrowseLE3FxAsset(owner);
                 return;
             }
 
@@ -356,7 +357,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
             using var pkg = MEPackageHandler.OpenMEPackage(ofd.FileName);
             var export = EntrySelector.GetEntry<ExportEntry>(
-                Window.GetWindow(this), pkg,
+                owner, pkg,
                 "Select FaceFX Asset",
                 x => x.ClassName == "FaceFXAsset" && !x.IsDefaultObject);
 
@@ -372,7 +373,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             package.Game != MEGame.LE3
             || LE3PreviewFxAssetPackages.Contains(Path.GetFileName(package.FilePath), StringComparer.OrdinalIgnoreCase);
 
-        private void BrowseLE3FxAsset()
+        private void BrowseLE3FxAsset(Window owner)
         {
             try
             {
@@ -407,14 +408,14 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
                 if (candidates.Count == 0)
                 {
-                    MessageBox.Show(Window.GetWindow(this),
+                    MessageBox.Show(owner,
                         "No LE3 FaceFX assets were found in BIOG_FaceFX_Assets.pcc or BioH_Nyreen_00.pcc. "
                         + "Check the configured LE3 game path or place these packages beside the current file.",
                         "Select FaceFX Asset");
                     return;
                 }
 
-                var selected = EntrySelector.GetItem(Window.GetWindow(this),
+                var selected = EntrySelector.GetItem(owner,
                     candidates.OrderBy(export => export.InstancedFullPath, StringComparer.OrdinalIgnoreCase),
                     "Select a FaceFX asset from BIOG_FaceFX_Assets.pcc or BioH_Nyreen_00.pcc");
                 if (selected != null)
@@ -426,7 +427,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             }
             catch (Exception ex)
             {
-                MessageBox.Show(Window.GetWindow(this), $"Could not load LE3 FaceFX assets: {ex.Message}",
+                MessageBox.Show(owner, $"Could not load LE3 FaceFX assets: {ex.Message}",
                     "Select FaceFX Asset");
             }
         }
@@ -3052,6 +3053,28 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         private void AutoFaceFXGeneration_Click(object sender, RoutedEventArgs e)
         {
+            ShowFaceFXGenerationDialog(sender, emotionsOnly: false);
+        }
+
+        private void AddEmotionsOnly_Click(object sender, RoutedEventArgs e)
+        {
+            ShowFaceFXGenerationDialog(sender, emotionsOnly: true);
+        }
+
+        private FaceFXAsset ChooseEmotionPreviewRig(Window owner)
+        {
+            BrowseFxAsset_Click(owner, new RoutedEventArgs());
+            return _fxActorForPreview;
+        }
+
+        private void ShowFaceFXGenerationDialog(object sender, bool emotionsOnly)
+        {
+            double initialPosition = audioPlayer.CurrentTrackPosition;
+            if (sender is FrameworkElement { DataContext: FaceFXLineEntry lineEntry } && lineEntry != SelectedLineEntry)
+            {
+                SelectedLineEntry = lineEntry;
+                initialPosition = 0;
+            }
             if (SelectedLineEntry == null || SelectedLine == null)
             {
                 MessageBox.Show("Please select a line first.", "No Line Selected", MessageBoxButton.OK, MessageBoxImage.Warning);
@@ -3060,6 +3083,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
             // Find the audio export for this line
             var audioExport = FindVoiceStreamFromExport(SelectedLineEntry);
+            audioPlayer.StopPlaying();
+            animPreview.Pause();
 
             // Create and show the dialog
             var dialog = new Tools.FaceFXEditor.AutoFaceFXGenerator.AutoFaceFXGenerationDialog(
@@ -3069,9 +3094,27 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 SelectedLineEntry.TLKString,
                 audioExport,
                 Window.GetWindow(this),
-                CurrentLoadedExport.Game);
+                CurrentLoadedExport.Game,
+                emotionsOnly,
+                _fxActorForPreview,
+                animPreview.CurrentMesh?.Export,
+                ChooseEmotionPreviewRig,
+                initialPosition);
 
-            if (dialog.ShowDialog() == true && dialog.WasGenerated)
+            bool generated = dialog.ShowDialog() == true && dialog.WasGenerated;
+            if (dialog.PreviewHeadMesh is ExportEntry previewMesh && previewMesh != animPreview.CurrentMesh?.Export)
+            {
+                animPreview.LoadSkeletalMesh(previewMesh);
+                PreviewSkelMeshLabel = $"{Path.GetFileName(previewMesh.FileRef.FilePath)}: {previewMesh.ObjectNameString}";
+            }
+            if (dialog.PreviewRig is FaceFXAsset previewRig)
+            {
+                _fxActorForPreview = previewRig;
+                PreviewFxAssetLabel = previewRig.Export?.ObjectNameString ?? PreviewFxAssetLabel;
+            }
+            UpdateAnimationPreview();
+
+            if (generated)
             {
                 // Write the binary directly since the generator modified the line object
                 // We must do this BEFORE UpdateAnimListBox because SaveChanges reads from the UI Animations collection
@@ -3080,8 +3123,10 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 // Refresh the UI to show the new animations
                 UpdateAnimListBox();
                 SelectedLineEntry.UpdateLength();
+                UpdateAnimationPreview();
                 
-                MessageBox.Show("FaceFX animations generated successfully!", "Generation Complete", MessageBoxButton.OK, MessageBoxImage.Information);
+                MessageBox.Show(dialog.AddEmotionToExistingLine ? "Emotion added to the line." : "FaceFX animations generated successfully!",
+                    "Generation Complete", MessageBoxButton.OK, MessageBoxImage.Information);
             }
         }
 

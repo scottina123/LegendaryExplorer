@@ -81,6 +81,10 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
         /// Intensity of the emotion (0-1) - higher values create more visible expressions
         /// </summary>
         public float EmotionIntensity { get; set; } = 0.8f;
+
+        /// <summary>Optional interval in seconds. Both endpoints must be supplied together.</summary>
+        public float? EmotionStartTime { get; set; }
+        public float? EmotionEndTime { get; set; }
         
         /// <summary>
         /// FXA animation data imported from UDK FaceFX Studio
@@ -134,6 +138,21 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
                 if (_faceFX == null || _line == null)
                     return false;
 
+                FaceFXEmotionChoice selectedEmotion = GetSelectedEmotionChoice();
+                bool hasEmotion = selectedEmotion != null && !selectedEmotion.IsNone;
+                if (hasEmotion && !float.IsFinite(_options.EmotionIntensity))
+                {
+                    LastError = "Enter a finite emotion intensity.";
+                    return false;
+                }
+                if (hasEmotion && (_options.EmotionStartTime.HasValue || _options.EmotionEndTime.HasValue)
+                    && (_options.EmotionStartTime is not float start || !float.IsFinite(start) || start < 0f
+                        || _options.EmotionEndTime is not float end || !float.IsFinite(end) || end <= start))
+                {
+                    LastError = "Enter a non-negative emotion start time and an end time after the start.";
+                    return false;
+                }
+
                 // Analyze audio for duration and amplitude. Emotion-only edits can
                 // also use the existing line's timeline when no audio export is linked.
                 _audioDuration = AudioAnalyzer.GetAudioDuration(_audioExport);
@@ -155,7 +174,6 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
                     _amplitudeData = new List<AmplitudeData>();
                 }
 
-                FaceFXEmotionChoice selectedEmotion = GetSelectedEmotionChoice();
                 if (_options.AddEmotionToExistingLine)
                 {
                     if (selectedEmotion == null || selectedEmotion.IsNone || _options.EmotionIntensity <= 0f)
@@ -788,7 +806,7 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
             _line.NumKeys[animIndex] += newPoints.Count;
         }
 
-        private float EstimateDurationFromText(string text)
+        internal static float EstimateDurationFromText(string text)
         {
             if (string.IsNullOrWhiteSpace(text))
                 return 2.0f; // Default 2 seconds
@@ -1700,6 +1718,12 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
 
         private void GenerateEmotionAnimation(FaceFXEmotionChoice emotion)
         {
+            if (_options.EmotionStartTime is float start && _options.EmotionEndTime is float end)
+            {
+                GenerateTimedEmotion(emotion, start, end);
+                return;
+            }
+
             float duration = Math.Max(_audioDuration, 0.02f);
             float intensity = Math.Clamp(_options.EmotionIntensity, 0f, 1f);
             List<FaceFXSpeechSegment> segments = AnalyzeAudioForSpeechSegments(duration);
@@ -1761,6 +1785,43 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
                     hash *= 16777619;
                 }
                 return (int)(hash & 0x7fffffff);
+            }
+        }
+
+        private void GenerateTimedEmotion(FaceFXEmotionChoice emotion, float start, float end)
+        {
+            float intensity = Math.Clamp(_options.EmotionIntensity, 0f, 1f);
+            var tracks = emotion.IsLayered
+                ? new[] { ("WB", 0.469f), ("S", 1f), ("B", 0.349f), ("Y", 0.349f) }
+                    .Select(layer => ($"E_{layer.Item1}_{emotion.LayeredFamily}{1 + StableVariant(_line.NameAsString, emotion.LayeredFamily, layer.Item1) % 3}", layer.Item2))
+                : new[] { (emotion.PresetAnimation, 0.8f) };
+
+            foreach ((string name, float weight) in tracks)
+            {
+                float fade = Math.Min(0.2f, (end - start) * 0.2f);
+                var points = new List<FaceFXControlPoint>
+                {
+                    new() { time = start, weight = 0f },
+                    new() { time = start + fade, weight = weight * intensity },
+                    new() { time = end - fade, weight = weight * intensity },
+                    new() { time = end, weight = 0f }
+                };
+
+                string canonicalName = PhonemeToVisemeMap.CanonicalizeVisemeName(name, _options.Species, _options.Game);
+                int offset = 0;
+                for (int i = 0; i < (_line.AnimationNames?.Count ?? 0); i++)
+                {
+                    int count = _line.NumKeys[i];
+                    if (string.Equals(_faceFX.Names[_line.AnimationNames[i]], canonicalName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        // Repeated inserts retain earlier expressions and all keys outside this interval.
+                        points.AddRange(_line.Points.Skip(offset).Take(count).Where(point => point.time < start || point.time > end));
+                        break;
+                    }
+                    offset += count;
+                }
+                AddAnimation(name, points.GroupBy(point => point.time)
+                    .Select(group => group.First()).OrderBy(point => point.time).ToList());
             }
         }
 

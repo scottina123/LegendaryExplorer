@@ -10,6 +10,9 @@
         xmlns:fa="http://schemas.fontawesome.com/icons/"
         mc:Ignorable="d"
         d:DesignHeight="400" d:DesignWidth="600">
+    <misc:NotifyPropertyChangedControlBase.Resources>
+        <BooleanToVisibilityConverter x:Key="PlaybackVisibilityConverter"/>
+    </misc:NotifyPropertyChangedControlBase.Resources>
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="*" />
@@ -18,7 +21,7 @@
         <!-- Row 0: 3D viewport -->
         <scene3D:LegacySceneRenderControl x:Name="SceneViewer" Grid.Row="0" />
         <!-- Row 1: Playback controls -->
-        <WrapPanel Grid.Row="1" Margin="2">
+        <WrapPanel Grid.Row="1" Margin="2" Visibility="{Binding ShowPlaybackControls, Converter={StaticResource PlaybackVisibilityConverter}}">
             <Button Command="{Binding PlayPauseCommand}" Padding="6,4" Margin="0,0,5,0"
                     Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"
                     BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"

@@ -4,13 +4,14 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
-        Title="Auto FaceFX Generation"
-        Height="620" Width="540"
+        Title="{Binding DialogTitle}"
+        Height="760" Width="1020" MinHeight="600" MinWidth="900"
         WindowStartupLocation="CenterOwner"
-        ResizeMode="NoResize"
+        ResizeMode="CanResize"
         d:DataContext="{d:DesignInstance Type={x:Type local:AutoFaceFXGenerationDialog}, IsDesignTimeCreatable=False}"
         xmlns:local="clr-namespace:LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator">
     <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BooleanVisibilityConverter"/>
         <BorderGapMaskConverter x:Key="BorderGapMaskConverter"/>
         <Style TargetType="GroupBox">
             <Setter Property="Margin" Value="5"/>
@@ -110,6 +111,10 @@
     </Window.Resources>
     
     <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="440"/>
+        </Grid.ColumnDefinitions>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
@@ -117,10 +122,10 @@
         </Grid.RowDefinitions>
 
         <!-- Header -->
-        <Border Grid.Row="0" Background="{DynamicResource PrimaryColorBrush}" Padding="10">
+        <Border Grid.Row="0" Grid.ColumnSpan="2" Background="{DynamicResource PrimaryColorBrush}" Padding="10">
             <StackPanel>
-                <TextBlock Text="Auto FaceFX Generation" FontSize="18" FontWeight="Bold" Foreground="White"/>
-                <TextBlock Text="Generate lip sync animations from TLK text and audio" FontSize="12" Foreground="White" Opacity="0.8"/>
+                <TextBlock Text="{Binding DialogTitle}" FontSize="18" FontWeight="Bold" Foreground="White"/>
+                <TextBlock Text="{Binding DialogDescription}" FontSize="12" Foreground="White" Opacity="0.8"/>
             </StackPanel>
         </Border>
 
@@ -146,7 +151,7 @@
                 </GroupBox>
 
                 <!-- Text Input -->
-                <GroupBox Header="Dialogue Text">
+                <GroupBox Header="Dialogue Text" Visibility="{Binding ShowLipSyncOptions, Converter={StaticResource BooleanVisibilityConverter}}">
                     <StackPanel>
                         <TextBlock Text="Enter the dialogue text to generate lip sync animations:" 
                                    FontStyle="Italic" FontSize="11" Margin="5,2" Opacity="0.8" TextWrapping="Wrap"/>
@@ -167,6 +172,7 @@
                                                            Height="115"/>
                         </StackPanel>
                         
+                        <StackPanel Visibility="{Binding ShowLipSyncOptions, Converter={StaticResource BooleanVisibilityConverter}}">
                         <CheckBox Content="Generate Blink Animation" IsChecked="{Binding GenerateBlinkAnimation}"/>
                         <CheckBox Content="Generate Eyebrow Animation" IsChecked="{Binding GenerateEyebrowAnimation}"/>
                         <CheckBox Content="Generate Head Movement" IsChecked="{Binding GenerateHeadMovement}"/>
@@ -185,8 +191,9 @@
                             <Label Content="Blink Frequency:" Width="120"/>
                             <Slider Value="{Binding BlinkFrequency}" Minimum="0.1" Maximum="0.5" 
                                     Width="150" VerticalAlignment="Center"/>
-                            <TextBlock Text="{Binding BlinkFrequency, StringFormat={}{0:F2}/s}" 
+                            <TextBlock Text="{Binding BlinkFrequency, StringFormat={}{0:F2}/s}"
                                        Width="50" VerticalAlignment="Center" Margin="5,0"/>
+                        </StackPanel>
                         </StackPanel>
                     </StackPanel>
                 </GroupBox>
@@ -215,7 +222,9 @@
 
                         <CheckBox Content="Add emotion only (preserve all existing animation)"
                                   IsChecked="{Binding AddEmotionToExistingLine}"
+                                  Visibility="{Binding CanChooseGenerationMode, Converter={StaticResource BooleanVisibilityConverter}}"
                                   Margin="85,6,5,4"/>
+
                     </StackPanel>
                 </GroupBox>
 
@@ -231,10 +240,39 @@
             </StackPanel>
         </ScrollViewer>
 
+        <GroupBox Grid.Row="1" Grid.Column="1" Header="Head and Audio Preview" Margin="5,10,10,10">
+            <DockPanel>
+                <StackPanel DockPanel.Dock="Bottom">
+                    <CheckBox Content="Insert emotion at a specific time" IsChecked="{Binding UseCustomEmotionRange}" Margin="5,10,5,4"/>
+                    <Grid IsEnabled="{Binding UseCustomEmotionRange}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="95"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <Label Content="Start (seconds):"/>
+                        <TextBox x:Name="emotionStartInput" Grid.Column="1" Text="{Binding EmotionStartTimeText, UpdateSourceTrigger=PropertyChanged}" Margin="5" VerticalContentAlignment="Center"/>
+                        <Button x:Name="usePlayheadForStart" Grid.Column="2" Content="Use playhead" Click="UsePlayheadForStart_Click" Margin="5" Padding="8,3"/>
+                        <Label Grid.Row="1" Content="End (seconds):"/>
+                        <TextBox x:Name="emotionEndInput" Grid.Row="1" Grid.Column="1" Text="{Binding EmotionEndTimeText, UpdateSourceTrigger=PropertyChanged}" Margin="5" VerticalContentAlignment="Center"/>
+                        <Button x:Name="usePlayheadForEnd" Grid.Row="1" Grid.Column="2" Content="Use playhead" Click="UsePlayheadForEnd_Click" Margin="5" Padding="8,3"/>
+                    </Grid>
+                    <TextBlock Text="The expression fades in at the start and out at the end. Preview it with the audio before applying."
+                               TextWrapping="Wrap" Margin="5,7"/>
+                </StackPanel>
+                <local:FaceFXEmotionPreviewControl x:Name="emotionPreview"/>
+            </DockPanel>
+        </GroupBox>
+
         <!-- Footer Buttons -->
-        <Border Grid.Row="2" BorderThickness="0,1,0,0" BorderBrush="{DynamicResource BorderColorBrush}" Padding="10">
+        <Border Grid.Row="2" Grid.ColumnSpan="2" BorderThickness="0,1,0,0" BorderBrush="{DynamicResource BorderColorBrush}" Padding="10">
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                <Button Content="Generate" Width="100" Margin="0,0,10,0" 
+                <Button Content="Preview Emotion" Width="135" Margin="0,0,10,0" Click="PreviewEmotion_Click"/>
+                <Button Content="{Binding GenerateButtonText}" Width="115" Margin="0,0,10,0"
                         Click="GenerateButton_Click" IsDefault="True"/>
                 <Button Content="Cancel" Width="100" Click="CancelButton_Click" IsCancel="True"/>
             </StackPanel>

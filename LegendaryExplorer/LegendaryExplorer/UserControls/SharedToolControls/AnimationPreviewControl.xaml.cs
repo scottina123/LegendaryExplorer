@@ -68,6 +68,13 @@ public partial class AnimationPreviewControl : NotifyPropertyChangedControlBase,
 
     public SkeletalMesh CurrentMesh => _skm;
 
+    private bool _showPlaybackControls = true;
+    public bool ShowPlaybackControls
+    {
+        get => _showPlaybackControls;
+        set => SetProperty(ref _showPlaybackControls, value);
+    }
+
     #region Bindable Properties
 
     private double _animSliderValue;
@@ -322,6 +329,12 @@ public partial class AnimationPreviewControl : NotifyPropertyChangedControlBase,
     }
 
     #region Public API
+
+    public void SetCameraOrientation(float yaw, float pitch)
+    {
+        _meshContext.Camera.Yaw = yaw;
+        _meshContext.Camera.Pitch = pitch;
+    }
 
     public void LoadSkeletalMesh(ExportEntry skeletalMeshExport)
     {

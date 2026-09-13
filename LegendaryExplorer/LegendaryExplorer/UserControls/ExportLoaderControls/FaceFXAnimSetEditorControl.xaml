@@ -49,6 +49,7 @@
                     <MenuItem Header="Import Audio into Male/Female FaceFX Assets" Click="ImportAudioIntoMirroredFaceFXAssets_Click" ToolTip="Import WAV files into the sibling audio folder, add new lines to both paired FaceFX assets, and optionally generate FaceFX for only those new lines"/>
                     <Separator/>
                     <MenuItem Header="Auto FaceFX Generation" Click="AutoFaceFXGeneration_Click" ToolTip="Automatically generate lip sync animations for selected line"/>
+                    <MenuItem Header="Add Emotions Only…" Click="AddEmotionsOnly_Click" ToolTip="Insert and preview emotions on the selected line without regenerating lip sync"/>
                     <Separator/>
                     <MenuItem Header="Bulk Operations">
                         <MenuItem Header="Bulk Import Lines from XML by ID" Click="BulkImportLinesFromXML_Click" ToolTip="Import every XML animation into the FaceFX line with the matching TLK ID, creating missing lines"/>
@@ -84,6 +85,7 @@
                                 <ContextMenu x:Name="lineContextMenu" Opened="LineContextMenu_OnOpened">
                                     <MenuItem Header="Add Line" Click="AddLine_Click"/>
                                     <MenuItem Header="Auto FaceFX Generation" Click="AutoFaceFXGeneration_Click" ToolTip="Automatically generate lip sync animations for this line"/>
+                                    <MenuItem Header="Add Emotions Only…" Click="AddEmotionsOnly_Click" ToolTip="Insert and preview emotions on this line without regenerating lip sync"/>
                                     <MenuItem Header="Delete Section of line" Click="DelLineSec_Click"/>
                                     <MenuItem Header="Import Section of line" Click="ImpLineSec_Click"/>
                                     <MenuItem Header="Export Section of line" Click="ExpLineSec_Click"/>

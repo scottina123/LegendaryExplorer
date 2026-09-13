@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Globalization;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Windows;
@@ -8,6 +9,7 @@ using System.Windows.Media;
 using LegendaryExplorer.SharedUI;
 using LegendaryExplorerCore.Misc;
 using LegendaryExplorerCore.Packages;
+using LegendaryExplorerCore.Unreal.BinaryConverters;
 using Microsoft.Win32;
 using static LegendaryExplorer.UserControls.ExportLoaderControls.FaceFXAnimSetEditorControl;
 using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
@@ -26,6 +28,9 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
         private readonly LegendaryExplorerCore.Unreal.BinaryConverters.FaceFXLine _line;
         private readonly ExportEntry _audioExport;
         private readonly MEGame _game;
+        private readonly bool _emotionsOnly;
+        private readonly float _audioDuration;
+        private FaceFXGenerationDraft _generationDraft;
 
         // Properties for binding
         public string LineName => _line?.NameAsString ?? "Unknown";
@@ -174,15 +179,53 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
             get => _addEmotionToExistingLine;
             set
             {
-                _addEmotionToExistingLine = value;
+                _addEmotionToExistingLine = _emotionsOnly || value;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(GenerationWarningText));
+                OnPropertyChanged(nameof(ShowLipSyncOptions));
+                OnPropertyChanged(nameof(GenerateButtonText));
+            }
+        }
+
+        public string GenerationWarningText => AddEmotionToExistingLine
+            ? UseCustomEmotionRange
+                ? "Adds the selected emotion within this interval. Other tracks and emotion keys outside the interval are preserved."
+                : "Adds or replaces the selected emotion across the line. Other animation tracks are preserved."
+            : "Existing lip-sync curves on this line will be replaced.";
+
+        public bool ShowLipSyncOptions => !AddEmotionToExistingLine;
+        public bool CanChooseGenerationMode => !_emotionsOnly;
+        public string DialogTitle => _emotionsOnly ? "Add Emotions Only" : "Auto FaceFX Generation";
+        public string DialogDescription => _emotionsOnly
+            ? "Insert an expression and preview it on a head mesh with the dialogue audio."
+            : "Generate lip sync and preview timed emotional expressions.";
+        public string GenerateButtonText => AddEmotionToExistingLine ? "Apply Emotion" : "Generate";
+
+        private bool _useCustomEmotionRange;
+        public bool UseCustomEmotionRange
+        {
+            get => _useCustomEmotionRange;
+            set
+            {
+                _useCustomEmotionRange = value;
                 OnPropertyChanged();
                 OnPropertyChanged(nameof(GenerationWarningText));
             }
         }
 
-        public string GenerationWarningText => AddEmotionToExistingLine
-            ? "Only the selected emotion will be added or replaced; all existing line animation is preserved."
-            : "Existing lip-sync curves on this line will be replaced.";
+        private string _emotionStartTimeText = "0.00";
+        public string EmotionStartTimeText
+        {
+            get => _emotionStartTimeText;
+            set { _emotionStartTimeText = value; OnPropertyChanged(); }
+        }
+
+        private string _emotionEndTimeText = "2.00";
+        public string EmotionEndTimeText
+        {
+            get => _emotionEndTimeText;
+            set { _emotionEndTimeText = value; OnPropertyChanged(); }
+        }
 
         // Species selection
         public List<string> AvailableSpecies { get; }
@@ -201,6 +244,8 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
 
         // Result
         public bool WasGenerated { get; private set; }
+        internal ExportEntry PreviewHeadMesh => emotionPreview.SelectedHeadMesh;
+        internal FaceFXAsset PreviewRig => emotionPreview.SelectedRig;
 
         public AutoFaceFXGenerationDialog(
             IFaceFXBinary faceFX, 
@@ -209,12 +254,20 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
             string tlkText, 
             ExportEntry audioExport,
             Window owner = null,
-            MEGame game = MEGame.LE3)
+            MEGame game = MEGame.LE3,
+            bool emotionsOnly = false,
+            FaceFXAsset previewActor = null,
+            ExportEntry previewMesh = null,
+            Func<Window, FaceFXAsset> previewRigPicker = null,
+            double initialPosition = 0)
         {
             _faceFX = faceFX;
             _line = line;
             _audioExport = audioExport;
             _game = game;
+            _emotionsOnly = emotionsOnly;
+            _addEmotionToExistingLine = emotionsOnly;
+            _useCustomEmotionRange = emotionsOnly;
             TLKID = tlkId;
             TLKText = tlkText ?? "";
             AvailableSpecies = FaceFXSpeciesCatalog.GetForGame(game)
@@ -233,14 +286,23 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
             }
 
             // Get audio duration
-            float duration = AudioAnalyzer.GetAudioDuration(audioExport);
-            if (duration > 0)
+            _audioDuration = AudioAnalyzer.GetAudioDuration(audioExport);
+            float duration = _audioDuration > 0 ? _audioDuration
+                : line.Points.Select(point => point.time).DefaultIfEmpty().Max();
+            if (duration <= 0) duration = FaceFXGenerator.EstimateDurationFromText(TLKText);
+            double start = Math.Clamp(double.IsFinite(initialPosition) ? initialPosition : 0, 0, Math.Max(0, duration - 0.02));
+            EmotionStartTimeText = start.ToString("F2", CultureInfo.CurrentCulture);
+            EmotionEndTimeText = Math.Min(duration, start + 1.5).ToString("F2", CultureInfo.CurrentCulture);
+            emotionPreview.Initialize(game, new FaceFXGenerationDraft(faceFX, line, game), audioExport,
+                duration, previewActor, previewMesh, previewRigPicker);
+            emotionPreview.Position = start;
+            if (_audioDuration > 0)
             {
-                AudioDurationText = $"{duration:F2} seconds";
+                AudioDurationText = $"{_audioDuration:F2} seconds";
             }
             else
             {
-                AudioDurationText = "Unable to determine (will estimate from text)";
+                AudioDurationText = $"{duration:F2} seconds (line/text estimate)";
             }
         }
 
@@ -351,56 +413,16 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
         {
             try
             {
-                if (AddEmotionToExistingLine && (SelectedEmotion == null || SelectedEmotion.IsNone))
+                if (TryGenerateDraft(out var draft, out string error))
                 {
-                    MessageBox.Show("Select an emotion to add to the existing line.", "Emotion Required",
-                        MessageBoxButton.OK, MessageBoxImage.Information);
-                    return;
-                }
-
-                // Parse the selected species
-                FaceFXSpecies species = FaceFXSpeciesCatalog.FromDisplayName(SelectedSpecies);
-
-                var options = new FaceFXGenerationOptions
-                {
-                    Game = _game,
-                    CharacterType = CharacterType.HumanFemale,
-                    Species = species,
-                    GenerateJawAnimation = true,
-                    GenerateBlinkAnimation = GenerateBlinkAnimation,
-                    GenerateEyebrowAnimation = GenerateEyebrowAnimation,
-                    GenerateHeadMovement = GenerateHeadMovement,
-                    LipSyncIntensity = LipSyncIntensity,
-                    BlinkFrequency = BlinkFrequency,
-                    UseAudioAmplitude = true,
-                    EmotionChoice = SelectedEmotion,
-                    EmotionIntensity = EmotionIntensity,
-                    AddEmotionToExistingLine = AddEmotionToExistingLine,
-                    FxaData = CombineFxaAndFxtData(),
-                    UseTextFallback = UseTextAnalysis
-                };
-
-                var generator = new FaceFXGenerator(_faceFX, _line, TLKText, _audioExport, options);
-                bool success = generator.Generate();
-
-                if (success)
-                {
+                    draft.ApplyTo(_faceFX, _line);
                     WasGenerated = true;
                     DialogResult = true;
                     Close();
                 }
                 else
                 {
-                    string errorMessage = "Failed to generate FaceFX animations.";
-                    if (!string.IsNullOrEmpty(generator.LastError))
-                    {
-                        errorMessage += $"\n\nError: {generator.LastError}";
-                    }
-                    else
-                    {
-                        errorMessage += "\n\nPlease provide dialogue text for lip sync generation.";
-                    }
-                    MessageBox.Show(errorMessage, "Generation Failed", MessageBoxButton.OK, MessageBoxImage.Error);
+                    MessageBox.Show(this, error, "Generation Failed", MessageBoxButton.OK, MessageBoxImage.Error);
                 }
             }
             catch (Exception ex)
@@ -408,6 +430,114 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
                 MessageBox.Show($"An error occurred during generation:\n\n{ex.Message}\n\n{ex.StackTrace}", 
                     "Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
+        }
+
+        internal bool TryGenerateDraft(out FaceFXGenerationDraft draft, out string error)
+        {
+            draft = null;
+            error = null;
+            bool hasEmotion = SelectedEmotion != null && !SelectedEmotion.IsNone;
+            if (AddEmotionToExistingLine && (!hasEmotion || !float.IsFinite(EmotionIntensity) || EmotionIntensity <= 0f))
+            {
+                error = "Select an emotion and an intensity above zero.";
+                return false;
+            }
+
+            float? start = null;
+            float? end = null;
+            if (UseCustomEmotionRange && hasEmotion)
+            {
+                if (!float.TryParse(EmotionStartTimeText, NumberStyles.Float, CultureInfo.CurrentCulture, out float startValue)
+                    || !float.TryParse(EmotionEndTimeText, NumberStyles.Float, CultureInfo.CurrentCulture, out float endValue)
+                    || !float.IsFinite(startValue) || !float.IsFinite(endValue) || startValue < 0f || endValue <= startValue)
+                {
+                    error = "Enter a non-negative start time and an end time after the start (in seconds).";
+                    return false;
+                }
+                if (_audioDuration > 0f && endValue > _audioDuration + 0.005f)
+                {
+                    error = $"The emotion must fit within the {_audioDuration:F2}-second audio track.";
+                    return false;
+                }
+                start = startValue;
+                end = _audioDuration > 0f ? Math.Min(endValue, _audioDuration) : endValue;
+                if (end <= start)
+                {
+                    error = "The start must be before the end of the audio track.";
+                    return false;
+                }
+            }
+
+            if (_generationDraft != null)
+            {
+                draft = _generationDraft;
+                return true;
+            }
+            var options = new FaceFXGenerationOptions
+            {
+                Game = _game,
+                CharacterType = CharacterType.HumanFemale,
+                Species = FaceFXSpeciesCatalog.FromDisplayName(SelectedSpecies),
+                GenerateJawAnimation = true,
+                GenerateBlinkAnimation = GenerateBlinkAnimation,
+                GenerateEyebrowAnimation = GenerateEyebrowAnimation,
+                GenerateHeadMovement = GenerateHeadMovement,
+                LipSyncIntensity = LipSyncIntensity,
+                BlinkFrequency = BlinkFrequency,
+                UseAudioAmplitude = true,
+                EmotionChoice = SelectedEmotion,
+                EmotionIntensity = EmotionIntensity,
+                EmotionStartTime = start,
+                EmotionEndTime = end,
+                AddEmotionToExistingLine = AddEmotionToExistingLine,
+                FxaData = CombineFxaAndFxtData(),
+                UseTextFallback = UseTextAnalysis
+            };
+            var candidate = new FaceFXGenerationDraft(_faceFX, _line, _game);
+            var generator = new FaceFXGenerator(candidate, candidate.Line, TLKText, _audioExport, options);
+            if (!generator.Generate())
+            {
+                error = generator.LastError ?? "Failed to generate FaceFX animations.";
+                return false;
+            }
+            draft = _generationDraft = candidate;
+            return true;
+        }
+
+        private void PreviewEmotion_Click(object sender, RoutedEventArgs e)
+        {
+            if (SelectedEmotion == null || SelectedEmotion.IsNone)
+            {
+                MessageBox.Show(this, "Select an emotion to preview.", "Emotion Preview");
+                return;
+            }
+            if (!TryGenerateDraft(out var draft, out string error))
+            {
+                MessageBox.Show(this, error, "Emotion Preview");
+                return;
+            }
+            emotionPreview.SetDraft(draft);
+            double start = UseCustomEmotionRange ? double.Parse(EmotionStartTimeText, CultureInfo.CurrentCulture) : 0;
+            emotionPreview.PlayFrom(Math.Max(0, start - 0.2));
+        }
+
+        private void UsePlayheadForStart_Click(object sender, RoutedEventArgs e)
+        {
+            UseCustomEmotionRange = true;
+            EmotionStartTimeText = emotionPreview.Position.ToString("F2", CultureInfo.CurrentCulture);
+        }
+
+        private void UsePlayheadForEnd_Click(object sender, RoutedEventArgs e)
+        {
+            UseCustomEmotionRange = true;
+            EmotionEndTimeText = emotionPreview.Position.ToString("F2", CultureInfo.CurrentCulture);
+        }
+
+        protected override void OnClosing(CancelEventArgs e)
+        {
+            // Release meshes before the viewport's window-closing handler releases its device.
+            emotionPreview.Dispose();
+            base.OnClosing(e);
         }
 
         private void RefreshAvailableEmotions()
@@ -486,6 +616,7 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
 
         protected void OnPropertyChanged([CallerMemberName] string propertyName = null)
         {
+            _generationDraft = null;
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
         }
     }
