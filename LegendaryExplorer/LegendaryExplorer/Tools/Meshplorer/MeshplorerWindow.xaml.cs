@@ -87,6 +87,11 @@ namespace LegendaryExplorer.Tools.Meshplorer
             InitializeComponent();
             Mesh3DViewer.ShowLiveMaterialTintRandomizationControl = true;
             Mesh3DViewer.IsBusyChanged += RendererIsBusyChanged;
+            BinaryInterpreterTab_BinaryInterpreter.MaterialTextureChanged += (_, _) =>
+            {
+                if (CurrentExport != null)
+                    Mesh3DViewer.LoadExport(CurrentExport);
+            };
             MeshesView.Filter = FilterExportList;
             RecentsController.InitRecentControl(enableRecents ? Toolname : null, Recents_MenuItem, fileToOpen => LoadFile(fileToOpen));
         }

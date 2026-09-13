@@ -162,8 +162,9 @@
                                     </StackPanel>
                                     <StackPanel Orientation="Horizontal" Visibility="{Binding ShowObjectInlineEditor, Converter={StaticResource BoolToVisibilityConverter}}">
                                         <TextBox MinWidth="180" IsReadOnly="True" Text="{Binding InlineObjectDisplayValue}"
-                                                 PreviewMouseLeftButtonDown="InlineObjectDisplay_PreviewMouseLeftButtonDown"/>
-                                        <TextBox x:Name="InlineObjectIndexEditor" Width="70" Margin="5,0,0,0" Text="{Binding InlineObjectIndexValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Tag="{Binding}" TextChanged="InlineObjectIndex_TextChanged" KeyDown="InlineEditor_KeyDown" Loaded="InlineEditor_Loaded"/>
+                                                 PreviewMouseLeftButtonDown="InlineObjectDisplay_PreviewMouseLeftButtonDown"
+                                                 ToolTip="Double-click a material texture to select a replacement with texture preview."/>
+                                        <TextBox x:Name="InlineObjectIndexEditor" Width="70" Margin="5,0,0,0" Text="{Binding InlineObjectIndexValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Tag="{Binding}" TextChanged="InlineObjectIndex_TextChanged" KeyDown="InlineEditor_KeyDown" Loaded="InlineEditor_Loaded" PreviewMouseLeftButtonDown="InlineObjectIndex_PreviewMouseLeftButtonDown"/>
                                         <Button Margin="5,0,0,0" Padding="6,0" Content="✓" Tag="{Binding}" Click="InlineEditorConfirmButton_Click"/>
                                     </StackPanel>
                                     <StackPanel Orientation="Horizontal" Visibility="{Binding ShowNameInlineEditor, Converter={StaticResource BoolToVisibilityConverter}}">

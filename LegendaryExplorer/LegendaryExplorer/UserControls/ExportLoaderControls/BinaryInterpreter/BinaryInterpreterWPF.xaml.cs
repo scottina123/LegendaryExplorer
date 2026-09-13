@@ -33,6 +33,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
     /// </summary>
     public partial class BinaryInterpreterWPF : ExportLoaderControl
     {
+        public event EventHandler MaterialTextureChanged;
         public bool SubstituteImageForHexBox
         {
             get => (bool)GetValue(SubstituteImageForHexBoxProperty);
@@ -730,7 +731,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     break;
                 case NodeType.ArrayLeafObject:
                 case NodeType.StructLeafObject:
-                    int objectIndex = EndianReader.ToInt32(data, offset, CurrentLoadedExport.FileRef.Endian);
+                    int objectIndex = node.MaterialTexture?.ReadIndex()
+                        ?? EndianReader.ToInt32(data, offset, CurrentLoadedExport.FileRef.Endian);
                     node.InlineObjectIndexValue = objectIndex.ToString();
                     node.InlineObjectDisplayValue = GetInlineObjectDisplayText(objectIndex);
                     break;
@@ -768,6 +770,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         {
             if (sender is not FrameworkElement { DataContext: BinInterpNode node }
                 || CurrentLoadedExport is null
+                || node.MaterialTexture != null && e.ClickCount != 2
                 || (!node.IsMaterialReference && !node.IsTextureReference))
             {
                 return;
@@ -778,28 +781,43 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             node.IsSelected = true;
 
             int.TryParse(node.InlineObjectIndexValue, out int currentIndex);
-            IEntry selectedEntry = node.IsTextureReference
-                ? EntrySelector.GetEntry<IEntry>(
+            int selectedIndex;
+            if (node.IsTextureReference)
+            {
+                var (selectedNull, selectedEntry) = EntrySelector.GetEntryWithNoOption<IEntry>(
                     Window.GetWindow(this),
                     CurrentLoadedExport.FileRef,
                     "Select a texture to apply.",
                     predicate: entry => entry.IsA("Texture"),
-                    defaultItem: CurrentLoadedExport.FileRef.GetEntry(currentIndex),
-                    texturePreview: true)
-                : EntrySelector.GetEntry<IEntry>(
+                    defaultItem: currentIndex == 0 ? "0 Null" : CurrentLoadedExport.FileRef.GetEntry(currentIndex),
+                    noOptionLabel: "0 Null",
+                    texturePreview: true);
+                if (!selectedNull && selectedEntry == null)
+                    return;
+                selectedIndex = selectedNull ? 0 : selectedEntry.UIndex;
+            }
+            else
+            {
+                var selectedEntry = EntrySelector.GetEntry<IEntry>(
                     Window.GetWindow(this),
                     CurrentLoadedExport.FileRef,
                     "Select a Material or MaterialInstanceConstant to apply.",
                     entry => entry.ClassName is "Material" or "MaterialInstanceConstant",
                     CurrentLoadedExport.FileRef.GetEntry(currentIndex));
-            if (selectedEntry is null)
-            {
-                return;
+                if (selectedEntry == null)
+                    return;
+                selectedIndex = selectedEntry.UIndex;
             }
 
-            node.InlineObjectIndexValue = selectedEntry.UIndex.ToString();
-            node.InlineObjectDisplayValue = GetInlineObjectDisplayText(selectedEntry.UIndex);
+            node.InlineObjectIndexValue = selectedIndex.ToString();
+            node.InlineObjectDisplayValue = GetInlineObjectDisplayText(selectedIndex);
             TryCommitInlineEditor(node);
+        }
+
+        private void InlineObjectIndex_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            if (e.ClickCount == 2 && sender is FrameworkElement { DataContext: BinInterpNode { IsTextureReference: true } })
+                InlineObjectDisplay_PreviewMouseLeftButtonDown(sender, e);
         }
 
         private void InlineEditor_KeyDown(object sender, KeyEventArgs e)
@@ -899,6 +917,22 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         private bool TryWriteNodeValue(BinInterpNode node, string scalarValue, string objectIndexValue, string nameValue, string nameNumberValue)
         {
+            if (node.MaterialTexture is { } textureReference)
+            {
+                if (!int.TryParse(objectIndexValue ?? scalarValue, out int textureIndex)
+                    || textureIndex != 0 && Pcc.GetEntry(textureIndex)?.IsA("Texture") != true)
+                    return ShowInvalidInlineValue("Enter 0 or a texture entry index from this package.");
+
+                if (textureReference.ReadIndex() != textureIndex)
+                {
+                    textureReference.WriteIndex(textureIndex);
+                    node.UIndexValue = textureIndex;
+                    LoadExport(CurrentLoadedExport);
+                    MaterialTextureChanged?.Invoke(this, EventArgs.Empty);
+                }
+                return true;
+            }
+
             int offset = node.GetPos();
             byte[] data = CurrentLoadedExport.Data;
             var endian = CurrentLoadedExport.FileRef.Endian;

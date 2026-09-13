@@ -4718,6 +4718,15 @@ private BinInterpNode MakeTextureEntryNode(EndianReader bin, string name)
     return node;
 }
 
+internal static IEnumerable<BinInterpNode> MakeMaterialTextureNodes(ExportEntry material) =>
+    MaterialTextureReference.Enumerate(material).Select(reference => new BinInterpNode(-1,
+        reference.Label + ": ", NodeType.StructLeafObject)
+    {
+        IsTextureReference = true,
+        MaterialTexture = reference,
+        UIndexValue = reference.ReadIndex()
+    });
+
 private BinInterpNode MakeEntryNode(EndianReader bin, string name, out int uIndex)
 {
     long binPosition = bin.Position;
@@ -4985,7 +4994,6 @@ private List<ITreeItem> StartSkeletalMeshScan(byte[] data, ref int binarystart)
     var game = CurrentLoadedExport.FileRef.Game;
     try
     {
-        PackageCache cache = new PackageCache();
         var bin = new EndianReader(new MemoryStream(data)) { Endian = CurrentLoadedExport.FileRef.Endian };
         bin.JumpTo(binarystart);
 
@@ -4998,10 +5006,7 @@ private List<ITreeItem> StartSkeletalMeshScan(byte[] data, ref int binarystart)
                 var value = bin.Skip(-4).ReadInt32();
                 if (value != 0 && Pcc.GetEntry(value) is ExportEntry matExport)
                 {
-                    foreach (IEntry texture in MaterialInstanceConstant.GetTextures(matExport, cache))
-                    {
-                        matNode.Items.Add(new BinInterpNode(-1, $"#{texture.UIndex} {texture.FileRef.GetEntryString(texture.UIndex)}", NodeType.StructLeafObject) { UIndexValue = texture.UIndex });
-                    }
+                    matNode.Items.AddRange(MakeMaterialTextureNodes(matExport));
                 }
             }
             catch

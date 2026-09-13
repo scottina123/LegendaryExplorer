@@ -82,6 +82,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         /// Indicates that this object reference is a texture slot and can use the texture picker with previews.
         /// </summary>
         public bool IsTextureReference { get; set; }
+        internal MaterialTextureReference MaterialTexture { get; set; }
         public ArrayPropertyChildAddAlgorithm ArrayAddAlgorithm;
 
         private bool _isInlineEditing;
@@ -251,6 +252,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         public int GetObjectRefValue(ExportEntry export)
         {
+            if (MaterialTexture != null) return MaterialTexture.ReadIndex();
             if (UIndexValue != 0) return UIndexValue; //cached
             if (Tag is BinaryInterpreterWPF.NodeType.ArrayLeafObject or BinaryInterpreterWPF.NodeType.ObjectProperty or BinaryInterpreterWPF.NodeType.StructLeafObject)
             {
