@@ -19,6 +19,7 @@
         DragOver="Window_DragOver"
         Drop="Window_Drop"
         AllowDrop="True"
+        PreviewMouseDown="Meshplorer_CommitRenameOnOutsideClick"
         Closing="MeshplorerWPF_Closing"
         DataContext="{Binding RelativeSource={RelativeSource Self}}"
         Title="Mesh Explorer" Height="550" Width="1200" Loaded="MeshplorerWPF_OnLoaded">
@@ -158,7 +159,15 @@
                                     <StackPanel>
                                         <StackPanel Orientation="Horizontal">
                                             <TextBlock Text="{Binding UIndex}" VerticalAlignment="Center" Margin="0,0,5,0" FontWeight="Bold" ToolTip="Export index"/>
-                                            <TextBlock Text="{Binding ObjectName.Instanced}" VerticalAlignment="Center"/>
+                                            <Grid>
+                                                <TextBlock x:Name="MeshNameDisplay" Text="{Binding ObjectName.Instanced}" VerticalAlignment="Center"/>
+                                                <TextBox x:Name="MeshNameEditor" Visibility="Collapsed" MinWidth="100"
+                                                         VerticalAlignment="Center" Padding="2,0"
+                                                         ToolTip="Edit the mesh name. Enter to apply, Escape to cancel. The instance number is preserved."
+                                                         PreviewKeyDown="MeshNameEditor_PreviewKeyDown"
+                                                         LostKeyboardFocus="MeshNameEditor_LostKeyboardFocus"
+                                                         Unloaded="MeshNameEditor_Unloaded"/>
+                                            </Grid>
                                         </StackPanel>
                                         <TextBlock Text="{Binding ParentFullPath}" VerticalAlignment="Center" Foreground="Gray"/>
                                     </StackPanel>
@@ -179,6 +188,7 @@
                                 </DataTemplate.Triggers>
                             </DataTemplate>
                             <ContextMenu x:Key="MyMenu">
+                                <MenuItem Header="Rename" ToolTip="Edit this mesh's name inline" Click="RenameMesh_Click"/>
                                 <MenuItem Header="Open in Package Editor" ToolTip="Opens this mesh in Package Editor" Click="OpenInPackageEditor_Clicked">
                                     <MenuItem.Icon>
                                         <Image Source="/Tools/Icons/packageeditorwpf_256x256.ico" Width="16"/>

@@ -77,14 +77,18 @@ namespace LegendaryExplorer.Tools.Meshplorer
         /// <summary>
         /// Inits a new instance of Meshplorer. If you are auto loading an export use the ExportEntry constructor instead.
         /// </summary>
-        public MeshplorerWindow() : base("Meshplorer")
+        public MeshplorerWindow() : this(enableRecents: true)
+        {
+        }
+
+        internal MeshplorerWindow(bool enableRecents) : base("Meshplorer")
         {
             LoadCommands();
             InitializeComponent();
             Mesh3DViewer.ShowLiveMaterialTintRandomizationControl = true;
             Mesh3DViewer.IsBusyChanged += RendererIsBusyChanged;
             MeshesView.Filter = FilterExportList;
-            RecentsController.InitRecentControl(Toolname, Recents_MenuItem, fileToOpen => LoadFile(fileToOpen));
+            RecentsController.InitRecentControl(enableRecents ? Toolname : null, Recents_MenuItem, fileToOpen => LoadFile(fileToOpen));
         }
 
         private void RendererIsBusyChanged(object sender, EventArgs e)
@@ -560,11 +564,17 @@ namespace LegendaryExplorer.Tools.Meshplorer
 
         private async void SaveFile()
         {
+            if (!EndInlineMeshNameEdit(commit: true))
+                return;
+
             await Pcc.SaveAsync();
         }
 
         private async void SaveFileAs()
         {
+            if (!EndInlineMeshNameEdit(commit: true))
+                return;
+
             string fileFilter;
             switch (Pcc.Game)
             {
@@ -610,6 +620,9 @@ namespace LegendaryExplorer.Tools.Meshplorer
 
         public void LoadFile(string s, int goToIndex = 0)
         {
+            if (!EndInlineMeshNameEdit(commit: true))
+                return;
+
             try
             {
                 //BusyText = "Loading " + Path.GetFileName(s);
