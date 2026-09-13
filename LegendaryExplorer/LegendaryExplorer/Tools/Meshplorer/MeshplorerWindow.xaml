@@ -140,6 +140,16 @@
                     <ListBox  ItemsSource="{Binding MeshExports}" Name="MeshExportsList" SelectedItem="{Binding CurrentExport}" 
                               HorizontalContentAlignment="Stretch"
                               Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}">
+                        <ListBox.ContextMenu>
+                            <ContextMenu>
+                                <MenuItem Header="Import New Mesh from UDK" Command="{Binding Source={StaticResource bindingProxy}, Path=Data.ImportFromUDKCommand}">
+                                    <MenuItem.Icon>
+                                        <Image Source="/Resources/Images/udk.ico" Width="16"/>
+                                    </MenuItem.Icon>
+                                </MenuItem>
+                                <MenuItem Header="Import new mesh(es) from glTF (Experimental)" Command="{Binding Source={StaticResource bindingProxy}, Path=Data.ImportNewFromGltfCommand}"/>
+                            </ContextMenu>
+                        </ListBox.ContextMenu>
                         <ListBox.Resources>
                             <DataTemplate DataType="{x:Type packages:ExportEntry}">
                                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Stretch" Margin="0" x:Name="ExportContainer">
