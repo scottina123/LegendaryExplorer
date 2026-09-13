@@ -2853,6 +2853,11 @@ namespace LegendaryExplorer.Tools.PackageEditor
 
         private static string GetUsageDetail(EntryStringPair clickedItem)
         {
+            if (clickedItem is NameUsageResult nameUsage)
+            {
+                return nameUsage.UsageDetail;
+            }
+
             if (clickedItem?.Entry is null || string.IsNullOrEmpty(clickedItem.Message))
             {
                 return null;
@@ -3666,8 +3671,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
                     IsBusy = false;
                     var dlg = new ListDialog(
                             prevTask.Result.Usages.SelectMany(kvp => kvp.Value.Select(refName =>
-                                new EntryStringPair(kvp.Key,
-                                    $"#{kvp.Key.UIndex} {kvp.Key.ObjectName.Instanced}: {refName}"))).ToList(),
+                                new NameUsageResult(kvp.Key, refName, iName.TlkText))).ToList(),
                             $"{prevTask.Result.Usages.Count} Objects that use '{name}'",
                             "There may be additional usages of this name in the unparsed binary of some objects", this)
                     {
@@ -5868,6 +5872,8 @@ namespace LegendaryExplorer.Tools.PackageEditor
             InterpreterTab_Interpreter.ToggleHexbox_Button.Visibility = Visibility.Visible;
 
             RecentsController.InitRecentControl(Toolname, Recents_MenuItem, fileName => LoadFile(fileName));
+            TLKManagerWPF.StaticPropertyChanged += TlkManager_StaticPropertyChanged;
+            Closed += (_, _) => TLKManagerWPF.StaticPropertyChanged -= TlkManager_StaticPropertyChanged;
         }
 
         /// <summary>
@@ -6170,7 +6176,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
 
         private void NamesView_Click(object sender, RoutedEventArgs e)
         {
-            SearchHintText = "Name";
+            SearchHintText = "Name / TLK text";
             GotoHintText = "Index";
             CurrentView = CurrentViewMode.Names;
         }
@@ -6478,14 +6484,42 @@ namespace LegendaryExplorer.Tools.PackageEditor
             }
         }
 
+        private void TlkManager_StaticPropertyChanged(object sender, PropertyChangedEventArgs e)
+        {
+            // TLK Manager raises reload notifications from its worker thread.
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                if (Pcc == null || NamesList.Count != Pcc.NameCount || e.PropertyName != $"{Pcc.Game}LastReloaded")
+                {
+                    return;
+                }
+
+                var selectedIndices = LeftSide_ListView.SelectedItems.OfType<IndexedName>()
+                    .Select(name => name.Index).ToList();
+                RefreshNames();
+                if (CurrentView == CurrentViewMode.Names)
+                {
+                    LeftSideList_ItemsSource.ReplaceAll(NamesList);
+                    foreach (int index in selectedIndices)
+                    {
+                        if (index < NamesList.Count)
+                        {
+                            LeftSide_ListView.SelectedItems.Add(NamesList[index]);
+                        }
+                    }
+                }
+            }));
+        }
+
         private void RefreshNames(List<PackageUpdate> updates = null)
         {
+            var tlkLookup = new NameTlkLookup(Pcc);
             if (updates == null)
             {
                 //initial loading
                 //we don't update the left side with this
                 NamesList.ReplaceAll(Pcc.Names.Select((name, i) =>
-                    new IndexedName(i, name))); //we replaceall so we don't add one by one and trigger tons of notifications
+                    tlkLookup.CreateName(i, name))); //we replaceall so we don't add one by one and trigger tons of notifications
             }
             else
             {
@@ -6501,7 +6535,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
                     if (update.Change == PackageChange.NameAdd) //names are 0 indexed
                     {
                         var nr = Pcc.Names[update.Index];
-                        var indexedName = new IndexedName(update.Index, nr);
+                        var indexedName = tlkLookup.CreateName(update.Index, nr);
                         if (update.Index < NamesList.Count)
                         {
                             NamesList[update.Index] = indexedName;
@@ -6523,7 +6557,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
                     }
                     else if (update.Change == PackageChange.NameEdit)
                     {
-                        IndexedName indexed = new IndexedName(update.Index, Pcc.Names[update.Index]);
+                        IndexedName indexed = tlkLookup.CreateName(update.Index, Pcc.Names[update.Index]);
                         NamesList[update.Index] = indexed;
                         if (CurrentView == CurrentViewMode.Names)
                         {
@@ -7880,7 +7914,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
                             return;
                         }
 
-                        if (package.Names[i].Contains(searchTerm, StringComparison.InvariantCultureIgnoreCase))
+                        if (NameTlkLookup.MatchesSearch(NamesList[i], searchTerm))
                         {
                             LeftSide_ListView.SelectedIndex = i;
                             return;

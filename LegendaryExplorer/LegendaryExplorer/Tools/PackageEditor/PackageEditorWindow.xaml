@@ -470,7 +470,7 @@
                         </xctk:SplitButton>
                     </StackPanel>
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="5,0,0,0" Height="24">
-                        <controls:WatermarkTextBox Watermark="{Binding SearchHintText}" x:Name="Search_TextBox" Width="90" KeyUp="Searchbox_OnKeyUpHandler" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}" VerticalContentAlignment="Center" ToolTip="Press CTRL+F to automatically jump to this box"/>
+                        <controls:WatermarkTextBox Watermark="{Binding SearchHintText}" x:Name="Search_TextBox" Width="110" KeyUp="Searchbox_OnKeyUpHandler" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}" VerticalContentAlignment="Center" ToolTip="Search names (including resolved TLK text in Names view). Press CTRL+F to jump to this box; Shift+Enter searches backwards."/>
                         <Button Content="Search" Click="SearchButton_Clicked" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}" Style="{StaticResource {x:Type Button}}"  Padding="10,0" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
                     </StackPanel>
                     <controls:WatermarkTextBox Watermark="{Binding GotoHintText}" x:Name="Goto_TextBox" Width="70" Margin="5,0,0,0" KeyUp="Goto_TextBox_KeyUp" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}"  VerticalContentAlignment="Center" ToolTip="Press CTRL+G to automatically jump to this box"/>
@@ -488,10 +488,19 @@
                 <controls:ListBoxScroll x:Name="LeftSide_ListView" Grid.Column="0" Grid.Row="1" IsTextSearchEnabled="True" SelectionChanged="LeftSide_SelectedItemChanged" PreviewMouseRightButtonDown="LeftSide_ListView_PreviewMouseRightButtonDown" SelectionMode="Extended" ItemsSource="{Binding LeftSideList_ItemsSource}" VirtualizingStackPanel.IsVirtualizing="True" VirtualizingStackPanel.VirtualizationMode="Recycling" AlternationCount="2" HorizontalContentAlignment="Stretch" Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}">
                     <controls:ListBoxScroll.Resources>
                         <DataTemplate DataType="{x:Type SharedUI:IndexedName}">
-                            <StackPanel Orientation="Horizontal" ContextMenu="{StaticResource EntryContextMenu}" Background="Transparent">
+                            <Grid ContextMenu="{StaticResource EntryContextMenu}" Background="Transparent">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
                                 <TextBlock Text="{Binding Path=Index, Mode=OneTime}" Foreground="{DynamicResource SecondaryTextBrush}"/>
-                                <TextBlock Text="{Binding Path=Name, Mode=OneTime}" Margin="5,0,0,0" Foreground="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}"/>
-                            </StackPanel>
+                                <StackPanel Grid.Column="1" Margin="5,0,0,0">
+                                    <TextBlock Text="{Binding Path=Name, Mode=OneTime}" Foreground="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}"/>
+                                    <TextBlock Text="{Binding TlkText}" FontSize="10" TextWrapping="Wrap" MaxWidth="300" HorizontalAlignment="Left"
+                                               Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"
+                                               Visibility="{Binding TlkText, Converter={StaticResource NullVisibilityConverter}}"/>
+                                </StackPanel>
+                            </Grid>
                         </DataTemplate>
                         <DataTemplate DataType="{x:Type Packages:ImportEntry}">
                             <StackPanel Orientation="Horizontal" ContextMenu="{StaticResource EntryContextMenu}" Background="Transparent">
