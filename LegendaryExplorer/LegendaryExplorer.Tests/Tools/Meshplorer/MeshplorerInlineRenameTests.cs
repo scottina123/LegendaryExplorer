@@ -13,6 +13,7 @@ using LegendaryExplorerCore;
 using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.Unreal;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Xceed.Wpf.Toolkit;
 
 namespace LegendaryExplorer.Tests.Tools.Meshplorer;
 
@@ -52,12 +53,19 @@ public class MeshplorerInlineRenameTests
 
             TextBox editor = BeginRename(list, mesh);
             Assert.AreEqual("Original", editor.Text);
+            var indexEditor = FindControl<IntegerUpDown>((Panel)editor.Parent, "MeshNameIndexEditor");
+            Assert.AreEqual(mesh.indexValue, indexEditor.Value, "The field must match Package Editor's Object index, not the displayed suffix.");
             editor.Text = "  Renamed_7  ";
             editor.RaiseEvent(new MouseButtonEventArgs(Mouse.PrimaryDevice, 0, MouseButton.Left)
             {
                 RoutedEvent = Mouse.PreviewMouseDownEvent
             });
             Assert.AreEqual("Original", mesh.ObjectName.Name, "Clicking inside the editor must not commit.");
+            indexEditor.RaiseEvent(new MouseButtonEventArgs(Mouse.PrimaryDevice, 0, MouseButton.Left)
+            {
+                RoutedEvent = Mouse.PreviewMouseDownEvent
+            });
+            Assert.AreEqual("Original", mesh.ObjectName.Name, "Moving from the name to the index must keep both edits pending.");
 
             // A blank-area click must commit even when it does not move keyboard focus.
             list.RaiseEvent(new MouseButtonEventArgs(Mouse.PrimaryDevice, 0, MouseButton.Left)
@@ -67,7 +75,7 @@ public class MeshplorerInlineRenameTests
             Assert.AreEqual(new NameReference("Renamed_7", 3), mesh.ObjectName);
             Assert.AreEqual("Other", other.ObjectName.Name, "Rename must use the context menu's row, not CurrentExport.");
             Assert.IsTrue(package.IsModified);
-            Assert.AreEqual(Visibility.Collapsed, editor.Visibility);
+            Assert.AreEqual(Visibility.Collapsed, ((Panel)editor.Parent).Visibility);
             var row = (ListBoxItem)list.ItemContainerGenerator.ContainerFromItem(mesh);
             Assert.AreEqual("Renamed_7_2", FindControl<TextBlock>(row, "MeshNameDisplay").Text);
             FlushDispatcher();
@@ -75,10 +83,11 @@ public class MeshplorerInlineRenameTests
             typeof(IMEPackage).GetProperty(nameof(IMEPackage.IsModified))!.SetValue(package, false);
             editor = BeginRename(list, mesh);
             editor.Text = "Discarded";
+            FindControl<IntegerUpDown>((Panel)editor.Parent, "MeshNameIndexEditor").Value = 99;
             EndRename(window, commit: false);
             Assert.AreEqual(new NameReference("Renamed_7", 3), mesh.ObjectName);
             Assert.IsFalse(package.IsModified, "Cancelling must leave the package unchanged.");
-            Assert.AreEqual(Visibility.Collapsed, editor.Visibility);
+            Assert.AreEqual(Visibility.Collapsed, ((Panel)editor.Parent).Visibility);
 
             // Repeated renames must update the label even when the export is already dirty.
             editor = BeginRename(list, mesh);
@@ -86,6 +95,49 @@ public class MeshplorerInlineRenameTests
             EndRename(window, commit: true);
             row = (ListBoxItem)list.ItemContainerGenerator.ContainerFromItem(mesh);
             Assert.AreEqual("Again_2", FindControl<TextBlock>(row, "MeshNameDisplay").Text);
+            FlushDispatcher();
+
+            int exportIndex = mesh.UIndex;
+            indexEditor = BeginIndexEdit(list, mesh);
+            indexEditor.Text = "9";
+            EndRename(window, commit: true);
+            Assert.AreEqual(new NameReference("Again", 9), mesh.ObjectName);
+            Assert.AreEqual(exportIndex, mesh.UIndex, "Changing the Object index must preserve the export table index.");
+            row = (ListBoxItem)list.ItemContainerGenerator.ContainerFromItem(mesh);
+            Assert.AreEqual("Again_8", FindControl<TextBlock>(row, "MeshNameDisplay").Text);
+            Assert.AreEqual(new NameReference("Other"), other.ObjectName);
+            FlushDispatcher();
+
+            indexEditor = BeginIndexEdit(list, mesh);
+            Assert.AreEqual(9, indexEditor.Value);
+            indexEditor.Text = "";
+            EndRename(window, commit: true);
+            Assert.AreEqual(new NameReference("Again"), mesh.ObjectName);
+            FlushDispatcher();
+
+            indexEditor = BeginIndexEdit(list, mesh);
+            Assert.AreEqual(0, indexEditor.Value);
+            indexEditor.Value = 0;
+            EndRename(window, commit: true);
+            Assert.AreEqual("Again", mesh.ObjectName.Instanced);
+            FlushDispatcher();
+
+            indexEditor = BeginIndexEdit(list, mesh);
+            indexEditor.Value = 1;
+            EndRename(window, commit: true);
+            Assert.AreEqual(1, mesh.indexValue);
+            Assert.AreEqual("Again_0", mesh.ObjectName.Instanced);
+            FlushDispatcher();
+
+            indexEditor = BeginIndexEdit(list, mesh);
+            Assert.AreEqual(1, indexEditor.Value, "A mesh ending in _0 must show Object index 1, as in Package Editor.");
+            indexEditor.Value = int.MaxValue;
+            EndRename(window, commit: true);
+            Assert.AreEqual(int.MaxValue, mesh.indexValue, "The stored index must match the entered value without adding one.");
+            FlushDispatcher();
+
+            BeginIndexEdit(list, mesh).Value = 3;
+            EndRename(window, commit: true);
             FlushDispatcher();
 
             window.MeshSearchText = "Again";
@@ -108,17 +160,23 @@ public class MeshplorerInlineRenameTests
         }
     }
 
-    private static TextBox BeginRename(ListBox list, ExportEntry mesh)
+    private static TextBox BeginRename(ListBox list, ExportEntry mesh, string header = "Rename")
     {
         list.UpdateLayout();
         var row = (ListBoxItem)list.ItemContainerGenerator.ContainerFromItem(mesh);
         Assert.IsNotNull(row);
         row.ContextMenu.PlacementTarget = row;
-        row.ContextMenu.Items.OfType<MenuItem>().Single(item => Equals(item.Header, "Rename"))
+        row.ContextMenu.Items.OfType<MenuItem>().Single(item => Equals(item.Header, header))
             .RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
         var editor = FindControl<TextBox>(row, "MeshNameEditor");
-        Assert.AreEqual(Visibility.Visible, editor.Visibility);
+        Assert.AreEqual(Visibility.Visible, ((Panel)editor.Parent).Visibility);
         return editor;
+    }
+
+    private static IntegerUpDown BeginIndexEdit(ListBox list, ExportEntry mesh)
+    {
+        var editor = BeginRename(list, mesh, "Change index");
+        return FindControl<IntegerUpDown>((Panel)editor.Parent, "MeshNameIndexEditor");
     }
 
     private static void EndRename(MeshplorerWindow window, bool commit) =>

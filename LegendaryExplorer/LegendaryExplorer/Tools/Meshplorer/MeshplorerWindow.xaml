@@ -135,7 +135,7 @@
                         <CheckBox Content="SkeletalMeshes" Margin="5,0" IsChecked="{Binding ShowSkeletalMeshes}"/>
                         <CheckBox Content="StaticMeshes" IsChecked="{Binding ShowStaticMeshes}"/>
                     </StackPanel>
-                    <controls:SearchBox DockPanel.Dock="Top" Margin="5,0,5,5"
+                    <controls:SearchBox x:Name="MeshSearchBox" DockPanel.Dock="Top" Margin="5,0,5,5"
                                         WatermarkText="Search meshes"
                                         TextChanged="MeshSearchBox_OnTextChanged"/>
                     <ListBox  ItemsSource="{Binding MeshExports}" Name="MeshExportsList" SelectedItem="{Binding CurrentExport}" 
@@ -161,12 +161,17 @@
                                             <TextBlock Text="{Binding UIndex}" VerticalAlignment="Center" Margin="0,0,5,0" FontWeight="Bold" ToolTip="Export index"/>
                                             <Grid>
                                                 <TextBlock x:Name="MeshNameDisplay" Text="{Binding ObjectName.Instanced}" VerticalAlignment="Center"/>
-                                                <TextBox x:Name="MeshNameEditor" Visibility="Collapsed" MinWidth="100"
-                                                         VerticalAlignment="Center" Padding="2,0"
-                                                         ToolTip="Edit the mesh name. Enter to apply, Escape to cancel. The instance number is preserved."
-                                                         PreviewKeyDown="MeshNameEditor_PreviewKeyDown"
-                                                         LostKeyboardFocus="MeshNameEditor_LostKeyboardFocus"
-                                                         Unloaded="MeshNameEditor_Unloaded"/>
+                                                <StackPanel x:Name="MeshNameEditorPanel" Visibility="Collapsed" Orientation="Horizontal"
+                                                            PreviewKeyDown="MeshNameEditor_PreviewKeyDown"
+                                                            LostKeyboardFocus="MeshNameEditor_LostKeyboardFocus"
+                                                            Unloaded="MeshNameEditor_Unloaded">
+                                                    <TextBox x:Name="MeshNameEditor" MinWidth="100" VerticalAlignment="Center" Padding="2,0"
+                                                             ToolTip="Edit the mesh name. Enter to apply, Escape to cancel."/>
+                                                    <TextBlock Text="Index:" Margin="4,0" VerticalAlignment="Center"/>
+                                                    <xctk:IntegerUpDown x:Name="MeshNameIndexEditor" Width="70" Minimum="0" Maximum="2147483647"
+                                                                       DefaultValue="0" DisplayDefaultValueOnEmptyText="True" VerticalAlignment="Center"
+                                                                       ToolTip="Object index, matching Package Editor. 0 means no suffix; 1 displays _0; 2 displays _1. Enter to apply, Escape to cancel."/>
+                                                </StackPanel>
                                             </Grid>
                                         </StackPanel>
                                         <TextBlock Text="{Binding ParentFullPath}" VerticalAlignment="Center" Foreground="Gray"/>
@@ -189,6 +194,10 @@
                             </DataTemplate>
                             <ContextMenu x:Key="MyMenu">
                                 <MenuItem Header="Rename" ToolTip="Edit this mesh's name inline" Click="RenameMesh_Click"/>
+                                <MenuItem Header="Change index" ToolTip="Edit this mesh's Object index, matching Package Editor" Click="ChangeMeshIndex_Click"/>
+                                <MenuItem Header="Clone Tree" ToolTip="Clone this mesh and all children" Click="CloneMeshTree_Click"/>
+                                <MenuItem Header="Trash entry and children" ToolTip="Convert this mesh and its children into empty data" Click="TrashMeshTree_Click"/>
+                                <Separator/>
                                 <MenuItem Header="Open in Package Editor" ToolTip="Opens this mesh in Package Editor" Click="OpenInPackageEditor_Clicked">
                                     <MenuItem.Icon>
                                         <Image Source="/Tools/Icons/packageeditorwpf_256x256.ico" Width="16"/>

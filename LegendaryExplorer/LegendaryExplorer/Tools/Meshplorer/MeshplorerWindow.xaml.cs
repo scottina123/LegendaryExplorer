@@ -691,7 +691,7 @@ namespace LegendaryExplorer.Tools.Meshplorer
 
             if (shouldUpdateList)
             {
-                MeshExports.ReplaceAll(Pcc.Exports.Where(Mesh3DViewer.CanParse));
+                RefreshMeshExports();
             }
         }
 
