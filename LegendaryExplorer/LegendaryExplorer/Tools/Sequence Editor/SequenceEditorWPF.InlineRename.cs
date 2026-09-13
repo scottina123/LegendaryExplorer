@@ -19,7 +19,7 @@ public partial class SequenceEditorWPF
     private ExportEntry inlineSequenceNameExport;
     private bool isEndingInlineSequenceNameEdit;
 
-    private bool CanRenameSequence(ExportEntry export) => !isReadOnlyPreview && !IsBusy
+    private bool CanEditSequence(ExportEntry export) => !isReadOnlyPreview && !IsBusy
         && export != null && export.FileRef == Pcc && !export.IsDefaultObject && export.IsA("Sequence");
 
     private void SequencesTreeContextMenu_Opened(object sender, RoutedEventArgs e)
@@ -28,15 +28,15 @@ public partial class SequenceEditorWPF
         {
             return;
         }
-        bool canRename = menu.PlacementTarget is TreeViewItem
+        bool canEdit = menu.PlacementTarget is TreeViewItem
         {
             DataContext: TreeViewEntry { Entry: ExportEntry export }
-        } && CanRenameSequence(export);
+        } && CanEditSequence(export);
         foreach (var item in menu.Items)
         {
-            if (item is MenuItem { Name: "RenameSequenceMenuItem" } rename)
+            if (item is MenuItem { Name: "RenameSequenceMenuItem" or "CreateSubsequenceMenuItem" } action)
             {
-                rename.IsEnabled = canRename;
+                action.IsEnabled = canEdit;
             }
         }
     }
@@ -50,7 +50,7 @@ public partial class SequenceEditorWPF
                     PlacementTarget: TreeViewItem { DataContext: TreeViewEntry { Entry: ExportEntry export } } item
                 }
             }
-            || !CanRenameSequence(export)
+            || !CanEditSequence(export)
             || !EndInlineSequenceNameEdit(commit: true))
         {
             return;
@@ -162,7 +162,7 @@ public partial class SequenceEditorWPF
             editor.Visibility = Visibility.Collapsed;
             display.Visibility = Visibility.Visible;
 
-            if (commit && CanRenameSequence(export))
+            if (commit && CanEditSequence(export))
             {
                 var label = export.GetProperty<StrProperty>("ObjName");
                 if (name != (label?.Value ?? export.ObjectName.Name))

@@ -169,6 +169,8 @@
         <ContextMenu x:Key="sequencesTreeContextMenu" Opened="SequencesTreeContextMenu_Opened">
             <MenuItem x:Name="RenameSequenceMenuItem" Header="Rename" Click="SequencesTree_Rename_Click"
                       ToolTip="Edit the sequence name inline. Enter saves; Escape cancels." />
+            <MenuItem x:Name="CreateSubsequenceMenuItem" Header="Create Empty Subsequence" Click="CreateEmptySubsequence_Clicked"
+                      ToolTip="Create a new empty child sequence under this sequence" />
             <MenuItem Header="Open in Package Editor" Click="SequencesTree_OpenInPackageEditor_Click" />
         </ContextMenu>
         <system:Boolean x:Key="True">True</system:Boolean>

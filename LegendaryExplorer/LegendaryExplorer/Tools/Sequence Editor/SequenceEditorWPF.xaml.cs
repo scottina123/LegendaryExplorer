@@ -6855,15 +6855,32 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
 
         private void CreateEmptySubsequence_Clicked(object sender, RoutedEventArgs e)
         {
-            if (SelectedSequence == null)
+            // A tree context menu belongs to the clicked row, which may differ from the viewport.
+            var parentSequence = sender is MenuItem
+            {
+                Parent: ContextMenu
+                {
+                    PlacementTarget: TreeViewItem { DataContext: TreeViewEntry { Entry: ExportEntry treeSequence } }
+                }
+            } ? treeSequence : SelectedSequence;
+            if (parentSequence == null)
             {
                 return;
             }
 
-            if (!SelectedSequence.IsSequence())
+            if (!parentSequence.IsSequence())
             {
                 MessageBox.Show(this, "Subsequences can only be created under Sequence exports.");
                 return;
+            }
+            if (!CanEditSequence(parentSequence))
+            {
+                return;
+            }
+
+            if (SelectedSequence != parentSequence)
+            {
+                GoToExport(parentSequence);
             }
 
             var sequenceName = PromptDialog.Prompt(this, "Enter a name for the new subsequence.",
@@ -6873,11 +6890,12 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                 return;
             }
 
-            var newSequence = SequenceObjectCreator.CreateSequence(SelectedSequence, sequenceName.Trim());
+            var newSequence = SequenceObjectCreator.CreateSequence(parentSequence, sequenceName.Trim());
             customSaveData[newSequence.UIndex] =
                 new PointF(graphEditor.Camera.ViewCenterX, graphEditor.Camera.ViewCenterY);
 
-            var currentSequence = SelectedSequence;
+            var currentSequence = parentSequence;
+            SequenceExports.ClearEx();
             LoadSequences();
             RefreshView();
 
