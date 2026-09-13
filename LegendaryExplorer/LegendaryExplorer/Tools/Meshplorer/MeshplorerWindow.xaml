@@ -140,6 +140,11 @@
                                         TextChanged="MeshSearchBox_OnTextChanged"/>
                     <ListBox  ItemsSource="{Binding MeshExports}" Name="MeshExportsList" SelectedItem="{Binding CurrentExport}" 
                               HorizontalContentAlignment="Stretch"
+                              PreviewMouseLeftButtonDown="MeshExportsList_PreviewMouseLeftButtonDown"
+                              PreviewMouseLeftButtonUp="MeshExportsList_PreviewMouseLeftButtonUp"
+                              MouseMove="MeshExportsList_MouseMove" LostMouseCapture="MeshExportsList_LostMouseCapture"
+                              PreviewDragOver="MeshExportsList_PreviewDragOver" PreviewDrop="MeshExportsList_PreviewDrop"
+                              ToolTip="Drag a mesh to another Meshplorer window to clone it into a PCC for the same game."
                               Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}">
                         <ListBox.ContextMenu>
                             <ContextMenu>
