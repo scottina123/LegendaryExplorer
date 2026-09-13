@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
@@ -11,6 +12,9 @@ namespace LegendaryExplorer.MainWindow
     {
         protected List<Tool> tools;
 
+        private readonly HashSet<Tool> openingTools = new();
+        private readonly Dictionary<Tool, long> lastLaunchTimes = new();
+
         public virtual void setToolList(IEnumerable<Tool> enumerable)
         {
             tools = enumerable.ToList();
@@ -19,15 +23,34 @@ namespace LegendaryExplorer.MainWindow
 
         protected virtual void Button_Click(object sender, RoutedEventArgs e)
         {
-            if ((sender as Button)?.DataContext is Tool t)
+            if (!e.Handled && (sender as Button)?.DataContext is Tool t)
             {
+                e.Handled = true;
                 if (Keyboard.Modifiers.HasFlag(ModifierKeys.Shift))
                 {
                     t.IsFavorited = !t.IsFavorited;
                 }
                 else
                 {
-                    t.open();
+                    // Ignore duplicate input even if opening the window pumps the dispatcher.
+                    if (openingTools.Contains(t)
+                        || (lastLaunchTimes.TryGetValue(t, out long lastLaunchTime)
+                            && Environment.TickCount64 - lastLaunchTime < System.Windows.Forms.SystemInformation.DoubleClickTime))
+                    {
+                        return;
+                    }
+
+                    openingTools.Add(t);
+                    try
+                    {
+                        t.open();
+                        // Start the debounce after startup, so queued clicks cannot open another copy.
+                        lastLaunchTimes[t] = Environment.TickCount64;
+                    }
+                    finally
+                    {
+                        openingTools.Remove(t);
+                    }
                 }
             }
         }
