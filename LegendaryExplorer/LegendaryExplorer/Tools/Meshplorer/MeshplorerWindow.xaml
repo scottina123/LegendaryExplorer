@@ -68,6 +68,8 @@
                     <MenuItem Header="Replace from glTF (Experimental)" Command="{Binding ReplaceFromGltfCommand}"/>
                     <MenuItem Header="Import new mesh(es) from glTF (Experimental)" Command="{Binding ImportNewFromGltfCommand}"/>
                 </MenuItem>
+                <MenuItem Header="Import Meshes" Padding="4" Command="{Binding ImportFromAssetDatabaseCommand}"
+                          ToolTip="Import skeletal or static meshes from the Asset Database into this PCC."/>
             </Menu>
             <StatusBar Height="23" DockPanel.Dock="Bottom">
                 <sharedToolControls:StatusBarGameIDIndicator Visibility="{Binding Pcc, Converter={StaticResource NullVisibilityConverter}}"

@@ -303,6 +303,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         private readonly string _initialMaterialSearchText;
         private Action<MaterialSelectionResult> _materialSelectionHandler;
         private readonly bool _isImportMode;
+        private readonly bool _importMeshesOnly;
         private Action<IReadOnlyList<AssetImportQueueItem>> _importCallback;
         private int _currentView;
         public int currentView
@@ -1099,10 +1100,11 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             _initialMaterialSearchText = initialMaterialSearchText?.Trim();
         }
 
-        private AssetDatabaseWindow(MEGame game, Action<IReadOnlyList<AssetImportQueueItem>> importCallback) : this()
+        private AssetDatabaseWindow(MEGame game, Action<IReadOnlyList<AssetImportQueueItem>> importCallback, bool meshesOnly) : this()
         {
             CurrentGame = game;
             _isImportMode = true;
+            _importMeshesOnly = meshesOnly;
             _importCallback = importCallback;
             OnPropertyChanged(nameof(IsImportMode));
         }
@@ -1120,9 +1122,9 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             picker.Activate();
         }
 
-        public static void OpenForImport(Window owner, MEGame game, Action<IReadOnlyList<AssetImportQueueItem>> callback)
+        public static void OpenForImport(Window owner, MEGame game, Action<IReadOnlyList<AssetImportQueueItem>> callback, bool meshesOnly = false)
         {
-            var importer = new AssetDatabaseWindow(game, callback)
+            var importer = new AssetDatabaseWindow(game, callback, meshesOnly)
             {
                 Owner = owner,
                 WindowStartupLocation = owner is null ? WindowStartupLocation.CenterScreen : WindowStartupLocation.CenterOwner
@@ -1137,7 +1139,8 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             GenerateAllDBCommand = new GenericCommand(GenerateAllDatabases);
             SaveDBCommand = new GenericCommand(SaveDatabase);
             SetFilterCommand = new RelayCommand(SetFilters, CanSetFilter);
-            SwitchMECommand = new RelayCommand(SwitchGame);
+            SwitchMECommand = new RelayCommand(SwitchGame,
+                param => !_importMeshesOnly || Equals(param, CurrentGame.ToString()));
             CancelDumpCommand = new RelayCommand(CancelDump, _ => CanCancelDump());
             OpenSourcePkgCommand = new RelayCommand(OpenSourcePkg, IsClassSelected);
             GoToSuperclassCommand = new RelayCommand(GoToSuperClass, IsClassSelected);
@@ -1173,7 +1176,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             // Restore saved master PCC for ambient performances
             RestoreAmbPerfMasterPcc();
 
-            if (CurrentDBPath != null && CurrentDBPath.EndsWith("zip") && File.Exists(CurrentDBPath) && CurrentGame != MEGame.Unknown && CurrentGame != MEGame.UDK)
+            if (_isImportMode || (CurrentDBPath != null && CurrentDBPath.EndsWith("zip") && File.Exists(CurrentDBPath) && CurrentGame != MEGame.Unknown && CurrentGame != MEGame.UDK))
             {
                 SwitchGame(CurrentGame.ToString());
             }
@@ -2745,7 +2748,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             switchLE2_menu.IsChecked = false;
             switchLE3_menu.IsChecked = false;
             ClearDataBase();
-            currentView = 0;
+            currentView = _isImportMode ? (_importMeshesOnly ? 3 : 2) : 0;
             MeshRendererTab_MeshRenderer.UnloadExport();
             meshPcc?.Dispose();
             btn_MeshRenderToggle.IsChecked = false;
@@ -3744,9 +3747,9 @@ namespace LegendaryExplorer.Tools.AssetDatabase
 
         private void ConfigureImportMode()
         {
-            Title = "Asset Importer — Select assets to import";
-            FilterWatermark = "Search assets";
-            var allowedTabs = new HashSet<int> { 2, 3, 4, 6 };
+            Title = _importMeshesOnly ? "Mesh Importer — Select skeletal or static meshes" : "Asset Importer — Select assets to import";
+            FilterWatermark = _importMeshesOnly ? "Search meshes" : "Search assets";
+            var allowedTabs = _importMeshesOnly ? new HashSet<int> { 3 } : new HashSet<int> { 2, 3, 4, 6 };
             if (MainTabControl != null)
             {
                 for (int i = 0; i < MainTabControl.Items.Count; i++)
@@ -3757,11 +3760,11 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                     }
                 }
             }
-            currentView = 2;
+            currentView = _importMeshesOnly ? 3 : 2;
         }
 
         private bool CanAddToImportQueue() =>
-            _isImportMode && (
+            _isImportMode && (!_importMeshesOnly || currentView == 3) && (
                 (currentView == 2 && lstbx_Materials?.SelectedItem is MaterialRecord) ||
                 (currentView == 3 && lstbx_Meshes?.SelectedItem is MeshRecord) ||
                 (currentView == 4 && lstbx_Textures?.SelectedItem is TextureRecord) ||

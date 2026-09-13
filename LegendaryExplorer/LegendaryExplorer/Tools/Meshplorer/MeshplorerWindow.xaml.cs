@@ -192,6 +192,7 @@ namespace LegendaryExplorer.Tools.Meshplorer
         public ICommand ExportToGltfTexturesCommand { get; set; }
         public ICommand ReplaceFromGltfCommand { get; set; }
         public ICommand ImportNewFromGltfCommand { get; set; }
+        public ICommand ImportFromAssetDatabaseCommand { get; set; }
         private void LoadCommands()
         {
             OpenFileCommand = new GenericCommand(OpenFile);
@@ -210,6 +211,7 @@ namespace LegendaryExplorer.Tools.Meshplorer
             ExportToGltfTexturesCommand = new GenericCommand(() => ExportToGltf(GLTF.MaterialExportLevel.Basic), IsMeshSelected);
             ReplaceFromGltfCommand = new GenericCommand(ReplaceFromGltf, IsMeshSelected);
             ImportNewFromGltfCommand = new GenericCommand(ImportNewFromGltf);
+            ImportFromAssetDatabaseCommand = new GenericCommand(OpenMeshAssetImporter, CanImportMeshAssets);
         }
 
         private void ExportToGltf(GLTF.MaterialExportLevel materialExportLevel)
