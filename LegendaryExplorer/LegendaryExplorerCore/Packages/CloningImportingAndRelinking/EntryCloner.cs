@@ -22,7 +22,11 @@ namespace LegendaryExplorerCore.Packages.CloningImportingAndRelinking
                     stack.Push((node, newEntry));
                 }
             }
-            Relinker.RelinkAll(new RelinkerOptionsPackage {CrossPackageMap = objectMap});
+            var relinkerOptions = new RelinkerOptionsPackage { CrossPackageMap = objectMap };
+            // Dependencies outside the cloned tree stay shared. Relinking their data in place
+            // would redirect the originals' references to cloned objects as well.
+            relinkerOptions.RelinkMapEntriesToSkip.UnionWith(entry.FileRef.Exports.Where(export => !objectMap.ContainsKey(export)));
+            Relinker.RelinkAll(relinkerOptions);
             return newRoot;
         }
         

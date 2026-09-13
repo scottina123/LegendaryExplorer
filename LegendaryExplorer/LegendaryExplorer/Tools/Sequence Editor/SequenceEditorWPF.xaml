@@ -171,6 +171,10 @@
                       ToolTip="Edit the sequence name inline. Enter saves; Escape cancels." />
             <MenuItem x:Name="CreateSubsequenceMenuItem" Header="Create Empty Subsequence" Click="CreateEmptySubsequence_Clicked"
                       ToolTip="Create a new empty child sequence under this sequence" />
+            <MenuItem x:Name="CloneSequenceMenuItem" Header="Clone" Click="SequencesTree_Clone_Click"
+                      ToolTip="Clone this sequence and its contents under the same parent" />
+            <MenuItem x:Name="TrashSequenceMenuItem" Header="Trash" Click="SequencesTree_Trash_Click"
+                      ToolTip="Trash this sequence and its contents and remove it from its parent" />
             <MenuItem Header="Open in Package Editor" Click="SequencesTree_OpenInPackageEditor_Click" />
         </ContextMenu>
         <system:Boolean x:Key="True">True</system:Boolean>

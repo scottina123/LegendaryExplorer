@@ -5673,12 +5673,12 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
 
         private void ClearAllIncomingConnections(SObj obj)
         {
-            int targetUIndex = obj.UIndex;
-            bool isAction = obj is SAction;
-            bool isVariable = obj is SVar;
-            bool isEvent = obj is SEvent;
+            ClearAllIncomingConnections(Pcc, obj.UIndex, obj is SAction, obj is SVar, obj is SEvent);
+        }
 
-            foreach (ExportEntry source in Pcc.Exports)
+        private static void ClearAllIncomingConnections(IMEPackage package, int targetUIndex, bool isAction, bool isVariable, bool isEvent)
+        {
+            foreach (ExportEntry source in package.Exports)
             {
                 if (isAction)
                 {

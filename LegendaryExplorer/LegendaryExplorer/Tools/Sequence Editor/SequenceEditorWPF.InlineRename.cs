@@ -34,7 +34,8 @@ public partial class SequenceEditorWPF
         } && CanEditSequence(export);
         foreach (var item in menu.Items)
         {
-            if (item is MenuItem { Name: "RenameSequenceMenuItem" or "CreateSubsequenceMenuItem" } action)
+            if (item is MenuItem { Name: "RenameSequenceMenuItem" or "CreateSubsequenceMenuItem"
+                or "CloneSequenceMenuItem" or "TrashSequenceMenuItem" } action)
             {
                 action.IsEnabled = canEdit;
             }
