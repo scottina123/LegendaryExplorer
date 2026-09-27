@@ -890,7 +890,7 @@ public sealed partial class BioStageEditor : ExportLoaderControl, IActorEditorCo
         FlushMeshWrite();
         try
         {
-            await mainPackage.SaveAsync();
+            if (!await mainPackage.SaveWithMountWarningAsync(Window.GetWindow(this))) return;
             SceneStatus = $"Saved main PCC: {Path.GetFileName(mainPackage.FilePath)}";
         }
         catch (Exception exception)

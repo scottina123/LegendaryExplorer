@@ -1419,7 +1419,10 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             }
             if (savewarning == MessageBoxResult.OK)
             {
-                CurrentLoadedExport.FileRef.Save();
+                var export = CurrentLoadedExport;
+                string destination = PackageSaveService.ChooseSavePath(export.FileRef, Window.GetWindow(this));
+                if (destination == null) return;
+                export.FileRef.Save(destination);
 
                 var bw = new BackgroundWorker();
                 bw.DoWork += EnsureUModel_BackgroundThread;
@@ -1432,7 +1435,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     }
                     else if (b.Result == null)
                     {
-                        UModelHelper.ExportViaUModel(Window.GetWindow(this), CurrentLoadedExport);
+                        UModelHelper.ExportViaUModel(Window.GetWindow(this), export, destination);
                     }
 
                     IsBusy = false;

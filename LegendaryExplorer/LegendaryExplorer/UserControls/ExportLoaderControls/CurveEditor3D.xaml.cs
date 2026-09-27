@@ -11274,7 +11274,10 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
         try
         {
-            sourcePackage.Save();
+            if (!sourcePackage.SaveWithMountWarning(Window.GetWindow(this)))
+            {
+                return false;
+            }
             packageSaved = true;
             return true;
         }
@@ -11313,8 +11316,9 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         if (!SaveDialogueSourcePackageIfModified(out bool packageSaved, out error))
         {
             activeDialogueSegmentRuntime.HasPendingPackageChanges = true;
-            MessageBox.Show(Window.GetWindow(this), $"The cache was committed in memory, but the package could not be saved: {error}",
-                "Commit Dialogue Node", MessageBoxButton.OK, MessageBoxImage.Error);
+            if (error != null)
+                MessageBox.Show(Window.GetWindow(this), $"The cache was committed in memory, but the package could not be saved: {error}",
+                    "Commit Dialogue Node", MessageBoxButton.OK, MessageBoxImage.Error);
             UpdateDialogueNodeCommitButton();
             return;
         }
@@ -11377,8 +11381,9 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             {
                 runtime.HasPendingPackageChanges = true;
             }
-            MessageBox.Show(Window.GetWindow(this), $"The cache was committed in memory, but the package could not be saved: {error}",
-                "Commit Entire Dialogue Cache", MessageBoxButton.OK, MessageBoxImage.Error);
+            if (error != null)
+                MessageBox.Show(Window.GetWindow(this), $"The cache was committed in memory, but the package could not be saved: {error}",
+                    "Commit Entire Dialogue Cache", MessageBoxButton.OK, MessageBoxImage.Error);
             UpdateDialogueNodeCommitButton();
             return;
         }

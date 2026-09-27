@@ -1,0 +1,19 @@
+<Window x:Class="LegendaryExplorer.Dialogs.PackageSaveWarningDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Choose where to save" Width="650" SizeToContent="Height"
+        ResizeMode="NoResize" WindowStartupLocation="CenterOwner" ShowInTaskbar="False">
+    <StackPanel Margin="20">
+        <TextBlock Text="{Binding WarningMessage}" FontWeight="Bold" TextWrapping="Wrap" Margin="0,0,0,16"/>
+        <TextBlock Text="Current file" FontWeight="SemiBold"/>
+        <TextBox Text="{Binding CurrentPath, Mode=OneWay}" IsReadOnly="True" TextWrapping="Wrap" Margin="0,4,0,12"/>
+        <TextBlock Text="Highest mounted file with the same name" FontWeight="SemiBold"/>
+        <TextBox Text="{Binding HighestPathDisplay, Mode=OneWay}" IsReadOnly="True" TextWrapping="Wrap" Margin="0,4,0,12"/>
+        <TextBlock Text="Saving to the highest mounted file replaces that entire file with the package open in this tool, including your changes. The current file stays open and remains unsaved."
+                   TextWrapping="Wrap" Margin="0,0,0,16"/>
+        <Button x:Name="SaveHighestButton" Content="Save to highest mounted file" IsEnabled="{Binding CanSaveHighestMounted}"
+                Click="SaveHighest_Click" Padding="12,8" Margin="0,0,0,8"/>
+        <Button x:Name="SaveCurrentButton" Content="Save current file" Click="SaveCurrent_Click" Padding="12,8" Margin="0,0,0,8"/>
+        <Button Content="Cancel" IsCancel="True" IsDefault="True" Padding="12,8" HorizontalAlignment="Right" MinWidth="100"/>
+    </StackPanel>
+</Window>

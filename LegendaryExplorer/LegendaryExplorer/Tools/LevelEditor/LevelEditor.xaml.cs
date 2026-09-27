@@ -2576,7 +2576,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         {
             if (!file.IsReadOnly && file.Package.IsModified)
             {
-                await file.Package.SaveAsync();
+                if (!await file.Package.SaveWithMountWarningAsync(this)) return;
             }
         }
     }
@@ -2591,7 +2591,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
             CommitChangesForFile(file);
         }
 
-        await file.Package.SaveAsync();
+        await file.Package.SaveWithMountWarningAsync(this);
     }
 
     private void CloseFileExecute(object parameter)
@@ -2664,10 +2664,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         var d = new SaveFileDialog { Filter = fileFilter };
         if (DirectoryMemory.ShowDialog(d) == true)
         {
-            IsBusy = true;
-            BusyText = "Saving...";
-            await fileToSave.Package.SaveAsync(d.FileName);
-            IsBusy = false;
+            await fileToSave.Package.SaveWithMountWarningAsync(this, d.FileName);
         }
     }
 

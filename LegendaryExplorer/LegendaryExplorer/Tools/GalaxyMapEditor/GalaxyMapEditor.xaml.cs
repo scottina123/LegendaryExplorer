@@ -1883,10 +1883,7 @@ public partial class GalaxyMapEditor : WPFBase, ISceneRenderContextConfigurable,
             }
         }
 
-        IsBusy = true;
-        BusyText = "Saving...";
-        await _openPackage.SaveAsync();
-        IsBusy = false;
+        await _openPackage.SaveWithMountWarningAsync(this);
     }
 
     private async void SaveFileAs()
@@ -1911,10 +1908,7 @@ public partial class GalaxyMapEditor : WPFBase, ISceneRenderContextConfigurable,
         var d = new SaveFileDialog { Filter = $"*{extension}|*{extension}" };
         if (DirectoryMemory.ShowDialog(d) == true)
         {
-            IsBusy = true;
-            BusyText = "Saving...";
-            await _openPackage.SaveAsync(d.FileName);
-            IsBusy = false;
+            await _openPackage.SaveWithMountWarningAsync(this, d.FileName);
         }
     }
 

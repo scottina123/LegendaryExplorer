@@ -341,14 +341,14 @@ namespace LegendaryExplorer.Tools.TextureStudio
                             var masterExport = MasterTextureSelector.GenerateNewMasterTextureExport(master, 0, textureName, SelectedItem.Instances[0].PixelFormat, lodGroup, selectDDS.FileName, image);
 
                             // The package must be saved so the offsets are corrected. This will break all sorts of things for sure, requiring a global repointing operation on the workspace
-                            master.Save();
+                            if (!master.SaveWithMountWarning(this)) return;
 
                             foreach (var inst in SelectedItem.Instances)
                             {
                                 using var sPackage = MEPackageHandler.OpenMEPackage(Path.Combine(SelectedFolder, inst.RelativePackagePath));
                                 CorrectMasterPackagePathing(sPackage, SelectedItem, inst, masterExport);
                                 RepointME1SlaveInstance(sPackage, inst, masterExport);
-                                sPackage.Save();
+                                if (!sPackage.SaveWithMountWarning(this)) return;
                             }
                         }
                     }
@@ -403,8 +403,7 @@ namespace LegendaryExplorer.Tools.TextureStudio
                         BusyText = "Saving packages";
                         foreach (var p in pc.Cache.Values)
                         {
-                            if (p.IsModified)
-                                p.Save();
+                            if (p.IsModified && !p.SaveWithMountWarning(this)) return;
                             BusyProgressValue++;
                         }
                     }).ContinueWithOnUIThread(x =>
@@ -642,7 +641,7 @@ namespace LegendaryExplorer.Tools.TextureStudio
                     using var package = MEPackageHandler.OpenMEPackage(Path.Combine(SelectedFolder, pInstance.RelativePackagePath));
                     if (lastOpenedSPackage != package)
                     {
-                        lastOpenedSPackage?.Save();
+                        if (lastOpenedSPackage != null && !lastOpenedSPackage.SaveWithMountWarning(this)) return;
                         lastOpenedSPackage = package;
                     }
 
@@ -663,7 +662,7 @@ namespace LegendaryExplorer.Tools.TextureStudio
                         RepointME1SlaveInstance(package, pInstance, masterExp);
                     }
                 }
-                lastOpenedSPackage?.Save();
+                lastOpenedSPackage?.SaveWithMountWarning(this);
             };
             bw.RunWorkerCompleted += (sender, args) =>
             {

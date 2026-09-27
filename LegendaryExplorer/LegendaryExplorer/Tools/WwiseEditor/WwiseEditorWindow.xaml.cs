@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Drawing;
@@ -490,14 +490,14 @@ namespace LegendaryExplorer.Tools.WwiseEditor
             SaveFileDialog d = new () { Filter = $"*{extension}|*{extension}" };
             if (DirectoryMemory.ShowDialog(d) == true)
             {
-                await Pcc.SaveAsync(d.FileName);
+                if (!await Pcc.SaveWithMountWarningAsync(this, d.FileName)) return;
                 MessageBox.Show(this, "Done.");
             }
         }
 
         private async void SavePackage()
         {
-            await Pcc.SaveAsync();
+            if (!await Pcc.SaveWithMountWarningAsync(this)) return;
         }
 
         private void OpenFile()

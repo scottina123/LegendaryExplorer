@@ -571,14 +571,14 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
         {
             // The authoritative hierarchy is always persisted first. LE3 then mirrors it into 203CIC;
             // LE2's 103b package is a read-only support level and has no SFXGalaxy hierarchy to mirror.
-            await Pcc.SaveAsync();
+            if (!await Pcc.SaveWithMountWarningAsync(this)) return;
             if (_packageSet.SynchronizesSecondary)
             {
                 if (!SynchronizeCompanionFromAuthoritative(fullHierarchy: true, changedExports: null, showErrors: true))
                 {
                     return;
                 }
-                await _companionPcc.SaveAsync();
+                if (!await _companionPcc.SaveWithMountWarningAsync(this)) return;
                 CompanionSyncStatus = "Both highest-mounted galaxy map packages are synchronized and saved.";
             }
             else
@@ -605,7 +605,7 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
         {
             try
             {
-                await Pcc.SaveAsync(dialog.FileName);
+                if (!await Pcc.SaveWithMountWarningAsync(this, dialog.FileName)) return;
                 if (_packageSet.SynchronizesSecondary)
                 {
                     string companionSavePath = Path.Combine(Path.GetDirectoryName(dialog.FileName)!, _packageSet.SecondaryFile);
@@ -613,7 +613,7 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
                     {
                         return;
                     }
-                    await _companionPcc.SaveAsync(companionSavePath);
+                    if (!await _companionPcc.SaveWithMountWarningAsync(this, companionSavePath)) return;
                     CompanionSyncStatus = "Both galaxy map packages were synchronized and saved to the selected folder.";
                 }
                 else

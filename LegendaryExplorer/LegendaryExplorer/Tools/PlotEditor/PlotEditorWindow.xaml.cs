@@ -300,7 +300,7 @@ namespace LegendaryExplorer.Tools.PlotEditor
 
             filepath ??= Pcc.FilePath;
 
-            await Pcc.SaveAsync(filepath);
+            await Pcc.SaveWithMountWarningAsync(this, filepath);
         }
 
         public void SaveFileAs()

@@ -1,4 +1,4 @@
-﻿using Microsoft.Win32;
+using Microsoft.Win32;
 using Microsoft.WindowsAPICodePack.Dialogs;
 using System;
 using System.Collections.Generic;
@@ -475,7 +475,7 @@ namespace LegendaryExplorer.Tools.Soundplorer
 
         private async void SaveCommandBinding_Executed(object sender, ExecutedRoutedEventArgs e)
         {
-            await Pcc.SaveAsync();
+            if (!await Pcc.SaveWithMountWarningAsync(this)) return;
         }
 
         private async void SaveAsCommandBinding_Executed(object sender, ExecutedRoutedEventArgs e)
@@ -488,7 +488,7 @@ namespace LegendaryExplorer.Tools.Soundplorer
             bool? result = DirectoryMemory.ShowDialog(d);
             if (result.HasValue && result.Value)
             {
-                await Pcc.SaveAsync(d.FileName);
+                if (!await Pcc.SaveWithMountWarningAsync(this, d.FileName)) return;
                 MessageBox.Show("Done");
             }
         }

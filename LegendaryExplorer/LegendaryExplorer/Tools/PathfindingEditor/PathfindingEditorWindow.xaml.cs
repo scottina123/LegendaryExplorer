@@ -1,4 +1,4 @@
-﻿using LegendaryExplorer.Dialogs;
+using LegendaryExplorer.Dialogs;
 using LegendaryExplorer.GameInterop;
 using LegendaryExplorer.GameInterop.InteropTargets;
 using LegendaryExplorer.Misc;
@@ -920,7 +920,7 @@ namespace LegendaryExplorer.Tools.PathfindingEditor
 
         private async void SavePackage()
         {
-            await Pcc.SaveAsync();
+            if (!await Pcc.SaveWithMountWarningAsync(this)) return;
         }
 
         private void OpenPackage()
@@ -948,7 +948,7 @@ namespace LegendaryExplorer.Tools.PathfindingEditor
             var d = new SaveFileDialog { Filter = $"*{extension}|*{extension}" };
             if (DirectoryMemory.ShowDialog(d) == true)
             {
-                await Pcc.SaveAsync(d.FileName);
+                if (!await Pcc.SaveWithMountWarningAsync(this, d.FileName)) return;
                 MessageBox.Show("Done.");
             }
         }

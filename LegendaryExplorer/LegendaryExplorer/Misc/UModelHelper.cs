@@ -71,7 +71,7 @@ namespace LegendaryExplorer.Misc
         /// </summary>
         /// <param name="window">Exporting window, needed to open file dialogs</param>
         /// <param name="export">Mesh to export</param>
-        public static void ExportViaUModel(Window window, ExportEntry export)
+        public static void ExportViaUModel(Window window, ExportEntry export, string packagePath = null)
         {
             var dlg = new CommonOpenFileDialog
             {
@@ -98,7 +98,7 @@ namespace LegendaryExplorer.Misc
                             "-export",
                             $"-{meshFormat}",
                             $"-out=\"{dlg.FileName}\"",
-                            export.FileRef.FilePath,
+                            packagePath ?? export.FileRef.FilePath,
                             export.ObjectNameString,
                             export.ClassName
                         };
@@ -111,7 +111,7 @@ namespace LegendaryExplorer.Misc
                                 "-export",
                                 // $"-{meshFormat}",
                                 $"-out=\"{dlg.FileName}\"",
-                                export.FileRef.FilePath,
+                                packagePath ?? export.FileRef.FilePath,
                                 export.ObjectNameString,
                                 export.ClassName
                             };

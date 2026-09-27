@@ -10,6 +10,7 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Data;
 using System.Windows.Documents;
 using System.Windows.Threading;
+using LegendaryExplorer.Dialogs;
 using LegendaryExplorer.SharedUI;
 using LegendaryExplorer.SharedUI.Bases;
 using LegendaryExplorer.Tools.PackageEditor;
@@ -217,6 +218,148 @@ public class PackageMountWarningTests
             foreach (var opened in openedWindows) opened.Close();
             window.Close();
         }
+    }
+
+    [TestMethod]
+    public void SaveWarningIncludesExternalPackagesAndUnavailableMountedTargets()
+    {
+        Assert.IsFalse(PackageSaveService.GetWarning(Package(basePath)).IsOutsideGame);
+        Assert.AreEqual(highestPath, PackageSaveService.GetWarning(Package(lowerDlcPath)).HighestMountedPath);
+        var external = PackageSaveService.GetWarning(Package(Path.Combine(testRoot, "TestPackage.pcc")));
+        Assert.IsTrue(external.IsOutsideGame);
+        Assert.AreEqual(highestPath, external.HighestMountedPath);
+        Assert.IsTrue(PackageSaveService.GetWarning(Package(Path.Combine(LE3Directory.DefaultGamePath + "Copy", "TestPackage.pcc"))).IsOutsideGame,
+            "A sibling directory with the same prefix is outside the game.");
+        Assert.IsNull(PackageSaveService.GetWarning(Package(highestPath.ToUpperInvariant())));
+        var unavailable = PackageSaveService.GetWarning(Package(Path.Combine(testRoot, "Uninstalled.pcc")));
+        Assert.IsFalse(unavailable.CanSaveHighestMounted);
+        Assert.IsNull(PackageSaveService.GetWarning(Package(basePath, MEGame.UDK)));
+        Assert.IsNull(PackageSaveService.GetWarning(Package(null)));
+        Assert.IsNull(PackageSaveService.GetWarning(null));
+    }
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task CancelingSaveLeavesBothFilesAndPendingChangesUntouched(bool asynchronous)
+    {
+        var package = CreateSavedPackage(basePath);
+        package.CreateExport("PendingEdit", "Object", indexed: false);
+        byte[] original = File.ReadAllBytes(basePath);
+        byte[] mounted = File.ReadAllBytes(highestPath);
+        bool saved = asynchronous
+            ? await package.SaveWithMountWarningAsync(null, choose: _ => PackageSaveChoice.Cancel)
+            : package.SaveWithMountWarning(null, choose: _ => PackageSaveChoice.Cancel);
+        Assert.IsFalse(saved);
+        CollectionAssert.AreEqual(original, File.ReadAllBytes(basePath));
+        CollectionAssert.AreEqual(mounted, File.ReadAllBytes(highestPath));
+        Assert.IsTrue(package.IsModified);
+    }
+
+    [TestMethod]
+    [DataRow(false, false, false)]
+    [DataRow(false, true, false)]
+    [DataRow(true, false, false)]
+    [DataRow(true, true, false)]
+    [DataRow(false, false, true)]
+    [DataRow(false, true, true)]
+    [DataRow(true, false, true)]
+    [DataRow(true, true, true)]
+    public async Task SaveChoiceWritesOnlyTheChosenFile(bool outsideGame, bool saveHighest, bool asynchronous)
+    {
+        string source = outsideGame ? Path.Combine(testRoot, "TestPackage.pcc") : basePath;
+        var package = CreateSavedPackage(source);
+        package.CreateExport("PendingEdit", "Object", indexed: false);
+        string untouched = saveHighest ? source : highestPath;
+        byte[] original = File.ReadAllBytes(untouched);
+        int prompts = 0;
+        PackageSaveChoice Choose(PackageSaveWarning warning)
+        {
+            prompts++;
+            Assert.AreEqual(outsideGame, warning.IsOutsideGame);
+            Assert.AreEqual(highestPath, warning.HighestMountedPath);
+            return saveHighest ? PackageSaveChoice.HighestMountedFile : PackageSaveChoice.CurrentFile;
+        }
+        Assert.IsTrue(asynchronous
+            ? await package.SaveWithMountWarningAsync(null, compress: false, choose: Choose)
+            : package.SaveWithMountWarning(null, compress: false, choose: Choose));
+        Assert.AreEqual(1, prompts);
+        CollectionAssert.AreEqual(original, File.ReadAllBytes(untouched));
+        Assert.AreEqual(source, package.FilePath, "Saving a mounted copy must not silently retarget the open tool.");
+        Assert.AreEqual(saveHighest, package.IsModified, "The original file is still unsaved when only the mounted copy was written.");
+        using var saved = MEPackageHandler.OpenMEPackage(saveHighest ? highestPath : source, forceLoadFromDisk: true);
+        Assert.IsNotNull(saved.FindExport("PendingEdit"));
+    }
+
+    [TestMethod]
+    public async Task HighestMountedAndExplicitSaveAsDoNotPrompt()
+    {
+        var package = CreateSavedPackage(highestPath);
+        package.CreateExport("PendingEdit", "Object", indexed: false);
+        PackageSaveChoice UnexpectedPrompt(PackageSaveWarning _) => throw new AssertFailedException("Unexpected save warning.");
+        Assert.IsTrue(await package.SaveWithMountWarningAsync(null, compress: false, choose: UnexpectedPrompt));
+        Assert.IsFalse(package.IsModified);
+        var external = CreateSavedPackage(Path.Combine(testRoot, "TestPackage.pcc"));
+        string copyPath = Path.Combine(testRoot, "Copy.pcc");
+        Assert.IsTrue(await external.SaveWithMountWarningAsync(null, copyPath, compress: false, choose: UnexpectedPrompt));
+        Assert.IsTrue(File.Exists(copyPath));
+        Assert.IsNull(PackageSaveService.ChooseSavePath(external, null, external.FilePath, _ => PackageSaveChoice.Cancel),
+            "Save As targeting the current file still needs the warning.");
+    }
+
+    [TestMethod]
+    public void MissingOrChangedMountIsRecheckedBeforeSaving()
+    {
+        var package = Package(Path.Combine(testRoot, "TestPackage.pcc"));
+        Assert.AreEqual(highestPath, PackageSaveService.GetWarning(package).HighestMountedPath);
+        Directory.Move(Path.GetDirectoryName(Path.GetDirectoryName(highestPath)!)!,
+            Path.Combine(LE3Directory.DLCPath, "offDLC_MOD_Higher"));
+        Assert.AreEqual(lowerDlcPath, PackageSaveService.ChooseSavePath(package, null,
+            choose: _ => PackageSaveChoice.HighestMountedFile));
+        var unmatched = Package(Path.Combine(testRoot, "Uninstalled.pcc"));
+        Assert.IsFalse(unmatched.SaveWithMountWarning(null, choose: _ => PackageSaveChoice.HighestMountedFile));
+        Assert.IsFalse(File.Exists(unmatched.FilePath));
+    }
+
+    [STATestMethod]
+    public void SaveDialogOffersAllThreeChoicesAndDisablesMissingTarget()
+    {
+        var warning = PackageSaveService.GetWarning(Package(basePath));
+        var canceled = new PackageSaveWarningDialog(warning);
+        canceled.Loaded += (_, _) => canceled.Close();
+        canceled.ShowDialog();
+        Assert.AreEqual(PackageSaveChoice.Cancel, canceled.Choice);
+
+        var current = new PackageSaveWarningDialog(warning);
+        current.Loaded += (_, _) => current.SaveCurrentButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        current.ShowDialog();
+        Assert.AreEqual(PackageSaveChoice.CurrentFile, current.Choice);
+
+        var highest = new PackageSaveWarningDialog(warning);
+        highest.Loaded += (_, _) => highest.SaveHighestButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        highest.ShowDialog();
+        Assert.AreEqual(PackageSaveChoice.HighestMountedFile, highest.Choice);
+
+        var unavailable = new PackageSaveWarningDialog(PackageSaveService.GetWarning(Package(Path.Combine(testRoot, "Uninstalled.pcc"))));
+        try
+        {
+            Assert.IsFalse(unavailable.SaveHighestButton.IsEnabled);
+            Assert.IsTrue(unavailable.SaveCurrentButton.IsEnabled);
+        }
+        finally
+        {
+            unavailable.Close();
+        }
+    }
+
+    private IMEPackage CreateSavedPackage(string path)
+    {
+        var initial = Package(path);
+        initial.CreateExport("OriginalExport", "Object", indexed: false);
+        using (var stream = initial.SaveToStream(compress: false)) File.WriteAllBytes(path, stream.ToArray());
+        var package = MEPackageHandler.OpenMEPackage(path, forceLoadFromDisk: true);
+        packages.Add(package);
+        return package;
     }
 
     private static IEnumerable<DependencyObject> LogicalChildren(DependencyObject parent)

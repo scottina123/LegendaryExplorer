@@ -1233,8 +1233,10 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     CommitTLK(null);
                 }
 
-                CurrentLoadedExport.FileRef.Save();
-                RefreshLoadedTlksAfterSave(CurrentLoadedExport.FileRef.Game, CurrentLoadedExport.FileRef.FilePath, CurrentLoadedExport.UIndex);
+                string destination = PackageSaveService.ChooseSavePath(CurrentLoadedExport.FileRef, Window.GetWindow(this));
+                if (destination == null) return;
+                CurrentLoadedExport.FileRef.Save(destination);
+                RefreshLoadedTlksAfterSave(CurrentLoadedExport.FileRef.Game, destination, CurrentLoadedExport.UIndex);
             }
             else if (_currentMe2Me3Me2Me3TalkFile is not null)
             {
@@ -1455,7 +1457,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                         CommitTLK(null);
                     }
 
-                    CurrentLoadedExport.FileRef.Save(d.FileName);
+                    CurrentLoadedExport.FileRef.SaveWithMountWarning(Window.GetWindow(this), d.FileName);
                 }
             }
             else if (_currentMe2Me3Me2Me3TalkFile is not null)

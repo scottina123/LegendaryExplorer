@@ -913,7 +913,7 @@ namespace LegendaryExplorer.Tools.AnimationImporterExporter
 
         private async void SaveFile()
         {
-            await Pcc.SaveAsync();
+            if (!await Pcc.SaveWithMountWarningAsync(this)) return;
         }
 
         private async void SaveFileAs()
@@ -941,7 +941,7 @@ namespace LegendaryExplorer.Tools.AnimationImporterExporter
             var d = new SaveFileDialog { Filter = fileFilter };
             if (DirectoryMemory.ShowDialog(d) == true)
             {
-                await Pcc.SaveAsync(d.FileName);
+                if (!await Pcc.SaveWithMountWarningAsync(this, d.FileName)) return;
                 MessageBox.Show("Done");
             }
         }

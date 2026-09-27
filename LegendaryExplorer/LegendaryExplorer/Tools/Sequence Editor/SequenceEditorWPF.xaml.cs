@@ -1,4 +1,4 @@
-﻿using Gammtek.Conduit.MassEffect3.SFXGame.StateEventMap;
+using Gammtek.Conduit.MassEffect3.SFXGame.StateEventMap;
 using GongSolutions.Wpf.DragDrop;
 using LegendaryExplorer.Dialogs;
 using LegendaryExplorer.Misc;
@@ -1522,14 +1522,14 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             var d = new SaveFileDialog { Filter = $"*{extension}|*{extension}" };
             if (DirectoryMemory.ShowDialog(d) == true)
             {
-                await Pcc.SaveAsync(d.FileName);
+                if (!await Pcc.SaveWithMountWarningAsync(this, d.FileName)) return;
                 MessageBox.Show(this, "Done.");
             }
         }
 
         private async void SavePackage()
         {
-            await Pcc.SaveAsync();
+            if (!await Pcc.SaveWithMountWarningAsync(this)) return;
         }
 
         private void OpenPackage()

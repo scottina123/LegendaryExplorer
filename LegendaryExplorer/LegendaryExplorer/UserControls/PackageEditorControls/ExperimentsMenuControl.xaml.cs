@@ -628,12 +628,12 @@ namespace LegendaryExplorer.UserControls.PackageEditorControls
 
         private async void SavePackageUnCompressed_Click(object sender, RoutedEventArgs e)
         {
-            await GetPEWindow().Pcc.SaveAsync(compress: false);
+            await GetPEWindow().Pcc.SaveWithMountWarningAsync(GetPEWindow(), compress: false);
         }
 
         private async void SavePackageCompressed_Click(object sender, RoutedEventArgs e)
         {
-            await GetPEWindow().Pcc.SaveAsync(compress: true);
+            await GetPEWindow().Pcc.SaveWithMountWarningAsync(GetPEWindow(), compress: true);
         }
 
         private void FindEmptyMips_Clicked(object sender, RoutedEventArgs e)

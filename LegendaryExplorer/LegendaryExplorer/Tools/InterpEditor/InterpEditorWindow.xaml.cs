@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
@@ -212,14 +212,14 @@ namespace LegendaryExplorer.Tools.InterpEditor
             var d = new SaveFileDialog { Filter = $"*{extension}|*{extension}" };
             if (DirectoryMemory.ShowDialog(d) == true)
             {
-                await Pcc.SaveAsync(d.FileName);
+                if (!await Pcc.SaveWithMountWarningAsync(this, d.FileName)) return;
                 MessageBox.Show("Done.");
             }
         }
 
         private async void SavePackage()
         {
-            await Pcc.SaveAsync();
+            if (!await Pcc.SaveWithMountWarningAsync(this)) return;
         }
 
         private void OpenPackage()

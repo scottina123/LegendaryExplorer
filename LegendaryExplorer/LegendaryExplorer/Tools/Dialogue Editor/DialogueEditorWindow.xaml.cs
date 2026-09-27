@@ -1,4 +1,4 @@
-﻿using LegendaryExplorer.Dialogs;
+using LegendaryExplorer.Dialogs;
 using LegendaryExplorer.DialogueEditor.DialogueEditorExperiments;
 using LegendaryExplorer.Tools.Dialogue_Editor.DialogueEditorExperiments;
 using LegendaryExplorer.Misc;
@@ -1364,13 +1364,13 @@ namespace LegendaryExplorer.DialogueEditor
             SaveFileDialog d = new() { Filter = $"*{extension}|*{extension}" };
             if (DirectoryMemory.ShowDialog(d) == true)
             {
-                await Pcc.SaveAsync(d.FileName);
+                if (!await Pcc.SaveWithMountWarningAsync(this, d.FileName)) return;
                 MessageBox.Show("Done.");
             }
         }
         private async void SavePackage()
         {
-            await Pcc.SaveAsync();
+            if (!await Pcc.SaveWithMountWarningAsync(this)) return;
         }
         private async void DialogueEditorWPF_Closing(object sender, CancelEventArgs e)
         {

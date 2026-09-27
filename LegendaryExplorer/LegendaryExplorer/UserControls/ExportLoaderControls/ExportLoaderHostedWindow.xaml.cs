@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.IO;
@@ -270,7 +270,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 var d = new SaveFileDialog { Filter = $"*{extension}|*{extension}" };
                 if (DirectoryMemory.ShowDialog(d) == true)
                 {
-                    await Pcc.SaveAsync(d.FileName);
+                    if (!await Pcc.SaveWithMountWarningAsync(this, d.FileName)) return;
                     OnPropertyChanged(nameof(CurrentLastSavedText));
                     MessageBox.Show("Done");
                 }
@@ -287,7 +287,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             }
             else
             {
-                await Pcc.SaveAsync();
+                if (!await Pcc.SaveWithMountWarningAsync(this)) return;
                 OnPropertyChanged(nameof(CurrentLastSavedText));
             }
         }

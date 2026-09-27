@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
@@ -107,7 +107,7 @@ namespace LegendaryExplorer.Tools.FaceFXEditor
             if (DirectoryMemory.ShowDialog(d) == true)
             {
                 editorControl.SaveChanges();
-                await Pcc.SaveAsync(d.FileName);
+                if (!await Pcc.SaveWithMountWarningAsync(this, d.FileName)) return;
                 MessageBox.Show("Done.");
             }
         }
@@ -115,7 +115,7 @@ namespace LegendaryExplorer.Tools.FaceFXEditor
         private async void SavePackage()
         {
             editorControl.SaveChanges();
-            await Pcc.SaveAsync();
+            if (!await Pcc.SaveWithMountWarningAsync(this)) return;
         }
 
         private void OpenPackage()

@@ -2476,14 +2476,14 @@ namespace LegendaryExplorer.Tools.PackageEditor
             var d = new SaveFileDialog { Filter = fileFilter, CustomPlaces = AppDirectories.GameCustomPlaces };
             if (DirectoryMemory.ShowDialog(d, InteractionOwner) == true)
             {
-                await Pcc.SaveAsync(d.FileName);
+                if (!await Pcc.SaveWithMountWarningAsync(this, d.FileName)) return;
                 MessageBox.Show("Done");
             }
         }
 
         private async void SaveFile()
         {
-            await Pcc.SaveAsync();
+            if (!await Pcc.SaveWithMountWarningAsync(this)) return;
             if (GetSelected(out _))
             {
                 Preview(true);
