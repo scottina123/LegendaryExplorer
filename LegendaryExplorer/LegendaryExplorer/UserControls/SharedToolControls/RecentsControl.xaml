@@ -13,6 +13,7 @@
     <UserControl.Resources>
         <converters:FilePathToFileNameConverter x:Key="FilePathToFileNameConverter"/>
         <converters:GameToImageIconConverter x:Key="GameToImageIconConverter"/>
+        <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter"/>
         <ContextMenu x:Key="RecentItemContextMenu"
                      x:Shared="False"
                      DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
@@ -37,7 +38,18 @@
                             ContextMenu="{StaticResource RecentItemContextMenu}">
                         <Button.Content>
                             <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                                <Image Margin="0,0,5,0" RenderOptions.BitmapScalingMode="HighQuality" Source="{Binding Game, Converter={StaticResource GameToImageIconConverter}}" Height="16" VerticalAlignment="Center"/>
+                                <Image Margin="0,0,5,0" RenderOptions.BitmapScalingMode="HighQuality" Source="{Binding Game, Converter={StaticResource GameToImageIconConverter}}" Height="16" VerticalAlignment="Center">
+                                    <Image.Style>
+                                        <Style TargetType="Image">
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsAfc}" Value="True">
+                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Image.Style>
+                                </Image>
+                                <local:StatusBarGameIDIndicator GameType="AFC" Margin="0,0,5,0" VerticalAlignment="Center" Visibility="{Binding IsAfc, Converter={StaticResource BooleanToVisibilityConverter}}"/>
                                 <TextBlock Text="{Binding Path, Converter={StaticResource FilePathToFileNameConverter}}"/>
                             </StackPanel>
                         </Button.Content>

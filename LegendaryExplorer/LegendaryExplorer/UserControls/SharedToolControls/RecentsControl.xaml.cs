@@ -59,6 +59,7 @@ namespace LegendaryExplorer.UserControls.SharedToolControls
 
             public MEGame? Game { get; }
             public string Path { get; }
+            public bool IsAfc => string.Equals(System.IO.Path.GetExtension(Path), ".afc", StringComparison.OrdinalIgnoreCase);
         }
         private Action<string> RecentItemClicked;
 
@@ -253,7 +254,7 @@ namespace LegendaryExplorer.UserControls.SharedToolControls
                 var iconBitmap = GameToImageIconConverter.StaticConvert(recentItem.Game);
                 var fr = new MenuItem
                 {
-                    Icon = iconBitmap == null ? null : new Image { Source = iconBitmap },
+                    Icon = recentItem.IsAfc ? new StatusBarGameIDIndicator { GameType = "AFC" } : iconBitmap == null ? null : new Image { Source = iconBitmap },
                     Header = recentItem.Path.Replace("_", "__"),
                     Tag = recentItem.Path
                 };
