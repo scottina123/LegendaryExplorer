@@ -23,6 +23,8 @@
         Style="{DynamicResource AudemusToolWindowStyle}"
         DataContext="{Binding RelativeSource={RelativeSource Self}}">
     <Window.Resources>
+        <Image x:Key="PackageEditorMenuIcon" x:Shared="False" Source="{StaticResource iconPackageEditor16}" Width="16" Height="16"/>
+        <Image x:Key="WindowsExplorerMenuIcon" x:Shared="False" Source="{StaticResource iconWindowsExplorer16}" Width="16" Height="16"/>
         <assetDatabase:FileIndexToNameConverter x:Key="FileIndexToNameConverter"/>
         <assetDatabase:ConvoLineSpeakerConverter x:Key="ConvoLineSpeakerConverter"/>
         <assetDatabase:ConvoLineFileConverter x:Key="ConvoLineFileConverter"/>
@@ -264,9 +266,9 @@
                                 <TextBox.ContextMenu>
                                     <ContextMenu>
                                         <MenuItem Header="Copy File Name" Click="CopyLineUsageFileName_Click"/>
-                                        <MenuItem Header="Open in Package Editor" Click="OpenLineUsageInPackageEditor_Click"/>
+                                        <MenuItem Icon="{StaticResource PackageEditorMenuIcon}" Header="Open in Package Editor" Click="OpenLineUsageInPackageEditor_Click"/>
                                         <MenuItem Header="Open in Dialogue Editor" Click="OpenLineUsageInDialogueEditor_Click"/>
-                                        <MenuItem Header="Open in Windows Explorer" Click="OpenLineUsageInWindowsExplorer_Click"/>
+                                        <MenuItem Icon="{StaticResource WindowsExplorerMenuIcon}" Header="Open in Windows Explorer" Click="OpenLineUsageInWindowsExplorer_Click"/>
                                     </ContextMenu>
                                 </TextBox.ContextMenu>
                             </TextBox>
@@ -292,9 +294,9 @@
                                                 <TextBox.ContextMenu>
                                                     <ContextMenu>
                                                         <MenuItem Header="Copy File Name" Click="CopyLineUsageFileName_Click"/>
-                                                        <MenuItem Header="Open in Package Editor" Click="OpenLineUsageInPackageEditor_Click"/>
+                                                        <MenuItem Icon="{StaticResource PackageEditorMenuIcon}" Header="Open in Package Editor" Click="OpenLineUsageInPackageEditor_Click"/>
                                                         <MenuItem Header="Open in Dialogue Editor" Click="OpenLineUsageInDialogueEditor_Click"/>
-                                                        <MenuItem Header="Open in Windows Explorer" Click="OpenLineUsageInWindowsExplorer_Click"/>
+                                                        <MenuItem Icon="{StaticResource WindowsExplorerMenuIcon}" Header="Open in Windows Explorer" Click="OpenLineUsageInWindowsExplorer_Click"/>
                                                     </ContextMenu>
                                                 </TextBox.ContextMenu>
                                             </TextBox>
@@ -330,7 +332,7 @@
                                 <TextBox.ContextMenu>
                                     <ContextMenu>
                                         <MenuItem Header="Copy Name" Click="CopyLineUsageLocation_Click"/>
-                                        <MenuItem Header="Open in Windows Explorer" Click="OpenLineUsageInWindowsExplorer_Click"/>
+                                        <MenuItem Icon="{StaticResource WindowsExplorerMenuIcon}" Header="Open in Windows Explorer" Click="OpenLineUsageInWindowsExplorer_Click"/>
                                     </ContextMenu>
                                 </TextBox.ContextMenu>
                             </TextBox>
@@ -356,7 +358,7 @@
                                                 <TextBox.ContextMenu>
                                                     <ContextMenu>
                                                         <MenuItem Header="Copy Name" Click="CopyLineUsageLocation_Click"/>
-                                                        <MenuItem Header="Open in Windows Explorer" Click="OpenLineUsageInWindowsExplorer_Click"/>
+                                                        <MenuItem Icon="{StaticResource WindowsExplorerMenuIcon}" Header="Open in Windows Explorer" Click="OpenLineUsageInWindowsExplorer_Click"/>
                                                     </ContextMenu>
                                                 </TextBox.ContextMenu>
                                             </TextBox>
@@ -552,8 +554,8 @@
                         <MenuItem Header="Filter VFX" ItemsSource="{Binding AssetFilters.ParticleFilter.Filters}" ItemContainerStyle="{DynamicResource CustomFilterMenuItem}"/>
                     </MenuItem>
                     <MenuItem Header="Tools" Padding="4">
-                        <MenuItem Header="Open Definition" Command="{Binding OpenSourcePkgCommand}" ToolTip="Opens this class definition in Package Editor."/>
-                        <MenuItem Header="Open Usage" Name="menu_OpenUsage" Command="{Binding OpenUsagePkgCommand}" ToolTip="Opens this Usage in Package Editor." />
+                        <MenuItem Icon="{StaticResource PackageEditorMenuIcon}" Header="Open Definition" Command="{Binding OpenSourcePkgCommand}" ToolTip="Opens this class definition in Package Editor."/>
+                        <MenuItem Icon="{StaticResource PackageEditorMenuIcon}" Header="Open Usage" Name="menu_OpenUsage" Command="{Binding OpenUsagePkgCommand}" ToolTip="Opens this Usage in Package Editor." />
                         <MenuItem Header="Go to SuperClass" Command="{Binding GoToSuperclassCommand}" ToolTip="Go to the superclass for more properties."/>
                         <MenuItem Header="Re-save Database without empty lines" Name="menu_SaveXEmptyLines" Command="{Binding SaveDBCommand}" ToolTip="This will save the Database without the lines with no TLK reference." IsEnabled="False"/>
                         <Separator/>
@@ -793,7 +795,7 @@
                                             </MenuItem>
                                             <Separator/>
                                             <MenuItem Header="Add to Custom File List" Command="{Binding EditFileListCommand}" CommandParameter="Add" ToolTip="Add this file to the custom file list."/>
-                                            <MenuItem Header="Open in Windows Explorer" Command="{Binding OpenInWindowsExplorerCommand}" ToolTip="Opens this file in Windows Explorer."/>
+                                            <MenuItem Icon="{StaticResource WindowsExplorerMenuIcon}" Header="Open in Windows Explorer" Command="{Binding OpenInWindowsExplorerCommand}" ToolTip="Opens this file in Windows Explorer."/>
                                         </ContextMenu>
                                     </ListView.ContextMenu>
                                 </ListView>
@@ -840,7 +842,7 @@
                                     </controls:ListBoxScroll.ItemContainerStyle>
                                     <controls:ListBoxScroll.ContextMenu>
                                         <ContextMenu>
-                                            <MenuItem Header="Open Class Definition" Command="{Binding OpenSourcePkgCommand}" ToolTip="Opens this class definition in Package Editor" />
+                                            <MenuItem Icon="{StaticResource PackageEditorMenuIcon}" Header="Open Class Definition" Command="{Binding OpenSourcePkgCommand}" ToolTip="Opens this class definition in Package Editor" />
                                             <MenuItem Header="Go to SuperClass" Command="{Binding GoToSuperclassCommand}" ToolTip="Go to the superclass for more properties"/>
                                         </ContextMenu>
                                     </controls:ListBoxScroll.ContextMenu>
@@ -857,7 +859,7 @@
                                                         ItemTemplate="{StaticResource PropertyTemplate}" Grid.Row="2" VirtualizingPanel.VirtualizationMode="Recycling">
                                     <controls:ListBoxScroll.ContextMenu>
                                         <ContextMenu>
-                                            <MenuItem Header="Open Class Definition" Command="{Binding OpenSourcePkgCommand}" ToolTip="Opens this class definition in Package Editor" />
+                                            <MenuItem Icon="{StaticResource PackageEditorMenuIcon}" Header="Open Class Definition" Command="{Binding OpenSourcePkgCommand}" ToolTip="Opens this class definition in Package Editor" />
                                             <MenuItem Header="Go to SuperClass" Command="{Binding GoToSuperclassCommand}" ToolTip="Go to the superclass for more properties."/>
                                         </ContextMenu>
                                     </controls:ListBoxScroll.ContextMenu>
@@ -904,10 +906,10 @@
                                     </controls:ListBoxScroll.ItemContainerStyle>
                                     <controls:ListBoxScroll.ContextMenu>
                                         <ContextMenu>
-                                            <MenuItem Header="Open Usage" Command="{Binding OpenUsagePkgCommand}" ToolTip="Opens this Usage in Package Editor" />
-                                            <MenuItem Header="Open Class Definition" Command="{Binding OpenSourcePkgCommand}" ToolTip="Opens this class definition in Package Editor" />
+                                            <MenuItem Icon="{StaticResource PackageEditorMenuIcon}" Header="Open Usage" Command="{Binding OpenUsagePkgCommand}" ToolTip="Opens this Usage in Package Editor" />
+                                            <MenuItem Icon="{StaticResource PackageEditorMenuIcon}" Header="Open Class Definition" Command="{Binding OpenSourcePkgCommand}" ToolTip="Opens this class definition in Package Editor" />
                                             <MenuItem Header="Go to SuperClass" Command="{Binding GoToSuperclassCommand}" ToolTip="Go to the superclass for more properties"/>
-                                            <MenuItem Header="Open in Windows Explorer" Command="{Binding OpenInWindowsExplorerCommand}" ToolTip="Opens this file in Windows Explorer."/>
+                                            <MenuItem Icon="{StaticResource WindowsExplorerMenuIcon}" Header="Open in Windows Explorer" Command="{Binding OpenInWindowsExplorerCommand}" ToolTip="Opens this file in Windows Explorer."/>
                                         </ContextMenu>
                                     </controls:ListBoxScroll.ContextMenu>
                                 </controls:ListBoxScroll>
@@ -1106,13 +1108,13 @@
                                                            HeaderToolTip="Every file that uses this Mesh&#x0a;Right click to open in Package Editor">
                                 <assetDatabase:AssetUsagesPanel.UsageContextMenu>
                                     <ContextMenu>
-                                        <MenuItem Header="Open Usage" Command="{Binding OpenUsagePkgCommand}" ToolTip="Opens this Usage in Package Editor." />
+                                        <MenuItem Icon="{StaticResource PackageEditorMenuIcon}" Header="Open Usage" Command="{Binding OpenUsagePkgCommand}" ToolTip="Opens this Usage in Package Editor." />
                                         <MenuItem Header="Open in Meshplorer" Command="{Binding OpenUsagePkgCommand}" CommandParameter="Meshplorer" ToolTip="Opens this Usage in Meshplorer.">
                                             <MenuItem.Icon>
                                                 <Image Source="{StaticResource iconMeshplorer16}" Width="64"/>
                                             </MenuItem.Icon>
                                         </MenuItem>
-                                        <MenuItem Header="Open in Windows Explorer" Command="{Binding OpenInWindowsExplorerCommand}" ToolTip="Opens this file in Windows Explorer."/>
+                                        <MenuItem Icon="{StaticResource WindowsExplorerMenuIcon}" Header="Open in Windows Explorer" Command="{Binding OpenInWindowsExplorerCommand}" ToolTip="Opens this file in Windows Explorer."/>
                                     </ContextMenu>
                                 </assetDatabase:AssetUsagesPanel.UsageContextMenu>
                             </assetDatabase:AssetUsagesPanel>
@@ -1521,7 +1523,7 @@
                                                 <Image Source="{StaticResource iconDialogueEditor16}" Width="64"/>
                                             </MenuItem.Icon>
                                         </MenuItem>
-                                        <MenuItem Header="Open in Windows Explorer" Command="{Binding OpenInWindowsExplorerCommand}" ToolTip="Opens this file in Windows Explorer."/>
+                                        <MenuItem Icon="{StaticResource WindowsExplorerMenuIcon}" Header="Open in Windows Explorer" Command="{Binding OpenInWindowsExplorerCommand}" ToolTip="Opens this file in Windows Explorer."/>
                                         <Separator/>
                                         <MenuItem Header="Copy Line to Clipboard" Command="{Binding CopyToClipboardCommand}" CommandParameter="Line" ToolTip="Copy this line's text to the clipboard."/>
                                         <MenuItem Header="Copy StringRef to Clipboard" Command="{Binding CopyToClipboardCommand}" CommandParameter="StrRef" ToolTip="Copy this line's String Reference to the clipboard."/>
@@ -1695,8 +1697,8 @@
                                     </controls:ListBoxScroll.ItemContainerStyle>
                                     <controls:ListBoxScroll.ContextMenu>
                                         <ContextMenu>
-                                            <MenuItem Header="Open Usage" Command="{Binding OpenUsagePkgCommand}" ToolTip="Opens this Usage in it's relevant tool" />
-                                            <MenuItem Header="Open in Windows Explorer" Command="{Binding OpenInWindowsExplorerCommand}" ToolTip="Opens this file in Windows Explorer."/>
+                                            <MenuItem Icon="{StaticResource PackageEditorMenuIcon}" Header="Open Usage" Command="{Binding OpenUsagePkgCommand}" ToolTip="Opens this Usage in it's relevant tool" />
+                                            <MenuItem Icon="{StaticResource WindowsExplorerMenuIcon}" Header="Open in Windows Explorer" Command="{Binding OpenInWindowsExplorerCommand}" ToolTip="Opens this file in Windows Explorer."/>
                                         </ContextMenu>
                                     </controls:ListBoxScroll.ContextMenu>
                                 </controls:ListBoxScroll>
@@ -1818,9 +1820,9 @@
                                                            HeaderToolTip="Every file that uses this TLK string&#x0a;Right click to open in the relevant tool.">
                                 <assetDatabase:AssetUsagesPanel.UsageContextMenu>
                                     <ContextMenu>
-                                        <MenuItem Header="Open Usage" Command="{Binding OpenUsagePkgCommand}" ToolTip="Open this TLK usage in the relevant tool." />
+                                        <MenuItem Icon="{StaticResource PackageEditorMenuIcon}" Header="Open Usage" Command="{Binding OpenUsagePkgCommand}" ToolTip="Open this TLK usage in the relevant tool." />
                                         <MenuItem Header="Open in Coalesced Editor" Command="{Binding OpenUsagePkgCommand}" CommandParameter="CoalescedEd" ToolTip="Open this TLK usage in Coalesced Editor."/>
-                                        <MenuItem Header="Open in Windows Explorer" Command="{Binding OpenInWindowsExplorerCommand}" ToolTip="Opens this file in Windows Explorer."/>
+                                        <MenuItem Icon="{StaticResource WindowsExplorerMenuIcon}" Header="Open in Windows Explorer" Command="{Binding OpenInWindowsExplorerCommand}" ToolTip="Opens this file in Windows Explorer."/>
                                     </ContextMenu>
                                 </assetDatabase:AssetUsagesPanel.UsageContextMenu>
                             </assetDatabase:AssetUsagesPanel>
@@ -1898,8 +1900,8 @@
                                                            HeaderToolTip="Every file that contains this actor, tagged object, or tag reference&#x0a;Right click to open in Package Editor">
                                 <assetDatabase:AssetUsagesPanel.UsageContextMenu>
                                     <ContextMenu>
-                                        <MenuItem Header="Open in Package Editor" Command="{Binding OpenUsagePkgCommand}" ToolTip="Open this actor in Package Editor."/>
-                                        <MenuItem Header="Open in Windows Explorer" Command="{Binding OpenInWindowsExplorerCommand}" ToolTip="Opens this file in Windows Explorer."/>
+                                        <MenuItem Icon="{StaticResource PackageEditorMenuIcon}" Header="Open in Package Editor" Command="{Binding OpenUsagePkgCommand}" ToolTip="Open this actor in Package Editor."/>
+                                        <MenuItem Icon="{StaticResource WindowsExplorerMenuIcon}" Header="Open in Windows Explorer" Command="{Binding OpenInWindowsExplorerCommand}" ToolTip="Opens this file in Windows Explorer."/>
                                     </ContextMenu>
                                 </assetDatabase:AssetUsagesPanel.UsageContextMenu>
                             </assetDatabase:AssetUsagesPanel>
@@ -2028,8 +2030,8 @@
                                                            HeaderToolTip="The package containing this gesture track&#x0a;Right click to open in Package Editor">
                                 <assetDatabase:AssetUsagesPanel.UsageContextMenu>
                                     <ContextMenu>
-                                        <MenuItem Header="Open in Package Editor" Command="{Binding OpenUsagePkgCommand}" ToolTip="Open this gesture track in Package Editor."/>
-                                        <MenuItem Header="Open in Windows Explorer" Command="{Binding OpenInWindowsExplorerCommand}" ToolTip="Open this package in Windows Explorer."/>
+                                        <MenuItem Icon="{StaticResource PackageEditorMenuIcon}" Header="Open in Package Editor" Command="{Binding OpenUsagePkgCommand}" ToolTip="Open this gesture track in Package Editor."/>
+                                        <MenuItem Icon="{StaticResource WindowsExplorerMenuIcon}" Header="Open in Windows Explorer" Command="{Binding OpenInWindowsExplorerCommand}" ToolTip="Open this package in Windows Explorer."/>
                                     </ContextMenu>
                                 </assetDatabase:AssetUsagesPanel.UsageContextMenu>
                             </assetDatabase:AssetUsagesPanel>
@@ -2077,8 +2079,8 @@
                                                            HeaderToolTip="Every package containing this prop action&#x0a;Right click to open in Package Editor">
                                 <assetDatabase:AssetUsagesPanel.UsageContextMenu>
                                     <ContextMenu>
-                                        <MenuItem Header="Open in Package Editor" Command="{Binding OpenUsagePkgCommand}" ToolTip="Open this prop action in Package Editor."/>
-                                        <MenuItem Header="Open in Windows Explorer" Command="{Binding OpenInWindowsExplorerCommand}" ToolTip="Open this package in Windows Explorer."/>
+                                        <MenuItem Icon="{StaticResource PackageEditorMenuIcon}" Header="Open in Package Editor" Command="{Binding OpenUsagePkgCommand}" ToolTip="Open this prop action in Package Editor."/>
+                                        <MenuItem Icon="{StaticResource WindowsExplorerMenuIcon}" Header="Open in Windows Explorer" Command="{Binding OpenInWindowsExplorerCommand}" ToolTip="Open this package in Windows Explorer."/>
                                     </ContextMenu>
                                 </assetDatabase:AssetUsagesPanel.UsageContextMenu>
                             </assetDatabase:AssetUsagesPanel>
@@ -2131,9 +2133,9 @@
                                 </controls:ListBoxScroll.ItemContainerStyle>
                                 <controls:ListBoxScroll.ContextMenu>
                                     <ContextMenu>
-                                        <MenuItem Header="Open in Package Editor" Command="{Binding OpenUsagePkgCommand}"
+                                        <MenuItem Icon="{StaticResource PackageEditorMenuIcon}" Header="Open in Package Editor" Command="{Binding OpenUsagePkgCommand}"
                                                   ToolTip="Open this morph in Package Editor."/>
-                                        <MenuItem Header="Open in Windows Explorer" Command="{Binding OpenInWindowsExplorerCommand}"
+                                        <MenuItem Icon="{StaticResource WindowsExplorerMenuIcon}" Header="Open in Windows Explorer" Command="{Binding OpenInWindowsExplorerCommand}"
                                                   ToolTip="Open this morph's package in Windows Explorer."/>
                                     </ContextMenu>
                                 </controls:ListBoxScroll.ContextMenu>

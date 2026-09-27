@@ -459,6 +459,7 @@
     <BitmapImage x:Key="iconMeshplorer16" UriSource="Tools/Icons/16x16/MeshExplorer_Icon_16.ico"/>
     <BitmapImage x:Key="iconMountEditor16" UriSource="Tools/Icons/16x16/MountEditor_Icon_16.ico"/>
     <BitmapImage x:Key="iconPackageEditor16" UriSource="Tools/Icons/16x16/PackageEditor_Icon_16.ico"/>
+    <BitmapImage x:Key="iconWindowsExplorer16" UriSource="Resources/Images/WindowsExplorer.ico"/>
     <BitmapImage x:Key="iconDialogueDumper16" UriSource="Tools/Icons/16x16/DialogueDumper_Icon_16.ico"/>
     <BitmapImage x:Key="iconPackageDumper16" UriSource="Tools/Icons/16x16/PackageDumper_Icon_16.ico"/>
     <BitmapImage x:Key="iconPlotEditor16" UriSource="Tools/Icons/16x16/PlotEditor_Icon_16.ico"/>

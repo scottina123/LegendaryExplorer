@@ -138,6 +138,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             var openUsageItem = new MenuItem
             {
                 Header = "Open Usage",
+                Icon = new Image { Source = (ImageSource)FindResource("iconPackageEditor16"), Width = 16, Height = 16 },
                 ToolTip = "Opens this Usage in Package Editor."
             };
             openUsageItem.SetBinding(MenuItem.CommandProperty,
@@ -146,6 +147,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             var openExplorerItem = new MenuItem
             {
                 Header = "Open in Windows Explorer",
+                Icon = new Image { Source = (ImageSource)FindResource("iconWindowsExplorer16"), Width = 16, Height = 16 },
                 ToolTip = "Opens this file in Windows Explorer."
             };
             openExplorerItem.SetBinding(MenuItem.CommandProperty,
