@@ -623,7 +623,7 @@
                     </DockPanel>
                 </Border>
                 <Grid>
-                <Expander Canvas.ZIndex="3" VerticalAlignment="Top" HorizontalAlignment="Left" ExpandDirection="Down" IsExpanded="False" Background="Transparent" Header="Camera info" Padding="3">
+                <Expander Canvas.ZIndex="3" VerticalAlignment="Top" HorizontalAlignment="Left" ExpandDirection="Down" IsExpanded="False" Background="Transparent" BorderThickness="0" Header="Camera info" Padding="3">
                     <StackPanel Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}">
                         <Grid Margin="3,2">
                             <Grid.ColumnDefinitions>
