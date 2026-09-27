@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Windows;
 using System.Windows.Media;
+using LegendaryExplorer.Dialogs;
 using LegendaryExplorer.Misc;
 using LegendaryExplorer.Misc.AppSettings;
 using LegendaryExplorer.SharedUI.Controls;
@@ -251,9 +252,12 @@ public static class ToolSet
             icon = Application.Current.FindResource("iconObjectDBViewer") as ImageSource,
             open = () =>
             {
-                var gameStr = InputComboBoxWPF.GetValue(null, "Choose game you want to use Object Instance Database Viewer with.", "Game selector",
-                    new[] { "LE1", "LE2", "LE3", "ME1", "ME2", "ME3" }, "LE3");
-                (new Tools.ObjectInstanceViewer.ObjectInstanceDBViewerWindow(Enum.Parse<MEGame>(gameStr))).Show();
+                var gameDialog = new GameSelectionDialog(null, "Object Instance Database Viewer game selector",
+                    promptText: "Choose a game to use Object Instance Database Viewer with:", defaultGame: MEGame.LE3);
+                if (gameDialog.ShowDialog() == true)
+                {
+                    new Tools.ObjectInstanceViewer.ObjectInstanceDBViewerWindow(gameDialog.SelectedGame).Show();
+                }
             },
             tags = ["utility", "database"],
             category = "Utilities",
@@ -267,12 +271,12 @@ public static class ToolSet
             icon = Application.Current.FindResource("iconClassViewer") as ImageSource,
             open = () =>
             {
-                var gameStr = InputComboBoxWPF.GetValue(null, "Choose game you want to use Class Hierarchy Viewer with.", "Class Hierarchy Viewer game selector",
-                    new[] { "LE1", "LE2", "LE3", "ME1", "ME2", "ME3" }, "LE3", getDefaultValueFunc: GameController.GetRunningMEGameStrDelegate());
+                var gameDialog = new GameSelectionDialog(null, "Class Hierarchy Viewer game selector",
+                    promptText: "Choose a game to use Class Hierarchy Viewer with:", defaultGame: GameController.GetRunningMEGame() ?? MEGame.LE3);
 
-                if (Enum.TryParse(gameStr, out MEGame game))
+                if (gameDialog.ShowDialog() == true)
                 {
-                    new ClassViewerWindow(game).Show();
+                    new ClassViewerWindow(gameDialog.SelectedGame).Show();
                 }
             },
             tags = ["utility", "class", "property"],
@@ -286,11 +290,14 @@ public static class ToolSet
             icon = Application.Current.FindResource("iconLiveLevelEditor") as ImageSource,
             open = () =>
             {
-                var gameStr = InputComboBoxWPF.GetValue(null, "Choose game you want to use Live Level Editor with.", "Live Level Editor game selector",
-                                          ["LE3", "LE2", "LE1", "ME3", "ME2"], "LE3", getDefaultValueFunc: GameController.GetRunningMEGameStrDelegate([MEGame.ME2, MEGame.ME3, MEGame.LE1, MEGame.LE2, MEGame.LE3]));
+                MEGame[] supportedGames = [MEGame.ME2, MEGame.ME3, MEGame.LE1, MEGame.LE2, MEGame.LE3];
+                var gameDialog = new GameSelectionDialog(null, "Live Level Editor game selector",
+                    promptText: "Choose a game to use Live Level Editor with:", supportedGames: supportedGames,
+                    defaultGame: GameController.GetRunningMEGame(supportedGames) ?? MEGame.LE3);
 
-                if (Enum.TryParse(gameStr, out MEGame game))
+                if (gameDialog.ShowDialog() == true)
                 {
+                    MEGame game = gameDialog.SelectedGame;
                     if (game.IsLEGame())
                     {
                         if (Tools.LiveLevelEditor.LELiveLevelEditorWindow.Instance(game) is { } instance)

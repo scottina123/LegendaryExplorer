@@ -1,4 +1,4 @@
-<misc:NotifyPropertyChangedWindowBase x:Class="LegendaryExplorer.Dialogs.NewPackageGameDialog"
+<misc:NotifyPropertyChangedWindowBase x:Class="LegendaryExplorer.Dialogs.GameSelectionDialog"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:misc="clr-namespace:LegendaryExplorer.Misc"
@@ -9,7 +9,7 @@
         WindowStyle="ToolWindow"
         Title="{Binding TitleText}">
     <StackPanel Margin="12">
-        <TextBlock Text="Choose a game to create the file for:"
+        <TextBlock Text="{Binding PromptText}"
                    FontSize="14"
                    FontWeight="Bold"
                    Margin="0,0,0,10"/>
@@ -23,16 +23,16 @@
                 </Grid.ColumnDefinitions>
                 <StackPanel Grid.Column="0" Margin="10">
                     <TextBlock Text="Legendary Edition" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,0,0,6"/>
-                    <Button Content="LE1" Tag="LE1" Click="GameButton_Click" Padding="12,7" Margin="0,2"/>
-                    <Button Content="LE2" Tag="LE2" Click="GameButton_Click" Padding="12,7" Margin="0,2"/>
-                    <Button Content="LE3" Tag="LE3" Click="GameButton_Click" Padding="12,7" Margin="0,2"/>
+                    <Button x:Name="LE1Button" Content="LE1" Tag="LE1" Click="GameButton_Click" Padding="12,7" Margin="0,2"/>
+                    <Button x:Name="LE2Button" Content="LE2" Tag="LE2" Click="GameButton_Click" Padding="12,7" Margin="0,2"/>
+                    <Button x:Name="LE3Button" Content="LE3" Tag="LE3" Click="GameButton_Click" Padding="12,7" Margin="0,2"/>
                 </StackPanel>
                 <Border Grid.Column="1" BorderBrush="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}" BorderThickness="1,0,0,0">
                     <StackPanel Margin="10">
                         <TextBlock Text="Original Trilogy" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,0,0,6"/>
-                        <Button Content="ME1" Tag="ME1" Click="GameButton_Click" Padding="12,7" Margin="0,2"/>
-                        <Button Content="ME2" Tag="ME2" Click="GameButton_Click" Padding="12,7" Margin="0,2"/>
-                        <Button Content="ME3" Tag="ME3" Click="GameButton_Click" Padding="12,7" Margin="0,2"/>
+                        <Button x:Name="ME1Button" Content="ME1" Tag="ME1" Click="GameButton_Click" Padding="12,7" Margin="0,2"/>
+                        <Button x:Name="ME2Button" Content="ME2" Tag="ME2" Click="GameButton_Click" Padding="12,7" Margin="0,2"/>
+                        <Button x:Name="ME3Button" Content="ME3" Tag="ME3" Click="GameButton_Click" Padding="12,7" Margin="0,2"/>
                     </StackPanel>
                 </Border>
             </Grid>

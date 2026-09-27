@@ -2544,7 +2544,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
 
         private void NewFile()
         {
-            var gameDialog = new NewPackageGameDialog(InteractionOwner, "Create new package file", false);
+            var gameDialog = new GameSelectionDialog(InteractionOwner, "Create new package file");
             if (gameDialog.ShowDialog() == true)
             {
                 MEGame game = gameDialog.SelectedGame;
@@ -2569,7 +2569,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
 
         private void NewLevelFile()
         {
-            var gameDialog = new NewPackageGameDialog(InteractionOwner, "Create new level file", true);
+            var gameDialog = new GameSelectionDialog(InteractionOwner, "Create new level file", allowLocFile: true);
             if (gameDialog.ShowDialog() == true)
             {
                 MEGame game = gameDialog.SelectedGame;
