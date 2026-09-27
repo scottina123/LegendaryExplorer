@@ -18,6 +18,19 @@
 		<IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
 	</PropertyGroup>
 
+	<PropertyGroup>
+		<!-- Stop only this output's running app during local Visual Studio builds. Can be disabled with this property. -->
+		<StopRunningLegendaryExplorerBeforeBuild Condition="'$(StopRunningLegendaryExplorerBeforeBuild)' == '' And '$(BuildingInsideVisualStudio)' == 'true'">true</StopRunningLegendaryExplorerBeforeBuild>
+		<!-- F5 must run the stop target even when Visual Studio considers the output up to date. -->
+		<DisableFastUpToDateCheck Condition="'$(StopRunningLegendaryExplorerBeforeBuild)' == 'true'">true</DisableFastUpToDateCheck>
+	</PropertyGroup>
+
+	<!-- Rebuild cleans before building, so release the executable lock before either operation. -->
+	<Target Name="StopRunningLegendaryExplorer" BeforeTargets="BeforeBuild;BeforeRebuild;BeforeClean"
+			Condition="'$(StopRunningLegendaryExplorerBeforeBuild)' == 'true' And '$(OS)' == 'Windows_NT' And '$(DesignTimeBuild)' != 'true' And '$(MSBuildProjectName)' == 'LegendaryExplorer'">
+		<Exec Command="powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\BuildTools\StopRunningInstance.ps1&quot; -ExecutablePath &quot;$(TargetDir)$(TargetName).exe&quot;" />
+	</Target>
+
 	<PropertyGroup Condition="'$(Configuration)'=='WinDebug'">
 		<DebugType>pdbonly</DebugType>
 		<DefineConstants>TRACE;DEBUG;WINDOWS</DefineConstants>
