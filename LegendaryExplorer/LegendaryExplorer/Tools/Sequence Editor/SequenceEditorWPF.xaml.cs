@@ -504,9 +504,9 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                 graphParent.Children.Remove(GraphHost);
             }
 
-            if (CurrentObjects_ListBox.Parent is Panel listParent)
+            if (CurrentObjectsPanel.Parent is Panel listParent)
             {
-                listParent.Children.Remove(CurrentObjects_ListBox);
+                listParent.Children.Remove(CurrentObjectsPanel);
             }
 
             Content = null;
@@ -515,11 +515,12 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             Grid.SetColumn(GraphHost, 0);
             Grid.SetColumnSpan(GraphHost, 1);
             GraphHost.Visibility = Visibility.Visible;
-            Grid.SetRow(CurrentObjects_ListBox, 0);
-            Grid.SetColumn(CurrentObjects_ListBox, 2);
+            Grid.SetRow(CurrentObjectsPanel, 0);
+            Grid.SetColumn(CurrentObjectsPanel, 2);
+            CurrentObjectsPanel.Visibility = Visibility.Visible;
             CurrentObjects_ListBox.Visibility = Visibility.Visible;
-            CurrentObjects_ListBox.MinWidth = 190;
-            CurrentObjects_ListBox.Width = 250;
+            CurrentObjectsPanel.MinWidth = 190;
+            CurrentObjectsPanel.Width = 250;
 
             var preview = new Grid { DataContext = this };
             preview.ColumnDefinitions.Add(new ColumnDefinition());
@@ -533,7 +534,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             };
             Grid.SetColumn(splitter, 1);
             preview.Children.Add(splitter);
-            preview.Children.Add(CurrentObjects_ListBox);
+            preview.Children.Add(CurrentObjectsPanel);
             preview.Loaded += EmbeddedContent_Loaded;
             preview.Unloaded += EmbeddedContent_Unloaded;
             return preview;
@@ -1557,6 +1558,8 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             try
             {
                 ClearSelectionHistory();
+                SequencesSearchBox.Clear();
+                CurrentObjectsSearchBox.Clear();
                 SelectedSequence = null;
                 CurrentObjects.ClearEx();
                 SequenceExports.ClearEx();
@@ -1934,6 +1937,8 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                     }
                 }
             }
+
+            ApplySequenceTreeFilter();
         }
 
         private TreeViewEntry FindContainingTreeNode(ExportEntry export)
@@ -1958,6 +1963,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
         private void ResetTreeView()
         {
             EndInlineSequenceNameEdit(commit: false);
+            sequenceExpansionBeforeFilter.Clear();
             foreach (TreeViewEntry tvi in TreeViewRootNodes.SelectMany(node => node.FlattenTree()))
             {
                 tvi.Dispose();

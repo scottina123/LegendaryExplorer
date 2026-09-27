@@ -33,6 +33,7 @@
         <converters:NullVisibilityConverter x:Key="NullVisibilityConverter"/>
         <converters:InverseVisibilityConverter x:Key="InverseVisibilityConverter"/>
         <converters:GameTypeConverter x:Key="GameTypeConverter"/>
+        <sequenceEditor:SequencePanelFilterVisibilityConverter x:Key="SequencePanelFilterVisibilityConverter"/>
         <Style x:Key="EmbeddedMenuContentStyle" TargetType="{x:Type MenuItem}">
             <Setter Property="Focusable" Value="False"/>
             <Setter Property="Template">
@@ -384,94 +385,110 @@
                     <ColumnDefinition Width="5" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-                <ListBox Name="CurrentObjects_ListBox" Grid.Column="2" Grid.Row="2"
-                            ItemsSource="{Binding CurrentObjects}"
-                            SelectionChanged="CurrentObjectsList_SelectedItemChanged"
-                            HorizontalContentAlignment="Stretch"
-                            SelectionMode="Extended"
-                            PreviewMouseRightButtonDown="CurrentObjects_ListBox_PreviewMouseRightButtonDown"
-                            ContextMenu="{StaticResource currentObjectsContextMenu}"
-                            Visibility="{Binding Pcc, Converter={StaticResource NullVisibilityConverter}}">
-                    <ListBox.ItemTemplate>
-                        <DataTemplate>
-                            <Grid Margin="0,0,5,0" TextElement.Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ListBoxItem}}">
-                                <Grid.Style>
-                                    <Style TargetType="{x:Type Grid}">
-                                        <Style.Triggers>
-                                            <DataTrigger Binding="{Binding Path=Export.EntryHasPendingChanges}"
-                                                            Value="true">
-                                                <Setter Property="Background" Value="#50D4A020" />
-                                                <Setter Property="ToolTip"
-                                                        Value="This export has been modified but the file has not yet been saved" />
-                                            </DataTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </Grid.Style>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="40" />
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Text="{Binding Export.UIndex}" />
-                                <TextBlock Grid.Column="1" Text="{Binding Export.ObjectName.Instanced}" />
-                                <StackPanel Grid.Column="2" Orientation="Horizontal">
-                                    <TextBlock Text="[Sub]" Margin="6,0,0,0"
-                                               Foreground="{DynamicResource {x:Static SystemColors.HotTrackBrushKey}}"
-                                               Visibility="{Binding IsSubSequence, Converter={StaticResource BoolToVisibilityConverter}}" />
-                                    <TextBlock Text="(reference)" Margin="6,0,0,0"
-                                               Foreground="{DynamicResource {x:Static SystemColors.HotTrackBrushKey}}"
-                                               Visibility="{Binding IsSequenceReference, Converter={StaticResource BoolToVisibilityConverter}}" />
-                                </StackPanel>
-                            </Grid>
-                        </DataTemplate>
-                </ListBox.ItemTemplate>
-                    <ListBox.ItemContainerStyle>
-                        <Style TargetType="{x:Type ListBoxItem}">
-                            <Setter Property="Background" Value="Transparent"/>
-                            <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}"/>
-                            <Setter Property="HorizontalContentAlignment" Value="{Binding HorizontalContentAlignment, RelativeSource={RelativeSource AncestorType={x:Type ItemsControl}}}"/>
-                            <Setter Property="VerticalContentAlignment" Value="{Binding VerticalContentAlignment, RelativeSource={RelativeSource AncestorType={x:Type ItemsControl}}}"/>
-                            <Setter Property="Padding" Value="2,0,0,0"/>
-                            <Setter Property="Template">
-                                <Setter.Value>
-                                    <ControlTemplate TargetType="{x:Type ListBoxItem}">
-                                        <Border x:Name="Bd"
-                                                Background="{TemplateBinding Background}"
-                                                BorderBrush="{TemplateBinding BorderBrush}"
-                                                BorderThickness="{TemplateBinding BorderThickness}"
-                                                Padding="{TemplateBinding Padding}"
-                                                SnapsToDevicePixels="True">
-                                            <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
-                                                              VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
-                                                              SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}"/>
-                                        </Border>
-                                        <ControlTemplate.Triggers>
-                                            <Trigger Property="IsSelected" Value="True">
-                                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}"/>
-                                                <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.HighlightTextBrushKey}}"/>
-                                                <Setter Property="TextElement.FontWeight" Value="Bold"/>
-                                            </Trigger>
-                                            <MultiTrigger>
-                                                <MultiTrigger.Conditions>
-                                                    <Condition Property="IsSelected" Value="True"/>
-                                                    <Condition Property="Selector.IsSelectionActive" Value="False"/>
-                                                </MultiTrigger.Conditions>
-                                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource {x:Static SystemColors.InactiveSelectionHighlightBrushKey}}"/>
-                                                <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.InactiveSelectionHighlightTextBrushKey}}"/>
-                                            </MultiTrigger>
-                                            <Trigger Property="IsMouseOver" Value="True">
-                                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource {x:Static SystemColors.ControlLightBrushKey}}"/>
-                                            </Trigger>
-                                            <Trigger Property="IsEnabled" Value="False">
-                                                <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}"/>
-                                            </Trigger>
-                                        </ControlTemplate.Triggers>
-                                    </ControlTemplate>
-                                </Setter.Value>
-                            </Setter>
-                        </Style>
-                    </ListBox.ItemContainerStyle>
-                </ListBox>
+                <DockPanel x:Name="CurrentObjectsPanel" Grid.Column="2" Grid.Row="2"
+                           Visibility="{Binding Pcc, Converter={StaticResource NullVisibilityConverter}}">
+                    <controls:SearchBox x:Name="CurrentObjectsSearchBox" DockPanel.Dock="Top" Margin="0,0,0,3" MinWidth="190"
+                                        WatermarkText="Filter by name or export ID"
+                                        ToolTip="Filter objects by name or export ID (e.g. 1577 or #1577)"
+                                        TextChanged="CurrentObjectsSearchBox_TextChanged"/>
+                    <ListBox Name="CurrentObjects_ListBox"
+                                ItemsSource="{Binding CurrentObjects}"
+                                SelectionChanged="CurrentObjectsList_SelectedItemChanged"
+                                HorizontalContentAlignment="Stretch"
+                                SelectionMode="Extended"
+                                PreviewMouseRightButtonDown="CurrentObjects_ListBox_PreviewMouseRightButtonDown"
+                                ContextMenu="{StaticResource currentObjectsContextMenu}"
+                                Visibility="{Binding Pcc, Converter={StaticResource NullVisibilityConverter}}">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Margin="0,0,5,0" TextElement.Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ListBoxItem}}">
+                                    <Grid.Style>
+                                        <Style TargetType="{x:Type Grid}">
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Path=Export.EntryHasPendingChanges}"
+                                                                Value="true">
+                                                    <Setter Property="Background" Value="#50D4A020" />
+                                                    <Setter Property="ToolTip"
+                                                            Value="This export has been modified but the file has not yet been saved" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Grid.Style>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="40" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="{Binding Export.UIndex}" />
+                                    <TextBlock Grid.Column="1" Text="{Binding Export.ObjectName.Instanced}" />
+                                    <StackPanel Grid.Column="2" Orientation="Horizontal">
+                                        <TextBlock Text="[Sub]" Margin="6,0,0,0"
+                                                   Foreground="{DynamicResource {x:Static SystemColors.HotTrackBrushKey}}"
+                                                   Visibility="{Binding IsSubSequence, Converter={StaticResource BoolToVisibilityConverter}}" />
+                                        <TextBlock Text="(reference)" Margin="6,0,0,0"
+                                                   Foreground="{DynamicResource {x:Static SystemColors.HotTrackBrushKey}}"
+                                                   Visibility="{Binding IsSequenceReference, Converter={StaticResource BoolToVisibilityConverter}}" />
+                                    </StackPanel>
+                                </Grid>
+                            </DataTemplate>
+                    </ListBox.ItemTemplate>
+                        <ListBox.ItemContainerStyle>
+                            <Style TargetType="{x:Type ListBoxItem}">
+                                <Setter Property="Visibility">
+                                    <Setter.Value>
+                                        <MultiBinding Converter="{StaticResource SequencePanelFilterVisibilityConverter}">
+                                            <Binding Path="Export.ObjectName.Instanced"/>
+                                            <Binding Path="Export.UIndex"/>
+                                            <Binding Path="DataContext.CurrentObjectsFilterText" RelativeSource="{RelativeSource AncestorType=ListBox}"/>
+                                        </MultiBinding>
+                                    </Setter.Value>
+                                </Setter>
+                                <Setter Property="Background" Value="Transparent"/>
+                                <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}"/>
+                                <Setter Property="HorizontalContentAlignment" Value="{Binding HorizontalContentAlignment, RelativeSource={RelativeSource AncestorType={x:Type ItemsControl}}}"/>
+                                <Setter Property="VerticalContentAlignment" Value="{Binding VerticalContentAlignment, RelativeSource={RelativeSource AncestorType={x:Type ItemsControl}}}"/>
+                                <Setter Property="Padding" Value="2,0,0,0"/>
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="{x:Type ListBoxItem}">
+                                            <Border x:Name="Bd"
+                                                    Background="{TemplateBinding Background}"
+                                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                                    Padding="{TemplateBinding Padding}"
+                                                    SnapsToDevicePixels="True">
+                                                <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                                                  VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                                                  SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}"/>
+                                            </Border>
+                                            <ControlTemplate.Triggers>
+                                                <Trigger Property="IsSelected" Value="True">
+                                                    <Setter TargetName="Bd" Property="Background" Value="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}"/>
+                                                    <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.HighlightTextBrushKey}}"/>
+                                                    <Setter Property="TextElement.FontWeight" Value="Bold"/>
+                                                </Trigger>
+                                                <MultiTrigger>
+                                                    <MultiTrigger.Conditions>
+                                                        <Condition Property="IsSelected" Value="True"/>
+                                                        <Condition Property="Selector.IsSelectionActive" Value="False"/>
+                                                    </MultiTrigger.Conditions>
+                                                    <Setter TargetName="Bd" Property="Background" Value="{DynamicResource {x:Static SystemColors.InactiveSelectionHighlightBrushKey}}"/>
+                                                    <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.InactiveSelectionHighlightTextBrushKey}}"/>
+                                                </MultiTrigger>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter TargetName="Bd" Property="Background" Value="{DynamicResource {x:Static SystemColors.ControlLightBrushKey}}"/>
+                                                </Trigger>
+                                                <Trigger Property="IsEnabled" Value="False">
+                                                    <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}"/>
+                                                </Trigger>
+                                            </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                            </Style>
+                        </ListBox.ItemContainerStyle>
+                    </ListBox>
+                </DockPanel>
                 <GridSplitter Grid.Row="1" Height="5" HorizontalAlignment="Stretch" Grid.Column="0" Grid.ColumnSpan="3" />
                 <GridSplitter Grid.Row="2" Width="5" HorizontalAlignment="Stretch" Grid.Column="1" />
                 <Grid Column="0" Row="2">
@@ -512,104 +529,112 @@
                         </TextBlock>
                     </StackPanel>
                     <sharedToolControls:RecentsControl x:Name="RecentsController" Grid.Column="3" Visibility="{Binding Pcc, RelativeSource={RelativeSource FindAncestor, AncestorType={x:Type bases:WPFBase}},Converter={StaticResource NullVisibilityConverter}, ConverterParameter='Reversed'}"/>
-                    <TreeView x:Name="Sequences_TreeView" Grid.Row="0" Grid.Column="0" FontFamily="{DynamicResource AudemusDataFont}" FontSize="{DynamicResource AudemusDataFontSize}"
-                                Visibility="{Binding Pcc, Converter={StaticResource NullVisibilityConverter}}"
-                                ItemsSource="{Binding TreeViewRootNodes}" 
-                                dd:DragDrop.IsDragSource="True"
-                                dd:DragDrop.IsDropTarget="True"
-                                dd:DragDrop.DropHandler="{Binding}"
-                                FocusManager.IsFocusScope="True"
-                                PreviewMouseRightButtonDown="Sequences_TreeView_PreviewMouseRightButtonDown"
-                                SelectedValuePath="IsSelected">
-                        <TreeView.Resources>
-                            <HierarchicalDataTemplate DataType="{x:Type sharedUi:TreeViewEntry}"
-                                                        ItemsSource="{Binding Sublinks}">
-                                <StackPanel Orientation="Horizontal">
+                    <DockPanel Grid.Row="0" Grid.Column="0"
+                               Visibility="{Binding Pcc, Converter={StaticResource NullVisibilityConverter}}">
+                        <controls:SearchBox x:Name="SequencesSearchBox" DockPanel.Dock="Top" Margin="0,0,0,3"
+                                            WatermarkText="Filter by name or export ID"
+                                            ToolTip="Filter sequences by name or export ID (e.g. 5013 or #5013)"
+                                            TextChanged="SequencesSearchBox_TextChanged"/>
+                        <TreeView x:Name="Sequences_TreeView" FontFamily="{DynamicResource AudemusDataFont}" FontSize="{DynamicResource AudemusDataFontSize}"
+                                    Visibility="{Binding Pcc, Converter={StaticResource NullVisibilityConverter}}"
+                                    ItemsSource="{Binding TreeViewRootNodes}"
+                                    dd:DragDrop.IsDragSource="True"
+                                    dd:DragDrop.IsDropTarget="True"
+                                    dd:DragDrop.DropHandler="{Binding}"
+                                    FocusManager.IsFocusScope="True"
+                                    PreviewMouseRightButtonDown="Sequences_TreeView_PreviewMouseRightButtonDown"
+                                    SelectedValuePath="IsSelected">
+                            <TreeView.Resources>
+                                <HierarchicalDataTemplate DataType="{x:Type sharedUi:TreeViewEntry}"
+                                                            ItemsSource="{Binding Sublinks}">
                                     <StackPanel Orientation="Horizontal">
-                                        <TextBlock x:Name="SequenceNameDisplay" Text="{Binding DisplayName}" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=TreeViewItem}}">
-                                            <TextBlock.Style>
-                                                <Style TargetType="{x:Type TextBlock}">
-                                                    <Style.Triggers>
-                                                        <DataTrigger
-                                                            Binding="{Binding Path=Entry.EntryHasPendingChanges}"
-                                                            Value="true">
-                                                            <Setter Property="Background" Value="#50D4A020" />
-                                                        </DataTrigger>
-                                                    </Style.Triggers>
-                                                </Style>
-                                            </TextBlock.Style>
-                                        </TextBlock>
-                                        <TextBox x:Name="SequenceNameEditor" Visibility="Collapsed" MinWidth="140"
-                                                 VerticalContentAlignment="Center"
-                                                 PreviewKeyDown="SequenceNameEditor_PreviewKeyDown"
-                                                 LostKeyboardFocus="SequenceNameEditor_LostKeyboardFocus" />
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock x:Name="SequenceNameDisplay" Text="{Binding DisplayName}" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=TreeViewItem}}">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="{x:Type TextBlock}">
+                                                        <Style.Triggers>
+                                                            <DataTrigger
+                                                                Binding="{Binding Path=Entry.EntryHasPendingChanges}"
+                                                                Value="true">
+                                                                <Setter Property="Background" Value="#50D4A020" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                            <TextBox x:Name="SequenceNameEditor" Visibility="Collapsed" MinWidth="140"
+                                                     VerticalContentAlignment="Center"
+                                                     PreviewKeyDown="SequenceNameEditor_PreviewKeyDown"
+                                                     LostKeyboardFocus="SequenceNameEditor_LostKeyboardFocus" />
+                                        </StackPanel>
+                                        <b:Interaction.Triggers>
+                                            <b:EventTrigger EventName="PreviewMouseRightButtonDown">
+                                                <b:ChangePropertyAction PropertyName="IsSelected" Value="true"
+                                                                            TargetObject="{Binding}" />
+                                            </b:EventTrigger>
+                                        </b:Interaction.Triggers>
                                     </StackPanel>
-                                    <b:Interaction.Triggers>
-                                        <b:EventTrigger EventName="PreviewMouseRightButtonDown">
-                                            <b:ChangePropertyAction PropertyName="IsSelected" Value="true"
-                                                                        TargetObject="{Binding}" />
-                                        </b:EventTrigger>
-                                    </b:Interaction.Triggers>
-                                </StackPanel>
-                            </HierarchicalDataTemplate>
+                                </HierarchicalDataTemplate>
 
-                        </TreeView.Resources>
-                        <TreeView.ItemContainerStyle>
-                            <Style TargetType="{x:Type TreeViewItem}">
-                                <Setter Property="ContextMenu" Value="{StaticResource sequencesTreeContextMenu}" />
-                                <Setter Property="IsSelected" Value="{Binding Path=IsSelected, Mode=TwoWay}" />
-                                <Setter Property="IsExpanded" Value="{Binding Path=IsExpanded, Mode=TwoWay}" />
-                                <Setter Property="peregrineTreeView:TreeViewItemHelper.BringSelectedItemIntoView" Value="True" />
-                                <Setter Property="peregrineTreeView:TreeViewItemHelper.BringExpandedChildrenIntoView"
-                                        Value="True" />
-                                <Setter Property="Background" Value="Transparent"/>
-                                <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}"/>
-                                <Setter Property="HorizontalContentAlignment" Value="{Binding HorizontalContentAlignment, RelativeSource={RelativeSource AncestorType={x:Type ItemsControl}}}"/>
-                                <Setter Property="VerticalContentAlignment" Value="{Binding VerticalContentAlignment, RelativeSource={RelativeSource AncestorType={x:Type ItemsControl}}}"/>
-                                <Setter Property="Padding" Value="1,0,0,0"/>
-                                <Setter Property="Template">
-                                    <Setter.Value>
-                                        <ControlTemplate TargetType="{x:Type TreeViewItem}">
-                                            <Grid>
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition MinWidth="19" Width="Auto"/>
-                                                    <ColumnDefinition Width="Auto"/>
-                                                    <ColumnDefinition Width="*"/>
-                                                </Grid.ColumnDefinitions>
-                                                <Grid.RowDefinitions>
-                                                    <RowDefinition Height="Auto"/>
-                                                    <RowDefinition/>
-                                                </Grid.RowDefinitions>
-                                                <ToggleButton x:Name="Expander" ClickMode="Press" IsChecked="{Binding IsExpanded, RelativeSource={RelativeSource TemplatedParent}}" Style="{DynamicResource TreeViewItemExpanderStyle}"/>
-                                                <Border x:Name="Bd" Grid.Column="1" Grid.ColumnSpan="2" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" Padding="{TemplateBinding Padding}" SnapsToDevicePixels="true">
-                                                    <ContentPresenter x:Name="PART_Header" ContentSource="Header" HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}"/>
-                                                </Border>
-                                                <ItemsPresenter x:Name="ItemsHost" Grid.Column="1" Grid.ColumnSpan="2" Grid.Row="1"/>
-                                            </Grid>
-                                            <ControlTemplate.Triggers>
-                                                <Trigger Property="IsExpanded" Value="false">
-                                                    <Setter TargetName="ItemsHost" Property="Visibility" Value="Collapsed"/>
-                                                </Trigger>
-                                                <Trigger Property="HasItems" Value="false">
-                                                    <Setter TargetName="Expander" Property="Visibility" Value="Hidden"/>
-                                                </Trigger>
-                                                <Trigger Property="IsSelected" Value="true">
-                                                    <Setter TargetName="Bd" Property="Background" Value="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}"/>
-                                                    <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.HighlightTextBrushKey}}"/>
-                                                </Trigger>
-                                                <Trigger Property="IsEnabled" Value="false">
-                                                    <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}"/>
-                                                </Trigger>
-                                            </ControlTemplate.Triggers>
-                                        </ControlTemplate>
-                                    </Setter.Value>
-                                </Setter>
-                            </Style>
-                        </TreeView.ItemContainerStyle>
-                        <b:Interaction.Behaviors>
-                            <peregrineTreeView:TreeViewHelper BoundSelectedItem="{Binding SelectedItem}" />
-                        </b:Interaction.Behaviors>
-                    </TreeView>
+                            </TreeView.Resources>
+                            <TreeView.ItemContainerStyle>
+                                <Style TargetType="{x:Type TreeViewItem}">
+                                    <Setter Property="ContextMenu" Value="{StaticResource sequencesTreeContextMenu}" />
+                                    <Setter Property="IsSelected" Value="{Binding Path=IsSelected, Mode=TwoWay}" />
+                                    <Setter Property="IsExpanded" Value="{Binding Path=IsExpanded, Mode=TwoWay}" />
+                                    <Setter Property="Visibility" Value="{Binding IsVisibleInTree, Converter={StaticResource BoolToVisibilityConverter}}" />
+                                    <Setter Property="peregrineTreeView:TreeViewItemHelper.BringSelectedItemIntoView" Value="True" />
+                                    <Setter Property="peregrineTreeView:TreeViewItemHelper.BringExpandedChildrenIntoView"
+                                            Value="True" />
+                                    <Setter Property="Background" Value="Transparent"/>
+                                    <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}"/>
+                                    <Setter Property="HorizontalContentAlignment" Value="{Binding HorizontalContentAlignment, RelativeSource={RelativeSource AncestorType={x:Type ItemsControl}}}"/>
+                                    <Setter Property="VerticalContentAlignment" Value="{Binding VerticalContentAlignment, RelativeSource={RelativeSource AncestorType={x:Type ItemsControl}}}"/>
+                                    <Setter Property="Padding" Value="1,0,0,0"/>
+                                    <Setter Property="Template">
+                                        <Setter.Value>
+                                            <ControlTemplate TargetType="{x:Type TreeViewItem}">
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition MinWidth="19" Width="Auto"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <Grid.RowDefinitions>
+                                                        <RowDefinition Height="Auto"/>
+                                                        <RowDefinition/>
+                                                    </Grid.RowDefinitions>
+                                                    <ToggleButton x:Name="Expander" ClickMode="Press" IsChecked="{Binding IsExpanded, RelativeSource={RelativeSource TemplatedParent}}" Style="{DynamicResource TreeViewItemExpanderStyle}"/>
+                                                    <Border x:Name="Bd" Grid.Column="1" Grid.ColumnSpan="2" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" Padding="{TemplateBinding Padding}" SnapsToDevicePixels="true">
+                                                        <ContentPresenter x:Name="PART_Header" ContentSource="Header" HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}"/>
+                                                    </Border>
+                                                    <ItemsPresenter x:Name="ItemsHost" Grid.Column="1" Grid.ColumnSpan="2" Grid.Row="1"/>
+                                                </Grid>
+                                                <ControlTemplate.Triggers>
+                                                    <Trigger Property="IsExpanded" Value="false">
+                                                        <Setter TargetName="ItemsHost" Property="Visibility" Value="Collapsed"/>
+                                                    </Trigger>
+                                                    <Trigger Property="HasItems" Value="false">
+                                                        <Setter TargetName="Expander" Property="Visibility" Value="Hidden"/>
+                                                    </Trigger>
+                                                    <Trigger Property="IsSelected" Value="true">
+                                                        <Setter TargetName="Bd" Property="Background" Value="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}"/>
+                                                        <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.HighlightTextBrushKey}}"/>
+                                                    </Trigger>
+                                                    <Trigger Property="IsEnabled" Value="false">
+                                                        <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}"/>
+                                                    </Trigger>
+                                                </ControlTemplate.Triggers>
+                                            </ControlTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                </Style>
+                            </TreeView.ItemContainerStyle>
+                            <b:Interaction.Behaviors>
+                                <peregrineTreeView:TreeViewHelper BoundSelectedItem="{Binding SelectedItem}" />
+                            </b:Interaction.Behaviors>
+                        </TreeView>
+                    </DockPanel>
                     <GridSplitter Grid.Row="0" Grid.Column="1" Width="5" HorizontalAlignment="Stretch"
                                     Visibility="{Binding Pcc, Converter={StaticResource NullVisibilityConverter}}" />
                     <TabControl x:Name="BottomTabControl" Grid.Row="0" Grid.Column="2" Grid.ColumnSpan="2"
