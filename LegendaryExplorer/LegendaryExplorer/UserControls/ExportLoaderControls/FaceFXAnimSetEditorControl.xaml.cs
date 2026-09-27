@@ -2460,7 +2460,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             if (Lines?.Count is not > 0) return;
 
 
-            if (PromptDialog.Prompt(this, "Please enter start of ID range", "Legendary Explorer", "", true) is string idString)
+            if (PromptDialog.Prompt(this, "Please enter start of ID range", "Legendary Explorer", "", true, tlkPackage: Pcc) is string idString)
             {
                 if (!int.TryParse(idString, out int tlkID) || tlkID < 0)
                 {

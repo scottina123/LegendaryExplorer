@@ -3,6 +3,9 @@ using System;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using LegendaryExplorer.Misc;
+using LegendaryExplorer.Tools.TlkManagerNS;
+using LegendaryExplorerCore.Packages;
 
 namespace LegendaryExplorer.Dialogs
 {
@@ -28,6 +31,7 @@ namespace LegendaryExplorer.Dialogs
         }
 
         private InputType _inputType;
+        private readonly IMEPackage tlkPackage;
 
         /// <summary>
         /// Optional validation function that determines if the input is valid and optionally provides textual validation feedback.
@@ -44,9 +48,11 @@ namespace LegendaryExplorer.Dialogs
         /// <param name="selectionStart">The starting position of the text selection. Use -1 to select all text.</param>
         /// <param name="selectionEnd">The ending position of the text selection. Use -1 or 0 to select to the end.</param>
         /// <param name="inputType">The type of input control to display (single-line or multi-line).</param>
-        public PromptDialog(string question, string title, string defaultValue = "", bool selectText = false, int selectionStart = -1, int selectionEnd = -1, InputType inputType = InputType.Text)
+        /// <param name="tlkPackage">Optional package whose TLKs supply a string reference picker and live text preview.</param>
+        public PromptDialog(string question, string title, string defaultValue = "", bool selectText = false, int selectionStart = -1, int selectionEnd = -1, InputType inputType = InputType.Text, IMEPackage tlkPackage = null)
         {
             InitializeComponent();
+            this.tlkPackage = tlkPackage;
             CustomWindowChrome.ApplyCustomChrome(this);
             this.Loaded += PromptDialog_Loaded;
             txtQuestion.Text = question;
@@ -83,6 +89,14 @@ namespace LegendaryExplorer.Dialogs
                 txtResponse.AcceptsReturn = false;
                 txtResponse.MaxLines = 1;
             }
+            if (tlkPackage != null)
+            {
+                Width = 480;
+                SizeToContent = SizeToContent.Height;
+                btnTlkPicker.Visibility = Visibility.Visible;
+                tlkPreviewPanel.Visibility = Visibility.Visible;
+                UpdateTlkPreview();
+            }
         }
 
         /// <summary>
@@ -106,14 +120,16 @@ namespace LegendaryExplorer.Dialogs
         /// <param name="inputType">The type of input control to display (single-line or multi-line).</param>
         /// <param name="validator">Optional validation function that returns true if the input is valid,
         /// as well as a string that provides feedback on the value (null is valid). Will be called frequently. Must not cause side effects!</param>
+        /// <param name="tlkPackage">Optional package whose TLKs supply a string reference picker and live text preview.</param>
         /// <returns>The user's input text if OK was clicked; null if the dialog was cancelled.</returns>
         public static string Prompt(Control owner, string question, string title = "",
             string defaultValue = "",
             bool selectText = false, int selectionStart = -1, int selectionEnd = -1,
             InputType inputType = InputType.Text,
-            Func<string, (bool, string)> validator = null)
+            Func<string, (bool, string)> validator = null,
+            IMEPackage tlkPackage = null)
         {
-            PromptDialog inst = new PromptDialog(question, title, defaultValue, selectText, selectionStart, selectionEnd, inputType);
+            PromptDialog inst = new PromptDialog(question, title, defaultValue, selectText, selectionStart, selectionEnd, inputType, tlkPackage);
             if (owner != null)
             {
                 inst.Owner = owner as Window ?? GetWindow(owner);
@@ -166,6 +182,33 @@ namespace LegendaryExplorer.Dialogs
         private void OnTextChanged(object sender, TextChangedEventArgs e)
         {
             Validate();
+            UpdateTlkPreview();
+        }
+
+        private void TlkPicker_Click(object sender, RoutedEventArgs e)
+        {
+            if (TlkStringRefSelector.SelectStringRef(this, tlkPackage) is int stringRef)
+            {
+                txtResponse.Text = stringRef.ToString();
+                txtResponse.CaretIndex = txtResponse.Text.Length;
+                txtResponse.Focus();
+            }
+        }
+
+        private void UpdateTlkPreview()
+        {
+            if (tlkPackage == null) return;
+
+            if (!int.TryParse(ResponseText, out int stringRef) || stringRef < 0)
+            {
+                txtTlkPreview.Text = "Enter a TLK ID to preview its text.";
+                return;
+            }
+
+            string text = TLKManagerWPF.GlobalFindStrRefbyID(stringRef, tlkPackage);
+            txtTlkPreview.Text = string.IsNullOrWhiteSpace(text) || text == "No Data"
+                ? $"No TLK text found for ID {stringRef}."
+                : text;
         }
 
         private void ok_Click(object sender, RoutedEventArgs e)
