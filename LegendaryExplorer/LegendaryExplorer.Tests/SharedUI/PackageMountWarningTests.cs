@@ -8,9 +8,11 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Data;
+using System.Windows.Documents;
 using System.Windows.Threading;
 using LegendaryExplorer.SharedUI;
 using LegendaryExplorer.SharedUI.Bases;
+using LegendaryExplorer.Tools.PackageEditor;
 using LegendaryExplorer.UserControls.SharedToolControls;
 using LegendaryExplorer.UserControls.ExportLoaderControls;
 using LegendaryExplorerCore;
@@ -96,7 +98,8 @@ public class PackageMountWarningTests
             var package = Package(basePath);
             window.SetPackage(package);
             Assert.AreEqual(Visibility.Visible, indicator.Visibility);
-            Assert.AreEqual(PackageMountStatus.WarningText, indicator.Content);
+            var warningText = (TextBlock)indicator.Content;
+            Assert.AreEqual(PackageMountStatus.WarningText, new TextRange(warningText.ContentStart, warningText.ContentEnd).Text);
             StringAssert.Contains(indicator.ToolTip.ToString(), highestPath);
             Assert.AreEqual("Loading exports...", message.Text);
             statusBar.Measure(new Size(900, 24));
@@ -136,7 +139,7 @@ public class PackageMountWarningTests
     }
 
     [STATestMethod]
-    public void HostedExportEditorDisplaysWarningForItsRegisteredPackage()
+    public void WarningOpensHighestMountedPackageInANewMatchingEditor()
     {
         typeof(Application).GetField("_resourceAssembly", BindingFlags.Static | BindingFlags.NonPublic)!
             .SetValue(null, typeof(App).Assembly);
@@ -147,9 +150,14 @@ public class PackageMountWarningTests
 
         var package = Package(basePath);
         var export = package.CreateExport("TestExport", "Object", indexed: false);
+        var highestPackage = Package(highestPath);
+        highestPackage.CreateExport("DifferentExportAtOriginalIndex", "Object", indexed: false);
+        var highestExport = highestPackage.CreateExport("TestExport", "Object", indexed: false);
+        using (var stream = highestPackage.SaveToStream(compress: false)) File.WriteAllBytes(highestPath, stream.ToArray());
         typeof(UnrealPackageFile).GetMethod("AfterSave", BindingFlags.Instance | BindingFlags.NonPublic)!
             .Invoke(package, null);
         var window = new ExportLoaderHostedWindow(new TestExportLoader(), export);
+        var openedWindows = new List<Window>();
         try
         {
             window.RaiseEvent(new RoutedEventArgs(FrameworkElement.LoadedEvent));
@@ -158,9 +166,55 @@ public class PackageMountWarningTests
             Assert.AreSame(package, indicator.Package);
             Assert.AreEqual(Visibility.Visible, indicator.Visibility);
             StringAssert.Contains(indicator.ToolTip.ToString(), highestPath);
+
+            var existingWindows = Application.Current.Windows.Cast<Window>().ToList();
+            var link = ((TextBlock)indicator.Content).Inlines.OfType<Hyperlink>().Single();
+            link.RaiseEvent(new RoutedEventArgs(Hyperlink.ClickEvent));
+            Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
+            openedWindows.AddRange(Application.Current.Windows.Cast<Window>().Except(existingWindows));
+            var newWindow = openedWindows.OfType<ExportLoaderHostedWindow>().Single();
+            Assert.AreNotSame(window, newWindow);
+            Assert.AreEqual(window.HostedControl.GetType(), newWindow.HostedControl.GetType());
+            Assert.AreNotSame(window.HostedControl, newWindow.HostedControl);
+            Assert.AreEqual(highestPath, newWindow.Pcc.FilePath);
+            Assert.AreEqual(export.InstancedFullPath, newWindow.HostedControl.CurrentLoadedExport.InstancedFullPath);
+            Assert.AreEqual(highestExport.UIndex, newWindow.HostedControl.CurrentLoadedExport.UIndex);
+            Assert.AreNotEqual(export.UIndex, newWindow.HostedControl.CurrentLoadedExport.UIndex,
+                "Match the export's path rather than its index, which can differ between package versions.");
+            Assert.AreSame(package, window.Pcc);
+            Assert.AreSame(export, window.HostedControl.CurrentLoadedExport);
+            Assert.AreEqual(Visibility.Collapsed, LogicalChildren(newWindow).OfType<PackageMountWarning>().Single().Visibility);
+            Assert.IsTrue(indicator.IsEnabled);
+
+            var secondWindow = indicator.OpenHighestMountedVersionAsync().GetAwaiter().GetResult();
+            openedWindows.Add(secondWindow);
+            Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
+            Assert.AreNotSame(newWindow, secondWindow, "Each activation must open a new tool instance.");
+
+            var metadataWindow = new LECLDataEditorWindow(null, package);
+            openedWindows.Add(metadataWindow);
+            var newMetadataWindow = PackageToolLauncher.OpenAsync(metadataWindow, highestPath).GetAwaiter().GetResult();
+            openedWindows.Add(newMetadataWindow);
+            Assert.IsInstanceOfType<LECLDataEditorWindow>(newMetadataWindow);
+            Assert.AreNotSame(metadataWindow, newMetadataWindow);
+            Assert.AreEqual(highestPath, ((LECLDataEditorWindow)newMetadataWindow).Pcc.FilePath);
+            Assert.AreSame(package, metadataWindow.Pcc);
+
+            var missingPackage = Package(lowerDlcPath);
+            missingPackage.CreateExport("UnrelatedExport", "Object", indexed: false);
+            using (var stream = missingPackage.SaveToStream(compress: false)) File.WriteAllBytes(lowerDlcPath, stream.ToArray());
+            Assert.Throws<InvalidOperationException>(() => window.CreateForPackageVersion(lowerDlcPath),
+                "A missing matching export must not silently open an unrelated export with the same ID.");
+
+            File.Delete(highestPath);
+            File.Delete(lowerDlcPath);
+            Assert.IsNull(indicator.OpenHighestMountedVersionAsync().GetAwaiter().GetResult(),
+                "Activation must recheck mount order if the installed files have changed.");
+            Assert.AreEqual(Visibility.Collapsed, indicator.Visibility);
         }
         finally
         {
+            foreach (var opened in openedWindows) opened.Close();
             window.Close();
         }
     }

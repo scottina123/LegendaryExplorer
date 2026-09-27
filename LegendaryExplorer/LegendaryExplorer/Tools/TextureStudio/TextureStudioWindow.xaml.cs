@@ -181,6 +181,51 @@ namespace LegendaryExplorer.Tools.TextureStudio
             TextureViewer_ExportLoader?.PreviewRenderer?.SetShouldRender(true); // turn on rendering
         }
 
+        internal async Task LoadPackageAsync(string filePath, string exportPath)
+        {
+            var folder = Path.GetDirectoryName(filePath);
+            SelectedFolder = folder;
+            ResetUI();
+            IsBusy = true;
+            BusyText = $"Loading textures from {Path.GetFileName(filePath)}";
+            try
+            {
+                var (game, roots) = await Task.Run(() =>
+                {
+                    using var package = MEPackageHandler.UnsafePartialLoad(filePath, entry => !entry.IsDefaultObject && entry.IsTexture());
+                    var rootNodes = new List<TextureMapMemoryEntry>();
+                    var entries = new Dictionary<string, TextureMapMemoryEntry>();
+                    var crcCache = new Dictionary<string, uint>();
+                    var tfcs = Directory.GetFiles(folder, "*.tfc").ToList();
+                    foreach (var export in package.Exports.Where(entry => entry.IsDataLoaded() && entry.IsTexture()))
+                    {
+                        var entry = TextureMapMemoryEntry.ParseTexture(export, folder, entries, crcCache, tfcs,
+                            MemoryEntryGeneratorWPF, rootNodes.Add);
+                        if (entry.Parent == null && !rootNodes.Contains(entry)) rootNodes.Add(entry);
+                    }
+                    return (package.Game, rootNodes);
+                });
+                CurrentStudioGame = game;
+                AllRootTreeViewNodes.AddRange(roots);
+                SortNodes(AllRootTreeViewNodes);
+                var textures = roots.SelectMany(root => root.GetAllTextureEntries().Prepend(root))
+                    .OfType<TextureMapMemoryEntryWPF>().Where(entry => entry.IsTexture).ToList();
+                var selected = textures.FirstOrDefault(entry => entry.InstancedFullPath == exportPath) ?? textures.FirstOrDefault();
+                if (selected != null)
+                {
+                    SelectEntry(selected);
+                    SelectedItem = selected;
+                }
+                Title = $"Texture Studio - {filePath}";
+                StatusText = Path.GetFileName(filePath);
+                TextureViewer_ExportLoader?.PreviewRenderer?.SetShouldRender(true);
+            }
+            finally
+            {
+                IsBusy = false;
+            }
+        }
+
         #region Command loading
         public GenericCommand RemoveAllEmptyMipsCommand { get; set; }
         public GenericCommand ME1UpdateMasterPointersCommand { get; set; }

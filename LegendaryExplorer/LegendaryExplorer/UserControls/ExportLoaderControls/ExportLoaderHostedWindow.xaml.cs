@@ -26,6 +26,33 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
     {
         public ExportEntry LoadedExport { get; private set; }
         public readonly ExportLoaderControl HostedControl;
+
+        internal ExportLoaderHostedWindow CreateForPackageVersion(string filePath)
+        {
+            using var package = MEPackageHandler.OpenMEPackage(filePath);
+            var sourceExport = HostedControl.CurrentLoadedExport ?? LoadedExport;
+            var export = sourceExport == null ? null : package.FindExport(sourceExport.InstancedFullPath);
+            if (export == null || export.ClassName != sourceExport.ClassName)
+            {
+                throw new InvalidOperationException($"The highest mounted file does not contain a matching {sourceExport?.ClassName} export at '{sourceExport?.InstancedFullPath}'.");
+            }
+
+            var control = (ExportLoaderControl)Activator.CreateInstance(HostedControl.GetType());
+            if (!control.CanParse(export))
+            {
+                control.Dispose();
+                throw new InvalidOperationException($"This editor cannot open '{export.InstancedFullPath}' in the highest mounted file.");
+            }
+
+            var window = new ExportLoaderHostedWindow(control, export)
+            {
+                Title = $"{Title.Split(new[] { " - " }, 2, StringSplitOptions.None)[0]} - {export.UIndex} {export.InstancedFullPath} - {filePath}"
+            };
+            // Retain the package until the new window's deferred Loaded handler runs.
+            window.RegisterPackage(package);
+            return window;
+        }
+
         public ObservableCollectionExtended<IndexedName> NamesList { get; } = new();
         public bool SupportsRecents => HostedControl is FileExportLoaderControl;
 

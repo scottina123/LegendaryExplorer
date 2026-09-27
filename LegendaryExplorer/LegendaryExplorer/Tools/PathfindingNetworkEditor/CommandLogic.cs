@@ -225,7 +225,7 @@ namespace LegendaryExplorer.Tools.PathfindingNetworkEditor
         /// </summary>
         /// <param name="fileName"></param>
         /// <param name="loadPackageDelegate"></param>
-        private void LoadFile(string fileName, Action loadPackageDelegate = null)
+        internal void LoadFile(string fileName, Action loadPackageDelegate = null)
         {
             GraphEditor.ClearAll();
             PackageHandler.OpenLevelMaster(fileName, ln => BusyText = $"Loading {ln}");
