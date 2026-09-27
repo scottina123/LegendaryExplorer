@@ -78,6 +78,7 @@
                 <StatusBarItem>
                     <TextBlock Text="{Binding StatusText}"/>
                 </StatusBarItem>
+                <sharedToolControls:PackageMountWarning Package="{Binding CurrentLoadedExport.FileRef, ElementName=TextureViewer_ExportLoader}" />
             </StatusBar>
             <Grid>
                 <DockPanel HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="{Binding SelectedFolder, Converter={StaticResource NullVisibilityConverter}, ConverterParameter='Reversed'}">

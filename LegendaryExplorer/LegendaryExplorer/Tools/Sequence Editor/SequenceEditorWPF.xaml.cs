@@ -1595,7 +1595,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                 graphEditor.edgeLayer.RemoveAllChildren();
 
                 Title = $"Sequence Editor - {filePath}";
-                StatusText = GetStatusBarText();
+                StatusText = GetStatusBarText(includeMountWarning: false);
 
                 if (!isReadOnlyPreview)
                 {

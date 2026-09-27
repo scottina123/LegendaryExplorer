@@ -117,6 +117,7 @@
                 <StatusBarItem>
                     <TextBlock x:Name="StatusBar_LeftMostText" Text="Open a galaxy map package to begin"/>
                 </StatusBarItem>
+                <sharedToolControls:PackageMountWarning x:Name="PackageMountStatusIndicator" />
                 <StatusBarItem Visibility="{Binding SelectedObject, Converter={StaticResource NullVisibilityConverter}}">
                     <TextBlock Text="{Binding SelectedObject.Export.ObjectName.Instanced, StringFormat='Selected: {0}'}"
                                Foreground="{DynamicResource {x:Static SystemColors.HotTrackBrushKey}}"/>

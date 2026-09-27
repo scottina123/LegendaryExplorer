@@ -2105,7 +2105,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         StatusBar_LeftMostText.Text = OpenFiles.Count switch
         {
             0 => "Select package file to load",
-            _ when ActiveFile is not null => GetStatusBarText(),
+            _ when ActiveFile is not null => GetStatusBarText(includeMountWarning: false),
             _ => $"{OpenFiles.Count} files loaded"
         };
     }

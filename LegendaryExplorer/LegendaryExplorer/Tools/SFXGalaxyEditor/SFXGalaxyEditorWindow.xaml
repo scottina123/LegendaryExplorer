@@ -87,6 +87,7 @@
                 <StatusBarItem>
                     <TextBlock Text="{Binding StatusText}" />
                 </StatusBarItem>
+                <sharedToolControls:PackageMountWarning Package="{Binding Pcc}" />
                 <StatusBarItem HorizontalAlignment="Right">
                     <TextBlock Foreground="Gray" Text="{Binding Pcc.LastSaved, StringFormat='Last saved at {0}'}" />
                 </StatusBarItem>

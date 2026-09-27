@@ -235,17 +235,17 @@ namespace LegendaryExplorer.SharedUI.Bases
         /// Gets status bar text that displays the filename, the installation location, and if it is the highest mounted version of the file
         /// </summary>
         /// <returns></returns>
-        public string GetStatusBarText()
+        public string GetStatusBarText(bool includeMountWarning = true)
         {
             if (Pcc == null || Pcc.FilePath == null) // FilePath will be null if loaded from stream and not passed a name
                 return null;
             string fileName = Path.GetFileName(Pcc.FilePath);
             string notHighestMountedWarning = "";
-            var isInInstallation = MEDirectories.GetLocationDescriptor(Pcc.FilePath, Pcc.Game, out var descriptor);
+            MEDirectories.GetLocationDescriptor(Pcc.FilePath, Pcc.Game, out var descriptor);
 
-            if (isInInstallation && MELoadedFiles.TryGetHighestMountedFile(Pcc.Game, fileName, out string highestMountedPath) && Path.GetFullPath(Pcc.FilePath) != highestMountedPath)
+            if (includeMountWarning && PackageMountStatus.GetOverridingFilePath(Pcc) != null)
             {
-                notHighestMountedWarning = "NOT HIGHEST MOUNTED VERSION";
+                notHighestMountedWarning = PackageMountStatus.WarningText;
             }
             string statusBarText = $"{fileName}  ( {descriptor} )  {notHighestMountedWarning}";
             return statusBarText;

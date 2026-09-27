@@ -611,6 +611,7 @@
                         </TextBlock.Style>
                     </TextBlock>
                 </StatusBarItem>
+                <sharedToolControls:PackageMountWarning Package="{Binding Pcc}" />
                 <StatusBarItem>
                     <TextBlock Name="StatusBar_OtherText" Text="" />
                 </StatusBarItem>

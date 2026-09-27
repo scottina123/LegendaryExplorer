@@ -5951,7 +5951,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
             _comparedChangedEntryIndices.Clear();
             RefreshView();
             InitStuff();
-            StatusBar_LeftMostText.Text = GetStatusBarText();
+            StatusBar_LeftMostText.Text = GetStatusBarText(includeMountWarning: false);
             Title = $"Package Editor - {filePath}";
             InterpreterTab_Interpreter.UnloadExport();
 

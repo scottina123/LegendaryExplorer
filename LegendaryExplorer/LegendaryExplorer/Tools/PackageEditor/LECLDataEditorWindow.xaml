@@ -6,6 +6,7 @@
         xmlns:local="clr-namespace:LegendaryExplorer.Tools.PackageEditor"
         xmlns:system="clr-namespace:System;assembly=System.Runtime"
         xmlns:converters="clr-namespace:LegendaryExplorer.SharedUI.Converters"
+        xmlns:sharedToolControls="clr-namespace:LegendaryExplorer.UserControls.SharedToolControls"
         mc:Ignorable="d"
         SizeToContent="WidthAndHeight"
         DataContext="{Binding RelativeSource={RelativeSource Self}}"
@@ -66,5 +67,10 @@
             </GroupBox>
 
         </StackPanel>
+        <StatusBar>
+            <sharedToolControls:StatusBarGameIDIndicator GameType="{Binding Pcc.Game}" Margin="0,-4"/>
+            <StatusBarItem Content="{Binding Pcc.FilePath}" />
+            <sharedToolControls:PackageMountWarning Package="{Binding Pcc}" />
+        </StatusBar>
     </StackPanel>
 </bases:WPFBase>

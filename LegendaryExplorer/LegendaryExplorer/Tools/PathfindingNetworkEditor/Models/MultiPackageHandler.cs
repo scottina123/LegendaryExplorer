@@ -24,6 +24,8 @@ namespace LegendaryExplorer.Tools.PathfindingNetworkEditor.Models
         /// </summary>
         public string MasterLevelName => OpenLevelsList.FirstOrDefault()?.LevelName ?? "No level loaded";
 
+        public IMEPackage MasterPackage => OpenLevelsList.FirstOrDefault()?.Package;
+
         /// <summary>
         /// The list of available levels.
         /// </summary>
@@ -51,6 +53,7 @@ namespace LegendaryExplorer.Tools.PathfindingNetworkEditor.Models
             // Notify game has changed.
             OnPropertyChanged(nameof(Game));
             OnPropertyChanged(nameof(MasterLevelName));
+            OnPropertyChanged(nameof(MasterPackage));
         }
     }
 }

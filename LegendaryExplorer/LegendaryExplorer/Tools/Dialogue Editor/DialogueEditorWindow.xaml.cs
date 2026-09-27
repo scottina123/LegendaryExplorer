@@ -669,7 +669,7 @@ namespace LegendaryExplorer.DialogueEditor
             get => _statusText;
             set
             {
-                string packageStatus = GetStatusBarText();
+                string packageStatus = GetStatusBarText(includeMountWarning: false);
                 string statusText = string.IsNullOrWhiteSpace(packageStatus)
                     ? value
                     : string.IsNullOrWhiteSpace(value) ? packageStatus : $"{packageStatus} {value}";

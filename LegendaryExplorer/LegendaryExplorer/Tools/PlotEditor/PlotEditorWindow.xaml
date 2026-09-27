@@ -113,6 +113,7 @@
                 <StatusBarItem>
                     <TextBlock Name="StatusBar_LeftMostText" Text="{Binding CurrentFile}" />
                 </StatusBarItem>
+                <sharedToolControls:PackageMountWarning Package="{Binding Pcc}" />
                 <StatusBarItem HorizontalAlignment="Right">
                     <StackPanel Orientation="Horizontal">
                         <TextBlock Name="StatusBar_RightSide_LastSaved"

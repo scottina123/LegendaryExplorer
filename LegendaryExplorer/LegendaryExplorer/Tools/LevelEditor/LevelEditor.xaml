@@ -474,6 +474,7 @@
                 <StatusBarItem>
                     <TextBlock x:Name="StatusBar_LeftMostText" Text="Select package file to load"/>
                 </StatusBarItem>
+                <sharedToolControls:PackageMountWarning Package="{Binding Pcc}" />
                 <StatusBarItem HorizontalAlignment="Right" Visibility="{Binding Pcc, Converter={StaticResource NullVisibilityConverter}}">
                     <StackPanel Orientation="Horizontal">
                         <TextBlock Name="StatusBar_RightSide_LastSaved" Text="{Binding Pcc.LastSaved, StringFormat='Last saved at {0}'}" Foreground="Gray"/>

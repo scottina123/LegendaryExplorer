@@ -106,6 +106,7 @@
                 <StatusBarItem Padding="0">
                     <TextBlock Name="StatusBar_LeftMostText" Text="{Binding TaskbarText}"/>
                 </StatusBarItem>
+                <sharedToolControls:PackageMountWarning Package="{Binding Pcc}" />
                 <StatusBarItem Visibility="{Binding AudioFileLoaded,Converter={StaticResource BoolToVisibilityConverter}}" Padding="4, 0">
                     <TextBlock Name="StatusBar_ItemsCount">- <Run Text="{Binding BindedItemsList.BindableCount, Mode=OneWay}"/> items</TextBlock>
                 </StatusBarItem>

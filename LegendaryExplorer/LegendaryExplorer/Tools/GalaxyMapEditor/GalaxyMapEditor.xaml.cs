@@ -1697,6 +1697,7 @@ public partial class GalaxyMapEditor : WPFBase, ISceneRenderContextConfigurable,
 
             _filePath = Path.GetFullPath(path);
             _openPackage = MEPackageHandler.OpenMEPackage(_filePath, this);
+            PackageMountStatusIndicator.Package = _openPackage;
             Game = _openPackage.Game;
 
             var galaxyObjects = DiscoverGalaxyMapObjects(_openPackage);
@@ -1781,6 +1782,7 @@ public partial class GalaxyMapEditor : WPFBase, ISceneRenderContextConfigurable,
         _galaxyBgPackage?.Release(null);
         _galaxyBgPackage = null;
 
+        PackageMountStatusIndicator.Package = null;
         if (_openPackage is not null)
         {
             _openPackage.Release(this);
