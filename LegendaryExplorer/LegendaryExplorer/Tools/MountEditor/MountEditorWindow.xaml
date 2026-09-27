@@ -21,7 +21,16 @@
                 <TextBlock Text="DLC TLK ID"/>
                 <TextBlock Text="{Binding CurrentTLKIDString}" FontStyle="Italic" Margin="5,0,0,0"/>
             </StackPanel>
-            <xctk:WatermarkTextBox Watermark="TLK ID" PreviewTextInput="PreviewIntegerInput" Name="TLKID_TextBox" TextChanged="TLKID_TextChanged" ToolTip="The TLK value of this string is displayed to the user if DLC authorization fails.&#10;It should always be the human readable name of the mod."/>
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <xctk:WatermarkTextBox Watermark="TLK ID" PreviewTextInput="PreviewIntegerInput" Name="TLKID_TextBox" TextChanged="TLKID_TextChanged" ToolTip="The TLK value of this string is displayed to the user if DLC authorization fails.&#10;It should always be the human readable name of the mod."/>
+                <Button Grid.Column="1" Content="..." Width="28" Margin="6,0,0,0"
+                        Click="FindTlkText_Click" AutomationProperties.Name="Pick DLC TLK string reference"
+                        ToolTip="Find a StringRef by ID or text in the loaded TLKs for the selected game"/>
+            </Grid>
             <TextBlock Text="DLC Mount Flags" Margin="0,5,0,0"/>
             <xctk:CheckComboBox Name="MountFlagsComboBox" IsEditable="False" Delimiter=" " VerticalAlignment="Center"
                                 ItemsSource="{Binding MountOptions}"

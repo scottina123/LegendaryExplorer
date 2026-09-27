@@ -6,6 +6,7 @@ using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using LegendaryExplorer.Misc;
 using LegendaryExplorer.SharedUI.Bases;
 using LegendaryExplorer.Tools.TlkManagerNS;
 using LegendaryExplorerCore.GameFilesystem;
@@ -259,6 +260,16 @@ namespace LegendaryExplorer.Tools.MountEditor
                 }
             }
             e.Handled = true;
+        }
+
+        private void FindTlkText_Click(object sender, RoutedEventArgs e)
+        {
+            if (TlkStringRefSelector.SelectStringRef(this, SelectedGame.Game) is int stringRef)
+            {
+                TLKID_TextBox.Text = stringRef.ToString();
+                TLKID_TextBox.CaretIndex = TLKID_TextBox.Text.Length;
+                TLKID_TextBox.Focus();
+            }
         }
 
         private void TLKID_TextChanged(object sender, TextChangedEventArgs e)
