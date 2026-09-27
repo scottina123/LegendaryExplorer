@@ -25,11 +25,16 @@ internal sealed partial class NameTlkLookup(Func<int, string> resolveStringRef)
     [GeneratedRegex(@"(?:^|[_:.])VO_(?<id>[0-9]+)(?=[_,.]|$)|(?:^|[_:,])(?<id>[0-9]+)_[fm](?=[_,.]|$)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex DialogueNamePattern();
 
+    public static int? GetStringRef(string name)
+    {
+        Match match = DialogueNamePattern().Match(name);
+        return match.Success && int.TryParse(match.Groups["id"].Value, out int id) && id > 0 ? id : null;
+    }
+
     public IndexedName CreateName(int index, string name)
     {
         string text = null;
-        Match match = DialogueNamePattern().Match(name);
-        if (match.Success && int.TryParse(match.Groups["id"].Value, out int id) && id > 0)
+        if (GetStringRef(name) is int id)
         {
             if (!_resolvedText.TryGetValue(id, out text))
             {

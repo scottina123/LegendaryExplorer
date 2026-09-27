@@ -68,6 +68,26 @@ namespace LegendaryExplorer.Tools.Soundplorer
             set => SetProperty(ref _displayString, value);
         }
 
+        private string _tlkString;
+        public string TLKString
+        {
+            get => _tlkString;
+            set => SetProperty(ref _tlkString, value);
+        }
+
+        public int? TLKStringRef { get; set; }
+
+        internal bool MatchesTLKSearch(string searchText)
+        {
+            if (string.IsNullOrWhiteSpace(searchText))
+                return false;
+
+            searchText = searchText.Trim();
+            return int.TryParse(searchText, out int stringRef)
+                ? TLKStringRef == stringRef
+                : TLKString?.Contains(searchText, StringComparison.InvariantCultureIgnoreCase) == true;
+        }
+
         public AFCFileEntry(string afcpath, int offset, int size, short wwiseVersion, Endian endian)
         {
             Endian = endian;
@@ -88,7 +108,7 @@ namespace LegendaryExplorer.Tools.Soundplorer
 
         public void LoadData()
         {
-            using FileStream _rawRiff = new FileStream(AFCPath, FileMode.Open);
+            using FileStream _rawRiff = File.OpenRead(AFCPath);
             EndianReader reader = new EndianReader(_rawRiff) { Endian = Endian };
             reader.Position = Offset;
             //Parse RIFF header a bit
@@ -168,7 +188,7 @@ namespace LegendaryExplorer.Tools.Soundplorer
 
         public bool IsLE()
         {
-            using FileStream _rawRiff = new FileStream(AFCPath, FileMode.Open);
+            using FileStream _rawRiff = File.OpenRead(AFCPath);
             EndianReader reader = new EndianReader(_rawRiff) { Endian = Endian };
             reader.Position = Offset;
             //Parse RIFF header a bit

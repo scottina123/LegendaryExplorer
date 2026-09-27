@@ -115,35 +115,51 @@ namespace LegendaryExplorer.Tools.Soundplorer
             }
         }
 
-        private void FindWwiseStreamCommandBinding_CanExecute(object sender, CanExecuteRoutedEventArgs e)
+        private void FindAudioByTLKCommandBinding_CanExecute(object sender, CanExecuteRoutedEventArgs e)
         {
-            e.CanExecute = Pcc != null && BindedItemsList.OfType<SoundplorerExport>().Any(x => x.Export.ClassName == "WwiseStream");
+            e.CanExecute = Pcc != null && BindedItemsList.OfType<SoundplorerExport>().Any(x => x.Export.ClassName == "WwiseStream")
+                           || LoadedAFCFile != null && !IsBusyTaskbar && BindedItemsList.OfType<AFCFileEntry>().Any();
         }
 
-        private void FindWwiseStreamCommandBinding_Executed(object sender, ExecutedRoutedEventArgs e)
+        private void FindAudioByTLKCommandBinding_Executed(object sender, ExecutedRoutedEventArgs e)
         {
-            string searchText = PromptDialog.Prompt(this, "Enter a TLK string ID or text:", "Find WwiseStream by TLK", selectText: true);
-            if (searchText is null)
+            string searchText = PromptDialog.Prompt(this, "Enter a TLK string ID or text:", "Find audio by TLK", selectText: true);
+            if (string.IsNullOrWhiteSpace(searchText))
             {
                 return;
             }
+            searchText = searchText.Trim();
 
-            IReadOnlyList<int> stringRefs = TlkStringRefSelector.FindStringRefs(Pcc, searchText);
-            if (stringRefs.Count == 0)
+            object match;
+            if (LoadedAFCFile != null)
             {
-                MessageBox.Show(this, "That text was not found in any loaded TLK for this game.", "TLK Text Not Found",
-                    MessageBoxButton.OK, MessageBoxImage.Information);
-                return;
+                match = BindedItemsList.OfType<AFCFileEntry>().FirstOrDefault(entry => entry.MatchesTLKSearch(searchText));
+                if (match is null)
+                {
+                    MessageBox.Show(this, "No AFC entry matching that TLK ID or text was found. Entries need a matching package reference for their TLK ID, and an available TLK for text searches.", "AFC Entry Not Found",
+                        MessageBoxButton.OK, MessageBoxImage.Information);
+                    return;
+                }
             }
-
-            SoundplorerExport match = BindedItemsList.OfType<SoundplorerExport>().FirstOrDefault(x =>
-                x.Export.ClassName == "WwiseStream" &&
-                x.Export.ObjectName.Name.Split('_', ',').Any(part => int.TryParse(part, out int parsed) && stringRefs.Contains(parsed)));
-            if (match is null)
+            else
             {
-                MessageBox.Show(this, "No WwiseStream matching that TLK string was found in this package.", "WwiseStream Not Found",
-                    MessageBoxButton.OK, MessageBoxImage.Information);
-                return;
+                IReadOnlyList<int> stringRefs = TlkStringRefSelector.FindStringRefs(Pcc, searchText);
+                if (stringRefs.Count == 0)
+                {
+                    MessageBox.Show(this, "That text was not found in any loaded TLK for this game.", "TLK Text Not Found",
+                        MessageBoxButton.OK, MessageBoxImage.Information);
+                    return;
+                }
+
+                match = BindedItemsList.OfType<SoundplorerExport>().FirstOrDefault(x =>
+                    x.Export.ClassName == "WwiseStream" &&
+                    x.Export.ObjectName.Name.Split('_', ',').Any(part => int.TryParse(part, out int parsed) && stringRefs.Contains(parsed)));
+                if (match is null)
+                {
+                    MessageBox.Show(this, "No WwiseStream matching that TLK string was found in this package.", "WwiseStream Not Found",
+                        MessageBoxButton.OK, MessageBoxImage.Information);
+                    return;
+                }
             }
 
             SoundExports_ListBox.SelectedItem = match;
@@ -231,6 +247,15 @@ namespace LegendaryExplorer.Tools.Soundplorer
 
         private void LoadAFCFile_Completed(object sender, RunWorkerCompletedEventArgs e)
         {
+            if (e.Cancelled || ((BackgroundWorker)sender).CancellationPending)
+                return;
+            if (e.Error != null)
+            {
+                IsBusyTaskbar = false;
+                TaskbarText = "Unable to load AFC";
+                MessageBox.Show(this, "Unable to load AFC:\n" + e.Error.Message);
+                return;
+            }
             if (e.Result is List<AFCFileEntry> result)
             {
                 BindedItemsList.AddRange(result);
@@ -246,8 +271,10 @@ namespace LegendaryExplorer.Tools.Soundplorer
 
         private void LoadAFCFile(object sender, DoWorkEventArgs e)
         {
+            var worker = (BackgroundWorker)sender;
+            string afcPath = (string)e.Argument;
             var entries = new List<AFCFileEntry>();
-            using (FileStream fileStream = new((string)e.Argument, FileMode.Open, FileAccess.Read))
+            using (FileStream fileStream = new(afcPath, FileMode.Open, FileAccess.Read))
             {
                 // Get endianness
                 Endian? endianness = null;
@@ -272,8 +299,13 @@ namespace LegendaryExplorer.Tools.Soundplorer
 
                 while (fileStream.Position < fileStream.Length - 4)
                 {
+                    if (worker.CancellationPending)
+                    {
+                        e.Cancel = true;
+                        return;
+                    }
                     int offset = (int)fileStream.Position;
-                    TaskbarText = $"Loading AFC: {Path.GetFileName(LoadedAFCFile)} ({(int)((fileStream.Position * 100.0) / fileStream.Length)}%)";
+                    TaskbarText = $"Loading AFC: {Path.GetFileName(afcPath)} ({(int)((fileStream.Position * 100.0) / fileStream.Length)}%)";
 
                     string readStr = fileStream.ReadStringLatin1(4);
                     if (readStr != "RIFF" && readStr != "RIFX")
@@ -291,7 +323,7 @@ namespace LegendaryExplorer.Tools.Soundplorer
 
                     fileStream.Seek(size - 10, SeekOrigin.Current);
 
-                    var entry = new AFCFileEntry(LoadedAFCFile, offset, size + 8, wwiseVersionMaybe, reader.Endian);
+                    var entry = new AFCFileEntry(afcPath, offset, size + 8, wwiseVersionMaybe, reader.Endian);
                     entries.Add(entry);
                 }
             }
@@ -349,16 +381,17 @@ namespace LegendaryExplorer.Tools.Soundplorer
 
         private void GetStreamTimes(object sender, DoWorkEventArgs e)
         {
+            var worker = (BackgroundWorker)sender;
             var ExportsToLoad = (List<object>)e.Argument;
             int i = 0;
             foreach (object se in ExportsToLoad)
             {
-                if (backgroundScanner.CancellationPending)
+                if (worker.CancellationPending)
                 {
                     e.Cancel = true;
                     return;
                 }
-                backgroundScanner.ReportProgress((int)((i * 100.0) / BindedItemsList.Count));
+                worker.ReportProgress((int)((i * 100.0) / ExportsToLoad.Count));
                 //Debug.WriteLine("Getting time for " + se.Export.UIndex);
                 switch (se)
                 {
@@ -374,6 +407,11 @@ namespace LegendaryExplorer.Tools.Soundplorer
                 }
                 i++;
             }
+
+            var afcEntries = ExportsToLoad.OfType<AFCFileEntry>().ToList();
+            AFCTlkResolver.Resolve(afcEntries, Settings.Global_TLK_Language,
+                () => worker.CancellationPending, status => TaskbarText = status);
+            e.Cancel = worker.CancellationPending;
         }
 
         private async void LoadObjects(List<SoundplorerExport> exportsToReload = null)
@@ -423,8 +461,16 @@ namespace LegendaryExplorer.Tools.Soundplorer
 
         private void GetStreamTimes_Completed(object sender, RunWorkerCompletedEventArgs e)
         {
+            if (e.Cancelled)
+                return;
             TaskbarText = Path.GetFileName(LoadedISBFile ?? LoadedAFCFile ?? Pcc?.FilePath);
+            if (LoadedAFCFile != null)
+            {
+                var entries = BindedItemsList.OfType<AFCFileEntry>().ToList();
+                TaskbarText += $" — TLK text found for {entries.Count(entry => entry.TLKString != null)}/{entries.Count} entries";
+            }
             IsBusyTaskbar = false;
+            CommandManager.InvalidateRequerySuggested();
         }
 
         private async void SaveCommandBinding_Executed(object sender, ExecutedRoutedEventArgs e)
