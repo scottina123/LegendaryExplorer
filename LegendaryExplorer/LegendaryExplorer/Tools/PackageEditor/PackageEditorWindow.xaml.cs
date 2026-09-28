@@ -410,7 +410,11 @@ namespace LegendaryExplorer.Tools.PackageEditor
         public string StringRefSearchText
         {
             get => _stringRefSearchText;
-            set => SetProperty(ref _stringRefSearchText, value);
+            set
+            {
+                if (SetProperty(ref _stringRefSearchText, value))
+                    ScheduleLiveFilter();
+            }
         }
 
         public double StringRefSearchBoxWidth
@@ -5825,7 +5829,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
 
         public PackageEditorWindow() : this(submitTelemetry: true) { }
 
-        public PackageEditorWindow(bool submitTelemetry = true) : base("Package Editor", submitTelemetry)
+        public PackageEditorWindow(bool submitTelemetry = true, bool enableRecents = true) : base("Package Editor", submitTelemetry)
         {
             CurrentView = CurrentViewMode.Tree;
             LoadCommands();
@@ -5871,9 +5875,18 @@ namespace LegendaryExplorer.Tools.PackageEditor
             InterpreterTab_Interpreter.HideHexBox = Settings.PackageEditor_HideInterpreterHexBox;
             InterpreterTab_Interpreter.ToggleHexbox_Button.Visibility = Visibility.Visible;
 
-            RecentsController.InitRecentControl(Toolname, Recents_MenuItem, fileName => LoadFile(fileName));
+            if (enableRecents)
+                RecentsController.InitRecentControl(Toolname, Recents_MenuItem, fileName => LoadFile(fileName));
             TLKManagerWPF.StaticPropertyChanged += TlkManager_StaticPropertyChanged;
-            Closed += (_, _) => TLKManagerWPF.StaticPropertyChanged -= TlkManager_StaticPropertyChanged;
+            _liveFilteringInitialized = true;
+            Settings.StaticPropertyChanged += LiveFilterSettingChanged;
+            Closed += (_, _) =>
+            {
+                _liveFilteringInitialized = false;
+                CancelLiveFilter();
+                Settings.StaticPropertyChanged -= LiveFilterSettingChanged;
+                TLKManagerWPF.StaticPropertyChanged -= TlkManager_StaticPropertyChanged;
+            };
         }
 
         /// <summary>
@@ -5987,6 +6000,9 @@ namespace LegendaryExplorer.Tools.PackageEditor
         private void preloadPackage(string loadingName, long loadingSize,
             bool preserveExistingTreeUntilLoaded = false)
         {
+            CancelLiveFilter();
+            LiveFilterMatches = null;
+            ApplyTreeViewEditedFilter();
             CancelEntrySearch();
             CancelStringRefSearch();
             CancelPendingStringRefNavigation();
@@ -6046,6 +6062,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
             {
                 IsBusy = false;
             }
+            ScheduleLiveFilter();
         }
 
         private List<TreeViewEntry> InitializeTreeViewBackground()
@@ -6152,6 +6169,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
                 LeftSide_ListView.Visibility = Visibility.Visible;
                 LeftSide_TreeView.Visibility = Visibility.Collapsed;
             }
+            ScheduleLiveFilter();
         }
 
         public void InitStuff()
@@ -6267,6 +6285,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
 
         public override void HandleUpdate(List<PackageUpdate> updates)
         {
+            ScheduleLiveFilter();
             int selectedEditorTabIndex = EditorTabs?.SelectedIndex ?? -1;
 
             List<PackageChange> changes = updates.ConvertAll(x => x.Change);
@@ -6497,6 +6516,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
                 var selectedIndices = LeftSide_ListView.SelectedItems.OfType<IndexedName>()
                     .Select(name => name.Index).ToList();
                 RefreshNames();
+                ScheduleLiveFilter();
                 if (CurrentView == CurrentViewMode.Names)
                 {
                     LeftSideList_ItemsSource.ReplaceAll(NamesList);
@@ -7207,37 +7227,43 @@ namespace LegendaryExplorer.Tools.PackageEditor
             foreach (ExportEntry export in package.Exports)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                try
-                {
-                    CollectDerivedStringRefUsages(export, results, searchTerm, exactStringRef, resolvedTextCache, cancellationToken);
-                }
-                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-                {
-                    throw;
-                }
-                catch
-                {
-                    // Ignore exports that fail to parse so search can continue through the package.
-                }
-
-                try
-                {
-                    CollectStringRefUsages(export.GetProperties(), export, results, searchTerm, exactStringRef, string.Empty, resolvedTextCache, cancellationToken);
-                }
-                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-                {
-                    throw;
-                }
-                catch
-                {
-                    // Ignore exports that fail to parse so search can continue through the package.
-                }
+                CollectExportStringRefUsages(export, results, searchTerm, exactStringRef, resolvedTextCache, cancellationToken);
             }
 
             return results
                 .OrderBy(result => result.Entry?.UIndex ?? int.MaxValue)
                 .ThenBy(result => result.Message, StringComparer.OrdinalIgnoreCase)
                 .ToList();
+        }
+
+        private void CollectExportStringRefUsages(ExportEntry export, List<EntryStringPair> results,
+            string searchTerm, int? exactStringRef, Dictionary<int, string> resolvedTextCache, CancellationToken cancellationToken)
+        {
+            try
+            {
+                CollectDerivedStringRefUsages(export, results, searchTerm, exactStringRef, resolvedTextCache, cancellationToken);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch
+            {
+                // Ignore exports that fail to parse so search can continue through the package.
+            }
+
+            try
+            {
+                CollectStringRefUsages(export.GetProperties(), export, results, searchTerm, exactStringRef, string.Empty, resolvedTextCache, cancellationToken);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch
+            {
+                // Ignore exports that fail to parse so search can continue through the package.
+            }
         }
 
         private void CollectStringRefUsages(
@@ -7914,7 +7940,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
                             return;
                         }
 
-                        if (NameTlkLookup.MatchesSearch(NamesList[i], searchTerm))
+                        if (MatchesLiveFilter(NamesList[i]) && NameTlkLookup.MatchesSearch(NamesList[i], searchTerm))
                         {
                             LeftSide_ListView.SelectedIndex = i;
                             return;
@@ -7936,7 +7962,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
                             return;
                         }
 
-                        if (package.Imports[i].ObjectName.Name.Contains(searchTerm, StringComparison.InvariantCultureIgnoreCase))
+                        if (MatchesLiveFilter(package.Imports[i]) && package.Imports[i].ObjectName.Name.Contains(searchTerm, StringComparison.InvariantCultureIgnoreCase))
                         {
                             LeftSide_ListView.SelectedIndex = i;
                             return;
@@ -7958,7 +7984,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
                             return;
                         }
 
-                        if (package.Exports[i].ObjectName.Name.Contains(searchTerm, StringComparison.InvariantCultureIgnoreCase))
+                        if (MatchesLiveFilter(package.Exports[i]) && package.Exports[i].ObjectName.Name.Contains(searchTerm, StringComparison.InvariantCultureIgnoreCase))
                         {
                             LeftSide_ListView.SelectedIndex = i;
                             return;
@@ -7972,7 +7998,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
                     TreeViewEntry matchingNode = await FindNextTreeNodeAsync(
                         selectedNode,
                         reverseSearch,
-                        node => node.Entry?.ObjectName.Instanced.Contains(
+                        node => MatchesLiveFilter(node.Entry) && node.Entry?.ObjectName.Instanced.Contains(
                             searchTerm,
                             StringComparison.InvariantCultureIgnoreCase) == true,
                         package,
@@ -8041,6 +8067,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
         {
             if (!e.Cancel)
             {
+                CancelLiveFilter();
                 CancelEntrySearch();
                 CancelStringRefSearch();
                 CancelPendingStringRefNavigation();
@@ -8077,6 +8104,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
 
         private void ResetTreeView()
         {
+            _expansionBeforeLiveFilter = null;
             ClearTreeMultiSelection();
             _treeSelectionAnchor = null;
             if (AllTreeViewNodesX.Count > 0)
@@ -8891,28 +8919,28 @@ namespace LegendaryExplorer.Tools.PackageEditor
                 return;
             }
 
+            PreserveLiveFilterExpansion();
             UpdateTreeViewEditedVisibility(AllTreeViewNodesX[0], isRoot: true);
         }
 
         private bool UpdateTreeViewEditedVisibility(TreeViewEntry node, bool isRoot = false)
         {
-            bool hasVisibleEditedDescendant = false;
+            bool hasVisibleDescendant = false;
             foreach (TreeViewEntry child in node.Sublinks)
             {
-                hasVisibleEditedDescendant |= UpdateTreeViewEditedVisibility(child);
+                hasVisibleDescendant |= UpdateTreeViewEditedVisibility(child);
             }
 
             bool isEditedEntry = IsEditedTreeEntry(node.Entry);
 
-            bool isVisible = !ShowOnlyEditedTreeViewItems
-                             || isRoot
-                             || isEditedEntry
-                             || hasVisibleEditedDescendant;
+            bool isVisible = isRoot
+                             || ((!ShowOnlyEditedTreeViewItems || isEditedEntry) && MatchesLiveFilter(node.Entry))
+                             || hasVisibleDescendant;
             node.IsVisibleInTree = isVisible;
 
-            if (ShowOnlyEditedTreeViewItems)
+            if (ShowOnlyEditedTreeViewItems || LiveFilterMatches != null)
             {
-                node.IsExpanded = isRoot || hasVisibleEditedDescendant;
+                node.IsExpanded = isRoot || hasVisibleDescendant;
             }
 
             return isVisible;

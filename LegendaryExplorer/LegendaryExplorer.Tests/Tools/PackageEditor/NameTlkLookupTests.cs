@@ -182,7 +182,7 @@ public class NameTlkLookupTests
         AddLocalTlk(package, "I should go.");
         int femaleIndex = package.FindNameOrAdd("VO_692097_f_Play");
         int maleIndex = package.FindNameOrAdd("VO_692097_m_Play");
-        var window = new PackageEditorWindow(submitTelemetry: false);
+        var window = new PackageEditorWindow(submitTelemetry: false, enableRecents: false);
         try
         {
             typeof(WPFBase).GetMethod("RegisterPackage", BindingFlags.Instance | BindingFlags.NonPublic)!

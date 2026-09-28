@@ -34,6 +34,7 @@
         Closing="PackageEditorWPF_Closing"
         d:DataContext="{Binding RelativeSource={RelativeSource Self}}">
     <Window.Resources>
+        <converters:PackageEditorLiveFilterVisibilityConverter x:Key="LiveFilterVisibilityConverter"/>
         <ItemsPanelTemplate x:Key="VSP">
             <VirtualizingStackPanel/>
         </ItemsPanelTemplate>
@@ -471,10 +472,10 @@
                         </xctk:SplitButton>
                     </StackPanel>
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="5,0,0,0" Height="24">
-                        <controls:WatermarkTextBox Watermark="{Binding SearchHintText}" x:Name="Search_TextBox" Width="110" KeyUp="Searchbox_OnKeyUpHandler" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}" VerticalContentAlignment="Center" ToolTip="Search names (including resolved TLK text in Names view). Press CTRL+F to jump to this box; Shift+Enter searches backwards."/>
+                        <controls:WatermarkTextBox Watermark="{Binding SearchHintText}" x:Name="Search_TextBox" Width="110" KeyUp="Searchbox_OnKeyUpHandler" TextChanged="LiveFilter_TextChanged" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}" VerticalContentAlignment="Center" ToolTip="Search names (including resolved TLK text in Names view). Press CTRL+F to jump to this box; Shift+Enter searches backwards."/>
                         <Button Content="Search" Click="SearchButton_Clicked" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}" Style="{StaticResource {x:Type Button}}"  Padding="10,0" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
                     </StackPanel>
-                    <controls:WatermarkTextBox Watermark="{Binding GotoHintText}" x:Name="Goto_TextBox" Width="70" Margin="5,0,0,0" KeyUp="Goto_TextBox_KeyUp" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}"  VerticalContentAlignment="Center" ToolTip="Press CTRL+G to automatically jump to this box"/>
+                    <controls:WatermarkTextBox Watermark="{Binding GotoHintText}" x:Name="Goto_TextBox" Width="70" Margin="5,0,0,0" KeyUp="Goto_TextBox_KeyUp" TextChanged="LiveFilter_TextChanged" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}"  VerticalContentAlignment="Center" ToolTip="Press CTRL+G to automatically jump to this box. Live filtering matches the exact UIndex (or name index in Names view)."/>
                     <Button Content="Goto #" Click="GotoButton_Clicked" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}" Style="{StaticResource {x:Type Button}}" Padding="7,0" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
                     <controls:WatermarkTextBox Watermark="StringRef / text" Width="{Binding StringRefSearchBoxWidth}" Margin="5,0,0,0" Text="{Binding StringRefSearchText, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}" VerticalContentAlignment="Center" ToolTip="Search this package for StringRef values or resolved TLK text" ToolBar.OverflowMode="Never">
                         <controls:WatermarkTextBox.InputBindings>
@@ -482,11 +483,27 @@
                         </controls:WatermarkTextBox.InputBindings>
                     </controls:WatermarkTextBox>
                     <Button Content="Find strref" Command="{Binding SearchStringRefsCommand}" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}" Style="{StaticResource {x:Type Button}}" Padding="7,0" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}" ToolBar.OverflowMode="Never"/>
+                    <CheckBox x:Name="LiveFiltering_CheckBox" Content="Live filtering" Margin="7,0,5,0" VerticalAlignment="Center"
+                              IsChecked="{Binding Path=(appsettings:Settings.PackageEditor_LiveFiltering), Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                              ToolTip="Filter the tree or list as you type in Object name, UIndex, or StringRef / text. Filled fields are combined. Clear the fields or uncheck to show all entries. This choice is remembered."
+                              ToolBar.OverflowMode="Never"/>
                     <Button Content="Open linked" Command="{Binding OpenHighestMountedLinkedFileCommand}" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}" Style="{StaticResource {x:Type Button}}" Padding="7,0" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}" ToolTip="Open the highest mounted linked LOC file when viewing a base package, or the highest mounted base package when viewing a LOC file."/>
                     <!--This is outside so that it doesn't hide the whole box if it is too long to show -->
                     <TextBlock Name="Goto_Preview_TextBox" VerticalAlignment="Center" Foreground="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}" Margin="5,0,0,0"/>
                 </ToolBar>
                 <controls:ListBoxScroll x:Name="LeftSide_ListView" Grid.Column="0" Grid.Row="1" IsTextSearchEnabled="True" SelectionChanged="LeftSide_SelectedItemChanged" PreviewMouseRightButtonDown="LeftSide_ListView_PreviewMouseRightButtonDown" SelectionMode="Extended" ItemsSource="{Binding LeftSideList_ItemsSource}" VirtualizingStackPanel.IsVirtualizing="True" VirtualizingStackPanel.VirtualizationMode="Recycling" AlternationCount="2" HorizontalContentAlignment="Stretch" Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}">
+                    <controls:ListBoxScroll.ItemContainerStyle>
+                        <Style TargetType="{x:Type ListBoxItem}" BasedOn="{StaticResource {x:Type ListBoxItem}}">
+                            <Setter Property="Visibility">
+                                <Setter.Value>
+                                    <MultiBinding Converter="{StaticResource LiveFilterVisibilityConverter}">
+                                        <Binding/>
+                                        <Binding Path="Data.LiveFilterMatches" Source="{StaticResource bindingProxy}"/>
+                                    </MultiBinding>
+                                </Setter.Value>
+                            </Setter>
+                        </Style>
+                    </controls:ListBoxScroll.ItemContainerStyle>
                     <controls:ListBoxScroll.Resources>
                         <DataTemplate DataType="{x:Type SharedUI:IndexedName}">
                             <Grid ContextMenu="{StaticResource EntryContextMenu}" Background="Transparent">

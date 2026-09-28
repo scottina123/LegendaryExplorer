@@ -16,6 +16,7 @@
   <setting name="GestureAnimationImporter_FavoriteTracks" type="string" defaultvalue=""/>
 
   <!-- Package Editor specific settings -->
+  <setting name="PackageEditor_LiveFiltering" type="bool" defaultvalue="false"/>
   <setting name="PackageEditor_HideInterpreterHexBox" type="bool" defaultvalue="true" category="Package Editor"
            friendlyName="Hide Properties Hex Box"/>
   <setting name="PackageEditor_TouchComfyMode" type="bool" defaultvalue="false" category="Package Editor"

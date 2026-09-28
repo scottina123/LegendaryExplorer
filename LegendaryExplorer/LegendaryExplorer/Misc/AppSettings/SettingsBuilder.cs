@@ -37,6 +37,11 @@ namespace LegendaryExplorer.Misc.AppSettings
             get => _gestureanimationimporter_favoritetracks;
             set => SetProperty(ref _gestureanimationimporter_favoritetracks, value);
         }
+        private static bool _packageeditor_livefiltering = false;
+        public static bool PackageEditor_LiveFiltering {
+            get => _packageeditor_livefiltering;
+            set => SetProperty(ref _packageeditor_livefiltering, value);
+        }
         private static bool _packageeditor_hideinterpreterhexbox = true;
         public static bool PackageEditor_HideInterpreterHexBox {
             get => _packageeditor_hideinterpreterhexbox;
@@ -636,6 +641,7 @@ namespace LegendaryExplorer.Misc.AppSettings
             MainWindow_Favorites = TryGetSetting(settingsJson, "mainwindow_favorites", "");
             MainWindow_CompletedInitialSetup = TryGetSetting(settingsJson, "mainwindow_completedinitialsetup", false);
             GestureAnimationImporter_FavoriteTracks = TryGetSetting(settingsJson, "gestureanimationimporter_favoritetracks", "");
+            PackageEditor_LiveFiltering = TryGetSetting(settingsJson, "packageeditor_livefiltering", false);
             PackageEditor_HideInterpreterHexBox = TryGetSetting(settingsJson, "packageeditor_hideinterpreterhexbox", true);
             PackageEditor_TouchComfyMode = TryGetSetting(settingsJson, "packageeditor_touchcomfymode", false);
             PackageEditor_ShowImpExpPrefix = TryGetSetting(settingsJson, "packageeditor_showimpexpprefix", true);
@@ -761,6 +767,7 @@ namespace LegendaryExplorer.Misc.AppSettings
             settingsJson["mainwindow_favorites"] = MainWindow_Favorites.ToString();
             settingsJson["mainwindow_completedinitialsetup"] = MainWindow_CompletedInitialSetup.ToString();
             settingsJson["gestureanimationimporter_favoritetracks"] = GestureAnimationImporter_FavoriteTracks.ToString();
+            settingsJson["packageeditor_livefiltering"] = PackageEditor_LiveFiltering.ToString();
             settingsJson["packageeditor_hideinterpreterhexbox"] = PackageEditor_HideInterpreterHexBox.ToString();
             settingsJson["packageeditor_touchcomfymode"] = PackageEditor_TouchComfyMode.ToString();
             settingsJson["packageeditor_showimpexpprefix"] = PackageEditor_ShowImpExpPrefix.ToString();

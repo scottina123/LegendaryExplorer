@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Globalization;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Windows;
@@ -13,6 +14,16 @@ using LegendaryExplorerCore.Unreal;
 
 namespace LegendaryExplorer.SharedUI.Converters
 {
+    public class PackageEditorLiveFilterVisibilityConverter : IMultiValueConverter
+    {
+        public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture) =>
+            values.Length > 1 && values[1] is IReadOnlySet<object> matches && !matches.Contains(values[0])
+                ? Visibility.Collapsed : Visibility.Visible;
+
+        public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture) =>
+            throw new NotSupportedException();
+    }
+
     [ValueConversion(typeof(PackageEditorWindow.CurrentViewMode), typeof(SolidColorBrush))]
     public class PackageEditorWindowActiveViewHigherlighterConverter : IValueConverter
     {
