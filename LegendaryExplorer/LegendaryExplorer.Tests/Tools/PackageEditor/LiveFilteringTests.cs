@@ -47,8 +47,12 @@ public class LiveFilteringTests
         using var package = MEPackageHandler.CreateMemoryEmptyPackage("LiveFiltering.pcc", MEGame.ME1);
         var parent = package.CreateExport("Parent", "Package", indexed: false);
         var matching = package.CreateExport("MatchingObject", "Object", parent, indexed: false);
+        matching.ObjectName = new NameReference("MatchingObject", 13);
         matching.WriteProperty(new StringRefProperty(692097, "Subtitle"));
         var sibling = package.CreateExport("OtherObject", "Object", parent, indexed: false);
+        sibling.ObjectName = new NameReference("OtherObject", 1);
+        var matchingImport = package.Imports[0];
+        matchingImport.ObjectName = new NameReference(matchingImport.ObjectName.Name, 13);
         var tlk = package.CreateExport("tlk", "BioTlkFile", indexed: false);
         var compressor = new HuffmanCompression();
         compressor.LoadInputData([new TLKStringRef(692097, "I should go.")]);
@@ -68,6 +72,7 @@ public class LiveFilteringTests
             parentNode.Sublinks.AddRange([matchNode, siblingNode]);
             window.AllTreeViewNodesX.Add(root);
             var search = (WatermarkTextBox)window.FindName("Search_TextBox");
+            var uiIndex = (WatermarkTextBox)window.FindName("ObjectUiIndex_TextBox");
             var index = (WatermarkTextBox)window.FindName("Goto_TextBox");
             var checkbox = (CheckBox)window.FindName("LiveFiltering_CheckBox");
             Flush();
@@ -79,7 +84,35 @@ public class LiveFilteringTests
             Assert.IsTrue(matchNode.IsVisibleInTree);
             Assert.IsFalse(siblingNode.IsVisibleInTree, "Typing must apply the filter automatically.");
 
+            search.Clear();
+            ((TextBox)uiIndex.FindName("PART_TextBox")).Text = " 13 ";
+            Pump(Task.Delay(350));
+            Assert.IsTrue(window.LiveFilterMatches.SetEquals([matching, matchingImport]),
+                "Object index must match Metadata's value on exports and imports, independently of UIndex.");
+            uiIndex.Text = "12";
+            Apply();
+            Assert.AreEqual(0, window.LiveFilterMatches.Count, "The displayed name suffix is one less than the Object index.");
+            uiIndex.Text = "1";
+            Apply();
+            Assert.IsTrue(window.LiveFilterMatches.SetEquals([sibling]), "Object index 1 must match the _0 suffix.");
+            uiIndex.Text = "0";
+            Apply();
+            Assert.IsTrue(window.LiveFilterMatches.Contains(parent), "Object index 0 must include unnumbered objects.");
+            Assert.IsFalse(window.LiveFilterMatches.Contains(sibling), "Object index 0 must exclude the _0 suffix.");
+            foreach (string invalidIndex in new[] { "-1", "not an index", "2147483648" })
+            {
+                uiIndex.Text = invalidIndex;
+                Apply();
+                Assert.AreEqual(0, window.LiveFilterMatches.Count);
+            }
+            uiIndex.Clear();
+            Assert.IsNull(window.LiveFilterMatches);
+
             search.Text = "  MATCHING  ";
+            uiIndex.Text = "0";
+            Apply();
+            Assert.AreEqual(0, window.LiveFilterMatches.Count, "Object name and Object index must both match.");
+            uiIndex.Text = "13";
             Apply();
             Assert.IsTrue(root.IsVisibleInTree && parentNode.IsVisibleInTree && parentNode.IsExpanded);
             Assert.IsTrue(matchNode.IsVisibleInTree);
@@ -100,6 +133,7 @@ public class LiveFilteringTests
 
             window.StringRefSearchText = null;
             search.Clear();
+            uiIndex.Clear();
             index.Text = package.Imports[0].UIndex.ToString();
             Apply();
             Assert.IsTrue(window.LiveFilterMatches.SetEquals([package.Imports[0]]), "Negative UIndices must match imports exactly.");
@@ -138,6 +172,31 @@ public class LiveFilteringTests
             Apply();
             Assert.IsNull(window.LiveFilterMatches, "Typing with live filtering disabled keeps the full view.");
 
+            // Search uses Metadata's object index with filtering off, including wraparound and backwards navigation.
+            typeof(PackageEditorWindow).GetField("SuppressSelectionEvent", BindingFlags.Instance | BindingFlags.NonPublic)!
+                .SetValue(window, true);
+            sibling.ObjectName = new NameReference("OtherObject", 13);
+            search.Clear();
+            uiIndex.Text = "13";
+            window.SelectedItem = parentNode;
+            Search(reverse: false);
+            Assert.AreSame(matchNode, window.SelectedItem);
+            Search(reverse: false);
+            Assert.AreSame(siblingNode, window.SelectedItem);
+            Search(reverse: false);
+            Assert.AreSame(matchNode, window.SelectedItem);
+            Search(reverse: true);
+            Assert.AreSame(siblingNode, window.SelectedItem);
+            search.Text = "matching";
+            Search(reverse: false);
+            Assert.AreSame(matchNode, window.SelectedItem);
+            uiIndex.Text = "0";
+            Search(reverse: false);
+            Assert.AreSame(matchNode, window.SelectedItem, "A mismatched Object index must not change selection.");
+            search.Clear();
+            Search(reverse: false);
+            Assert.AreSame(parentNode, window.SelectedItem, "Searching for Object index 0 must find unnumbered objects.");
+
             checkbox.IsChecked = true;
             Flush();
             search.Clear();
@@ -148,6 +207,8 @@ public class LiveFilteringTests
                 .SetValue(window, PackageEditorWindow.CurrentViewMode.Names);
             typeof(PackageEditorWindow).GetMethod("RefreshView", BindingFlags.Instance | BindingFlags.NonPublic)!
                 .Invoke(window, null);
+            Apply();
+            Assert.IsNull(window.LiveFilterMatches, "The Object index field must be ignored in Names view.");
             search.Text = "should go";
             Apply();
             var dialogueName = window.NamesList.Single(name => name.Name == "VO_692097_f_Play");
@@ -180,6 +241,9 @@ public class LiveFilteringTests
         }
 
         void Apply() => Pump(window.UpdateLiveFilterAsync(debounce: false));
+
+        void Search(bool reverse) => Pump((Task)typeof(PackageEditorWindow)
+            .GetMethod("SearchAsync", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(window, [reverse])!);
     }
 
     private static void Flush() => Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);

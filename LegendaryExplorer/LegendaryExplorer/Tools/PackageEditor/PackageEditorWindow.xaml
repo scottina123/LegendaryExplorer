@@ -473,6 +473,17 @@
                     </StackPanel>
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="5,0,0,0" Height="24">
                         <controls:WatermarkTextBox Watermark="{Binding SearchHintText}" x:Name="Search_TextBox" Width="110" KeyUp="Searchbox_OnKeyUpHandler" TextChanged="LiveFilter_TextChanged" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}" VerticalContentAlignment="Center" ToolTip="Search names (including resolved TLK text in Names view). Press CTRL+F to jump to this box; Shift+Enter searches backwards."/>
+                        <controls:WatermarkTextBox Watermark="Object index" x:Name="ObjectUiIndex_TextBox" Width="85" Margin="5,0,0,0" KeyUp="Searchbox_OnKeyUpHandler" TextChanged="LiveFilter_TextChanged" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}" VerticalContentAlignment="Center" ToolTip="Search the exact Object index shown in Metadata (for example, 4 for Object_3; 0 for an object without a numeric suffix). Leave Object name blank to search by Object index alone. Enter finds the next match; Shift+Enter searches backwards.">
+                            <controls:WatermarkTextBox.Style>
+                                <Style TargetType="{x:Type controls:WatermarkTextBox}">
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding CurrentView}" Value="Names">
+                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </controls:WatermarkTextBox.Style>
+                        </controls:WatermarkTextBox>
                         <Button Content="Search" Click="SearchButton_Clicked" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}" Style="{StaticResource {x:Type Button}}"  Padding="10,0" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
                     </StackPanel>
                     <controls:WatermarkTextBox Watermark="{Binding GotoHintText}" x:Name="Goto_TextBox" Width="70" Margin="5,0,0,0" KeyUp="Goto_TextBox_KeyUp" TextChanged="LiveFilter_TextChanged" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}"  VerticalContentAlignment="Center" ToolTip="Press CTRL+G to automatically jump to this box. Live filtering matches the exact UIndex (or name index in Names view)."/>
@@ -485,7 +496,7 @@
                     <Button Content="Find strref" Command="{Binding SearchStringRefsCommand}" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}" Style="{StaticResource {x:Type Button}}" Padding="7,0" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}" ToolBar.OverflowMode="Never"/>
                     <CheckBox x:Name="LiveFiltering_CheckBox" Content="Live filtering" Margin="7,0,5,0" VerticalAlignment="Center"
                               IsChecked="{Binding Path=(appsettings:Settings.PackageEditor_LiveFiltering), Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                              ToolTip="Filter the tree or list as you type in Object name, UIndex, or StringRef / text. Filled fields are combined. Clear the fields or uncheck to show all entries. This choice is remembered."
+                              ToolTip="Filter the tree or list as you type in Object name, Object index, UIndex, or StringRef / text. Filled fields are combined. Clear the fields or uncheck to show all entries. This choice is remembered."
                               ToolBar.OverflowMode="Never"/>
                     <Button Content="Open linked" Command="{Binding OpenHighestMountedLinkedFileCommand}" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}" Style="{StaticResource {x:Type Button}}" Padding="7,0" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}" ToolTip="Open the highest mounted linked LOC file when viewing a base package, or the highest mounted base package when viewing a LOC file."/>
                     <!--This is outside so that it doesn't hide the whole box if it is too long to show -->

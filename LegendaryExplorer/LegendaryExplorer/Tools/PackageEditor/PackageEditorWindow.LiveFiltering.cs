@@ -57,10 +57,11 @@ public partial class PackageEditorWindow
             return;
 
         string objectName = Search_TextBox.Text.Trim();
+        string uiIndexText = CurrentView == CurrentViewMode.Names ? string.Empty : ObjectUiIndex_TextBox.Text.Trim();
         string indexText = Goto_TextBox.Text.Trim();
         string stringRefText = StringRefSearchText?.Trim() ?? string.Empty;
         if (!Settings.PackageEditor_LiveFiltering || Pcc == null || IsLoadingFile
-            || (objectName.Length == 0 && indexText.Length == 0 && stringRefText.Length == 0))
+            || (objectName.Length == 0 && uiIndexText.Length == 0 && indexText.Length == 0 && stringRefText.Length == 0))
         {
             bool wasFiltering = LiveFilterMatches != null;
             LiveFilterMatches = null;
@@ -82,6 +83,7 @@ public partial class PackageEditorWindow
                 await Task.Delay(250, token);
 
             int? index = int.TryParse(indexText, out int parsedIndex) ? parsedIndex : null;
+            int? uiIndex = int.TryParse(uiIndexText, out int parsedUiIndex) ? parsedUiIndex : null;
             int? stringRef = int.TryParse(stringRefText, out int parsedStringRef) ? parsedStringRef : null;
             var matches = new HashSet<object>();
             var resolvedText = new Dictionary<int, string>();
@@ -109,6 +111,7 @@ public partial class PackageEditorWindow
                 else if (candidate is IEntry entry)
                 {
                     matchesQuery = (indexText.Length == 0 || entry.UIndex == index)
+                        && (uiIndexText.Length == 0 || (uiIndex.HasValue && MatchesObjectUiIndex(entry, uiIndex.Value)))
                         && entry.ObjectName.Instanced.Contains(objectName, StringComparison.InvariantCultureIgnoreCase);
                     if (matchesQuery && stringRefText.Length > 0)
                     {

@@ -7882,11 +7882,11 @@ namespace LegendaryExplorer.Tools.PackageEditor
         }
 
         /// <summary>
-        /// Takes the contents of the search box and finds the next instance of it.
+        /// Finds the next entry matching the object name and optional Metadata object index.
         /// </summary>
         private async Task SearchAsync(bool reverseSearch)
         {
-            if (Pcc == null || string.IsNullOrWhiteSpace(Search_TextBox.Text))
+            if (Pcc == null)
             {
                 return;
             }
@@ -7895,6 +7895,17 @@ namespace LegendaryExplorer.Tools.PackageEditor
             CurrentViewMode view = CurrentView;
             int start = LeftSide_ListView.SelectedIndex;
             string searchTerm = Search_TextBox.Text.Trim();
+            string uiIndexText = view == CurrentViewMode.Names ? string.Empty : ObjectUiIndex_TextBox.Text.Trim();
+            int? uiIndex = null;
+            if (uiIndexText.Length > 0)
+            {
+                if (!int.TryParse(uiIndexText, out int parsedUiIndex) || parsedUiIndex < 0)
+                    return;
+                uiIndex = parsedUiIndex;
+            }
+            if (searchTerm.Length == 0 && !uiIndex.HasValue)
+                return;
+
             CancellationTokenSource searchCancellation = TryBeginEntrySearch();
             if (searchCancellation is null)
             {
@@ -7962,7 +7973,9 @@ namespace LegendaryExplorer.Tools.PackageEditor
                             return;
                         }
 
-                        if (MatchesLiveFilter(package.Imports[i]) && package.Imports[i].ObjectName.Name.Contains(searchTerm, StringComparison.InvariantCultureIgnoreCase))
+                        if (MatchesLiveFilter(package.Imports[i])
+                            && (!uiIndex.HasValue || MatchesObjectUiIndex(package.Imports[i], uiIndex.Value))
+                            && package.Imports[i].ObjectName.Name.Contains(searchTerm, StringComparison.InvariantCultureIgnoreCase))
                         {
                             LeftSide_ListView.SelectedIndex = i;
                             return;
@@ -7984,7 +7997,9 @@ namespace LegendaryExplorer.Tools.PackageEditor
                             return;
                         }
 
-                        if (MatchesLiveFilter(package.Exports[i]) && package.Exports[i].ObjectName.Name.Contains(searchTerm, StringComparison.InvariantCultureIgnoreCase))
+                        if (MatchesLiveFilter(package.Exports[i])
+                            && (!uiIndex.HasValue || MatchesObjectUiIndex(package.Exports[i], uiIndex.Value))
+                            && package.Exports[i].ObjectName.Name.Contains(searchTerm, StringComparison.InvariantCultureIgnoreCase))
                         {
                             LeftSide_ListView.SelectedIndex = i;
                             return;
@@ -7998,9 +8013,11 @@ namespace LegendaryExplorer.Tools.PackageEditor
                     TreeViewEntry matchingNode = await FindNextTreeNodeAsync(
                         selectedNode,
                         reverseSearch,
-                        node => MatchesLiveFilter(node.Entry) && node.Entry?.ObjectName.Instanced.Contains(
+                        node => node.Entry != null && MatchesLiveFilter(node.Entry)
+                            && (!uiIndex.HasValue || MatchesObjectUiIndex(node.Entry, uiIndex.Value))
+                            && node.Entry.ObjectName.Instanced.Contains(
                             searchTerm,
-                            StringComparison.InvariantCultureIgnoreCase) == true,
+                            StringComparison.InvariantCultureIgnoreCase),
                         package,
                         view,
                         cancellationToken);
@@ -8018,6 +8035,9 @@ namespace LegendaryExplorer.Tools.PackageEditor
                 EndEntrySearch(searchCancellation);
             }
         }
+
+        private static bool MatchesObjectUiIndex(IEntry entry, int uiIndex) =>
+            entry.ObjectName.Number == uiIndex;
 
         private void Window_Drop(object sender, DragEventArgs e)
         {
