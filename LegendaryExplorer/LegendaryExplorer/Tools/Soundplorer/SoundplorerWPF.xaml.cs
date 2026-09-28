@@ -19,6 +19,7 @@ using LegendaryExplorer.SharedUI;
 using LegendaryExplorer.SharedUI.Bases;
 using LegendaryExplorer.SharedUI.Interfaces;
 using LegendaryExplorer.Misc.AppSettings;
+using LegendaryExplorer.Tools.PackageEditor;
 using LegendaryExplorer.UnrealExtensions;
 using LegendaryExplorer.UnrealExtensions.Classes;
 using LegendaryExplorer.UserControls.ExportLoaderControls;
@@ -51,6 +52,25 @@ namespace LegendaryExplorer.Tools.Soundplorer
 
         public bool AudioFileLoaded => Pcc != null || LoadedISBFile != null || LoadedAFCFile != null;
 
+        private string _tlkFilterText = string.Empty;
+        public string TLKFilterText
+        {
+            get => _tlkFilterText;
+            set
+            {
+                if (SetProperty(ref _tlkFilterText, value ?? string.Empty))
+                {
+                    OnPropertyChanged(nameof(HasTLKFilter));
+                    ApplyTLKFilter();
+                }
+            }
+        }
+
+        public bool HasTLKFilter => !string.IsNullOrWhiteSpace(TLKFilterText);
+
+        public bool CanFilterByTLK => Pcc != null && BindedItemsList.OfType<SoundplorerExport>().Any(x => x.Export.ClassName == "WwiseStream")
+                                      || LoadedAFCFile != null;
+
         private string _statusBarIDText;
         public string StatusBarIDText
         {
@@ -72,6 +92,7 @@ namespace LegendaryExplorer.Tools.Soundplorer
         {
             LoadCommands();
             InitializeComponent();
+            soundPanel.NavigationRequested += OpenExportInPackageEditor;
             RecentsController.InitRecentControl(Toolname, Recents_MenuItem, LoadFile);
         }
 
@@ -94,6 +115,25 @@ namespace LegendaryExplorer.Tools.Soundplorer
 
         private bool ExportIsSelected() => SoundExports_ListBox.SelectedItem is SoundplorerExport;
 
+        private void OpenInPackageEditor_Clicked(object sender, RoutedEventArgs e)
+        {
+            if (sender is MenuItem { DataContext: SoundplorerExport stream } && stream.Export.ClassName == "WwiseStream")
+            {
+                OpenExportInPackageEditor(stream.Export);
+            }
+        }
+
+        private static void OpenExportInPackageEditor(ExportEntry export)
+        {
+            if (export == null)
+                return;
+
+            var packageEditor = new PackageEditorWindow();
+            packageEditor.Show();
+            packageEditor.LoadPackage(export.FileRef, export.UIndex);
+            packageEditor.Activate();
+        }
+
         private void OpenCommandBinding_Executed(object sender, ExecutedRoutedEventArgs e)
         {
             OpenFileDialog d = new()
@@ -115,59 +155,64 @@ namespace LegendaryExplorer.Tools.Soundplorer
             }
         }
 
-        private void FindAudioByTLKCommandBinding_CanExecute(object sender, CanExecuteRoutedEventArgs e)
+        private void FilterAudioByTLKCommandBinding_CanExecute(object sender, CanExecuteRoutedEventArgs e)
         {
-            e.CanExecute = Pcc != null && BindedItemsList.OfType<SoundplorerExport>().Any(x => x.Export.ClassName == "WwiseStream")
-                           || LoadedAFCFile != null && !IsBusyTaskbar && BindedItemsList.OfType<AFCFileEntry>().Any();
+            e.CanExecute = CanFilterByTLK;
         }
 
-        private void FindAudioByTLKCommandBinding_Executed(object sender, ExecutedRoutedEventArgs e)
+        private void FilterAudioByTLKCommandBinding_Executed(object sender, ExecutedRoutedEventArgs e)
         {
-            string searchText = PromptDialog.Prompt(this, "Enter a TLK string ID or text:", "Find audio by TLK", selectText: true);
-            if (string.IsNullOrWhiteSpace(searchText))
-            {
-                return;
-            }
-            searchText = searchText.Trim();
+            TLKFilter_TextBox.Focus();
+            TLKFilter_TextBox.SelectAll();
+        }
 
-            object match;
-            if (LoadedAFCFile != null)
+        private void ApplyTLKFilter()
+        {
+            if (SoundExports_ListBox == null)
+                return;
+
+            string filterText = TLKFilterText.Trim();
+            if (filterText.Length == 0)
             {
-                match = BindedItemsList.OfType<AFCFileEntry>().FirstOrDefault(entry => entry.MatchesTLKSearch(searchText));
-                if (match is null)
-                {
-                    MessageBox.Show(this, "No AFC entry matching that TLK ID or text was found. Entries need a matching package reference for their TLK ID, and an available TLK for text searches.", "AFC Entry Not Found",
-                        MessageBoxButton.OK, MessageBoxImage.Information);
-                    return;
-                }
+                SoundExports_ListBox.Items.Filter = null;
+            }
+            else if (LoadedAFCFile != null)
+            {
+                SoundExports_ListBox.Items.Filter = item => item is AFCFileEntry entry && entry.MatchesTLKSearch(filterText);
             }
             else
             {
-                IReadOnlyList<int> stringRefs = TlkStringRefSelector.FindStringRefs(Pcc, searchText);
-                if (stringRefs.Count == 0)
-                {
-                    MessageBox.Show(this, "That text was not found in any loaded TLK for this game.", "TLK Text Not Found",
-                        MessageBoxButton.OK, MessageBoxImage.Information);
-                    return;
-                }
-
-                match = BindedItemsList.OfType<SoundplorerExport>().FirstOrDefault(x =>
+                var stringRefs = TlkStringRefSelector.FindStringRefs(Pcc, filterText).ToHashSet();
+                SoundExports_ListBox.Items.Filter = item => item is SoundplorerExport x &&
                     x.Export.ClassName == "WwiseStream" &&
-                    x.Export.ObjectName.Name.Split('_', ',').Any(part => int.TryParse(part, out int parsed) && stringRefs.Contains(parsed)));
-                if (match is null)
-                {
-                    MessageBox.Show(this, "No WwiseStream matching that TLK string was found in this package.", "WwiseStream Not Found",
-                        MessageBoxButton.OK, MessageBoxImage.Information);
-                    return;
-                }
+                    x.Export.ObjectName.Name.Split('_', ',').Any(part => int.TryParse(part, out int parsed) && stringRefs.Contains(parsed));
             }
+        }
 
-            SoundExports_ListBox.SelectedItem = match;
-            SoundExports_ListBox.ScrollIntoView(match);
-            SoundExports_ListBox.UpdateLayout();
-            if (SoundExports_ListBox.ItemContainerGenerator.ContainerFromItem(match) is ListBoxItem item)
+        private void ClearTLKFilter_Clicked(object sender, RoutedEventArgs e)
+        {
+            ClearTLKFilter();
+            TLKFilter_TextBox.Focus();
+        }
+
+        private void ClearTLKFilter()
+        {
+            // Clear any pending delayed binding update as well as the applied filter.
+            TLKFilter_TextBox.SetCurrentValue(TextBox.TextProperty, string.Empty);
+            TLKFilterText = string.Empty;
+        }
+
+        private void TLKFilter_TextBox_PreviewKeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Enter)
             {
-                item.Focus();
+                TLKFilter_TextBox.GetBindingExpression(TextBox.TextProperty)?.UpdateSource();
+                e.Handled = true;
+            }
+            else if (e.Key == Key.Escape)
+            {
+                ClearTLKFilter();
+                e.Handled = true;
             }
         }
 
@@ -176,6 +221,7 @@ namespace LegendaryExplorer.Tools.Soundplorer
             try
             {
                 soundPanel.FreeAudioResources(); //stop playback
+                ClearTLKFilter();
                 StatusBarIDText = null;
                 TaskbarText = $"Loading {Path.GetFileName(fileName)} ({FileSize.FormatSize(new FileInfo(fileName).Length)})";
                 Dispatcher.Invoke(new Action(() => { }), DispatcherPriority.ContextIdle, null);
@@ -212,6 +258,7 @@ namespace LegendaryExplorer.Tools.Soundplorer
                 }
                 Title = $"Soundplorer - {Path.GetFileName(fileName)}";
                 OnPropertyChanged(nameof(AudioFileLoaded));
+                OnPropertyChanged(nameof(CanFilterByTLK));
                 RecentsController.AddRecent(fileName, false, Pcc?.Game);
                 RecentsController.SaveRecentList(true);
             }
@@ -470,6 +517,8 @@ namespace LegendaryExplorer.Tools.Soundplorer
                 TaskbarText += $" — TLK text found for {entries.Count(entry => entry.TLKString != null)}/{entries.Count} entries";
             }
             IsBusyTaskbar = false;
+            if (HasTLKFilter)
+                SoundExports_ListBox.Items.Refresh();
             CommandManager.InvalidateRequerySuggested();
         }
 
@@ -575,6 +624,7 @@ namespace LegendaryExplorer.Tools.Soundplorer
                 backgroundScanner.CancelAsync();
             }
             soundPanel.FreeAudioResources();
+            soundPanel.NavigationRequested -= OpenExportInPackageEditor;
             soundPanel.Dispose(); //Gets rid of WinForms control
             RecentsController?.Dispose();
         }
