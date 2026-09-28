@@ -631,6 +631,10 @@ namespace LegendaryExplorer.DialogueEditor
         // FOR GRAPHING
         public ObservableCollectionExtended<DObj> CurrentObjects { get; } = new();
         public ObservableCollectionExtended<DObj> SelectedObjects { get; } = new();
+        private sealed record SelectionHistoryEntry(int ConversationUIndex, StructProperty NodeProperty, bool IsReply);
+        private readonly List<SelectionHistoryEntry> selectionHistory = [];
+        private int selectionHistoryIndex = -1;
+        private bool suppressSelectionHistory;
         private readonly List<SaveData> extraSaveData = new();
         private bool panToSelection = true;
         private DiagNode inlineLinkEditorNode;
@@ -775,6 +779,8 @@ namespace LegendaryExplorer.DialogueEditor
         public ICommand SearchCommand { get; set; }
         public ICommand CopyToClipboardCommand { get; set; }
         public ICommand ForceRefreshCommand { get; set; }
+        public ICommand NavigateSelectionBackCommand { get; set; }
+        public ICommand NavigateSelectionForwardCommand { get; set; }
         public ICommand GenerateBlankBioConversationCommand { get; set; }
         public ICommand ExtractSpeakerAudioCommand { get; set; }
         public ICommand LocalizeSpeakerFaceFXCommand { get; set; }
@@ -1181,6 +1187,8 @@ namespace LegendaryExplorer.DialogueEditor
             SaveImageCommand = new GenericCommand(SaveImage, () => CurrentObjects.Any);
             AutoLayoutCommand = new GenericCommand(AutoLayout, () => CurrentObjects.Any);
             GoToCommand = new GenericCommand(GoToBoxOpen);
+            NavigateSelectionBackCommand = new GenericCommand(() => NavigateSelectionHistory(-1), () => FindSelectionHistoryIndex(-1) >= 0);
+            NavigateSelectionForwardCommand = new GenericCommand(() => NavigateSelectionHistory(1), () => FindSelectionHistoryIndex(1) >= 0);
             LoadTLKManagerCommand = new GenericCommand(LoadTLKManager);
             OpenInCommand = new RelayCommand(OpenInAction, CanOpenIn);
             SpeakerMoveUpCommand = new RelayCommand(SpeakerMoveAction, SpkrCanMoveUp);
@@ -1498,6 +1506,7 @@ namespace LegendaryExplorer.DialogueEditor
         }
         public void LoadFile(string fileName)
         {
+            ClearSelectionHistory();
             try
             {
                 speakerNodeFilterSpeakerId = null;
@@ -1558,6 +1567,7 @@ namespace LegendaryExplorer.DialogueEditor
         }
         private void UnloadFile()
         {
+            ClearSelectionHistory();
             RightBarColumn.Width = new GridLength(0);
             speakerNodeFilterSpeakerId = null;
             SelectedConv = null;
@@ -8568,6 +8578,108 @@ namespace LegendaryExplorer.DialogueEditor
             RecreateNodesToProperties(SelectedConv);
         }
 
+        private void RecordSelectedNodeHistory(DialogueNodeExtended node)
+        {
+            if (suppressSelectionHistory || SelectedConv == null || node == null)
+            {
+                return;
+            }
+
+            var entry = new SelectionHistoryEntry(SelectedConv.UIndex, node.NodeProp, node.IsReply);
+            if (selectionHistoryIndex >= 0
+                && selectionHistory[selectionHistoryIndex].ConversationUIndex == entry.ConversationUIndex
+                && ReferenceEquals(selectionHistory[selectionHistoryIndex].NodeProperty, entry.NodeProperty))
+            {
+                return;
+            }
+
+            if (selectionHistoryIndex < selectionHistory.Count - 1)
+            {
+                selectionHistory.RemoveRange(selectionHistoryIndex + 1, selectionHistory.Count - selectionHistoryIndex - 1);
+            }
+
+            selectionHistory.Add(entry);
+            selectionHistoryIndex = selectionHistory.Count - 1;
+            CommandManager.InvalidateRequerySuggested();
+        }
+
+        private ConversationExtended GetSelectionHistoryConversation(SelectionHistoryEntry entry)
+        {
+            return SelectedConv?.UIndex == entry.ConversationUIndex
+                ? SelectedConv
+                : Conversations.FirstOrDefault(conversation => conversation.UIndex == entry.ConversationUIndex);
+        }
+
+        private int FindSelectionHistoryIndex(int step)
+        {
+            if (Pcc == null)
+            {
+                return -1;
+            }
+
+            for (int index = selectionHistoryIndex + step; index >= 0 && index < selectionHistory.Count; index += step)
+            {
+                var entry = selectionHistory[index];
+                var conversation = GetSelectionHistoryConversation(entry);
+                var nodes = entry.IsReply ? conversation?.ReplyList : conversation?.EntryList;
+                // Use the node's property identity so inserting or deleting nodes cannot redirect history.
+                if (nodes?.Any(node => ReferenceEquals(node.NodeProp, entry.NodeProperty)) == true)
+                {
+                    return index;
+                }
+            }
+
+            return -1;
+        }
+
+        private void NavigateSelectionHistory(int step)
+        {
+            int targetIndex = FindSelectionHistoryIndex(step);
+            if (targetIndex < 0)
+            {
+                return;
+            }
+
+            var entry = selectionHistory[targetIndex];
+            suppressSelectionHistory = true;
+            try
+            {
+                if (SelectedConv?.UIndex != entry.ConversationUIndex)
+                {
+                    Conversations_ListBox.SelectedItem = GetSelectionHistoryConversation(entry);
+                }
+
+                var graphNode = CurrentObjects.OfType<DiagNode>()
+                    .FirstOrDefault(node => ReferenceEquals(node.Node.NodeProp, entry.NodeProperty));
+                if (graphNode == null)
+                {
+                    return;
+                }
+
+                if (!graphNode.Visible && speakerNodeFilterSpeakerId.HasValue)
+                {
+                    SpeakerNodeFilterOff_Click(null, null);
+                }
+
+                DialogueNode_Selected(graphNode);
+                graphEditor.Camera.AnimateViewToCenterBounds(graphNode.GlobalFullBounds, false, 100);
+                graphEditor.Refresh();
+                selectionHistoryIndex = targetIndex;
+            }
+            finally
+            {
+                suppressSelectionHistory = false;
+                CommandManager.InvalidateRequerySuggested();
+            }
+        }
+
+        private void ClearSelectionHistory()
+        {
+            selectionHistory.Clear();
+            selectionHistoryIndex = -1;
+            CommandManager.InvalidateRequerySuggested();
+        }
+
         private DiagNode DialogueNode_SelectByIndex(int index, bool isreply = false)
         {
             if (SelectedObjects.Count > 0 && index == -1) //In this case pull up first selected object on list.
@@ -8705,6 +8817,7 @@ namespace LegendaryExplorer.DialogueEditor
             UpdateSelectedConnectionHighlighting();
             graphEditor?.Refresh();
 
+            RecordSelectedNodeHistory(SelectedDialogueNode);
         }
 
         public void UpdateNodeSpeakerFromGraph(DialogueNodeExtended node, int speakerId)

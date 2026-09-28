@@ -370,6 +370,20 @@
                     <Separator />
                     <MenuItem Name="Recents_MenuItem" Header="Recent" IsEnabled="false" />
                 </MenuItem>
+                <MenuItem Style="{StaticResource GotoBoxHostMenuItemStyle}">
+                    <MenuItem.Header>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,4,0">
+                            <Button Content="&lt;" Width="28" Height="22" Margin="0,0,4,0"
+                                    Command="{Binding NavigateSelectionBackCommand}"
+                                    AutomationProperties.Name="Back"
+                                    ToolTip="Go back to the previously selected dialogue node" />
+                            <Button Content="&gt;" Width="28" Height="22"
+                                    Command="{Binding NavigateSelectionForwardCommand}"
+                                    AutomationProperties.Name="Forward"
+                                    ToolTip="Go forward to the next selected dialogue node" />
+                        </StackPanel>
+                    </MenuItem.Header>
+                </MenuItem>
 
                 <MenuItem Header="Tools" Padding="4">
                     <MenuItem Header="Search" Command="{Binding SearchCommand}" InputGestureText="Ctrl+F"

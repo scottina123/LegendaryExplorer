@@ -48,18 +48,35 @@ public class DialogueEditorSelectionTests
             new IntProperty(1, "nCameraIntimacy"),
             new ArrayProperty<StructProperty>("ReplyListNew")
         };
+        var replyProperties = entryProperties.DeepClone();
+        replyProperties.RemoveNamedProperty("ReplyListNew");
+        replyProperties.Add(new EnumProperty("REPLY_STANDARD", "EReplyTypes", package.Game, "ReplyType"));
+        replyProperties.Add(new ArrayProperty<IntProperty>("EntryList"));
         export.WriteProperties(new PropertyCollection
         {
             new ArrayProperty<IntProperty>("m_StartingList") { 0 },
             new ArrayProperty<StructProperty>("m_EntryList")
             {
-                new("BioDialogEntryNode", entryProperties)
+                new("BioDialogEntryNode", entryProperties),
+                new("BioDialogEntryNode", entryProperties.DeepClone()),
+                new("BioDialogEntryNode", entryProperties.DeepClone())
+            },
+            new ArrayProperty<StructProperty>("m_ReplyList")
+            {
+                new("BioDialogReplyNode", replyProperties)
             },
             new ArrayProperty<NameProperty>("m_aSpeakerList")
         });
         var conversation = new ConversationExtended(export);
         conversation.LoadConversation(detailedParse: true);
         conversation.IsFirstParsed = true;
+        ExportEntry otherExport = package.CreateExport("other_selection_test_dlg", "BioConversation", indexed: false);
+        otherExport.Data = export.Data;
+        var otherConversation = new ConversationExtended(otherExport);
+        otherConversation.LoadConversation(detailedParse: true);
+        otherConversation.IsFirstParsed = true;
+        otherExport.EntryHasPendingChanges = false;
+        byte[] otherDataBeforeSelection = otherExport.Data;
 
         var editor = (DialogueEditorWindow)Activator.CreateInstance(
             typeof(DialogueEditorWindow),
@@ -74,9 +91,11 @@ public class DialogueEditorSelectionTests
         try
         {
             editor.Show();
+            ((MenuItem)editor.FindName("AutoSaveView_MenuItem")).IsChecked = false;
             typeof(WPFBase).GetMethod("RegisterPackage", BindingFlags.Instance | BindingFlags.NonPublic)!
                 .Invoke(editor, [package]);
             editor.Conversations.Add(conversation);
+            editor.Conversations.Add(otherConversation);
             ((ListBox)editor.FindName("Conversations_ListBox")).SelectedItem = conversation;
 
             export.EntryHasPendingChanges = false;
@@ -90,7 +109,52 @@ public class DialogueEditorSelectionTests
                 }
             };
 
-            editor.SelectDialogueNodeByIndex(0);
+            var back = editor.NavigateSelectionBackCommand;
+            var forward = editor.NavigateSelectionForwardCommand;
+            Assert.IsFalse(back.CanExecute(null));
+            Assert.IsFalse(forward.CanExecute(null));
+
+            var firstNode = editor.SelectDialogueNodeByIndex(0).Node;
+            var secondNode = editor.SelectDialogueNodeByIndex(1).Node;
+            editor.SelectDialogueNodeByIndex(1); // Repeated selection must not add a history step.
+            var replyNode = editor.SelectDialogueNodeByIndex(0, isReply: true).Node;
+            Assert.IsTrue(back.CanExecute(null));
+            Assert.IsFalse(forward.CanExecute(null));
+
+            back.Execute(null);
+            Assert.AreSame(secondNode, editor.SelectedDialogueNode);
+            back.Execute(null);
+            Assert.AreSame(firstNode, editor.SelectedDialogueNode);
+            Assert.IsFalse(back.CanExecute(null));
+            Assert.IsTrue(forward.CanExecute(null));
+
+            forward.Execute(null);
+            Assert.AreSame(secondNode, editor.SelectedDialogueNode);
+            forward.Execute(null);
+            Assert.AreSame(replyNode, editor.SelectedDialogueNode);
+            Assert.IsFalse(forward.CanExecute(null));
+
+            back.Execute(null);
+            var thirdNode = editor.SelectDialogueNodeByIndex(2).Node;
+            Assert.IsFalse(forward.CanExecute(null)); // A new selection replaces the forward branch.
+            editor.RefreshView(); // Redrawing the graph must preserve node history.
+            back.Execute(null);
+            Assert.AreSame(secondNode, editor.SelectedDialogueNode);
+            forward.Execute(null);
+            Assert.AreSame(thirdNode, editor.SelectedDialogueNode);
+            back.Execute(null);
+            back.Execute(null);
+            Assert.AreSame(firstNode, editor.SelectedDialogueNode);
+
+            ((ListBox)editor.FindName("Conversations_ListBox")).SelectedItem = otherConversation;
+            var otherNode = editor.SelectDialogueNodeByIndex(0).Node;
+            back.Execute(null);
+            Assert.AreEqual(conversation.UIndex, editor.SelectedConv.UIndex);
+            Assert.AreSame(firstNode, editor.SelectedDialogueNode);
+            forward.Execute(null);
+            Assert.AreEqual(otherConversation.UIndex, editor.SelectedConv.UIndex);
+            Assert.AreSame(otherNode, editor.SelectedDialogueNode);
+            back.Execute(null);
 
             var viewportTabs = (TabControl)editor.FindName("BottomViewportTabControl");
             viewportTabs.SelectedItem = viewportTabs.Items.OfType<TabItem>().Single(tab => Equals(tab.Header, "InterpData"));
@@ -103,6 +167,23 @@ public class DialogueEditorSelectionTests
             Assert.AreEqual(-2, editor.SelectedDialogueNode.Listener);
             Assert.IsFalse(export.EntryHasPendingChanges, dirtyStack);
             CollectionAssert.AreEqual(dataBeforeSelection, export.Data);
+            Assert.IsFalse(otherExport.EntryHasPendingChanges);
+            CollectionAssert.AreEqual(otherDataBeforeSelection, otherExport.Data);
+
+            editor.SelectDialogueNodeByIndex(1);
+            editor.SelectDialogueNodeByIndex(2);
+            editor.SelectedConv.EntryList.Remove(secondNode);
+            thirdNode.NodeCount = 1;
+            editor.RefreshView();
+            back.Execute(null);
+            Assert.AreSame(firstNode, editor.SelectedDialogueNode, "History must skip a deleted node.");
+            forward.Execute(null);
+            Assert.AreSame(thirdNode, editor.SelectedDialogueNode, "History must follow a node whose index changed.");
+
+            typeof(DialogueEditorWindow).GetMethod("UnloadFile", BindingFlags.Instance | BindingFlags.NonPublic)!
+                .Invoke(editor, null);
+            Assert.IsFalse(back.CanExecute(null));
+            Assert.IsFalse(forward.CanExecute(null));
         }
         finally
         {
