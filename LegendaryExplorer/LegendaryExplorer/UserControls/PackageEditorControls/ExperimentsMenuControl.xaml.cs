@@ -943,9 +943,9 @@ namespace LegendaryExplorer.UserControls.PackageEditorControls
             PackageEditorExperimentsScottina.GenerateBlankBioConversation(GetPEWindow());
         }
 
-        private void BulkAddPropertiesToClass_Click(object sender, RoutedEventArgs e)
+        private void BulkManagePropertiesToClass_Click(object sender, RoutedEventArgs e)
         {
-            PackageEditorExperimentsScottina.BulkAddPropertiesToClass(GetPEWindow());
+            PackageEditorExperimentsScottina.BulkManagePropertiesToClass(GetPEWindow());
         }
 
         private void FixBrokenPlayerFaceFxReferencesInFolder_Click(object sender, RoutedEventArgs e)

@@ -274,6 +274,11 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             public string DisplayName => $"{ClassName} ({Exports.Count} export{(Exports.Count == 1 ? string.Empty : "s")})";
         }
 
+        private sealed record BulkPropertyTarget(Property Property, List<ExportEntry> Exports)
+        {
+            public string DisplayName => $"{Property.Name.Instanced}[{Property.StaticArrayIndex}] ({Property.PropType}, {Exports.Count} export{(Exports.Count == 1 ? string.Empty : "s")})";
+        }
+
         private enum BulkPropertyValueEditResult
         {
             Applied,
@@ -1378,8 +1383,9 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                 });
         }
 
-        public static void BulkAddPropertiesToClass(PackageEditorWindow pew)
+        public static void BulkManagePropertiesToClass(PackageEditorWindow pew)
         {
+            const string title = "Bulk add/edit/delete properties to class";
             if (pew?.Pcc == null)
             {
                 return;
@@ -1389,8 +1395,8 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             if (classTargets.Count == 0)
             {
                 MessageBox.Show(pew,
-                    "No exports were found that can receive bulk-added properties.",
-                    "Bulk add properties to class",
+                    "No exports were found whose properties can be changed in bulk.",
+                    title,
                     MessageBoxButton.OK,
                     MessageBoxImage.Information);
                 return;
@@ -1402,8 +1408,8 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             string defaultSelection = classTargets.FirstOrDefault(target => string.Equals(target.ClassName, defaultClassName, StringComparison.OrdinalIgnoreCase))?.DisplayName
                                       ?? classTargets[0].DisplayName;
             string selectedClass = InputComboBoxDialog.GetValue(pew,
-                "Select the class whose exports should receive added properties.",
-                "Bulk add properties to class",
+                "Select the class whose exports should have their properties changed.",
+                title,
                 classTargets.Select(target => target.DisplayName).ToList(),
                 defaultSelection);
             if (string.IsNullOrWhiteSpace(selectedClass))
@@ -1417,8 +1423,30 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                 return;
             }
 
-            List<PropNameStaticArrayIdxPair> existingProperties = GetCommonRootProperties(targetClass.Exports);
-            AddPropertyDialog.ShowAddPropertyDialog(targetClass.Exports[0], existingProperties, pew.Pcc.Game, AddSelectedProperty, pew);
+            string operation = "Add properties";
+            while (true)
+            {
+                operation = InputComboBoxDialog.GetValue(pew,
+                    $"Choose an operation for {targetClass.DisplayName}. Edit and delete affect only exports that already contain the selected property.",
+                    title,
+                    new[] { "Add properties", "Edit a property", "Delete a property", "Done" },
+                    operation);
+                switch (operation)
+                {
+                    case "Add properties":
+                        List<PropNameStaticArrayIdxPair> existingProperties = GetCommonRootProperties(targetClass.Exports);
+                        AddPropertyDialog.ShowAddPropertyDialog(targetClass.Exports[0], existingProperties, pew.Pcc.Game, AddSelectedProperty, pew);
+                        break;
+                    case "Edit a property":
+                        EditOrDeleteBulkProperty(pew, targetClass, delete: false);
+                        break;
+                    case "Delete a property":
+                        EditOrDeleteBulkProperty(pew, targetClass, delete: true);
+                        break;
+                    default:
+                        return;
+                }
+            }
 
             bool AddSelectedProperty(NameReference propertyName, int staticArrayIndex, PropertyInfo propertyInfo)
             {
@@ -1469,6 +1497,62 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
 
                 ApplyBulkPropertyValueEdit(pew, targetClass, propertyName, staticArrayIndex, propertyInfo);
                 return true;
+            }
+        }
+
+        private static void EditOrDeleteBulkProperty(Window owner, BulkPropertyClassTarget targetClass, bool delete)
+        {
+            string title = delete ? "Bulk delete property" : "Bulk edit property value";
+            var failures = new List<string>();
+            List<BulkPropertyTarget> properties = GetBulkPropertyTargets(targetClass.Exports, failures);
+            if (failures.Count > 0)
+            {
+                new ListDialog(failures, title, "Some exports could not be read and will be skipped.", owner).Show();
+            }
+
+            if (properties.Count == 0)
+            {
+                MessageBox.Show(owner, $"No existing properties were found on '{targetClass.ClassName}' exports.",
+                    title, MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            string selection = InputComboBoxDialog.GetValue(owner,
+                $"Select a property to {(delete ? "delete" : "edit")} on '{targetClass.ClassName}' exports. The number in brackets identifies the static-array slot; each row shows how many exports contain it.",
+                title, properties.Select(property => property.DisplayName).ToList(), properties[0].DisplayName);
+            BulkPropertyTarget target = properties.FirstOrDefault(property => property.DisplayName == selection);
+            if (target == null)
+            {
+                return;
+            }
+
+            Property property = target.Property;
+            string propertyDisplayName = GetPropertyDisplayName(property.Name, property.StaticArrayIndex, null);
+            Property replacement = null;
+            if (delete)
+            {
+                if (MessageBox.Show(owner,
+                        $"Delete '{propertyDisplayName}' from {target.Exports.Count} '{targetClass.ClassName}' export(s)?",
+                        title, MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
+                {
+                    return;
+                }
+            }
+            else if (TryConfigureBulkPropertyValue(owner, new BulkPropertyClassTarget(targetClass.ClassName, target.Exports),
+                         property, null, out replacement) != BulkPropertyValueEditResult.Applied)
+            {
+                return;
+            }
+
+            var result = UpdateBulkProperty(target.Exports, property.Name, property.StaticArrayIndex, replacement);
+            string summary = $"{(delete ? "Deleted" : "Updated")} '{propertyDisplayName}' on {result.ModifiedCount} '{targetClass.ClassName}' export(s).";
+            if (result.Failures.Count > 0)
+            {
+                new ListDialog(result.Failures, title, $"{summary} Some exports could not be updated.", owner).Show();
+            }
+            else
+            {
+                MessageBox.Show(owner, summary, title, MessageBoxButton.OK, MessageBoxImage.Information);
             }
         }
 
@@ -2021,6 +2105,40 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             return commonProperties.OrderBy(property => property).ToList();
         }
 
+        private static List<BulkPropertyTarget> GetBulkPropertyTargets(IEnumerable<ExportEntry> exports, List<string> failures)
+        {
+            var targets = new Dictionary<PropNameStaticArrayIdxPair, BulkPropertyTarget>();
+            foreach (ExportEntry export in exports)
+            {
+                try
+                {
+                    var seenProperties = new HashSet<PropNameStaticArrayIdxPair>();
+                    foreach (Property property in export.GetProperties().Where(property => property is not NoneProperty))
+                    {
+                        var key = new PropNameStaticArrayIdxPair(property.Name, property.StaticArrayIndex);
+                        if (!seenProperties.Add(key))
+                        {
+                            continue;
+                        }
+
+                        if (!targets.TryGetValue(key, out BulkPropertyTarget target))
+                        {
+                            target = new BulkPropertyTarget(property, []);
+                            targets.Add(key, target);
+                        }
+
+                        target.Exports.Add(export);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    failures.Add($"FAILED #{export.UIndex} {export.InstancedFullPath}: {ex.Message}");
+                }
+            }
+
+            return targets.OrderBy(target => target.Key).Select(target => target.Value).ToList();
+        }
+
         private static bool RootPropertyExists(PropertyCollection properties, NameReference propertyName, int staticArrayIndex)
         {
             return properties.Any(property => property.Name == propertyName && property.StaticArrayIndex == staticArrayIndex);
@@ -2046,9 +2164,9 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
 
         private static void ApplyBulkPropertyValueEdit(Window owner, BulkPropertyClassTarget targetClass, NameReference propertyName, int staticArrayIndex, PropertyInfo propertyInfo)
         {
-            Property representativeProperty = targetClass.Exports
-                .Select(export => export.GetProperties().GetProp<Property>(propertyName, staticArrayIndex))
-                .FirstOrDefault(property => property != null);
+            var failures = new List<string>();
+            Property representativeProperty = GetBulkPropertyTargets(targetClass.Exports, failures)
+                .FirstOrDefault(target => target.Property.Name == propertyName && target.Property.StaticArrayIndex == staticArrayIndex)?.Property;
             if (representativeProperty == null)
             {
                 return;
@@ -2060,16 +2178,57 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                 return;
             }
 
+            // The add workflow also fills missing properties; standalone editing only changes existing ones.
+            var updateResult = UpdateBulkProperty(targetClass.Exports, propertyName, staticArrayIndex, updatedProperty, addIfMissing: true);
+            if (updateResult.Failures.Count > 0)
+            {
+                new ListDialog(updateResult.Failures,
+                    $"Bulk edit property value ({GetPropertyDisplayName(propertyName, staticArrayIndex, propertyInfo)})",
+                    "Some exports could not be updated.",
+                    owner).Show();
+            }
+        }
+
+        private static (int ModifiedCount, List<string> Failures) UpdateBulkProperty(IEnumerable<ExportEntry> exports,
+            NameReference propertyName, int staticArrayIndex, Property replacement, bool addIfMissing = false)
+        {
+            int modifiedCount = 0;
             var failures = new List<string>();
-            foreach (ExportEntry export in targetClass.Exports)
+            foreach (ExportEntry export in exports)
             {
                 try
                 {
                     PropertyCollection props = export.GetProperties();
-                    Property propertyClone = updatedProperty.DeepClone();
-                    propertyClone.StaticArrayIndex = staticArrayIndex;
-                    SetRootProperty(props, propertyClone);
+                    Property existingProperty = props.GetProp<Property>(propertyName, staticArrayIndex);
+                    if (existingProperty == null && (replacement == null || !addIfMissing))
+                    {
+                        continue;
+                    }
+
+                    if (replacement == null)
+                    {
+                        props.RemoveAll(property => property is not NoneProperty
+                            && property.Name == propertyName && property.StaticArrayIndex == staticArrayIndex);
+                    }
+                    else
+                    {
+                        if (existingProperty != null && (existingProperty.GetType() != replacement.GetType()
+                            || existingProperty.PropType != replacement.PropType
+                            || existingProperty is EnumProperty existingEnum && replacement is EnumProperty replacementEnum
+                                && existingEnum.EnumType != replacementEnum.EnumType))
+                        {
+                            failures.Add($"FAILED #{export.UIndex} {export.InstancedFullPath}: property type does not match the selected property.");
+                            continue;
+                        }
+
+                        Property propertyClone = replacement.DeepClone();
+                        propertyClone.Name = propertyName;
+                        propertyClone.StaticArrayIndex = staticArrayIndex;
+                        SetRootProperty(props, propertyClone);
+                    }
+
                     export.WriteProperties(props);
+                    modifiedCount++;
                 }
                 catch (Exception ex)
                 {
@@ -2077,13 +2236,7 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                 }
             }
 
-            if (failures.Count > 0)
-            {
-                new ListDialog(failures,
-                    $"Bulk edit property value ({GetPropertyDisplayName(propertyName, staticArrayIndex, propertyInfo)})",
-                    "Some exports could not be updated.",
-                    owner).Show();
-            }
+            return (modifiedCount, failures);
         }
 
         private static BulkPropertyValueEditResult TryConfigureBulkPropertyValue(Window owner, BulkPropertyClassTarget targetClass, Property property, PropertyInfo propertyInfo, out Property updatedProperty)
@@ -2091,7 +2244,7 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             updatedProperty = null;
 
             string propertyDisplayName = GetPropertyDisplayName(property.Name, property.StaticArrayIndex, propertyInfo);
-            string title = "Bulk edit added property";
+            string title = "Bulk edit property value";
             string promptPrefix = $"Set '{propertyDisplayName}' on all {targetClass.Exports.Count} '{targetClass.ClassName}' export{(targetClass.Exports.Count == 1 ? string.Empty : "s")}.";
 
             switch (property)
@@ -2179,7 +2332,7 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                     }
 
                     NameProperty newProperty = nameProperty.DeepClone();
-                    newProperty.Value = new NameReference(string.IsNullOrWhiteSpace(response) ? "None" : response);
+                    newProperty.Value = NameReference.FromInstancedString(string.IsNullOrWhiteSpace(response) ? "None" : response);
                     updatedProperty = newProperty;
                     return BulkPropertyValueEditResult.Applied;
                 }
@@ -2246,7 +2399,7 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                     if (enumValues == null || enumValues.Count == 0)
                     {
                         MessageBox.Show(owner,
-                            $"'{propertyDisplayName}' was added, but bulk value editing could not load values for enum '{enumProperty.EnumType.Instanced}'. The default value was kept.",
+                            $"Bulk value editing could not load values for enum '{enumProperty.EnumType.Instanced}' on '{propertyDisplayName}'. Current values were kept.",
                             title,
                             MessageBoxButton.OK,
                             MessageBoxImage.Information);
@@ -2264,7 +2417,7 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                     }
 
                     EnumProperty newProperty = enumProperty.DeepClone();
-                    newProperty.Value = new NameReference(response);
+                    newProperty.Value = enumValues.First(value => value.Instanced == response);
                     updatedProperty = newProperty;
                     return BulkPropertyValueEditResult.Applied;
                 }
@@ -2293,7 +2446,7 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                 }
                 default:
                     MessageBox.Show(owner,
-                        $"'{propertyDisplayName}' was added, but bulk value editing is not supported for {property.PropType} yet. The default value was kept.",
+                        $"Bulk value editing is not supported for {property.PropType} on '{propertyDisplayName}' yet. Current values were kept.",
                         title,
                         MessageBoxButton.OK,
                         MessageBoxImage.Information);
@@ -2335,7 +2488,7 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
 
         private static string GetPropertyDisplayName(NameReference propertyName, int staticArrayIndex, PropertyInfo propertyInfo)
         {
-            return propertyInfo.IsStaticArray()
+            return propertyInfo == null || propertyInfo.IsStaticArray() || staticArrayIndex != 0
                 ? $"{propertyName.Instanced}[{staticArrayIndex}]"
                 : propertyName.Instanced;
         }
