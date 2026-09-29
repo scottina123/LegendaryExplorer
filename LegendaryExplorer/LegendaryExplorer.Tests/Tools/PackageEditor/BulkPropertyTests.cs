@@ -3,11 +3,15 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
+using System.Windows;
+using System.Windows.Controls;
+using LegendaryExplorer.Dialogs;
 using LegendaryExplorer.Tools.PackageEditor.Experiments;
 using LegendaryExplorerCore;
 using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.Unreal;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using static LegendaryExplorer.Tools.PackageEditor.Experiments.PackageEditorExperimentsScottina;
 
 namespace LegendaryExplorer.Tests.Tools.PackageEditor;
 
@@ -147,6 +151,69 @@ public class BulkPropertyTests
         Assert.AreEqual(42, first.GetProperty<IntProperty>("Value").Value);
         Assert.AreEqual(42, second.GetProperty<IntProperty>("Value").Value);
         Assert.AreEqual("Keep me", second.GetProperty<StrProperty>("Unrelated").Value);
+    }
+
+    [STATestMethod]
+    public void BrowserClearsActionTargetsWhenFilteringOrChangingClass()
+    {
+        typeof(Application).GetField("_resourceAssembly", BindingFlags.Static | BindingFlags.NonPublic)!
+            .SetValue(null, typeof(BulkPropertyEditorDialog).Assembly);
+        using var package = MEPackageHandler.CreateMemoryEmptyPackage("BulkBrowser.pcc", MEGame.LE3);
+        var first = package.CreateExport("First", "Object", indexed: false);
+        var second = package.CreateExport("Second", "Actor", indexed: false);
+        first.WriteProperties(new PropertyCollection { new IntProperty(10, "Shared") });
+        second.WriteProperties(new PropertyCollection { new IntProperty(20, "Shared") });
+        byte[] firstData = first.Data.ToArray();
+        byte[] secondData = second.Data.ToArray();
+        var firstClass = new BulkPropertyClassTarget("Object", [first]);
+        var secondClass = new BulkPropertyClassTarget("Actor", [second]);
+        var dialog = new BulkPropertyEditorDialog(null, [firstClass, secondClass], "Object");
+        try
+        {
+            var classes = (ListBox)dialog.FindName("ClassesListBox");
+            var properties = (ListBox)dialog.FindName("PropertiesListBox");
+            var classFilter = (TextBox)dialog.FindName("ClassFilterBox");
+            var propertyFilter = (TextBox)dialog.FindName("PropertyFilterBox");
+            var add = (Button)dialog.FindName("AddButton");
+            var edit = (Button)dialog.FindName("EditButton");
+            var remove = (Button)dialog.FindName("RemoveButton");
+
+            Assert.AreSame(firstClass, classes.SelectedItem);
+            properties.SelectedIndex = 0;
+            Assert.IsTrue(edit.IsEnabled && remove.IsEnabled);
+            classFilter.Text = "Actor";
+            Assert.AreSame(secondClass, classes.SelectedItem);
+            Assert.IsNull(properties.SelectedItem, "Changing class must clear the previous bulk action target, even for the same property name.");
+            Assert.IsFalse(edit.IsEnabled || remove.IsEnabled);
+            CollectionAssert.AreEqual(new[] { second }, ((BulkPropertyTarget)properties.Items[0]).Exports);
+
+            properties.SelectedIndex = 0;
+            propertyFilter.Text = "DoesNotExist";
+            Assert.IsEmpty(properties.Items);
+            Assert.IsNull(properties.SelectedItem);
+            Assert.IsFalse(edit.IsEnabled || remove.IsEnabled);
+            Assert.IsTrue(add.IsEnabled, "An empty property list should still allow adding properties to the selected class.");
+            propertyFilter.Text = "intproperty";
+            Assert.HasCount(1, properties.Items);
+            properties.SelectedIndex = 0;
+            classFilter.Text = "DoesNotExist";
+            Assert.IsEmpty(classes.Items);
+            Assert.IsEmpty(properties.Items);
+            Assert.IsFalse(add.IsEnabled || edit.IsEnabled || remove.IsEnabled);
+
+            classFilter.Text = "";
+            classes.SelectedItem = secondClass;
+            properties.SelectedIndex = 0;
+            classes.SelectedItem = firstClass;
+            Assert.IsNull(properties.SelectedItem);
+            CollectionAssert.AreEqual(new[] { first }, ((BulkPropertyTarget)properties.Items[0]).Exports);
+            CollectionAssert.AreEqual(firstData, first.Data, "Browsing must not modify exports.");
+            CollectionAssert.AreEqual(secondData, second.Data);
+        }
+        finally
+        {
+            dialog.Close();
+        }
     }
 
     private static (int ModifiedCount, List<string> Failures) Update(IEnumerable<ExportEntry> exports,

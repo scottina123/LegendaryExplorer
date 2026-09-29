@@ -267,15 +267,17 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             int ReindexedEntryCount,
             List<string> RemainingDuplicates);
 
-        private sealed record BulkPropertyClassTarget(
+        internal sealed record BulkPropertyClassTarget(
             string ClassName,
             List<ExportEntry> Exports)
         {
             public string DisplayName => $"{ClassName} ({Exports.Count} export{(Exports.Count == 1 ? string.Empty : "s")})";
         }
 
-        private sealed record BulkPropertyTarget(Property Property, List<ExportEntry> Exports)
+        internal sealed record BulkPropertyTarget(Property Property, List<ExportEntry> Exports)
         {
+            public string PropertyName => $"{Property.Name.Instanced}[{Property.StaticArrayIndex}]";
+            public string ExportCount => $"{Exports.Count} export{(Exports.Count == 1 ? string.Empty : "s")}";
             public string DisplayName => $"{Property.Name.Instanced}[{Property.StaticArrayIndex}] ({Property.PropType}, {Exports.Count} export{(Exports.Count == 1 ? string.Empty : "s")})";
         }
 
@@ -1405,48 +1407,14 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             string defaultClassName = pew.TryGetSelectedExport(out var selectedExport)
                 ? selectedExport.ClassName
                 : classTargets[0].ClassName;
-            string defaultSelection = classTargets.FirstOrDefault(target => string.Equals(target.ClassName, defaultClassName, StringComparison.OrdinalIgnoreCase))?.DisplayName
-                                      ?? classTargets[0].DisplayName;
-            string selectedClass = InputComboBoxDialog.GetValue(pew,
-                "Select the class whose exports should have their properties changed.",
-                title,
-                classTargets.Select(target => target.DisplayName).ToList(),
-                defaultSelection);
-            if (string.IsNullOrWhiteSpace(selectedClass))
-            {
-                return;
-            }
+            new BulkPropertyEditorDialog(pew, classTargets, defaultClassName).ShowDialog();
+        }
 
-            BulkPropertyClassTarget targetClass = classTargets.FirstOrDefault(target => string.Equals(target.DisplayName, selectedClass, StringComparison.Ordinal));
-            if (targetClass == null)
-            {
-                return;
-            }
-
-            string operation = "Add properties";
-            while (true)
-            {
-                operation = InputComboBoxDialog.GetValue(pew,
-                    $"Choose an operation for {targetClass.DisplayName}. Edit and delete affect only exports that already contain the selected property.",
-                    title,
-                    new[] { "Add properties", "Edit a property", "Delete a property", "Done" },
-                    operation);
-                switch (operation)
-                {
-                    case "Add properties":
-                        List<PropNameStaticArrayIdxPair> existingProperties = GetCommonRootProperties(targetClass.Exports);
-                        AddPropertyDialog.ShowAddPropertyDialog(targetClass.Exports[0], existingProperties, pew.Pcc.Game, AddSelectedProperty, pew);
-                        break;
-                    case "Edit a property":
-                        EditOrDeleteBulkProperty(pew, targetClass, delete: false);
-                        break;
-                    case "Delete a property":
-                        EditOrDeleteBulkProperty(pew, targetClass, delete: true);
-                        break;
-                    default:
-                        return;
-                }
-            }
+        internal static void AddBulkProperties(Window owner, BulkPropertyClassTarget targetClass)
+        {
+            List<PropNameStaticArrayIdxPair> existingProperties = GetCommonRootProperties(targetClass.Exports);
+            ExportEntry representativeExport = targetClass.Exports[0];
+            AddPropertyDialog.ShowAddPropertyDialog(representativeExport, existingProperties, representativeExport.Game, AddSelectedProperty, owner);
 
             bool AddSelectedProperty(NameReference propertyName, int staticArrayIndex, PropertyInfo propertyInfo)
             {
@@ -1487,7 +1455,7 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                     new ListDialog(failures,
                         $"Bulk add properties to class ({GetPropertyDisplayName(propertyName, staticArrayIndex, propertyInfo)})",
                         "Some exports could not be updated.",
-                        pew).Show();
+                        owner).Show();
                 }
 
                 if (addedCount == 0)
@@ -1495,32 +1463,14 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                     return false;
                 }
 
-                ApplyBulkPropertyValueEdit(pew, targetClass, propertyName, staticArrayIndex, propertyInfo);
+                ApplyBulkPropertyValueEdit(owner, targetClass, propertyName, staticArrayIndex, propertyInfo);
                 return true;
             }
         }
 
-        private static void EditOrDeleteBulkProperty(Window owner, BulkPropertyClassTarget targetClass, bool delete)
+        internal static void EditOrDeleteBulkProperty(Window owner, BulkPropertyClassTarget targetClass, BulkPropertyTarget target, bool delete)
         {
             string title = delete ? "Bulk delete property" : "Bulk edit property value";
-            var failures = new List<string>();
-            List<BulkPropertyTarget> properties = GetBulkPropertyTargets(targetClass.Exports, failures);
-            if (failures.Count > 0)
-            {
-                new ListDialog(failures, title, "Some exports could not be read and will be skipped.", owner).Show();
-            }
-
-            if (properties.Count == 0)
-            {
-                MessageBox.Show(owner, $"No existing properties were found on '{targetClass.ClassName}' exports.",
-                    title, MessageBoxButton.OK, MessageBoxImage.Information);
-                return;
-            }
-
-            string selection = InputComboBoxDialog.GetValue(owner,
-                $"Select a property to {(delete ? "delete" : "edit")} on '{targetClass.ClassName}' exports. The number in brackets identifies the static-array slot; each row shows how many exports contain it.",
-                title, properties.Select(property => property.DisplayName).ToList(), properties[0].DisplayName);
-            BulkPropertyTarget target = properties.FirstOrDefault(property => property.DisplayName == selection);
             if (target == null)
             {
                 return;
@@ -2105,7 +2055,7 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             return commonProperties.OrderBy(property => property).ToList();
         }
 
-        private static List<BulkPropertyTarget> GetBulkPropertyTargets(IEnumerable<ExportEntry> exports, List<string> failures)
+        internal static List<BulkPropertyTarget> GetBulkPropertyTargets(IEnumerable<ExportEntry> exports, List<string> failures)
         {
             var targets = new Dictionary<PropNameStaticArrayIdxPair, BulkPropertyTarget>();
             foreach (ExportEntry export in exports)
