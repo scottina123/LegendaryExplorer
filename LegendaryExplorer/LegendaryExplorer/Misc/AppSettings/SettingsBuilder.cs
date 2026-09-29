@@ -497,6 +497,11 @@ namespace LegendaryExplorer.Misc.AppSettings
             get => _global_lastuseddirectories;
             set => SetProperty(ref _global_lastuseddirectories, value);
         }
+        private static Dictionary<string, string> _experimentsbrowser_lastusedexperiments = new Dictionary<string, string>();
+        public static Dictionary<string, string> ExperimentsBrowser_LastUsedExperiments {
+            get => _experimentsbrowser_lastusedexperiments;
+            set => SetProperty(ref _experimentsbrowser_lastusedexperiments, value);
+        }
         private static List<string> _customstartupfiles = new List<string>();
         public static List<string> CustomStartupFiles {
             get => _customstartupfiles;
@@ -731,6 +736,7 @@ namespace LegendaryExplorer.Misc.AppSettings
             Global_TLK_Language = TryGetSetting(settingsJson, "global_tlk_language", "INT");
             Global_TLK_IsMale = TryGetSetting(settingsJson, "global_tlk_ismale", true);
             Global_LastUsedDirectories = TryGetSetting(settingsJson, "global_lastuseddirectories", new Dictionary<string, string>());
+            ExperimentsBrowser_LastUsedExperiments = TryGetSetting(settingsJson, "experimentsbrowser_lastusedexperiments", new Dictionary<string, string>());
             CustomStartupFiles = TryGetSetting(settingsJson, "customstartupfiles", new List<string>());
             CustomAssetDirectories = TryGetSetting(settingsJson, "customassetdirectories", new List<string>());
             ScriptIDE_ActiveTheme = TryGetSetting(settingsJson, "scriptide_activetheme", "");
@@ -854,6 +860,7 @@ namespace LegendaryExplorer.Misc.AppSettings
             settingsJson["global_tlk_language"] = Global_TLK_Language.ToString();
             settingsJson["global_tlk_ismale"] = Global_TLK_IsMale.ToString();
             settingsJson["global_lastuseddirectories"] = Global_LastUsedDirectories;
+            settingsJson["experimentsbrowser_lastusedexperiments"] = ExperimentsBrowser_LastUsedExperiments;
             settingsJson["customstartupfiles"] = CustomStartupFiles;
             settingsJson["customassetdirectories"] = CustomAssetDirectories;
             settingsJson["scriptide_activetheme"] = ScriptIDE_ActiveTheme.ToString();

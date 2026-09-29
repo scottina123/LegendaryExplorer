@@ -4,6 +4,7 @@ using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using LegendaryExplorer.Misc.AppSettings;
 using LegendaryExplorer.SharedUI;
 
 namespace LegendaryExplorer.UserControls.PackageEditorControls
@@ -23,20 +24,31 @@ namespace LegendaryExplorer.UserControls.PackageEditorControls
             Owner = owner;
             Title = title;
 
+            Settings.ExperimentsBrowser_LastUsedExperiments.TryGetValue(title, out string lastUsedKey);
+            ExperimentBrowserItem lastUsedExperiment = experiments.FirstOrDefault(experiment => experiment.SelectionKey == lastUsedKey);
+
             CategoriesListBox.ItemsSource = experiments
                 .Select(experiment => experiment.Category)
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .OrderBy(category => category, StringComparer.OrdinalIgnoreCase)
                 .ToList();
-            CategoriesListBox.SelectedItem = CategoriesListBox.Items
+            CategoriesListBox.SelectedItem = lastUsedExperiment?.Category ?? CategoriesListBox.Items
                 .Cast<string>()
                 .FirstOrDefault(category => category == "General")
                 ?? CategoriesListBox.Items.Cast<string>().FirstOrDefault();
+            if (lastUsedExperiment != null)
+            {
+                ExperimentsListBox.SelectedItem = lastUsedExperiment;
+            }
 
             Loaded += (_, _) =>
             {
                 SearchTextBox.Focus();
                 RefreshExperiments();
+                if (ExperimentsListBox.SelectedItem != null)
+                {
+                    ExperimentsListBox.ScrollIntoView(ExperimentsListBox.SelectedItem);
+                }
             };
         }
 
@@ -100,9 +112,11 @@ namespace LegendaryExplorer.UserControls.PackageEditorControls
             List<ExperimentBrowserItem> results = filteredExperiments
                 .OrderBy(experiment => experiment.Name, StringComparer.OrdinalIgnoreCase)
                 .ToList();
+            var selectedExperiment = ExperimentsListBox.SelectedItem as ExperimentBrowserItem;
             ExperimentsListBox.ItemsSource = results;
-            ExperimentsListBox.SelectedItem = results.FirstOrDefault(experiment => experiment.IsEnabled)
-                                                   ?? results.FirstOrDefault();
+            ExperimentsListBox.SelectedItem = results.Contains(selectedExperiment)
+                ? selectedExperiment
+                : results.FirstOrDefault(experiment => experiment.IsEnabled) ?? results.FirstOrDefault();
             ResultCountTextBlock.Text = $"{results.Count} experiment{(results.Count == 1 ? string.Empty : "s")}";
         }
 
@@ -114,6 +128,10 @@ namespace LegendaryExplorer.UserControls.PackageEditorControls
             }
 
             SelectedExperiment = experiment;
+            Settings.ExperimentsBrowser_LastUsedExperiments = new Dictionary<string, string>(Settings.ExperimentsBrowser_LastUsedExperiments)
+            {
+                [Title] = experiment.SelectionKey
+            };
             DialogResult = true;
         }
     }

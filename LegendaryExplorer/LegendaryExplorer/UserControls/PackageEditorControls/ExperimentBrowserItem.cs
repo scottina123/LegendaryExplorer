@@ -14,6 +14,7 @@ namespace LegendaryExplorer.UserControls.PackageEditorControls
         public string Name { get; }
         public string Category { get; }
         public string Description { get; }
+        public string SelectionKey => $"{Category}\n{Name}";
 
         public bool IsEnabled
         {
