@@ -643,8 +643,8 @@ namespace LegendaryExplorer.Tools.PackageEditor
             //do not change lambda to method group here! causes runtime error
             ForceReloadPackageCommand = new GenericCommand(() => ExperimentsMenu.ForceReloadPackageWithoutSharing(), () => ShowExperiments && ExperimentsMenu.CanForceReload());
 
-            NavigateForwardCommand = new GenericCommand(NavigateToNextEntry, () => CurrentView == CurrentViewMode.Tree && ForwardsEntries != null && ForwardsEntries.Any());
-            NavigateBackCommand = new GenericCommand(NavigateToPreviousEntry, () => CurrentView == CurrentViewMode.Tree && BackwardsEntries.Any());
+            NavigateForwardCommand = new GenericCommand(NavigateToNextEntry, () => CanNavigateSelectionHistory(ForwardsEntries));
+            NavigateBackCommand = new GenericCommand(NavigateToPreviousEntry, () => CanNavigateSelectionHistory(BackwardsEntries));
 
             CreateClassCommand = new GenericCommand(CreateClass, IsLoadedPackageME);
             CreatePackageExportCommand = new GenericCommand(CreatePackageExport, IsLoadedPackageME);
@@ -9006,39 +9006,96 @@ namespace LegendaryExplorer.Tools.PackageEditor
 
         private void NavigateToNextEntry()
         {
-            if (ForwardsEntries.Any())
-            {
-                if (SelectedItem != null && SelectedItem.UIndex != 0 && ForwardsEntries[0].UIndex != SelectedItem.UIndex)
-                {
-                    //Debug.WriteLine("Push onto backwards: " + SelectedItem.UIndex);
-                    BackwardsEntries.Insert(0, Pcc.GetEntry(SelectedItem.UIndex));
-                }
-
-                var entry = ForwardsEntries[0];
-                ForwardsEntries.RemoveAt(0);
-                IsBackForwardsNavigationEvent = true;
-                GoToNumber(entry.UIndex);
-                IsBackForwardsNavigationEvent = true;
-            }
+            NavigateSelectionHistory(backwards: false);
         }
 
         public bool IsBackForwardsNavigationEvent = false;
 
         private void NavigateToPreviousEntry()
         {
-            if (BackwardsEntries.Any())
+            NavigateSelectionHistory(backwards: true);
+        }
+
+        private bool IsSelectionHistoryEntryAvailable(IEntry entry)
+        {
+            return Pcc != null && entry != null && entry.FileRef == Pcc && ReferenceEquals(Pcc.GetEntry(entry.UIndex), entry);
+        }
+
+        private bool CanNavigateSelectionHistory(IEnumerable<IEntry> history)
+        {
+            return CurrentView == CurrentViewMode.Tree && !IsLoadingFile && history.Any(IsSelectionHistoryEntryAvailable);
+        }
+
+        private void SelectionHistoryMenu_Opened(object sender, RoutedEventArgs e)
+        {
+            var menu = (ContextMenu)sender;
+            bool backwards = Equals(menu.Tag, "Back");
+            var history = backwards ? BackwardsEntries : ForwardsEntries;
+            menu.Items.Clear();
+            if (!CanNavigateSelectionHistory(history))
             {
-                if (SelectedItem != null && SelectedItem.UIndex != 0 && BackwardsEntries[0].UIndex != SelectedItem.UIndex)
+                return;
+            }
+
+            for (int index = 0; index < history.Count && menu.Items.Count < 10; index++)
+            {
+                var entry = history[index];
+                if (!IsSelectionHistoryEntryAvailable(entry))
                 {
-                    //Debug.WriteLine("Push onto forwards: " + SelectedItem.UIndex);
-                    ForwardsEntries.Insert(0, Pcc.GetEntry(SelectedItem.UIndex));
+                    continue;
                 }
 
-                var entry = BackwardsEntries[0];
-                BackwardsEntries.RemoveAt(0); // Might want to make this an extension method. M3 uses 'PullFromFront()'
-                IsBackForwardsNavigationEvent = true;
-                GoToNumber(entry.UIndex);
+                string label = $"#{entry.UIndex} {entry.InstancedFullPath}";
+                int targetIndex = index;
+                menu.Items.Add(new MenuItem
+                {
+                    Header = new TextBlock { Text = label, MaxWidth = 500, TextTrimming = TextTrimming.CharacterEllipsis },
+                    ToolTip = label,
+                    Command = new GenericCommand(() => NavigateSelectionHistory(backwards, targetIndex))
+                });
+            }
+        }
+
+        private void NavigateSelectionHistory(bool backwards, int? historyIndex = null)
+        {
+            var source = backwards ? BackwardsEntries : ForwardsEntries;
+            var destination = backwards ? ForwardsEntries : BackwardsEntries;
+            int targetIndex = historyIndex ?? source.FindIndex(IsSelectionHistoryEntryAvailable);
+            if (!CanNavigateSelectionHistory(source) || targetIndex < 0 || targetIndex >= source.Count
+                || !IsSelectionHistoryEntryAvailable(source[targetIndex]) || AllTreeViewNodesX.Count == 0)
+            {
+                return;
+            }
+
+            var currentEntry = SelectedItem?.Entry;
+            IsBackForwardsNavigationEvent = true;
+            try
+            {
+                if (!GoToNumber(source[targetIndex].UIndex))
+                {
+                    return;
+                }
+
+                if (IsSelectionHistoryEntryAvailable(currentEntry))
+                {
+                    destination.Insert(0, currentEntry);
+                }
+
+                // Move every crossed entry to the opposite history in browser navigation order.
+                for (int index = 0; index <= targetIndex; index++)
+                {
+                    var entry = source[0];
+                    source.RemoveAt(0);
+                    if (index < targetIndex && IsSelectionHistoryEntryAvailable(entry))
+                    {
+                        destination.Insert(0, entry);
+                    }
+                }
+            }
+            finally
+            {
                 IsBackForwardsNavigationEvent = false;
+                CommandManager.InvalidateRequerySuggested();
             }
         }
 

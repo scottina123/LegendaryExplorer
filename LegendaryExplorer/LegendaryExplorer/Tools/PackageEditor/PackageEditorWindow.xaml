@@ -414,33 +414,17 @@
                     <ColumnDefinition Width="6*" />
                 </Grid.ColumnDefinitions>
                 <ToolBar ToolBarTray.IsLocked="True" Grid.Row="0" Grid.ColumnSpan="3" Style="{DynamicResource AudemusToolBarStyle}">
-                    <Button Padding="7,0" VerticalAlignment="Stretch" ToolTip="Navigate to previous (historically) selected entry.  You can also press the back button on your mouse or right click to view the list" Command="{Binding NavigateBackCommand}" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}">
+                    <Button x:Name="SelectionHistoryBackButton" Padding="7,0" VerticalAlignment="Stretch" AutomationProperties.Name="Back" ToolTip="Go to the previously selected entry. Use the back button on your mouse or right-click to choose from the last 10 entries." Command="{Binding NavigateBackCommand}" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}">
                         <Button.ContextMenu>
-                            <ContextMenu ItemsSource="{Binding BackwardsEntries}">
-                                <ContextMenu.DisplayMemberPath>InstancedFullPath</ContextMenu.DisplayMemberPath>
-                                <ContextMenu.ItemContainerStyle>
-                                    <Style TargetType="MenuItem">
-                                        <Setter Property="Command" Value="{Binding Source={StaticResource bindingProxy}, Path=Data.NavigateToEntryCommand}" />
-                                        <Setter Property="CommandParameter" Value="{Binding}" />
-                                    </Style>
-                                </ContextMenu.ItemContainerStyle>
-                            </ContextMenu>
+                            <ContextMenu Tag="Back" Opened="SelectionHistoryMenu_Opened" />
                         </Button.ContextMenu>
                         <Button.Content>
                             <fa5:FontAwesome Icon="Solid_ArrowLeft" Height="12" />
                         </Button.Content>
                     </Button>
-                    <Button Padding="7,0" VerticalAlignment="Stretch" ToolTip="Navigate to the next (historically) selected entry. You can also press the forward button on your mouse or right click to view the list" Command="{Binding NavigateForwardCommand}" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}">
+                    <Button x:Name="SelectionHistoryForwardButton" Padding="7,0" VerticalAlignment="Stretch" AutomationProperties.Name="Forward" ToolTip="Go to the next selected entry. Use the forward button on your mouse or right-click to choose from the next 10 entries." Command="{Binding NavigateForwardCommand}" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}">
                         <Button.ContextMenu>
-                            <ContextMenu ItemsSource="{Binding ForwardsEntries}">
-                                <ContextMenu.DisplayMemberPath>InstancedFullPath</ContextMenu.DisplayMemberPath>
-                                <ContextMenu.ItemContainerStyle>
-                                    <Style TargetType="MenuItem">
-                                        <Setter Property="Command" Value="{Binding Source={StaticResource bindingProxy}, Path=Data.NavigateToEntryCommand}" />
-                                        <Setter Property="CommandParameter" Value="{Binding}" />
-                                    </Style>
-                                </ContextMenu.ItemContainerStyle>
-                            </ContextMenu>
+                            <ContextMenu Tag="Forward" Opened="SelectionHistoryMenu_Opened" />
                         </Button.ContextMenu>
                         <Button.Content>
                             <fa5:FontAwesome Icon="Solid_ArrowRight" Height="12" />
