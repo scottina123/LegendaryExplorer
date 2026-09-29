@@ -90,7 +90,7 @@ public partial class MeshRenderer
     private readonly HashSet<string> RemovedMorphBones = new(StringComparer.OrdinalIgnoreCase);
     private bool SuppressMorphEditorChanges;
     private string PendingMorphTargetStatus;
-    private readonly Dictionary<int, MorphTexturePreviewResolution> MorphTexturePreviewCache = [];
+    private readonly Dictionary<string, MorphTexturePreviewResolution> MorphTexturePreviewCache = [];
     private DispatcherTimer MorphMaterialPreviewTimer;
 
     private string _morphSaveHelpText =
@@ -266,6 +266,7 @@ public partial class MeshRenderer
             RefreshMorphEditorFilters();
             RemovedMorphBones.Clear();
             RemoveMorphHairMesh = false;
+            ImportedMorphAccessoryPaths = null;
             MorphTargets = new Dictionary<string, MorphTargetSnapshot>(StringComparer.OrdinalIgnoreCase);
             BaseSkeletonPositions = new Dictionary<string, Vector3>(StringComparer.OrdinalIgnoreCase);
 
@@ -1109,9 +1110,12 @@ public partial class MeshRenderer
         {
             foreach (MorphTextureOverrideItem texture in MorphTextureOverrides)
             {
-                if (!MorphTexturePreviewCache.TryGetValue(texture.EntryIndex, out MorphTexturePreviewResolution resolution))
+                string cacheKey = texture.ImportedAssetPath ?? texture.EntryIndex.ToString();
+                if (!MorphTexturePreviewCache.TryGetValue(cacheKey, out MorphTexturePreviewResolution resolution))
                 {
-                    IEntry textureEntry = CurrentLoadedExport.FileRef.GetEntry(texture.EntryIndex);
+                    IEntry textureEntry = texture.ImportedAssetPath is { } importedPath
+                        ? ResolveMorphRonAsset(importedPath, "Texture2D", cache ??= new PackageCache())
+                        : CurrentLoadedExport.FileRef.GetEntry(texture.EntryIndex);
                     ExportEntry textureExport = textureEntry switch
                     {
                         ExportEntry export when export.IsTexture() => export,
@@ -1126,12 +1130,20 @@ public partial class MeshRenderer
                         ? MeshContext.TextureCache.LoadTexture(textureExport)
                         : null;
                     string displayPath = textureExport?.InstancedFullPath
+                                         ?? texture.ImportedAssetPath
                                          ?? (texture.EntryIndex == 0 ? "None" : "Entry is not a resolvable texture");
                     resolution = new MorphTexturePreviewResolution(textureExport, cachedTexture, displayPath);
-                    MorphTexturePreviewCache[texture.EntryIndex] = resolution;
+                    MorphTexturePreviewCache[cacheKey] = resolution;
                 }
 
                 texture.ResolvedPath = resolution.DisplayPath;
+                if (ShouldKeepMorphMaterialTexture(texture.ImportedAssetPath, resolution.CachedTexture is not null))
+                {
+                    // A missing RON asset is not an explicit None override. Keep the material's
+                    // usable texture rather than binding a null mask/diffuse and darkening the face.
+                    texture.ResolvedPath += " (unavailable; using material texture)";
+                    continue;
+                }
                 foreach (MaterialRenderProxy material in materials)
                 {
                     material.SetTextureParameter(
@@ -1242,6 +1254,7 @@ public partial class MeshRenderer
     private void WriteMorphEditorValues(ExportEntry target)
     {
         PropertyCollection properties = target.GetProperties();
+        WriteMorphRonAssetReferences(target, properties);
         if (RemoveMorphHairMesh)
         {
             properties.AddOrReplaceProp(new ObjectProperty(0, "m_oHairMesh"));
@@ -1319,7 +1332,9 @@ public partial class MeshRenderer
         properties.Add(new ArrayProperty<StructProperty>(MorphTextureOverrides.Select(texture =>
             new StructProperty("TextureParameter", false,
                 new NameProperty(texture.Name, "nName"),
-                new ObjectProperty(texture.EntryIndex, "m_pTexture"))), "m_aTextureOverrides"));
+                new ObjectProperty(texture.ImportedAssetPath is { } path
+                    ? GetMorphRonAssetIndex(materialOverride.FileRef, path, "Texture2D")
+                    : texture.EntryIndex, "m_pTexture"))), "m_aTextureOverrides"));
         materialOverride.WriteProperties(properties);
     }
 
@@ -1982,6 +1997,7 @@ public partial class MeshRenderer
             MorphHairMeshExport = null;
             MorphPreviewSkeletalMesh = null;
             RemoveMorphHairMesh = false;
+            ImportedMorphAccessoryPaths = null;
             MorphBaseHeadPath = null;
             MorphHairMeshPath = null;
             MorphTargetStatus = null;
@@ -2160,7 +2176,19 @@ public sealed class MorphTextureOverrideItem : MorphRegionEditorItem
     private int _entryIndex;
     private string _resolvedPath;
     public string Name { get => _name; set { if (SetProperty(ref _name, value ?? string.Empty)) Changed(); } }
-    public int EntryIndex { get => _entryIndex; set { if (SetProperty(ref _entryIndex, value)) Changed(); } }
+    public int EntryIndex
+    {
+        get => _entryIndex;
+        set
+        {
+            if (SetProperty(ref _entryIndex, value))
+            {
+                ImportedAssetPath = null;
+                Changed();
+            }
+        }
+    }
+    internal string ImportedAssetPath { get; set; }
     public string ResolvedPath { get => _resolvedPath; internal set => SetProperty(ref _resolvedPath, value); }
 
     public MorphTextureOverrideItem(string name, int entryIndex, Action changed)

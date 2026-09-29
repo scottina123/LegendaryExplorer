@@ -182,6 +182,14 @@
                         </StackPanel>
 
                         <StackPanel DockPanel.Dock="Bottom" Margin="0,7,0,0">
+                            <UniformGrid Rows="1" Columns="2" Margin="0,0,0,6">
+                                <Button x:Name="ImportMorphRonButton" Content="Import .ron…" Padding="6,4" Margin="0,0,3,0"
+                                        IsEnabled="{Binding CanEditMorph}" Click="ImportMorphRon_Click"
+                                        ToolTip="Import a Trilogy Save Editor head morph onto the matching base head, keeping the existing hair mesh. Preview the imported changes before saving."/>
+                                <Button x:Name="ExportMorphRonButton" Content="Export .ron…" Padding="6,4" Margin="3,0,0,0"
+                                        IsEnabled="{Binding HasMorphEditorData}" Click="ExportMorphRon_Click"
+                                        ToolTip="Export the current edits as a head morph that Trilogy Save Editor can import."/>
+                            </UniformGrid>
                             <TextBlock Text="{Binding MorphSaveHelpText}"
                                        TextWrapping="Wrap" Opacity="0.72" Margin="0,0,0,5"/>
                             <UniformGrid Rows="1" Columns="2">
