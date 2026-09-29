@@ -211,12 +211,22 @@
                           Visibility="{Binding Pcc, Converter={StaticResource NullVisibilityConverter}}">
                     <MenuItem.Header>
                         <StackPanel Orientation="Horizontal">
-                            <Button Content="&lt;" Width="28" Height="22" Margin="0,0,4,0"
+                            <Button x:Name="SelectionHistoryBackButton" Content="&lt;" Width="28" Height="22" Margin="0,0,4,0"
                                     Command="{Binding NavigateSelectionBackCommand}"
-                                    ToolTip="Go to the previously selected sequence object" />
-                            <Button Content="&gt;" Width="28" Height="22"
+                                    AutomationProperties.Name="Back"
+                                    ToolTip="Go to the previously selected sequence object. Right-click to choose from the last 10 nodes.">
+                                <Button.ContextMenu>
+                                    <ContextMenu Tag="Back" Opened="SelectionHistoryMenu_Opened" />
+                                </Button.ContextMenu>
+                            </Button>
+                            <Button x:Name="SelectionHistoryForwardButton" Content="&gt;" Width="28" Height="22"
                                     Command="{Binding NavigateSelectionForwardCommand}"
-                                    ToolTip="Go to the next selected sequence object" />
+                                    AutomationProperties.Name="Forward"
+                                    ToolTip="Go to the next selected sequence object. Right-click to choose from the next 10 nodes.">
+                                <Button.ContextMenu>
+                                    <ContextMenu Tag="Forward" Opened="SelectionHistoryMenu_Opened" />
+                                </Button.ContextMenu>
+                            </Button>
                         </StackPanel>
                     </MenuItem.Header>
                 </MenuItem>

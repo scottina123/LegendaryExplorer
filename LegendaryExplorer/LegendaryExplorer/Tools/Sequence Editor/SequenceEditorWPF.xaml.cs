@@ -1003,10 +1003,9 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             UseSavedViews = !UseSavedViews;
         }
 
-        private bool CanNavigateSelectionBack() => Pcc != null && selectionHistoryIndex > 0;
+        private bool CanNavigateSelectionBack() => FindSelectionHistoryIndex(-1) >= 0;
 
-        private bool CanNavigateSelectionForward() =>
-            Pcc != null && selectionHistoryIndex >= 0 && selectionHistoryIndex < selectionHistory.Count - 1;
+        private bool CanNavigateSelectionForward() => FindSelectionHistoryIndex(1) >= 0;
 
         private void NavigateSelectionBack()
         {
@@ -1020,31 +1019,75 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
 
         private void NavigateSelectionHistory(int step)
         {
-            int targetIndex = selectionHistoryIndex + step;
-            if (targetIndex < 0 || targetIndex >= selectionHistory.Count)
+            NavigateToSelectionHistoryIndex(FindSelectionHistoryIndex(step));
+        }
+
+        private ExportEntry GetSelectionHistoryExport(SelectionHistoryEntry entry)
+        {
+            return Pcc != null
+                && string.Equals(entry.FilePath, Pcc.FilePath, StringComparison.InvariantCultureIgnoreCase)
+                && Pcc.TryGetUExport(entry.ObjectUIndex, out var export)
+                && !export.IsTrash()
+                    ? export
+                    : null;
+        }
+
+        private int FindSelectionHistoryIndex(int step, int? startIndex = null)
+        {
+            if (Pcc == null)
+            {
+                return -1;
+            }
+
+            for (int index = (startIndex ?? selectionHistoryIndex) + step; index >= 0 && index < selectionHistory.Count; index += step)
+            {
+                if (GetSelectionHistoryExport(selectionHistory[index]) != null)
+                {
+                    return index;
+                }
+            }
+
+            return -1;
+        }
+
+        private void SelectionHistoryMenu_Opened(object sender, RoutedEventArgs e)
+        {
+            var menu = (ContextMenu)sender;
+            int step = Equals(menu.Tag, "Back") ? -1 : 1;
+            menu.Items.Clear();
+            for (int index = FindSelectionHistoryIndex(step); index >= 0 && menu.Items.Count < 10;
+                 index = FindSelectionHistoryIndex(step, index))
+            {
+                var export = GetSelectionHistoryExport(selectionHistory[index]);
+                string label = $"#{export.UIndex} {export.InstancedFullPath}";
+                int targetIndex = index;
+                menu.Items.Add(new MenuItem
+                {
+                    Header = new TextBlock { Text = label, MaxWidth = 500, TextTrimming = TextTrimming.CharacterEllipsis },
+                    ToolTip = label,
+                    Command = new GenericCommand(() => NavigateToSelectionHistoryIndex(targetIndex))
+                });
+            }
+        }
+
+        private void NavigateToSelectionHistoryIndex(int targetIndex)
+        {
+            if (targetIndex < 0 || targetIndex >= selectionHistory.Count
+                || GetSelectionHistoryExport(selectionHistory[targetIndex]) is not ExportEntry export)
             {
                 return;
             }
-
-            var historyEntry = selectionHistory[targetIndex];
-            if (Pcc == null
-                || !string.Equals(historyEntry.FilePath, Pcc.FilePath, StringComparison.InvariantCultureIgnoreCase)
-                || !Pcc.TryGetUExport(historyEntry.ObjectUIndex, out var export))
-            {
-                return;
-            }
-
-            selectionHistoryIndex = targetIndex;
-            UpdateSelectionHistoryNavigationState();
 
             suppressSelectionHistory = true;
             try
             {
-                GoToExport(export);
+                GoToExport(export, goIntoSequences: false);
+                selectionHistoryIndex = targetIndex;
             }
             finally
             {
                 suppressSelectionHistory = false;
+                UpdateSelectionHistoryNavigationState();
             }
         }
 
