@@ -209,6 +209,10 @@
                                                Minimum="0" Maximum="2" Increment="0.05" FormatString="P0"/>
                         </Grid>
 
+                        <Button DockPanel.Dock="Top" x:Name="BaldinatorMorphButton" Content="Baldinator" Padding="7,3" Margin="0,0,0,5"
+                                HorizontalAlignment="Left" IsEnabled="{Binding CanEditMorph}" Click="BaldinatorMorph_Click"
+                                ToolTip="Remove this morph's hair mesh and stored hairstyle morphs while preserving its facial sculpt. Shapes without hairstyle metadata are kept. Preview the result, then use Override morph or Make new morph to save."/>
+
                         <DockPanel DockPanel.Dock="Top" Margin="0,0,0,5">
                             <Button DockPanel.Dock="Right" Content="Randomize morph" Padding="7,3" Margin="6,0,0,0"
                                     IsEnabled="{Binding HasMorphEditorData}" Click="RandomizeMorphFeatures_Click"

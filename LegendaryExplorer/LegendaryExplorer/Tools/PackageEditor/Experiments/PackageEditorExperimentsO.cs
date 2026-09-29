@@ -24,6 +24,7 @@ using static LegendaryExplorer.Misc.ExperimentsTools.PackageAutomations;
 using static LegendaryExplorer.Misc.ExperimentsTools.SequenceAutomations;
 using static LegendaryExplorer.Misc.ExperimentsTools.SharedMethods;
 using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
+using BioMorphHair = LegendaryExplorerCore.Unreal.Classes.BioMorphHair;
 
 namespace LegendaryExplorer.Tools.PackageEditor.Experiments
 {
@@ -550,22 +551,30 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
         }
 
         /// <summary>
-        /// Modify the hair morph targets of a male headmorph to make it bald.
+        /// Remove a morph's hair mesh and stored hairstyle morphs while preserving its facial sculpt.
         /// </summary>
         /// <param name="pew">Current PE window.</param>
         public static void Baldinator(PackageEditorWindow pew)
         {
-            if (pew.SelectedItem == null || pew.SelectedItem.Entry == null || pew.Pcc == null) { return; }
-
-            MEGame game = pew.Pcc.Game;
-
-            string baldPccPath = Path.Combine(MEDirectories.GetCookedPath(game),
-                game.IsGame3() ? "BioD_CitHub_Underbelly.pcc" : game.IsGame2() ? "BioH_Wilson.pcc" : "BIOA_FRE32_00_DSG.pcc");
-
-            string baldMorphName = game.IsGame3() ? "BioChar_CitHub.Faces.HMM_Deco_1" :
-                game.IsGame2() ? "BIOG_Hench_FAC.HMM.hench_wilson" : "BIOA_UNC_FAC.HMM.Plot.FRE32_BioticLeader";
-
-            MorphMaleHair(pew, "bald", baldPccPath, baldMorphName);
+            if (pew?.SelectedItem?.Entry is not ExportEntry { ClassName: "BioMorphFace" } morph)
+            {
+                ShowError("Select a BioMorphFace export.");
+                return;
+            }
+            try
+            {
+                BioMorphFace binary = ObjectBinary.From<BioMorphFace>(morph);
+                BioMorphHair.Result result = BioMorphHair.MakeBald(morph, binary.LODs);
+                PropertyCollection properties = morph.GetProperties();
+                BioMorphHair.ApplyProperties(morph, properties, result);
+                binary.LODs = result.Lods;
+                morph.WritePropertiesAndBinary(properties, binary);
+                MessageBox.Show("Baldinator applied. Save the package to keep the changes.", "Baldinator", MessageBoxButton.OK);
+            }
+            catch (Exception exception)
+            {
+                ShowError($"Baldinator could not be applied: {exception.Message}");
+            }
         }
 
         /// <summary>

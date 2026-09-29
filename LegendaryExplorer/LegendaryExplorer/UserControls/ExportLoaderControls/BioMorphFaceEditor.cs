@@ -22,6 +22,7 @@ using System.Windows;
 using System.Windows.Threading;
 using MediaColor = System.Windows.Media.Color;
 using BinaryMorphFace = LegendaryExplorerCore.Unreal.BinaryConverters.BioMorphFace;
+using BioMorphHair = LegendaryExplorerCore.Unreal.Classes.BioMorphHair;
 
 namespace LegendaryExplorer.UserControls.ExportLoaderControls;
 
@@ -79,6 +80,7 @@ public partial class MeshRenderer
     private ModelPreview<WorldVertex> MorphHairLEXPreview;
     private ModelPreview<LEVertex> MorphHairGameShaderPreview;
     private bool _hideMorphHair;
+    private bool RemoveMorphHairMesh;
     private Vector3[][] StoredMorphLods = [];
     private Vector3[][] WorkingMorphLods = [];
     private Vector3[][] WorkingMorphNormalDeltas = [];
@@ -263,6 +265,7 @@ public partial class MeshRenderer
             MorphTextureOverrides.ClearEx();
             RefreshMorphEditorFilters();
             RemovedMorphBones.Clear();
+            RemoveMorphHairMesh = false;
             MorphTargets = new Dictionary<string, MorphTargetSnapshot>(StringComparer.OrdinalIgnoreCase);
             BaseSkeletonPositions = new Dictionary<string, Vector3>(StringComparer.OrdinalIgnoreCase);
 
@@ -1239,6 +1242,10 @@ public partial class MeshRenderer
     private void WriteMorphEditorValues(ExportEntry target)
     {
         PropertyCollection properties = target.GetProperties();
+        if (RemoveMorphHairMesh)
+        {
+            properties.AddOrReplaceProp(new ObjectProperty(0, "m_oHairMesh"));
+        }
         properties.RemoveNamedProperty("m_aMorphFeatures");
         properties.RemoveNamedProperty("m_aFinalSkeleton");
 
@@ -1314,6 +1321,65 @@ public partial class MeshRenderer
                 new NameProperty(texture.Name, "nName"),
                 new ObjectProperty(texture.EntryIndex, "m_pTexture"))), "m_aTextureOverrides"));
         materialOverride.WriteProperties(properties);
+    }
+
+    private void BaldinatorMorph_Click(object sender, RoutedEventArgs e)
+    {
+        if (CurrentLoadedExport is null || !CanEditMorph) return;
+        try
+        {
+            // Work from the live edits, and only change editor state after the complete operation validates.
+            var weights = MorphFeatureItems.GroupBy(feature => feature.Name, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(group => group.Key, group => group.Sum(feature => feature.Value), StringComparer.OrdinalIgnoreCase);
+            BioMorphHair.Result result = BioMorphHair.MakeBald(CurrentLoadedExport, WorkingMorphLods, weights);
+            ApplyBaldMorph(result);
+        }
+        catch (Exception exception)
+        {
+            MorphEditorStatus = $"Baldinator could not be applied: {exception.Message}";
+        }
+    }
+
+    private void ApplyBaldMorph(BioMorphHair.Result result)
+    {
+        SuppressMorphEditorChanges = true;
+        try
+        {
+            if (result.RemovedHairMorphs)
+            {
+                foreach (MorphFeatureEditorItem feature in MorphFeatureItems.Where(feature => BioMorphHair.IsHairFeature(feature.Name)).ToArray())
+                    MorphFeatureItems.Remove(feature);
+
+                // Bake the current edits into a new baseline so later slider changes cannot restore the old hair
+                // or apply existing feature/bone edits a second time.
+                StoredMorphLods = CloneLods(result.Lods);
+                OriginalMorphFeatures = MorphFeatureItems.Select(feature => new MorphFeatureSnapshot(feature.Name, feature.Value)).ToList();
+                var bones = MorphSkeletonItems.Select(bone => new MorphBoneEditorItem(bone.Name,
+                    bone.Position + result.BoneDeltas.GetValueOrDefault(bone.Name), OnMorphBoneChanged)).ToList();
+                foreach ((string name, Vector3 delta) in result.BoneDeltas)
+                    if (delta != Vector3.Zero && !bones.Any(bone => bone.Name.Equals(name, StringComparison.OrdinalIgnoreCase)))
+                        bones.Add(new MorphBoneEditorItem(name, BaseSkeletonPositions.GetValueOrDefault(name) + delta, OnMorphBoneChanged));
+                MorphSkeletonItems.ClearEx();
+                MorphSkeletonItems.AddRange(bones);
+            }
+            RemoveMorphHairMesh = true;
+            MorphHairMeshExport = null;
+            DisposeMorphHairPreview();
+            MorphHairMeshPath = "m_oHairMesh: none (Baldinator).";
+            ClearMorphViewportSelection();
+            InvalidateMorphRegions();
+            RefreshMorphFeatureGroups();
+            RefreshMorphEditorFilters();
+            if (result.RemovedHairMorphs) RecalculateMorphFromFeatures();
+        }
+        finally
+        {
+            SuppressMorphEditorChanges = false;
+        }
+        MarkMorphChanged();
+        MorphEditorStatus = result.RemovedHairMorphs
+            ? "Hair mesh and hairstyle morphs removed. Save with Override morph or Make new morph."
+            : "Hair mesh removed; the face and scalp are unchanged. Save with Override morph or Make new morph.";
     }
 
     private void AddMorphFeature_Click(object sender, RoutedEventArgs e)
@@ -1915,6 +1981,7 @@ public partial class MeshRenderer
             MorphBaseHeadExport = null;
             MorphHairMeshExport = null;
             MorphPreviewSkeletalMesh = null;
+            RemoveMorphHairMesh = false;
             MorphBaseHeadPath = null;
             MorphHairMeshPath = null;
             MorphTargetStatus = null;
