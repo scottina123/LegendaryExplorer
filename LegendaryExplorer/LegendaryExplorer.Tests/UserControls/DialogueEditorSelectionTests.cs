@@ -55,12 +55,8 @@ public class DialogueEditorSelectionTests
         export.WriteProperties(new PropertyCollection
         {
             new ArrayProperty<IntProperty>("m_StartingList") { 0 },
-            new ArrayProperty<StructProperty>("m_EntryList")
-            {
-                new("BioDialogEntryNode", entryProperties),
-                new("BioDialogEntryNode", entryProperties.DeepClone()),
-                new("BioDialogEntryNode", entryProperties.DeepClone())
-            },
+            new ArrayProperty<StructProperty>(Enumerable.Range(0, 13)
+                .Select(_ => new StructProperty("BioDialogEntryNode", entryProperties.DeepClone())), "m_EntryList"),
             new ArrayProperty<StructProperty>("m_ReplyList")
             {
                 new("BioDialogReplyNode", replyProperties)
@@ -155,6 +151,32 @@ public class DialogueEditorSelectionTests
             Assert.AreEqual(otherConversation.UIndex, editor.SelectedConv.UIndex);
             Assert.AreSame(otherNode, editor.SelectedDialogueNode);
             back.Execute(null);
+
+            for (int index = 1; index <= 12; index++)
+            {
+                editor.SelectDialogueNodeByIndex(index);
+            }
+
+            var backMenu = ((Button)editor.FindName("SelectionHistoryBackButton")).ContextMenu;
+            backMenu.RaiseEvent(new RoutedEventArgs(ContextMenu.OpenedEvent));
+            Assert.HasCount(10, backMenu.Items);
+            StringAssert.Contains(((TextBlock)((MenuItem)backMenu.Items[0]).Header).Text, "Entry 11");
+            ((MenuItem)backMenu.Items[9]).Command.Execute(null);
+            Assert.AreEqual(2, editor.SelectedDialogueNode.NodeCount);
+
+            var forwardMenu = ((Button)editor.FindName("SelectionHistoryForwardButton")).ContextMenu;
+            forwardMenu.RaiseEvent(new RoutedEventArgs(ContextMenu.OpenedEvent));
+            Assert.HasCount(10, forwardMenu.Items);
+            StringAssert.Contains(((TextBlock)((MenuItem)forwardMenu.Items[0]).Header).Text, "Entry 3");
+            ((MenuItem)forwardMenu.Items[9]).Command.Execute(null);
+            Assert.AreEqual(12, editor.SelectedDialogueNode.NodeCount);
+            Assert.IsFalse(forward.CanExecute(null));
+            back.Execute(null);
+            Assert.AreEqual(11, editor.SelectedDialogueNode.NodeCount);
+
+            editor.SelectDialogueNodeByIndex(0);
+            forwardMenu.RaiseEvent(new RoutedEventArgs(ContextMenu.OpenedEvent));
+            Assert.HasCount(0, forwardMenu.Items, "Opening the menu again must discard the old forward branch.");
 
             var viewportTabs = (TabControl)editor.FindName("BottomViewportTabControl");
             viewportTabs.SelectedItem = viewportTabs.Items.OfType<TabItem>().Single(tab => Equals(tab.Header, "InterpData"));

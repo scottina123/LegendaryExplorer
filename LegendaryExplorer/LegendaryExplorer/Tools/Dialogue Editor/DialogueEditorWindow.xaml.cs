@@ -8610,20 +8610,24 @@ namespace LegendaryExplorer.DialogueEditor
                 : Conversations.FirstOrDefault(conversation => conversation.UIndex == entry.ConversationUIndex);
         }
 
-        private int FindSelectionHistoryIndex(int step)
+        private DialogueNodeExtended GetSelectionHistoryNode(SelectionHistoryEntry entry)
+        {
+            var conversation = GetSelectionHistoryConversation(entry);
+            var nodes = entry.IsReply ? conversation?.ReplyList : conversation?.EntryList;
+            // Use the node's property identity so inserting or deleting nodes cannot redirect history.
+            return nodes?.FirstOrDefault(node => ReferenceEquals(node.NodeProp, entry.NodeProperty));
+        }
+
+        private int FindSelectionHistoryIndex(int step, int? startIndex = null)
         {
             if (Pcc == null)
             {
                 return -1;
             }
 
-            for (int index = selectionHistoryIndex + step; index >= 0 && index < selectionHistory.Count; index += step)
+            for (int index = (startIndex ?? selectionHistoryIndex) + step; index >= 0 && index < selectionHistory.Count; index += step)
             {
-                var entry = selectionHistory[index];
-                var conversation = GetSelectionHistoryConversation(entry);
-                var nodes = entry.IsReply ? conversation?.ReplyList : conversation?.EntryList;
-                // Use the node's property identity so inserting or deleting nodes cannot redirect history.
-                if (nodes?.Any(node => ReferenceEquals(node.NodeProp, entry.NodeProperty)) == true)
+                if (GetSelectionHistoryNode(selectionHistory[index]) != null)
                 {
                     return index;
                 }
@@ -8634,8 +8638,37 @@ namespace LegendaryExplorer.DialogueEditor
 
         private void NavigateSelectionHistory(int step)
         {
-            int targetIndex = FindSelectionHistoryIndex(step);
-            if (targetIndex < 0)
+            NavigateToSelectionHistoryIndex(FindSelectionHistoryIndex(step));
+        }
+
+        private void SelectionHistoryMenu_Opened(object sender, RoutedEventArgs e)
+        {
+            var menu = (ContextMenu)sender;
+            int step = Equals(menu.Tag, "Back") ? -1 : 1;
+            menu.Items.Clear();
+            for (int index = FindSelectionHistoryIndex(step); index >= 0 && menu.Items.Count < 10;
+                 index = FindSelectionHistoryIndex(step, index))
+            {
+                var entry = selectionHistory[index];
+                var conversation = GetSelectionHistoryConversation(entry);
+                var node = GetSelectionHistoryNode(entry);
+                string line = Regex.Replace(node.Line ?? string.Empty, @"\s+", " ").Trim();
+                string label = $"{conversation.ConvName}: {(node.IsReply ? "Reply" : "Entry")} {node.NodeCount}";
+                label += string.IsNullOrEmpty(line) ? $" (TLK {node.LineStrRef})" : $" — {line}";
+                int targetIndex = index;
+                menu.Items.Add(new MenuItem
+                {
+                    Header = new TextBlock { Text = label, MaxWidth = 500, TextTrimming = TextTrimming.CharacterEllipsis },
+                    ToolTip = label,
+                    Command = new GenericCommand(() => NavigateToSelectionHistoryIndex(targetIndex))
+                });
+            }
+        }
+
+        private void NavigateToSelectionHistoryIndex(int targetIndex)
+        {
+            if (Pcc == null || targetIndex < 0 || targetIndex >= selectionHistory.Count
+                || GetSelectionHistoryNode(selectionHistory[targetIndex]) == null)
             {
                 return;
             }

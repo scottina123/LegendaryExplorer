@@ -373,14 +373,22 @@
                 <MenuItem Style="{StaticResource GotoBoxHostMenuItemStyle}">
                     <MenuItem.Header>
                         <StackPanel Orientation="Horizontal" Margin="0,0,4,0">
-                            <Button Content="&lt;" Width="28" Height="22" Margin="0,0,4,0"
+                            <Button x:Name="SelectionHistoryBackButton" Content="&lt;" Width="28" Height="22" Margin="0,0,4,0"
                                     Command="{Binding NavigateSelectionBackCommand}"
                                     AutomationProperties.Name="Back"
-                                    ToolTip="Go back to the previously selected dialogue node" />
-                            <Button Content="&gt;" Width="28" Height="22"
+                                    ToolTip="Go back to the previously selected dialogue node. Right-click to choose from the last 10 nodes.">
+                                <Button.ContextMenu>
+                                    <ContextMenu Tag="Back" Opened="SelectionHistoryMenu_Opened" />
+                                </Button.ContextMenu>
+                            </Button>
+                            <Button x:Name="SelectionHistoryForwardButton" Content="&gt;" Width="28" Height="22"
                                     Command="{Binding NavigateSelectionForwardCommand}"
                                     AutomationProperties.Name="Forward"
-                                    ToolTip="Go forward to the next selected dialogue node" />
+                                    ToolTip="Go forward to the next selected dialogue node. Right-click to choose from the next 10 nodes.">
+                                <Button.ContextMenu>
+                                    <ContextMenu Tag="Forward" Opened="SelectionHistoryMenu_Opened" />
+                                </Button.ContextMenu>
+                            </Button>
                         </StackPanel>
                     </MenuItem.Header>
                 </MenuItem>
