@@ -5,7 +5,6 @@ using System.IO;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
-using BCnEncoder.Shared.ImageFiles;
 using LegendaryExplorer.Misc;
 using LegendaryExplorer.SharedUI;
 using LegendaryExplorer.SharedUI.Converters;
@@ -65,6 +64,59 @@ namespace LegendaryExplorer.UserControls.SharedToolControls
 
         public ObservableCollectionExtended<RecentItem> RecentItems { get; } = new();
 
+        public class RecentItemGroup(MEGame? game)
+        {
+            public MEGame? Game { get; } = game;
+            public string Header => Game?.ToString() ?? "Misc";
+            public ObservableCollectionExtended<RecentItem> Items { get; } = new();
+        }
+
+        public IReadOnlyList<RecentItemGroup> RecentGroups { get; } = new[]
+        {
+            new RecentItemGroup(MEGame.ME1),
+            new RecentItemGroup(MEGame.ME2),
+            new RecentItemGroup(MEGame.ME3),
+            new RecentItemGroup(MEGame.LE1),
+            new RecentItemGroup(MEGame.LE2),
+            new RecentItemGroup(MEGame.LE3),
+            new RecentItemGroup(null)
+        };
+
+        private RecentItemGroup selectedRecentGroup;
+        public RecentItemGroup SelectedRecentGroup
+        {
+            get => selectedRecentGroup;
+            set => SetProperty(ref selectedRecentGroup, value);
+        }
+
+        private RecentItemGroup GetRecentGroup(RecentItem item)
+        {
+            // Non-PCC files can also carry a game (for example, ME3 SFARs).
+            MEGame? game = !IsFolderRecents
+                           && string.Equals(Path.GetExtension(item.Path), ".pcc", StringComparison.OrdinalIgnoreCase)
+                           && item.Game is MEGame knownGame && knownGame.IsMEGame()
+                ? item.Game
+                : null;
+            return RecentGroups.First(group => group.Game == game);
+        }
+
+        private void RefreshRecentGroups(RecentItem preferredItem = null)
+        {
+            foreach (var group in RecentGroups)
+            {
+                group.Items.ReplaceAll(RecentItems.Where(item => GetRecentGroup(item) == group));
+            }
+
+            if (preferredItem != null)
+            {
+                SelectedRecentGroup = GetRecentGroup(preferredItem);
+            }
+            else if (SelectedRecentGroup == null || !SelectedRecentGroup.Items.Any)
+            {
+                SelectedRecentGroup = RecentItems.Count > 0 ? GetRecentGroup(RecentItems[0]) : RecentGroups[0];
+            }
+        }
+
         public bool IsFolderRecents
         {
             get => (bool)GetValue(IsFolderRecentsProperty);
@@ -76,6 +128,7 @@ namespace LegendaryExplorer.UserControls.SharedToolControls
 
         public RecentsControl()
         {
+            SelectedRecentGroup = RecentGroups[0];
             LoadCommands();
             InitializeComponent();
         }
@@ -193,6 +246,7 @@ namespace LegendaryExplorer.UserControls.SharedToolControls
             {
                 // Recents is disabled
                 RecentItems.ClearEx();
+                RefreshRecentGroups();
                 return;
             }
 
@@ -204,7 +258,7 @@ namespace LegendaryExplorer.UserControls.SharedToolControls
             if (File.Exists(RecentsAppDataFile))
             {
                 string[] recents = File.ReadAllLines(RecentsAppDataFile);
-                SetRecents(recents.Select(RecentItem.FromRecentEntryString));
+                SetRecents(recents.Select(RecentItem.FromRecentEntryString), selectMostRecent: true);
             }
         }
 
@@ -212,10 +266,11 @@ namespace LegendaryExplorer.UserControls.SharedToolControls
         /// Sets the whole recents list. Does not propogate.
         /// </summary>
         /// <param name="recents"></param>
-        private void SetRecents(IEnumerable<RecentItem> recents)
+        private void SetRecents(IEnumerable<RecentItem> recents, bool selectMostRecent = false)
         {
+            var recentItems = recents.ToList();
             RecentItems.ClearEx();
-            foreach (var referencedFile in recents)
+            foreach (var referencedFile in recentItems)
             {
                 if (IsFolderRecents)
                 {
@@ -229,6 +284,7 @@ namespace LegendaryExplorer.UserControls.SharedToolControls
                     AddRecent(referencedFile.Path, true, referencedFile.Game);
                 }
             }
+            RefreshRecentGroups(selectMostRecent ? RecentItems.FirstOrDefault() : null);
             RefreshRecentsMenu();
         }
 
@@ -249,6 +305,7 @@ namespace LegendaryExplorer.UserControls.SharedToolControls
         private void RefreshRecentsMenu()
         {
             RecentsMenu.Items.Clear();
+            RecentsMenu.IsEnabled = RecentItems.Count > 0;
             foreach (var recentItem in RecentItems)
             {
                 var iconBitmap = GameToImageIconConverter.StaticConvert(recentItem.Game);
@@ -270,25 +327,29 @@ namespace LegendaryExplorer.UserControls.SharedToolControls
         /// <param name="isLoading">If the control is loading, and the list shouldn't be cleared, rather just appended to. </param>
         public void AddRecent(string path, bool isLoading, MEGame? game)
         {
+            var recentItem = new RecentItem(path, game);
             if (isLoading)
             {
-                RecentItems.Add(new RecentItem(path, game)); //in order
+                RecentItems.Add(recentItem); //in order
             }
             else
             {
                 // Remove the new recent from the list if it exists - as we will re-insert it (at the front)
                 RecentItems.ReplaceAll(RecentItems.Where(x =>
                     !x.Path.Equals(path, StringComparison.InvariantCultureIgnoreCase)).ToList());
-                RecentItems.Insert(0, new RecentItem(path, game)); //put at front
+                RecentItems.Insert(0, recentItem); //put at front
             }
-            while (RecentItems.Count > 10)
+            // Each tab keeps its own history, so opening one game doesn't evict another.
+            var group = GetRecentGroup(recentItem);
+            foreach (var olderItem in RecentItems.Where(item => GetRecentGroup(item) == group).Skip(10).ToList())
             {
-                RecentItems.RemoveAt(10); //Just remove trailing items
+                RecentItems.Remove(olderItem);
             }
 
             RecentsMenu.IsEnabled = true; //An item exists in the menu
             if (!isLoading)
             {
+                RefreshRecentGroups(recentItem);
                 RefreshRecentsMenu();
                 SaveRecentList(true);
             }

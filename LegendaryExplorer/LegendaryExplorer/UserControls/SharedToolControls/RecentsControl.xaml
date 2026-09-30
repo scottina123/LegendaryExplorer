@@ -3,7 +3,6 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-             xmlns:system="clr-namespace:System;assembly=mscorlib"
              xmlns:local="clr-namespace:LegendaryExplorer.UserControls.SharedToolControls"
              xmlns:misc="clr-namespace:LegendaryExplorer.Misc"
              xmlns:converters="clr-namespace:LegendaryExplorer.SharedUI.Converters"
@@ -25,37 +24,64 @@
     <DockPanel>
         <TextBlock Text="Recently opened items" DockPanel.Dock="Top" TextAlignment="Center" FontSize="20" FontWeight="Light" Margin="10"
                    Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
-        <ItemsControl ItemsSource="{Binding RecentItems}">
-            <ItemsControl.ItemsPanel>
-                <ItemsPanelTemplate>
-                    <WrapPanel Orientation="Horizontal" />
-                </ItemsPanelTemplate>
-            </ItemsControl.ItemsPanel>
-            <ItemsControl.ItemTemplate>
+        <TabControl x:Name="RecentTabs" ItemsSource="{Binding RecentGroups}" SelectedItem="{Binding SelectedRecentGroup, Mode=TwoWay}"
+                    HorizontalContentAlignment="Stretch" VerticalContentAlignment="Top" Padding="8">
+            <TabControl.ItemTemplate>
                 <DataTemplate>
-                    <Button Width="252" Margin="3" Padding="3" ToolTip="{Binding Path}" 
-                            Command="{Binding RecentFileOpenCommand, RelativeSource={RelativeSource FindAncestor, AncestorType={x:Type local:RecentsControl}}}" CommandParameter="{Binding Path}"
-                            ContextMenu="{StaticResource RecentItemContextMenu}">
-                        <Button.Content>
-                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                                <Image Margin="0,0,5,0" RenderOptions.BitmapScalingMode="HighQuality" Source="{Binding Game, Converter={StaticResource GameToImageIconConverter}}" Height="16" VerticalAlignment="Center">
-                                    <Image.Style>
-                                        <Style TargetType="Image">
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding IsAfc}" Value="True">
-                                                    <Setter Property="Visibility" Value="Collapsed"/>
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </Image.Style>
-                                </Image>
-                                <local:StatusBarGameIDIndicator GameType="AFC" Margin="0,0,5,0" VerticalAlignment="Center" Visibility="{Binding IsAfc, Converter={StaticResource BooleanToVisibilityConverter}}"/>
-                                <TextBlock Text="{Binding Path, Converter={StaticResource FilePathToFileNameConverter}}"/>
-                            </StackPanel>
-                        </Button.Content>
-                    </Button>
+                    <TextBlock Text="{Binding Header}" Margin="8,2"/>
                 </DataTemplate>
-            </ItemsControl.ItemTemplate>
-        </ItemsControl>
+            </TabControl.ItemTemplate>
+            <TabControl.ContentTemplate>
+                <DataTemplate>
+                    <Grid MinHeight="40">
+                        <TextBlock Text="No recently opened items in this tab." HorizontalAlignment="Center" VerticalAlignment="Center"
+                                   Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding Items.Count}" Value="0">
+                                            <Setter Property="Visibility" Value="Visible"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                        <ItemsControl ItemsSource="{Binding Items}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <WrapPanel Orientation="Horizontal" />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Button Width="252" Margin="3" Padding="3" ToolTip="{Binding Path}"
+                                            Command="{Binding RecentFileOpenCommand, RelativeSource={RelativeSource FindAncestor, AncestorType={x:Type local:RecentsControl}}}" CommandParameter="{Binding Path}"
+                                            ContextMenu="{StaticResource RecentItemContextMenu}">
+                                        <Button.Content>
+                                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                                <Image Margin="0,0,5,0" RenderOptions.BitmapScalingMode="HighQuality" Source="{Binding Game, Converter={StaticResource GameToImageIconConverter}}" Height="16" VerticalAlignment="Center">
+                                                    <Image.Style>
+                                                        <Style TargetType="Image">
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding IsAfc}" Value="True">
+                                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </Image.Style>
+                                                </Image>
+                                                <local:StatusBarGameIDIndicator GameType="AFC" Margin="0,0,5,0" VerticalAlignment="Center" Visibility="{Binding IsAfc, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+                                                <TextBlock Text="{Binding Path, Converter={StaticResource FilePathToFileNameConverter}}"/>
+                                            </StackPanel>
+                                        </Button.Content>
+                                    </Button>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </Grid>
+                </DataTemplate>
+            </TabControl.ContentTemplate>
+        </TabControl>
     </DockPanel>
 </misc:NotifyPropertyChangedControlBase>
