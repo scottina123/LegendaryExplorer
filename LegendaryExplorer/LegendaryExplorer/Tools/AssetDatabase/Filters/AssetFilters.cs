@@ -1,4 +1,5 @@
 ﻿using System.Linq;
+using LegendaryExplorerCore.Packages;
 
 namespace LegendaryExplorer.Tools.AssetDatabase.Filters
 {
@@ -17,6 +18,10 @@ namespace LegendaryExplorer.Tools.AssetDatabase.Filters
         public GenericAssetFilter<SequenceEventRecord> SequenceEventFilter { get; }
         public MaterialFilter MaterialFilter { get; }
         public TextureFilter TextureFilter { get;  }
+
+        private readonly PredicateSpecification<ParticleSysRecord> _vfxEffectSpecification;
+        public string VfxEffectFilterName { get; private set; } = "Client Effects";
+        public ParticleSysRecord.VFXClass VfxEffectClass { get; private set; } = ParticleSysRecord.VFXClass.RvrClientEffect;
 
         public AssetFilters(FileListSpecification fileList)
         {
@@ -56,13 +61,14 @@ namespace LegendaryExplorer.Tools.AssetDatabase.Filters
                 new PredicateSpecification<MeshRecord>("Only Static Meshes", mr => !mr.IsSkeleton),
             }, searchPredicate: MeshSearch);
 
+            _vfxEffectSpecification = new PredicateSpecification<ParticleSysRecord>("Only Client Effects",
+                pr => pr.VFXType == VfxEffectClass);
             ParticleFilter = new SingleOptionFilter<ParticleSysRecord>(new IAssetSpecification<ParticleSysRecord>[]
             {
                 fileList,
                 new PredicateSpecification<ParticleSysRecord>("Only Particle Systems",
                     pr => pr.VFXType == ParticleSysRecord.VFXClass.ParticleSystem),
-                new PredicateSpecification<ParticleSysRecord>("Only Client Effects",
-                    pr => pr.VFXType == ParticleSysRecord.VFXClass.RvrClientEffect)
+                _vfxEffectSpecification
             }, searchPredicate: t => t.Record.PSName.ToLower().Contains(t.SearchText.ToLower()));
 
             GUIFilter = new GenericAssetFilter<GUIElement>(new IAssetSpecification<GUIElement>[] {fileList},
@@ -74,6 +80,15 @@ namespace LegendaryExplorer.Tools.AssetDatabase.Filters
 
             PlotElementFilter = new GenericAssetFilter<PlotRecord>(new IAssetSpecification<PlotRecord>[] {fileList},
                 searchPredicate: t => t.Record.DisplayText.ToLower().Contains(t.SearchText.ToLower()));
+        }
+
+        public void SetGame(MEGame game)
+        {
+            VfxEffectFilterName = game == MEGame.LE1 ? "BioVFXTemplate" : "Client Effects";
+            VfxEffectClass = game == MEGame.LE1
+                ? ParticleSysRecord.VFXClass.BioVFXTemplate
+                : ParticleSysRecord.VFXClass.RvrClientEffect;
+            _vfxEffectSpecification.FilterName = $"Only {VfxEffectFilterName}";
         }
 
         /// <summary>

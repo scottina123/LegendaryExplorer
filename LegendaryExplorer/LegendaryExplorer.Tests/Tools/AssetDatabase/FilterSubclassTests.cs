@@ -2,6 +2,7 @@
 using System.Linq;
 using LegendaryExplorer.Tools.AssetDatabase;
 using LegendaryExplorer.Tools.AssetDatabase.Filters;
+using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.Unreal;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using TextureFilter = LegendaryExplorer.Tools.AssetDatabase.Filters.TextureFilter;
@@ -88,6 +89,43 @@ namespace LegendaryExplorer.Tests.Tools.AssetDatabase
             Assert.IsFalse(filters.ParticleFilter.Filter(particleSystem));
             Assert.IsTrue(filters.ParticleFilter.Filter(clientEffect));
             Assert.IsFalse(filters.ParticleFilter.Filter(bioVfxTemplate));
+        }
+
+        [TestMethod]
+        [DataRow(MEGame.ME1)]
+        [DataRow(MEGame.ME2)]
+        [DataRow(MEGame.ME3)]
+        [DataRow(MEGame.LE2)]
+        [DataRow(MEGame.LE3)]
+        public void TestLe1VfxFilterAndGameSwitch(MEGame otherGame)
+        {
+            var filters = new AssetFilters(new FileListSpecification());
+            var particleSystem = new ParticleSysRecord("PS", "Pkg", false, false, 1, ParticleSysRecord.VFXClass.ParticleSystem);
+            var clientEffect = new ParticleSysRecord("CE", "Pkg", false, false, 1, ParticleSysRecord.VFXClass.RvrClientEffect);
+            var bioVfxTemplate = new ParticleSysRecord("Template", "Pkg", false, false, 1, ParticleSysRecord.VFXClass.BioVFXTemplate);
+
+            filters.SetGame(MEGame.LE1);
+            Assert.AreEqual("BioVFXTemplate", filters.VfxEffectFilterName);
+            Assert.AreEqual(ParticleSysRecord.VFXClass.BioVFXTemplate, filters.VfxEffectClass);
+            var effectSpec = filters.ParticleFilter.Filters.First(spec => spec.FilterName == "Only BioVFXTemplate");
+            filters.ParticleFilter.SetSelected(effectSpec);
+
+            Assert.IsFalse(filters.ParticleFilter.Filter(particleSystem));
+            Assert.IsFalse(filters.ParticleFilter.Filter(clientEffect));
+            Assert.IsTrue(filters.ParticleFilter.Filter(bioVfxTemplate));
+
+            filters.SetGame(otherGame);
+            Assert.AreEqual("Client Effects", filters.VfxEffectFilterName);
+            Assert.AreEqual("Only Client Effects", effectSpec.FilterName);
+            Assert.AreEqual(ParticleSysRecord.VFXClass.RvrClientEffect, filters.VfxEffectClass);
+            Assert.IsTrue(effectSpec.IsSelected);
+            Assert.IsFalse(filters.ParticleFilter.Filter(particleSystem));
+            Assert.IsTrue(filters.ParticleFilter.Filter(clientEffect));
+            Assert.IsFalse(filters.ParticleFilter.Filter(bioVfxTemplate));
+
+            filters.SetGame(MEGame.LE1);
+            Assert.IsFalse(filters.ParticleFilter.Filter(clientEffect));
+            Assert.IsTrue(filters.ParticleFilter.Filter(bioVfxTemplate));
         }
 
         [TestMethod]

@@ -394,7 +394,19 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         public MEGame CurrentGame
         {
             get => currentGame;
-            set => SetProperty(ref currentGame, value);
+            set
+            {
+                if (SetProperty(ref currentGame, value))
+                {
+                    bool effectFilterSelected = SelectedVfxTypeFilter == VfxTypeFilters[2];
+                    AssetFilters.SetGame(value);
+                    VfxTypeFilters[2] = AssetFilters.VfxEffectFilterName;
+                    if (effectFilterSelected)
+                    {
+                        SelectedVfxTypeFilter = AssetFilters.VfxEffectFilterName;
+                    }
+                }
+            }
         }
 
         private MELocalization _localization = MELocalization.INT;
@@ -2520,7 +2532,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             return SelectedVfxTypeFilter switch
             {
                 ParticleSystemFilterOption => particleRecord.VFXType == ParticleSysRecord.VFXClass.ParticleSystem,
-                ClientEffectFilterOption => particleRecord.VFXType == ParticleSysRecord.VFXClass.RvrClientEffect,
+                var effectType when effectType == AssetFilters.VfxEffectFilterName => particleRecord.VFXType == AssetFilters.VfxEffectClass,
                 _ => true
             };
         }
