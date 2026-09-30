@@ -242,7 +242,9 @@ public partial class VfxPreviewControl : UserControl, INotifyPropertyChanged
         Viewport.MarkRenderDirty();
     }
 
-    private void Focus_Click(object sender, RoutedEventArgs e)
+    private void Focus_Click(object sender, RoutedEventArgs e) => FocusPreview();
+
+    public void FocusPreview()
     {
         RenderContext.Focus();
         Viewport.MarkRenderDirty();

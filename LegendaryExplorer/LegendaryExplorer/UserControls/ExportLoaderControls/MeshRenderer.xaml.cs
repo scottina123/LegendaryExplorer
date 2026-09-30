@@ -548,6 +548,28 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             }
         }
 
+        public override void FocusPreview()
+        {
+            if (CurrentLOD < 0)
+            {
+                return;
+            }
+
+            Vector3? halfSize = GameShaderPreview is not null && CurrentLOD < GameShaderPreview.LODs.Count
+                ? GameShaderPreview.LODs[CurrentLOD].Mesh.AABBHalfSize
+                : LEXPreview is not null && CurrentLOD < LEXPreview.LODs.Count
+                    ? LEXPreview.LODs[CurrentLOD].Mesh.AABBHalfSize
+                    : null;
+            if (halfSize is not { } boundsHalfSize)
+            {
+                return;
+            }
+
+            MeshContext.Camera.FocusDepth = MathF.Max(boundsHalfSize.Length() * 1.2f, 1f);
+            CenterView();
+            SceneViewer.Focus();
+        }
+
         private void CenterView()
         {
             if (CurrentLOD >= 0)

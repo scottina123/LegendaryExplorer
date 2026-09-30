@@ -390,6 +390,7 @@
                 </MenuItem>
                 <packageEditorControls:ExperimentsMenuControl x:Name="ExperimentsMenu"  Visibility="{Binding ShowExperiments, RelativeSource={RelativeSource FindAncestor, AncestorType=packageEditor:PackageEditorWindow},Converter={StaticResource BoolToVisibilityConverter}}"/>
                 <MenuItem Header="Last Export" Padding="4" Command="{Binding GoToLastExportCommand}" ToolTip="Select the last export in the tree view"/>
+                <MenuItem Header="Focus Selected" Padding="4" Command="{Binding FocusSelectedCommand}" ToolTip="Bring the selected object into view and refocus the active 3D preview camera"/>
             </Menu>
             <StatusBar Height="23" DockPanel.Dock="Bottom" Style="{DynamicResource AudemusStatusBarStyle}">
                 <sharedToolControls:StatusBarGameIDIndicator GameType="{Binding Pcc.Game}" Margin="0,-4"/>

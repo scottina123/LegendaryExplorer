@@ -127,6 +127,14 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             }
         }
 
+        public override void FocusPreview()
+        {
+            if (VfxPreviewEnabledCheckBox.IsChecked == true)
+            {
+                VfxPreview.FocusPreview();
+            }
+        }
+
         public override void UnloadExport()
         {
             VfxPreview.UnloadExport();

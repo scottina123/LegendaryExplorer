@@ -799,6 +799,8 @@ public partial class GesturePreviewExportLoader : ExportLoaderControl
         CurrentLoadedExport = null;
     }
 
+    public override void FocusPreview() => AnimPreviewControl.FocusPreview();
+
     public override void PopOut()
     {
         if (CurrentLoadedExport == null)

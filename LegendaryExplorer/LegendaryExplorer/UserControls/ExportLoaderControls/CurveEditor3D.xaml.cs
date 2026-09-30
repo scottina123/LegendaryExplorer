@@ -13991,6 +13991,19 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         SceneViewer.MarkRenderDirty();
     }
 
+    public override void FocusPreview()
+    {
+        if (PreviewActorListBox.SelectedIndex >= 0)
+        {
+            FocusPreviewActor(PreviewActorListBox.SelectedIndex);
+        }
+        else if (SelectedKeyframe is { } keyframe)
+        {
+            StopPlayback();
+            SnapCameraToKey(keyframe);
+        }
+    }
+
     private void FocusPreviewActor(int actorIndex)
     {
         if (actorIndex < 0 || actorIndex >= previewActorModels.Count || actorIndex >= previewActors.Count

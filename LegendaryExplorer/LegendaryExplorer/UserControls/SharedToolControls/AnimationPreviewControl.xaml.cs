@@ -822,6 +822,23 @@ public partial class AnimationPreviewControl : NotifyPropertyChangedControlBase,
         }
     }
 
+    public void FocusPreview()
+    {
+        if (_meshPreview is not { LODs.Count: > 0 })
+        {
+            return;
+        }
+
+        var mesh = _meshPreview.LODs[0].Mesh;
+        _meshContext.Camera.FocusDepth = MathF.Max(mesh.AABBHalfSize.Length() * 1.75f, 1f);
+        _meshContext.Camera.Position = mesh.AABBCenter;
+        _meshContext.Camera.Pitch = -MathF.PI / 7.0f;
+        if (_meshContext.Camera.FirstPerson)
+        {
+            _meshContext.Camera.Position -= _meshContext.Camera.CameraForward * _meshContext.Camera.FocusDepth;
+        }
+    }
+
     private void OnRenderScene(object sender, EventArgs e)
     {
         if (_meshPreview is not { LODs.Count: > 0 })

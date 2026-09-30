@@ -1871,6 +1871,8 @@ public sealed partial class BioStageEditor : ExportLoaderControl, IActorEditorCo
 
     private void FocusStage_Click(object sender, RoutedEventArgs e) => FocusStage();
 
+    public override void FocusPreview() => FocusStage();
+
     private void FocusStage()
     {
         if (stagePreview?.LODs is not { Count: > 0 }) return;

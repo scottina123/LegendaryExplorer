@@ -4,15 +4,18 @@ using System.Reflection;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Threading;
 using LegendaryExplorer.Misc.AppSettings;
 using LegendaryExplorer.SharedUI;
 using LegendaryExplorer.SharedUI.Bases;
+using LegendaryExplorer.SharedUI.PeregrineTreeView;
 using LegendaryExplorer.Tools.PackageEditor;
 using LegendaryExplorer.UserControls.ExportLoaderControls.ScriptEditor.IDE;
 using LegendaryExplorerCore;
 using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.Unreal;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Microsoft.Xaml.Behaviors;
 
 namespace LegendaryExplorer.Tests.Tools.PackageEditor;
 
@@ -67,6 +70,7 @@ public class PackageSelectionHistoryTests
             var forwardMenu = ((Button)window.FindName("SelectionHistoryForwardButton")).ContextMenu;
             Assert.IsFalse(back.CanExecute(null));
             Assert.IsFalse(forward.CanExecute(null));
+            Assert.IsFalse(window.FocusSelectedCommand.CanExecute(null));
             foreach (IEntry entry in entries)
             {
                 Assert.IsTrue(window.GoToNumber(entry.UIndex));
@@ -123,6 +127,34 @@ public class PackageSelectionHistoryTests
                 "Choosing an older visit to the same entry must preserve all intervening visits.");
             forward.Execute(null);
             Assert.AreSame(entries[1], window.SelectedItem.Entry);
+
+            var selectedNode = window.SelectedItem;
+            var backwardsBeforeFocus = window.BackwardsEntries.ToArray();
+            var forwardsBeforeFocus = window.ForwardsEntries.ToArray();
+            var tree = (TreeView)window.FindName("LeftSide_TreeView");
+            var behavior = Interaction.GetBehaviors(tree).OfType<NodeTreeSelectionBehavior>().Single();
+            window.UpdateLayout();
+            Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
+            Assert.AreSame(selectedNode, behavior.SelectedItem);
+            Assert.IsTrue(window.FocusSelectedCommand.CanExecute(null));
+            window.FocusSelectedCommand.Execute(null);
+            root.IsExpanded = false;
+            var revealTask = behavior.BringSelectedItemIntoViewAsync();
+            if (!revealTask.IsCompleted)
+            {
+                var frame = new DispatcherFrame();
+                revealTask.ContinueWith(_ => frame.Continue = false, TaskScheduler.Default);
+                Dispatcher.PushFrame(frame);
+            }
+            revealTask.GetAwaiter().GetResult();
+            Assert.IsTrue(root.IsExpanded, "Refocusing must expand collapsed ancestors even when the selection has not changed.");
+            Assert.AreSame(selectedNode, window.SelectedItem);
+            CollectionAssert.AreEqual(backwardsBeforeFocus, window.BackwardsEntries.ToArray());
+            CollectionAssert.AreEqual(forwardsBeforeFocus, window.ForwardsEntries.ToArray());
+            selectedNode.IsVisibleInTree = false;
+            Assert.IsTrue(behavior.BringSelectedItemIntoViewAsync().IsCompletedSuccessfully);
+            Assert.IsFalse(selectedNode.IsVisibleInTree, "Refocusing must not override live filtering.");
+            selectedNode.IsVisibleInTree = true;
 
             foreach (var (export, data) in originalData)
             {

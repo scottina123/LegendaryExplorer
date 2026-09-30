@@ -82,6 +82,13 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         public abstract void UnloadExport();
 
         /// <summary>
+        /// Brings the loaded object back into view in controls with a camera preview.
+        /// </summary>
+        public virtual void FocusPreview()
+        {
+        }
+
+        /// <summary>
         /// Creates a new ExportLoaderHostedWindow to pop open with a new instance of the export loader
         /// pointing to the current export
         /// </summary>

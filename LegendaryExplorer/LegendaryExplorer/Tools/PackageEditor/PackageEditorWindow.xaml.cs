@@ -26,6 +26,7 @@ using LegendaryExplorerCore.Misc.ME3Tweaks;
 using LegendaryExplorer.SharedUI;
 using LegendaryExplorer.SharedUI.Bases;
 using LegendaryExplorer.SharedUI.Interfaces;
+using LegendaryExplorer.SharedUI.PeregrineTreeView;
 using LegendaryExplorer.Tools.Meshplorer;
 using LegendaryExplorer.Tools.TlkManagerNS;
 using LegendaryExplorer.UserControls.ExportLoaderControls;
@@ -49,6 +50,7 @@ using LegendaryExplorerCore.Unreal.ObjectInfo;
 using LegendaryExplorerCore.UnrealScript;
 using LegendaryExplorerCore.UnrealScript.Compiling.Errors;
 using Microsoft.Win32;
+using Microsoft.Xaml.Behaviors;
 using Microsoft.WindowsAPICodePack.Dialogs;
 using LegendaryExplorerCore.Audio;
 using LegendaryExplorer.Packages;
@@ -511,6 +513,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
         public ICommand FindAllClassInstancesCommand { get; set; }
         public ICommand GotoCommand { get; set; }
         public ICommand GoToLastExportCommand { get; set; }
+        public ICommand FocusSelectedCommand { get; set; }
         public ICommand TabRightCommand { get; set; }
         public ICommand TabLeftCommand { get; set; }
         public ICommand FindReferencesCommand { get; set; }
@@ -606,6 +609,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
             SearchStringRefsCommand = new GenericCommand(SearchStringRefs, CanSearchStringRefs);
             GotoCommand = new GenericCommand(FocusGoto, PackageIsLoaded);
             GoToLastExportCommand = new GenericCommand(GoToLastExport, () => Pcc?.Exports.Count > 0);
+            FocusSelectedCommand = new GenericCommand(FocusSelected, CanFocusSelected);
             TabRightCommand = new GenericCommand(TabRight, PackageIsLoaded);
             TabLeftCommand = new GenericCommand(TabLeft, PackageIsLoaded);
 
@@ -6975,6 +6979,42 @@ namespace LegendaryExplorer.Tools.PackageEditor
             if (int.TryParse(Goto_TextBox.Text, out int n))
             {
                 GoToNumber(n);
+            }
+        }
+
+        private bool CanFocusSelected() => Pcc is not null && !IsLoadingFile && !IsBusy
+            && (CurrentView == CurrentViewMode.Tree
+                ? SelectedItem?.Entry is not null
+                : LeftSide_ListView.SelectedItem is not null);
+
+        private async void FocusSelected()
+        {
+            if (!CanFocusSelected())
+            {
+                return;
+            }
+
+            var selectedEntry = CurrentView == CurrentViewMode.Tree
+                ? SelectedItem.Entry
+                : LeftSide_ListView.SelectedItem as IEntry;
+            if (selectedEntry is ExportEntry
+                && EditorTabs.SelectedItem is TabItem { Content: ExportLoaderControl { CurrentLoadedExport: not null } preview })
+            {
+                preview.FocusPreview();
+            }
+
+            if (CurrentView == CurrentViewMode.Tree)
+            {
+                var selectionBehavior = Interaction.GetBehaviors(LeftSide_TreeView)
+                    .OfType<NodeTreeSelectionBehavior>().FirstOrDefault();
+                if (selectionBehavior is not null)
+                {
+                    await selectionBehavior.BringSelectedItemIntoViewAsync();
+                }
+            }
+            else
+            {
+                LeftSide_ListView.ScrollIntoView(LeftSide_ListView.SelectedItem);
             }
         }
 

@@ -540,7 +540,9 @@ public partial class ActorPreviewControl : ExportLoaderControl, IActorEditorCont
         return bounds.Origin + forward * Math.Max(radius * 2.2f, 100f);
     }
 
-    private void SnapCameraToActor_Click(object sender, RoutedEventArgs e)
+    private void SnapCameraToActor_Click(object sender, RoutedEventArgs e) => FocusPreview();
+
+    public override void FocusPreview()
     {
         if (_actor is null)
         {

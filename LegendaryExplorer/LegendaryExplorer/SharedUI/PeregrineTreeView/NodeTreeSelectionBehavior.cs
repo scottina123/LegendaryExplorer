@@ -109,6 +109,17 @@ namespace LegendaryExplorer.SharedUI.PeregrineTreeView
             }
         }
 
+        public Task BringSelectedItemIntoViewAsync()
+        {
+            if (SelectedItem is not { IsVisibleInTree: true } selectedNode || _isCleanedUp)
+            {
+                return Task.CompletedTask;
+            }
+
+            selectedNode.ExpandParents();
+            return SelectItemDeferredAsync(selectedNode, ++_selectionVersion, false);
+        }
+
         private async Task SelectItemDeferredAsync(TreeViewEntry newNode, int selectionVersion, bool delayBeforeSelection)
         {
             // Debounce ordinary binding changes, but let explicit navigation begin
