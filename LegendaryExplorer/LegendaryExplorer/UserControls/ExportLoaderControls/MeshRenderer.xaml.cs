@@ -839,9 +839,18 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         public ICommand UModelExportCommand { get; set; }
         public ICommand GltfExportCommand { get; set; }
+        public MeshToolsCommands MeshTools { get; private set; }
+
+        private bool _showMeshTools;
+        public bool ShowMeshTools
+        {
+            get => _showMeshTools;
+            set => SetProperty(ref _showMeshTools, value);
+        }
 
         private void LoadCommands()
         {
+            MeshTools = new MeshToolsCommands(() => Window.GetWindow(this) as WPFBase, () => CurrentLoadedExport, () => this);
             UModelExportCommand = new GenericCommand(EnsureUModelAndExport, CanExportViaUModel);
             GltfExportCommand = new GenericCommand(ExportToGltf, CanExportViaUModel);
         }

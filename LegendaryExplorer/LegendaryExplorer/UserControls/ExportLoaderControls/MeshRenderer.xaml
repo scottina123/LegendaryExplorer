@@ -151,6 +151,22 @@
                                 <scene3D:SceneControlOptionsControl/>
                             </xctk:DropDownButton.DropDownContent>
                         </xctk:DropDownButton>
+                        <Menu x:Name="MeshToolsMenu" Margin="2,3" VerticalAlignment="Center"
+                              Visibility="{Binding ShowMeshTools, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <MenuItem Header="Tools" Padding="5,2" DataContext="{Binding MeshTools}">
+                                <MenuItem Header="Import New Mesh from UDK" Command="{Binding ImportFromUDKCommand}"/>
+                                <MenuItem Header="Replace Mesh from UDK" ToolTip="Replaces an entire mesh from UDK (.upk file)" Command="{Binding ReplaceFromUDKCommand}"/>
+                                <MenuItem Header="Replace single LOD from UDK" ToolTip="Replaces a single LOD from UDK (.upk file). Use this if full replacement is wonky" Command="{Binding ReplaceLODFromUDKCommand}"/>
+                                <MenuItem Header="Export Mesh to UDK" Command="{Binding ExportToUDKCommand}"/>
+                                <MenuItem Header="Convert Skeletal Mesh to Static Mesh" Command="{Binding ConvertToStaticMeshCommand}"/>
+                                <MenuItem Header="Export Mesh to PSK with UModel" Command="{Binding ExportToPSKUModelCommand}"/>
+                                <MenuItem Header="Export Mesh to PSK (Experimental)" Command="{Binding ExportToPSKCommand}"/>
+                                <MenuItem Header="Export as glTF without textures (Experimental)" Command="{Binding ExportToGltfCommand}"/>
+                                <MenuItem Header="Export as glTF with textures (Experimental)" Command="{Binding ExportToGltfTexturesCommand}"/>
+                                <MenuItem Header="Replace from glTF (Experimental)" Command="{Binding ReplaceFromGltfCommand}"/>
+                                <MenuItem Header="Import new mesh(es) from glTF (Experimental)" Command="{Binding ImportNewFromGltfCommand}"/>
+                            </MenuItem>
+                        </Menu>
                         <Separator Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" Margin="2,0"/>
                         <Button Command="{Binding UModelExportCommand}"  ToolTip="Export with umodel" Margin="2,0"
                                 Visibility="{Binding IsMorphEditorMode, Converter={StaticResource BoolToVisibilityConverter}, ConverterParameter=Not}"

@@ -737,7 +737,7 @@
                         <TabItem.Header>
                             <TextBlock Text="Mesh" ToolTip="View 3D mesh"/>
                         </TabItem.Header>
-                        <exportLoaderControls:MeshRenderer x:Name="MeshRendererTab_MeshRenderer"/>
+                        <exportLoaderControls:MeshRenderer x:Name="MeshRendererTab_MeshRenderer" ShowMeshTools="True"/>
                     </TabItem>
                     <TabItem Name="BioStageEditor_Tab" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}">
                         <TabItem.Header>
