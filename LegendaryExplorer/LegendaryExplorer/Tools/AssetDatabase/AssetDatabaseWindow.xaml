@@ -640,6 +640,7 @@
                                           KeyboardNavigation.TabIndex="1"
                                           Background="Transparent"/>
                                 <Border Grid.Row="1"
+                                        x:Name="SharedSearchRow"
                                         Margin="2,0,2,0"
                                         Padding="4,4,4,2"
                                         Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"
@@ -698,6 +699,11 @@
                                                       SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}"/>
                                 </Border>
                             </Grid>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="SelectedIndex" Value="8">
+                                    <Setter TargetName="SharedSearchRow" Property="Visibility" Value="Collapsed"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
                         </ControlTemplate>
                     </TabControl.Template>
                     <!-- FileList -->

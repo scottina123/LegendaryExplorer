@@ -232,6 +232,7 @@ public static class ComboBoxSearchBehavior
 
         var searchBox = new TextBox
         {
+            IsReadOnly = false,
             Margin = new Thickness(4, 4, 4, 2),
             MinHeight = 24,
             Padding = new Thickness(4, 2, 22, 2),

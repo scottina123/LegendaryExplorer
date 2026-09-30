@@ -17,10 +17,54 @@ namespace LegendaryExplorer.Tests.SharedUI;
 [TestClass]
 public class ComboBoxSearchBehaviorTests
 {
+    private static void VerifyReadOnlyWatermarkDropdownSearchRemainsEditable()
+    {
+        var watermarkComboBox = new LegendaryExplorer.SharedUI.Controls.WatermarkComboBox
+        {
+            ItemsSource = new[] { "cat002_asari_pilot9", "Shepard", "Liara" },
+            Width = 180,
+            Watermark = "Filter by Speaker"
+        };
+        var window = CreateTestWindow(watermarkComboBox);
+        ComboBox comboBox = null;
+        try
+        {
+            window.Show();
+            FlushDispatcher();
+            comboBox = FindVisualDescendant<ComboBox>(watermarkComboBox, _ => true);
+            Assert.IsNotNull(comboBox);
+            Assert.IsTrue(comboBox.IsReadOnly);
+
+            comboBox.IsDropDownOpen = true;
+            FlushDispatcher();
+            TextBox searchBox = FindSearchBox(GetPopup(comboBox));
+            Assert.IsNotNull(searchBox);
+            Assert.IsFalse(searchBox.IsReadOnly, "The popup filter must not inherit the dropdown's read-only setting.");
+
+            searchBox.AppendText("pilot");
+            FlushDispatcher();
+            CollectionAssert.AreEqual(new[] { "cat002_asari_pilot9" }, comboBox.Items.Cast<string>().ToArray());
+
+            comboBox.IsDropDownOpen = false;
+            FlushDispatcher();
+            CollectionAssert.AreEqual(new[] { "cat002_asari_pilot9", "Shepard", "Liara" }, comboBox.Items.Cast<string>().ToArray());
+            Assert.IsTrue(comboBox.IsReadOnly, "The dropdown itself should remain read-only.");
+        }
+        finally
+        {
+            if (comboBox != null)
+            {
+                comboBox.IsDropDownOpen = false;
+            }
+            window.Close();
+        }
+    }
+
     [STATestMethod]
     public void DropdownSearchFiltersRestoresAndSupportsCheckComboBoxItems()
     {
         EnsureApplicationResources();
+        VerifyReadOnlyWatermarkDropdownSearchRemainsEditable();
 
         var comboBox = new ComboBox
         {
