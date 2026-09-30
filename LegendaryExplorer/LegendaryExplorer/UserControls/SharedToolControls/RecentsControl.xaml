@@ -7,7 +7,7 @@
              xmlns:misc="clr-namespace:LegendaryExplorer.Misc"
              xmlns:converters="clr-namespace:LegendaryExplorer.SharedUI.Converters"
              mc:Ignorable="d"
-             Width="560"
+             d:DesignWidth="560"
              DataContext="{Binding RelativeSource={RelativeSource Self}}">
     <UserControl.Resources>
         <converters:FilePathToFileNameConverter x:Key="FilePathToFileNameConverter"/>

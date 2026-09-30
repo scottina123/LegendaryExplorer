@@ -998,44 +998,33 @@
                                                               IsMorphEditorOnly="True"/>
                 </Grid>
 
-                <StackPanel Grid.Column="0" Grid.ColumnSpan="5" Visibility="{Binding HasAnyFileOpen, Converter={StaticResource BoolToVisibilityConverter}, ConverterParameter='Not'}"
+                <DockPanel Grid.Column="0" Grid.ColumnSpan="5" Visibility="{Binding HasAnyFileOpen, Converter={StaticResource BoolToVisibilityConverter}, ConverterParameter='Not'}"
                             Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}">
-                    <TextBlock Margin="5" Text="Welcome to Level Editor" FontWeight="Bold" TextWrapping="Wrap"/>
-                    <TextBlock Margin="5" TextWrapping="Wrap">
-                This is a work in progress, and only displays some of the actors in a level.
-                If you have issues with Level Editor, please report them to one of the following places:
-                <LineBreak/>
-            - <Hyperlink NavigateUri="{Binding Path=(misc:AppLinks.ME3TweaksDiscordInviteURL), Mode=OneTime}" Foreground="{DynamicResource {x:Static SystemColors.HotTrackBrushKey}}" misc:HyperlinkExtensions.IsExternal="True">
-                <Run Text="The ME3Tweaks Discord (#Legendary_Explorer channel)"/>
-            </Hyperlink>                                <LineBreak/>
-                 - The issues list on GitHub at
-                <Hyperlink NavigateUri="{Binding Path=(misc:AppLinks.BugReportURL), Mode=OneTime}" Foreground="{DynamicResource {x:Static SystemColors.HotTrackBrushKey}}" misc:HyperlinkExtensions.IsExternal="True">
-                    <Run Text="{Binding Path=(misc:AppLinks.BugReportURL), Mode=OneTime}"/>
-                </Hyperlink>
-                    </TextBlock>
-                    <TextBlock Text="Recent level sets" TextAlignment="Center" FontSize="20" FontWeight="Light" Margin="10"
+                    <TextBlock DockPanel.Dock="Top" Text="Recent level sets" TextAlignment="Center" FontSize="20" FontWeight="Light" Margin="10"
                                Visibility="{Binding RecentSets.Count, Converter={StaticResource NullVisibilityConverter}}"/>
-                    <ItemsControl ItemsSource="{Binding RecentSets}" HorizontalAlignment="Left" Width="560">
-                        <ItemsControl.ItemsPanel>
-                            <ItemsPanelTemplate>
-                                <WrapPanel Orientation="Horizontal"/>
-                            </ItemsPanelTemplate>
-                        </ItemsControl.ItemsPanel>
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate>
-                                <Button Width="252" Margin="3" Padding="3" ToolTip="{Binding TooltipText}"
-                                        Command="{Binding DataContext.OpenRecentSetCommand, RelativeSource={RelativeSource AncestorType={x:Type local:LevelEditor}}}"
-                                        CommandParameter="{Binding}">
-                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                                        <Image Margin="0,0,5,0" RenderOptions.BitmapScalingMode="HighQuality"
-                                               Source="{Binding Game, Converter={StaticResource GameToImageIconConverter}}" Height="16" VerticalAlignment="Center"/>
-                                        <TextBlock Text="{Binding DisplayName}"/>
-                                    </StackPanel>
-                                </Button>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                </StackPanel>
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                        <ItemsControl ItemsSource="{Binding RecentSets}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <WrapPanel Orientation="Horizontal"/>
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Button Width="252" Margin="3" Padding="3" ToolTip="{Binding TooltipText}"
+                                            Command="{Binding DataContext.OpenRecentSetCommand, RelativeSource={RelativeSource AncestorType={x:Type local:LevelEditor}}}"
+                                            CommandParameter="{Binding}">
+                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                            <Image Margin="0,0,5,0" RenderOptions.BitmapScalingMode="HighQuality"
+                                                   Source="{Binding Game, Converter={StaticResource GameToImageIconConverter}}" Height="16" VerticalAlignment="Center"/>
+                                            <TextBlock Text="{Binding DisplayName}"/>
+                                        </StackPanel>
+                                    </Button>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </DockPanel>
             </Grid>
         </DockPanel>
     </xctk:BusyIndicator>

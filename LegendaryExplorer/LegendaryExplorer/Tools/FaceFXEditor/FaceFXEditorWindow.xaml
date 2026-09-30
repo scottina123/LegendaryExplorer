@@ -54,43 +54,7 @@
             </StatusBar>
             <Grid>
                 <Grid Visibility="{Binding Pcc, Converter={StaticResource NullVisibilityConverter}, ConverterParameter='Reversed'}">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition/>
-                        <ColumnDefinition/>
-                    </Grid.ColumnDefinitions>
-                    <StackPanel Grid.Column="0" Margin="50">
-                        <TextBlock Margin="5" Text="Welcome to FaceFX Editor" FontWeight="Bold" />
-                        <TextBlock Margin="5">
-                        FaceFX Editor is a tool for editing facial animation data.
-                        <LineBreak />
-                        Read these tutorials for more details: 
-                        <Hyperlink NavigateUri="https://github.com/ME3Tweaks/LegendaryExplorer/wiki/Principles-of-Facial-Animation-in-LE3"
-                                   Foreground="{DynamicResource {x:Static SystemColors.HotTrackBrushKey}}" misc:HyperlinkExtensions.IsExternal="True">
-                            <Run Text="Principles of Facial Animation" />
-                        </Hyperlink>
-                        <LineBreak />
-                        <Hyperlink NavigateUri="https://github.com/ME3Tweaks/LegendaryExplorer/wiki/Creating-Custom-FaceFX-using-FaceFX-Editor"
-                                   Foreground="{DynamicResource {x:Static SystemColors.HotTrackBrushKey}}" misc:HyperlinkExtensions.IsExternal="True">
-                            <Run Text="Creating Custom FaceFX using FaceFX Editor" />
-                        </Hyperlink>
-                        <LineBreak />
-                        <LineBreak />
-                        If you have issues with FaceFX Editor, please report them to one of the following places:
-                        <LineBreak />
-                        -
-                        <Hyperlink NavigateUri="{Binding Source={x:Static misc:AppLinks.ME3TweaksDiscordInviteURL}, Mode=OneTime}"
-                                   Foreground="{DynamicResource {x:Static SystemColors.HotTrackBrushKey}}" misc:HyperlinkExtensions.IsExternal="True">
-                            <Run Text="The ME3Tweaks Discord (Legendary_Explorer channel)" />
-                        </Hyperlink>
-                        <LineBreak />
-                        - The issues list on GitHub at
-                        <Hyperlink NavigateUri="{Binding Source={x:Static misc:AppLinks.BugReportURL}, Mode=OneTime}"
-                                   Foreground="{DynamicResource {x:Static SystemColors.HotTrackBrushKey}}" misc:HyperlinkExtensions.IsExternal="True">
-                            <Run Text="{Binding Source={x:Static misc:AppLinks.BugReportURL}, Mode=OneTime}" />
-                        </Hyperlink>
-                        </TextBlock>
-                    </StackPanel>
-                    <sharedToolControls:RecentsControl x:Name="RecentsController" Grid.Column="1" Margin="50"/>
+                    <sharedToolControls:RecentsControl x:Name="RecentsController" Margin="10"/>
                 </Grid>
                 <DockPanel Margin="5" Visibility="{Binding Pcc, Converter={StaticResource NullVisibilityConverter}}">
                     <ToolBar x:Name="toolBar" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" DockPanel.Dock="Top">

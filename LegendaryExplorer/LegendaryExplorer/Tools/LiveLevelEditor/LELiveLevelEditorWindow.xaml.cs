@@ -119,7 +119,6 @@ namespace LegendaryExplorer.Tools.LiveLevelEditor
             RetryLoadTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(6) };
             RetryLoadTimer.Tick += RetryLoadLiveEditor;
             Title = $"{Game} Live Level Editor";
-            welcomeTextBlock.Text = $"Welcome to {Game} Live Level Editor";
         }
 
         private void LiveLevelEditor_OnClosing(object sender, CancelEventArgs e)

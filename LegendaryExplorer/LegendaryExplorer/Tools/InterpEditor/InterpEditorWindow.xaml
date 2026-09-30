@@ -119,19 +119,8 @@
                         <ColumnDefinition Width="300" />
                         <ColumnDefinition Width="1*" />
                     </Grid.ColumnDefinitions>
-                    <StackPanel Grid.Column="0" Grid.ColumnSpan="3"
-                                Visibility="{Binding Pcc, Converter={StaticResource NullVisibilityConverter}, ConverterParameter='Reversed'}">
-                        <TextBlock Margin="5" Text="Welcome to Interp Editor" FontWeight="Bold" />
-                        <TextBlock Margin="5">
-                            This tool allows you to visualize and edit Unreal's Matinee Sequences.
-                            <LineBreak />
-                            You can add groups and tracks, insert and delete keys, and edit properties in the Properties and Curve Editor tabs.
-                            <LineBreak />
-                        </TextBlock>
-
-                    </StackPanel>
-                    <sharedToolControls:RecentsControl x:Name="RecentsController" HorizontalAlignment="Center"
-                                                       Grid.Column="3"
+                    <sharedToolControls:RecentsControl x:Name="RecentsController"
+                                                       Grid.Column="0" Grid.ColumnSpan="4"
                                                        Visibility="{Binding Pcc, RelativeSource={RelativeSource FindAncestor, AncestorType={x:Type bases:WPFBase}}, Converter={StaticResource NullVisibilityConverter}, ConverterParameter='Reversed'}" />
                     <TabControl Grid.Column="0"
                                 Visibility="{Binding Pcc, Converter={StaticResource NullVisibilityConverter}}">

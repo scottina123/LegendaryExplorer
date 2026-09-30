@@ -637,36 +637,10 @@
                         </TabItem>
                     </TabControl>
                 </DockPanel>
-                <DockPanel DockPanel.Dock="Bottom" MinHeight="230" MaxHeight="230" HorizontalAlignment="Stretch"
+                <DockPanel DockPanel.Dock="Bottom" MinHeight="230" HorizontalAlignment="Stretch"
                            LastChildFill="True"
                            Visibility="{Binding Pcc, Converter={StaticResource NullVisibilityConverter}, ConverterParameter='Reversed', FallbackValue=Collapsed}">
-                    <StackPanel DockPanel.Dock="Left">
-                        <TextBlock Margin="5" Text="Welcome to Pathfinding Editor" FontWeight="Bold" />
-                        <TextBlock Margin="5">
-                            Pathfinding Editor is a top down 2D level editor that mostly focuses on editing level pathing,
-                            <LineBreak />
-                            but can also be used to edit positions of meshes, lightings, and other actors.
-                            <LineBreak />
-                            <LineBreak />
-                            Load a file containing a level, and use the view options to help orient yourself. You can load
-                            <LineBreak />
-                            an 'overlay' pathing file in the Experiments menu, which will show nodes from another file
-                            <LineBreak />
-                            on top of the current one, which can help you navigate the space.
-                            <LineBreak />
-                            <LineBreak />
-                            If you have issues with Pathfinding Editor, please report them to one of the following places:
-                            <LineBreak/>
-                            - <Hyperlink NavigateUri="{Binding Source={x:Static misc:AppLinks.ME3TweaksDiscordInviteURL}, Mode=OneTime}" Foreground="{DynamicResource {x:Static SystemColors.HotTrackBrushKey}}" misc:HyperlinkExtensions.IsExternal="True">
-                                <Run Text="The ME3Tweaks Discord (Legendary_Explorer channel)"/>
-                            </Hyperlink>                                <LineBreak/>
-                            - The issues list on GitHub at 
-                            <Hyperlink NavigateUri="{Binding Source={x:Static misc:AppLinks.BugReportURL}, Mode=OneTime}" Foreground="{DynamicResource {x:Static SystemColors.HotTrackBrushKey}}" misc:HyperlinkExtensions.IsExternal="True">
-                                <Run Text="{Binding Source={x:Static misc:AppLinks.BugReportURL}, Mode=OneTime}"/>
-                            </Hyperlink>
-                        </TextBlock>
-                    </StackPanel>
-                    <sharedToolControls:RecentsControl x:Name="RecentsController" HorizontalAlignment="Left" />
+                    <sharedToolControls:RecentsControl x:Name="RecentsController" />
                 </DockPanel>
                 <DockPanel DockPanel.Dock="Bottom" MinHeight="300" MaxHeight="300" HorizontalAlignment="Stretch"
                            LastChildFill="True"

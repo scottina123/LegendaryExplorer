@@ -756,34 +756,7 @@
                         <ColumnDefinition Width="300" />
                         <ColumnDefinition Width="1*" />
                     </Grid.ColumnDefinitions>
-                    <StackPanel Grid.Column="0" Grid.ColumnSpan="3"
-                                Visibility="{Binding Pcc, Converter={StaticResource NullVisibilityConverter}, ConverterParameter='Reversed'}">
-                        <TextBlock Margin="5" Text="Welcome to the new Dialogue Editor" FontWeight="Bold" />
-                        <TextBlock Margin="5">
-                            Dialogue Editor is the enhanced visual version of the old Dialogue Editor.
-                            <LineBreak />
-                            The editor is visually based so you can see the dialogue tree and move/change connections
-                            <LineBreak />
-                            <LineBreak />
-                            Instructions:
-                            <LineBreak />
-                            -  Click on a conversation in the bottom left corner to bring it into focus.
-                            <LineBreak />
-                            -  Left Click on entries or replies nodes to see detailed settings.
-                            <LineBreak />
-                            -  Right Click to clone or add new nodes.
-                            <LineBreak />
-                            -  Conversations always begin Start then Entry then Reply then Entry and so on.
-                            <LineBreak />
-                            -  Drag and drop connections to see the path in the conversation.
-                            <LineBreak />
-                            -  You can quickly find a line using the goto box (Ctrl + G).
-                            <LineBreak />
-                            -  All the colors and default layout can be set via the menu.
-                            <LineBreak />
-                        </TextBlock>
-                    </StackPanel>
-                    <sharedToolControls:RecentsControl x:Name="RecentsController" Grid.Column="3"
+                    <sharedToolControls:RecentsControl x:Name="RecentsController" Grid.Column="0" Grid.ColumnSpan="4"
                                                        Visibility="{Binding Pcc, RelativeSource={RelativeSource FindAncestor, AncestorType={x:Type bases:WPFBase}},Converter={StaticResource NullVisibilityConverter}, ConverterParameter='Reversed'}" />
 
                     <!-- Conversation Box-->

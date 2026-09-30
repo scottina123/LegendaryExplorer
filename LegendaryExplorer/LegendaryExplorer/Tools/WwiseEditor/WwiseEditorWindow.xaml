@@ -156,19 +156,7 @@
                         <ColumnDefinition Width="300" />
                         <ColumnDefinition Width="1*" />
                     </Grid.ColumnDefinitions>
-                    <StackPanel Grid.Column="0" Grid.ColumnSpan="3"
-                                Visibility="{Binding Pcc, Converter={StaticResource NullVisibilityConverter}, ConverterParameter='Reversed'}">
-                        <TextBlock Margin="5" Text="Welcome to Wwise Editor" FontWeight="Bold"/>
-                        <TextBlock Margin="5" TextWrapping="Wrap">
-                            Wwise Editor currently has no editing functionality. 
-                            It can be used to help visualize the relationships between HIRC objects as well as their connection to WwiseEvent and WwiseStream Exports.
-                            There are many relationships not shown, due to most HIRC objects not being parsed yet.
-
-                            Circles are Exports (WwiseEvent or WwiseStream). Everything else is a HIRC Object; more detail can be seen on them in the HIRCs tab on the right.
-                            <LineBreak />
-                        </TextBlock>
-                    </StackPanel>
-                    <sharedToolControls:RecentsControl x:Name="RecentsController" HorizontalAlignment="Center" Margin="20,0,20,15" Grid.Column="3"
+                    <sharedToolControls:RecentsControl x:Name="RecentsController" Margin="20,0,20,15" Grid.Column="0" Grid.ColumnSpan="4"
                                              Visibility="{Binding Pcc, RelativeSource={RelativeSource FindAncestor, AncestorType={x:Type bases:WPFBase}}, Converter={StaticResource NullVisibilityConverter}, ConverterParameter='Reversed'}"/>
                     <DockPanel Grid.Column="0" Grid.Row="0"
                                Visibility="{Binding Pcc, Converter={StaticResource NullVisibilityConverter}}">

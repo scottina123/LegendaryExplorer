@@ -655,53 +655,8 @@
                 </TreeView>
                 <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Stretch" Grid.Row="1"/>
                 <TabControl Name="EditorTabs" Grid.Column="2" Grid.Row="1" Style="{StaticResource ThemedTabControlStyle}">
-                    <TabItem Name="Intro_Tab" Header="Welcome">
-                        <ScrollViewer x:Name="WelcomeScrollViewer" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">
-                            <StackPanel Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}">
-                                <TextBlock Margin="5" Text="Welcome to Package Editor" FontWeight="Bold" Foreground="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}"/>
-                                <TextBlock Margin="5" Foreground="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}">
-                                Package Editor is the primary modding tool for editing game package files (.pcc) and contains
-                                <LineBreak/>
-                                many embedded tools that appear as tabs on the right pane.
-                                <LineBreak/>
-                                <LineBreak/>
-                                <Bold>Some general information about indexing in package files:</Bold>
-                                <LineBreak/>
-                                     Indexes of Imports and Exports are done strictly by UIndex, which is how they appear in game code.
-                                    <LineBreak/>
-                                         - Imports will always have a negative index, starting from -1 and extending negatively
-                                <LineBreak/>
-
-                                       - Exports will always have a positive index, starting from 1 and extending positively
-                                <LineBreak/>
-
-                                        - 0 indicates no entry
-                                    <LineBreak/>
-                                    <LineBreak/>
-                                Check the menus for keyboard shortcuts. Check out CTRL+P: It pops out the currently viewed tab!
-                                <LineBreak/>
-                                <LineBreak/>
-                                <Hyperlink NavigateUri="https://github.com/ME3Tweaks/ME3Explorer/wiki/Package-Editor-Basics" Foreground="{DynamicResource {x:Static SystemColors.HotTrackBrushKey}}" misc:HyperlinkExtensions.IsExternal="True">
-                                    <Run Text="View the Package Editor basics wiki article"/>
-                                </Hyperlink>
-                                <LineBreak/>
-                                <LineBreak/>
-                                If you have issues, please report them to one of the following places:
-                                <LineBreak/>
-                                - <Hyperlink NavigateUri="{Binding Path=(misc:AppLinks.ME3TweaksDiscordInviteURL)}" Foreground="{DynamicResource {x:Static SystemColors.HotTrackBrushKey}}" misc:HyperlinkExtensions.IsExternal="True">
-                                    <Run Text="The ME3Tweaks Discord (Legendary_Explorer channel)"/>
-                                </Hyperlink>
-                                <LineBreak/>
-                                - The issues list on GitHub at
-                                <Hyperlink NavigateUri="{Binding Path=(misc:AppLinks.BugReportURL), Mode=OneWay}" Foreground="{DynamicResource {x:Static SystemColors.HotTrackBrushKey}}" misc:HyperlinkExtensions.IsExternal="True">
-                                    <Run Text="{Binding Path=(misc:AppLinks.BugReportURL), Mode=OneWay}"/>
-                                </Hyperlink>
-                                </TextBlock>
-
-                                <sharedToolControls:RecentsControl x:Name="RecentsController" HorizontalAlignment="Left"
-                                                         Visibility="{Binding Pcc, RelativeSource={RelativeSource FindAncestor, AncestorType={x:Type bases:WPFBase}},Converter={StaticResource NullVisibilityConverter}, ConverterParameter='Reversed'}"/>
-                            </StackPanel>
-                        </ScrollViewer>
+                    <TabItem Name="Intro_Tab" Header="Recent Files">
+                        <sharedToolControls:RecentsControl x:Name="RecentsController" Visibility="{Binding Pcc, RelativeSource={RelativeSource FindAncestor, AncestorType={x:Type bases:WPFBase}},Converter={StaticResource NullVisibilityConverter}, ConverterParameter='Reversed'}" Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"/>
                     </TabItem>
                     <TabItem Name="Interpreter_Tab" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}">
                         <TabItem.Header>

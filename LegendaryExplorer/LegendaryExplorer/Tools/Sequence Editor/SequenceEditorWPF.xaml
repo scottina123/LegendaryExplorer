@@ -512,34 +512,7 @@
                         <ColumnDefinition Width="300" />
                         <ColumnDefinition Width="1*" />
                     </Grid.ColumnDefinitions>
-                    <StackPanel Grid.Column="0" Grid.ColumnSpan="3"
-                                Visibility="{Binding Pcc, Converter={StaticResource NullVisibilityConverter}, ConverterParameter='Reversed'}">
-                        <TextBlock Margin="5" Text="Welcome to Sequence Editor" FontWeight="Bold" />
-                        <TextBlock Margin="5">
-                            Sequence Editor is the toolsets editor for Kismet sequencing, which is heavily utilized in Mass Effect games.
-                            <LineBreak />
-                            Package files that contain sequences are ones that contain levels, which for ME1 are nearly everything in the
-                            <LineBreak/>
-                            Maps folder, and for ME2/ME3 the BioA/D/H/P/S files.
-                            <LineBreak/>
-                            <LineBreak/>
-                            Connect sequences by dragging their outputs to inputs. Use the sequence toolbox on the left side to add new 
-                            <LineBreak/>
-                            objects in as needed. Look for existing usages of sequence objects in files to see how they are used.
-                            <LineBreak/>
-                            <LineBreak/>
-                            If you have issues with Sequence Editor, please report them to one of the following places:
-                            <LineBreak/>
-                            - <Hyperlink NavigateUri="{Binding Path=(misc:AppLinks.ME3TweaksDiscordInviteURL), Mode=OneTime}" Foreground="{DynamicResource {x:Static SystemColors.HotTrackBrushKey}}" misc:HyperlinkExtensions.IsExternal="True">
-                                <Run Text="The ME3Tweaks Discord (Legendary_Explorer channel)"/>
-                            </Hyperlink>                                <LineBreak/>
-                            - The issues list on GitHub at 
-                            <Hyperlink NavigateUri="{Binding Path=(misc:AppLinks.BugReportURL), Mode=OneTime}" Foreground="{DynamicResource {x:Static SystemColors.HotTrackBrushKey}}" misc:HyperlinkExtensions.IsExternal="True">
-                                <Run Text="{Binding Path=(misc:AppLinks.BugReportURL), Mode=OneTime}"/>
-                            </Hyperlink>
-                        </TextBlock>
-                    </StackPanel>
-                    <sharedToolControls:RecentsControl x:Name="RecentsController" Grid.Column="3" Visibility="{Binding Pcc, RelativeSource={RelativeSource FindAncestor, AncestorType={x:Type bases:WPFBase}},Converter={StaticResource NullVisibilityConverter}, ConverterParameter='Reversed'}"/>
+                    <sharedToolControls:RecentsControl x:Name="RecentsController" Grid.Column="0" Grid.ColumnSpan="4" Visibility="{Binding Pcc, RelativeSource={RelativeSource FindAncestor, AncestorType={x:Type bases:WPFBase}},Converter={StaticResource NullVisibilityConverter}, ConverterParameter='Reversed'}"/>
                     <DockPanel Grid.Row="0" Grid.Column="0"
                                Visibility="{Binding Pcc, Converter={StaticResource NullVisibilityConverter}}">
                         <controls:SearchBox x:Name="SequencesSearchBox" DockPanel.Dock="Top" Margin="0,0,0,3"
