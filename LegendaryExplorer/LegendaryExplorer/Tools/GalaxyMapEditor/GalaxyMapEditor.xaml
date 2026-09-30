@@ -353,23 +353,26 @@
                 </Grid>
 
                 <!-- Welcome overlay when no file is open -->
-                <StackPanel Grid.Column="0" Grid.ColumnSpan="5"
-                            Visibility="{Binding HasFileOpen, Converter={StaticResource BoolToVisibilityConverter}, ConverterParameter='Not'}"
-                            Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}">
-                    <TextBlock Margin="10" Text="Galaxy Map Editor" FontWeight="Bold" FontSize="18" TextWrapping="Wrap"/>
-                    <TextBlock Margin="10,0,10,10" TextWrapping="Wrap">
-                        Open a galaxy map package file (e.g. BioD_Nor_Galaxy.pcc for ME3) to view and edit the galaxy map hierarchy.
-                        <LineBreak/><LineBreak/>
-                        Features:
-                        <LineBreak/>• Navigate into clusters and solar systems by double-clicking
-                        <LineBreak/>• Move planets, stars, and other objects in the 3D viewport
-                        <LineBreak/>• Edit positions, rotations, and scales numerically
-                        <LineBreak/>• View and edit properties via the Properties panel
-                        <LineBreak/><LineBreak/>
-                        You can also drag and drop a package file onto this window.
-                    </TextBlock>
-                    <sharedToolControls:RecentsControl x:Name="RecentsController" Margin="10,0,10,10"/>
-                </StackPanel>
+                <ScrollViewer x:Name="WelcomeScrollViewer" Grid.Column="0" Grid.ColumnSpan="5"
+                              VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
+                              Visibility="{Binding HasFileOpen, Converter={StaticResource BoolToVisibilityConverter}, ConverterParameter='Not'}"
+                              Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}">
+                    <StackPanel>
+                        <TextBlock Margin="10" Text="Galaxy Map Editor" FontWeight="Bold" FontSize="18" TextWrapping="Wrap"/>
+                        <TextBlock Margin="10,0,10,10" TextWrapping="Wrap">
+                            Open a galaxy map package file (e.g. BioD_Nor_Galaxy.pcc for ME3) to view and edit the galaxy map hierarchy.
+                            <LineBreak/><LineBreak/>
+                            Features:
+                            <LineBreak/>• Navigate into clusters and solar systems by double-clicking
+                            <LineBreak/>• Move planets, stars, and other objects in the 3D viewport
+                            <LineBreak/>• Edit positions, rotations, and scales numerically
+                            <LineBreak/>• View and edit properties via the Properties panel
+                            <LineBreak/><LineBreak/>
+                            You can also drag and drop a package file onto this window.
+                        </TextBlock>
+                        <sharedToolControls:RecentsControl x:Name="RecentsController" Margin="10,0,10,10"/>
+                    </StackPanel>
+                </ScrollViewer>
             </Grid>
         </DockPanel>
     </xctk:BusyIndicator>

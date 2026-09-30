@@ -126,57 +126,58 @@
                     </StackPanel>
                 </StatusBarItem>
             </StatusBar>
-                <StackPanel  
-                    Margin="10"
+                <ScrollViewer x:Name="WelcomeScrollViewer" Margin="10" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
                     Visibility="{Binding AudioFileLoaded,Converter={StaticResource BoolToVisibilityConverter}, ConverterParameter='Not'}">
-                    <TextBlock Margin="5" Text="Welcome to Sound Explorer" FontWeight="Bold"/>
-                    <TextBlock Margin="5">
-                            Sound Explorer is an audio-focused editor that supports browsing and exporting
-                            <LineBreak/>
-                            audio from all three games.
-                            <LineBreak/>
-                            <LineBreak/>
-                            Audio replacement tools:
-                            <Italic>
-                            <LineBreak/>
-                             ME1: Not supported by toolset
-                            <LineBreak/>
-                            ME2: The correct version of Wwise is not available (ME2 predates public Wwise)
-                            <LineBreak/>
-                            ME3: Requires 
-                            <Hyperlink NavigateUri="https://1drv.ms/u/s!AorirBfl09VNrC9eh-_sOj_eqLIa?e=8lzC4j" Foreground="{DynamicResource {x:Static SystemColors.HotTrackBrushKey}}" misc:HyperlinkExtensions.IsExternal="True">
-                                <Run Text="the 64 bit version of Wwise 2010.3.3 (Build 3773)"/>
-                            </Hyperlink>
-                            <LineBreak/>
-                            LE1: Generating new streaming audio requires external use of 
-                            <Hyperlink NavigateUri="https://1drv.ms/u/s!AorirBfl09VNwVpaGRsKk_wke2UW?e=Dwz2KZ" Foreground="{DynamicResource {x:Static SystemColors.HotTrackBrushKey}}" misc:HyperlinkExtensions.IsExternal="True">
-                                <Run Text="ISACT 1.64"/>
-                            </Hyperlink>
-                            <LineBreak/>
-                            LE2 and LE3: Requires 
-                            <Hyperlink NavigateUri="https://mega.nz/file/4ZlgyCbI#2sNNZWAyApBJNomMAgRXSroAsinsuRmoJ1MRNSr9aCY" Foreground="{DynamicResource {x:Static SystemColors.HotTrackBrushKey}}" misc:HyperlinkExtensions.IsExternal="True">
-                                <Run Text="the 64 bit version of Wwise 2019.1.6 (Build 7110)"/>
-                            </Hyperlink>
-                            </Italic>
-                            <LineBreak/>
-                            <LineBreak/>
-                            You will need to set the path to each WwiseCLI.exe file from the dialog in the Wwise menu in order to replace audio
-                            <LineBreak/>
-                            <LineBreak/>
-
-                                If you have issues, please report them to one of the following places:
+                    <StackPanel>
+                        <TextBlock Margin="5" Text="Welcome to Sound Explorer" FontWeight="Bold"/>
+                        <TextBlock Margin="5">
+                                Sound Explorer is an audio-focused editor that supports browsing and exporting
                                 <LineBreak/>
-                                 - <Hyperlink NavigateUri="{Binding Source={x:Static misc:AppLinks.ME3TweaksDiscordInviteURL}, Mode=OneTime}" Foreground="{DynamicResource {x:Static SystemColors.HotTrackBrushKey}}" misc:HyperlinkExtensions.IsExternal="True">
-                                <Run Text="The ME3Tweaks Discord (Legendary_Explorer channel)"/>
-                            </Hyperlink>
+                                audio from all three games.
                                 <LineBreak/>
-                                 - The issues list on GitHub at 
-                                <Hyperlink NavigateUri="{Binding Source={x:Static misc:AppLinks.BugReportURL}}" Foreground="{DynamicResource {x:Static SystemColors.HotTrackBrushKey}}" misc:HyperlinkExtensions.IsExternal="True">
-                                    <Run Text="{Binding Source={x:Static misc:AppLinks.BugReportURL}, Mode=OneTime}"/>
+                                <LineBreak/>
+                                Audio replacement tools:
+                                <Italic>
+                                <LineBreak/>
+                                 ME1: Not supported by toolset
+                                <LineBreak/>
+                                ME2: The correct version of Wwise is not available (ME2 predates public Wwise)
+                                <LineBreak/>
+                                ME3: Requires
+                                <Hyperlink NavigateUri="https://1drv.ms/u/s!AorirBfl09VNrC9eh-_sOj_eqLIa?e=8lzC4j" Foreground="{DynamicResource {x:Static SystemColors.HotTrackBrushKey}}" misc:HyperlinkExtensions.IsExternal="True">
+                                    <Run Text="the 64 bit version of Wwise 2010.3.3 (Build 3773)"/>
                                 </Hyperlink>
-                    </TextBlock>
-                    <sharedToolControls:RecentsControl x:Name="RecentsController" HorizontalAlignment="Left"/>
-                </StackPanel>
+                                <LineBreak/>
+                                LE1: Generating new streaming audio requires external use of
+                                <Hyperlink NavigateUri="https://1drv.ms/u/s!AorirBfl09VNwVpaGRsKk_wke2UW?e=Dwz2KZ" Foreground="{DynamicResource {x:Static SystemColors.HotTrackBrushKey}}" misc:HyperlinkExtensions.IsExternal="True">
+                                    <Run Text="ISACT 1.64"/>
+                                </Hyperlink>
+                                <LineBreak/>
+                                LE2 and LE3: Requires
+                                <Hyperlink NavigateUri="https://mega.nz/file/4ZlgyCbI#2sNNZWAyApBJNomMAgRXSroAsinsuRmoJ1MRNSr9aCY" Foreground="{DynamicResource {x:Static SystemColors.HotTrackBrushKey}}" misc:HyperlinkExtensions.IsExternal="True">
+                                    <Run Text="the 64 bit version of Wwise 2019.1.6 (Build 7110)"/>
+                                </Hyperlink>
+                                </Italic>
+                                <LineBreak/>
+                                <LineBreak/>
+                                You will need to set the path to each WwiseCLI.exe file from the dialog in the Wwise menu in order to replace audio
+                                <LineBreak/>
+                                <LineBreak/>
+
+                                    If you have issues, please report them to one of the following places:
+                                    <LineBreak/>
+                                     - <Hyperlink NavigateUri="{Binding Source={x:Static misc:AppLinks.ME3TweaksDiscordInviteURL}, Mode=OneTime}" Foreground="{DynamicResource {x:Static SystemColors.HotTrackBrushKey}}" misc:HyperlinkExtensions.IsExternal="True">
+                                    <Run Text="The ME3Tweaks Discord (Legendary_Explorer channel)"/>
+                                </Hyperlink>
+                                    <LineBreak/>
+                                     - The issues list on GitHub at
+                                    <Hyperlink NavigateUri="{Binding Source={x:Static misc:AppLinks.BugReportURL}}" Foreground="{DynamicResource {x:Static SystemColors.HotTrackBrushKey}}" misc:HyperlinkExtensions.IsExternal="True">
+                                        <Run Text="{Binding Source={x:Static misc:AppLinks.BugReportURL}, Mode=OneTime}"/>
+                                    </Hyperlink>
+                        </TextBlock>
+                        <sharedToolControls:RecentsControl x:Name="RecentsController" HorizontalAlignment="Left"/>
+                    </StackPanel>
+                </ScrollViewer>
             <Grid Margin="5" 
                Visibility="{Binding AudioFileLoaded, Converter={StaticResource BoolToVisibilityConverter}}">
                 <Grid.ColumnDefinitions>

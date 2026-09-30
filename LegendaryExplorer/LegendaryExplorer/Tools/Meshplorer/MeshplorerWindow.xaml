@@ -97,38 +97,42 @@
                 </Grid.RowDefinitions>
                 <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Stretch"/>
 
-                <StackPanel Grid.Column="2" Grid.ColumnSpan="3" Visibility="{Binding Pcc, Converter={StaticResource NullVisibilityConverter}, ConverterParameter='Reversed'}">
-                    <TextBlock Margin="5" Text="Welcome to Mesh Explorer" FontWeight="Bold" TextWrapping="Wrap"/>
-                    <TextBlock Margin="5" TextWrapping="Wrap">
-                            Mesh Explorer is a mesh editing focused tool that only shows mesh exports in package files.
+                <ScrollViewer x:Name="WelcomeScrollViewer" Grid.Column="2" Grid.ColumnSpan="3"
+                              VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
+                              Visibility="{Binding Pcc, Converter={StaticResource NullVisibilityConverter}, ConverterParameter='Reversed'}">
+                    <StackPanel>
+                        <TextBlock Margin="5" Text="Welcome to Mesh Explorer" FontWeight="Bold" TextWrapping="Wrap"/>
+                        <TextBlock Margin="5" TextWrapping="Wrap">
+                                Mesh Explorer is a mesh editing focused tool that only shows mesh exports in package files.
+                                    <LineBreak/>
+                                    This includes SkeletalMeshes, StaticMeshes, and Brushes currently.
+                                    <LineBreak/>
+                                    <LineBreak/>
+                                You can view the properties of exports in the Properties panel, and the binary for the
+                                    <LineBreak/>
+                                export in the Binary Interpreter panel at the bottom. On the right is the Mesh Renderer.
                                 <LineBreak/>
-                                This includes SkeletalMeshes, StaticMeshes, and Brushes currently. 
                                 <LineBreak/>
+                                    Right clicking on the export list will bring up a list of options. The Mesh Renderer
                                 <LineBreak/>
-                            You can view the properties of exports in the Properties panel, and the binary for the
+                                also has options such as showing wireframe, what LOD to show, the background color, and
                                 <LineBreak/>
-                            export in the Binary Interpreter panel at the bottom. On the right is the Mesh Renderer.
-                            <LineBreak/>
-                            <LineBreak/>
-                                Right clicking on the export list will bring up a list of options. The Mesh Renderer
-                            <LineBreak/>
-                            also has options such as showing wireframe, what LOD to show, the background color, and
-                            <LineBreak/>
-                            UModel export. Importing must be done from packages created with UDK 2015.
-                             <LineBreak/>
-                             <LineBreak/>
-                                If you have issues with Mesh Explorer, please report them to one of the following places:
-                                <LineBreak/>
-                            - <Hyperlink NavigateUri="{Binding Path=(misc:AppLinks.ME3TweaksDiscordInviteURL), Mode=OneTime}" Foreground="{DynamicResource {x:Static SystemColors.HotTrackBrushKey}}" misc:HyperlinkExtensions.IsExternal="True">
-                                <Run Text="The ME3Tweaks Discord (Legendary_Explorer channel)"/>
-                            </Hyperlink>                                <LineBreak/>
-                                 - The issues list on GitHub at 
-                                <Hyperlink NavigateUri="{Binding Path=(misc:AppLinks.BugReportURL), Mode=OneTime}" Foreground="{DynamicResource {x:Static SystemColors.HotTrackBrushKey}}" misc:HyperlinkExtensions.IsExternal="True">
-                                    <Run Text="{Binding Path=(misc:AppLinks.BugReportURL), Mode=OneTime}"/>
-                                </Hyperlink>
-                    </TextBlock>
-                    <sharedToolControls:RecentsControl x:Name="RecentsController" HorizontalAlignment="Left"/>
-                </StackPanel>
+                                UModel export. Importing must be done from packages created with UDK 2015.
+                                 <LineBreak/>
+                                 <LineBreak/>
+                                    If you have issues with Mesh Explorer, please report them to one of the following places:
+                                    <LineBreak/>
+                                - <Hyperlink NavigateUri="{Binding Path=(misc:AppLinks.ME3TweaksDiscordInviteURL), Mode=OneTime}" Foreground="{DynamicResource {x:Static SystemColors.HotTrackBrushKey}}" misc:HyperlinkExtensions.IsExternal="True">
+                                    <Run Text="The ME3Tweaks Discord (Legendary_Explorer channel)"/>
+                                </Hyperlink>                                <LineBreak/>
+                                     - The issues list on GitHub at
+                                    <Hyperlink NavigateUri="{Binding Path=(misc:AppLinks.BugReportURL), Mode=OneTime}" Foreground="{DynamicResource {x:Static SystemColors.HotTrackBrushKey}}" misc:HyperlinkExtensions.IsExternal="True">
+                                        <Run Text="{Binding Path=(misc:AppLinks.BugReportURL), Mode=OneTime}"/>
+                                    </Hyperlink>
+                        </TextBlock>
+                        <sharedToolControls:RecentsControl x:Name="RecentsController" HorizontalAlignment="Left"/>
+                    </StackPanel>
+                </ScrollViewer>
 
                 <DockPanel Grid.Row="0" Grid.Column="0"
                            Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"

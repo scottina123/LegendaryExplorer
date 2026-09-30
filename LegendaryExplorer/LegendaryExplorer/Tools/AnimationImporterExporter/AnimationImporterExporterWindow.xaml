@@ -98,28 +98,31 @@
                 </Grid.RowDefinitions>
                 <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Stretch" />
 
-            <StackPanel Grid.Column="2" Visibility="{Binding Pcc, Converter={StaticResource NullVisibilityConverter}, ConverterParameter='Reversed'}">
-                <TextBlock Margin="5" Text="Welcome to Animation Importer" FontWeight="Bold" TextWrapping="Wrap"/>
-                <TextBlock Margin="5" TextWrapping="Wrap">
-                            
-                             <LineBreak/>
-                             <LineBreak/>
-                               Animation Importer is still relatively new, if you have issues, please report them to one of the following places:
-                             <LineBreak/>
-                             - <Hyperlink NavigateUri="{Binding Path=(misc:AppLinks.ME3TweaksDiscordInviteURL), Mode=OneTime}" Foreground="{DynamicResource {x:Static SystemColors.HotTrackBrushKey}}" 
-                                          misc:HyperlinkExtensions.IsExternal="True">
-                                 <Run Text="The ME3Tweaks Discord (Legendary_Explorer channel)"/>
-                             </Hyperlink>
-                             <LineBreak/>
-                             - The issues list on GitHub at 
-                             <Hyperlink NavigateUri="{Binding Path=(misc:AppLinks.BugReportURL), Mode=OneTime}"
-                                        Foreground="{DynamicResource {x:Static SystemColors.HotTrackBrushKey}}" misc:HyperlinkExtensions.IsExternal="True">
-                                 <Run Text="{Binding Path=(misc:AppLinks.BugReportURL), Mode=OneTime}"/>
-                             </Hyperlink>
-                </TextBlock>
+                <ScrollViewer x:Name="WelcomeScrollViewer" Grid.Column="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
+                              Visibility="{Binding Pcc, Converter={StaticResource NullVisibilityConverter}, ConverterParameter='Reversed'}">
+                    <StackPanel>
+                    <TextBlock Margin="5" Text="Welcome to Animation Importer" FontWeight="Bold" TextWrapping="Wrap"/>
+                    <TextBlock Margin="5" TextWrapping="Wrap">
 
-                    <sharedToolControls:RecentsControl x:Name="RecentsController" HorizontalAlignment="Left" />
-                </StackPanel>
+                                 <LineBreak/>
+                                 <LineBreak/>
+                                   Animation Importer is still relatively new, if you have issues, please report them to one of the following places:
+                                 <LineBreak/>
+                                 - <Hyperlink NavigateUri="{Binding Path=(misc:AppLinks.ME3TweaksDiscordInviteURL), Mode=OneTime}" Foreground="{DynamicResource {x:Static SystemColors.HotTrackBrushKey}}"
+                                              misc:HyperlinkExtensions.IsExternal="True">
+                                     <Run Text="The ME3Tweaks Discord (Legendary_Explorer channel)"/>
+                                 </Hyperlink>
+                                 <LineBreak/>
+                                 - The issues list on GitHub at
+                                 <Hyperlink NavigateUri="{Binding Path=(misc:AppLinks.BugReportURL), Mode=OneTime}"
+                                            Foreground="{DynamicResource {x:Static SystemColors.HotTrackBrushKey}}" misc:HyperlinkExtensions.IsExternal="True">
+                                     <Run Text="{Binding Path=(misc:AppLinks.BugReportURL), Mode=OneTime}"/>
+                                 </Hyperlink>
+                    </TextBlock>
+
+                        <sharedToolControls:RecentsControl x:Name="RecentsController" HorizontalAlignment="Left" />
+                    </StackPanel>
+                </ScrollViewer>
 
                 <DockPanel Grid.Row="0" Grid.Column="0">
                     <ListBox ItemsSource="{Binding AnimSequenceExports}" Name="AnimExportsListBox"

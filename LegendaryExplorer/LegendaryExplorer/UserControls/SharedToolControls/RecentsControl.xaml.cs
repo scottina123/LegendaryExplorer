@@ -5,6 +5,8 @@ using System.IO;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
+using System.Windows.Media;
 using LegendaryExplorer.Misc;
 using LegendaryExplorer.SharedUI;
 using LegendaryExplorer.SharedUI.Converters;
@@ -131,6 +133,29 @@ namespace LegendaryExplorer.UserControls.SharedToolControls
             SelectedRecentGroup = RecentGroups[0];
             LoadCommands();
             InitializeComponent();
+        }
+
+        private void RecentsScrollViewer_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
+        {
+            var scrollViewer = (ScrollViewer)sender;
+            if (e.Delta > 0 ? scrollViewer.VerticalOffset > 0 : scrollViewer.VerticalOffset < scrollViewer.ScrollableHeight)
+            {
+                return;
+            }
+
+            // Let the welcome page scroll when this panel has no more content to scroll.
+            for (var parent = VisualTreeHelper.GetParent(this); parent != null; parent = VisualTreeHelper.GetParent(parent))
+            {
+                if (parent is ScrollViewer outerScrollViewer)
+                {
+                    e.Handled = true;
+                    outerScrollViewer.RaiseEvent(new MouseWheelEventArgs(e.MouseDevice, e.Timestamp, e.Delta)
+                    {
+                        RoutedEvent = Mouse.MouseWheelEvent
+                    });
+                    return;
+                }
+            }
         }
 
         public RelayCommand RecentFileOpenCommand { get; private set; }
