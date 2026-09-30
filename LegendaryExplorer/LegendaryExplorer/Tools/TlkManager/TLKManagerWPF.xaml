@@ -8,6 +8,7 @@
         xmlns:themes="clr-namespace:Xceed.Wpf.Toolkit.Themes;assembly=DotNetProjects.Wpf.Extended.Toolkit"
         xmlns:local="clr-namespace:LegendaryExplorer.Tools.TlkManagerNS"
         xmlns:bases="clr-namespace:LegendaryExplorer.SharedUI.Bases"
+        xmlns:controls="clr-namespace:LegendaryExplorer.SharedUI.Controls"
         mc:Ignorable="d"
         Icon="pack://application:,,,/Tools/Icons/16x16/TLKManager_Icon_16.ico"
         Title="TLK Manager" Height="450" Width="800"
@@ -67,6 +68,11 @@
     </bases:TrackingNotifyPropertyChangedWindowBase.Resources>
 
     <xctk:BusyIndicator IsBusy="{Binding Path=IsBusy}" BusyContent="{Binding BusyText}">
+        <DockPanel>
+            <controls:SearchBox x:Name="TLKSearchBox" DockPanel.Dock="Top" Margin="5"
+                                WatermarkText="Search TLKs across all games..."
+                                ToolTip="Filter TLK filenames and export names across both tabs"
+                                TextChanged="TLKSearchBox_TextChanged"/>
         <TabControl>
             <TabItem x:Name="OTTab">
                 <TabItem.Header>
@@ -324,5 +330,6 @@
                 </Grid>
             </TabItem>
         </TabControl>
+        </DockPanel>
     </xctk:BusyIndicator>
 </bases:TrackingNotifyPropertyChangedWindowBase>

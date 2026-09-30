@@ -9,10 +9,12 @@ using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Data;
 using System.Windows.Input;
 using LegendaryExplorer.Misc;
 using LegendaryExplorer.SharedUI;
 using LegendaryExplorer.SharedUI.Bases;
+using LegendaryExplorer.SharedUI.Controls;
 using LegendaryExplorer.UnrealExtensions;
 using LegendaryExplorerCore.GameFilesystem;
 using LegendaryExplorerCore.Helpers;
@@ -59,6 +61,17 @@ namespace LegendaryExplorer.Tools.TlkManagerNS
             LE1TLKItems.AddRange(LE1TalkFiles.LoadedTlks.Select(x => new LoadedTLK(x.FilePath, x.UIndex, x.Name, true)));
             LE2TLKItems.AddRange(LE2TalkFiles.LoadedTlks.Select(x => new LoadedTLK(x.FilePath, true)));
             LE3TLKItems.AddRange(LE3TalkFiles.LoadedTlks.Select(x => new LoadedTLK(x.FilePath, true)));
+        }
+
+        private void TLKSearchBox_TextChanged(SearchBox sender, string newText)
+        {
+            string searchText = newText?.Trim() ?? string.Empty;
+            foreach (var items in new[] { ME1TLKItems, ME2TLKItems, ME3TLKItems, LE1TLKItems, LE2TLKItems, LE3TLKItems })
+            {
+                CollectionViewSource.GetDefaultView(items).Filter = searchText.Length == 0
+                    ? null
+                    : item => item is LoadedTLK tlk && tlk.tlkDisplayPath.Contains(searchText, StringComparison.OrdinalIgnoreCase);
+            }
         }
 
         #region Commands
