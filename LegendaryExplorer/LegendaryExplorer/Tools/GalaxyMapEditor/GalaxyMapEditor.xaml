@@ -352,10 +352,8 @@
                     </ScrollViewer>
                 </Grid>
 
-                <!-- Recent items overlay when no file is open -->
-                <sharedToolControls:RecentsControl x:Name="RecentsController" Margin="10" Grid.Column="0" Grid.ColumnSpan="5"
-                                                  Visibility="{Binding HasFileOpen, Converter={StaticResource BoolToVisibilityConverter}, ConverterParameter='Not'}"
-                                                  Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"/>
+                <!-- Keep the File > Recent menu without showing the recent items panel. -->
+                <sharedToolControls:RecentsControl x:Name="RecentsController" Visibility="Collapsed"/>
             </Grid>
         </DockPanel>
     </xctk:BusyIndicator>

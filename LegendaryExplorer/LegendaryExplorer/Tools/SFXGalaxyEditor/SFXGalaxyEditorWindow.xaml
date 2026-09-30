@@ -101,7 +101,8 @@
                         <Button Margin="0,0,10,0" Padding="14,8" Content="Open highest-mounted LE2 galaxy map files" Click="OpenHighestMountedLE2_Click" />
                         <Button Padding="14,8" Content="Open highest-mounted LE3 galaxy map pair" Click="OpenHighestMountedLE3_Click" />
                     </WrapPanel>
-                    <sharedToolControls:RecentsControl x:Name="RecentsController" Margin="10" />
+                    <!-- Keep the File > Recent menu without showing the recent items panel. -->
+                    <sharedToolControls:RecentsControl x:Name="RecentsController" Visibility="Collapsed" />
                 </DockPanel>
 
                 <Grid Margin="5" Visibility="{Binding Pcc, Converter={StaticResource NullVisibilityConverter}}">
