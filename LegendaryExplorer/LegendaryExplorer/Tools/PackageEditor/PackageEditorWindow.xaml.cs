@@ -5866,6 +5866,12 @@ namespace LegendaryExplorer.Tools.PackageEditor
             ExportLoaders[ActorPreviewTab_ActorPreviewControl] = ActorPreview_Tab;
             ExportLoaders[GesturePreviewTab_GesturePreview] = GesturePreview_Tab;
 
+            foreach (TabItem tab in ExportLoaders.Values)
+            {
+                tab.Visibility = Visibility.Collapsed;
+            }
+            Intro_Tab.IsSelected = true;
+
             InterpreterTab_Interpreter.SetParentNameList(NamesList); //reference to this control for name editor set
 
             BinaryInterpreterTab_BinaryInterpreter.SetParentNameList(NamesList); //reference to this control for name editor set
