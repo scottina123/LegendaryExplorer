@@ -35,6 +35,8 @@ namespace LegendaryExplorer.MainWindow
     /// </summary>
     public partial class LEXMainWindow : Window
     {
+        private MenuItem selectedCategory;
+
         public LEXMainWindow()
         {
             InitializeComponent();
@@ -51,21 +53,21 @@ namespace LegendaryExplorer.MainWindow
 
             if (ToolSet.Items.Any((t) => t.IsFavorited))
             {
-                favoritesButton.IsChecked = true;
-                SetToolListFromFavorites();
+                selectedCategory = FavoritesMenuItem;
             }
             else
             {
-                coreEditorsButton.IsChecked = true;
-                SetToolList("Core Editors");
+                selectedCategory = CoreEditorsMenuItem;
             }
+            RefreshToolList();
             ToolSet.FavoritesChanged += ToolSet_FavoritesChanged;
             // Keep the tool description panel available, but disable showing it on hover.
             // mainToolPanel.ToolMouseOver += Tool_MouseOver;
 
 #if DEBUG
             MaxWidth = 915;
-            toolsetDevsButton.Visibility = Visibility.Visible;
+            Width = MaxWidth;
+            ToolsetDevsMenuItem.Visibility = Visibility.Visible;
 #endif
 
             Task.Run(TLKLoader.LoadSavedTlkList);
@@ -84,9 +86,9 @@ namespace LegendaryExplorer.MainWindow
 
         private void ToolSet_FavoritesChanged(object sender, EventArgs e)
         {
-            if (favoritesButton.IsChecked ?? false)
+            if (selectedCategory == FavoritesMenuItem)
             {
-                SetToolListFromFavorites();
+                RefreshToolList();
             }
         }
 
@@ -104,14 +106,95 @@ namespace LegendaryExplorer.MainWindow
 
         private void SearchBox_TextChanged(object sender, TextChangedEventArgs e)
         {
-            ApplySearch();
+            RefreshToolList();
         }
 
-        private void SearchBox_OnGotFocus(object sender, RoutedEventArgs e)
+        private void SearchButton_Click(object sender, RoutedEventArgs e)
         {
-            if (!string.IsNullOrWhiteSpace(SearchBox.Text))
+            SearchButton.Visibility = Visibility.Collapsed;
+            SearchBorder.Visibility = Visibility.Visible;
+            SearchBox.Focus();
+            SearchBox.SelectAll();
+        }
+
+        private void CollapseSearch()
+        {
+            if (SearchBox.IsKeyboardFocusWithin)
+            {
+                Keyboard.ClearFocus();
+            }
+            SearchBorder.Visibility = Visibility.Collapsed;
+            SearchButton.Visibility = Visibility.Visible;
+        }
+
+        private void MainWindow_PreviewMouseDown(object sender, MouseButtonEventArgs e)
+        {
+            if (SearchBorder.Visibility == Visibility.Visible && !SearchBorder.IsMouseOver)
+            {
+                // Keep the results in place so this click can still open the tool under the pointer.
+                CollapseSearch();
+            }
+        }
+
+        private void MainWindow_PreviewKeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Escape && SearchBorder.Visibility == Visibility.Visible)
+            {
+                CollapseSearch();
+                SearchButton.Focus();
+                e.Handled = true;
+            }
+        }
+
+        private void MainWindow_Deactivated(object sender, EventArgs e)
+        {
+            CollapseSearch();
+        }
+
+        private void CategoriesButton_Click(object sender, RoutedEventArgs e)
+        {
+            CollapseSearch();
+            CategoriesMenu.PlacementTarget = CategoriesButton;
+            CategoriesMenu.IsOpen = true;
+        }
+
+        private void CategoryMenuItem_Click(object sender, RoutedEventArgs e)
+        {
+            selectedCategory = (MenuItem)sender;
+            if (SearchBox.Text.Length > 0)
+            {
+                SearchBox.Clear();
+            }
+            else
+            {
+                RefreshToolList();
+            }
+        }
+
+        private void RefreshToolList()
+        {
+            if (selectedCategory == null)
+            {
+                return;
+            }
+
+            bool isSearching = !string.IsNullOrWhiteSpace(SearchBox.Text);
+            foreach (MenuItem item in CategoriesMenu.Items.OfType<MenuItem>())
+            {
+                item.IsChecked = !isSearching && item == selectedCategory;
+            }
+
+            if (isSearching)
             {
                 ApplySearch();
+            }
+            else if (selectedCategory == FavoritesMenuItem)
+            {
+                SetToolListFromFavorites();
+            }
+            else
+            {
+                SetToolList((string)selectedCategory.Tag);
             }
         }
 
@@ -132,25 +215,6 @@ namespace LegendaryExplorer.MainWindow
             }
 
             SetToolList(results);
-            foreach (object child in LogicalTreeHelper.GetChildren(categoriesMenu))
-            {
-                if (child is RadioButton rb)
-                {
-                    rb.IsChecked = false;
-                }
-            }
-        }
-
-        private void Favorites_Clicked(object sender, RoutedEventArgs e)
-        {
-            SetToolListFromFavorites();
-        }
-
-        private void CategoryButton_Clicked(object sender, RoutedEventArgs e)
-        {
-            var button = (RadioButton)sender;
-            string category = (string)button.Tag;
-            SetToolList(category);
         }
 
         private void SetToolListFromFavorites()

@@ -10,11 +10,12 @@
         mc:Ignorable="d"
         d:DataContext="{Binding RelativeSource={RelativeSource Self}}"
         MaxWidth="790"
-        Title="Legendary Explorer" Height="670" Width="875" Opacity="0" SizeToContent="Width" 
+        Title="Legendary Explorer" Height="670" Width="790" Opacity="0"
         WindowStyle="None" Foreground="{x:Null}" AllowsTransparency="True"
         Background="#F015181D"  WindowStartupLocation="CenterScreen"  ResizeMode="CanMinimize"
         BorderBrush="#15181D" BorderThickness="2"
-        Closing="MainWindow_Closing">
+        Closing="MainWindow_Closing" PreviewMouseDown="MainWindow_PreviewMouseDown"
+        PreviewKeyDown="MainWindow_PreviewKeyDown" Deactivated="MainWindow_Deactivated">
     <Window.CommandBindings>
         <CommandBinding Command="{x:Static SystemCommands.CloseWindowCommand}" CanExecute="SystemCommand_CanExecute" Executed="CloseCommand_Executed" />
         <CommandBinding Command="{x:Static SystemCommands.MinimizeWindowCommand}" CanExecute="SystemCommand_CanExecute" Executed="MinimizeCommand_Executed" />
@@ -44,6 +45,24 @@
         <Style TargetType="{x:Type RadioButton}">
             <Setter Property="FocusVisualStyle" Value="{StaticResource MainWindowFocusVisualStyle}"/>
         </Style>
+        <Style x:Key="BottomBarButton" TargetType="{x:Type Button}"
+               BasedOn="{StaticResource BorderlessButton}">
+            <Setter Property="Width" Value="40"/>
+            <Setter Property="Height" Value="40"/>
+            <Setter Property="Margin" Value="4,0"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Foreground" Value="{StaticResource ForegroundBrush}"/>
+            <Setter Property="FocusVisualStyle" Value="{StaticResource MainWindowFocusVisualStyle}"/>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Foreground" Value="{StaticResource MouseOverBrush}"/>
+                </Trigger>
+                <Trigger Property="IsKeyboardFocused" Value="True">
+                    <Setter Property="Foreground" Value="{StaticResource MouseOverBrush}"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
     </Window.Resources>
 
 
@@ -51,15 +70,9 @@
         <Rectangle MouseDown="BackgroundMouseDown" Fill="#00000000"/>
         <DockPanel>
             
-            <!--#region Top Toolbar-->
-            <Grid DockPanel.Dock="Top">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="60"/>
-                </Grid.ColumnDefinitions>
-                
-                <!-- Minimize/Close buttons -->
-                <DockPanel Grid.Column="1" HorizontalAlignment="Right" VerticalAlignment="Top" Height="30">
+            <!-- Window controls and drag area -->
+            <Grid DockPanel.Dock="Top" Height="30" Background="Transparent" MouseDown="BackgroundMouseDown">
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                     <Button Command="{x:Static SystemCommands.MinimizeWindowCommand}" Width="30" Height="30" TabIndex="0"
                             Style="{DynamicResource WindowManagementButton}" VerticalContentAlignment="Center">
                         <Image Source="/Resources/Images/minimize_icon.ico" Height="15" Width="15" />
@@ -68,184 +81,91 @@
                             Style="{DynamicResource WindowManagementButton}" VerticalContentAlignment="Center">
                         <Image Source="/Resources/Images/close_icon.ico" />
                     </Button>
-                </DockPanel>
-                
-                <DockPanel Grid.Column="0" Margin="5,5,5,0" LastChildFill="True">
-                    <!-- Top bar controls -->
-                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
-                        <StackPanel.Resources>
-                            <Style x:Key="TopBarButton" TargetType="{x:Type Button}"
-                                   BasedOn="{StaticResource BorderlessButton}">
-                                <Setter Property="FocusVisualStyle"
-                                        Value="{StaticResource MainWindowFocusVisualStyle}" />
-                                <Setter Property="ContentTemplate">
-                                    <Setter.Value>
-                                        <DataTemplate>
-                                            <Border BorderBrush="{DynamicResource ForegroundBrush}"
-                                                    BorderThickness="0"
-                                                    Margin="5, 0">
-                                                <Rectangle x:Name="rect1" Fill="{DynamicResource ForegroundBrush}"
-                                                           Height="32"
-                                                           Width="32" Margin="4">
-                                                    <Rectangle.OpacityMask>
-                                                        <ImageBrush ImageSource="{Binding Source}" />
-                                                    </Rectangle.OpacityMask>
-                                                </Rectangle>
-                                            </Border>
-                                            <DataTemplate.Triggers>
-                                                <DataTrigger
-                                                    Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType={x:Type Button}}}"
-                                                    Value="True">
-                                                    <Setter TargetName="rect1" Property="Fill"
-                                                            Value="{DynamicResource MouseOverBrush}" />
-                                                </DataTrigger>
-                                            </DataTemplate.Triggers>
-                                        </DataTemplate>
-                                    </Setter.Value>
-                                </Setter>
-                            </Style>
-                        </StackPanel.Resources>
-                        <Button Style="{StaticResource TopBarButton}" Click="Settings_Click" ToolTip="Settings"
-                                VerticalAlignment="Center">
-                            <Image Source="/Resources/Images/LEX_Toolbar_Settings.ico" />
-                        </Button>
-
-                        <TextBlock Text="{Binding Source={x:Static misc:AppVersion.MainMenuBuildDateTime}}"
-                                   FontFamily="{StaticResource Exo-SemiBold}" FontWeight="Bold" FontSize="15"
-                                   LineStackingStrategy="BlockLineHeight" LineHeight="19"
-                                   Foreground="{StaticResource UncheckedBrush}" VerticalAlignment="Center"
-                                   TextAlignment="Right" Margin="5,0,5,0"/>
-                    </StackPanel>
-
-                    <!-- Search box -->
-                    <Border BorderBrush="#FF292E36" BorderThickness="1" Background="#FF20242B" Margin="5,0,5,0"
-                            VerticalAlignment="Center" Height="55" CornerRadius="6">
-                        <TextBox x:Name="SearchBox" FontFamily="{StaticResource BioMass-Light}"
-                                 TabIndex="2" FontSize="17" Background="Transparent" BorderThickness="0"
-                                 BorderBrush="{x:Null}" Foreground="#FFDADFE6" VerticalContentAlignment="Center"
-                                 CaretBrush="#FFDADFE6" Padding="10,0" FocusVisualStyle="{x:Null}"
-                                 TextChanged="SearchBox_TextChanged" GotFocus="SearchBox_OnGotFocus" />
-                    </Border>
-                </DockPanel>
-            </Grid>
-            <!--#endregion-->
-
-            <!--#region Categories Bar-->
-            <Border BorderThickness="0" DockPanel.Dock="Top" Margin="5,0">
-                <StackPanel x:Name="categoriesMenu" Orientation="Horizontal" Height="75">
-                    <StackPanel.Resources>
-                        <SolidColorBrush x:Key="SelectedButtonBackground" Color="#5C1A1C"/>
-                        <SolidColorBrush x:Key="HoverButtonBackground" Color="#FFC80000"/>
-                        
-                        <Style x:Key="CategoriesButton" TargetType="{x:Type RadioButton}"
-                               BasedOn="{StaticResource BorderedRadioButton}">
-                            <Setter Property="Height" Value="45" />
-                            <Setter Property="Width" Value="100" />
-                            <Setter Property="Margin" Value="10,0" />
-                            <Setter Property="FocusVisualStyle" Value="{StaticResource MainWindowFocusVisualStyle}"/>
-                            <Setter Property="Template">
-                                <Setter.Value>
-                                    <ControlTemplate TargetType="{x:Type RadioButton}">
-                                        <Border Background="Transparent">
-                                            <Grid>
-                                                <Viewbox>
-                                                    <Path x:Name="categoryShape" Data="M 0 624.38 0 180.38 180.38 0 1332 0 1332 513.38 1227.94 617.44 0 624.38z" 
-                                                          Opacity="1" Fill="{StaticResource ButtonBackground}"
-                                                          Stroke="{DynamicResource ForegroundBrush}" StrokeThickness="30" />
-                                                </Viewbox>
-                                                <TextBlock x:Name="categoryText" VerticalAlignment="Center" Margin="4,0,4,2"
-                                                           TextAlignment="Center" FontFamily="{StaticResource BioMass-Bold}" FontSize="12"
-                                                           LineStackingStrategy="BlockLineHeight" LineHeight="15"
-                                                           TextWrapping="Wrap" FontWeight="Bold" Text="{TemplateBinding ContentPresenter.Content}">
-                                                </TextBlock>
-                                            </Grid>
-                                        </Border>
-                                        <ControlTemplate.Triggers>
-                                            <Trigger Property="IsMouseOver" Value="True">
-                                                <Setter TargetName="categoryText" Property="Foreground" Value="{DynamicResource MouseOverBrush}" />
-                                                <Setter TargetName="categoryShape" Property="Path.Fill" Value="{StaticResource HoverButtonBackground}" />
-                                            </Trigger>
-                                            <Trigger Property="IsMouseOver" Value="False">
-                                                <Setter TargetName="categoryText" Property="Foreground" Value="{DynamicResource UncheckedBrush}" />
-                                            </Trigger>
-                                            <Trigger Property="IsChecked" Value="True">
-                                                <Setter TargetName="categoryText" Property="Foreground" Value="{DynamicResource CheckedBrush}" />
-                                                <Setter TargetName="categoryShape" Property="Path.Fill" Value="{StaticResource SelectedButtonBackground}" />
-                                            </Trigger>
-                                        </ControlTemplate.Triggers>
-                                    </ControlTemplate>
-                                </Setter.Value>
-                            </Setter>
-                        </Style>
-                    </StackPanel.Resources>
-
-                    <!-- Favorites Button -->
-                    <RadioButton x:Name="favoritesButton" Click="Favorites_Clicked" Height="45" Width="45" Margin="10, 0"
-                                 ToolTip="Favorites - Shift-click on a tool to add to favorites">
-                        <RadioButton.Template>
-                            <ControlTemplate TargetType="{x:Type RadioButton}">
-                                <Border Background="Transparent">
-                                    <Grid>
-                                        <Viewbox>
-                                            <Polygon x:Name="favoritesBorder" Points="740 614.93 594.08 740 0 740 0 144.76 114.65 0 740 0 740 614.93"
-                                                  Opacity="1" Fill="{StaticResource ButtonBackground}"
-                                                  Stroke="{DynamicResource ForegroundBrush}" StrokeThickness="40" />
-                                        </Viewbox>
-                                        <fa5:ImageAwesome x:Name="FavStar" Icon="Regular_Star" Width="30" Height="30" Margin="0,0,1,2"/>
-                                    </Grid>
-                                </Border>
-                                <ControlTemplate.Triggers>
-                                    <Trigger Property="IsMouseOver" Value="True">
-                                        <Setter TargetName="FavStar" Property="fa5:ImageAwesome.Foreground" Value="{DynamicResource MouseOverBrush}" />
-                                        <Setter TargetName="favoritesBorder" Property="Polygon.Fill" Value="{StaticResource HoverButtonBackground}" />
-                                        <Setter TargetName="FavStar" Property="fa5:ImageAwesome.Icon" Value="Solid_Star" />
-                                    </Trigger>
-                                    <Trigger Property="IsMouseOver" Value="False">
-                                        <Setter TargetName="FavStar" Property="fa5:ImageAwesome.Foreground" Value="{DynamicResource UncheckedBrush}" />
-                                    </Trigger>
-                                    <Trigger Property="IsChecked" Value="True">
-                                        <Setter TargetName="FavStar" Property="fa5:ImageAwesome.Foreground" Value="{DynamicResource CheckedBrush}" />
-                                        <Setter TargetName="favoritesBorder" Property="Polygon.Fill" Value="{StaticResource SelectedButtonBackground}" />
-                                        <Setter TargetName="FavStar" Property="fa5:ImageAwesome.Icon" Value="Solid_Star" />
-                                    </Trigger>
-                                </ControlTemplate.Triggers>
-                            </ControlTemplate>
-                        </RadioButton.Template>
-                    </RadioButton>
-
-                    <!-- Rest of the buttons - tag determines category name -->
-                    <RadioButton Name="coreEditorsButton" Style="{StaticResource CategoriesButton}" Click="CategoryButton_Clicked" 
-                            Tag="Core Editors" ToolTip="Core package editing tools">
-                        Core Editors
-                    </RadioButton>
-                    <RadioButton Style="{StaticResource CategoriesButton}" Click="CategoryButton_Clicked"
-                                 Tag="Cinematic Tools" ToolTip="Tools related to conversation and cutscene editing">
-                        Cinematic Tools
-                    </RadioButton>
-                    <RadioButton Style="{StaticResource CategoriesButton}" Click="CategoryButton_Clicked" 
-                                 Tag="Audio Tools" ToolTip="Audio modification tools">
-                        Audio Tools
-                    </RadioButton>
-                    <RadioButton Style="{StaticResource CategoriesButton}" Click="CategoryButton_Clicked"
-                                 Tag="Meshes + Textures" ToolTip="Texture and mesh modding tools">
-                        Meshes &amp; Textures
-                    </RadioButton>
-                    <RadioButton Style="{StaticResource CategoriesButton}" Click="CategoryButton_Clicked"
-                                 Tag="Extractors + Repackers" ToolTip="Tools for extracting data from game files">
-                        Extract &amp; Repack
-                    </RadioButton>
-                    <RadioButton Style="{StaticResource CategoriesButton}" Click="CategoryButton_Clicked" 
-                                 Tag="Utilities" ToolTip="Assorted utilities to aid mod developers">
-                        Utilities
-                    </RadioButton>
-                    <RadioButton x:Name="toolsetDevsButton" Style="{StaticResource CategoriesButton}" Click="CategoryButton_Clicked" 
-                                 Tag="Toolset Devs" Visibility="Collapsed" ToolTip="Tools to aid in toolset development">
-                        Toolset Devs Only
-                    </RadioButton>
                 </StackPanel>
+            </Grid>
+
+            <!-- Bottom toolbar -->
+            <Border DockPanel.Dock="Bottom" BorderBrush="#FF292E36" BorderThickness="0,1,0,0"
+                    Background="#FF20242B" Padding="5,7" Margin="5,0" Height="56">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <Button x:Name="CategoriesButton" Grid.Column="0" Style="{StaticResource BottomBarButton}"
+                            Click="CategoriesButton_Click" TabIndex="2" ToolTip="Tool categories and favorites"
+                            AutomationProperties.Name="Tool categories and favorites">
+                        <fa5:ImageAwesome Icon="Solid_Bars" Width="24" Height="24"
+                                          Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
+                        <Button.ContextMenu>
+                            <ContextMenu x:Name="CategoriesMenu" Placement="Top">
+                                <MenuItem x:Name="FavoritesMenuItem" Header="Favorites" IsCheckable="True"
+                                          Click="CategoryMenuItem_Click"
+                                          ToolTip="Shift-click on a tool to add to favorites"/>
+                                <Separator/>
+                                <MenuItem x:Name="CoreEditorsMenuItem" Header="Core Editors" Tag="Core Editors"
+                                          IsCheckable="True" Click="CategoryMenuItem_Click"
+                                          ToolTip="Core package editing tools"/>
+                                <MenuItem Header="Cinematic Tools" Tag="Cinematic Tools"
+                                          IsCheckable="True" Click="CategoryMenuItem_Click"
+                                          ToolTip="Tools related to conversation and cutscene editing"/>
+                                <MenuItem Header="Audio Tools" Tag="Audio Tools"
+                                          IsCheckable="True" Click="CategoryMenuItem_Click"
+                                          ToolTip="Audio modification tools"/>
+                                <MenuItem Header="Meshes &amp; Textures" Tag="Meshes + Textures"
+                                          IsCheckable="True" Click="CategoryMenuItem_Click"
+                                          ToolTip="Texture and mesh modding tools"/>
+                                <MenuItem Header="Extract &amp; Repack" Tag="Extractors + Repackers"
+                                          IsCheckable="True" Click="CategoryMenuItem_Click"
+                                          ToolTip="Tools for extracting data from game files"/>
+                                <MenuItem Header="Utilities" Tag="Utilities"
+                                          IsCheckable="True" Click="CategoryMenuItem_Click"
+                                          ToolTip="Assorted utilities to aid mod developers"/>
+                                <MenuItem x:Name="ToolsetDevsMenuItem" Header="Toolset Devs Only" Tag="Toolset Devs"
+                                          IsCheckable="True" Click="CategoryMenuItem_Click" Visibility="Collapsed"
+                                          ToolTip="Tools to aid in toolset development"/>
+                            </ContextMenu>
+                        </Button.ContextMenu>
+                    </Button>
+
+                    <Grid Grid.Column="1" Margin="0,0,8,0">
+                        <Button x:Name="SearchButton" Style="{StaticResource BottomBarButton}" HorizontalAlignment="Left"
+                                Click="SearchButton_Click" TabIndex="3" ToolTip="Search tools"
+                                AutomationProperties.Name="Search tools">
+                            <fa5:ImageAwesome Icon="Solid_Search" Width="24" Height="24"
+                                              Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
+                        </Button>
+                        <Border x:Name="SearchBorder" BorderBrush="#FF292E36" BorderThickness="1"
+                                Background="#FF15181D" CornerRadius="6" Visibility="Collapsed">
+                            <TextBox x:Name="SearchBox" FontFamily="{StaticResource BioMass-Light}"
+                                     TabIndex="3" FontSize="17" Background="Transparent" BorderThickness="0"
+                                     BorderBrush="{x:Null}" Foreground="#FFDADFE6" VerticalContentAlignment="Center"
+                                     CaretBrush="#FFDADFE6" Padding="10,0" FocusVisualStyle="{x:Null}"
+                                     AutomationProperties.Name="Search tools" ToolTip="Search tools"
+                                     TextChanged="SearchBox_TextChanged"/>
+                        </Border>
+                    </Grid>
+
+                    <Button Grid.Column="2" Style="{StaticResource BottomBarButton}" Click="Settings_Click"
+                            TabIndex="4" ToolTip="Settings" AutomationProperties.Name="Settings">
+                        <Rectangle Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                   Width="28" Height="28">
+                            <Rectangle.OpacityMask>
+                                <ImageBrush ImageSource="/Resources/Images/LEX_Toolbar_Settings.ico"/>
+                            </Rectangle.OpacityMask>
+                        </Rectangle>
+                    </Button>
+                    <TextBlock Grid.Column="3" Text="{Binding Source={x:Static misc:AppVersion.MainMenuBuildDateTime}}"
+                               FontFamily="{StaticResource Exo-SemiBold}" FontWeight="Bold" FontSize="13"
+                               LineStackingStrategy="BlockLineHeight" LineHeight="17"
+                               Foreground="{StaticResource UncheckedBrush}" VerticalAlignment="Center"
+                               TextAlignment="Right" Margin="8,0,5,0" ToolTip="Build date and time"/>
+                </Grid>
             </Border>
-            <!--#endregion-->
-            
+
             <!-- Tool info panel -->
             <DockPanel x:Name="toolInfoPanel" DockPanel.Dock="Bottom" Height="80" Background="#FF304e75" Visibility="Collapsed">
                 <Border DockPanel.Dock="Left" BorderThickness="1" BorderBrush="{DynamicResource ForegroundBrush}" Margin="10,5" Height="60">
@@ -264,7 +184,7 @@
                         <mainWindow:ToolPanel.Style>
                             <Style TargetType="{x:Type mainWindow:ToolPanel}">
                                 <Style.Triggers>
-                                    <DataTrigger Binding="{Binding IsChecked, ElementName=favoritesButton}" Value="True">
+                                    <DataTrigger Binding="{Binding IsChecked, ElementName=FavoritesMenuItem}" Value="True">
                                         <Setter Property="MinimumRows" Value="4"/>
                                         <Setter Property="ItemSize" Value="100"/>
                                         <Setter Property="ItemMargin" Value="0,8,0,0"/>
