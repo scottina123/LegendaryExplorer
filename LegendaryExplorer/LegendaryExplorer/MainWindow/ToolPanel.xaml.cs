@@ -77,7 +77,7 @@ namespace LegendaryExplorer.MainWindow
             int count = tools?.Count ?? 0;
             SetValue(RowCountPropertyKey, Math.Max(MinimumRows, (count + 5) / 6));
         }
-        
+
         private void Button_GotFocus(object sender, RoutedEventArgs e)
         {
         }

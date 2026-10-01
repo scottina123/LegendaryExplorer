@@ -307,8 +307,8 @@
                                 <Style.Triggers>
                                     <DataTrigger Binding="{Binding IsChecked, ElementName=favoritesButton}" Value="True">
                                         <Setter Property="MinimumRows" Value="4"/>
-                                        <Setter Property="ItemSize" Value="92"/>
-                                        <Setter Property="ItemMargin" Value="0,10,15,0"/>
+                                        <Setter Property="ItemSize" Value="100"/>
+                                        <Setter Property="ItemMargin" Value="0,8,0,0"/>
                                     </DataTrigger>
                                 </Style.Triggers>
                             </Style>
