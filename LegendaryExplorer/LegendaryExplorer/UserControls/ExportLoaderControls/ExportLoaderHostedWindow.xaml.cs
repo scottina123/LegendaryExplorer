@@ -190,7 +190,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             }
         }
 
-        public bool ShouldShowRecentsController => HostedControl is FileExportLoaderControl felc && felc.LoadedFile == null && !felc.ForceHideRecents; // Only File Export Loaders support Recents
+        public bool ShouldShowRecentsController => LoadedExport == null && HostedControl is FileExportLoaderControl felc
+                                                  && felc.CurrentLoadedExport == null && felc.LoadedFile == null && !felc.ForceHideRecents;
 
         public ICommand SaveCommand { get; set; }
         public ICommand SaveAsCommand { get; set; }

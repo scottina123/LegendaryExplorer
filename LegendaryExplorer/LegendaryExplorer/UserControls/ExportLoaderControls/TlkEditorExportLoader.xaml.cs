@@ -740,6 +740,9 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         public override void PoppedOut(ExportLoaderHostedWindow elhw)
         {
             _hostedWindow = elhw;
+            // Keep the welcome panel below the TLK tabs, toolbar, and search controls.
+            elhw.ContentGrid.Children.Remove(elhw.RecentsController);
+            EditorContentGrid.Children.Add(elhw.RecentsController);
             AddOpenHighestMountedBaseTlksMenuItem(elhw);
             AddSaveToAllLanguageTlksMenuItem(elhw);
         }

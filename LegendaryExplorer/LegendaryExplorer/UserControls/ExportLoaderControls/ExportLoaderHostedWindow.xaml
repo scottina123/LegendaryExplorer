@@ -77,7 +77,9 @@
                 </StatusBarItem>
             </StatusBar>
             <Grid Name="ContentGrid">
-                <sharedToolControls:RecentsControl x:Name="RecentsController" Grid.ZIndex="5" Visibility="{Binding ShouldShowRecentsController, RelativeSource={RelativeSource FindAncestor, AncestorType={x:Type exportLoaderControls:ExportLoaderHostedWindow}}, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                <sharedToolControls:RecentsControl x:Name="RecentsController" Grid.ZIndex="5"
+                                                  Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"
+                                                  Visibility="{Binding ShouldShowRecentsController, RelativeSource={RelativeSource FindAncestor, AncestorType={x:Type exportLoaderControls:ExportLoaderHostedWindow}}, Converter={StaticResource BoolToVisibilityConverter}}"/>
             </Grid>
         </DockPanel>
     </xctk:BusyIndicator>

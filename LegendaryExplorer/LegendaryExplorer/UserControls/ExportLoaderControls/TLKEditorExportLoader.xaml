@@ -260,94 +260,97 @@
                 <TextBox Name="popoutXmlBox" Text="No xml loaded" Margin="15,0,15,0" VerticalAlignment = "Center" FontFamily="{DynamicResource AudemusDataFont}" FontSize="14" Focusable = "True" ScrollViewer.CanContentScroll = "True" ScrollViewer.VerticalScrollBarVisibility = "Visible" IsReadOnly = "True" TextWrapping = "Wrap" LostFocus="CloseViewAsXml"/>
             </Border>
         </Popup>
-        <DataGrid Name="DisplayedString_ListBox"
-                  ItemsSource="{Binding CleanedStrings}"
-                  AutoGenerateColumns="False"
-                  CanUserAddRows="False"
-                  CanUserDeleteRows="False"
-                  GridLinesVisibility="All"
-                  HorizontalGridLinesBrush="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"
-                  VerticalGridLinesBrush="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"
-                  HeadersVisibility="Column"
-                  RowHeaderWidth="0"
-                  SelectionMode="Single"
-                  SelectionUnit="Cell"
-                  SelectionChanged="DisplayedString_ListBox_SelectionChanged"
-                  ScrollViewer.HorizontalScrollBarVisibility="Disabled">
-            <DataGrid.RowStyle>
-                <Style TargetType="{x:Type DataGridRow}">
-                    <Setter Property="Background" Value="Transparent"/>
-                    <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
-                    <Style.Triggers>
-                        <Trigger Property="IsSelected" Value="True">
-                            <Setter Property="Background" Value="Transparent"/>
-                            <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
-                        </Trigger>
-                    </Style.Triggers>
-                </Style>
-            </DataGrid.RowStyle>
-            <DataGrid.CellStyle>
-                <Style TargetType="{x:Type DataGridCell}">
-                    <Setter Property="Background" Value="Transparent"/>
-                    <Setter Property="BorderThickness" Value="0"/>
-                    <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
-                    <Style.Triggers>
-                        <Trigger Property="IsSelected" Value="True">
-                            <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}"/>
-                            <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.HighlightTextBrushKey}}"/>
-                        </Trigger>
-                         <MultiTrigger>
-                             <MultiTrigger.Conditions>
-                                 <Condition Property="IsSelected" Value="True"/>
-                                 <Condition Property="IsKeyboardFocusWithin" Value="True"/>
-                             </MultiTrigger.Conditions>
-                             <Setter Property="Background" Value="Transparent"/>
-                             <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
-                         </MultiTrigger>
-                    </Style.Triggers>
-                </Style>
-            </DataGrid.CellStyle>
-            <DataGrid.Columns>
-                <DataGridTemplateColumn Header="TLK ID" Width="110">
-                    <DataGridTemplateColumn.CellTemplate>
-                        <DataTemplate>
-                            <Border BorderBrush="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}" BorderThickness="0,0,1,0">
-                                <TextBox Text="{Binding StringID, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
+        <Grid x:Name="EditorContentGrid">
+            <DataGrid Name="DisplayedString_ListBox"
+                      Visibility="{Binding ShouldShowRecentsController, RelativeSource={RelativeSource FindAncestor, AncestorType={x:Type exportLoaderControls:ExportLoaderHostedWindow}}, Converter={StaticResource BoolToVisibilityConverter}, ConverterParameter=Not, FallbackValue=Visible}"
+                      ItemsSource="{Binding CleanedStrings}"
+                      AutoGenerateColumns="False"
+                      CanUserAddRows="False"
+                      CanUserDeleteRows="False"
+                      GridLinesVisibility="All"
+                      HorizontalGridLinesBrush="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"
+                      VerticalGridLinesBrush="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"
+                      HeadersVisibility="Column"
+                      RowHeaderWidth="0"
+                      SelectionMode="Single"
+                      SelectionUnit="Cell"
+                      SelectionChanged="DisplayedString_ListBox_SelectionChanged"
+                      ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                <DataGrid.RowStyle>
+                    <Style TargetType="{x:Type DataGridRow}">
+                        <Setter Property="Background" Value="Transparent"/>
+                        <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
+                        <Style.Triggers>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter Property="Background" Value="Transparent"/>
+                                <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
+                            </Trigger>
+                        </Style.Triggers>
+                    </Style>
+                </DataGrid.RowStyle>
+                <DataGrid.CellStyle>
+                    <Style TargetType="{x:Type DataGridCell}">
+                        <Setter Property="Background" Value="Transparent"/>
+                        <Setter Property="BorderThickness" Value="0"/>
+                        <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
+                        <Style.Triggers>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}"/>
+                                <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.HighlightTextBrushKey}}"/>
+                            </Trigger>
+                             <MultiTrigger>
+                                 <MultiTrigger.Conditions>
+                                     <Condition Property="IsSelected" Value="True"/>
+                                     <Condition Property="IsKeyboardFocusWithin" Value="True"/>
+                                 </MultiTrigger.Conditions>
+                                 <Setter Property="Background" Value="Transparent"/>
+                                 <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
+                             </MultiTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </DataGrid.CellStyle>
+                <DataGrid.Columns>
+                    <DataGridTemplateColumn Header="TLK ID" Width="110">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <Border BorderBrush="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}" BorderThickness="0,0,1,0">
+                                    <TextBox Text="{Binding StringID, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
+                                             BorderThickness="0"
+                                             Background="Transparent"
+                                             Padding="2"
+                                             Tag="IdColumnEditor"
+                                             IsInactiveSelectionHighlightEnabled="True"
+                                             HorizontalContentAlignment="Right"
+                                             ContextMenu="{StaticResource InlineTlkLineContextMenu}"
+                                             PreviewTextInput="StringIdTextBox_PreviewTextInput"
+                                             PreviewKeyDown="StringIdTextBox_PreviewKeyDown"
+                                             LostKeyboardFocus="StringIdTextBox_LostKeyboardFocus"
+                                             GotKeyboardFocus="StringIdTextBox_GotKeyboardFocus"
+                                             DataObject.Pasting="StringIdTextBox_OnPasting" />
+                                </Border>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                    <DataGridTemplateColumn Header="Text" Width="*">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <TextBox Text="{Binding Data, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                          BorderThickness="0"
                                          Background="Transparent"
                                          Padding="2"
-                                         Tag="IdColumnEditor"
+                                         Tag="TextColumnEditor"
                                          IsInactiveSelectionHighlightEnabled="True"
-                                         HorizontalContentAlignment="Right"
                                          ContextMenu="{StaticResource InlineTlkLineContextMenu}"
-                                         PreviewTextInput="StringIdTextBox_PreviewTextInput"
-                                         PreviewKeyDown="StringIdTextBox_PreviewKeyDown"
-                                         LostKeyboardFocus="StringIdTextBox_LostKeyboardFocus"
-                                         GotKeyboardFocus="StringIdTextBox_GotKeyboardFocus"
-                                         DataObject.Pasting="StringIdTextBox_OnPasting" />
-                            </Border>
-                        </DataTemplate>
-                    </DataGridTemplateColumn.CellTemplate>
-                </DataGridTemplateColumn>
-                <DataGridTemplateColumn Header="Text" Width="*">
-                    <DataGridTemplateColumn.CellTemplate>
-                        <DataTemplate>
-                            <TextBox Text="{Binding Data, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                     BorderThickness="0"
-                                     Background="Transparent"
-                                     Padding="2"
-                                     Tag="TextColumnEditor"
-                                     IsInactiveSelectionHighlightEnabled="True"
-                                     ContextMenu="{StaticResource InlineTlkLineContextMenu}"
-                                     TextWrapping="Wrap"
-                                     AcceptsReturn="True"
-                                     VerticalScrollBarVisibility="Disabled"
-                                     TextChanged="StringDataTextBox_TextChanged"
-                                     GotKeyboardFocus="InlineEditor_GotKeyboardFocus" />
-                        </DataTemplate>
-                    </DataGridTemplateColumn.CellTemplate>
-                </DataGridTemplateColumn>
-            </DataGrid.Columns>
-        </DataGrid>
+                                         TextWrapping="Wrap"
+                                         AcceptsReturn="True"
+                                         VerticalScrollBarVisibility="Disabled"
+                                         TextChanged="StringDataTextBox_TextChanged"
+                                         GotKeyboardFocus="InlineEditor_GotKeyboardFocus" />
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                </DataGrid.Columns>
+            </DataGrid>
+        </Grid>
     </DockPanel>
 </exportLoaderControls:FileExportLoaderControl>
