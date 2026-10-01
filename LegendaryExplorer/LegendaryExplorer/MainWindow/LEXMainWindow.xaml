@@ -47,9 +47,9 @@
         </Style>
         <Style x:Key="BottomBarButton" TargetType="{x:Type Button}"
                BasedOn="{StaticResource BorderlessButton}">
-            <Setter Property="Width" Value="40"/>
+            <Setter Property="Width" Value="36"/>
             <Setter Property="Height" Value="40"/>
-            <Setter Property="Margin" Value="4,0"/>
+            <Setter Property="Margin" Value="0"/>
             <Setter Property="HorizontalContentAlignment" Value="Center"/>
             <Setter Property="VerticalContentAlignment" Value="Center"/>
             <Setter Property="Foreground" Value="{StaticResource ForegroundBrush}"/>
@@ -86,7 +86,7 @@
 
             <!-- Bottom toolbar -->
             <Border DockPanel.Dock="Bottom" BorderBrush="#FF292E36" BorderThickness="0,1,0,0"
-                    Background="#FF20242B" Padding="5,7" Margin="5,0" Height="56">
+                    Background="#FF20242B" Padding="4,7" Height="56">
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto"/>
@@ -177,17 +177,16 @@
             
             <!--#region Tool Panel-->
             <Grid>
-                <ScrollViewer Background="#1A4b5568" 
-                              HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                <ScrollViewer x:Name="ToolScrollViewer" Background="#1A4b5568"
+                              HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto"
+                              ScrollChanged="ToolScrollViewer_ScrollChanged">
 
-                    <mainWindow:ToolPanel x:Name="mainToolPanel">
+                    <mainWindow:ToolPanel x:Name="mainToolPanel" ItemMargin="6,8,6,0">
                         <mainWindow:ToolPanel.Style>
                             <Style TargetType="{x:Type mainWindow:ToolPanel}">
                                 <Style.Triggers>
                                     <DataTrigger Binding="{Binding IsChecked, ElementName=FavoritesMenuItem}" Value="True">
                                         <Setter Property="MinimumRows" Value="4"/>
-                                        <Setter Property="ItemSize" Value="100"/>
-                                        <Setter Property="ItemMargin" Value="0,8,0,0"/>
                                     </DataTrigger>
                                 </Style.Triggers>
                             </Style>

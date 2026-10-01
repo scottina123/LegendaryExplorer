@@ -37,7 +37,7 @@ namespace LegendaryExplorer.Misc
         /// Local build date and time for the main menu.
         /// </summary>
         public static string MainMenuBuildDateTime =>
-            $"{App.BuildDateTime.ToLocalTime().ToShortDateString()}{Environment.NewLine}{App.BuildDateTime.ToLocalTime():h:mm tt}";
+            $"{App.BuildDateTime.ToLocalTime():h:mm tt}{Environment.NewLine}{App.BuildDateTime.ToLocalTime().ToShortDateString()}";
 
         /// <summary>
         /// Full displayed version in the UI for about page

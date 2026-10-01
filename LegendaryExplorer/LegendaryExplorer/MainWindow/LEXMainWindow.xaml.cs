@@ -99,6 +99,20 @@ namespace LegendaryExplorer.MainWindow
             toolInfoText.Text = t.description;
         }
 
+        private void ToolScrollViewer_ScrollChanged(object sender, ScrollChangedEventArgs e)
+        {
+            if (e.ViewportWidthChange == 0 && e.ViewportHeightChange == 0)
+            {
+                return;
+            }
+
+            // Fit six columns and four rows of square icons into the available tool area.
+            Thickness margin = mainToolPanel.ItemMargin;
+            double width = (ToolScrollViewer.ViewportWidth - 12) / 6 - margin.Left - margin.Right;
+            double height = (ToolScrollViewer.ViewportHeight - 10) / 4 - margin.Top - margin.Bottom - 7;
+            mainToolPanel.ItemSize = Math.Max(96, Math.Floor(Math.Min(width, height)));
+        }
+
         private void Settings_Click(object sender, RoutedEventArgs e)
         {
             new SettingsWindow().Show();
