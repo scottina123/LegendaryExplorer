@@ -34,7 +34,7 @@
             </StatusBarItem>
         </StatusBar>
         <Grid>
-        <sharedToolControls:RecentsControl x:Name="RecentsController" HorizontalContentAlignment="Center"
+        <sharedToolControls:RecentsControl x:Name="RecentsController"
                                      Visibility="{Binding LoadedDLCPackage, 
                                                 RelativeSource={RelativeSource FindAncestor, AncestorType={x:Type sfarEditor:SFARExplorerWindow}},
                                                 Converter={StaticResource NullVisibilityConverter}, 

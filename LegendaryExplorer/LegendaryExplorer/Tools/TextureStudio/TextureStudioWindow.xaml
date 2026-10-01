@@ -90,7 +90,7 @@
                             HorizontalAlignment="Center"
                             Padding="25,5"
                             Margin="10"/>
-                    <sharedToolControls:RecentsControl x:Name="RecentsController" IsFolderRecents="True" HorizontalContentAlignment="Center"/>
+                    <sharedToolControls:RecentsControl x:Name="RecentsController" IsFolderRecents="True"/>
                 </DockPanel>
                 <Grid
                     Visibility="{Binding SelectedFolder, Converter={StaticResource NullVisibilityConverter}}">
