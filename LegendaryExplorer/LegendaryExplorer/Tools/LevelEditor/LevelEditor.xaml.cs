@@ -65,16 +65,23 @@ public class RecentFileSet
     public List<string> ReadOnlyFilePaths { get; set; } = [];
 
     [JsonIgnore]
-    public string DisplayName => FilePaths.Count switch
-    {
-        0 => "(empty)",
-        1 => Path.GetFileName(FilePaths[0]),
-        _ => $"{Path.GetFileName(FilePaths[0])} (+{FilePaths.Count - 1} more)"
-    };
+    public string DisplayName => FilePaths.Count == 0
+        ? "(empty)"
+        : string.Join("\n", FilePaths.Select(Path.GetFileName));
 
     [JsonIgnore]
-    public string TooltipText => string.Join("\n", FilePaths.Select(Path.GetFileName));
+    public bool HasMultipleLevels => FilePaths.Count > 1;
 
+    [JsonIgnore]
+    public string TooltipText => string.Join("\n", FilePaths);
+
+}
+
+public class RecentFileSetGroup(MEGame? game)
+{
+    public MEGame? Game { get; } = game;
+    public string Header => Game?.ToString() ?? "Misc";
+    public ObservableCollectionExtended<RecentFileSet> Items { get; } = [];
 }
 
 public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IActorEditorContext
@@ -718,6 +725,24 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
 
     public ObservableCollectionExtended<RecentFileSet> RecentSets { get; } = [];
 
+    public IReadOnlyList<RecentFileSetGroup> RecentSetGroups { get; } = new[]
+    {
+        new RecentFileSetGroup(MEGame.ME1),
+        new RecentFileSetGroup(MEGame.ME2),
+        new RecentFileSetGroup(MEGame.ME3),
+        new RecentFileSetGroup(MEGame.LE1),
+        new RecentFileSetGroup(MEGame.LE2),
+        new RecentFileSetGroup(MEGame.LE3),
+        new RecentFileSetGroup(null)
+    };
+
+    private RecentFileSetGroup _selectedRecentSetGroup;
+    public RecentFileSetGroup SelectedRecentSetGroup
+    {
+        get => _selectedRecentSetGroup;
+        set => SetProperty(ref _selectedRecentSetGroup, value);
+    }
+
     private static string RecentSetsFile => Path.Combine(
         Directory.CreateDirectory(Path.Combine(AppDirectories.AppDataFolder, "LevelEditor")).FullName,
         "RECENTSETS");
@@ -735,6 +760,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         ActorsView.Filter = ActorFilter;
         ActorsView.GroupDescriptions.Add(new PropertyGroupDescription(nameof(ActorProxy.OwningFile)));
 
+        SelectedRecentSetGroup = RecentSetGroups[0];
         LoadCommands();
         InitializeComponent();
         // Resource preparation should yield for interactions anywhere in the editor, not only over the viewport.
@@ -3194,6 +3220,29 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
 
     #region Recent File Sets
 
+    private RecentFileSetGroup GetRecentSetGroup(RecentFileSet set)
+    {
+        MEGame? game = set.Game.IsMEGame() ? set.Game : null;
+        return RecentSetGroups.First(group => group.Game == game);
+    }
+
+    private void RefreshRecentSetGroups(RecentFileSet preferredSet = null)
+    {
+        foreach (var group in RecentSetGroups)
+        {
+            group.Items.ReplaceAll(RecentSets.Where(set => GetRecentSetGroup(set) == group));
+        }
+
+        if (preferredSet != null)
+        {
+            SelectedRecentSetGroup = GetRecentSetGroup(preferredSet);
+        }
+        else if (SelectedRecentSetGroup == null || !SelectedRecentSetGroup.Items.Any)
+        {
+            SelectedRecentSetGroup = RecentSets.Count > 0 ? GetRecentSetGroup(RecentSets[0]) : RecentSetGroups[0];
+        }
+    }
+
     private void LoadRecentSets()
     {
         if (!File.Exists(RecentSetsFile)) return;
@@ -3210,14 +3259,14 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
             }
         }
         catch { /* corrupt file, ignore */ }
-        RefreshRecentsMenu();
+        RefreshRecentsMenu(RecentSets.FirstOrDefault());
     }
 
     private void SaveRecentSets()
     {
         var json = JsonConvert.SerializeObject(RecentSets.ToList(), Formatting.Indented);
         File.WriteAllText(RecentSetsFile, json);
-        RefreshRecentsMenu();
+        RefreshRecentsMenu(RecentSets.FirstOrDefault());
     }
 
     private void RecordCurrentFilesAsRecent()
@@ -3225,10 +3274,10 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         if (OpenFiles.Count == 0) return;
         var currentPaths = OpenFiles.Select(f => f.FilePath).ToList();
 
-        for (int i = 0; i < RecentSets.Count; i++)
+        for (int i = RecentSets.Count - 1; i >= 0; i--)
         {
             var existing = RecentSets[i].FilePaths;
-            if (existing.Count > 0 && existing[0] == currentPaths[0])
+            if (existing.Count > 0 && string.Equals(existing[0], currentPaths[0], StringComparison.OrdinalIgnoreCase))
             {
                 RecentSets.RemoveAt(i);
             }
@@ -3241,8 +3290,12 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
             ReadOnlyFilePaths = OpenFiles.Where(f => f.IsReadOnly).Select(f => f.FilePath).ToList()
         });
 
-        while (RecentSets.Count > 10)
-            RecentSets.RemoveAt(RecentSets.Count - 1);
+        // Each game keeps its own history, just like the shared recent-items control.
+        var group = GetRecentSetGroup(RecentSets[0]);
+        foreach (var olderSet in RecentSets.Where(set => GetRecentSetGroup(set) == group).Skip(10).ToList())
+        {
+            RecentSets.Remove(olderSet);
+        }
 
         SaveRecentSets();
     }
@@ -3265,8 +3318,9 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         }
     }
 
-    private void RefreshRecentsMenu()
+    private void RefreshRecentsMenu(RecentFileSet preferredSet = null)
     {
+        RefreshRecentSetGroups(preferredSet);
         Recents_MenuItem.Items.Clear();
         Recents_MenuItem.IsEnabled = RecentSets.Count > 0;
         foreach (var set in RecentSets)
