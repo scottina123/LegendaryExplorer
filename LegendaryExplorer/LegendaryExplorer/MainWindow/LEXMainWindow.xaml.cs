@@ -66,7 +66,8 @@ namespace LegendaryExplorer.MainWindow
                 SetToolList("Core Editors");
             }
             ToolSet.FavoritesChanged += ToolSet_FavoritesChanged;
-            mainToolPanel.ToolMouseOver += Tool_MouseOver;
+            // Keep the tool description panel available, but disable showing it on hover.
+            // mainToolPanel.ToolMouseOver += Tool_MouseOver;
 
 #if DEBUG
             MaxWidth = 915;
