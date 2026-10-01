@@ -52,11 +52,9 @@
                                     Style="{StaticResource BorderlessButton}" Width="{Binding ItemSize, RelativeSource={RelativeSource FindAncestor, AncestorType={x:Type mainWindow:ToolPanel}}}" Click="Button_Click" GotFocus="Button_GotFocus"
                                     MouseEnter="Button_MouseEnter" MouseLeave="Button_MouseLeave" MouseRightButtonDown="Button_MouseRightButtonDown">
                                     <StackPanel Name="border">
-                                        <Border BorderThickness="1" BorderBrush="{DynamicResource ForegroundBrush}">
-                                            <Image x:Name="toolIcon" Width="{Binding ItemSize, RelativeSource={RelativeSource FindAncestor, AncestorType={x:Type mainWindow:ToolPanel}}}"
-                                                   Height="{Binding ItemSize, RelativeSource={RelativeSource FindAncestor, AncestorType={x:Type mainWindow:ToolPanel}}}"
-                                                   Source="{Binding icon}" Opacity="0.85" RenderOptions.BitmapScalingMode="HighQuality"/>
-                                        </Border>
+                                        <Image x:Name="toolIcon" Width="{Binding ItemSize, RelativeSource={RelativeSource FindAncestor, AncestorType={x:Type mainWindow:ToolPanel}}}"
+                                               Height="{Binding ItemSize, RelativeSource={RelativeSource FindAncestor, AncestorType={x:Type mainWindow:ToolPanel}}}"
+                                               Source="{Binding icon}" Opacity="0.85" RenderOptions.BitmapScalingMode="HighQuality"/>
                                         <Rectangle x:Name="highlightUnderline" Height="3" Margin="0,2,0,0" Fill="{StaticResource HighlightColor}"
                                                    Visibility="Hidden"/>
                                     </StackPanel>

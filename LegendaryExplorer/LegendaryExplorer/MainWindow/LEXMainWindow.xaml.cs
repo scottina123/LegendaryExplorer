@@ -109,7 +109,7 @@ namespace LegendaryExplorer.MainWindow
             // Fit six columns and four rows of square icons into the available tool area.
             Thickness margin = mainToolPanel.ItemMargin;
             double width = (ToolScrollViewer.ViewportWidth - 12) / 6 - margin.Left - margin.Right;
-            double height = (ToolScrollViewer.ViewportHeight - 10) / 4 - margin.Top - margin.Bottom - 7;
+            double height = (ToolScrollViewer.ViewportHeight - 10) / 4 - margin.Top - margin.Bottom - 5;
             mainToolPanel.ItemSize = Math.Max(96, Math.Floor(Math.Min(width, height)));
         }
 
