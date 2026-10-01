@@ -42,18 +42,20 @@
                           HorizontalContentAlignment="Stretch">
                 <ItemsControl.ItemsPanel>
                     <ItemsPanelTemplate >
-                        <UniformGrid Columns="6" Margin="0,0,0,10"/>
+                        <UniformGrid Columns="6" Rows="{Binding RowCount, RelativeSource={RelativeSource FindAncestor, AncestorType={x:Type mainWindow:ToolPanel}}}" Margin="0,0,0,10"/>
                     </ItemsPanelTemplate>
                 </ItemsControl.ItemsPanel>
                 <ItemsControl.ItemTemplate>
                     <DataTemplate DataType="legendaryExplorer:Tool">
                         <Grid>
                             <Button Padding="0" Margin="{Binding ItemMargin, RelativeSource={RelativeSource FindAncestor, AncestorType={x:Type mainWindow:ToolPanel}}}"
-                                    Style="{StaticResource BorderlessButton}" Width="96" Click="Button_Click" GotFocus="Button_GotFocus"
+                                    Style="{StaticResource BorderlessButton}" Width="{Binding ItemSize, RelativeSource={RelativeSource FindAncestor, AncestorType={x:Type mainWindow:ToolPanel}}}" Click="Button_Click" GotFocus="Button_GotFocus"
                                     MouseEnter="Button_MouseEnter" MouseLeave="Button_MouseLeave" MouseRightButtonDown="Button_MouseRightButtonDown">
                                     <StackPanel Name="border">
                                         <Border BorderThickness="1" BorderBrush="{DynamicResource ForegroundBrush}">
-                                            <Image x:Name="toolIcon" Width="96" Height="96" Source="{Binding icon}" Opacity="0.85" RenderOptions.BitmapScalingMode="HighQuality"/>
+                                            <Image x:Name="toolIcon" Width="{Binding ItemSize, RelativeSource={RelativeSource FindAncestor, AncestorType={x:Type mainWindow:ToolPanel}}}"
+                                                   Height="{Binding ItemSize, RelativeSource={RelativeSource FindAncestor, AncestorType={x:Type mainWindow:ToolPanel}}}"
+                                                   Source="{Binding icon}" Opacity="0.85" RenderOptions.BitmapScalingMode="HighQuality"/>
                                         </Border>
                                         <Rectangle x:Name="highlightUnderline" Height="3" Margin="0,2,0,0" Fill="{StaticResource HighlightColor}"
                                                    Visibility="Hidden"/>

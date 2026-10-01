@@ -12,6 +12,32 @@ namespace LegendaryExplorer.MainWindow
     /// </summary>
     public partial class ToolPanel : ToolListControl
     {
+        public double ItemSize
+        {
+            get => (double)GetValue(ItemSizeProperty);
+            set => SetValue(ItemSizeProperty, value);
+        }
+
+        public static readonly DependencyProperty ItemSizeProperty =
+            DependencyProperty.Register(nameof(ItemSize), typeof(double), typeof(ToolPanel), new PropertyMetadata(96d));
+
+        public int MinimumRows
+        {
+            get => (int)GetValue(MinimumRowsProperty);
+            set => SetValue(MinimumRowsProperty, value);
+        }
+
+        public static readonly DependencyProperty MinimumRowsProperty =
+            DependencyProperty.Register(nameof(MinimumRows), typeof(int), typeof(ToolPanel),
+                new PropertyMetadata(0, (d, e) => ((ToolPanel)d).UpdateRowCount()));
+
+        private static readonly DependencyPropertyKey RowCountPropertyKey =
+            DependencyProperty.RegisterReadOnly(nameof(RowCount), typeof(int), typeof(ToolPanel), new PropertyMetadata(0));
+
+        public static readonly DependencyProperty RowCountProperty = RowCountPropertyKey.DependencyProperty;
+
+        public int RowCount => (int)GetValue(RowCountProperty);
+
         public Thickness ItemMargin
         {
             get => (Thickness)GetValue(ItemMarginProperty);
@@ -43,6 +69,13 @@ namespace LegendaryExplorer.MainWindow
         {
             base.setToolList(enumerable);
             ToolList.ItemsSource = tools;
+            UpdateRowCount();
+        }
+
+        private void UpdateRowCount()
+        {
+            int count = tools?.Count ?? 0;
+            SetValue(RowCountPropertyKey, Math.Max(MinimumRows, (count + 5) / 6));
         }
         
         private void Button_GotFocus(object sender, RoutedEventArgs e)

@@ -301,7 +301,19 @@
                 <ScrollViewer Background="#1A4b5568" 
                               HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
 
-                    <mainWindow:ToolPanel x:Name="mainToolPanel"/>
+                    <mainWindow:ToolPanel x:Name="mainToolPanel">
+                        <mainWindow:ToolPanel.Style>
+                            <Style TargetType="{x:Type mainWindow:ToolPanel}">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsChecked, ElementName=favoritesButton}" Value="True">
+                                        <Setter Property="MinimumRows" Value="4"/>
+                                        <Setter Property="ItemSize" Value="92"/>
+                                        <Setter Property="ItemMargin" Value="0,10,15,0"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </mainWindow:ToolPanel.Style>
+                    </mainWindow:ToolPanel>
 
                     <!-- Fancy scrollbar -->
                     <ScrollViewer.Resources>
