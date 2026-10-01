@@ -126,7 +126,8 @@
                     </StackPanel>
                 </StatusBarItem>
             </StatusBar>
-                <sharedToolControls:RecentsControl x:Name="RecentsController" Margin="10" Visibility="{Binding AudioFileLoaded,Converter={StaticResource BoolToVisibilityConverter}, ConverterParameter='Not'}"/>
+            <sharedToolControls:RecentsControl x:Name="RecentsController" Margin="10"
+                                              Visibility="{Binding AudioFileLoaded, RelativeSource={RelativeSource AncestorType={x:Type soundplorer:SoundplorerWPF}}, Converter={StaticResource BoolToVisibilityConverter}, ConverterParameter='Not'}"/>
             <Grid Margin="5" 
                Visibility="{Binding AudioFileLoaded, Converter={StaticResource BoolToVisibilityConverter}}">
                 <Grid.ColumnDefinitions>
