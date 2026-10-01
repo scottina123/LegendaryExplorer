@@ -34,10 +34,10 @@ namespace LegendaryExplorer.Misc
         }
 
         /// <summary>
-        /// Displayed version and local build time for the main menu.
+        /// Local build date and time for the main menu.
         /// </summary>
-        public static string MainMenuDisplayedVersion =>
-            $"{DisplayedVersion}{Environment.NewLine}{App.BuildDateTime.ToLocalTime():h:mm tt}";
+        public static string MainMenuBuildDateTime =>
+            $"{App.BuildDateTime.ToLocalTime().ToShortDateString()}{Environment.NewLine}{App.BuildDateTime.ToLocalTime():h:mm tt}";
 
         /// <summary>
         /// Full displayed version in the UI for about page

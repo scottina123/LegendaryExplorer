@@ -35,12 +35,6 @@ namespace LegendaryExplorer.MainWindow
     /// </summary>
     public partial class LEXMainWindow : Window
     {
-#if NIGHTLY
-        public string LEXLogo => "/Resources/Images/Legendary_Explorer_Graphic2_Nightly.png";
-#else
-        public string LEXLogo => "/Resources/Images/Legendary_Explorer_Graphic2.png";
-#endif
-
         public LEXMainWindow()
         {
             InitializeComponent();
@@ -103,19 +97,9 @@ namespace LegendaryExplorer.MainWindow
             toolInfoText.Text = t.description;
         }
 
-        private void About_Click(object sender, RoutedEventArgs e)
-        {
-            new About().Show();
-        }
-
         private void Settings_Click(object sender, RoutedEventArgs e)
         {
             new SettingsWindow().Show();
-        }
-
-        private void Help_Click(object sender, RoutedEventArgs e)
-        {
-            new Help().Show();
         }
 
         private void SearchBox_TextChanged(object sender, TextChangedEventArgs e)
