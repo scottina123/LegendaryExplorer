@@ -18,15 +18,27 @@
         xmlns:settings="clr-namespace:LegendaryExplorer.Misc.AppSettings"
         d:DataContext="{Binding RelativeSource={RelativeSource Self}}"
         mc:Ignorable="d"
-        Title="Legendary Explorer Settings" Height="450" Width="550">
+        Title="Legendary Explorer Settings" Height="450" Width="550" PreviewKeyDown="Window_PreviewKeyDown">
     <DockPanel>
-        <TextBlock DockPanel.Dock="Top"  Padding="5" Margin="0,0,0,3"  Background="LightGray" TextWrapping="Wrap" Text="Global settings for all tools. Settings will auto-update and auto-save on selection."/>
+        <TextBlock DockPanel.Dock="Top"  Padding="5" Margin="0,0,0,3"  Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" TextWrapping="Wrap" Text="Global settings for all tools. Settings will auto-update and auto-save on selection."/>
+
+        <DockPanel DockPanel.Dock="Top" Margin="5,0,5,5">
+            <Button x:Name="ClearSettingsSearchButton" DockPanel.Dock="Right" Margin="5,0,0,0" Padding="5,3"
+                    Click="ClearSettingsSearch_Click" ToolTip="Clear the settings filter">Clear</Button>
+            <xctk:WatermarkTextBox x:Name="SettingsSearchBox" Watermark="Search all settings..."
+                                   VerticalContentAlignment="Center" Padding="3" TextChanged="SettingsSearch_TextChanged"
+                                   AutomationProperties.Name="Search all settings"
+                                   ToolTip="Filter every tab by setting name, tab name, or description. Ctrl+F to search; Esc to clear."/>
+        </DockPanel>
 
         <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="5">
             <Button Padding="3" ToolTip="Saves all settings directly to settings file"
                     Click="SaveFile_Click">Save to File</Button>
         </StackPanel>
-        <TabControl>
+        <Grid>
+        <TextBlock x:Name="NoMatchingSettingsText" Text="No settings match your search." Visibility="Collapsed"
+                   HorizontalAlignment="Center" VerticalAlignment="Center" TextWrapping="Wrap" Margin="10"/>
+        <TabControl x:Name="SettingsTabs">
         <# // This code runs in the text template:
     // Can't use named tuples it seems
     var settingsByCategory = XDocument.Load(this.Host.ResolvePath(@"..\Misc\AppSettings\SettingsDefinitions.xml")).Root.Descendants("setting")
@@ -55,6 +67,7 @@
     foreach (var category in settingsByCategory){ 
 #> 
             <TabItem Header="<#=category.categoryName#>">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
                 <StackPanel>
 
                 <#  foreach (var setting in category.settings){ 
@@ -93,10 +106,12 @@
                           }
                     } 
 #>              </StackPanel>
+                </ScrollViewer>
             </TabItem>
 
 <# } #>
             <TabItem Header="Files">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
                 <StackPanel>
                     <Button Margin="10" Click="AssociatePCCSFM_Click"
                             ToolTip="Opens .PCC and .SFM files in Package Editor when double clicked in Windows Explorer"
@@ -108,8 +123,10 @@
                             ToolTip="Makes appropriate tool open when double clicking on TLK/AFC/ISB/DLC/CND files in Windows Explorer"
                     >Associate Other Filetypes (TLK/AFC/ISB/DLC/CND)</Button>
                 </StackPanel>
+                </ScrollViewer>
             </TabItem>
 
         </TabControl>
+        </Grid>
     </DockPanel>
 </Window>
