@@ -97,7 +97,8 @@
                 </Grid.RowDefinitions>
                 <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Stretch"/>
 
-                <sharedToolControls:RecentsControl x:Name="RecentsController" Grid.Column="2" Grid.ColumnSpan="3" Visibility="{Binding Pcc, Converter={StaticResource NullVisibilityConverter}, ConverterParameter='Reversed'}"/>
+                <sharedToolControls:RecentsControl x:Name="RecentsController" Grid.Column="2" Grid.ColumnSpan="3"
+                                                  Visibility="{Binding Pcc, RelativeSource={RelativeSource FindAncestor, AncestorType={x:Type bases:WPFBase}}, Converter={StaticResource NullVisibilityConverter}, ConverterParameter='Reversed'}"/>
 
                 <DockPanel Grid.Row="0" Grid.Column="0"
                            Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"
