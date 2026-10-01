@@ -94,16 +94,27 @@
             </StatusBar>
 
             <Grid>
-                <DockPanel Visibility="{Binding Pcc, Converter={StaticResource NullVisibilityConverter}, ConverterParameter=Reversed}">
-                    <WrapPanel DockPanel.Dock="Top" Margin="10">
-                        <Button Margin="0,0,10,0" HorizontalAlignment="Left" Padding="14,8"
-                                Content="Open LE1 Galaxy Map Editor" Click="OpenLE1GalaxyMapEditor_Click" />
-                        <Button Margin="0,0,10,0" Padding="14,8" Content="Open highest-mounted LE2 galaxy map files" Click="OpenHighestMountedLE2_Click" />
-                        <Button Padding="14,8" Content="Open highest-mounted LE3 galaxy map pair" Click="OpenHighestMountedLE3_Click" />
-                    </WrapPanel>
+                <Grid Visibility="{Binding Pcc, Converter={StaticResource NullVisibilityConverter}, ConverterParameter=Reversed}">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                                  HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
+                        <sharedToolControls:RecentItemsPanel x:Name="GalaxyMapLaunchPanel" Margin="10">
+                            <Button Margin="3" Padding="14,8" MinHeight="26" HorizontalContentAlignment="Stretch"
+                                    Click="OpenLE1GalaxyMapEditor_Click">
+                                <TextBlock Text="Open LE1 Galaxy Map Editor" TextWrapping="Wrap" TextAlignment="Center" VerticalAlignment="Center" />
+                            </Button>
+                            <Button Margin="3" Padding="14,8" MinHeight="26" HorizontalContentAlignment="Stretch"
+                                    Click="OpenHighestMountedLE2_Click">
+                                <TextBlock Text="Open highest-mounted LE2 galaxy map files" TextWrapping="Wrap" TextAlignment="Center" VerticalAlignment="Center" />
+                            </Button>
+                            <Button Margin="3" Padding="14,8" MinHeight="26" HorizontalContentAlignment="Stretch"
+                                    Click="OpenHighestMountedLE3_Click">
+                                <TextBlock Text="Open highest-mounted LE3 galaxy map pair" TextWrapping="Wrap" TextAlignment="Center" VerticalAlignment="Center" />
+                            </Button>
+                        </sharedToolControls:RecentItemsPanel>
+                    </ScrollViewer>
                     <!-- Keep the File > Recent menu without showing the recent items panel. -->
                     <sharedToolControls:RecentsControl x:Name="RecentsController" Visibility="Collapsed" />
-                </DockPanel>
+                </Grid>
 
                 <Grid Margin="5" Visibility="{Binding Pcc, Converter={StaticResource NullVisibilityConverter}}">
                     <Grid.ColumnDefinitions>
