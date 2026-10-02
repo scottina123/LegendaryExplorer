@@ -4990,7 +4990,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
         {
             if (CurrentView == CurrentViewMode.Tree && TryGetSelectedEntry(out IEntry entry))
             {
-                if (!TryGetMaterialCloneOptions(entry, numClones, out bool cloneTextures, out string nameSuffix))
+                if (!TryGetAssetCloneOptions(entry, numClones, out bool cloneDependencies, out string nameSuffix))
                 {
                     return;
                 }
@@ -4999,9 +4999,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
                 var clonedTreeRoots = new List<IEntry>(numClones);
                 for (int i = 0; i < numClones; i++)
                 {
-                    IEntry newTreeRoot = entry is ExportEntry material && material.IsA("MaterialInstanceConstant")
-                        ? EntryCloner.CloneMaterialInstance(material, nameSuffix, cloneTextures, cloneTree: true)
-                        : EntryCloner.CloneTree(entry);
+                    IEntry newTreeRoot = CloneEntryWithAssetOptions(entry, nameSuffix, cloneDependencies, cloneTree: true);
                     clonedTreeRoots.Add(newTreeRoot);
                     foreach (ExportEntry clonedSequenceObject in newTreeRoot.GetAllDescendants()
                                  .Prepend(newTreeRoot)
@@ -5261,7 +5259,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
         {
             if (TryGetSelectedEntry(out IEntry entry))
             {
-                if (!TryGetMaterialCloneOptions(entry, numClones, out bool cloneTextures, out string nameSuffix))
+                if (!TryGetAssetCloneOptions(entry, numClones, out bool cloneDependencies, out string nameSuffix))
                 {
                     return;
                 }
@@ -5270,9 +5268,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
                 var clonedEntries = new List<IEntry>(numClones);
                 for (int i = 0; i < numClones; i++)
                 {
-                    IEntry newEntry = entry is ExportEntry material && material.IsA("MaterialInstanceConstant")
-                        ? EntryCloner.CloneMaterialInstance(material, nameSuffix, cloneTextures)
-                        : EntryCloner.CloneEntry(entry);
+                    IEntry newEntry = CloneEntryWithAssetOptions(entry, nameSuffix, cloneDependencies);
                     clonedEntries.Add(newEntry);
                     if (newEntry is ExportEntry clonedExport)
                     {
@@ -5292,16 +5288,55 @@ namespace LegendaryExplorer.Tools.PackageEditor
             }
         }
 
-        private bool TryGetMaterialCloneOptions(IEntry entry, int numClones, out bool cloneTextures, out string nameSuffix)
+        private static bool IsMeshForMaterialCloning(ExportEntry export)
         {
-            cloneTextures = false;
+            return !export.IsDefaultObject && (export.IsA("SkeletalMesh") || export.IsA("StaticMesh"));
+        }
+
+        private static IEntry CloneEntryWithAssetOptions(IEntry entry, string nameSuffix, bool cloneDependencies, bool cloneTree = false)
+        {
+            if (entry is ExportEntry export)
+            {
+                if (export.IsA("MaterialInstanceConstant"))
+                {
+                    return EntryCloner.CloneMaterialInstance(export, nameSuffix, cloneDependencies, cloneTree);
+                }
+                if (IsMeshForMaterialCloning(export))
+                {
+                    return EntryCloner.CloneMesh(export, nameSuffix, cloneDependencies, cloneTree);
+                }
+            }
+            return cloneTree ? EntryCloner.CloneTree(entry) : EntryCloner.CloneEntry(entry);
+        }
+
+        private bool TryGetAssetCloneOptions(IEntry entry, int numClones, out bool cloneDependencies, out string nameSuffix)
+        {
+            cloneDependencies = false;
             nameSuffix = null;
-            if (entry is not ExportEntry material || !material.IsA("MaterialInstanceConstant"))
+            if (entry is not ExportEntry export)
             {
                 return true;
             }
 
-            var textures = EntryCloner.GetMaterialInstanceTextureReferences(material);
+            if (IsMeshForMaterialCloning(export))
+            {
+                var info = EntryCloner.GetMeshMaterialCloneInfo(export);
+                var meshDialog = new CloneMeshDialog(InteractionOwner, export.ClassName, info, numClones);
+                if (meshDialog.ShowDialog() != true)
+                {
+                    return false;
+                }
+                cloneDependencies = meshDialog.CloneMaterialsAndTextures;
+                nameSuffix = meshDialog.NameSuffix;
+                return true;
+            }
+
+            if (!export.IsA("MaterialInstanceConstant"))
+            {
+                return true;
+            }
+
+            var textures = EntryCloner.GetMaterialInstanceTextureReferences(export);
             var dialog = new CloneMaterialInstanceDialog(InteractionOwner,
                 textures.OfType<ExportEntry>().Count(), textures.OfType<ImportEntry>().Count(), numClones);
             if (dialog.ShowDialog() != true)
@@ -5309,7 +5344,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
                 return false;
             }
 
-            cloneTextures = dialog.CloneTextures;
+            cloneDependencies = dialog.CloneTextures;
             nameSuffix = dialog.NameSuffix;
             return true;
         }

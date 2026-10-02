@@ -8,7 +8,7 @@ using LegendaryExplorerCore.Unreal.ObjectInfo;
 
 namespace LegendaryExplorerCore.Packages.CloningImportingAndRelinking
 {
-    public static class EntryCloner
+    public static partial class EntryCloner
     {
         public static T CloneTree<T>(T entry, bool incrementIndex = true) where T : IEntry
         {

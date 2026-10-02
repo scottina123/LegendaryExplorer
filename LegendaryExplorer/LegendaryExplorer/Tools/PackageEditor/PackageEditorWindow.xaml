@@ -159,12 +159,12 @@
             <MenuItem Header="Restore from Asset Database material..." ToolTip="Replace this Material or MaterialInstanceConstant using a donor you choose from the Asset Database materials tab." Click="RestoreMaterialFromAssetDatabase_Click" Tag="RestoreMaterialFromAssetDatabase" Visibility="Collapsed"/>
             <MenuItem Header="Reindex objects with this name" ToolTip="Reindexes all objects with this name, ensuring there are no duplicate indexes" Command="{Binding ReindexCommand}" SharedUI:Bindings.VisibilityToEnabled="True"/>
             <MenuItem Header="Extract to file" ToolTip="Extracts this export and all references to a new package file. Attempts to convert imports into exports that are located in the level-specific files" Command="{Binding ExtractToPackageCommand}" SharedUI:Bindings.VisibilityToEnabled="True"/>
-            <MenuItem Header="Clone" ToolTip="Clone this entry. For a MIC, optionally clone and relink its texture parameters."  Command="{Binding CloneCommand}"/>
-            <MenuItem Header="Clone Tree" ToolTip="Clone this entry and all children. For a MIC, optionally clone and relink its texture parameters." Command="{Binding CloneTreeCommand}"/>
+            <MenuItem Header="Clone" ToolTip="Clone this entry. MICs can also clone texture parameters; meshes can also clone their materials and textures."  Command="{Binding CloneCommand}"/>
+            <MenuItem Header="Clone Tree" ToolTip="Clone this entry and all children. MICs can also clone texture parameters; meshes can also clone their materials and textures." Command="{Binding CloneTreeCommand}"/>
             <MenuItem Header="Clone Tree to Folder" ToolTip="Clone this export tree into every PCC file in a chosen folder, with option for LOC files only" Command="{Binding CloneTreeToFolderCommand}" SharedUI:Bindings.VisibilityToEnabled="True"/>
             <MenuItem Header="Multi-cloning">
-                <MenuItem Header="Multi-clone entry" ToolTip="Clone this entry multiple times. For a MIC, optionally create separate texture clones for each MIC." Command="{Binding MultiCloneCommand}"/>
-                <MenuItem Header="Multi-clone Tree" ToolTip="Clone this entry and all children multiple times. For a MIC, optionally create separate texture clones for each MIC." Command="{Binding MultiCloneTreeCommand}"/>
+                <MenuItem Header="Multi-clone entry" ToolTip="Clone this entry multiple times. MICs and meshes can also create separate material or texture clones for each copy." Command="{Binding MultiCloneCommand}"/>
+                <MenuItem Header="Multi-clone Tree" ToolTip="Clone this entry and all children multiple times. MICs and meshes can also create separate material or texture clones for each copy." Command="{Binding MultiCloneTreeCommand}"/>
             </MenuItem>
             <MenuItem Header="Go to Archetype" ToolTip="Go to this object's archetype" Command="{Binding GoToArchetypeCommand}" SharedUI:Bindings.VisibilityToEnabled="True"/>
             <MenuItem Header="Rebuild BioWorld StreamingLevels"
