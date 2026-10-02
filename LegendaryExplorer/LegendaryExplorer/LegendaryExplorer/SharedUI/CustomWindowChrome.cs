@@ -15,7 +15,7 @@ namespace LegendaryExplorer.SharedUI
 {
     /// <summary>
     /// Provides attached properties for custom window chrome behavior that integrates with the app's theming system.
-    /// This class enables dark/light mode title bars on Windows 10/11 using the DWM API,
+    /// This class enables shared caption buttons and dark/light mode title bars,
     /// and automatically updates when the app's theme setting changes.
     /// </summary>
     public static class CustomWindowChrome
@@ -121,6 +121,8 @@ namespace LegendaryExplorer.SharedUI
         private static readonly HashSet<Window> _cloakedWindows = new();
         private static readonly HashSet<Window> _eraseBkgndHookedWindows = new();
         private static bool _themeChangedSubscribed;
+        private static ResourceDictionary _captionChromeResources;
+        private static ControlTemplate _captionWindowTemplate;
 
         /// <summary>
         /// Ensures we're subscribed to theme changes.
@@ -130,7 +132,187 @@ namespace LegendaryExplorer.SharedUI
             if (!_themeChangedSubscribed)
             {
                 ThemeManager.ThemeChanged += OnThemeChanged;
+                // Include tools from referenced assemblies and plain Window dialogs,
+                // which do not necessarily call ApplyCustomChrome themselves.
+                EventManager.RegisterClassHandler(typeof(Window), FrameworkElement.LoadedEvent,
+                    new RoutedEventHandler(OnWindowLoaded));
                 _themeChangedSubscribed = true;
+            }
+        }
+
+        private static void OnWindowLoaded(object sender, RoutedEventArgs e)
+        {
+            if (sender is Window window && ReferenceEquals(e.OriginalSource, window)
+                && !window.AllowsTransparency && window.WindowStyle != WindowStyle.None)
+            {
+                window.Loaded -= OnWindowLoaded;
+                if (_captionWindowTemplate != null && window.Template == _captionWindowTemplate)
+                    return;
+                ApplyCaptionChrome(window);
+                ApplyCustomChrome(window);
+            }
+        }
+
+        /// <summary>
+        /// Installs the shared title bar after a window's XAML has set its final
+        /// style, preserving the tool's own styles and content resources.
+        /// </summary>
+        internal static void ApplyCaptionChrome(Window window)
+        {
+            if (window.AllowsTransparency || window.WindowStyle == WindowStyle.None
+                || (_captionWindowTemplate != null && window.Template == _captionWindowTemplate))
+                return;
+
+            _captionChromeResources ??= (ResourceDictionary)Application.LoadComponent(
+                new Uri("/LegendaryExplorer;component/LegendaryExplorer/CustomWindowChromeStyles.xaml", UriKind.Relative));
+            var style = (Style)_captionChromeResources["CustomChromeWindowStyle"];
+            style.Seal();
+            foreach (Setter setter in style.Setters)
+            {
+                if (setter.Property == Control.TemplateProperty)
+                {
+                    _captionWindowTemplate = (ControlTemplate)setter.Value;
+                    window.SetCurrentValue(Control.TemplateProperty, setter.Value);
+                }
+                else if (setter.Property == WindowChrome.WindowChromeProperty)
+                    WindowChrome.SetWindowChrome(window, (WindowChrome)((WindowChrome)setter.Value).Clone());
+            }
+            window.SetResourceReference(Control.BorderBrushProperty, SystemColors.ActiveBorderBrushKey);
+            window.SetCurrentValue(Control.BorderThicknessProperty, new Thickness(1));
+            window.ApplyTemplate();
+
+            if (window.Template.FindName("WindowIcon", window) is Image icon)
+            {
+                icon.MouseLeftButtonDown -= OnWindowIconMouseDown;
+                icon.MouseLeftButtonDown += OnWindowIconMouseDown;
+            }
+            InstallMaximizeButtonHook(window);
+        }
+
+        public static readonly DependencyProperty NativeCaptionButtonStateProperty =
+            DependencyProperty.RegisterAttached("NativeCaptionButtonState", typeof(int),
+                typeof(CustomWindowChrome), new PropertyMetadata(0));
+
+        public static int GetNativeCaptionButtonState(DependencyObject obj) =>
+            (int)obj.GetValue(NativeCaptionButtonStateProperty);
+
+        public static void SetNativeCaptionButtonState(DependencyObject obj, int value) =>
+            obj.SetValue(NativeCaptionButtonStateProperty, value);
+
+        private static void OnCaptionSourceInitialized(object sender, EventArgs e)
+        {
+            var window = (Window)sender;
+            window.SourceInitialized -= OnCaptionSourceInitialized;
+            InstallMaximizeButtonHook(window);
+        }
+
+        private static unsafe void InstallMaximizeButtonHook(Window window)
+        {
+            var handle = new WindowInteropHelper(window).Handle;
+            var source = handle == IntPtr.Zero ? null : HwndSource.FromHwnd(handle);
+            if (source == null)
+            {
+                window.SourceInitialized -= OnCaptionSourceInitialized;
+                window.SourceInitialized += OnCaptionSourceInitialized;
+                return;
+            }
+
+            // Windows 11 recognizes custom maximize buttons through HTMAXBUTTON.
+            // Install after WindowChrome so this hook runs before its HTCLIENT result.
+            // https://learn.microsoft.com/windows/apps/desktop/modernize/ui/apply-snap-layout-menu
+            const int hitMaxButton = 9;
+            bool pressed = false;
+            HwndSourceHook hook = (IntPtr hwnd, int message, IntPtr wParam, IntPtr lParam, ref bool handled) =>
+            {
+                if (message is not (0x0084 or 0x00A0 or 0x00A1 or 0x00A2 or 0x00A3 or 0x02A2 or 0x0200))
+                    return IntPtr.Zero;
+                if (window.Template.FindName("MaximizeRestoreButton", window) is not Button button)
+                    return IntPtr.Zero;
+
+                // Client movement and nonclient leave cancel the native hover/press.
+                if (message is 0x02A2 or 0x0200 || !button.IsVisible || !button.IsEnabled)
+                {
+                    pressed = false;
+                    SetNativeCaptionButtonState(button, 0);
+                    return IntPtr.Zero;
+                }
+
+                long coordinates = lParam.ToInt64();
+                var screenPoint = new Point((short)(coordinates & 0xFFFF), (short)((coordinates >> 16) & 0xFFFF));
+                Point localPoint = button.PointFromScreen(screenPoint);
+                bool inside = localPoint.X >= 0 && localPoint.X < button.ActualWidth
+                    && localPoint.Y >= 0 && localPoint.Y < button.ActualHeight;
+                if (message == 0x0084 && inside) // WM_NCHITTEST
+                {
+                    handled = true;
+                    return (IntPtr)hitMaxButton;
+                }
+                if (wParam.ToInt64() != hitMaxButton)
+                {
+                    pressed = false;
+                    SetNativeCaptionButtonState(button, 0);
+                    return IntPtr.Zero;
+                }
+
+                if (message == 0x00A0 && inside) // WM_NCMOUSEMOVE
+                {
+                    SetNativeCaptionButtonState(button, pressed ? 2 : 1);
+                    var tracking = new TRACKMOUSEEVENT
+                    {
+                        Size = sizeof(TRACKMOUSEEVENT),
+                        Flags = 0x00000012, // TME_LEAVE | TME_NONCLIENT
+                        Window = hwnd
+                    };
+                    TrackMouseEvent(&tracking);
+                }
+                else if (message is 0x00A1 or 0x00A3) // WM_NCLBUTTONDOWN / DBLCLK
+                {
+                    pressed = inside;
+                    SetNativeCaptionButtonState(button, inside ? 2 : 0);
+                    handled = true;
+                }
+                else if (message == 0x00A2) // WM_NCLBUTTONUP
+                {
+                    bool execute = pressed && inside;
+                    pressed = false;
+                    SetNativeCaptionButtonState(button, inside ? 1 : 0);
+                    handled = true;
+                    if (execute && WindowCommands.MaximizeRestore.CanExecute(null, window))
+                        WindowCommands.MaximizeRestore.Execute(null, window);
+                }
+                return IntPtr.Zero;
+            };
+            source.AddHook(hook);
+            EventHandler closed = null;
+            closed = (s, e) =>
+            {
+                window.Closed -= closed;
+                source.RemoveHook(hook);
+            };
+            window.Closed += closed;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct TRACKMOUSEEVENT
+        {
+            public int Size;
+            public uint Flags;
+            public IntPtr Window;
+            public uint HoverTime;
+        }
+
+        [DllImport("user32.dll")]
+        private static extern unsafe int TrackMouseEvent(TRACKMOUSEEVENT* tracking);
+
+        private static void OnWindowIconMouseDown(object sender, MouseButtonEventArgs e)
+        {
+            if (sender is Image icon && Window.GetWindow(icon) is Window window)
+            {
+                if (e.ClickCount == 2)
+                    SystemCommands.CloseWindow(window);
+                else
+                    SystemCommands.ShowSystemMenu(window, window.PointToScreen(new Point(0, 30)));
+                e.Handled = true;
             }
         }
 
@@ -225,9 +407,9 @@ namespace LegendaryExplorer.SharedUI
         #endregion
 
         /// <summary>
-        /// Applies themed chrome to the window's native title bar using Windows DWM API.
-        /// This keeps the standard Windows minimize/maximize/close buttons but renders
-        /// them in dark or light mode style based on the app's current theme setting.
+        /// Applies themed chrome using Windows DWM and the shared caption template.
+        /// Caption buttons are installed when the window loads, after its XAML sets
+        /// WindowStyle and AllowsTransparency, so custom borderless windows retain their chrome.
         /// The title bar will automatically update when the theme changes.
         /// </summary>
         public static void ApplyCustomChrome(Window window)
@@ -239,6 +421,16 @@ namespace LegendaryExplorer.SharedUI
 
             // Ensure we're subscribed to theme changes
             EnsureThemeChangeSubscription();
+
+            // A window created before the class Loaded handler was registered
+            // also needs an instance handler so its first load gets the template.
+            if (window.IsLoaded)
+                ApplyCaptionChrome(window);
+            else
+            {
+                window.Loaded -= OnWindowLoaded;
+                window.Loaded += OnWindowLoaded;
+            }
 
             // Register this window for theme updates
             RegisterWindow(window);
@@ -427,7 +619,7 @@ namespace LegendaryExplorer.SharedUI
                 DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE_BEFORE_20H1, &useDarkMode, sizeof(int));
             }
 
-            // Keep native Windows chrome while matching the application structure.
+            // Keep the native frame and shadow while matching the application structure.
             // Unsupported colour attributes are harmlessly ignored on Windows 10.
             bool useModernColors = isDarkMode && ThemeManager.IsModernDark;
             int captionColor = useModernColors ? ModernDarkCaptionColor : DwmColorDefault;
@@ -461,7 +653,14 @@ namespace LegendaryExplorer.SharedUI
 
         private static void OnCanExecute(object sender, CanExecuteRoutedEventArgs e)
         {
-            e.CanExecute = true;
+            if (sender is Window window)
+            {
+                e.CanExecute = e.Command == Close
+                    || (e.Command == Minimize && window.ResizeMode != ResizeMode.NoResize)
+                    || (e.Command == MaximizeRestore
+                        && window.ResizeMode is ResizeMode.CanResize or ResizeMode.CanResizeWithGrip);
+                e.Handled = true;
+            }
         }
 
         private static void OnMinimizeExecuted(object sender, ExecutedRoutedEventArgs e)
