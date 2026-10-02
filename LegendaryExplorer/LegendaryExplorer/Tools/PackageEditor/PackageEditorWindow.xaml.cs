@@ -5477,8 +5477,6 @@ namespace LegendaryExplorer.Tools.PackageEditor
             int num = actorsToAdd.Length;
             if (num > 0 && Pcc.AddToLevelActorsIfNotThere(actorsToAdd))
             {
-                MessageBox.Show(this,
-                    $"Added actor{(num > 1 ? "s" : "")} to PersistentLevel's Actor list:\n{actorsToAdd.Select(exp => exp.ObjectName.Instanced).StringJoin("\n")}");
                 return true;
             }
 
