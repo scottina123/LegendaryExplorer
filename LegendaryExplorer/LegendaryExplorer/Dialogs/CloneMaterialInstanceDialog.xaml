@@ -1,0 +1,29 @@
+<Window x:Class="LegendaryExplorer.Dialogs.CloneMaterialInstanceDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Clone MaterialInstanceConstant"
+        Width="560" SizeToContent="Height" ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"
+        Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}">
+    <StackPanel Margin="18">
+        <TextBlock x:Name="QuestionText" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,0,0,10"/>
+        <TextBlock x:Name="TextureDetailsText" TextWrapping="Wrap" Margin="0,0,0,12"/>
+        <TextBlock x:Name="ImportedTexturesText" TextWrapping="Wrap" Margin="0,0,0,12" Visibility="Collapsed"/>
+        <StackPanel x:Name="SuffixPanel">
+            <Label Content="MIC and texture name _suffix (optional):" Target="{Binding ElementName=SuffixTextBox}" Padding="0" Margin="0,0,0,5"/>
+            <TextBox x:Name="SuffixTextBox" TextChanged="SuffixTextBox_TextChanged" Padding="5"/>
+            <TextBlock Text="Enter xxxx or _xxxx to rename the MIC and cloned parameter textures to OriginalName_xxxx. A renamed MIC uses instance index 0. Leave blank to use new instance numbers."
+                       TextWrapping="Wrap" Margin="0,6,0,0"/>
+            <TextBlock Text="If the MIC name already exists, a number is added to its name (OriginalName_xxxx_2), keeping instance index 0."
+                       TextWrapping="Wrap" Margin="0,6,0,0"/>
+            <TextBlock x:Name="SuffixValidationText" Text="Use letters, numbers, and underscores for the suffix."
+                       TextWrapping="Wrap" Margin="0,6,0,0" Visibility="Collapsed"/>
+        </StackPanel>
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,18,0,0">
+            <Button x:Name="CloneMaterialOnlyButton" Content="Clone MIC _only" Click="CloneMaterialOnly_Click" Padding="12,7" Margin="0,0,8,0"/>
+            <Button x:Name="CloneWithTexturesButton" Content="Clone MIC and _textures" Click="CloneWithTextures_Click" Padding="12,7" Margin="0,0,8,0"/>
+            <Button Content="_Cancel" IsCancel="True" Padding="12,7"/>
+        </StackPanel>
+    </StackPanel>
+</Window>

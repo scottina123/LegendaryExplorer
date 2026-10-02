@@ -4990,12 +4990,18 @@ namespace LegendaryExplorer.Tools.PackageEditor
         {
             if (CurrentView == CurrentViewMode.Tree && TryGetSelectedEntry(out IEntry entry))
             {
+                if (!TryGetMaterialCloneOptions(entry, numClones, out bool cloneTextures, out string nameSuffix))
+                {
+                    return;
+                }
                 int lastTreeRoot = 0;
                 bool? addToInterpList = null;
                 var clonedTreeRoots = new List<IEntry>(numClones);
                 for (int i = 0; i < numClones; i++)
                 {
-                    IEntry newTreeRoot = EntryCloner.CloneTree(entry);
+                    IEntry newTreeRoot = entry is ExportEntry material && material.IsA("MaterialInstanceConstant")
+                        ? EntryCloner.CloneMaterialInstance(material, nameSuffix, cloneTextures, cloneTree: true)
+                        : EntryCloner.CloneTree(entry);
                     clonedTreeRoots.Add(newTreeRoot);
                     foreach (ExportEntry clonedSequenceObject in newTreeRoot.GetAllDescendants()
                                  .Prepend(newTreeRoot)
@@ -5255,12 +5261,18 @@ namespace LegendaryExplorer.Tools.PackageEditor
         {
             if (TryGetSelectedEntry(out IEntry entry))
             {
+                if (!TryGetMaterialCloneOptions(entry, numClones, out bool cloneTextures, out string nameSuffix))
+                {
+                    return;
+                }
                 int lastClonedUIndex = 0;
                 bool? addToInterpList = null;
                 var clonedEntries = new List<IEntry>(numClones);
                 for (int i = 0; i < numClones; i++)
                 {
-                    IEntry newEntry = EntryCloner.CloneEntry(entry);
+                    IEntry newEntry = entry is ExportEntry material && material.IsA("MaterialInstanceConstant")
+                        ? EntryCloner.CloneMaterialInstance(material, nameSuffix, cloneTextures)
+                        : EntryCloner.CloneEntry(entry);
                     clonedEntries.Add(newEntry);
                     if (newEntry is ExportEntry clonedExport)
                     {
@@ -5278,6 +5290,28 @@ namespace LegendaryExplorer.Tools.PackageEditor
                 TryAddToStreamingLevelsList(clonedEntries);
                 GoToNumber(lastClonedUIndex);
             }
+        }
+
+        private bool TryGetMaterialCloneOptions(IEntry entry, int numClones, out bool cloneTextures, out string nameSuffix)
+        {
+            cloneTextures = false;
+            nameSuffix = null;
+            if (entry is not ExportEntry material || !material.IsA("MaterialInstanceConstant"))
+            {
+                return true;
+            }
+
+            var textures = EntryCloner.GetMaterialInstanceTextureReferences(material);
+            var dialog = new CloneMaterialInstanceDialog(InteractionOwner,
+                textures.OfType<ExportEntry>().Count(), textures.OfType<ImportEntry>().Count(), numClones);
+            if (dialog.ShowDialog() != true)
+            {
+                return false;
+            }
+
+            cloneTextures = dialog.CloneTextures;
+            nameSuffix = dialog.NameSuffix;
+            return true;
         }
 
         private static void MapParentSequenceToDestination(IEntry sourceEntry, IEntry destinationEntry, RelinkerOptionsPackage rop)
