@@ -18,6 +18,7 @@ namespace LegendaryExplorer.SharedUI.PeregrineTreeView
 
         private int _selectionVersion;
         private bool _isUnselectingPreviousItem;
+        private bool _isUnloaded;
 
         public TreeViewEntry SelectedItem
         {
@@ -63,6 +64,11 @@ namespace LegendaryExplorer.SharedUI.PeregrineTreeView
             newNode.IsProgramaticallySelecting = false;
 
             var tree = behavior.AssociatedObject;
+            if (tree is null || behavior._isCleanedUp || behavior._isUnloaded)
+            {
+                return;
+            }
+
             if (ReferenceEquals(tree.SelectedItem, newNode))
             {
                 return;
@@ -111,7 +117,8 @@ namespace LegendaryExplorer.SharedUI.PeregrineTreeView
 
         public Task BringSelectedItemIntoViewAsync()
         {
-            if (SelectedItem is not { IsVisibleInTree: true } selectedNode || _isCleanedUp)
+            if (SelectedItem is not { IsVisibleInTree: true } selectedNode
+                || AssociatedObject is null || _isCleanedUp || _isUnloaded)
             {
                 return Task.CompletedTask;
             }
@@ -313,19 +320,32 @@ namespace LegendaryExplorer.SharedUI.PeregrineTreeView
                 _isCleanedUp = true;
                 _selectionVersion++;
                 AssociatedObject.SelectedItemChanged -= OnTreeViewSelectedItemChanged;
+                AssociatedObject.Loaded -= AssociatedObjectOnLoaded;
                 AssociatedObject.Unloaded -= AssociatedObjectOnUnloaded;
             }
         }
         protected override void OnAttached()
         {
             base.OnAttached();
+            _isCleanedUp = false;
+            _isUnloaded = false;
+            AssociatedObject.Loaded += AssociatedObjectOnLoaded;
             AssociatedObject.Unloaded += AssociatedObjectOnUnloaded;
             AssociatedObject.SelectedItemChanged += OnTreeViewSelectedItemChanged;
         }
 
+        private void AssociatedObjectOnLoaded(object sender, RoutedEventArgs e)
+        {
+            _isUnloaded = false;
+            _ = BringSelectedItemIntoViewAsync();
+        }
+
         private void AssociatedObjectOnUnloaded(object sender, RoutedEventArgs e)
         {
-            Cleanup();
+            // Window template changes can temporarily unload this tree. Cancel
+            // realization work, but keep the subscriptions until detachment.
+            _isUnloaded = true;
+            _selectionVersion++;
         }
 
         protected override void OnDetaching()
@@ -336,6 +356,11 @@ namespace LegendaryExplorer.SharedUI.PeregrineTreeView
 
         private void OnTreeViewSelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
         {
+            if (_isUnloaded || _isCleanedUp)
+            {
+                return;
+            }
+
             // Clearing the old node above makes TreeView briefly report a null
             // selection. Do not feed that transient value back into the behavior:
             // it would advance _selectionVersion and cancel the deferred selection
