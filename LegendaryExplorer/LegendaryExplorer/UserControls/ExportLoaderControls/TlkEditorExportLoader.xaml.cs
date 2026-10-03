@@ -110,6 +110,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         public ObservableCollectionExtended<TLKStringRef> CleanedStrings { get; } = new(); // Displayed
         public ObservableCollectionExtended<TLKEditorTab> OpenTabs { get; } = new();
         private bool xmlUp;
+        private bool _searchById;
 
         private const string OpenHighestMountedBaseTlksMenuHeader = "Open highest mounted base TLKs";
         private const string SaveToAllLanguageTlksMenuHeader = "Save to all TLK languages in folder";
@@ -249,7 +250,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         public ICommand ImportXmlCommand { get; set; }
         public ICommand ViewXmlCommand { get; set; }
         public ICommand DeleteStringCommand { get; set; }
-        public ICommand SearchCommand { get; set; }
+        public ICommand SearchIdCommand { get; set; }
+        public ICommand SearchTextCommand { get; set; }
         public ICommand OpenTabCommand { get; set; }
         public ICommand AddStringCommand { get; set; }
         public ICommand AddStringRangeCommand { get; set; }
@@ -267,7 +269,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             DeleteStringCommand = new RelayCommand(DeleteString, StringIsSelected);
 
             OpenTabCommand = new GenericCommand(OpenTab, CanLoadFile);
-            SearchCommand = new GenericCommand(TextSearch, HasTLKLoaded);
+            SearchIdCommand = new GenericCommand(SearchId, HasTLKLoaded);
+            SearchTextCommand = new GenericCommand(SearchText, HasTLKLoaded);
             AddStringCommand = new GenericCommand(AddString, HasTLKLoaded);
             AddStringRangeCommand = new GenericCommand(AddStringRange, HasTLKLoaded);
             ShowFindReplaceCommand = new GenericCommand(ShowFindReplace, HasTLKLoaded);
@@ -410,6 +413,22 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             }
         }
 
+        private void ChangeIdMenuItem_Click(object sender, RoutedEventArgs e)
+        {
+            if (GetContextMenuString(sender) is TLKStringRef item && SetIDCommand.CanExecute(item))
+            {
+                SetIDCommand.Execute(item);
+            }
+        }
+
+        private void DeleteStringMenuItem_Click(object sender, RoutedEventArgs e)
+        {
+            if (GetContextMenuString(sender) is TLKStringRef item && DeleteStringCommand.CanExecute(item))
+            {
+                DeleteStringCommand.Execute(item);
+            }
+        }
+
         private void PasteLineMenuItem_Click(object sender, RoutedEventArgs e)
         {
             if (_copiedLine is null || GetContextMenuString(sender) is not TLKStringRef targetString)
@@ -460,7 +479,13 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         private void TabControl_PreviewMouseMove(object sender, MouseEventArgs e)
         {
-            if (e.LeftButton != MouseButtonState.Pressed || _tabPendingDrag is null)
+            if (e.LeftButton != MouseButtonState.Pressed)
+            {
+                _tabPendingDrag = null;
+                return;
+            }
+
+            if (_tabPendingDrag is null)
             {
                 return;
             }
@@ -475,6 +500,11 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             TLKEditorTab draggedTab = _tabPendingDrag;
             _tabPendingDrag = null;
             DragDrop.DoDragDrop((DependencyObject)sender, new DataObject(typeof(TLKEditorTab), draggedTab), DragDropEffects.Move);
+        }
+
+        private void TabControl_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+        {
+            _tabPendingDrag = null;
         }
 
         private void TabControl_DragOver(object sender, DragEventArgs e)
@@ -687,20 +717,30 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         private void DeleteString(object obj)
         {
-            var selectedItem = GetActiveString();
-            if (selectedItem is null)
+            var selectedItem = obj as TLKStringRef ?? GetActiveString();
+            if (!StringIsSelected(selectedItem))
             {
                 return;
             }
 
-            CleanedStrings.Remove(selectedItem);
-            LoadedStrings.Remove(selectedItem);
+            for (int i = 0; i < CleanedStrings.Count; i++)
+            {
+                if (ReferenceEquals(CleanedStrings[i], selectedItem))
+                {
+                    CleanedStrings.RemoveAt(i);
+                    break;
+                }
+            }
+
+            LoadedStrings.RemoveAt(LoadedStrings.FindIndex(item => ReferenceEquals(item, selectedItem)));
+            ResetSearchState();
+            UpdateSearchStatus();
             SetFileModified(true);
         }
 
         private void SetStringID(object obj)
         {
-            SetNewID();
+            SetNewID(obj as TLKStringRef);
         }
 
         public override void PopOut()
@@ -717,7 +757,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         private bool StringIsSelected(object obj)
         {
-            return StringSelected;
+            var item = obj as TLKStringRef ?? GetActiveString();
+            return item is not null && LoadedStrings?.Any(candidate => ReferenceEquals(candidate, item)) == true;
         }
 
         private bool CanCommitTLK(object obj)
@@ -1091,7 +1132,6 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
                 popupDlg.Height = ActualHeight;
                 popupDlg.Width = ActualWidth;
-                btnViewXML.ToolTip = "Close XML View.";
                 popupDlg.IsOpen = true;
                 xmlUp = true;
             }
@@ -1099,14 +1139,14 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         private async void Evt_CloseXML(object sender, EventArgs e)
         {
-            await System.Threading.Tasks.Task.Delay(100);  //Catch double clicks of XML button 
+            await System.Threading.Tasks.Task.Delay(100);
             xmlUp = false;
-            btnViewXML.ToolTip = "View as XML.";
         }
 
-        private void SetNewID()
+        private void SetNewID(TLKStringRef target = null)
         {
-            if (GetActiveString() is TLKStringRef selectedItem)
+            var selectedItem = target ?? GetActiveString();
+            if (StringIsSelected(selectedItem))
             {
                 var stringRefNewID = DlgStringID(selectedItem.StringID); //Run popout box to set tlkstring id
                 if (selectedItem.StringID != stringRefNewID)
@@ -1121,14 +1161,36 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         {
             if (k.Key == Key.Return)
             {
-                TextSearch();
+                Search(_searchById);
             }
         }
 
-        private void TextSearch()
+        private void SearchId()
         {
-            string searchTerm = boxSearch.Text.Trim().ToLower();
-            if (searchTerm == "") return; //don't search blank
+            _searchById = true;
+            Search(searchById: true);
+        }
+
+        private void SearchText()
+        {
+            _searchById = false;
+            Search(searchById: false);
+        }
+
+        private void Search(bool searchById)
+        {
+            string searchTerm = boxSearch.Text.Trim();
+            if (searchTerm.Length == 0 || CleanedStrings.Count == 0)
+            {
+                return;
+            }
+
+            int searchId = 0;
+            if (searchById && !int.TryParse(searchTerm, out searchId))
+            {
+                SystemSounds.Beep.Play();
+                return;
+            }
 
             int pos = CleanedStrings.IndexOf(GetActiveString());
             pos += 1; //search this and 1 forward
@@ -1137,15 +1199,12 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 int curIndex = (i + pos) % CleanedStrings.Count;
                 TLKStringRef node = CleanedStrings[curIndex];
 
-                if (node.StringID.ToString().Contains(searchTerm))
+                bool matches = searchById
+                    ? node.StringID == searchId
+                    : node.Data?.Contains(searchTerm, StringComparison.OrdinalIgnoreCase) == true;
+                if (matches)
                 {
-                    //ID Search
-                    FocusString(node, 0);
-                    return;
-                }
-                else if (node.Data != null && node.Data.ToLower().Contains(searchTerm))
-                {
-                    FocusString(node, 1);
+                    FocusString(node, searchById ? 0 : 1);
                     return;
                 }
             }
@@ -1548,6 +1607,19 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             return DisplayedString_ListBox?.SelectedItem as TLKStringRef;
         }
 
+        private void DisplayedString_ListBox_PreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            if (e.OriginalSource is not DependencyObject source
+                || FindAncestor<DataGridRow>(source)?.Item is not TLKStringRef item)
+            {
+                return;
+            }
+
+            var column = FindAncestor<DataGridCell>(source)?.Column ?? DisplayedString_ListBox.CurrentCell.Column;
+            int columnIndex = column is null ? 0 : DisplayedString_ListBox.Columns.IndexOf(column);
+            FocusString(item, columnIndex);
+        }
+
         private void FocusString(TLKStringRef item, int columnIndex)
         {
             if (DisplayedString_ListBox == null || item == null || DisplayedString_ListBox.Columns.Count == 0)
@@ -1557,9 +1629,15 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
             columnIndex = Math.Clamp(columnIndex, 0, DisplayedString_ListBox.Columns.Count - 1);
             var cellInfo = new DataGridCellInfo(item, DisplayedString_ListBox.Columns[columnIndex]);
+            if (!_suppressSearchSelectionReset
+                && (!ReferenceEquals(DisplayedString_ListBox.CurrentCell.Item, item)
+                    || DisplayedString_ListBox.CurrentCell.Column != cellInfo.Column))
+            {
+                ResetSearchState();
+            }
+
             DisplayedString_ListBox.CurrentCell = cellInfo;
-            DisplayedString_ListBox.SelectedCells.Clear();
-            DisplayedString_ListBox.SelectedCells.Add(cellInfo);
+            DisplayedString_ListBox.SelectedItem = item;
             DisplayedString_ListBox.ScrollIntoView(item, DisplayedString_ListBox.Columns[columnIndex]);
         }
 
@@ -2141,11 +2219,20 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         private void FocusSearchMatch(TlkSearchMatch match)
         {
-            FocusString(match.Item, match.ColumnIndex);
-            if (TryGetMatchTextBox(match, out TextBox textBox))
+            bool previousSuppressSelectionReset = _suppressSearchSelectionReset;
+            _suppressSearchSelectionReset = true;
+            try
             {
-                textBox.Focus();
-                textBox.Select(match.StartIndex, match.Length);
+                FocusString(match.Item, match.ColumnIndex);
+                if (TryGetMatchTextBox(match, out TextBox textBox))
+                {
+                    textBox.Focus();
+                    textBox.Select(match.StartIndex, match.Length);
+                }
+            }
+            finally
+            {
+                _suppressSearchSelectionReset = previousSuppressSelectionReset;
             }
         }
 

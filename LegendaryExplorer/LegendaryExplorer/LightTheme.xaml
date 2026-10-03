@@ -34,6 +34,8 @@
 
     <!-- Read-only column text color - used for secondary/read-only DataGrid columns -->
     <SolidColorBrush x:Key="ReadOnlyColumnTextBrush" Color="DarkSlateGray"/>
+    <SolidColorBrush x:Key="TlkIdTextBrush" Color="#FF405F75"/>
+    <SolidColorBrush x:Key="TlkSelectedRowBrush" Color="{x:Static SystemColors.HighlightColor}"/>
 
     <!-- Soundpanel-specific brushes for light mode -->
     <SolidColorBrush x:Key="AudioEntryTextBrush" Color="DarkBlue"/>

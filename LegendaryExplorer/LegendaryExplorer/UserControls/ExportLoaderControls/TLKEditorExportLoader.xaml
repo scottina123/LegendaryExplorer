@@ -15,6 +15,56 @@
     <exportLoaderControls:FileExportLoaderControl.Resources>
         <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
         <converters:NullVisibilityConverter x:Key="NullVisibilityConveter"/>
+        <Style x:Key="TlkStringIdEditorStyle" TargetType="{x:Type TextBox}" BasedOn="{StaticResource {x:Type TextBox}}">
+            <Setter Property="Foreground" Value="{DynamicResource TlkIdTextBrush}"/>
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=DataGridRow}}" Value="True">
+                    <Setter Property="Foreground" Value="{Binding Foreground, RelativeSource={RelativeSource AncestorType=DataGridRow}}"/>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+        <Style x:Key="TlkToolbarButtonStyle" TargetType="{x:Type Button}">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="12,8"/>
+            <Setter Property="Margin" Value="4,0"/>
+            <Setter Property="MinHeight" Value="36"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type Button}">
+                        <Border x:Name="ButtonBorder" Background="{TemplateBinding Background}"
+                                CornerRadius="3" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="ButtonBorder" Property="Background" Value="{DynamicResource {x:Static SystemColors.ControlLightBrushKey}}"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="ButtonBorder" Property="Background" Value="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}"/>
+                                <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.HighlightTextBrushKey}}"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.45"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="TlkToolbarIconStyle" TargetType="{x:Type Path}">
+            <Setter Property="Stroke" Value="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
+            <Setter Property="StrokeThickness" Value="1.5"/>
+            <Setter Property="StrokeStartLineCap" Value="Round"/>
+            <Setter Property="StrokeEndLineCap" Value="Round"/>
+            <Setter Property="Width" Value="18"/>
+            <Setter Property="Height" Value="18"/>
+            <Setter Property="Stretch" Value="Uniform"/>
+            <Setter Property="Margin" Value="0,0,9,0"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
         <Style x:Key="TlkEditorTabCloseButtonStyle" TargetType="{x:Type Button}">
             <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
             <Setter Property="Background" Value="Transparent"/>
@@ -56,7 +106,7 @@
                                 SnapsToDevicePixels="True">
                             <ContentPresenter x:Name="ContentSite"
                                               ContentSource="Header"
-                                              Margin="0"
+                                              Margin="{TemplateBinding Padding}"
                                               HorizontalAlignment="Center"
                                               VerticalAlignment="Center"/>
                         </Border>
@@ -109,6 +159,9 @@
         <ContextMenu x:Key="InlineTlkLineContextMenu"
                      x:Shared="False"
                      Style="{StaticResource DarkAwareContextMenuStyle}">
+            <MenuItem Header="Change ID..." Click="ChangeIdMenuItem_Click"/>
+            <MenuItem Header="Delete String" Click="DeleteStringMenuItem_Click"/>
+            <Separator/>
             <MenuItem Header="Copy Line"
                       Click="CopyLineMenuItem_Click"/>
             <MenuItem Header="Paste Line"
@@ -127,6 +180,15 @@
             <MenuItem Command="ApplicationCommands.SelectAll"
                       CommandTarget="{Binding PlacementTarget, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
         </ContextMenu>
+        <ContextMenu x:Key="TlkRowContextMenu" x:Shared="False"
+                     Style="{StaticResource DarkAwareContextMenuStyle}">
+            <MenuItem Header="Change ID..." Click="ChangeIdMenuItem_Click"/>
+            <MenuItem Header="Delete String" Click="DeleteStringMenuItem_Click"/>
+            <Separator/>
+            <MenuItem Header="Copy Line" Click="CopyLineMenuItem_Click"/>
+            <MenuItem Header="Paste Line" Click="PasteLineMenuItem_Click"/>
+            <MenuItem Header="Clone Line..." Click="CloneLineMenuItem_Click"/>
+        </ContextMenu>
     </exportLoaderControls:FileExportLoaderControl.Resources>
     <DockPanel MinWidth="10" MinHeight="10">
         <TabControl DockPanel.Dock="Top"
@@ -137,10 +199,27 @@
                     BorderBrush="{StaticResource MenuPopupBorderBrush}"
                     BorderThickness="0,0,0,1"
                     PreviewMouseLeftButtonDown="TabControl_PreviewMouseLeftButtonDown"
+                    PreviewMouseLeftButtonUp="TabControl_PreviewMouseLeftButtonUp"
                     PreviewMouseMove="TabControl_PreviewMouseMove"
                     DragOver="TabControl_DragOver"
                     Drop="TabControl_Drop"
                     Visibility="{Binding HasOpenTabs, Converter={StaticResource BoolToVisibilityConverter}}">
+            <TabControl.Template>
+                <ControlTemplate TargetType="{x:Type TabControl}">
+                    <Border Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}">
+                        <DockPanel>
+                            <ScrollViewer DockPanel.Dock="Top" HorizontalScrollBarVisibility="Auto"
+                                          VerticalScrollBarVisibility="Disabled" CanContentScroll="False" Focusable="False">
+                                <StackPanel Orientation="Horizontal" IsItemsHost="True"
+                                            KeyboardNavigation.TabNavigation="Once"/>
+                            </ScrollViewer>
+                            <ContentPresenter x:Name="PART_SelectedContentHost" ContentSource="SelectedContent"/>
+                        </DockPanel>
+                    </Border>
+                </ControlTemplate>
+            </TabControl.Template>
             <TabControl.ItemContainerStyle>
                 <Style TargetType="{x:Type TabItem}" BasedOn="{StaticResource TlkEditorTabItemStyle}">
                     <Setter Property="ToolTip" Value="{Binding FilePath}"/>
@@ -149,7 +228,7 @@
             <TabControl.ItemTemplate>
                 <DataTemplate>
                     <DockPanel LastChildFill="False">
-                        <TextBlock Text="{Binding HeaderText}" Margin="0,0,6,0" VerticalAlignment="Center" Foreground="{Binding RelativeSource={RelativeSource AncestorType=TabItem}, Path=Foreground}"/>
+                        <TextBlock Text="{Binding HeaderText}" FontSize="14" Margin="0,0,6,0" VerticalAlignment="Center" Foreground="{Binding RelativeSource={RelativeSource AncestorType=TabItem}, Path=Foreground}"/>
                         <Button Content="×"
                                 Width="16"
                                 Height="16"
@@ -167,36 +246,77 @@
                 </DataTemplate>
             </TabControl.ContentTemplate>
         </TabControl>
-        <ToolBar ToolBarTray.IsLocked="True" DockPanel.Dock="Top">
-            <!-- Commit button saves edits. disabled by default. Enabled when editing. Ends edit mode with saving to object -->
-            <Button Name="btnCommit" Command="{Binding CommitCommand}" Content="Commit" ToolTip="Commit changes to this TLK file back to the export" VerticalAlignment="Stretch" Padding="7,0"
-                    Visibility="{Binding CurrentLoadedExport, Converter={StaticResource NullVisibilityConveter}}">
-                <Button.Style>
-                    <Style TargetType="{x:Type Button}">
-                        <Style.Triggers>
-                            <Trigger Property="IsEnabled" Value="True">
-                                <Setter Property="FontWeight" Value="Bold"/>
-                                <Setter Property="Foreground" Value="Red"/>
-                            </Trigger>
-                        </Style.Triggers>
-                    </Style>
-                </Button.Style>
-            </Button>
-            <Button Name="btnOpenTab" Command="{Binding OpenTabCommand}" Content="Open" ToolTip="Open TLK file in a new or existing tab" Padding="5,0" VerticalAlignment="Stretch"/>
-            <TextBox Name="boxSearch" Height="26" Width="160" TextWrapping="Wrap" HorizontalAlignment="Left" KeyUp="Evt_KeyUp" VerticalAlignment="Stretch"
-                     ContextMenu="{StaticResource InlineTextEditorContextMenu}"/>
-            <Button Name="btnSearch" Command="{Binding SearchCommand}" Content="Search" ToolTip="Search strings" Padding="5,0" VerticalAlignment="Stretch"/>
-            <Separator Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" />
-            <Button Name="btnAddNew" Command="{Binding AddStringCommand}" Content="Add String" ToolTip="Add a new string"  Padding="5,0" VerticalAlignment="Stretch"/>
-            <Button Name="btnAddStringRange" Command="{Binding AddStringRangeCommand}" Content="Add String Range" ToolTip="Add multiple new strings in a range"  Padding="5,0" VerticalAlignment="Stretch"/>
-            <Separator Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" />
-            <Button Name="btnSetID" Command="{Binding SetIDCommand}" Content="Change ID" ToolTip="Set StringRef ID"  Padding="5,0" VerticalAlignment="Stretch"/>
-            <Button Name="btnDelete" Command="{Binding DeleteStringCommand}" Content="Delete String" ToolTip="Delete selected string"  Padding="5,0" VerticalAlignment="Stretch"/>
-            <Separator Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" />
-            <Button Name="btnExportXML" Command="{Binding ExportXmlCommand}" Content="Export" ToolTip="Export to XML"  Padding="5,0" VerticalAlignment="Stretch"/>
-            <Button Name="btnImportXML" Command="{Binding ImportXmlCommand}" Content="Import" ToolTip="Import from XML"  Padding="5,0" VerticalAlignment="Stretch"/>
-            <Button Name="btnViewXML" Command="{Binding ViewXmlCommand}" Content="View XML" ToolTip="View as XML"  Padding="5,0" VerticalAlignment="Stretch"/>
-        </ToolBar>
+        <Border DockPanel.Dock="Top" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" Padding="14,10">
+            <WrapPanel VerticalAlignment="Center">
+                <Button Name="btnCommit" Command="{Binding CommitCommand}" Content="Commit"
+                        ToolTip="Commit changes to this TLK file back to the export"
+                        Visibility="{Binding CurrentLoadedExport, Converter={StaticResource NullVisibilityConveter}}">
+                    <Button.Style>
+                        <Style TargetType="{x:Type Button}" BasedOn="{StaticResource TlkToolbarButtonStyle}">
+                            <Style.Triggers>
+                                <Trigger Property="IsEnabled" Value="True">
+                                    <Setter Property="FontWeight" Value="Bold"/>
+                                    <Setter Property="Foreground" Value="Red"/>
+                                </Trigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Button.Style>
+                </Button>
+                <Button Name="btnOpenTab" Command="{Binding OpenTabCommand}" Content="Open" ToolTip="Open TLK file">
+                    <Button.Style>
+                        <Style TargetType="{x:Type Button}" BasedOn="{StaticResource TlkToolbarButtonStyle}">
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding HasOpenTabs}" Value="True">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding CurrentLoadedExport, Converter={StaticResource NullVisibilityConveter}}" Value="Visible">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Button.Style>
+                </Button>
+                <Border Width="440" Height="36" Margin="0,0,18,0" CornerRadius="3"
+                        Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"
+                        BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}" BorderThickness="1">
+                    <DockPanel>
+                        <Path DockPanel.Dock="Left" Width="18" Height="18" Margin="10,0" Stretch="Uniform"
+                              VerticalAlignment="Center" StrokeThickness="1.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                              Stroke="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}" IsHitTestVisible="False"
+                              Data="M 12,7 A 5,5 0 1 1 2,7 A 5,5 0 1 1 12,7 M 11,11 L 16,16"/>
+                        <TextBox Name="boxSearch" FontSize="14" BorderThickness="0" Background="Transparent" Padding="2,0,8,0"
+                                 VerticalContentAlignment="Center" KeyUp="Evt_KeyUp"
+                                 ToolTip="Enter a TLK ID or string text; Enter repeats the last search type"
+                                 ContextMenu="{StaticResource InlineTextEditorContextMenu}"/>
+                    </DockPanel>
+                </Border>
+                <Button Name="btnSearchId" Command="{Binding SearchIdCommand}" ToolTip="Find an exact TLK ID" Style="{StaticResource TlkToolbarButtonStyle}">
+                    <TextBlock Text="Search ID" FontSize="14" VerticalAlignment="Center"/>
+                </Button>
+                <Button Name="btnSearchText" Command="{Binding SearchTextCommand}" ToolTip="Find string text; click again for the next match" Style="{StaticResource TlkToolbarButtonStyle}">
+                    <TextBlock Text="Search Text" FontSize="14" VerticalAlignment="Center"/>
+                </Button>
+                <Button Name="btnAddNew" Command="{Binding AddStringCommand}" ToolTip="Add a new string" Style="{StaticResource TlkToolbarButtonStyle}">
+                    <StackPanel Orientation="Horizontal">
+                        <Path Style="{StaticResource TlkToolbarIconStyle}" Data="M 9,1 L 9,17 M 1,9 L 17,9"/>
+                        <TextBlock Text="Add String" FontSize="14" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Button>
+                <Border Width="1" Height="28" Margin="14,4" Background="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"/>
+                <Button Name="btnImportXML" Command="{Binding ImportXmlCommand}" ToolTip="Import from XML" Style="{StaticResource TlkToolbarButtonStyle}">
+                    <StackPanel Orientation="Horizontal">
+                        <Path Style="{StaticResource TlkToolbarIconStyle}" Data="M 9,1 L 9,12 M 5,8 L 9,12 L 13,8 M 2,12 L 2,17 L 16,17 L 16,12"/>
+                        <TextBlock Text="Import" FontSize="14" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Button>
+                <Button Name="btnExportXML" Command="{Binding ExportXmlCommand}" ToolTip="Export to XML" Style="{StaticResource TlkToolbarButtonStyle}">
+                    <StackPanel Orientation="Horizontal">
+                        <Path Style="{StaticResource TlkToolbarIconStyle}" Data="M 9,12 L 9,1 M 5,5 L 9,1 L 13,5 M 2,12 L 2,17 L 16,17 L 16,12"/>
+                        <TextBlock Text="Export" FontSize="14" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Button>
+            </WrapPanel>
+        </Border>
         <Border DockPanel.Dock="Top" Margin="4,0,4,4" Padding="8"
                 BorderBrush="Gray" BorderThickness="1"
                 Visibility="{Binding IsFindReplaceVisible, Converter={StaticResource BoolToVisibilityConverter}}">
@@ -267,23 +387,38 @@
                       AutoGenerateColumns="False"
                       CanUserAddRows="False"
                       CanUserDeleteRows="False"
-                      GridLinesVisibility="All"
-                      HorizontalGridLinesBrush="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"
-                      VerticalGridLinesBrush="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"
+                      Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"
+                      BorderThickness="0"
+                      FontSize="14"
+                      GridLinesVisibility="None"
                       HeadersVisibility="Column"
                       RowHeaderWidth="0"
                       SelectionMode="Single"
-                      SelectionUnit="Cell"
+                      SelectionUnit="FullRow"
                       SelectionChanged="DisplayedString_ListBox_SelectionChanged"
+                      PreviewMouseRightButtonDown="DisplayedString_ListBox_PreviewMouseRightButtonDown"
                       ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                <DataGrid.ColumnHeaderStyle>
+                    <Style TargetType="{x:Type DataGridColumnHeader}">
+                        <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"/>
+                        <Setter Property="Foreground" Value="{DynamicResource TlkIdTextBrush}"/>
+                        <Setter Property="BorderBrush" Value="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"/>
+                        <Setter Property="BorderThickness" Value="0,0,1,1"/>
+                        <Setter Property="Padding" Value="8,5"/>
+                        <Setter Property="FontWeight" Value="Normal"/>
+                        <Setter Property="FontSize" Value="14"/>
+                    </Style>
+                </DataGrid.ColumnHeaderStyle>
                 <DataGrid.RowStyle>
                     <Style TargetType="{x:Type DataGridRow}">
                         <Setter Property="Background" Value="Transparent"/>
                         <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
+                        <Setter Property="MinHeight" Value="24"/>
+                        <Setter Property="ContextMenu" Value="{StaticResource TlkRowContextMenu}"/>
                         <Style.Triggers>
                             <Trigger Property="IsSelected" Value="True">
-                                <Setter Property="Background" Value="Transparent"/>
-                                <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
+                                <Setter Property="Background" Value="{DynamicResource TlkSelectedRowBrush}"/>
+                                <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.HighlightTextBrushKey}}"/>
                             </Trigger>
                         </Style.Triggers>
                     </Style>
@@ -292,42 +427,30 @@
                     <Style TargetType="{x:Type DataGridCell}">
                         <Setter Property="Background" Value="Transparent"/>
                         <Setter Property="BorderThickness" Value="0"/>
-                        <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
-                        <Style.Triggers>
-                            <Trigger Property="IsSelected" Value="True">
-                                <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}"/>
-                                <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.HighlightTextBrushKey}}"/>
-                            </Trigger>
-                             <MultiTrigger>
-                                 <MultiTrigger.Conditions>
-                                     <Condition Property="IsSelected" Value="True"/>
-                                     <Condition Property="IsKeyboardFocusWithin" Value="True"/>
-                                 </MultiTrigger.Conditions>
-                                 <Setter Property="Background" Value="Transparent"/>
-                                 <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
-                             </MultiTrigger>
-                        </Style.Triggers>
+                        <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+                        <Setter Property="Foreground" Value="{Binding Foreground, RelativeSource={RelativeSource AncestorType=DataGridRow}}"/>
                     </Style>
                 </DataGrid.CellStyle>
                 <DataGrid.Columns>
-                    <DataGridTemplateColumn Header="TLK ID" Width="110">
+                    <DataGridTemplateColumn Header="ID" Width="140">
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate>
-                                <Border BorderBrush="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}" BorderThickness="0,0,1,0">
                                     <TextBox Text="{Binding StringID, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
                                              BorderThickness="0"
                                              Background="Transparent"
-                                             Padding="2"
+                                             Style="{StaticResource TlkStringIdEditorStyle}"
+                                             FontSize="14"
+                                             Padding="8,2"
                                              Tag="IdColumnEditor"
                                              IsInactiveSelectionHighlightEnabled="True"
-                                             HorizontalContentAlignment="Right"
+                                             HorizontalContentAlignment="Left"
+                                             VerticalContentAlignment="Center"
                                              ContextMenu="{StaticResource InlineTlkLineContextMenu}"
                                              PreviewTextInput="StringIdTextBox_PreviewTextInput"
                                              PreviewKeyDown="StringIdTextBox_PreviewKeyDown"
                                              LostKeyboardFocus="StringIdTextBox_LostKeyboardFocus"
                                              GotKeyboardFocus="StringIdTextBox_GotKeyboardFocus"
                                              DataObject.Pasting="StringIdTextBox_OnPasting" />
-                                </Border>
                             </DataTemplate>
                         </DataGridTemplateColumn.CellTemplate>
                     </DataGridTemplateColumn>
@@ -337,7 +460,10 @@
                                 <TextBox Text="{Binding Data, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                          BorderThickness="0"
                                          Background="Transparent"
-                                         Padding="2"
+                                         Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=DataGridRow}}"
+                                         FontSize="14"
+                                         Padding="8,2"
+                                         VerticalContentAlignment="Center"
                                          Tag="TextColumnEditor"
                                          IsInactiveSelectionHighlightEnabled="True"
                                          ContextMenu="{StaticResource InlineTlkLineContextMenu}"
