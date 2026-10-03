@@ -44,7 +44,12 @@
                      ScrollViewer.VerticalScrollBarVisibility="Auto" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
                 <ListBox.ItemTemplate>
                     <DataTemplate>
-                        <StackPanel Margin="5,6" ToolTip="{Binding TooltipText}">
+                        <StackPanel Margin="5,6" Background="Transparent" ToolTip="{Binding TooltipText}" ContextMenuOpening="PresetContextMenu_Opening">
+                            <StackPanel.ContextMenu>
+                                <ContextMenu>
+                                    <MenuItem Header="Copy file name"/>
+                                </ContextMenu>
+                            </StackPanel.ContextMenu>
                             <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="14" TextTrimming="CharacterEllipsis"/>
                             <TextBlock Text="{Binding Summary}" Margin="0,3,0,0" Opacity="0.72" TextTrimming="CharacterEllipsis"/>
                         </StackPanel>
@@ -81,7 +86,12 @@
                      ToolTip="Select one or more files to remove them from this preset">
                 <ListBox.ItemTemplate>
                     <DataTemplate>
-                        <Grid Margin="5,6" ToolTip="{Binding Path}">
+                        <Grid Margin="5,6" Background="Transparent" ToolTip="{Binding Path}" ContextMenuOpening="FileContextMenu_Opening">
+                            <Grid.ContextMenu>
+                                <ContextMenu>
+                                    <MenuItem Header="Copy file name"/>
+                                </ContextMenu>
+                            </Grid.ContextMenu>
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto"/>
                                 <RowDefinition Height="Auto"/>

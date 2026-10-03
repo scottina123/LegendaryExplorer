@@ -282,6 +282,7 @@ public partial class CameraPresetDialog : Window
                 ToolTip = set.TooltipText,
                 Tag = set
             };
+            item.ContextMenu = FileReferenceMenu.Create(set.FilePaths);
             item.Click += PreviewRecentLevel_Click;
             PreviewRecentLevelsContextMenu.Items.Add(item);
         }

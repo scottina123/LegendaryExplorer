@@ -13653,6 +13653,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         foreach (RecentFileSet set in recentSets)
         {
             var item = new MenuItem { Header = set.DisplayName.Replace("_", "__"), ToolTip = set.TooltipText, Tag = set };
+            item.ContextMenu = FileReferenceMenu.Create(set.FilePaths);
             item.Click += RecentLevel_Click;
             RecentLevelsMenu.Items.Add(item);
         }

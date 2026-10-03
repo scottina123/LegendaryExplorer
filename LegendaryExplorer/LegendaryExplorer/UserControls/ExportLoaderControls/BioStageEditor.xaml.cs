@@ -2255,6 +2255,7 @@ public sealed partial class BioStageEditor : ExportLoaderControl, IActorEditorCo
                 ToolTip = set.TooltipText,
                 Tag = set
             };
+            item.ContextMenu = FileReferenceMenu.Create(set.FilePaths);
             item.Click += RecentLevel_Click;
             RecentLevelsMenu.Items.Add(item);
         }

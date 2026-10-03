@@ -38,6 +38,16 @@
         <converters:GameToImageIconConverter x:Key="GameToImageIconConverter"/>
         <converters:InverseBooleanConverter x:Key="InverseBooleanConverter"/>
         <sharedUi:BindingProxy x:Key="bindingProxy" Data="{Binding}"/>
+        <Style x:Key="LevelFileReferenceMenuItemStyle" TargetType="MenuItem">
+            <Setter Property="Header" Value="{Binding FileName}"/>
+            <Setter Property="HeaderTemplate">
+                <Setter.Value>
+                    <DataTemplate><TextBlock Text="{Binding}"/></DataTemplate>
+                </Setter.Value>
+            </Setter>
+            <Setter Property="ToolTip" Value="{Binding FilePath}"/>
+            <Setter Property="CommandParameter" Value="{Binding FilePath}"/>
+        </Style>
         <converters:UnsavedChangesForegroundConverter x:Key="UnsavedChangesForegroundConverter"/>
         <TextDecorationCollection x:Key="XTextDeco">
             <TextDecoration Location="Underline" PenOffset="2">
@@ -100,8 +110,27 @@
                         </MenuItem.ItemContainerStyle>
                     </MenuItem>
                     <MenuItem Header="Save As..." Command="{Binding SaveAsCommand}" InputGestureText="Ctrl+Shift+S" ToolTip="Save selected file to another location" IsEnabled="{Binding HasAnyFileOpen}"/>
-                    <MenuItem Header="Open file location" Command="{Binding OpenCurrentFileLocationCommand}" ToolTip="{Binding CurrentPackageFilePath, StringFormat=Open containing folder for {0}}"/>
-                    <MenuItem Header="Copy file name" Command="{Binding CopyCurrentFileNameCommand}"/>
+                    <MenuItem Header="Open file location" ItemsSource="{Binding OpenFiles}" IsEnabled="{Binding HasAnyFileOpen}">
+                        <MenuItem.ItemContainerStyle>
+                            <Style TargetType="MenuItem" BasedOn="{StaticResource LevelFileReferenceMenuItemStyle}">
+                                <Setter Property="Command" Value="{x:Static misc:FileReferenceMenu.OpenFileLocationCommand}"/>
+                            </Style>
+                        </MenuItem.ItemContainerStyle>
+                    </MenuItem>
+                    <MenuItem Header="Copy file name" ItemsSource="{Binding OpenFiles}" IsEnabled="{Binding HasAnyFileOpen}">
+                        <MenuItem.ItemContainerStyle>
+                            <Style TargetType="MenuItem" BasedOn="{StaticResource LevelFileReferenceMenuItemStyle}">
+                                <Setter Property="Command" Value="{x:Static misc:FileReferenceMenu.CopyFileNameCommand}"/>
+                            </Style>
+                        </MenuItem.ItemContainerStyle>
+                    </MenuItem>
+                    <MenuItem Header="Copy file path" ItemsSource="{Binding OpenFiles}" IsEnabled="{Binding HasAnyFileOpen}">
+                        <MenuItem.ItemContainerStyle>
+                            <Style TargetType="MenuItem" BasedOn="{StaticResource LevelFileReferenceMenuItemStyle}">
+                                <Setter Property="Command" Value="{x:Static misc:FileReferenceMenu.CopyFilePathCommand}"/>
+                            </Style>
+                        </MenuItem.ItemContainerStyle>
+                    </MenuItem>
                     <Separator />
                     <MenuItem Header="Capture Viewport..." Command="{Binding CaptureViewportCommand}" ToolTip="Save the current viewport as a PNG image"/>
                     <Separator />
@@ -1153,7 +1182,9 @@
                                                     <ListBox.ItemTemplate>
                                                         <DataTemplate>
                                                             <Button Click="OpenLevelPreset_Click" Margin="3" Padding="8,4" MinHeight="39"
-                                                                    ToolTip="{Binding TooltipText}" HorizontalContentAlignment="Stretch">
+                                                                    ToolTip="{Binding TooltipText}" HorizontalContentAlignment="Stretch"
+                                                                    ContextMenuOpening="LevelPresetButton_ContextMenuOpening">
+                                                                <Button.ContextMenu><ContextMenu/></Button.ContextMenu>
                                                                 <DockPanel>
                                                                     <Image DockPanel.Dock="Left" Margin="0,0,8,0" Source="{Binding Game, Converter={StaticResource GameToImageIconConverter}}"
                                                                            Height="20" Width="20" RenderOptions.BitmapScalingMode="HighQuality"/>

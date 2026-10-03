@@ -3412,6 +3412,8 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
                 pin.Click += (_, _) => PinnedFilesControl.TogglePinItem(item);
                 menu.Items.Add(pin);
             }
+            menu.Items.Add(new Separator());
+            FileReferenceMenu.AddActions(menu, set.FilePaths);
         }
         menu.Items.Add(new Separator());
         var savePreset = new MenuItem { Header = "Save as level preset..." };
@@ -3439,6 +3441,12 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
             SelectedLevelPreset = preset;
             OpenLevelPreset(preset);
         }
+    }
+
+    private void LevelPresetButton_ContextMenuOpening(object sender, ContextMenuEventArgs e)
+    {
+        if (sender is Button { DataContext: LevelPreset preset } button)
+            button.ContextMenu = FileReferenceMenu.Create(preset.FilePaths);
     }
 
     private async void OpenLevelPreset(LevelPreset preset, bool missingFilesReported = false)

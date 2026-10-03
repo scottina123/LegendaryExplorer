@@ -6,6 +6,7 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Data;
 using LegendaryExplorer.Misc;
 using LegendaryExplorer.Tools.LevelEditor;
@@ -108,6 +109,18 @@ public partial class LevelPresetsDialog : NotifyPropertyChangedWindowBase
         var readOnly = (SelectedPreset?.ReadOnlyFilePaths ?? []).ToHashSet(StringComparer.OrdinalIgnoreCase);
         PresetFiles.ReplaceAll(SelectedPreset?.FilePaths.Select(path => new LevelPresetFile(path, readOnly.Contains(path)))
             ?? Enumerable.Empty<LevelPresetFile>());
+    }
+
+    private void PresetContextMenu_Opening(object sender, ContextMenuEventArgs e)
+    {
+        if (sender is FrameworkElement { DataContext: LevelPreset preset } element)
+            element.ContextMenu = FileReferenceMenu.Create(preset.FilePaths);
+    }
+
+    private void FileContextMenu_Opening(object sender, ContextMenuEventArgs e)
+    {
+        if (sender is FrameworkElement { DataContext: LevelPresetFile file } element)
+            element.ContextMenu = FileReferenceMenu.CreateForFile(file.Path);
     }
 
     private void UpdateButtons()
