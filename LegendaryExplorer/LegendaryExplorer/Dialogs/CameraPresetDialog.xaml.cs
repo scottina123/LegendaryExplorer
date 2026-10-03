@@ -241,9 +241,32 @@ public partial class CameraPresetDialog : Window
         PreviewRecentLevelsContextMenu.IsOpen = true;
     }
 
+    private async void PreviewLevelPresets_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new LevelPresetsDialog(_package?.Game ?? _selectedTrackMove?.Game ?? _selectedDirectorTrack?.Game,
+            CameraPreviewControl.LevelPaths)
+        {
+            Owner = this
+        };
+        if (dialog.ShowDialog() != true || dialog.SelectedPreset is not { } preset)
+        {
+            return;
+        }
+
+        List<string> availablePaths = preset.FilePaths.Where(File.Exists).ToList();
+        for (int index = 0; index < availablePaths.Count; index++)
+        {
+            await LoadPreviewLevelAsync(availablePaths[index], replace: index == 0).ConfigureAwait(true);
+        }
+    }
+
     private void PreviewRecentLevelsMenu_Opened(object sender, RoutedEventArgs e)
     {
         PreviewRecentLevelsContextMenu.Items.Clear();
+        var presetsItem = new MenuItem { Header = "Level presets…" };
+        presetsItem.Click += PreviewLevelPresets_Click;
+        PreviewRecentLevelsContextMenu.Items.Add(presetsItem);
+        PreviewRecentLevelsContextMenu.Items.Add(new Separator());
         List<RecentFileSet> recentSets = LoadRecentLevelSets();
         if (recentSets.Count == 0)
         {

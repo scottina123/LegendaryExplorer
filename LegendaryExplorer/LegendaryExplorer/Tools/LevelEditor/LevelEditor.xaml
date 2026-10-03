@@ -86,6 +86,8 @@
                     <MenuItem Header="Open" Command="{Binding OpenFileCommand}" InputGestureText="Ctrl+O" ToolTip="Open a level file (replaces current)"/>
                     <MenuItem Header="Add File..." Command="{Binding AddFileCommand}" InputGestureText="Ctrl+Shift+O" ToolTip="Add another level file to the scene"/>
                     <MenuItem Header="Load Related Levels" Command="{Binding LoadRelatedLevelsCommand}" ToolTip="Load all related level files for the current level" IsEnabled="{Binding HasAnyFileOpen}"/>
+                    <MenuItem Header="Level presets..." Click="LevelPresets_Click" ToolTip="Create, edit, search, or open named groups of level files"/>
+                    <MenuItem Header="Save levels as preset..." Click="SaveLevelPreset_Click" IsEnabled="{Binding HasAnyFileOpen}" ToolTip="Save the currently loaded levels as a named preset"/>
                     <Separator />
                     <MenuItem Header="Save All" Command="{Binding SaveAllCommand}" InputGestureText="Ctrl+S" ToolTip="Commit and save all open files in-place" IsEnabled="{Binding HasAnyFileOpen}"/>
                     <MenuItem Header="Save Individual File" ItemsSource="{Binding OpenFiles}" IsEnabled="{Binding HasAnyFileOpen}" ToolTip="Commit and save a selected open file">
@@ -1020,6 +1022,9 @@
                                                     <DataTrigger Binding="{Binding IsPinned}" Value="True">
                                                         <Setter Property="Visibility" Value="Collapsed"/>
                                                     </DataTrigger>
+                                                    <DataTrigger Binding="{Binding IsLevelPresets}" Value="True">
+                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                    </DataTrigger>
                                                 </Style.Triggers>
                                             </Style>
                                         </Grid.Style>
@@ -1096,6 +1101,73 @@
                                                 </Style>
                                             </ContentControl.Style>
                                         </ContentControl>
+                                        <DockPanel LastChildFill="True">
+                                            <DockPanel.Style>
+                                                <Style TargetType="DockPanel">
+                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsLevelPresets}" Value="True">
+                                                            <Setter Property="Visibility" Value="Visible"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </DockPanel.Style>
+                                            <DockPanel DockPanel.Dock="Top" Margin="3,3,3,8" LastChildFill="True">
+                                                <Button DockPanel.Dock="Right" Content="Manage level presets..." Padding="10,4" Margin="8,0,0,0"
+                                                        Click="LevelPresets_Click" ToolTip="Create a preset by choosing level files, or edit existing presets"/>
+                                                <xctk:WatermarkTextBox Watermark="Search level presets"
+                                                    Text="{Binding LevelPresetSearchText, RelativeSource={RelativeSource AncestorType={x:Type local:LevelEditor}}, UpdateSourceTrigger=PropertyChanged}"
+                                                    VerticalContentAlignment="Center" MinWidth="120"/>
+                                            </DockPanel>
+                                            <TextBlock DockPanel.Dock="Top" Margin="8,0,8,8" TextWrapping="Wrap"
+                                                       Text="{Binding LevelPresetsLoadError, RelativeSource={RelativeSource AncestorType={x:Type local:LevelEditor}}}">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding LevelPresetsLoadError, RelativeSource={RelativeSource AncestorType={x:Type local:LevelEditor}}}" Value="{x:Null}">
+                                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                            <Grid>
+                                                <TextBlock Text="No matching level presets. Use Manage level presets to add levels from a file picker."
+                                                           TextWrapping="Wrap" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="12">
+                                                    <TextBlock.Style>
+                                                        <Style TargetType="TextBlock">
+                                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding LevelPresetsView.IsEmpty, RelativeSource={RelativeSource AncestorType={x:Type local:LevelEditor}}}" Value="True">
+                                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </TextBlock.Style>
+                                                </TextBlock>
+                                                <ListBox ItemsSource="{Binding LevelPresetsView, RelativeSource={RelativeSource AncestorType={x:Type local:LevelEditor}}}"
+                                                         SelectedItem="{Binding SelectedLevelPreset, RelativeSource={RelativeSource AncestorType={x:Type local:LevelEditor}}, Mode=TwoWay}"
+                                                         MaxHeight="405" BorderThickness="0" Background="Transparent"
+                                                         HorizontalContentAlignment="Stretch" Padding="0"
+                                                         ScrollViewer.VerticalScrollBarVisibility="Auto" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                                                    <ListBox.ItemTemplate>
+                                                        <DataTemplate>
+                                                            <Button Click="OpenLevelPreset_Click" Margin="3" Padding="8,4" MinHeight="39"
+                                                                    ToolTip="{Binding TooltipText}" HorizontalContentAlignment="Stretch">
+                                                                <DockPanel>
+                                                                    <Image DockPanel.Dock="Left" Margin="0,0,8,0" Source="{Binding Game, Converter={StaticResource GameToImageIconConverter}}"
+                                                                           Height="20" Width="20" RenderOptions.BitmapScalingMode="HighQuality"/>
+                                                                    <StackPanel>
+                                                                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                                                                        <TextBlock Text="{Binding Summary}" FontSize="11" TextTrimming="CharacterEllipsis"/>
+                                                                    </StackPanel>
+                                                                </DockPanel>
+                                                            </Button>
+                                                        </DataTemplate>
+                                                    </ListBox.ItemTemplate>
+                                                </ListBox>
+                                            </Grid>
+                                        </DockPanel>
                                     </Grid>
                                 </DataTemplate>
                             </TabControl.ContentTemplate>

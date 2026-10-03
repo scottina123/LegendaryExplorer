@@ -85,6 +85,8 @@
             <DockPanel Margin="6">
                 <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,8,0,0">
                     <Button Content="Add Files..." Padding="12,4" Click="AddFiles_Click"/>
+                    <Button Content="Level presets…" Padding="12,4" Margin="8,0,0,0" Click="LevelPresets_Click"
+                            ToolTip="Choose a named level preset or save and edit the selected levels"/>
                     <Button Content="Remove" Padding="12,4" Margin="8,0,0,0" Click="RemoveFiles_Click"/>
                 </StackPanel>
                 <ListBox x:Name="SelectedFilesList" ItemsSource="{Binding SelectedFiles, RelativeSource={RelativeSource AncestorType=Window}}"

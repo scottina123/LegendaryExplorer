@@ -34,6 +34,7 @@ using
 Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
+using System.Collections.Specialized;
 using
 System.ComponentModel;
 using System.IO;
@@ -78,11 +79,12 @@ public class RecentFileSet
 
 }
 
-public class RecentFileSetGroup(MEGame? game, bool isPinned = false)
+public class RecentFileSetGroup(MEGame? game, bool isPinned = false, bool isLevelPresets = false)
 {
     public MEGame? Game { get; } = game;
     public bool IsPinned { get; } = isPinned;
-    public string Header => IsPinned ? "Pinned files" : Game?.ToString() ?? "Misc";
+    public bool IsLevelPresets { get; } = isLevelPresets;
+    public string Header => IsLevelPresets ? "Level presets" : IsPinned ? "Pinned files" : Game?.ToString() ?? "Misc";
     public ObservableCollectionExtended<RecentFileSet> Items { get; } = [];
 }
 
@@ -727,6 +729,35 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
 
     public ObservableCollectionExtended<RecentFileSet> RecentSets { get; } = [];
     public RecentsControl PinnedFilesControl { get; } = new() { ShowRecentTabs = false };
+    public ICollectionView LevelPresetsView { get; }
+    public string LevelPresetsLoadError => LevelPresetStore.Shared.LoadError;
+
+    private Guid? _selectedLevelPresetId;
+    private bool _openingLevelPreset;
+    private LevelPreset _selectedLevelPreset;
+    public LevelPreset SelectedLevelPreset
+    {
+        get => _selectedLevelPreset;
+        set
+        {
+            if (SetProperty(ref _selectedLevelPreset, value) && value != null)
+                _selectedLevelPresetId = value.Id;
+        }
+    }
+
+    private string _levelPresetSearchText = "";
+    public string LevelPresetSearchText
+    {
+        get => _levelPresetSearchText;
+        set
+        {
+            if (SetProperty(ref _levelPresetSearchText, value))
+            {
+                LevelPresetsView.Refresh();
+                RestoreLevelPresetSelection();
+            }
+        }
+    }
 
     public IReadOnlyList<RecentFileSetGroup> RecentSetGroups { get; } = new[]
     {
@@ -737,7 +768,8 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         new RecentFileSetGroup(MEGame.LE2),
         new RecentFileSetGroup(MEGame.LE3),
         new RecentFileSetGroup(null),
-        new RecentFileSetGroup(null, isPinned: true)
+        new RecentFileSetGroup(null, isPinned: true),
+        new RecentFileSetGroup(null, isLevelPresets: true)
     };
 
     private RecentFileSetGroup _selectedRecentSetGroup;
@@ -753,6 +785,10 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
 
     public LevelEditor() : base("LevelEditor")
     {
+        LevelPresetsView = new CollectionViewSource { Source = LevelPresetStore.Shared.Presets }.View;
+        LevelPresetsView.Filter = item => item is LevelPreset preset && LevelPresetStore.MatchesSearch(preset, LevelPresetSearchText);
+        LevelPresetsView.SortDescriptions.Add(new SortDescription(nameof(LevelPreset.Name), ListSortDirection.Ascending));
+        LevelPresetStore.Shared.Presets.CollectionChanged += LevelPresets_CollectionChanged;
         RenderContext = new LevelEditorRenderContext();
         RenderContext.ShowSelectedLightWireframe = _showSelectedLightWireframe;
         RenderContext.ShowLightIcons = _showLightIcons;
@@ -3199,6 +3235,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         LevelLiveMaterialEditor.Dispose();
         LevelMorphEditor.Dispose();
         PinnedFilesControl.Dispose();
+        LevelPresetStore.Shared.Presets.CollectionChanged -= LevelPresets_CollectionChanged;
         SceneViewer.Dispose();
     }
 
@@ -3232,12 +3269,12 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
     private RecentFileSetGroup GetRecentSetGroup(RecentFileSet set)
     {
         MEGame? game = set.Game.IsMEGame() ? set.Game : null;
-        return RecentSetGroups.First(group => !group.IsPinned && group.Game == game);
+        return RecentSetGroups.First(group => !group.IsPinned && !group.IsLevelPresets && group.Game == game);
     }
 
     private void RefreshRecentSetGroups(RecentFileSet preferredSet = null)
     {
-        foreach (var group in RecentSetGroups.Where(group => !group.IsPinned))
+        foreach (var group in RecentSetGroups.Where(group => !group.IsPinned && !group.IsLevelPresets))
         {
             group.Items.ReplaceAll(RecentSets.Where(set => GetRecentSetGroup(set) == group));
         }
@@ -3246,7 +3283,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         {
             SelectedRecentSetGroup = GetRecentSetGroup(preferredSet);
         }
-        else if (SelectedRecentSetGroup == null || (!SelectedRecentSetGroup.IsPinned && !SelectedRecentSetGroup.Items.Any))
+        else if (SelectedRecentSetGroup == null || (!SelectedRecentSetGroup.IsPinned && !SelectedRecentSetGroup.IsLevelPresets && !SelectedRecentSetGroup.Items.Any))
         {
             SelectedRecentSetGroup = RecentSets.Count > 0 ? GetRecentSetGroup(RecentSets[0]) : RecentSetGroups[0];
         }
@@ -3309,21 +3346,33 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         SaveRecentSets();
     }
 
-    private async void OpenRecentFileSet(RecentFileSet set)
+    private async void OpenRecentFileSet(RecentFileSet set) => await OpenRecentFileSetAsync(set);
+
+    private async Task OpenRecentFileSetAsync(RecentFileSet set)
     {
-        CloseAllFiles();
-
-        using var guard = new RenderGuard(this);
-
-        foreach (string path in set.FilePaths)
+        string loadingPath = null;
+        try
         {
-            if (File.Exists(path))
+            CloseAllFiles();
+
+            using var guard = new RenderGuard(this);
+
+            foreach (string path in set.FilePaths)
             {
-                await AddLevelFile(path).ConfigureAwait(true);
-                var openFile = OpenFiles.LastOrDefault(f => f.FilePath == path);
-                if (openFile is not null && set.ReadOnlyFilePaths.Contains(path))
-                    openFile.IsReadOnly = true;
+                loadingPath = path;
+                if (File.Exists(path))
+                {
+                    await AddLevelFile(path).ConfigureAwait(true);
+                    var openFile = OpenFiles.LastOrDefault(f => f.FilePath.Equals(path, StringComparison.OrdinalIgnoreCase));
+                    if (openFile is not null && set.ReadOnlyFilePaths.Contains(path, StringComparer.OrdinalIgnoreCase))
+                        openFile.IsReadOnly = true;
+                }
             }
+        }
+        catch (Exception exception)
+        {
+            MessageBox.Show(this, $"Unable to load {Path.GetFileName(loadingPath) ?? "the level set"}:\n\n{exception.Message}",
+                "Open levels", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 
@@ -3350,19 +3399,94 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
 
     private ContextMenu CreateRecentSetPinContextMenu(RecentFileSet set)
     {
-        if (set.FilePaths.Count == 1)
-            return PinnedFilesControl.CreatePinContextMenu(new RecentsControl.RecentItem(set.FilePaths[0], set.Game));
-
-        var menu = new ContextMenu();
-        foreach (string path in set.FilePaths)
+        var menu = set.FilePaths.Count == 1
+            ? PinnedFilesControl.CreatePinContextMenu(new RecentsControl.RecentItem(set.FilePaths[0], set.Game))
+            : new ContextMenu();
+        if (set.FilePaths.Count > 1)
         {
-            var item = new RecentsControl.RecentItem(path, set.Game);
-            var pin = new MenuItem { ToolTip = path };
-            menu.Opened += (_, _) => pin.Header = $"{(PinnedFilesControl.IsPinned(path) ? "Unpin" : "Pin")} {Path.GetFileName(path).Replace("_", "__")}";
-            pin.Click += (_, _) => PinnedFilesControl.TogglePinItem(item);
-            menu.Items.Add(pin);
+            foreach (string path in set.FilePaths)
+            {
+                var item = new RecentsControl.RecentItem(path, set.Game);
+                var pin = new MenuItem { ToolTip = path };
+                menu.Opened += (_, _) => pin.Header = $"{(PinnedFilesControl.IsPinned(path) ? "Unpin" : "Pin")} {Path.GetFileName(path).Replace("_", "__")}";
+                pin.Click += (_, _) => PinnedFilesControl.TogglePinItem(item);
+                menu.Items.Add(pin);
+            }
         }
+        menu.Items.Add(new Separator());
+        var savePreset = new MenuItem { Header = "Save as level preset..." };
+        savePreset.Click += (_, _) => ShowLevelPresets(set.Game, set.FilePaths, set.ReadOnlyFilePaths);
+        menu.Items.Add(savePreset);
         return menu;
+    }
+
+    private void LevelPresets_Click(object sender, RoutedEventArgs e) => ShowLevelPresets();
+
+    private void SaveLevelPreset_Click(object sender, RoutedEventArgs e) => ShowLevelPresets(
+        Game, OpenFiles.Select(file => file.FilePath), OpenFiles.Where(file => file.IsReadOnly).Select(file => file.FilePath));
+
+    private void ShowLevelPresets(MEGame? game = null, IEnumerable<string> currentFiles = null, IEnumerable<string> readOnlyFiles = null)
+    {
+        var dialog = new LevelPresetsDialog(game, currentFiles, readOnlyFiles) { Owner = this };
+        if (dialog.ShowDialog() == true && dialog.SelectedPreset is { } preset)
+            OpenLevelPreset(preset, missingFilesReported: true);
+    }
+
+    private void OpenLevelPreset_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button { DataContext: LevelPreset preset })
+        {
+            SelectedLevelPreset = preset;
+            OpenLevelPreset(preset);
+        }
+    }
+
+    private async void OpenLevelPreset(LevelPreset preset, bool missingFilesReported = false)
+    {
+        if (_openingLevelPreset || IsBusy) return;
+        _openingLevelPreset = true;
+        try
+        {
+            if (!missingFilesReported && !LevelPresetsDialog.ReportMissingFiles(this, preset)) return;
+            var availablePaths = preset.FilePaths.Where(File.Exists).ToList();
+            if (availablePaths.Count == 0) return;
+            await LevelPresetsDialog.ValidateFilesAsync(availablePaths, preset.Game);
+
+            var dirtyFiles = OpenFiles.Where(file => file.IsDirty || file.Package.IsModified).ToList();
+            if (dirtyFiles.Count > 0 && MessageBox.Show(this,
+                    $"The following files have unsaved changes:\n{string.Join("\n", dirtyFiles.Select(file => file.FileName))}\n\nOpen the preset and discard these changes?",
+                    "Unsaved Changes", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
+                return;
+
+            await OpenRecentFileSetAsync(new RecentFileSet
+            {
+                Game = preset.Game,
+                FilePaths = preset.FilePaths.ToList(),
+                ReadOnlyFilePaths = preset.ReadOnlyFilePaths.ToList()
+            });
+        }
+        catch (Exception exception)
+        {
+            MessageBox.Show(this, $"Unable to open '{preset.Name}':\n\n{exception.Message}\n\nEdit the preset to update or remove these files.",
+                "Level preset", MessageBoxButton.OK, MessageBoxImage.Error);
+            return;
+        }
+        finally
+        {
+            _openingLevelPreset = false;
+        }
+    }
+
+    private void LevelPresets_CollectionChanged(object sender, NotifyCollectionChangedEventArgs e)
+    {
+        // ReplaceAll produces a reset when a preset is edited; select its replacement by its stable ID.
+        Dispatcher.BeginInvoke(DispatcherPriority.DataBind, new Action(RestoreLevelPresetSelection));
+    }
+
+    private void RestoreLevelPresetSelection()
+    {
+        SelectedLevelPreset = LevelPresetStore.Shared.Presets.FirstOrDefault(preset =>
+            preset.Id == _selectedLevelPresetId && LevelPresetStore.MatchesSearch(preset, LevelPresetSearchText));
     }
 
     private void RecentSetButton_ContextMenuOpening(object sender, ContextMenuEventArgs e)

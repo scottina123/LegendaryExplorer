@@ -25,6 +25,8 @@
                         <ContextMenu x:Name="RecentLevelsMenu" Opened="RecentLevelsMenu_Opened"/>
                     </Button.ContextMenu>
                 </Button>
+                <Button Content="Level presets…" Click="LevelPresets_Click"
+                        ToolTip="Create, edit, search, and open named level presets"/>
                 <Separator x:Name="DialogueWorkingMemoryHistorySeparator" Visibility="Collapsed"
                            Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" />
                 <Button x:Name="DialogueWorkingMemoryUndoButton" Content="Undo" Visibility="Collapsed"

@@ -13606,9 +13606,43 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         RecentLevelsMenu.IsOpen = true;
     }
 
+    private async void LevelPresets_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new LevelPresetsDialog(CurrentLoadedExport?.Game, levelPaths)
+        {
+            Owner = Window.GetWindow(this)
+        };
+        if (dialog.ShowDialog() != true || dialog.SelectedPreset is not { } preset)
+        {
+            return;
+        }
+
+        List<string> availablePaths = preset.FilePaths.Where(File.Exists).ToList();
+        for (int index = 0; index < availablePaths.Count; index++)
+        {
+            await LoadLevelAsync(availablePaths[index], replace: index == 0).ConfigureAwait(true);
+        }
+        if (dialogueNodePreview is not null)
+        {
+            dialogueNodePreview = dialogueNodePreview with { LevelPaths = levelPaths.ToArray() };
+            IndexDialoguePreviewCameras();
+        }
+        if (generatedDialogueActorConfiguration is not null)
+        {
+            generatedDialogueActorConfiguration = generatedDialogueActorConfiguration with
+            {
+                LevelPaths = levelPaths.ToArray()
+            };
+        }
+    }
+
     private void RecentLevelsMenu_Opened(object sender, RoutedEventArgs e)
     {
         RecentLevelsMenu.Items.Clear();
+        var presetsItem = new MenuItem { Header = "Level presets…" };
+        presetsItem.Click += LevelPresets_Click;
+        RecentLevelsMenu.Items.Add(presetsItem);
+        RecentLevelsMenu.Items.Add(new Separator());
         List<RecentFileSet> recentSets = LoadRecentSets();
         if (recentSets.Count == 0)
         {

@@ -404,6 +404,8 @@
                             <ContextMenu x:Name="PreviewRecentLevelsMenu" Opened="PreviewRecentLevelsMenu_Opened"/>
                         </Button.ContextMenu>
                     </Button>
+                    <Button Content="Level presets…" Click="PreviewLevelPresets_Click" Padding="7,3" Margin="2"
+                            ToolTip="Create, edit, search, and open named level presets"/>
                     <TextBlock x:Name="PreviewLevelStatusTextBlock" Margin="8,0,0,0" VerticalAlignment="Center" Opacity="0.7"/>
                 </WrapPanel>
                 <Expander Grid.Row="1" Header="Preview Actors" IsExpanded="True" Margin="8">

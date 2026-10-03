@@ -24,6 +24,7 @@ public partial class DialoguePreviewLevelPicker : TrackingNotifyPropertyChangedW
     private readonly List<DialogueCachePreset> compatibleCachePresets = [];
     private readonly IReadOnlySet<string> availableHenchmanTags;
     private readonly bool allowUnassignedHenchmen;
+    private readonly MEGame game;
     private DialogueCachePreset selectedCachePreset;
 
     public sealed record HenchmanChoice(string ActorTag, string DisplayName);
@@ -77,6 +78,7 @@ public partial class DialoguePreviewLevelPicker : TrackingNotifyPropertyChangedW
         DialogueNodeExtended startNode, bool includeCache,
         bool requirePlayerGenderSelection = false) : base("Dialogue Preview Options", false)
     {
+        this.game = game;
         allowUnassignedHenchmen = game is MEGame.LE1 or MEGame.LE2;
         InitializeComponent();
         if (requirePlayerGenderSelection)
@@ -296,6 +298,21 @@ public partial class DialoguePreviewLevelPicker : TrackingNotifyPropertyChangedW
         {
             AddPaths(dialog.FileNames);
         }
+    }
+
+    private void LevelPresets_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new LevelPresetsDialog(game == MEGame.Unknown ? null : game, SelectedFiles)
+        {
+            Owner = this
+        };
+        if (dialog.ShowDialog() != true || dialog.SelectedPreset is not { } preset)
+        {
+            return;
+        }
+
+        SelectedFiles.Clear();
+        AddPaths(preset.FilePaths);
     }
 
     private void AddPaths(IEnumerable<string> paths)
