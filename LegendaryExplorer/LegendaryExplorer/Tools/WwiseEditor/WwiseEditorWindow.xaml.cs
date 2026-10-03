@@ -95,7 +95,7 @@ namespace LegendaryExplorer.Tools.WwiseEditor
         public WwiseEditorWindow() : base("Wwise Editor")
         {
             DataContext = this;
-            StatusText = "Select package file to load";
+            StatusText = string.Empty;
             LoadCommands();
             InitializeComponent();
 
@@ -2026,7 +2026,7 @@ namespace LegendaryExplorer.Tools.WwiseEditor
                 {
                     UnLoadMEPackage();
                     MessageBox.Show(this, "This file does not contain any WwiseBanks!");
-                    StatusText = "Select a package file to load";
+                    StatusText = string.Empty;
                     Title = "Wwise Editor";
                     CurrentFile = null;
                     soundPanelColumn.Width = GridLength.Auto;

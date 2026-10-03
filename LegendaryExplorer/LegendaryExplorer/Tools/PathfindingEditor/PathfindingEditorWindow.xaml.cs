@@ -596,7 +596,7 @@ namespace LegendaryExplorer.Tools.PathfindingEditor
         public PathfindingEditorWindow() : base("Pathfinding Editor")
         {
             DataContext = this;
-            StatusText = "Select package file to load";
+            StatusText = string.Empty;
             LoadCommands();
             InitializeComponent();
             var contextMenu = (ContextMenu)FindResource("nodeContextMenu");
@@ -855,7 +855,7 @@ namespace LegendaryExplorer.Tools.PathfindingEditor
             if (PersistentLevelExport == null)
             {
                 UnLoadMEPackage();
-                StatusText = "Select a package file to load";
+                StatusText = string.Empty;
                 PathfindingEditorWPF_ReachSpecsPanel.UnloadExport();
                 PathfindingEditorWPF_ValidationPanel.UnloadPackage();
                 MessageBox.Show("This file does not contain a Level export.");

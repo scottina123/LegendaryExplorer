@@ -304,7 +304,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             recentsEnabled = enableRecents;
             LoadCommands();
             DataContext = this;
-            StatusText = "Select package file to load";
+            StatusText = string.Empty;
             InitializeComponent();
             InitializeExperimentsBrowser();
 
@@ -1630,7 +1630,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                 {
                     UnLoadMEPackage();
                     MessageBox.Show(this, "This file does not contain any sequences!");
-                    StatusText = "Select package file to load";
+                    StatusText = string.Empty;
                     return;
                 }
 

@@ -883,7 +883,7 @@ namespace LegendaryExplorer.DialogueEditor
         {
             persistUserState = initializeUserState;
             LoadCommands();
-            StatusText = "Select package file to load";
+            StatusText = string.Empty;
             SelectedSpeaker = new SpeakerExtended(-3, "None");
 
             InitializeComponent();
@@ -1587,7 +1587,7 @@ namespace LegendaryExplorer.DialogueEditor
             graphEditor.edgeLayer.RemoveAllChildren();
             CurrentFile = null;
             UnLoadMEPackage();
-            StatusText = "Select a package file to load";
+            StatusText = string.Empty;
         }
         #endregion Startup/Exit
 

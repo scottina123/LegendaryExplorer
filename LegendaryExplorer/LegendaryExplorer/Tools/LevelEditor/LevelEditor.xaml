@@ -472,7 +472,7 @@
                 <sharedToolControls:StatusBarGameIDIndicator Visibility="{Binding HasAnyFileOpen, Converter={StaticResource BoolToVisibilityConverter}}"
                                                  GameType="{Binding Pcc.Game}" Margin="0,-4"/>
                 <StatusBarItem>
-                    <TextBlock x:Name="StatusBar_LeftMostText" Text="Select package file to load"/>
+                    <TextBlock x:Name="StatusBar_LeftMostText"/>
                 </StatusBarItem>
                 <sharedToolControls:PackageMountWarning Package="{Binding Pcc}" />
                 <StatusBarItem HorizontalAlignment="Right" Visibility="{Binding Pcc, Converter={StaticResource NullVisibilityConverter}}">

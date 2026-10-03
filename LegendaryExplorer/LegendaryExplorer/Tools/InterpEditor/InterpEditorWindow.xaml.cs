@@ -30,7 +30,7 @@ namespace LegendaryExplorer.Tools.InterpEditor
         {
             LoadCommands();
             DataContext = this;
-            StatusText = "Select package file to load";
+            StatusText = string.Empty;
             InitializeComponent();
             RecentsController.InitRecentControl(Toolname, Recents_MenuItem, LoadFile);
 
