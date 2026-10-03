@@ -6,6 +6,7 @@ using System.Text;
 using System.Windows;
 using System.Windows.Controls;
 using LegendaryExplorer.Misc;
+using LegendaryExplorer.UserControls.SharedToolControls;
 using LegendaryExplorerCore.Unreal;
 using Microsoft.Win32;
 using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
@@ -18,10 +19,14 @@ namespace LegendaryExplorer.ToolsetDev;
 public partial class PSAViewerWindow : NotifyPropertyChangedWindowBase
 {
     private PSA psa;
+    private readonly RecentsControl pinnedFilesControl = new();
     public PSAViewerWindow()
     {
         DataContext = this;
         InitializeComponent();
+        pinnedFilesControl.InitPinnedControl("PSAViewer", LoadFile, "PSA files|*.psa");
+        pinnedFilesControl.AttachPinFileMenu(Recents_MenuItem);
+        Closed += (_, _) => pinnedFilesControl.Dispose();
         LoadRecentList();
         RefreshRecent();
     }
@@ -113,12 +118,9 @@ public partial class PSAViewerWindow : NotifyPropertyChangedWindowBase
     public void RefreshRecent()
     {
         Recents_MenuItem.Items.Clear();
-        if (RFiles.Count <= 0)
-        {
-            Recents_MenuItem.IsEnabled = false;
-            return;
-        }
         Recents_MenuItem.IsEnabled = true;
+        Recents_MenuItem.Items.Add(pinnedFilesControl.CreatePinnedMenu());
+        if (RFiles.Count > 0) Recents_MenuItem.Items.Add(new Separator());
 
         int i = 0;
         foreach (string filepath in RFiles)
@@ -126,7 +128,8 @@ public partial class PSAViewerWindow : NotifyPropertyChangedWindowBase
             var fr = new MenuItem
             {
                 Header = filepath.Replace("_", "__"),
-                Tag = filepath
+                Tag = filepath,
+                ContextMenu = pinnedFilesControl.CreatePinContextMenu(new RecentsControl.RecentItem(filepath, null))
             };
             fr.Click += RecentFile_click;
             Recents_MenuItem.Items.Add(fr);

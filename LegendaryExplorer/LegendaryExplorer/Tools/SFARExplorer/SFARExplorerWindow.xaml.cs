@@ -44,7 +44,7 @@ namespace LegendaryExplorer.Tools.SFARExplorer
             DataContext = this;
             LoadCommands();
             InitializeComponent();
-            RecentsController.InitRecentControl(Toolname, Recents_MenuItem, fileName => LoadFile(fileName));
+            RecentsController.InitRecentControl(Toolname, Recents_MenuItem, fileName => LoadFile(fileName), "SFAR files|*.sfar");
         }
 
         public GenericCommand LoadDLCCommand { get; set; }

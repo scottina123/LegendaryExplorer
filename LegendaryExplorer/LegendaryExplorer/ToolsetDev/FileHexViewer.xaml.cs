@@ -10,6 +10,7 @@ using System.Windows.Controls;
 using Be.Windows.Forms;
 using LegendaryExplorer.Dialogs;
 using LegendaryExplorer.Misc;
+using LegendaryExplorer.UserControls.SharedToolControls;
 using LegendaryExplorerCore.Gammtek.IO;
 using LegendaryExplorerCore.Helpers;
 using LegendaryExplorerCore.Misc;
@@ -34,12 +35,15 @@ namespace LegendaryExplorer.ToolsetDev
         private List<string> RFiles;
         private readonly string FileHexViewerDataFolder = Path.Combine(AppDirectories.AppDataFolder, @"FileHexViewer\");
         private const string RECENTFILES_FILE = "RECENTFILES";
+        private readonly RecentsControl pinnedFilesControl = new();
 
         public HexBox Interpreter_Hexbox { get; private set; }
         public FileHexViewer()
         {
             DataContext = this;
             InitializeComponent();
+            pinnedFilesControl.InitPinnedControl("FileHexViewer", LoadFile, "All files|*.*");
+            pinnedFilesControl.AttachPinFileMenu(Recents_MenuItem);
             LoadRecentList();
             RefreshRecent();
         }
@@ -398,6 +402,7 @@ namespace LegendaryExplorer.ToolsetDev
 
         private void FileHexViewerWPF_OnClosing(object sender, CancelEventArgs e)
         {
+            pinnedFilesControl.Dispose();
             pcc?.Release();
             Interpreter_Hexbox_Host.Dispose();
             Interpreter_Hexbox_Host.Child = null;
@@ -488,12 +493,9 @@ namespace LegendaryExplorer.ToolsetDev
         public void RefreshRecent()
         {
             Recents_MenuItem.Items.Clear();
-            if (RFiles.Count <= 0)
-            {
-                Recents_MenuItem.IsEnabled = false;
-                return;
-            }
             Recents_MenuItem.IsEnabled = true;
+            Recents_MenuItem.Items.Add(pinnedFilesControl.CreatePinnedMenu());
+            if (RFiles.Count > 0) Recents_MenuItem.Items.Add(new Separator());
 
             int i = 0;
             foreach (string filepath in RFiles)
@@ -501,7 +503,8 @@ namespace LegendaryExplorer.ToolsetDev
                 var fr = new MenuItem
                 {
                     Header = filepath.Replace("_", "__"),
-                    Tag = filepath
+                    Tag = filepath,
+                    ContextMenu = pinnedFilesControl.CreatePinContextMenu(new RecentsControl.RecentItem(filepath, null))
                 };
                 fr.Click += RecentFile_click;
                 Recents_MenuItem.Items.Add(fr);

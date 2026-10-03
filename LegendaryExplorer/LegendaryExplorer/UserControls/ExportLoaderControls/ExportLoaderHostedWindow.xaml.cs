@@ -121,8 +121,16 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         private void ConfigureRecents()
         {
-            RecentsController.InitRecentControl(Toolname, Recents_MenuItem, HostedControl is FileExportLoaderControl felc ? felc.LoadFile : null);
+            RecentsController.InitRecentControl(Toolname, Recents_MenuItem, HostedControl is FileExportLoaderControl felc ? felc.LoadFile : null,
+                GetPinnedFileFilter(Toolname));
         }
+
+        private static string GetPinnedFileFilter(string toolname) => toolname switch
+        {
+            "TLKEditor" => "ME2/ME3/LE2/LE3 talk files|*.tlk",
+            "Shader viewer" => "LE Global Shader Cache Files|*.bin",
+            _ => GameFileFilters.OpenFileFilter
+        };
 
         private void NotifyPendingChangesStatusChanged(object sender, EventArgs e)
         {
@@ -147,7 +155,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             HostedControl.IsPoppedOut = true;
             HostedControl.PoppedOut(this);
             ContentGrid.Children.Add(hostedControl);
-            RecentsController.InitRecentControl(hostedControl.Toolname, Recents_MenuItem, hostedControl.LoadFile);
+            RecentsController.InitRecentControl(hostedControl.Toolname, Recents_MenuItem, hostedControl.LoadFile,
+                GetPinnedFileFilter(hostedControl.Toolname));
             if (file != null)
             {
                 hostedControl.LoadFile(file);

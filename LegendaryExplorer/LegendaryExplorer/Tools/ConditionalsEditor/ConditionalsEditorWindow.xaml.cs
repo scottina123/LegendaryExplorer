@@ -187,7 +187,7 @@ namespace LegendaryExplorer.Tools.ConditionalsEditor
             InitializeComponent();
             HideHexBox = true;
             PopulateVanillaConditionalsMenu();
-            RecentsController.InitRecentControl(Toolname, Recents_MenuItem, LoadFile);
+            RecentsController.InitRecentControl(Toolname, Recents_MenuItem, LoadFile, CNDFileFilter);
         }
 
         private void PopulateVanillaConditionalsMenu()

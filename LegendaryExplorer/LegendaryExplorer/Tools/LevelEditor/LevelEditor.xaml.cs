@@ -29,6 +29,7 @@ using LegendaryExplorer.Tools.PackageEditor;
 using LegendaryExplorer.Tools.PackageEditor.Experiments;
 using LegendaryExplorer.Tools.AssetViewer;
 using LegendaryExplorer.UserControls.ExportLoaderControls;
+using LegendaryExplorer.UserControls.SharedToolControls;
 using
 Newtonsoft.Json;
 using System;
@@ -77,10 +78,11 @@ public class RecentFileSet
 
 }
 
-public class RecentFileSetGroup(MEGame? game)
+public class RecentFileSetGroup(MEGame? game, bool isPinned = false)
 {
     public MEGame? Game { get; } = game;
-    public string Header => Game?.ToString() ?? "Misc";
+    public bool IsPinned { get; } = isPinned;
+    public string Header => IsPinned ? "Pinned files" : Game?.ToString() ?? "Misc";
     public ObservableCollectionExtended<RecentFileSet> Items { get; } = [];
 }
 
@@ -724,6 +726,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
     private long _lastCameraTextUpdateTimestamp;
 
     public ObservableCollectionExtended<RecentFileSet> RecentSets { get; } = [];
+    public RecentsControl PinnedFilesControl { get; } = new() { ShowRecentTabs = false };
 
     public IReadOnlyList<RecentFileSetGroup> RecentSetGroups { get; } = new[]
     {
@@ -733,7 +736,8 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         new RecentFileSetGroup(MEGame.LE1),
         new RecentFileSetGroup(MEGame.LE2),
         new RecentFileSetGroup(MEGame.LE3),
-        new RecentFileSetGroup(null)
+        new RecentFileSetGroup(null),
+        new RecentFileSetGroup(null, isPinned: true)
     };
 
     private RecentFileSetGroup _selectedRecentSetGroup;
@@ -763,6 +767,9 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         SelectedRecentSetGroup = RecentSetGroups[0];
         LoadCommands();
         InitializeComponent();
+        PinnedFilesControl.InitPinnedControl("LevelEditor", path => _ = LoadFileAsync(path));
+        PinnedFilesControl.SelectedRecentGroup = PinnedFilesControl.PinnedGroup;
+        PinnedFilesControl.AttachPinFileMenu(Recents_MenuItem);
         // Resource preparation should yield for interactions anywhere in the editor, not only over the viewport.
         PreviewMouseMove += (_, _) => RenderContext.NotifyUserActivity();
         PreviewMouseDown += (_, _) => RenderContext.NotifyUserActivity();
@@ -772,6 +779,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         LevelLiveMaterialEditor.CloseMaterialEditorRequested += LevelLiveMaterialEditor_CloseRequested;
         LevelLiveMaterialEditor.LiveMaterialPreviewChanged += LevelLiveMaterialEditor_PreviewChanged;
         LoadRecentSets();
+        RefreshRecentsMenu();
 
         SceneViewer.Context = RenderContext;
         UndoHistory.PropertyChanged += UndoHistory_PropertyChanged;
@@ -3190,6 +3198,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         LevelLiveMaterialEditor.LiveMaterialPreviewChanged -= LevelLiveMaterialEditor_PreviewChanged;
         LevelLiveMaterialEditor.Dispose();
         LevelMorphEditor.Dispose();
+        PinnedFilesControl.Dispose();
         SceneViewer.Dispose();
     }
 
@@ -3223,12 +3232,12 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
     private RecentFileSetGroup GetRecentSetGroup(RecentFileSet set)
     {
         MEGame? game = set.Game.IsMEGame() ? set.Game : null;
-        return RecentSetGroups.First(group => group.Game == game);
+        return RecentSetGroups.First(group => !group.IsPinned && group.Game == game);
     }
 
     private void RefreshRecentSetGroups(RecentFileSet preferredSet = null)
     {
-        foreach (var group in RecentSetGroups)
+        foreach (var group in RecentSetGroups.Where(group => !group.IsPinned))
         {
             group.Items.ReplaceAll(RecentSets.Where(set => GetRecentSetGroup(set) == group));
         }
@@ -3237,7 +3246,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         {
             SelectedRecentSetGroup = GetRecentSetGroup(preferredSet);
         }
-        else if (SelectedRecentSetGroup == null || !SelectedRecentSetGroup.Items.Any)
+        else if (SelectedRecentSetGroup == null || (!SelectedRecentSetGroup.IsPinned && !SelectedRecentSetGroup.Items.Any))
         {
             SelectedRecentSetGroup = RecentSets.Count > 0 ? GetRecentSetGroup(RecentSets[0]) : RecentSetGroups[0];
         }
@@ -3322,18 +3331,44 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
     {
         RefreshRecentSetGroups(preferredSet);
         Recents_MenuItem.Items.Clear();
-        Recents_MenuItem.IsEnabled = RecentSets.Count > 0;
+        Recents_MenuItem.IsEnabled = true;
+        Recents_MenuItem.Items.Add(PinnedFilesControl.CreatePinnedMenu());
+        if (RecentSets.Count > 0) Recents_MenuItem.Items.Add(new Separator());
         foreach (var set in RecentSets)
         {
             var mi = new MenuItem
             {
                 Header = set.DisplayName.Replace("_", "__"),
                 ToolTip = set.TooltipText,
-                Tag = set
+                Tag = set,
+                ContextMenu = CreateRecentSetPinContextMenu(set)
             };
             mi.Click += (_, _) => OpenRecentFileSet((RecentFileSet)mi.Tag);
             Recents_MenuItem.Items.Add(mi);
         }
+    }
+
+    private ContextMenu CreateRecentSetPinContextMenu(RecentFileSet set)
+    {
+        if (set.FilePaths.Count == 1)
+            return PinnedFilesControl.CreatePinContextMenu(new RecentsControl.RecentItem(set.FilePaths[0], set.Game));
+
+        var menu = new ContextMenu();
+        foreach (string path in set.FilePaths)
+        {
+            var item = new RecentsControl.RecentItem(path, set.Game);
+            var pin = new MenuItem { ToolTip = path };
+            menu.Opened += (_, _) => pin.Header = $"{(PinnedFilesControl.IsPinned(path) ? "Unpin" : "Pin")} {Path.GetFileName(path).Replace("_", "__")}";
+            pin.Click += (_, _) => PinnedFilesControl.TogglePinItem(item);
+            menu.Items.Add(pin);
+        }
+        return menu;
+    }
+
+    private void RecentSetButton_ContextMenuOpening(object sender, ContextMenuEventArgs e)
+    {
+        if (sender is Button { DataContext: RecentFileSet set } button)
+            button.ContextMenu = CreateRecentSetPinContextMenu(set);
     }
 
     #endregion

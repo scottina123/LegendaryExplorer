@@ -1012,7 +1012,17 @@
                             </TabControl.ItemTemplate>
                             <TabControl.ContentTemplate>
                                 <DataTemplate>
+                                    <Grid>
                                     <Grid MinHeight="40">
+                                        <Grid.Style>
+                                            <Style TargetType="Grid">
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsPinned}" Value="True">
+                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Grid.Style>
                                         <TextBlock Text="No recent level sets in this tab." HorizontalAlignment="Center" VerticalAlignment="Center"
                                                    Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}">
                                             <TextBlock.Style>
@@ -1043,7 +1053,10 @@
                                                     <Button Margin="3" Padding="3" MinHeight="26" ToolTip="{Binding TooltipText}"
                                                             HorizontalContentAlignment="Stretch"
                                                             Command="{Binding DataContext.OpenRecentSetCommand, RelativeSource={RelativeSource AncestorType={x:Type local:LevelEditor}}}"
-                                                            CommandParameter="{Binding}">
+                                                            CommandParameter="{Binding}" ContextMenuOpening="RecentSetButton_ContextMenuOpening">
+                                                        <Button.ContextMenu>
+                                                            <ContextMenu/>
+                                                        </Button.ContextMenu>
                                                         <Grid HorizontalAlignment="Center">
                                                             <Grid.ColumnDefinitions>
                                                                 <ColumnDefinition Width="Auto"/>
@@ -1069,6 +1082,20 @@
                                                 </DataTemplate>
                                             </ItemsControl.ItemTemplate>
                                         </ItemsControl>
+                                    </Grid>
+                                        <ContentControl>
+                                            <ContentControl.Style>
+                                                <Style TargetType="ContentControl">
+                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsPinned}" Value="True">
+                                                            <Setter Property="Visibility" Value="Visible"/>
+                                                            <Setter Property="Content" Value="{Binding PinnedFilesControl, RelativeSource={RelativeSource AncestorType={x:Type local:LevelEditor}}}"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </ContentControl.Style>
+                                        </ContentControl>
                                     </Grid>
                                 </DataTemplate>
                             </TabControl.ContentTemplate>

@@ -14,6 +14,8 @@ using LegendaryExplorer.SharedUI.Interfaces;
 using LegendaryExplorerCore.Helpers;
 using LegendaryExplorerCore.Misc;
 using LegendaryExplorerCore.Packages;
+using Microsoft.Win32;
+using Microsoft.WindowsAPICodePack.Dialogs;
 
 namespace LegendaryExplorer.UserControls.SharedToolControls
 {
@@ -65,11 +67,24 @@ namespace LegendaryExplorer.UserControls.SharedToolControls
         private Action<string> RecentItemClicked;
 
         public ObservableCollectionExtended<RecentItem> RecentItems { get; } = new();
+        public ObservableCollectionExtended<RecentItem> PinnedItems { get; } = new();
 
-        public class RecentItemGroup(MEGame? game)
+        // Weak references allow open windows (including different hosted tools) to share
+        // pins by tool name without keeping closed windows alive.
+        private static readonly List<WeakReference<RecentsControl>> PinControls = new();
+        private RecentsControl pinnedMenuControl;
+        private MenuItem pinMenuAnchor;
+        private MenuItem pinFileMenu;
+        private MenuItem pinFileMenuParent;
+
+        public class RecentItemGroup(MEGame? game, bool isPinned = false)
         {
             public MEGame? Game { get; } = game;
-            public string Header => Game?.ToString() ?? "Misc";
+            public bool IsPinned { get; } = isPinned;
+            public string Header => IsPinned ? "Pinned" : Game?.ToString() ?? "Misc";
+            public string EmptyMessage => IsPinned
+                ? "No pinned files to show. Use Pin file… or right-click a recent item."
+                : "No recently opened items in this tab.";
             public ObservableCollectionExtended<RecentItem> Items { get; } = new();
         }
 
@@ -81,8 +96,27 @@ namespace LegendaryExplorer.UserControls.SharedToolControls
             new RecentItemGroup(MEGame.LE1),
             new RecentItemGroup(MEGame.LE2),
             new RecentItemGroup(MEGame.LE3),
-            new RecentItemGroup(null)
+            new RecentItemGroup(null),
+            new RecentItemGroup(null, isPinned: true)
         };
+
+        public RecentItemGroup PinnedGroup => RecentGroups.Last();
+        public bool ShowPinnedSearch => PinnedItems.Count > 9;
+        public string PinBrowseLabel => IsFolderRecents ? "Pin folder…" : "Pin file…";
+        public string PinnedFileFilter { get; set; } = GameFileFilters.OpenFileFilter;
+
+        private string pinnedSearchText = "";
+        public string PinnedSearchText
+        {
+            get => pinnedSearchText;
+            set
+            {
+                if (SetProperty(ref pinnedSearchText, value ?? ""))
+                {
+                    RefreshPinnedGroup();
+                }
+            }
+        }
 
         private RecentItemGroup selectedRecentGroup;
         public RecentItemGroup SelectedRecentGroup
@@ -99,12 +133,12 @@ namespace LegendaryExplorer.UserControls.SharedToolControls
                            && item.Game is MEGame knownGame && knownGame.IsMEGame()
                 ? item.Game
                 : null;
-            return RecentGroups.First(group => group.Game == game);
+            return RecentGroups.First(group => !group.IsPinned && group.Game == game);
         }
 
         private void RefreshRecentGroups(RecentItem preferredItem = null)
         {
-            foreach (var group in RecentGroups)
+            foreach (var group in RecentGroups.Where(group => !group.IsPinned))
             {
                 group.Items.ReplaceAll(RecentItems.Where(item => GetRecentGroup(item) == group));
             }
@@ -113,7 +147,7 @@ namespace LegendaryExplorer.UserControls.SharedToolControls
             {
                 SelectedRecentGroup = GetRecentGroup(preferredItem);
             }
-            else if (SelectedRecentGroup == null || !SelectedRecentGroup.Items.Any)
+            else if (SelectedRecentGroup == null || (!SelectedRecentGroup.IsPinned && !SelectedRecentGroup.Items.Any))
             {
                 SelectedRecentGroup = RecentItems.Count > 0 ? GetRecentGroup(RecentItems[0]) : RecentGroups[0];
             }
@@ -126,7 +160,29 @@ namespace LegendaryExplorer.UserControls.SharedToolControls
         }
 
         public static readonly DependencyProperty IsFolderRecentsProperty = DependencyProperty.Register(
-            nameof(IsFolderRecents), typeof(bool), typeof(RecentsControl), new PropertyMetadata(false));
+            nameof(IsFolderRecents), typeof(bool), typeof(RecentsControl), new PropertyMetadata(false, (sender, _) =>
+            {
+                var control = (RecentsControl)sender;
+                control.OnPropertyChanged(nameof(PinBrowseLabel));
+                if (control.pinFileMenu != null) control.pinFileMenu.Header = control.PinBrowseLabel;
+            }));
+
+        public bool ShowRecentTabs
+        {
+            get => (bool)GetValue(ShowRecentTabsProperty);
+            set => SetValue(ShowRecentTabsProperty, value);
+        }
+
+        public static readonly DependencyProperty ShowRecentTabsProperty = DependencyProperty.Register(
+            nameof(ShowRecentTabs), typeof(bool), typeof(RecentsControl), new PropertyMetadata(true, (sender, args) =>
+            {
+                var control = (RecentsControl)sender;
+                if (control.RecentTabs == null) return;
+                // Keep the normal theme for visible tabs. Pins-only views have no headers.
+                var hiddenTabStyle = new Style(typeof(TabItem));
+                hiddenTabStyle.Setters.Add(new Setter(VisibilityProperty, Visibility.Collapsed));
+                control.RecentTabs.ItemContainerStyle = (bool)args.NewValue ? null : hiddenTabStyle;
+            }));
 
         public RecentsControl()
         {
@@ -162,13 +218,15 @@ namespace LegendaryExplorer.UserControls.SharedToolControls
         public RelayCommand OpenRecentItemLocationCommand { get; private set; }
         public RelayCommand CopyRecentItemPathCommand { get; private set; }
         public RelayCommand CopyRecentItemNameCommand { get; private set; }
+        public RelayCommand BrowsePinnedItemsCommand { get; private set; }
 
         private void LoadCommands()
         {
-            RecentFileOpenCommand = new RelayCommand(filePath => RecentItemClicked?.Invoke((string)filePath));
+            RecentFileOpenCommand = new RelayCommand(filePath => RecentItemClicked?.Invoke((string)filePath), CanAccessRecentItem);
             OpenRecentItemLocationCommand = new RelayCommand(OpenRecentItemLocation, CanAccessRecentItem);
             CopyRecentItemPathCommand = new RelayCommand(CopyRecentItemPath, CanAccessRecentItem);
             CopyRecentItemNameCommand = new RelayCommand(CopyRecentItemName, CanAccessRecentItem);
+            BrowsePinnedItemsCommand = new RelayCommand(_ => BrowsePinnedItems(), _ => RecentsFoldername != null);
         }
 
         private static bool CanAccessRecentItem(object pathObj)
@@ -255,37 +313,258 @@ namespace LegendaryExplorer.UserControls.SharedToolControls
             }
         }
 
+        private void RecentItemContextMenu_Opened(object sender, RoutedEventArgs e)
+        {
+            if (sender is ContextMenu { DataContext: RecentItem item } menu
+                && menu.Items[0] is MenuItem pinItem)
+            {
+                pinItem.Header = IsPinned(item.Path) ? "Unpin" : "Pin";
+                pinItem.IsEnabled = RecentsFoldername != null;
+            }
+        }
+
+        private void TogglePinnedItem_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is FrameworkElement { DataContext: RecentItem item })
+            {
+                TogglePinItem(item);
+            }
+        }
+
+        public bool IsPinned(string path) => PinnedItems.Any(item =>
+            string.Equals(item.Path, path, StringComparison.OrdinalIgnoreCase));
+
+        public void TogglePinItem(RecentItem item)
+        {
+            if (IsPinned(item.Path)) UnpinItem(item);
+            else PinItem(item);
+        }
+
+        public void PinItem(RecentItem item)
+        {
+            if (item == null || string.IsNullOrWhiteSpace(item.Path) || IsPinned(item.Path)) return;
+            PinnedItems.Add(new RecentItem(Path.GetFullPath(item.Path), item.Game));
+            RefreshPinnedGroup();
+            SavePinnedList();
+        }
+
+        public void UnpinItem(RecentItem item)
+        {
+            if (item == null) return;
+            PinnedItems.ReplaceAll(PinnedItems.Where(pin => !string.Equals(pin.Path, item.Path, StringComparison.OrdinalIgnoreCase)).ToList());
+            RefreshPinnedGroup();
+            SavePinnedList();
+        }
+
+        private void RefreshPinnedGroup()
+        {
+            // A hidden search field must not leave the short list filtered.
+            if (!ShowPinnedSearch && pinnedSearchText.Length > 0)
+            {
+                pinnedSearchText = "";
+                OnPropertyChanged(nameof(PinnedSearchText));
+            }
+            string search = PinnedSearchText.Trim();
+            PinnedGroup.Items.ReplaceAll(PinnedItems.Where(item =>
+                item.Path.Contains(search, StringComparison.OrdinalIgnoreCase)).ToList());
+            OnPropertyChanged(nameof(ShowPinnedSearch));
+        }
+
+        private void SetPinnedItems(IEnumerable<RecentItem> items)
+        {
+            PinnedItems.ReplaceAll(items.Where(item => !string.IsNullOrWhiteSpace(item.Path))
+                .DistinctBy(item => item.Path, StringComparer.OrdinalIgnoreCase).ToList());
+            RefreshPinnedGroup();
+        }
+
+        private void RegisterPinControl()
+        {
+            PinControls.RemoveAll(reference => !reference.TryGetTarget(out var control) || ReferenceEquals(control, this));
+            PinControls.Add(new WeakReference<RecentsControl>(this));
+        }
+
+        private void SavePinnedList()
+        {
+            if (RecentsFoldername == null) return;
+            File.WriteAllLines(PinnedAppDataFile, PinnedItems.Select(item => item.ConvertToRecentEntry()));
+            foreach (var reference in PinControls.ToList())
+            {
+                if (reference.TryGetTarget(out var control) && !ReferenceEquals(control, this)
+                    && string.Equals(control.RecentsFoldername, RecentsFoldername, StringComparison.OrdinalIgnoreCase))
+                {
+                    control.SetPinnedItems(PinnedItems);
+                }
+            }
+        }
+
+        public void BrowsePinnedItems()
+        {
+            if (RecentsFoldername == null) return;
+            string title = $"Pin {(IsFolderRecents ? "folder" : "files")} — {Path.GetFileName(RecentsFoldername)}";
+            if (IsFolderRecents)
+            {
+                using var dialog = new CommonOpenFileDialog { Title = title, IsFolderPicker = true, Multiselect = true };
+                if (DirectoryMemory.ShowDialog(dialog, Window.GetWindow(this)) != CommonFileDialogResult.Ok) return;
+                foreach (string path in dialog.FileNames) PinItem(new RecentItem(path, null));
+            }
+            else
+            {
+                var dialog = new OpenFileDialog { Title = title, Filter = PinnedFileFilter, Multiselect = true, CheckFileExists = true };
+                if (DirectoryMemory.ShowDialog(dialog, Window.GetWindow(this)) != true) return;
+                foreach (string path in dialog.FileNames)
+                {
+                    MEGame? game = RecentItems.FirstOrDefault(item => string.Equals(item.Path, path, StringComparison.OrdinalIgnoreCase))?.Game;
+                    if (game == null && new[] { ".pcc", ".u", ".upk", ".sfm", ".udk", ".xxx" }
+                        .Contains(Path.GetExtension(path), StringComparer.OrdinalIgnoreCase))
+                    {
+                        try
+                        {
+                            using var package = MEPackageHandler.QuickOpenMEPackage(path);
+                            game = package.Game;
+                        }
+                        catch (Exception)
+                        {
+                            // Files other than packages can still be pinned, without a game icon.
+                        }
+                    }
+                    PinItem(new RecentItem(path, game));
+                }
+            }
+            SelectedRecentGroup = PinnedGroup;
+        }
+
+        /// <summary>Also used by tools with custom recent-file menus.</summary>
+        public ContextMenu CreatePinContextMenu(RecentItem item)
+        {
+            var menu = new ContextMenu { DataContext = item };
+            var pin = new MenuItem();
+            menu.Opened += (_, _) =>
+            {
+                pin.Header = IsPinned(item.Path) ? "Unpin" : "Pin";
+                pin.IsEnabled = RecentsFoldername != null;
+            };
+            pin.Click += (_, _) => TogglePinItem(item);
+            menu.Items.Add(pin);
+            menu.Items.Add(new Separator());
+            menu.Items.Add(new MenuItem { Header = "Open file location", Command = OpenRecentItemLocationCommand, CommandParameter = item.Path });
+            menu.Items.Add(new MenuItem { Header = "Copy file path", Command = CopyRecentItemPathCommand, CommandParameter = item.Path });
+            menu.Items.Add(new MenuItem { Header = "Copy file name", Command = CopyRecentItemNameCommand, CommandParameter = item.Path });
+            return menu;
+        }
+
+        public MenuItem CreatePinnedMenu()
+        {
+            pinnedMenuControl?.Dispose();
+            pinnedMenuControl = new RecentsControl
+            {
+                RecentsFoldername = RecentsFoldername,
+                RecentItemClicked = RecentItemClicked,
+                IsFolderRecents = IsFolderRecents,
+                PinnedFileFilter = PinnedFileFilter,
+                ShowRecentTabs = false,
+                Width = 540
+            };
+            pinnedMenuControl.SetPinnedItems(PinnedItems);
+            pinnedMenuControl.SelectedRecentGroup = pinnedMenuControl.PinnedGroup;
+            pinnedMenuControl.RegisterPinControl();
+            var menu = new MenuItem { Header = "Pinned files" };
+            menu.Items.Add(new MenuItem { Header = pinnedMenuControl, StaysOpenOnClick = true });
+            return menu;
+        }
+
+        /// <summary>Adds the file picker directly to the File menu next to Recents.</summary>
+        public void AttachPinFileMenu(MenuItem recentsMenu)
+        {
+            if (!ReferenceEquals(pinMenuAnchor, recentsMenu))
+            {
+                DetachPinFileMenu();
+                pinMenuAnchor = recentsMenu;
+                pinMenuAnchor.Loaded += PinMenuAnchor_Loaded;
+            }
+            TryAttachPinFileMenu();
+        }
+
+        private void PinMenuAnchor_Loaded(object sender, RoutedEventArgs e) => TryAttachPinFileMenu();
+
+        private void TryAttachPinFileMenu()
+        {
+            if (RecentsFoldername == null || pinFileMenu != null || pinMenuAnchor == null) return;
+            var parent = ItemsControl.ItemsControlFromItemContainer(pinMenuAnchor) as MenuItem
+                ?? pinMenuAnchor.Parent as MenuItem;
+            if (parent == null) return;
+            pinFileMenu = new MenuItem
+            {
+                Header = PinBrowseLabel,
+                Command = BrowsePinnedItemsCommand
+            };
+            pinFileMenuParent = parent;
+            parent.Items.Insert(parent.Items.IndexOf(pinMenuAnchor) + 1, pinFileMenu);
+        }
+
+        private void DetachPinFileMenu()
+        {
+            if (pinMenuAnchor != null) pinMenuAnchor.Loaded -= PinMenuAnchor_Loaded;
+            pinFileMenuParent?.Items.Remove(pinFileMenu);
+            pinMenuAnchor = null;
+            pinFileMenu = null;
+            pinFileMenuParent = null;
+        }
+
         private string RecentsAppDataFile => Path.Combine(Directory.CreateDirectory(Path.Combine(AppDirectories.AppDataFolder, RecentsFoldername)).FullName, "RECENTFILES");
+        private string PinnedAppDataFile => Path.Combine(Path.GetDirectoryName(RecentsAppDataFile), "PINNEDFILES");
 
         /// <summary>
         /// Must be called before the control will properly work
         /// </summary>
         /// <param name="filename">Recents filename. Stored in the appdata. Do not pass an extension, just the name.</param>
         /// <param name="openFileCallback">The callback to invoke when a recents item is clicked.</param>
-        public void InitRecentControl(string toolname, MenuItem recentsMenu, Action<string> openFileCallback)
+        public void InitRecentControl(string toolname, MenuItem recentsMenu, Action<string> openFileCallback,
+            string fileFilter = GameFileFilters.OpenFileFilter, bool loadRecents = true)
         {
+            DetachPinFileMenu();
+            pinnedMenuControl?.Dispose();
+            pinnedMenuControl = null;
             RecentsMenu = recentsMenu;
             RecentsMenu.IsEnabled = false; //Default to false as there may be no recents
             RecentItemClicked = null;
+            RecentsFoldername = toolname;
+            RecentItems.ClearEx();
+            PinnedItems.ClearEx();
+            PinnedSearchText = "";
+            RefreshRecentGroups();
+            RefreshPinnedGroup();
             if (toolname == null)
             {
                 // Recents is disabled
                 RecentItems.ClearEx();
                 RefreshRecentGroups();
+                RecentsMenu.Items.Clear();
                 return;
             }
 
             // Init the control
-            RecentsFoldername = toolname;
             RecentItemClicked = openFileCallback;
+            PinnedFileFilter = fileFilter;
+            RegisterPinControl();
+            AttachPinFileMenu(recentsMenu);
             
             // Load recents list
-            if (File.Exists(RecentsAppDataFile))
+            if (loadRecents && File.Exists(RecentsAppDataFile))
             {
                 string[] recents = File.ReadAllLines(RecentsAppDataFile);
                 SetRecents(recents.Select(RecentItem.FromRecentEntryString), selectMostRecent: true);
             }
+            if (File.Exists(PinnedAppDataFile))
+            {
+                SetPinnedItems(File.ReadAllLines(PinnedAppDataFile).Where(entry => entry.Length > 4)
+                    .Select(RecentItem.FromRecentEntryString));
+            }
+            RefreshRecentsMenu();
         }
+
+        /// <summary>Loads pins for tools that maintain their own recent-file format.</summary>
+        public void InitPinnedControl(string toolname, Action<string> openFileCallback, string fileFilter = GameFileFilters.OpenFileFilter)
+            => InitRecentControl(toolname, new MenuItem(), openFileCallback, fileFilter, loadRecents: false);
 
         /// <summary>
         /// Sets the whole recents list. Does not propogate.
@@ -329,8 +608,11 @@ namespace LegendaryExplorer.UserControls.SharedToolControls
         /// <param name="recentsContainer"></param>
         private void RefreshRecentsMenu()
         {
+            if (RecentsMenu == null) return;
             RecentsMenu.Items.Clear();
-            RecentsMenu.IsEnabled = RecentItems.Count > 0;
+            // Browsing for a pin is available even before this tool has any history.
+            RecentsMenu.IsEnabled = RecentsFoldername != null || RecentItems.Count > 0;
+            RecentsMenu.Items.Add(CreatePinnedMenu());
             foreach (var recentItem in RecentItems)
             {
                 var iconBitmap = GameToImageIconConverter.StaticConvert(recentItem.Game);
@@ -338,7 +620,8 @@ namespace LegendaryExplorer.UserControls.SharedToolControls
                 {
                     Icon = recentItem.IsAfc ? new StatusBarGameIDIndicator { GameType = "AFC" } : iconBitmap == null ? null : new Image { Source = iconBitmap },
                     Header = recentItem.Path.Replace("_", "__"),
-                    Tag = recentItem.Path
+                    Tag = recentItem.Path,
+                    ContextMenu = CreatePinContextMenu(recentItem)
                 };
                 fr.Click += (x, y) => RecentItemClicked?.Invoke((string)fr.Tag);
                 RecentsMenu.Items.Add(fr);
@@ -419,8 +702,13 @@ namespace LegendaryExplorer.UserControls.SharedToolControls
 
         public void Dispose()
         {
+            DetachPinFileMenu();
+            PinControls.RemoveAll(reference => !reference.TryGetTarget(out var control) || ReferenceEquals(control, this));
+            pinnedMenuControl?.Dispose();
+            pinnedMenuControl = null;
             RecentItemClicked = null;
             RecentsMenu = null;
+            RecentsFoldername = null;
         }
     }
 }

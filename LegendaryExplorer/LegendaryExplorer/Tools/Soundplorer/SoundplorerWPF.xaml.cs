@@ -93,7 +93,8 @@ namespace LegendaryExplorer.Tools.Soundplorer
             LoadCommands();
             InitializeComponent();
             soundPanel.NavigationRequested += OpenExportInPackageEditor;
-            RecentsController.InitRecentControl(Toolname, Recents_MenuItem, LoadFile);
+            RecentsController.InitRecentControl(Toolname, Recents_MenuItem, LoadFile,
+                "All supported files|*.pcc;*.u;*.sfm;*.upk;*.isb;*.afc;*.xxx|Package files|*.pcc;*.u;*.sfm;*.upk;*.xxx|ISACT Sound Bank files|*.isb|Audio File Cache (AFC)|*.afc");
         }
 
         public SoundplorerWPF(ExportEntry export) : this()
