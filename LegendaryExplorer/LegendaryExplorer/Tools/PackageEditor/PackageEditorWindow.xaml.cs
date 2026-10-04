@@ -1678,6 +1678,16 @@ namespace LegendaryExplorer.Tools.PackageEditor
             return TryGetSelectedExport(out ExportEntry exp) && exp.HasArchetype;
         }
 
+        private void GoToRowArchetype_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is FrameworkElement { DataContext: TreeViewEntry { Entry: ExportEntry { Archetype: { } archetype } } })
+            {
+                GoToNumber(archetype.UIndex);
+            }
+
+            e.Handled = true;
+        }
+
         private void OpenExportIn(object obj)
         {
             if (obj is string toolName && TryGetSelectedExport(out ExportEntry exp))
@@ -6704,6 +6714,15 @@ namespace LegendaryExplorer.Tools.PackageEditor
 
         private void TreeEntryContainer_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         {
+            // Let inline buttons handle their own click without changing the row selection.
+            for (DependencyObject source = e.OriginalSource as Visual; source != null && source != sender; source = VisualTreeHelper.GetParent(source))
+            {
+                if (source is System.Windows.Controls.Primitives.ButtonBase)
+                {
+                    return;
+                }
+            }
+
             if (_inlineObjectNameEditor?.IsMouseOver == true || _inlineObjectNameIndexEditor?.IsMouseOver == true)
             {
                 return;

@@ -104,6 +104,29 @@
         <converters:EntryFileTypeIconPathConverter x:Key="EntryFileTypeIconPathConverter"/>
         <converters:EmbeddedFileToolTipConverter x:Key="EmbeddedFileToolTipConverter"/>
         <converters:GameTypeConverter x:Key="GameTypeConverter"/>
+        <Style x:Key="InlineArchetypeButtonStyle" TargetType="Button" BasedOn="{StaticResource BorderedButton}">
+            <Setter Property="Width" Value="18"/>
+            <Setter Property="Height" Value="18"/>
+            <Setter Property="MinHeight" Value="0"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Margin" Value="4,0,0,0"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}"/>
+            <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
+            <Setter Property="ToolTip" Value="Go to archetype"/>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.ControlLightBrushKey}}"/>
+                </Trigger>
+                <Trigger Property="IsKeyboardFocused" Value="True">
+                    <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.ControlLightBrushKey}}"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
         <ContextMenu x:Key="EntryContextMenu" Opened="EntryContextMenu_Opened">
             <MenuItem Header="Find usages" ToolTip="Finds places where this name is used" Command="{Binding FindNameUsagesCommand}" SharedUI:Bindings.VisibilityToEnabled="True"/>
             <MenuItem Header="Rename object..." ToolTip="Edits this object's name and UI index inline" Click="RenameObject_Click" Tag="RenameObject" Visibility="Collapsed"/>
@@ -618,6 +641,13 @@
                                                 </Style>
                                             </TextBlock.Style>
                                         </TextBlock>
+                                        <Button x:Name="ArchetypeNavigationButton" Style="{StaticResource InlineArchetypeButtonStyle}"
+                                                Visibility="{Binding HasArchetype, Converter={StaticResource BoolToVisibilityConverter}}"
+                                                Click="GoToRowArchetype_Click"
+                                                AutomationProperties.Name="Go to archetype">
+                                            <fa5:FontAwesome Icon="Solid_LevelUpAlt" Width="11" Height="11"
+                                                             Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
+                                        </Button>
                                         <StackPanel x:Name="ObjectNameEditorPanel" Visibility="Collapsed" Orientation="Horizontal" LostKeyboardFocus="ObjectNameEditor_LostKeyboardFocus">
                                             <TextBox x:Name="ObjectNameEditor" MinWidth="120" VerticalContentAlignment="Center" PreviewKeyDown="ObjectNameEditor_PreviewKeyDown"/>
                                             <TextBlock Margin="4,0" VerticalAlignment="Center" Text="_"/>

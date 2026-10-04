@@ -172,6 +172,8 @@ namespace LegendaryExplorer.SharedUI
         /// </summary>
         public IEntry Entry { get; set; }
 
+        public bool HasArchetype => Entry is ExportEntry { HasArchetype: true };
+
         /// <summary>
         /// Only used on the root node - used to tell what package this entry represent the root for
         /// </summary>
@@ -201,6 +203,11 @@ namespace LegendaryExplorer.SharedUI
 
         private void TVEntryPropertyChanged(object sender, PropertyChangedEventArgs e)
         {
+            if (e.PropertyName == nameof(ExportEntry.HeaderChanged))
+            {
+                OnPropertyChanged(nameof(HasArchetype));
+            }
+
             if (Settings.PackageEditor_ShowTreeEntrySubText)
             {
                 RefreshSubText();

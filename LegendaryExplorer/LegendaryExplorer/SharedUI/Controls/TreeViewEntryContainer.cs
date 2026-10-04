@@ -17,6 +17,12 @@ namespace LegendaryExplorer.SharedUI.Controls
 
         private void OnToolTipOpening(object sender, ToolTipEventArgs e)
         {
+            // Child controls such as inline navigation buttons supply their own tooltip.
+            if (e.OriginalSource is System.Windows.Controls.Primitives.ButtonBase)
+            {
+                return;
+            }
+
             if (DataContext is TreeViewEntry { Entry: not null } tve)
             {
                 var db = LEXDocuDB.LoadDocuDB(tve.Entry.Game);
