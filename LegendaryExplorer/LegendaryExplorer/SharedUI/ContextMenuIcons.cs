@@ -8,7 +8,7 @@ using System.Windows.Threading;
 
 namespace LegendaryExplorer.SharedUI;
 
-/// <summary>Gives static and generated context-menu actions consistent, theme-aware icons.</summary>
+/// <summary>Gives context-menu and menu-bar dropdown actions consistent, theme-aware icons.</summary>
 internal static class ContextMenuIcons
 {
     private static bool _enabled;
@@ -25,15 +25,23 @@ internal static class ContextMenuIcons
             return;
 
         _enabled = true;
+        EventManager.RegisterClassHandler(typeof(Menu), FrameworkElement.LoadedEvent, new RoutedEventHandler(OnMenuLoaded), true);
         EventManager.RegisterClassHandler(typeof(ContextMenu), ContextMenu.OpenedEvent, new RoutedEventHandler(OnOpened), true);
         EventManager.RegisterClassHandler(typeof(MenuItem), MenuItem.SubmenuOpenedEvent, new RoutedEventHandler(OnOpened), true);
         EventManager.RegisterClassHandler(typeof(MenuItem), FrameworkElement.LoadedEvent, new RoutedEventHandler(OnItemLoaded), true);
     }
 
+    private static void OnMenuLoaded(object sender, RoutedEventArgs e)
+    {
+        // Prepare static dropdowns before they take focus when first opened.
+        if (sender is Menu menu)
+            PopulateMenu(menu);
+    }
+
     private static void OnOpened(object sender, RoutedEventArgs e)
     {
         if (!ReferenceEquals(sender, e.OriginalSource) || sender is not ItemsControl menu
-            || (menu is MenuItem item && !IsContextMenuItem(item)))
+            || (menu is MenuItem item && !IsMenuItem(item, includeTopLevel: true)))
             return;
 
         if (menu is ContextMenu)
@@ -51,20 +59,26 @@ internal static class ContextMenuIcons
         {
             item.Dispatcher.BeginInvoke(DispatcherPriority.DataBind, () =>
             {
-                if (IsContextMenuItem(item))
+                if (IsMenuItem(item))
                     PopulateItem(item, GetParentIcon(item));
+                else if (ItemsControl.ItemsControlFromItemContainer(item) is Menu)
+                    PopulateMenu(item);
             });
         }
     }
 
-    private static bool IsContextMenuItem(MenuItem item)
+    private static bool IsMenuItem(MenuItem item, bool includeTopLevel = false)
     {
+        bool hasParentItem = false;
         for (ItemsControl owner = ItemsControl.ItemsControlFromItemContainer(item); owner is not null;)
         {
             if (owner is ContextMenu)
                 return true;
+            if (owner is Menu)
+                return includeTopLevel || hasParentItem;
             if (owner is not MenuItem parent)
                 return false;
+            hasParentItem = true;
             owner = ItemsControl.ItemsControlFromItemContainer(parent);
         }
         return false;
@@ -97,7 +111,9 @@ internal static class ContextMenuIcons
         {
             if ((entry as MenuItem ?? menu.ItemContainerGenerator.ContainerFromItem(entry) as MenuItem) is { } item)
             {
-                PopulateItem(item, parentIcon);
+                // Menu-bar headers keep their normal layout and downward-opening popup.
+                if (menu is not Menu)
+                    PopulateItem(item, parentIcon);
                 PopulateMenu(item);
             }
         }
@@ -105,6 +121,10 @@ internal static class ContextMenuIcons
 
     private static void PopulateItem(MenuItem item, EFontAwesomeIcon? parentIcon)
     {
+        // The pinned-file picker is embedded as a full control rather than an action label.
+        if (item.Header is UserControl)
+            return;
+
         var generatedIcon = (ImageAwesome)item.GetValue(GeneratedIconProperty);
         if (!BindingOperations.IsDataBound(item, MenuItem.IconProperty)
             && (item.Icon is null || ReferenceEquals(item.Icon, generatedIcon)))
@@ -126,7 +146,8 @@ internal static class ContextMenuIcons
 
         ValueSource templateSource = DependencyPropertyHelper.GetValueSource(item, Control.TemplateProperty);
         if (BindingOperations.IsDataBound(item, Control.TemplateProperty)
-            || templateSource.BaseValueSource is BaseValueSource.Local or BaseValueSource.StyleTrigger or BaseValueSource.ParentTemplateTrigger)
+            || templateSource.BaseValueSource is BaseValueSource.Local or BaseValueSource.StyleTrigger or BaseValueSource.ParentTemplateTrigger
+            || HasCustomTemplate(item))
             return;
 
         if (item.TryFindResource("ContextMenuActionItemTemplate") is ControlTemplate template)
@@ -134,5 +155,24 @@ internal static class ContextMenuIcons
             item.SetCurrentValue(Control.TemplateProperty, template);
             item.SetValue(AppliedTemplateProperty, template);
         }
+    }
+
+    private static bool HasCustomTemplate(MenuItem item)
+    {
+        if (DependencyPropertyHelper.GetValueSource(item, FrameworkElement.StyleProperty).BaseValueSource == BaseValueSource.ImplicitStyleReference)
+            return false;
+
+        // Explicit styles can host input fields or other controls instead of an action row.
+        // A BasedOn reference to the ordinary theme style is still safe to replace.
+        var implicitStyle = item.TryFindResource(typeof(MenuItem)) as Style;
+        for (Style style = item.Style; style is not null && !ReferenceEquals(style, implicitStyle); style = style.BasedOn)
+        {
+            foreach (SetterBase setterBase in style.Setters)
+            {
+                if (setterBase is Setter { Property: var property } && property == Control.TemplateProperty)
+                    return true;
+            }
+        }
+        return false;
     }
 }

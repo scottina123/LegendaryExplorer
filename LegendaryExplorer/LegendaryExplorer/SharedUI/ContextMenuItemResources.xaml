@@ -1,6 +1,6 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-    <!-- A context action keeps its check state and action icon in separate columns.
+    <!-- Dropdown and context actions keep their check state and action icon in separate columns.
          System brush keys are supplied by Windows in Light and overridden by both dark themes. -->
     <ControlTemplate x:Key="ContextMenuActionItemTemplate" TargetType="{x:Type MenuItem}">
         <Border x:Name="ItemBorder"

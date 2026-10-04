@@ -7,7 +7,7 @@ using FontAwesome5;
 
 namespace LegendaryExplorer.SharedUI;
 
-/// <summary>Provides consistent action glyphs for static and generated context-menu options.</summary>
+/// <summary>Provides consistent action glyphs for static and generated menu options.</summary>
 internal static class ContextMenuActionIcons
 {
     internal static EFontAwesomeIcon GetIcon(MenuItem item, EFontAwesomeIcon? parentIcon = null)
@@ -19,6 +19,51 @@ internal static class ContextMenuActionIcons
         }
 
         string text = GetHeaderText(item);
+
+        // Toolbar dropdowns share these actions across editors, including their nested submenus.
+        if (text.TrimEnd('.', '…') == "open") return EFontAwesomeIcon.Solid_FolderOpen;
+        if (StartsWithAny(text, "recent", "last export")) return EFontAwesomeIcon.Solid_History;
+        if (StartsWithAny(text, "close", "exit")) return EFontAwesomeIcon.Solid_Times;
+        if (StartsWithAny(text, "compare", "structural compare")) return EFontAwesomeIcon.Solid_NotEqual;
+        if (StartsWithAny(text, "pop out")) return EFontAwesomeIcon.Solid_ExternalLinkAlt;
+        if (StartsWithAny(text, "package file header info", "get shader info", "metadata")) return EFontAwesomeIcon.Solid_InfoCircle;
+        if (StartsWithAny(text, "bulk export")) return EFontAwesomeIcon.Solid_FileExport;
+        if (StartsWithAny(text, "bulk import", "asset importer", "resolve imports")) return EFontAwesomeIcon.Solid_FileImport;
+        if (StartsWithAny(text, "bulk delete", "bulk clear")) return EFontAwesomeIcon.Solid_TrashAlt;
+        if (StartsWithAny(text, "bulk generate", "auto generate", "build")) return EFontAwesomeIcon.Solid_Magic;
+        if (StartsWithAny(text, "bulk change", "bulk property editing", "bulk operations", "options", "properties", "advanced mode"))
+            return EFontAwesomeIcon.Solid_SlidersH;
+        if (StartsWithAny(text, "debug", "debugging", "check for unrealscript")) return EFontAwesomeIcon.Solid_Bug;
+        if (StartsWithAny(text, "experiments", "enable experiments")) return EFontAwesomeIcon.Solid_Flask;
+        if (StartsWithAny(text, "compile", "lecl data editor", "binary interpreter", "binary data", "gfx/swf", "hex converter", "kismet logger"))
+            return EFontAwesomeIcon.Solid_Code;
+        if (StartsWithAny(text, "check")) return EFontAwesomeIcon.Solid_CheckCircle;
+        if (StartsWithAny(text, "scan")) return EFontAwesomeIcon.Solid_Search;
+        if (StartsWithAny(text, "calculate")) return EFontAwesomeIcon.Solid_Calculator;
+        if (StartsWithAny(text, "compact")) return EFontAwesomeIcon.Solid_CompressArrowsAlt;
+        if (StartsWithAny(text, "install")) return EFontAwesomeIcon.Solid_Download;
+        if (StartsWithAny(text, "associate", "network")) return EFontAwesomeIcon.Solid_Link;
+        if (StartsWithAny(text, "migrate", "reverse endianness")) return EFontAwesomeIcon.Solid_ExchangeAlt;
+        if (StartsWithAny(text, "commit")) return EFontAwesomeIcon.Solid_Save;
+        if (StartsWithAny(text, "apply property edits")) return EFontAwesomeIcon.Solid_PencilAlt;
+        if (StartsWithAny(text, "capture viewport")) return EFontAwesomeIcon.Solid_Camera;
+        if (StartsWithAny(text, "back")) return EFontAwesomeIcon.Solid_ArrowLeft;
+        if (StartsWithAny(text, "re center", "anchor", "follow camera")) return EFontAwesomeIcon.Solid_Crosshairs;
+        if (StartsWithAny(text, "reload", "force reload", "re run")) return EFontAwesomeIcon.Solid_Sync;
+        if (StartsWithAny(text, "re save", "auto save", "manual save")) return EFontAwesomeIcon.Solid_Save;
+        if (StartsWithAny(text, "load", "open package", "open file", "open sfar", "open local database folder",
+                "open left package", "open right package", "open vanilla", "open highest mounted", "open version", "open other generation"))
+            return EFontAwesomeIcon.Solid_FolderOpen;
+        if (StartsWithAny(text, "file list actions", "vanilla plot files", "level presets", "levels", "mod databases", "database"))
+            return EFontAwesomeIcon.Solid_Folder;
+        if (StartsWithAny(text, "layout", "default auto layout", "auto index")) return EFontAwesomeIcon.Solid_ProjectDiagram;
+        if (StartsWithAny(text, "colorize", "blend mode")) return EFontAwesomeIcon.Solid_Palette;
+        if (StartsWithAny(text, "toggle", "auto play", "auto parse", "automatically preview", "parse unknown", "limit arrayproperties", "touch comfy"))
+            return EFontAwesomeIcon.Solid_CheckSquare;
+        if (StartsWithAny(text, "make all dialogue unskippable")) return EFontAwesomeIcon.Solid_Lock;
+        if (StartsWithAny(text, "make all dialogue skippable")) return EFontAwesomeIcon.Solid_LockOpen;
+        if (StartsWithAny(text, "make all")) return EFontAwesomeIcon.Solid_ExchangeAlt;
+        if (StartsWithAny(text, "convenience tools", "tools", "toolbox", "operations", "exkywor", "kinkojiro")) return EFontAwesomeIcon.Solid_Cogs;
 
         // These actions use the same glyphs as Package Editor's inline tree buttons.
         if (StartsWithAny(text, "go to archetype", "goto archetype")) return EFontAwesomeIcon.Solid_LevelUpAlt;
@@ -75,7 +120,19 @@ internal static class ContextMenuActionIcons
         if (StartsWithAny(text, "audio", "male audio", "female audio", "non vocal")) return EFontAwesomeIcon.Solid_VolumeUp;
         if (StartsWithAny(text, "camera", "multicam", "single camera")) return EFontAwesomeIcon.Solid_Camera;
         if (StartsWithAny(text, "cinematic", "ambient line")) return EFontAwesomeIcon.Solid_Video;
-        if (StartsWithAny(text, "male facefx", "female facefx", "auto facefx", "emotions")) return EFontAwesomeIcon.Solid_TheaterMasks;
+        if (StartsWithAny(text, "male facefx", "female facefx", "auto facefx", "emotions", "facefx editor")) return EFontAwesomeIcon.Solid_TheaterMasks;
+
+        if (StartsWithAny(text, "skeletal mesh")) return EFontAwesomeIcon.Solid_Skull;
+        if (StartsWithAny(text, "static mesh")) return EFontAwesomeIcon.Solid_Archway;
+        if (StartsWithAny(text, "meshplorer", "art", "blockingvolume", "dynamic volumes", "other volumes", "cylinders")) return EFontAwesomeIcon.Solid_Cube;
+        if (StartsWithAny(text, "texture viewer")) return EFontAwesomeIcon.Solid_Image;
+        if (StartsWithAny(text, "soundplorer", "isact", "wwise")) return EFontAwesomeIcon.Solid_VolumeUp;
+        if (StartsWithAny(text, "dialogue editor", "tlk", "spoken line")) return EFontAwesomeIcon.Solid_Comment;
+        if (StartsWithAny(text, "sequence editor", "sequence references", "pathfinding", "splines", "director group"))
+            return EFontAwesomeIcon.Solid_ProjectDiagram;
+        if (StartsWithAny(text, "package editor", "level editor", "designer", "actor group", "design", "cover")) return EFontAwesomeIcon.Solid_Cubes;
+        if (StartsWithAny(text, "anomaly", "asteroid belt", "cluster", "fuel depot", "mass relay", "planet", "reaper", "scannable planet", "system", "war asset"))
+            return EFontAwesomeIcon.Solid_Globe;
 
         if (StartsWithAny(text, "top of list")) return EFontAwesomeIcon.Solid_ArrowUp;
         if (StartsWithAny(text, "bottom of list")) return EFontAwesomeIcon.Solid_ArrowDown;
