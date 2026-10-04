@@ -373,6 +373,10 @@
                                     <ContextMenu Tag="Forward" Opened="SelectionHistoryMenu_Opened" />
                                 </Button.ContextMenu>
                             </Button>
+                            <Button Content="Focus Selected Node" Height="22" Padding="6,0" Margin="8,0,0,0"
+                                    Command="{Binding FocusSelectedNodeCommand}"
+                                    AutomationProperties.Name="Focus selected node"
+                                    ToolTip="Center the viewport on the selected node" />
                         </StackPanel>
                     </MenuItem.Header>
                 </MenuItem>

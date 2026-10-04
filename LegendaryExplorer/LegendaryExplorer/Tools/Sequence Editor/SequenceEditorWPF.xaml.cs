@@ -620,6 +620,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
         public ICommand SaveViewCommand { get; set; }
         public ICommand NavigateSelectionBackCommand { get; set; }
         public ICommand NavigateSelectionForwardCommand { get; set; }
+        public ICommand FocusSelectedNodeCommand { get; set; }
         public ICommand AutoLayoutCommand { get; set; }
         public ICommand UseSavedViewsCommand { get; set; }
         public ICommand ScanFolderForLoopsCommand { get; set; }
@@ -651,6 +652,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             SaveViewCommand = new GenericCommand(() => saveView(), () => CurrentObjects.Any);
             NavigateSelectionBackCommand = new GenericCommand(NavigateSelectionBack, CanNavigateSelectionBack);
             NavigateSelectionForwardCommand = new GenericCommand(NavigateSelectionForward, CanNavigateSelectionForward);
+            FocusSelectedNodeCommand = new GenericCommand(FocusSelectedNode, () => graphEditor != null && SelectedObjects.Count > 0);
             AutoLayoutCommand = new GenericCommand(() => AutoLayout(), () => CurrentObjects.Any);
             GotoCommand = new GenericCommand(GoTo, PackageIsLoaded);
             InstallKismetLoggerCommand = new GenericCommand(InstallKismetLogger, CanInstallKismetLogger);
@@ -6743,20 +6745,31 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
 
                 if (panToSelection)
                 {
-                    if (SelectedObjects.Count == 1)
-                    {
-                        graphEditor.Camera.AnimateViewToCenterBounds(SelectedObjects[0].GlobalFullBounds, false, 100);
-                    }
-                    else
-                    {
-                        RectangleF boundingBox = SelectedObjects.Select(obj => obj.GlobalFullBounds).BoundingRect();
-                        graphEditor.Camera.AnimateViewToCenterBounds(boundingBox, true, 200);
-                    }
+                    FocusSelectedNode();
                 }
             }
 
             panToSelection = true;
             graphEditor.Refresh();
+            CommandManager.InvalidateRequerySuggested();
+        }
+
+        private void FocusSelectedNode()
+        {
+            if (graphEditor == null || SelectedObjects.Count == 0)
+            {
+                return;
+            }
+
+            if (SelectedObjects.Count == 1)
+            {
+                graphEditor.Camera.AnimateViewToCenterBounds(SelectedObjects[0].GlobalFullBounds, false, 100);
+            }
+            else
+            {
+                RectangleF boundingBox = SelectedObjects.Select(obj => obj.GlobalFullBounds).BoundingRect();
+                graphEditor.Camera.AnimateViewToCenterBounds(boundingBox, true, 200);
+            }
         }
 
         private void ScrollCurrentObjectSelectionIntoView(SObj selectedObject)

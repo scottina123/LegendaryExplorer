@@ -775,6 +775,7 @@ namespace LegendaryExplorer.DialogueEditor
         public ICommand DefaultColorsCommand { get; set; }
         public ICommand StageDirectionsModCommand { get; set; }
         public ICommand RecenterCommand { get; set; }
+        public ICommand FocusSelectedNodeCommand { get; set; }
         public ICommand UpdateLayoutDefaultsCommand { get; set; }
         public ICommand SearchCommand { get; set; }
         public ICommand CopyToClipboardCommand { get; set; }
@@ -883,6 +884,7 @@ namespace LegendaryExplorer.DialogueEditor
         {
             persistUserState = initializeUserState;
             LoadCommands();
+            SelectedObjects.CollectionChanged += (_, _) => CommandManager.InvalidateRequerySuggested();
             StatusText = string.Empty;
             SelectedSpeaker = new SpeakerExtended(-3, "None");
 
@@ -1224,6 +1226,8 @@ namespace LegendaryExplorer.DialogueEditor
             CopySpeakerLinesFromFolderCommand = new GenericCommand(CopySpeakerLinesFromFolder);
             DefaultColorsCommand = new GenericCommand(ResetColorsToDefault);
             RecenterCommand = new GenericCommand(graphEditor_PanTo);
+            FocusSelectedNodeCommand = new GenericCommand(FocusSelectedNode,
+                () => graphEditor?.Camera != null && SelectedObjects.Any(obj => CurrentObjects.Contains(obj) && obj.Visible));
             UpdateLayoutDefaultsCommand = new RelayCommand(UpdateLayoutDefaults);
             SearchCommand = new GenericCommand(SearchDialogue, () => CurrentObjects.Any);
             CopyToClipboardCommand = new RelayCommand(CopyStringToClipboard);
@@ -11448,6 +11452,31 @@ namespace LegendaryExplorer.DialogueEditor
         private void graphEditor_Click(object sender, EventArgs e)
         {
             graphEditor.Focus();
+        }
+        private void FocusSelectedNode()
+        {
+            if (graphEditor?.Camera == null)
+            {
+                return;
+            }
+
+            var selectedNodes = SelectedObjects.Where(obj => CurrentObjects.Contains(obj) && obj.Visible).ToList();
+            if (selectedNodes.Count == 0)
+            {
+                return;
+            }
+
+            if (selectedNodes.Count == 1)
+            {
+                graphEditor.Camera.AnimateViewToCenterBounds(selectedNodes[0].GlobalFullBounds, false, 100);
+            }
+            else
+            {
+                RectangleF boundingBox = selectedNodes.Select(obj => obj.GlobalFullBounds).BoundingRect();
+                graphEditor.Camera.AnimateViewToCenterBounds(boundingBox, true, 200);
+            }
+
+            graphEditor.Refresh();
         }
         private void graphEditor_PanTo()
         {
