@@ -60,12 +60,20 @@
                         <Button.ContextMenu>
                             <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
                                 <MenuItem Header="Open Planet Designer..." Command="{Binding OpenPlanetDesignerCommand}"
-                                          Visibility="{Binding SupportsPlanetDesigner, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+                                          Visibility="{Binding SupportsPlanetDesigner, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                    <MenuItem.Icon><Path Data="{DynamicResource LE1GMEContextPlanetGeometry}" Style="{DynamicResource LE1GMEContextIconStyle}" /></MenuItem.Icon>
+                                </MenuItem>
                                 <Separator Visibility="{Binding SupportsPlanetDesigner, Converter={StaticResource BooleanToVisibilityConverter}}"/>
-                                <MenuItem Header="Clone Planet / object…" Command="{Binding CloneCommand}"/>
-                                <MenuItem Header="Move to System…" Command="{Binding MoveCommand}"/>
+                                <MenuItem Header="Clone Planet / object…" Command="{Binding CloneCommand}">
+                                    <MenuItem.Icon><Path Data="{DynamicResource LE1GMEContextCloneGeometry}" Style="{DynamicResource LE1GMEContextIconStyle}" /></MenuItem.Icon>
+                                </MenuItem>
+                                <MenuItem Header="Move to System…" Command="{Binding MoveCommand}">
+                                    <MenuItem.Icon><Path Data="{DynamicResource LE1GMEContextMoveGeometry}" Style="{DynamicResource LE1GMEContextIconStyle}" /></MenuItem.Icon>
+                                </MenuItem>
                                 <Separator/>
-                                <MenuItem Header="Delete Planet / object…" Command="{Binding DeleteCommand}"/>
+                                <MenuItem Header="Delete Planet / object…" Command="{Binding DeleteCommand}">
+                                    <MenuItem.Icon><Path Data="{DynamicResource LE1GMEContextDeleteGeometry}" Style="{DynamicResource LE1GMEContextIconStyle}" /></MenuItem.Icon>
+                                </MenuItem>
                             </ContextMenu>
                         </Button.ContextMenu>
                         <Button.Template>

@@ -11,6 +11,7 @@
     <ResourceDictionary.MergedDictionaries>
         <ResourceDictionary Source="/LegendaryExplorer;component/LightTheme.xaml"/>
         <ResourceDictionary Source="/LegendaryExplorer;component/Themes/AudemusTypography.xaml"/>
+        <ResourceDictionary Source="/LegendaryExplorer;component/SharedUI/ContextMenuItemResources.xaml"/>
     </ResourceDictionary.MergedDictionaries>
 
 <FontFamily x:Key="TitilliumWeb-Italic">/LegendaryExplorer;component/Resources/Fonts/TitilliumWeb-Italic.ttf#Titillium Web</FontFamily>

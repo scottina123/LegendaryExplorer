@@ -382,21 +382,31 @@
                                         <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
                                             <MenuItem Header="{Binding AddChildMenuHeader}"
                                                       Command="{Binding AddChildCommand}"
-                                                      Visibility="{Binding SupportsAddChild, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                                      Visibility="{Binding SupportsAddChild, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                <MenuItem.Icon><Path Data="{DynamicResource LE1GMEContextAddGeometry}" Style="{DynamicResource LE1GMEContextIconStyle}" /></MenuItem.Icon>
+                                            </MenuItem>
                                             <Separator Visibility="{Binding SupportsAddChild, Converter={StaticResource BooleanToVisibilityConverter}}" />
                                             <MenuItem Header="Clone…"
                                                       Command="{Binding CloneCommand}"
-                                                      Visibility="{Binding SupportsRowActions, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                                      Visibility="{Binding SupportsRowActions, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                <MenuItem.Icon><Path Data="{DynamicResource LE1GMEContextCloneGeometry}" Style="{DynamicResource LE1GMEContextIconStyle}" /></MenuItem.Icon>
+                                            </MenuItem>
                                             <MenuItem Header="{Binding MoveMenuHeader}"
                                                       Command="{Binding MoveCommand}"
-                                                      Visibility="{Binding SupportsParentMove, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                                      Visibility="{Binding SupportsParentMove, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                <MenuItem.Icon><Path Data="{DynamicResource LE1GMEContextMoveGeometry}" Style="{DynamicResource LE1GMEContextIconStyle}" /></MenuItem.Icon>
+                                            </MenuItem>
                                             <MenuItem Header="Open Planet Designer..."
                                                       Command="{Binding OpenPlanetDesignerCommand}"
-                                                      Visibility="{Binding SupportsPlanetDesigner, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                                      Visibility="{Binding SupportsPlanetDesigner, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                <MenuItem.Icon><Path Data="{DynamicResource LE1GMEContextPlanetGeometry}" Style="{DynamicResource LE1GMEContextIconStyle}" /></MenuItem.Icon>
+                                            </MenuItem>
                                             <Separator Visibility="{Binding SupportsRowActions, Converter={StaticResource BooleanToVisibilityConverter}}" />
                                             <MenuItem Header="Delete…"
                                                       Command="{Binding DeleteCommand}"
-                                                      Visibility="{Binding SupportsRowActions, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                                      Visibility="{Binding SupportsRowActions, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                <MenuItem.Icon><Path Data="{DynamicResource LE1GMEContextDeleteGeometry}" Style="{DynamicResource LE1GMEContextIconStyle}" /></MenuItem.Icon>
+                                            </MenuItem>
                                         </ContextMenu>
                                     </Setter.Value>
                                 </Setter>
@@ -476,7 +486,9 @@
                         <Grid.ContextMenu>
                             <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
                                 <MenuItem Header="{Binding ContextualAddButtonText}"
-                                          Command="{Binding ContextualAddCommand}" />
+                                          Command="{Binding ContextualAddCommand}">
+                                    <MenuItem.Icon><Path Data="{DynamicResource LE1GMEContextAddGeometry}" Style="{DynamicResource LE1GMEContextIconStyle}" /></MenuItem.Icon>
+                                </MenuItem>
                             </ContextMenu>
                         </Grid.ContextMenu>
                         <ContentControl Content="{Binding CurrentViewModel}"

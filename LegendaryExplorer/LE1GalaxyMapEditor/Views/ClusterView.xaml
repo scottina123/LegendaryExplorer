@@ -49,10 +49,16 @@
                             ToolTip="Double-click to open this System">
                         <Button.ContextMenu>
                             <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
-                                <MenuItem Header="Clone System…" Command="{Binding CloneCommand}"/>
-                                <MenuItem Header="Move to Cluster…" Command="{Binding MoveCommand}"/>
+                                <MenuItem Header="Clone System…" Command="{Binding CloneCommand}">
+                                    <MenuItem.Icon><Path Data="{DynamicResource LE1GMEContextCloneGeometry}" Style="{DynamicResource LE1GMEContextIconStyle}" /></MenuItem.Icon>
+                                </MenuItem>
+                                <MenuItem Header="Move to Cluster…" Command="{Binding MoveCommand}">
+                                    <MenuItem.Icon><Path Data="{DynamicResource LE1GMEContextMoveGeometry}" Style="{DynamicResource LE1GMEContextIconStyle}" /></MenuItem.Icon>
+                                </MenuItem>
                                 <Separator/>
-                                <MenuItem Header="Delete System…" Command="{Binding DeleteCommand}"/>
+                                <MenuItem Header="Delete System…" Command="{Binding DeleteCommand}">
+                                    <MenuItem.Icon><Path Data="{DynamicResource LE1GMEContextDeleteGeometry}" Style="{DynamicResource LE1GMEContextIconStyle}" /></MenuItem.Icon>
+                                </MenuItem>
                             </ContextMenu>
                         </Button.ContextMenu>
                         <Button.Template>

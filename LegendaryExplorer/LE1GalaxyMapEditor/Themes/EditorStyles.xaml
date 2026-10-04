@@ -6,6 +6,24 @@
         <ResourceDictionary Source="EditorConverters.xaml" />
     </ResourceDictionary.MergedDictionaries>
 
+    <Geometry x:Key="LE1GMEContextAddGeometry">M 8,2 V 14 M 2,8 H 14</Geometry>
+    <Geometry x:Key="LE1GMEContextCloneGeometry">M 6,2 H 14 V 10 H 10 M 2,6 H 10 V 14 H 2 Z</Geometry>
+    <Geometry x:Key="LE1GMEContextMoveGeometry">M 8,1 V 15 M 1,8 H 15 M 5,4 L 8,1 L 11,4 M 5,12 L 8,15 L 11,12 M 4,5 L 1,8 L 4,11 M 12,5 L 15,8 L 12,11</Geometry>
+    <Geometry x:Key="LE1GMEContextDeleteGeometry">M 2,4 H 14 M 6,4 V 2 H 10 V 4 M 4,4 L 5,14 H 11 L 12,4 M 7,6 V 12 M 9,6 V 12</Geometry>
+    <Geometry x:Key="LE1GMEContextPlanetGeometry">M 8,2 A 6,6 0 1 1 8,14 A 6,6 0 1 1 8,2 M 2,11 C -1,13 2,16 9,11 C 16,6 18,1 13,3</Geometry>
+    <Geometry x:Key="LE1GMEContextCopyGeometry">M 6,2 H 14 V 10 M 2,6 H 10 V 14 H 2 Z M 4,10 H 8 M 4,12 H 8</Geometry>
+    <Geometry x:Key="LE1GMEContextPasteGeometry">M 5,3 H 2 V 14 H 14 V 3 H 11 M 5,2 H 11 V 5 H 5 Z M 5,8 H 11 M 5,11 H 11</Geometry>
+    <Style x:Key="LE1GMEContextIconStyle" TargetType="Path">
+        <Setter Property="Width" Value="16" />
+        <Setter Property="Height" Value="16" />
+        <Setter Property="Stretch" Value="Uniform" />
+        <Setter Property="Stroke" Value="{Binding Foreground, RelativeSource={RelativeSource AncestorType=MenuItem}}" />
+        <Setter Property="StrokeThickness" Value="1.5" />
+        <Setter Property="StrokeStartLineCap" Value="Round" />
+        <Setter Property="StrokeEndLineCap" Value="Round" />
+        <Setter Property="StrokeLineJoin" Value="Round" />
+    </Style>
+
         <Style TargetType="TextBlock">
             <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
             <Setter Property="FontFamily" Value="Segoe UI" />
@@ -173,7 +191,31 @@
 
         <Style TargetType="MenuItem">
             <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/><Setter Property="Background" Value="Transparent"/><Setter Property="Padding" Value="11,6"/>
-            <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="MenuItem"><Border x:Name="MenuBorder" Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}" CornerRadius="2"><ContentPresenter ContentSource="Header" RecognizesAccessKey="True"/></Border><ControlTemplate.Triggers><Trigger Property="IsHighlighted" Value="True"><Setter TargetName="MenuBorder" Property="Background" Value="{DynamicResource LE1GMEBrush29485B}"/><Setter Property="Foreground" Value="{DynamicResource TextBrush}"/></Trigger><Trigger Property="IsEnabled" Value="False"><Setter Property="Foreground" Value="{DynamicResource LE1GMEBrush647784}"/><Setter TargetName="MenuBorder" Property="Background" Value="Transparent"/></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="MenuItem">
+                        <Border x:Name="MenuBorder" Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}" CornerRadius="2">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="24" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Path x:Name="CheckMark" Visibility="Collapsed" Width="10" Height="10" Margin="0,0,7,0"
+                                      Stretch="Uniform" Data="M 0,5 L 3,8 L 10,0" Stroke="{TemplateBinding Foreground}" StrokeThickness="2" />
+                                <ContentPresenter Grid.Column="1" ContentSource="Icon" Width="16" Height="16"
+                                                  HorizontalAlignment="Left" VerticalAlignment="Center" />
+                                <ContentPresenter Grid.Column="2" ContentSource="Header" RecognizesAccessKey="True" VerticalAlignment="Center" />
+                            </Grid>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True"><Setter TargetName="CheckMark" Property="Visibility" Value="Visible" /></Trigger>
+                            <Trigger Property="IsHighlighted" Value="True"><Setter TargetName="MenuBorder" Property="Background" Value="{DynamicResource LE1GMEBrush29485B}"/><Setter Property="Foreground" Value="{DynamicResource TextBrush}"/></Trigger>
+                            <Trigger Property="IsEnabled" Value="False"><Setter Property="Foreground" Value="{DynamicResource LE1GMEBrush647784}"/><Setter TargetName="MenuBorder" Property="Background" Value="Transparent"/></Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
 
         <Style TargetType="Separator"><Setter Property="Background" Value="{DynamicResource LE1GMEBrush2A3A49}"/><Setter Property="Height" Value="1"/><Setter Property="Margin" Value="0,2"/><Setter Property="HorizontalAlignment" Value="Stretch"/><Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Separator"><Border Background="{TemplateBinding Background}" Height="{TemplateBinding Height}"/></ControlTemplate></Setter.Value></Setter></Style>

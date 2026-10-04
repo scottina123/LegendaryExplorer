@@ -81,6 +81,7 @@ namespace LegendaryExplorer.Startup
 
             // WPF setup
             ContextMenuBehavior.EnableAlphabeticalSorting();
+            ContextMenuIcons.Enable();
             ToolTipService.ShowDurationProperty.OverrideMetadata(typeof(DependencyObject), new FrameworkPropertyMetadata(int.MaxValue));
             //fixes bad WPF default. Users aren't going to not want to know what a button does just because it's disabled at the moment!
             ToolTipService.ShowOnDisabledProperty.OverrideMetadata(typeof(FrameworkElement), new FrameworkPropertyMetadata(true));

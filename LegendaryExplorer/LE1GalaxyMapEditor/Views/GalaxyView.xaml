@@ -53,7 +53,13 @@
                             ToolTip="Double-click to open this Cluster">
                         <Button.ContextMenu>
                             <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
-                                <MenuItem Header="Clone Cluster…" Command="{Binding CloneCommand}"/><Separator/><MenuItem Header="Delete Cluster…" Command="{Binding DeleteCommand}"/>
+                                <MenuItem Header="Clone Cluster…" Command="{Binding CloneCommand}">
+                                    <MenuItem.Icon><Path Data="{DynamicResource LE1GMEContextCloneGeometry}" Style="{DynamicResource LE1GMEContextIconStyle}" /></MenuItem.Icon>
+                                </MenuItem>
+                                <Separator/>
+                                <MenuItem Header="Delete Cluster…" Command="{Binding DeleteCommand}">
+                                    <MenuItem.Icon><Path Data="{DynamicResource LE1GMEContextDeleteGeometry}" Style="{DynamicResource LE1GMEContextIconStyle}" /></MenuItem.Icon>
+                                </MenuItem>
                             </ContextMenu>
                         </Button.ContextMenu>
                         <Button.Template>

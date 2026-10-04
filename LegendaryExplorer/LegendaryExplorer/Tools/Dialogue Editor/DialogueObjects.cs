@@ -982,7 +982,14 @@ namespace LegendaryExplorer.DialogueEditor
                 return;
             }
 
-            var menu = new ContextMenuStrip();
+            var menu = new ContextMenuStrip
+            {
+                ShowImageMargin = true,
+                ShowCheckMargin = true
+            };
+            var participantIcon = CreateParticipantMenuIcon();
+            menu.Disposed += (_, __) => participantIcon.Dispose();
+            menu.Closed += (_, __) => Editor.Dispatcher.BeginInvoke(new Action(menu.Dispose));
             var source = isSpeaker ? Editor.SelectedSpeakerList : Editor.ListenersList;
 
             foreach (var speaker in source)
@@ -990,7 +997,8 @@ namespace LegendaryExplorer.DialogueEditor
                 int speakerId = speaker.SpeakerID;
                 var item = new ToolStripMenuItem(speaker.DisplayName)
                 {
-                    Checked = (isSpeaker ? Node.SpeakerIndex : Node.Listener) == speakerId
+                    Checked = (isSpeaker ? Node.SpeakerIndex : Node.Listener) == speakerId,
+                    Image = participantIcon
                 };
 
                 item.Click += (_, __) =>
@@ -1018,6 +1026,20 @@ namespace LegendaryExplorer.DialogueEditor
             {
                 menu.Dispose();
             }
+        }
+
+        private static Bitmap CreateParticipantMenuIcon()
+        {
+            var image = new Bitmap(16, 16);
+            using var graphics = Graphics.FromImage(image);
+            graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+            Color color = LegendaryExplorer.Misc.AppSettings.Settings.Global_DarkMode_Enabled
+                ? Color.FromArgb(0xE0, 0xE0, 0xE0)
+                : SystemColors.ControlText;
+            using var brush = new SolidBrush(color);
+            graphics.FillEllipse(brush, 5, 1, 6, 6);
+            graphics.FillEllipse(brush, 2, 8, 12, 7);
+            return image;
         }
 
         private static void ApplyThemeToSelectorMenu(ContextMenuStrip menu)
