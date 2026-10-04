@@ -25,6 +25,7 @@ using LegendaryExplorer.Misc.AppSettings;
 using LegendaryExplorerCore.Misc.ME3Tweaks;
 using LegendaryExplorer.SharedUI;
 using LegendaryExplorer.SharedUI.Bases;
+using LegendaryExplorer.SharedUI.Controls;
 using LegendaryExplorer.SharedUI.Interfaces;
 using LegendaryExplorer.SharedUI.PeregrineTreeView;
 using LegendaryExplorer.Tools.Meshplorer;
@@ -3321,11 +3322,22 @@ namespace LegendaryExplorer.Tools.PackageEditor
                 "Below is information about this package from the package summary.", this).Show();
         }
 
-        private void TrashEntryAndChildren(bool includeSelectedEntry = true)
+        private void TrashRowTree_Click(object sender, RoutedEventArgs e)
         {
-            if (TreeEntryIsSelected())
+            if (sender is FrameworkElement { DataContext: TreeViewEntry { Entry: { } entry } node }
+                && ReferenceEquals(entry.FileRef, Pcc))
             {
-                var selected = (TreeViewEntry)LeftSide_TreeView.SelectedItem;
+                TrashEntryAndChildren(sourceNode: node);
+            }
+
+            e.Handled = true;
+        }
+
+        private void TrashEntryAndChildren(bool includeSelectedEntry = true, TreeViewEntry sourceNode = null)
+        {
+            if (CurrentView == CurrentViewMode.Tree && (sourceNode != null || TreeEntryIsSelected()))
+            {
+                var selected = sourceNode ?? (TreeViewEntry)LeftSide_TreeView.SelectedItem;
                 // 06/12/2022 - Change from FullPath.StartsWith() because if somehow trashed object has children (old files, bad experiments, etc) 
                 // this prevents removing these items easily
                 if (selected.Entry is IEntry ent && ent.ClassName == @"Package" && ent.ObjectName.Name == UnrealPackageFile.TrashPackageName)
@@ -3559,9 +3571,23 @@ namespace LegendaryExplorer.Tools.PackageEditor
         // ReSharper disable once MemberCanBePrivate.Global
         public static string FindReferencesMenuText => "Find references";
 
-        private void FindReferencesToObject()
+        private void FindRowReferences_Click(object sender, RoutedEventArgs e)
         {
-            if (TryGetSelectedEntry(out IEntry entry))
+            if (sender is FrameworkElement { DataContext: TreeViewEntry { Entry: { } entry } }
+                && ReferenceEquals(entry.FileRef, Pcc))
+            {
+                FindReferencesToObject(entry);
+            }
+
+            e.Handled = true;
+        }
+
+        private void FindReferencesToObject() => FindReferencesToObject(null);
+
+        private void FindReferencesToObject(IEntry sourceEntry)
+        {
+            IEntry entry = sourceEntry;
+            if (entry != null || TryGetSelectedEntry(out entry))
             {
                 BusyText = "Finding references...";
                 IsBusy = true;
@@ -4991,9 +5017,21 @@ namespace LegendaryExplorer.Tools.PackageEditor
             }
         }
 
-        private void CloneTree(int numClones)
+        private void CloneRowTree_Click(object sender, RoutedEventArgs e)
         {
-            if (CurrentView == CurrentViewMode.Tree && TryGetSelectedEntry(out IEntry entry))
+            if (sender is FrameworkElement { DataContext: TreeViewEntry { Entry: { } entry } }
+                && ReferenceEquals(entry.FileRef, Pcc))
+            {
+                CloneTree(1, entry);
+            }
+
+            e.Handled = true;
+        }
+
+        private void CloneTree(int numClones, IEntry sourceEntry = null)
+        {
+            IEntry entry = sourceEntry;
+            if (CurrentView == CurrentViewMode.Tree && (entry != null || TryGetSelectedEntry(out entry)))
             {
                 if (!TryGetAssetCloneOptions(entry, numClones, out bool cloneDependencies, out string nameSuffix))
                 {
@@ -5812,14 +5850,27 @@ namespace LegendaryExplorer.Tools.PackageEditor
             return treeViewItem is not null;
         }
 
-        private void ChangeLinksForSelectedEntries_Click(object sender, RoutedEventArgs e)
+        private void ChangeRowLinks_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is FrameworkElement { DataContext: TreeViewEntry { Entry: { } entry } }
+                && ReferenceEquals(entry.FileRef, Pcc))
+            {
+                ChangeEntryLinks([entry]);
+            }
+
+            e.Handled = true;
+        }
+
+        private void ChangeLinksForSelectedEntries_Click(object sender, RoutedEventArgs e) =>
+            ChangeEntryLinks(GetSelectedLinkableEntries());
+
+        private void ChangeEntryLinks(List<IEntry> selectedEntries)
         {
             if (Pcc == null)
             {
                 return;
             }
 
-            var selectedEntries = GetSelectedLinkableEntries();
             if (selectedEntries.Count == 0)
             {
                 return;
@@ -6788,7 +6839,30 @@ namespace LegendaryExplorer.Tools.PackageEditor
                 return;
             }
 
-            if (!EndInlineObjectNameEdit(commit: true))
+            BeginInlineObjectNameEdit(placementTarget, node);
+        }
+
+        private void RenameRowObject_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is FrameworkElement { DataContext: TreeViewEntry { Entry: { } entry } node } button
+                && ReferenceEquals(entry.FileRef, Pcc))
+            {
+                for (DependencyObject ancestor = button; ancestor != null; ancestor = VisualTreeHelper.GetParent(ancestor))
+                {
+                    if (ancestor is TreeViewEntryContainer row)
+                    {
+                        BeginInlineObjectNameEdit(row, node);
+                        break;
+                    }
+                }
+            }
+
+            e.Handled = true;
+        }
+
+        private void BeginInlineObjectNameEdit(FrameworkElement placementTarget, TreeViewEntry node)
+        {
+            if (node.Entry is not { } entry || !EndInlineObjectNameEdit(commit: true))
             {
                 return;
             }

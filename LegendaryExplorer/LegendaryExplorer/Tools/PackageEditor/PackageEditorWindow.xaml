@@ -104,7 +104,7 @@
         <converters:EntryFileTypeIconPathConverter x:Key="EntryFileTypeIconPathConverter"/>
         <converters:EmbeddedFileToolTipConverter x:Key="EmbeddedFileToolTipConverter"/>
         <converters:GameTypeConverter x:Key="GameTypeConverter"/>
-        <Style x:Key="InlineArchetypeButtonStyle" TargetType="Button" BasedOn="{StaticResource BorderedButton}">
+        <Style x:Key="InlineTreeActionButtonStyle" TargetType="Button" BasedOn="{StaticResource BorderedButton}">
             <Setter Property="Width" Value="18"/>
             <Setter Property="Height" Value="18"/>
             <Setter Property="MinHeight" Value="0"/>
@@ -117,7 +117,6 @@
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="BorderBrush" Value="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}"/>
             <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
-            <Setter Property="ToolTip" Value="Go to archetype"/>
             <Style.Triggers>
                 <Trigger Property="IsMouseOver" Value="True">
                     <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.ControlLightBrushKey}}"/>
@@ -641,11 +640,46 @@
                                                 </Style>
                                             </TextBlock.Style>
                                         </TextBlock>
-                                        <Button x:Name="ArchetypeNavigationButton" Style="{StaticResource InlineArchetypeButtonStyle}"
+                                        <Button x:Name="ArchetypeNavigationButton" Style="{StaticResource InlineTreeActionButtonStyle}"
                                                 Visibility="{Binding HasArchetype, Converter={StaticResource BoolToVisibilityConverter}}"
-                                                Click="GoToRowArchetype_Click"
+                                                Click="GoToRowArchetype_Click" ToolTip="Go to archetype"
                                                 AutomationProperties.Name="Go to archetype">
                                             <fa5:FontAwesome Icon="Solid_LevelUpAlt" Width="11" Height="11"
+                                                             Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
+                                        </Button>
+                                        <Button x:Name="FindReferencesButton" Style="{StaticResource InlineTreeActionButtonStyle}"
+                                                Visibility="{Binding Entry, Converter={StaticResource NullVisibilityConverter}}"
+                                                Click="FindRowReferences_Click" ToolTip="Find references"
+                                                AutomationProperties.Name="Find references">
+                                            <fa5:FontAwesome Icon="Solid_Search" Width="11" Height="11"
+                                                             Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
+                                        </Button>
+                                        <Button x:Name="RenameObjectButton" Style="{StaticResource InlineTreeActionButtonStyle}"
+                                                Visibility="{Binding Entry, Converter={StaticResource NullVisibilityConverter}}"
+                                                Click="RenameRowObject_Click" ToolTip="Rename object"
+                                                AutomationProperties.Name="Rename object">
+                                            <fa5:FontAwesome Icon="Solid_PencilAlt" Width="11" Height="11"
+                                                             Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
+                                        </Button>
+                                        <Button x:Name="ChangeLinksButton" Style="{StaticResource InlineTreeActionButtonStyle}"
+                                                Visibility="{Binding Entry, Converter={StaticResource NullVisibilityConverter}}"
+                                                Click="ChangeRowLinks_Click" ToolTip="Change links"
+                                                AutomationProperties.Name="Change links">
+                                            <fa5:FontAwesome Icon="Solid_Link" Width="11" Height="11"
+                                                             Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
+                                        </Button>
+                                        <Button x:Name="CloneTreeButton" Style="{StaticResource InlineTreeActionButtonStyle}"
+                                                Visibility="{Binding Entry, Converter={StaticResource NullVisibilityConverter}}"
+                                                Click="CloneRowTree_Click" ToolTip="Clone tree"
+                                                AutomationProperties.Name="Clone tree">
+                                            <fa5:FontAwesome Icon="Solid_Clone" Width="11" Height="11"
+                                                             Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
+                                        </Button>
+                                        <Button x:Name="TrashTreeButton" Style="{StaticResource InlineTreeActionButtonStyle}"
+                                                Visibility="{Binding Entry, Converter={StaticResource NullVisibilityConverter}}"
+                                                Click="TrashRowTree_Click" ToolTip="Trash entry and children"
+                                                AutomationProperties.Name="Trash entry and children">
+                                            <fa5:FontAwesome Icon="Solid_TrashAlt" Width="11" Height="11"
                                                              Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
                                         </Button>
                                         <StackPanel x:Name="ObjectNameEditorPanel" Visibility="Collapsed" Orientation="Horizontal" LostKeyboardFocus="ObjectNameEditor_LostKeyboardFocus">
