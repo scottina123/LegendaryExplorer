@@ -2597,12 +2597,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
                     if (gameDialog.CreateBlankConversation)
                     {
                         string defaultConversationName = Path.GetFileNameWithoutExtension(dlg.FileName);
-                        blankConversationNames = PackageEditorExperimentsScottina.PromptForBlankBioConversationNames(
-                            this, defaultConversationName, defaultConversationName);
-                        if (blankConversationNames == null)
-                        {
-                            return;
-                        }
+                        blankConversationNames = gameDialog.GetBlankConversationNames(defaultConversationName);
                     }
 
                     string locFilePath = Path.Combine(

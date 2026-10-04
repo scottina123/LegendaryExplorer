@@ -38,9 +38,48 @@
             </Grid>
         </Border>
         <CheckBox x:Name="CreateLocFileCheckBox"
-                  Content="Create associated INT localization file"
+                  Content="Create associated INT localization file (all games)"
+                  Checked="ConversationOptions_Changed" Unchecked="ConversationOptions_Changed"
                   Margin="0,10,0,0"/>
-        <CheckBox x:Name="CreateBlankConversationCheckBox" Content="Generate blank BioConversation in localization file (ME3/LE3)" IsEnabled="{Binding IsChecked, ElementName=CreateLocFileCheckBox}" Margin="20,6,0,0"/>
+        <StackPanel x:Name="ConversationOptionsPanel"
+                    IsEnabled="{Binding IsChecked, ElementName=CreateLocFileCheckBox}"
+                    Margin="20,6,0,0">
+            <StackPanel.Style>
+                <Style TargetType="StackPanel">
+                    <Style.Triggers>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.5"/>
+                        </Trigger>
+                    </Style.Triggers>
+                </Style>
+            </StackPanel.Style>
+            <CheckBox x:Name="CreateBlankConversationCheckBox"
+                      Content="Generate blank BioConversation in localization file (ME3/LE3 only)"
+                      ToolTip="When choosing ME3 or LE3, also generate a blank BioConversation. Other games receive a blank localization file."
+                      Checked="ConversationOptions_Changed" Unchecked="ConversationOptions_Changed"/>
+            <Grid Margin="20,8,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <Label Content="Top-level package name:" Target="{Binding ElementName=TopPackageNameTextBox}" Margin="0,0,8,0"/>
+                <TextBox x:Name="TopPackageNameTextBox" Grid.Column="1" MinWidth="260"
+                         VerticalContentAlignment="Center" TextChanged="ConversationName_TextChanged"
+                         ToolTip="Leave blank to use the level filename."/>
+                <Label Grid.Row="1" Content="Conversation base name:" Target="{Binding ElementName=ConversationNameTextBox}" Margin="0,6,8,0"/>
+                <TextBox x:Name="ConversationNameTextBox" Grid.Row="1" Grid.Column="1" Margin="0,6,0,0"
+                         VerticalContentAlignment="Center" TextChanged="ConversationName_TextChanged"
+                         ToolTip="Leave blank to use the level filename. The _dlg suffix is added automatically."/>
+            </Grid>
+            <TextBlock Text="Leave names blank to use the level filename." Margin="20,6,0,0" Opacity="0.7"/>
+            <TextBlock x:Name="ConversationNameValidationText" Visibility="Collapsed"
+                       Text="Names must start with a letter or underscore and contain only letters, numbers, or underscores."
+                       TextWrapping="Wrap" MaxWidth="500" HorizontalAlignment="Left" Margin="20,6,0,0"/>
+        </StackPanel>
         <Button Content="Cancel" IsCancel="True" HorizontalAlignment="Right" Padding="12,5" Margin="0,10,0,0"/>
     </StackPanel>
 </misc:NotifyPropertyChangedWindowBase>
