@@ -606,11 +606,12 @@ namespace LegendaryExplorer.SharedUI
                         // Short circuit
                         
 
+                        NameProperty tag = null;
                         if (!AddPropertyFlags(ee))
                         {
-                            var tag = ee.GetProperty<NameProperty>("Tag", DefaultsLookupCache); // Todo: Pass a package cache through here so hits to Engine.pcc aren't as costly. We will need a global shared package cache (maybe just for this treeview), but one that is not
+                            tag = ee.GetProperty<NameProperty>("Tag", DefaultsLookupCache); // Todo: Pass a package cache through here so hits to Engine.pcc aren't as costly. We will need a global shared package cache (maybe just for this treeview), but one that is not
                                                                                                 // using the LEX cache as we don't want the package actually open.
-                            if (tag != null && tag.Value.Name != Entry.ObjectName)
+                            if (tag != null && tag.Value.Name != "None" && tag.Value.Name != Entry.ObjectName)
                             {
                                 _subtext = tag.Value.Instanced;
                             }
@@ -631,7 +632,8 @@ namespace LegendaryExplorer.SharedUI
                             _subtext = staticMesh.ObjectName.Instanced;
                         }
 
-                        if (ee.ClassName == "SFXPointOfInterest" && ResolvePointOfInterestGameName(ee) is { } gameName)
+                        if (ee.ClassName is "SFXPointOfInterest" or "SFXStuntActor" or "SFXSimpleUseModule"
+                            && ResolveUseModuleGameName(ee) is { } gameName)
                         {
                             _subtext = _subtext != null
                                 ? $"{_subtext}\n{gameName}"
@@ -643,7 +645,9 @@ namespace LegendaryExplorer.SharedUI
                             && ee.Archetype is ExportEntry archetype)
                         {
                             string archetypeSubtext = archetype.ObjectName.Instanced;
-                            var inheritedTag = archetype.GetProperty<NameProperty>("Tag", DefaultsLookupCache);
+                            var inheritedTag = tag == null || tag.Value.Name == "None"
+                                ? archetype.GetProperty<NameProperty>("Tag", DefaultsLookupCache)
+                                : null;
                             if (inheritedTag != null && inheritedTag.Value.Name != "None")
                             {
                                 archetypeSubtext += $"\nInherited: {inheritedTag.Value.Instanced}";
@@ -743,38 +747,75 @@ namespace LegendaryExplorer.SharedUI
             set { _subtext = value; OnPropertyChanged(); }
         }
 
-        private static string ResolvePointOfInterestGameName(ExportEntry pointOfInterest)
+        private static string ResolveUseModuleGameName(ExportEntry export)
         {
-            int strRef = pointOfInterest.GetProperty<StringRefProperty>("m_srGameName")?.Value
-                         ?? pointOfInterest.GetProperty<IntProperty>("m_srGameName")?.Value
-                         ?? 0;
-
-            if (strRef == 0 && pointOfInterest.GetProperty<ArrayProperty<ObjectProperty>>("Modules") is { } modules)
-            {
-                foreach (var moduleRef in modules)
-                {
-                    if (pointOfInterest.FileRef.TryGetUExport(moduleRef.Value, out var module)
-                        && module.ClassName == "SFXSimpleUseModule")
-                    {
-                        strRef = module.GetProperty<StringRefProperty>("m_srGameName")?.Value
-                                 ?? module.GetProperty<IntProperty>("m_srGameName")?.Value
-                                 ?? 0;
-                        if (strRef != 0)
-                        {
-                            break;
-                        }
-                    }
-                }
-            }
-
-            if (strRef == 0)
+            if (FindUseModuleGameName(export, new HashSet<string>(StringComparer.OrdinalIgnoreCase)) is not { } gameName)
             {
                 return null;
             }
 
-            string gameName = TLKManagerWPF.GlobalFindStrRefbyID(strRef, pointOfInterest.FileRef);
-            return gameName == "No Data" ? null : gameName;
+            string text = TLKManagerWPF.GlobalFindStrRefbyID(gameName.StrRef, gameName.Source.FileRef);
+            if (text == null || text == "No Data")
+            {
+                return null;
+            }
+
+            return gameName.Inherited ? $"Inherited: {text}" : text;
         }
+
+        private static (int StrRef, ExportEntry Source, bool Inherited)? FindUseModuleGameName(
+            ExportEntry export, HashSet<string> visited)
+        {
+            if (!visited.Add($"{export.FileRef.FilePath}:{export.UIndex}"))
+            {
+                return null;
+            }
+
+            int strRef = GetUseModuleGameNameStrRef(export);
+            if (strRef > 0)
+            {
+                return (strRef, export, false);
+            }
+
+            if (export.GetProperty<ArrayProperty<ObjectProperty>>("Modules") is { } modules)
+            {
+                var useModules = new List<ExportEntry>();
+                foreach (var moduleRef in modules)
+                {
+                    if (moduleRef.ResolveToExport(export.FileRef, DefaultsLookupCache) is { ClassName: "SFXSimpleUseModule" } module)
+                    {
+                        strRef = GetUseModuleGameNameStrRef(module);
+                        if (strRef > 0)
+                        {
+                            return (strRef, module, false);
+                        }
+                        useModules.Add(module);
+                    }
+                }
+                foreach (var module in useModules)
+                {
+                    if (FindUseModuleGameName(module, visited) is { } moduleGameName)
+                    {
+                        return moduleGameName;
+                    }
+                }
+            }
+
+            // Instances often serialize only their overrides, so the display name can live
+            // on either the module's archetype or the actor's inherited module list.
+            if (new ObjectProperty(export.idxArchetype).ResolveToExport(export.FileRef, DefaultsLookupCache) is { } archetype
+                && FindUseModuleGameName(archetype, visited) is { } inheritedGameName)
+            {
+                return (inheritedGameName.StrRef, inheritedGameName.Source, true);
+            }
+
+            return null;
+        }
+
+        private static int GetUseModuleGameNameStrRef(ExportEntry export) =>
+            export.GetProperty<StringRefProperty>("m_srGameName")?.Value
+            ?? export.GetProperty<IntProperty>("m_srGameName")?.Value
+            ?? 0;
 
         private bool AddPropertyFlags(ExportEntry ee)
         {
