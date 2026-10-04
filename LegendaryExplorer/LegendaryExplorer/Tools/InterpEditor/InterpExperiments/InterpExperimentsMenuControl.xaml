@@ -14,11 +14,11 @@ DataContext="{Binding RelativeSource={RelativeSource Self}}">
     <MenuItem Header=" &gt;&gt; DO NOT USE IF YOU DON'T KNOW WHAT YOU'RE DOING &gt;&lt;" IsEnabled="False"/>
     <MenuItem Header=" &gt;&gt; Text may not reflect actual functionality &lt;&lt;" IsEnabled="False"/>
     <MenuItem Header="Open Assets for Selected Track">
-        <MenuItem Header="(FOVO) Open Line M Audio" Click="OpenFovoLineAudio_Click" Tag="M" ToolTip="Opens the Male audio asset for selected FOVO line in Soundplorer"/>
-        <MenuItem Header="(FOVO) Open Line F Audio" Click="OpenFovoLineAudio_Click" Tag="F" ToolTip="Opens the Female audio asset for selected FOVO line in Soundplorer"/>
-        <MenuItem Header="(FOVO) Open Line M FXA" Click="OpenFovoLineFXA_Click" Tag="M" ToolTip="Opens the Male FaceFX asset for selected FOVO line in FaceFX Editor"/>
-        <MenuItem Header="(FOVO) Open Line F FXA" Click="OpenFovoLineFXA_Click" Tag="F" ToolTip="Opens the Female FaceFX asset for selected FOVO line in FaceFX Editor"/>
-        <MenuItem Header="(FOVO) Open Line in Dialogue Editor" Click="OpenFovoLineDlg_Click" Tag="F" ToolTip="Opens the selected FOVO line in Dialogue Editor"/>
+        <MenuItem Header="(FOVO) Open Line M Audio" Icon="{StaticResource SoundplorerMenuIcon}" Click="OpenFovoLineAudio_Click" Tag="M" ToolTip="Opens the Male audio asset for selected FOVO line in Soundplorer"/>
+        <MenuItem Header="(FOVO) Open Line F Audio" Icon="{StaticResource SoundplorerMenuIcon}" Click="OpenFovoLineAudio_Click" Tag="F" ToolTip="Opens the Female audio asset for selected FOVO line in Soundplorer"/>
+        <MenuItem Header="(FOVO) Open Line M FXA" Icon="{StaticResource FaceFXEditorMenuIcon}" Click="OpenFovoLineFXA_Click" Tag="M" ToolTip="Opens the Male FaceFX asset for selected FOVO line in FaceFX Editor"/>
+        <MenuItem Header="(FOVO) Open Line F FXA" Icon="{StaticResource FaceFXEditorMenuIcon}" Click="OpenFovoLineFXA_Click" Tag="F" ToolTip="Opens the Female FaceFX asset for selected FOVO line in FaceFX Editor"/>
+        <MenuItem Header="(FOVO) Open Line in Dialogue Editor" Icon="{StaticResource DialogueEditorMenuIcon}" Click="OpenFovoLineDlg_Click" Tag="F" ToolTip="Opens the selected FOVO line in Dialogue Editor"/>
     </MenuItem>
     <MenuItem Header="Exkywor's buttons for lazy people">
         <MenuItem Header="Insert TrackMove Key" Click="InsertTrackMoveKey_Click" ToolTip="Inserts a position, rotation, and time keys to the InterpTrackMove."/>

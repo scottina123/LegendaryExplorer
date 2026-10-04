@@ -1856,7 +1856,7 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
 
         if (_packageSet?.SynchronizesSecondary == true)
         {
-            MenuItem openInPackageEditor = new() { Header = "Open in Package Editor" };
+            MenuItem openInPackageEditor = new() { Header = "Open in Package Editor", Icon = FindResource("PackageEditorMenuIcon") };
             AddPackageEditorTarget(openInPackageEditor.Items, export, _packageSet.GalaxyMapFile);
 
             ExportEntry companionExport = FindCompanionExport(export);
@@ -1865,7 +1865,7 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
             return;
         }
 
-        MenuItem open = new() { Header = "Open in Package Editor" };
+        MenuItem open = new() { Header = "Open in Package Editor", Icon = FindResource("PackageEditorMenuIcon") };
         open.Click += (_, _) => OpenInPackageEditor(export);
         items.Add(open);
     }
@@ -1875,6 +1875,7 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
         MenuItem target = new()
         {
             Header = packageName,
+            Icon = Application.Current.FindResource("PackageEditorMenuIcon"),
             IsEnabled = export is not null,
             ToolTip = export is null ? "The linked object is not present in this package." : null
         };

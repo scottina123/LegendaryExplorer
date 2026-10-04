@@ -4557,7 +4557,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
             contextMenu.Items.Add(snapHereItem);
         }
 
-        var openPEItem = new System.Windows.Controls.MenuItem { Header = "Open in Package Editor" };
+        var openPEItem = new System.Windows.Controls.MenuItem { Header = "Open in Package Editor", Icon = FindResource("PackageEditorMenuIcon") };
         openPEItem.Click += (_, _) =>
         {
             var p = new PackageEditorWindow();
@@ -4728,6 +4728,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
             var gestureItem = new System.Windows.Controls.MenuItem
             {
                 Header = "Open Gesture Animation Importer...",
+                Icon = FindResource("AnimationImporterMenuIcon"),
                 IsEnabled = !actor.IsReadOnly
             };
             gestureItem.Click += (_, _) =>
@@ -4750,6 +4751,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
                     var gestureItem = new System.Windows.Controls.MenuItem
                     {
                         Header = "Open Gesture Animation Importer...",
+                        Icon = FindResource("AnimationImporterMenuIcon"),
                         IsEnabled = !actor.IsReadOnly
                     };
                     gestureItem.Click += (_, _) =>
@@ -4763,13 +4765,15 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
                 {
                     var gestureMenu = new System.Windows.Controls.MenuItem
                     {
-                        Header = "Open Gesture Animation Importer"
+                        Header = "Open Gesture Animation Importer",
+                        Icon = FindResource("AnimationImporterMenuIcon")
                     };
                     foreach (var module in gestureModules)
                     {
                         var subItem = new System.Windows.Controls.MenuItem
                         {
                             Header = $"{module.UIndex}: {module.ObjectName.Instanced}",
+                            Icon = FindResource("AnimationImporterMenuIcon"),
                             IsEnabled = !actor.IsReadOnly
                         };
                         subItem.Click += (_, _) =>

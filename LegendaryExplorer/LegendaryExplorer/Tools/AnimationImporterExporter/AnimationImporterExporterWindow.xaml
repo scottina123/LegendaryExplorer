@@ -136,7 +136,7 @@
                                 </DataTemplate.Triggers>
                             </DataTemplate>
                             <ContextMenu x:Key="MyMenu">
-                                <MenuItem Header="Open in Package Editor" Click="OpenInPackageEditor_Clicked">
+                                <MenuItem Header="Open in Package Editor" Icon="{StaticResource PackageEditorMenuIcon}" Click="OpenInPackageEditor_Clicked">
                                 </MenuItem>
                                 <MenuItem Header="Replace AnimSequence from PSA"
                                           Command="{Binding Source={StaticResource bindingProxy}, Path=Data.ReplaceFromPSACommand}"

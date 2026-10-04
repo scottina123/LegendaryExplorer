@@ -19,7 +19,7 @@
                      DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
             <MenuItem Header="Pin file" Click="TogglePinnedItem_Click" />
             <Separator />
-            <MenuItem Header="Open file location" Click="OpenRecentItemLocation_Click" />
+            <MenuItem Icon="{StaticResource WindowsExplorerMenuIcon}" Header="Open file location" Click="OpenRecentItemLocation_Click" />
             <MenuItem Header="Copy file path" Click="CopyRecentItemPath_Click" />
             <MenuItem Header="Copy file name" Click="CopyRecentItemName_Click" />
         </ContextMenu>

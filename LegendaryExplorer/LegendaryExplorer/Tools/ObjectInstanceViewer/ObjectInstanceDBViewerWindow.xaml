@@ -37,7 +37,7 @@
                          SelectedItem="{Binding SelectedFileInstance}">
                     <ListBox.Resources>
                         <ContextMenu x:Key="MyMenu">
-                            <MenuItem Header="Open in Package Editor"
+                            <MenuItem Header="Open in Package Editor" Icon="{StaticResource PackageEditorMenuIcon}"
                                       Command="{Binding Source={StaticResource bindingProxy}, Path=Data.OpenInPackageEditorCommand}" CommandParameter="{Binding}"/>
                             <!--<MenuItem Header="Replace AnimSequence from PSA"
               Command="{Binding Source={StaticResource bindingProxy}, Path=Data.ReplaceFromPSACommand}"

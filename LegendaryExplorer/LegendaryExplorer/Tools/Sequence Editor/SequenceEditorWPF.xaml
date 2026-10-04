@@ -51,8 +51,8 @@
         </Style>
         <ContextMenu x:Key="interpDataTreeContextMenu" Opened="InterpDataTreeContextMenu_Opened">
             <MenuItem Header="View reference graph (EXPERIMENTAL)" Tag="ViewReferenceGraph" Click="InterpDataTree_PackageEditorAction_Click" />
-            <MenuItem Header="Open in Interp Editor" Click="InterpDataTree_OpenInInterpEditor_Click" />
-            <MenuItem Header="Open Gesture Animation Importer" Tag="OpenGestureAnimationImporter" Click="InterpDataTree_PackageEditorAction_Click" Visibility="Collapsed" />
+            <MenuItem Header="Open in Interp Editor" Icon="{StaticResource InterpEditorMenuIcon}" Click="InterpDataTree_OpenInInterpEditor_Click" />
+            <MenuItem Header="Open Gesture Animation Importer" Icon="{StaticResource AnimationImporterMenuIcon}" Tag="OpenGestureAnimationImporter" Click="InterpDataTree_PackageEditorAction_Click" Visibility="Collapsed" />
             <MenuItem Header="Add InterpTrack to group" Tag="AddInterpTrack" Click="InterpDataTree_PackageEditorAction_Click" />
             <MenuItem Header="Bulk Edit InterpGroups" Tag="BulkEditInterpGroups" Click="InterpDataTree_PackageEditorAction_Click" />
             <MenuItem Header="Shift All InterpTrackMoves in InterpData" Tag="ShiftInterpTrackMovesInInterpData" Click="InterpDataTree_PackageEditorAction_Click" />
@@ -84,7 +84,7 @@
             <Separator />
             <MenuItem Header="Generate MD5 of export" Tag="GenerateExportMd5" Click="InterpDataTree_PackageEditorAction_Click" />
             <Separator />
-            <MenuItem Header="Open in Package Editor" Click="InterpDataTree_OpenInPackageEditor_Click" />
+            <MenuItem Header="Open in Package Editor" Icon="{StaticResource PackageEditorMenuIcon}" Click="InterpDataTree_OpenInPackageEditor_Click" />
             <MenuItem Header="Copy UIndex" Click="InterpDataTree_CopyUIndex_Click" />
         </ContextMenu>
         <ContextMenu x:Key="nodeContextMenu" Closed="ContextMenu_Closed">
@@ -123,11 +123,11 @@
             <MenuItem Header="Create SeqAct_Log for outlink" Name="seqLogLogOutlinkFiringMenuItem"/>
 
 
-            <MenuItem Header="Open in Package Editor" Click="OpenInPackageEditor_Clicked" />
-            <MenuItem Header="Open class definition in Package Editor" Click="OpenClassDefinitionInPackageEditor_Clicked"/>
-            <MenuItem Header="Open Referenced Object in Package Editor" Click="OpenReferencedObjectInPackageEditor_Clicked" Name="openRefInPackEdMenuItem"/>
-            <MenuItem Header="Open Gesture Animation Importer" Click="OpenGestureAnimationImporter_Clicked" Name="gestureAnimationImporterMenuItem"/>
-            <MenuItem Header="Open in Interp Editor" Click="OpenInInterpViewer_Clicked" Name="interpViewerMenuItem"/>
+            <MenuItem Header="Open in Package Editor" Icon="{StaticResource PackageEditorMenuIcon}" Click="OpenInPackageEditor_Clicked" />
+            <MenuItem Header="Open class definition in Package Editor" Icon="{StaticResource PackageEditorMenuIcon}" Click="OpenClassDefinitionInPackageEditor_Clicked"/>
+            <MenuItem Header="Open Referenced Object in Package Editor" Icon="{StaticResource PackageEditorMenuIcon}" Click="OpenReferencedObjectInPackageEditor_Clicked" Name="openRefInPackEdMenuItem"/>
+            <MenuItem Header="Open Gesture Animation Importer" Icon="{StaticResource AnimationImporterMenuIcon}" Click="OpenGestureAnimationImporter_Clicked" Name="gestureAnimationImporterMenuItem"/>
+            <MenuItem Header="Open in Interp Editor" Icon="{StaticResource InterpEditorMenuIcon}" Click="OpenInInterpViewer_Clicked" Name="interpViewerMenuItem"/>
             <MenuItem Header="Bulk Edit InterpGroups" Click="BulkEditInterpGroups_Clicked" Name="bulkEditInterpGroupsMenuItem" ToolTip="Bulk edit InterpGroup properties for this InterpData"/>
             <MenuItem Header="Camera Presets" Name="cameraPresetsMenuItem">
                 <MenuItem Header="Single Camera..." Click="ApplySingleCameraPreset_Click" ToolTip="Choose an Interp group and apply a single-camera preset"/>
@@ -138,9 +138,9 @@
                     <MenuItem Header="Multicam..." Click="SaveMulticamCameraPreset_Click" ToolTip="Save the complete Director camera sequence as a multicam preset"/>
                 </MenuItem>
             </MenuItem>
-            <MenuItem Header="Open in Dialogue Editor" Click="OpenInDialogueEditor_Clicked" Name="dialogueEditorMenuItem"/>
-            <MenuItem Header="Open Referenced State Event in Plot Editor" Name="plotEditorMenuItem" Click="PlotEditorMenuItem_Click"/>
-            <MenuItem Header="Open Conditional in Conditionals Editor" Name="conditionalsEditorMenuItem" Click="ConditionalsEditorMenuItem_Click"/>
+            <MenuItem Header="Open in Dialogue Editor" Icon="{StaticResource DialogueEditorMenuIcon}" Click="OpenInDialogueEditor_Clicked" Name="dialogueEditorMenuItem"/>
+            <MenuItem Header="Open Referenced State Event in Plot Editor" Icon="{StaticResource PlotEditorMenuIcon}" Name="plotEditorMenuItem" Click="PlotEditorMenuItem_Click"/>
+            <MenuItem Header="Open Conditional in Conditionals Editor" Icon="{StaticResource ConditionalsEditorMenuIcon}" Name="conditionalsEditorMenuItem" Click="ConditionalsEditorMenuItem_Click"/>
             <Separator />
             <MenuItem Header="Clone Object" Click="CloneObject_Clicked" ToolTip="Create a new node as a duplicate of this one"/>
             <MenuItem Header="Clone Object with Links" Click="CloneObjectWithLinks_Clicked" ToolTip="Create a new node as a duplicate of this one, preserving output and variable links"/>
@@ -165,7 +165,7 @@
             <MenuItem Header="Open floating toolbox" Click="OpenFloatingToolbox_Click" ToolTip="Open the sequence toolbox in a separate floating window at the clicked viewport location"/>
         </ContextMenu>
         <ContextMenu x:Key="currentObjectsContextMenu">
-            <MenuItem Header="Open in Package Editor" Click="CurrentObjects_OpenInPackageEditor_Click" />
+            <MenuItem Header="Open in Package Editor" Icon="{StaticResource PackageEditorMenuIcon}" Click="CurrentObjects_OpenInPackageEditor_Click" />
         </ContextMenu>
         <ContextMenu x:Key="sequencesTreeContextMenu" Opened="SequencesTreeContextMenu_Opened">
             <MenuItem x:Name="RenameSequenceMenuItem" Header="Rename" Click="SequencesTree_Rename_Click"
@@ -176,7 +176,7 @@
                       ToolTip="Clone this sequence and its contents under the same parent" />
             <MenuItem x:Name="TrashSequenceMenuItem" Header="Trash" Click="SequencesTree_Trash_Click"
                       ToolTip="Trash this sequence and its contents and remove it from its parent" />
-            <MenuItem Header="Open in Package Editor" Click="SequencesTree_OpenInPackageEditor_Click" />
+            <MenuItem Header="Open in Package Editor" Icon="{StaticResource PackageEditorMenuIcon}" Click="SequencesTree_OpenInPackageEditor_Click" />
         </ContextMenu>
         <system:Boolean x:Key="True">True</system:Boolean>
     </Window.Resources>

@@ -415,9 +415,9 @@
                 <TreeView.ContextMenu>
                     <ContextMenu>
                         <MenuItem Header="Add New InterpTrack" Command="{Binding AddTrackCmd}" sharedUi:Bindings.VisibilityToEnabled="True"/>
-                        <MenuItem Header="Open Selection in Package Editor" Command="{Binding OpenSelection}"
+                        <MenuItem Icon="{StaticResource PackageEditorMenuIcon}" Header="Open Selection in Package Editor" Command="{Binding OpenSelection}"
                                   CommandParameter="Track" />
-                        <MenuItem Header="Open InterpData in Package Editor" Command="{Binding OpenInterpData}"
+                        <MenuItem Icon="{StaticResource PackageEditorMenuIcon}" Header="Open InterpData in Package Editor" Command="{Binding OpenInterpData}"
                                   CommandParameter="Data" />
                         <MenuItem Header="Rename Track" Command="{Binding RenameTrackCommand}" />
                         <Separator/>

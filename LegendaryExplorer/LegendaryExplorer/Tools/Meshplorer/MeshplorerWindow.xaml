@@ -176,11 +176,7 @@
                                 <MenuItem Header="Clone Tree" ToolTip="Clone this mesh and all children" Click="CloneMeshTree_Click"/>
                                 <MenuItem Header="Trash entry and children" ToolTip="Convert this mesh and its children into empty data" Click="TrashMeshTree_Click"/>
                                 <Separator/>
-                                <MenuItem Header="Open in Package Editor" ToolTip="Opens this mesh in Package Editor" Click="OpenInPackageEditor_Clicked">
-                                    <MenuItem.Icon>
-                                        <Image Source="/Tools/Icons/packageeditorwpf_256x256.ico" Width="16"/>
-                                    </MenuItem.Icon>
-                                </MenuItem>
+                                <MenuItem Icon="{StaticResource PackageEditorMenuIcon}" Header="Open in Package Editor" ToolTip="Opens this mesh in Package Editor" Click="OpenInPackageEditor_Clicked"/>
                                 <MenuItem Header="Replace Mesh from UDK" Command="{Binding Source={StaticResource bindingProxy}, Path=Data.ReplaceFromUDKCommand}">
                                     <MenuItem.Icon>
                                         <Image Source="/Resources/Images/udk.ico" Width="16"/>

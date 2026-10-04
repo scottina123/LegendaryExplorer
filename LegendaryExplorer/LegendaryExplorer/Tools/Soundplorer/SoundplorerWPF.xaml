@@ -25,7 +25,7 @@
         <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
         <converters:WwiseMenuItemVisibilityConverter x:Key="WwiseMenuItemVisibilityConverter"/>
         <ContextMenu x:Key="EntryContextMenu" DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
-            <MenuItem Header="Open in Package Editor" ToolTip="Open this WwiseStream in Package Editor" Click="OpenInPackageEditor_Clicked"
+            <MenuItem Header="Open in Package Editor" Icon="{StaticResource PackageEditorMenuIcon}" ToolTip="Open this WwiseStream in Package Editor" Click="OpenInPackageEditor_Clicked"
                       Visibility="{Binding Converter={StaticResource WwiseMenuItemVisibilityConverter},ConverterParameter='WwiseStream'}"/>
             <MenuItem Header="Export ISACT entry as wave" ToolTip="Exports the ISACT entry data to playable wave file" Click="ExtractISACTAsWave_Clicked" Visibility="{Binding Converter={StaticResource WwiseMenuItemVisibilityConverter},ConverterParameter='ISACTFileEntry'}"/>
 

@@ -126,19 +126,19 @@
             <MenuItem Header="Ignore Body Gestures" IsCheckable="True" IsChecked="{Binding SelectedDialogueNode.IgnoreBodyGesture}" StaysOpenOnClick="True" />
             <MenuItem Header="Unskippable" IsCheckable="True" IsChecked="{Binding SelectedDialogueNode.IsUnskippable}" StaysOpenOnClick="True" />
             <Separator/>
-            <MenuItem Header="Open In">
-                <MenuItem Header="Sequence Editor" Command="{Binding OpenInCommand}" CommandParameter="SeqEdLine"/>
-                <MenuItem Header="Package Editor" Command="{Binding OpenInCommand}" CommandParameter="PackEdLine"/>
-                <MenuItem Header="Interp Editor" Command="{Binding OpenInCommand}" CommandParameter="InterpEdLine"/>
-                <MenuItem Header="Male FaceFX Line" Command="{Binding OpenInCommand}" CommandParameter="FaceFXLineM"/>
-                <MenuItem Header="Female FaceFX Line" Command="{Binding OpenInCommand}" CommandParameter="FaceFXLineF"/>
+            <MenuItem Header="Open In" SubmenuOpened="NodeOpenIn_SubmenuOpened">
+                <MenuItem Icon="{StaticResource SequenceEditorMenuIcon}" Header="Sequence Editor" Command="{Binding OpenInCommand}" CommandParameter="SeqEdLine"/>
+                <MenuItem Icon="{StaticResource PackageEditorMenuIcon}" Header="Package Editor" Command="{Binding OpenInCommand}" CommandParameter="PackEdLine"/>
+                <MenuItem Icon="{StaticResource InterpEditorMenuIcon}" Header="Interp Editor" Command="{Binding OpenInCommand}" CommandParameter="InterpEdLine"/>
+                <MenuItem Icon="{StaticResource FaceFXEditorMenuIcon}" Header="Male FaceFX Line" Command="{Binding OpenInCommand}" CommandParameter="FaceFXLineM"/>
+                <MenuItem Icon="{StaticResource FaceFXEditorMenuIcon}" Header="Female FaceFX Line" Command="{Binding OpenInCommand}" CommandParameter="FaceFXLineF"/>
                 <Separator />
-                <MenuItem Header="Conditional/Bool in Conditionals Editor or Plot Database" Command="{Binding OpenInCommand}" CommandParameter="PlotDbCnd"/>
-                <MenuItem Header="Transition in Plot Editor" Command="{Binding OpenInCommand}" CommandParameter="PlotDbTrans"/>
+                <MenuItem Icon="{StaticResource PlotDatabaseMenuIcon}" Header="Conditional/Bool in Conditionals Editor or Plot Database" Command="{Binding OpenInCommand}" CommandParameter="PlotDbCnd"/>
+                <MenuItem Icon="{StaticResource PlotEditorMenuIcon}" Header="Transition in Plot Editor" Command="{Binding OpenInCommand}" CommandParameter="PlotDbTrans"/>
             </MenuItem>
             <MenuItem Header="Audio">
-                <MenuItem Header="Open Male Audio in Soundplorer" Command="{Binding OpenInCommand}" CommandParameter="SoundP_StreamM"/>
-                <MenuItem Header="Open Female Audio in Soundplorer" Command="{Binding OpenInCommand}" CommandParameter="SoundP_StreamF"/>
+                <MenuItem Icon="{StaticResource SoundplorerMenuIcon}" Header="Open Male Audio in Soundplorer" Command="{Binding OpenInCommand}" CommandParameter="SoundP_StreamM"/>
+                <MenuItem Icon="{StaticResource SoundplorerMenuIcon}" Header="Open Female Audio in Soundplorer" Command="{Binding OpenInCommand}" CommandParameter="SoundP_StreamF"/>
                 <Separator />
                 <MenuItem Header="Play Male Audio" Click="PlayAudioM_Click" IsEnabled="{Binding SelectedDialogueNode.WwiseStream_Male, Converter={StaticResource NullEnabledConverter}}"/>
                 <MenuItem Header="Play Female Audio" Click="PlayAudioF_Click" IsEnabled="{Binding SelectedDialogueNode.WwiseStream_Female, Converter={StaticResource NullEnabledConverter}}"/>
@@ -195,19 +195,19 @@
             <MenuItem Header="Ignore Body Gestures" IsCheckable="True" IsChecked="{Binding SelectedDialogueNode.IgnoreBodyGesture}" StaysOpenOnClick="True" />
             <MenuItem Header="Skippable" IsCheckable="True" IsChecked="{Binding SelectedDialogueNode.IsSkippable}" StaysOpenOnClick="True" />
             <Separator/>
-            <MenuItem Header="Open In">
-                <MenuItem Header="Sequence Editor" Command="{Binding OpenInCommand}" CommandParameter="SeqEdLine"/>
-                <MenuItem Header="Package Editor" Command="{Binding OpenInCommand}" CommandParameter="PackEdLine"/>
-                <MenuItem Header="Interp Editor" Command="{Binding OpenInCommand}" CommandParameter="InterpEdLine"/>
-                <MenuItem Header="Male FaceFX Line" Command="{Binding OpenInCommand}" CommandParameter="FaceFXLineM"/>
-                <MenuItem Header="Female FaceFX Line" Command="{Binding OpenInCommand}" CommandParameter="FaceFXLineF"/>
+            <MenuItem Header="Open In" SubmenuOpened="NodeOpenIn_SubmenuOpened">
+                <MenuItem Icon="{StaticResource SequenceEditorMenuIcon}" Header="Sequence Editor" Command="{Binding OpenInCommand}" CommandParameter="SeqEdLine"/>
+                <MenuItem Icon="{StaticResource PackageEditorMenuIcon}" Header="Package Editor" Command="{Binding OpenInCommand}" CommandParameter="PackEdLine"/>
+                <MenuItem Icon="{StaticResource InterpEditorMenuIcon}" Header="Interp Editor" Command="{Binding OpenInCommand}" CommandParameter="InterpEdLine"/>
+                <MenuItem Icon="{StaticResource FaceFXEditorMenuIcon}" Header="Male FaceFX Line" Command="{Binding OpenInCommand}" CommandParameter="FaceFXLineM"/>
+                <MenuItem Icon="{StaticResource FaceFXEditorMenuIcon}" Header="Female FaceFX Line" Command="{Binding OpenInCommand}" CommandParameter="FaceFXLineF"/>
                 <Separator />
-                <MenuItem Header="Conditional/Bool in Conditionals Editor or Plot Database" Command="{Binding OpenInCommand}" CommandParameter="PlotDbCnd"/>
-                <MenuItem Header="Transition in Plot Editor" Command="{Binding OpenInCommand}" CommandParameter="PlotDbTrans"/>
+                <MenuItem Icon="{StaticResource PlotDatabaseMenuIcon}" Header="Conditional/Bool in Conditionals Editor or Plot Database" Command="{Binding OpenInCommand}" CommandParameter="PlotDbCnd"/>
+                <MenuItem Icon="{StaticResource PlotEditorMenuIcon}" Header="Transition in Plot Editor" Command="{Binding OpenInCommand}" CommandParameter="PlotDbTrans"/>
             </MenuItem>
             <MenuItem Header="Audio">
-                <MenuItem Header="Open Male Audio in Soundplorer" Command="{Binding OpenInCommand}" CommandParameter="SoundP_StreamM"/>
-                <MenuItem Header="Open Female Audio in Soundplorer" Command="{Binding OpenInCommand}" CommandParameter="SoundP_StreamF"/>
+                <MenuItem Icon="{StaticResource SoundplorerMenuIcon}" Header="Open Male Audio in Soundplorer" Command="{Binding OpenInCommand}" CommandParameter="SoundP_StreamM"/>
+                <MenuItem Icon="{StaticResource SoundplorerMenuIcon}" Header="Open Female Audio in Soundplorer" Command="{Binding OpenInCommand}" CommandParameter="SoundP_StreamF"/>
                 <Separator />
                 <MenuItem Header="Play Male Audio" Click="PlayAudioM_Click" IsEnabled="{Binding SelectedDialogueNode.WwiseStream_Male, Converter={StaticResource NullEnabledConverter}}"/>
                 <MenuItem Header="Play Female Audio" Click="PlayAudioF_Click" IsEnabled="{Binding SelectedDialogueNode.WwiseStream_Female, Converter={StaticResource NullEnabledConverter}}"/>
@@ -220,9 +220,9 @@
         </ContextMenu>
         <ContextMenu x:Key="interpDataTreeContextMenu" Opened="InterpDataTreeContextMenu_Opened">
             <MenuItem Header="View reference graph (EXPERIMENTAL)" Tag="ViewReferenceGraph" Click="InterpDataTree_PackageEditorAction_Click" />
-            <MenuItem Header="Open in Sequence Editor" Click="InterpDataTree_OpenInSequenceEditor_Click" />
-            <MenuItem Header="Open in Interp Editor" Click="InterpDataTree_OpenInInterpEditor_Click" />
-            <MenuItem Header="Open Gesture Animation Importer" Tag="OpenGestureAnimationImporter" Click="InterpDataTree_PackageEditorAction_Click" Visibility="Collapsed" />
+            <MenuItem Icon="{StaticResource SequenceEditorMenuIcon}" Header="Open in Sequence Editor" Click="InterpDataTree_OpenInSequenceEditor_Click" />
+            <MenuItem Icon="{StaticResource InterpEditorMenuIcon}" Header="Open in Interp Editor" Click="InterpDataTree_OpenInInterpEditor_Click" />
+            <MenuItem Icon="{StaticResource AnimationImporterMenuIcon}" Header="Open Gesture Animation Importer" Tag="OpenGestureAnimationImporter" Click="InterpDataTree_PackageEditorAction_Click" Visibility="Collapsed" />
             <MenuItem Header="Add InterpTrack to group" Tag="AddInterpTrack" Click="InterpDataTree_PackageEditorAction_Click" />
             <MenuItem Header="Bulk Edit InterpGroups" Command="{Binding BulkEditInterpGroupsCommand}" />
             <MenuItem Header="Shift All InterpTrackMoves in InterpData" Tag="ShiftInterpTrackMovesInInterpData" Click="InterpDataTree_PackageEditorAction_Click" />
@@ -254,7 +254,7 @@
             <Separator />
             <MenuItem Header="Generate MD5 of export" Tag="GenerateExportMd5" Click="InterpDataTree_PackageEditorAction_Click" />
             <Separator />
-            <MenuItem Header="Open in Package Editor" Click="InterpDataTree_OpenInPackageEditor_Click" />
+            <MenuItem Icon="{StaticResource PackageEditorMenuIcon}" Header="Open in Package Editor" Click="InterpDataTree_OpenInPackageEditor_Click" />
             <MenuItem Header="Copy UIndex" Click="InterpDataTree_CopyUIndex_Click" />
         </ContextMenu>
         <ContextMenu x:Key="addAllToReferencerContextMenu" />
@@ -338,34 +338,18 @@
                     <MenuItem Header="Open file location" Command="{Binding OpenCurrentFileLocationCommand}" ToolTip="{Binding CurrentPackageFilePath, StringFormat=Open containing folder for {0}}" />
                     <MenuItem Header="Copy file name" Command="{Binding CopyCurrentFileNameCommand}" />
                     <MenuItem Header="Open in...">
-                        <MenuItem Header="FaceFX Editor" Command="{Binding OpenInCommand}"
+                        <MenuItem Icon="{StaticResource FaceFXEditorMenuIcon}" Header="FaceFX Editor" Command="{Binding OpenInCommand}"
                                   CommandParameter="FaceFXEditor"
-                                  IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}">
-                            <MenuItem.Icon>
-                                <Image Source="{StaticResource iconFaceFXEditor16}" Width="64" />
-                            </MenuItem.Icon>
-                        </MenuItem>
-                        <MenuItem Header="Package Editor" Command="{Binding OpenInCommand}"
+                                  IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}"/>
+                        <MenuItem Icon="{StaticResource PackageEditorMenuIcon}" Header="Package Editor" Command="{Binding OpenInCommand}"
                                   CommandParameter="PackageEditor"
-                                  IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}">
-                            <MenuItem.Icon>
-                                <Image Source="{StaticResource iconPackageEditor16}" Width="64" />
-                            </MenuItem.Icon>
-                        </MenuItem>
-                        <MenuItem Header="Sequence Editor" Command="{Binding OpenInCommand}"
+                                  IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}"/>
+                        <MenuItem Icon="{StaticResource SequenceEditorMenuIcon}" Header="Sequence Editor" Command="{Binding OpenInCommand}"
                                   CommandParameter="SequenceEditor"
-                                  IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}">
-                            <MenuItem.Icon>
-                                <Image Source="{StaticResource iconSequenceEditor16}" Width="64" />
-                            </MenuItem.Icon>
-                        </MenuItem>
-                        <MenuItem Header="Soundplorer" Command="{Binding OpenInCommand}"
+                                  IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}"/>
+                        <MenuItem Icon="{StaticResource SoundplorerMenuIcon}" Header="Soundplorer" Command="{Binding OpenInCommand}"
                                   CommandParameter="SoundplorerWPF"
-                                  IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}">
-                            <MenuItem.Icon>
-                                <Image Source="{StaticResource iconSoundplorer16}" Width="64" />
-                            </MenuItem.Icon>
-                        </MenuItem>
+                                  IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}"/>
                     </MenuItem>
                     <Separator />
                     <MenuItem Name="Recents_MenuItem" Header="Recent" IsEnabled="false" />
@@ -814,18 +798,10 @@
                         </ListBox.ItemContainerStyle>
                         <ListBox.ContextMenu>
                             <ContextMenu>
-                                <MenuItem Header="Open in Package Editor" Command="{Binding OpenInCommand}"
-                                          CommandParameter="PackEdConv">
-                                    <MenuItem.Icon>
-                                        <Image Source="{StaticResource iconPackageEditor16}" Width="64"/>
-                                    </MenuItem.Icon>
-                                </MenuItem>
-                                <MenuItem Header="Open in Sequence Editor" Command="{Binding OpenInCommand}"
-                                          CommandParameter="SeqEdNode">
-                                    <MenuItem.Icon>
-                                        <Image Source="{StaticResource iconSequenceEditor16}" Width="64"/>
-                                    </MenuItem.Icon>
-                                </MenuItem>
+                                <MenuItem Icon="{StaticResource PackageEditorMenuIcon}" Header="Open in Package Editor" Command="{Binding OpenInCommand}"
+                                          CommandParameter="PackEdConv"/>
+                                <MenuItem Icon="{StaticResource SequenceEditorMenuIcon}" Header="Open in Sequence Editor" Command="{Binding OpenInCommand}"
+                                          CommandParameter="SeqEdNode"/>
                                 <MenuItem Header="Preview Conversation in 3D..." Click="PreviewDialogueConversation_Click"
                                           ToolTip="Select a start node and open a stateful, branching 3D conversation preview"/>
                                 <Separator />

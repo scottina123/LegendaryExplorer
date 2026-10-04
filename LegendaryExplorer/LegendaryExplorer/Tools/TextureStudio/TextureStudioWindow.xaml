@@ -32,12 +32,8 @@
             <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
         </Style>
         <ContextMenu x:Key="InstanceContextMenu">
-            <MenuItem Header="Open instance in Package Editor" ToolTip="Opens a new Package Editor, focused on this instance" 
-                      Command="{Binding Source={StaticResource bindingProxy}, Path=Data.OpenInstanceInPackageEditorCommand}" sharedUi:Bindings.VisibilityToEnabled="True">
-                <MenuItem.Icon>
-                    <Image Source="/Tools/Icons/packageeditorwpf_256x256.ico" Width="64"/>
-                </MenuItem.Icon>
-            </MenuItem>
+            <MenuItem Icon="{StaticResource PackageEditorMenuIcon}" Header="Open instance in Package Editor" ToolTip="Opens a new Package Editor, focused on this instance"
+                      Command="{Binding Source={StaticResource bindingProxy}, Path=Data.OpenInstanceInPackageEditorCommand}" sharedUi:Bindings.VisibilityToEnabled="True"/>
         </ContextMenu>
     </Window.Resources>
     <xctk:BusyIndicator IsBusy="{Binding IsBusy}">

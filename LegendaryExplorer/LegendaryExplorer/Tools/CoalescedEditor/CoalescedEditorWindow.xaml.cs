@@ -293,6 +293,7 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
                 var cndItem = new MenuItem
                 {
                     Header = $"Open Conditional {plotId} in Conditionals Editor",
+                    Icon = FindResource("ConditionalsEditorMenuIcon"),
                     Tag = "PlotNav"
                 };
                 cndItem.Click += (_, _) => OpenConditionalInEditor(capturedId, capturedGame);
@@ -308,6 +309,7 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
                 var dbItem = new MenuItem
                 {
                     Header = $"Open {displayType} {plotId} in Plot Database",
+                    Icon = FindResource("PlotDatabaseMenuIcon"),
                     Tag = "PlotNav"
                 };
                 dbItem.Click += (_, _) => OpenPlotElementInDatabase(capturedElement, capturedGame);

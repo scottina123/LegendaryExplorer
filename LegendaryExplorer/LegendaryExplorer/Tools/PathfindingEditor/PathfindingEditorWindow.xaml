@@ -58,16 +58,17 @@
                 <MenuItem Header="Show only nodes at or below this one" Click="ShowNodes_BelowEqual_Click"/>
             </MenuItem>
             <Separator />
-            <MenuItem Header="Open sequence reference in Sequence Editor" ItemsSource="{Binding CurrentNodeSequenceReferences}" IsEnabled="{Binding Path=CurrentNodeSequenceReferences.Count, Converter={StaticResource IsIntNotEqualConverter}, ConverterParameter=0}">
+            <MenuItem Header="Open sequence reference in Sequence Editor" Icon="{StaticResource SequenceEditorMenuIcon}" ItemsSource="{Binding CurrentNodeSequenceReferences}" IsEnabled="{Binding Path=CurrentNodeSequenceReferences.Count, Converter={StaticResource IsIntNotEqualConverter}, ConverterParameter=0}">
                 <MenuItem.ItemContainerStyle>
                     <Style TargetType="MenuItem">
                         <Setter Property="Header" Value="{Binding InstancedFullPath}"/>
                         <Setter Property="Command" Value="{Binding RelativeSource={RelativeSource Mode=FindAncestor, AncestorType=MenuItem}, Path=DataContext.OpenRefInSequenceEditorCommand}" />
                         <Setter Property="CommandParameter" Value="{Binding}" />
+                        <EventSetter Event="Loaded" Handler="SequenceReferenceMenuItem_Loaded" />
                     </Style>
                 </MenuItem.ItemContainerStyle>
             </MenuItem>
-            <MenuItem Header="Open in Package Editor" ToolTip="Open this export in Package Editor. Initialization of the tree may take a few seconds." Click="OpenInPackageEditor_Clicked" />
+            <MenuItem Header="Open in Package Editor" Icon="{StaticResource PackageEditorMenuIcon}" ToolTip="Open this export in Package Editor. Initialization of the tree may take a few seconds." Click="OpenInPackageEditor_Clicked" />
         </ContextMenu>
     </Window.Resources>
     <Window.InputBindings>

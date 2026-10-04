@@ -446,7 +446,7 @@ namespace LegendaryExplorer.UserControls.SharedToolControls
             pin.Click += (_, _) => TogglePinItem(item);
             menu.Items.Add(pin);
             menu.Items.Add(new Separator());
-            menu.Items.Add(new MenuItem { Header = "Open file location", Command = OpenRecentItemLocationCommand, CommandParameter = item.Path });
+            menu.Items.Add(new MenuItem { Header = "Open file location", Icon = FindResource("WindowsExplorerMenuIcon"), Command = OpenRecentItemLocationCommand, CommandParameter = item.Path });
             menu.Items.Add(new MenuItem { Header = "Copy file path", Command = CopyRecentItemPathCommand, CommandParameter = item.Path });
             menu.Items.Add(new MenuItem { Header = "Copy file name", Command = CopyRecentItemNameCommand, CommandParameter = item.Path });
             return menu;

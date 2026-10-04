@@ -138,7 +138,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             var openUsageItem = new MenuItem
             {
                 Header = "Open Usage",
-                Icon = new Image { Source = (ImageSource)FindResource("iconPackageEditor16"), Width = 16, Height = 16 },
+                Icon = FindResource("PackageEditorMenuIcon"),
                 ToolTip = "Opens this Usage in Package Editor."
             };
             openUsageItem.SetBinding(MenuItem.CommandProperty,
@@ -147,7 +147,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             var openExplorerItem = new MenuItem
             {
                 Header = "Open in Windows Explorer",
-                Icon = new Image { Source = (ImageSource)FindResource("iconWindowsExplorer16"), Width = 16, Height = 16 },
+                Icon = FindResource("WindowsExplorerMenuIcon"),
                 ToolTip = "Opens this file in Windows Explorer."
             };
             openExplorerItem.SetBinding(MenuItem.CommandProperty,
@@ -155,6 +155,13 @@ namespace LegendaryExplorer.Tools.AssetDatabase
 
             menu.Items.Add(openUsageItem);
             menu.Items.Add(openExplorerItem);
+            menu.Opened += (sender, args) =>
+            {
+                if (Window.GetWindow(this) is AssetDatabaseWindow window)
+                {
+                    window.UsageToolsContextMenu_Opened(sender, args);
+                }
+            };
             internalListBox.ContextMenu = menu;
             SyncContextMenuDataContext();
         }

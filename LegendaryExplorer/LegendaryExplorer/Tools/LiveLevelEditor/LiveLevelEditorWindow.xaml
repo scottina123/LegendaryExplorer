@@ -21,10 +21,10 @@
         <converters:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisibilityConverter"/>
         <converters:GameToVisibilityConverter x:Key="GameToVisibilityConverter"/>
         <ContextMenu x:Key="packagesContextMenu">
-            <MenuItem Header="Open In Package Editor" sharedUi:Bindings.VisibilityToEnabled="True"/>
+            <MenuItem Header="Open In Package Editor" Icon="{StaticResource PackageEditorMenuIcon}" sharedUi:Bindings.VisibilityToEnabled="True"/>
         </ContextMenu>
         <ContextMenu x:Key="actorsContextMenu">
-            <MenuItem Header="Open In Package Editor" Command="{Binding OpenActorInPackEdCommand}"  sharedUi:Bindings.VisibilityToEnabled="True"/>
+            <MenuItem Header="Open In Package Editor" Icon="{StaticResource PackageEditorMenuIcon}" Command="{Binding OpenActorInPackEdCommand}"  sharedUi:Bindings.VisibilityToEnabled="True"/>
         </ContextMenu>
     </Window.Resources>
     <xctk:BusyIndicator IsBusy="{Binding Path=IsBusy}">

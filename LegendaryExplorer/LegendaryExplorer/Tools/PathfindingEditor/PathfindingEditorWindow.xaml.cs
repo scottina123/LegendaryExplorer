@@ -952,6 +952,14 @@ namespace LegendaryExplorer.Tools.PathfindingEditor
                 MessageBox.Show("Done.");
             }
         }
+        private void SequenceReferenceMenuItem_Loaded(object sender, RoutedEventArgs e)
+        {
+            if (sender is MenuItem { Icon: null } menuItem)
+            {
+                menuItem.Icon = FindResource("SequenceEditorMenuIcon");
+            }
+        }
+
         private void OpenInPackageEditor_Clicked(object sender, RoutedEventArgs e)
         {
             if (ActiveNodes_ListBox.SelectedItem is ExportEntry export)

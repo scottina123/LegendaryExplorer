@@ -51,8 +51,8 @@
                         <DockPanel.ContextMenu>
                             <ContextMenu>
                                 <MenuItem Header="Extract file" Command="{Binding Source={StaticResource bindingProxy}, Path=Data.ExtractFileCommand}" CommandParameter="{Binding}" sharedUi:Bindings.VisibilityToEnabled="True"/>
-                                <MenuItem Header="Open in TLK Editor" Command="{Binding Source={StaticResource bindingProxy}, Path=Data.OpenInTLKEditorCommand}" CommandParameter="{Binding}" sharedUi:Bindings.VisibilityToEnabled="True"/>
-                                <MenuItem Header="Open in Package Editor" Command="{Binding Source={StaticResource bindingProxy}, Path=Data.OpenInPackageEditorCommand}" CommandParameter="{Binding}" sharedUi:Bindings.VisibilityToEnabled="True"/>
+                                <MenuItem Header="Open in TLK Editor" Icon="{StaticResource TLKEditorMenuIcon}" Command="{Binding Source={StaticResource bindingProxy}, Path=Data.OpenInTLKEditorCommand}" CommandParameter="{Binding}" sharedUi:Bindings.VisibilityToEnabled="True"/>
+                                <MenuItem Header="Open in Package Editor" Icon="{StaticResource PackageEditorMenuIcon}" Command="{Binding Source={StaticResource bindingProxy}, Path=Data.OpenInPackageEditorCommand}" CommandParameter="{Binding}" sharedUi:Bindings.VisibilityToEnabled="True"/>
                             </ContextMenu>
 
                         </DockPanel.ContextMenu>

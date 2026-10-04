@@ -272,6 +272,7 @@
                                                           Click="AdjustHIRCEventSettings_Click"
                                                           Visibility="Collapsed"/>
                                                 <MenuItem x:Name="OpenHIRCEventInPackageEditorMenuItem"
+                                                          Icon="{StaticResource PackageEditorMenuIcon}"
                                                           Header="Open in Package Editor"
                                                           Click="OpenHIRCEventInPackageEditor_Click"
                                                           Visibility="Collapsed"/>

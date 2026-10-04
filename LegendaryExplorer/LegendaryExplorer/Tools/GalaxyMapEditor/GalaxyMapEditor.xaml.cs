@@ -2930,7 +2930,7 @@ public partial class GalaxyMapEditor : WPFBase, ISceneRenderContextConfigurable,
             menu.Items.Add(new System.Windows.Controls.Separator());
         }
 
-        var openPeItem = new System.Windows.Controls.MenuItem { Header = "Open in Package Editor" };
+        var openPeItem = new System.Windows.Controls.MenuItem { Header = "Open in Package Editor", Icon = FindResource("PackageEditorMenuIcon") };
         openPeItem.Click += (_, _) =>
         {
             var p = new PackageEditorWindow();

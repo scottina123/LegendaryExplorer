@@ -479,6 +479,27 @@
     <BitmapImage x:Key="iconCoalescedCompiler16" UriSource="Tools/Icons/16x16/CoalescedCompiler_Icon_16.ico"/>
     <BitmapImage x:Key="iconAssetViewer16" UriSource="Tools/Icons/16x16/AssetViewer_Icon_16.ico"/>
 
+    <!-- Menu icons need separate controls for each menu item; their image sources are shared. -->
+    <Image x:Key="PackageEditorMenuIcon" x:Shared="False" Source="{StaticResource iconPackageEditor16}" Width="16" Height="16"/>
+    <Image x:Key="DialogueEditorMenuIcon" x:Shared="False" Source="{StaticResource iconDialogueEditor16}" Width="16" Height="16"/>
+    <Image x:Key="SequenceEditorMenuIcon" x:Shared="False" Source="{StaticResource iconSequenceEditor16}" Width="16" Height="16"/>
+    <Image x:Key="InterpEditorMenuIcon" x:Shared="False" Source="{StaticResource iconInterpEditor16}" Width="16" Height="16"/>
+    <Image x:Key="FaceFXEditorMenuIcon" x:Shared="False" Source="{StaticResource iconFaceFXEditor16}" Width="16" Height="16"/>
+    <Image x:Key="MeshplorerMenuIcon" x:Shared="False" Source="{StaticResource iconMeshplorer16}" Width="16" Height="16"/>
+    <Image x:Key="PlotEditorMenuIcon" x:Shared="False" Source="{StaticResource iconPlotEditor16}" Width="16" Height="16"/>
+    <Image x:Key="PlotDatabaseMenuIcon" x:Shared="False" Source="{StaticResource iconPlotDatabase16}" Width="16" Height="16"/>
+    <Image x:Key="ConditionalsEditorMenuIcon" x:Shared="False" Source="{StaticResource iconConditionalsEditor16}" Width="16" Height="16"/>
+    <Image x:Key="SoundplorerMenuIcon" x:Shared="False" Source="{StaticResource iconSoundplorer16}" Width="16" Height="16"/>
+    <Image x:Key="PathfindingEditorMenuIcon" x:Shared="False" Source="{StaticResource iconPathfindingEditor16}" Width="16" Height="16"/>
+    <Image x:Key="WwiseEditorMenuIcon" x:Shared="False" Source="{StaticResource iconWwiseEditor16}" Width="16" Height="16"/>
+    <Image x:Key="LevelEditorMenuIcon" x:Shared="False" Source="{StaticResource iconLevelEditor}" Width="16" Height="16"/>
+    <Image x:Key="SFXGalaxyEditorMenuIcon" x:Shared="False" Source="{StaticResource iconSFXGalaxyEditor}" Width="16" Height="16"/>
+    <Image x:Key="AnimationImporterMenuIcon" x:Shared="False" Source="{StaticResource iconAnimationImporter16}" Width="16" Height="16"/>
+    <Image x:Key="AnimViewerMenuIcon" x:Shared="False" Source="{StaticResource iconAnimViewer16}" Width="16" Height="16"/>
+    <Image x:Key="CoalescedEditorMenuIcon" x:Shared="False" Source="{StaticResource iconCoalescedCompiler16}" Width="16" Height="16"/>
+    <Image x:Key="TLKEditorMenuIcon" x:Shared="False" Source="{StaticResource iconTLKEditor16}" Width="16" Height="16"/>
+    <Image x:Key="WindowsExplorerMenuIcon" x:Shared="False" Source="{StaticResource iconWindowsExplorer16}" Width="16" Height="16"/>
+    <Image x:Key="AssetViewerMenuIcon" x:Shared="False" Source="{StaticResource iconAssetViewer16}" Width="16" Height="16"/>
 
     <BitmapImage x:Key="iconLoadingSpinner" UriSource="Resources/Images/loadingspinner.png"/>
 

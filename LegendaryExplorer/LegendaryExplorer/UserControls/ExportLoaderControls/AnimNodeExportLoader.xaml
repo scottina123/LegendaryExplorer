@@ -13,10 +13,10 @@
                 <TextBlock Text="{Binding Header}">
                     <TextBlock.ContextMenu>
                         <ContextMenu>
-                            <MenuItem Header="Open in Package Editor (this instance)" ToolTip="Navigates this package editor to this object"
+                            <MenuItem Icon="{StaticResource PackageEditorMenuIcon}" Header="Open in Package Editor (this instance)" ToolTip="Navigates this package editor to this object"
                                       Command="{Binding NavigateToEntryCommandInternal, RelativeSource={RelativeSource Mode=FindAncestor, AncestorType=exportLoaderControls:AnimNodeExportLoader}}"
                                       CommandParameter="{Binding Entry.UIndex}"/>
-                            <MenuItem Header="Open in Package Editor" ToolTip="Opens a new Package Editor window, navigated to this object"
+                            <MenuItem Icon="{StaticResource PackageEditorMenuIcon}" Header="Open in Package Editor" ToolTip="Opens a new Package Editor window, navigated to this object"
                                       Command="{Binding OpenExportInPECommand, RelativeSource={RelativeSource Mode=FindAncestor, AncestorType=exportLoaderControls:AnimNodeExportLoader}}"
                                       CommandParameter="{Binding Entry.UIndex}"/>
                             <MenuItem Header="{Binding Entry.UIndex}"/>

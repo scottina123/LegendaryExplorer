@@ -192,7 +192,7 @@
                                 <MenuItem Header="Focus Camera" Command="{Binding Data.FocusSelectedCommand, Source={StaticResource bindingProxy}}" InputGestureText="F"/>
                                 <MenuItem Header="Navigate Into" Command="{Binding Data.NavigateIntoCommand, Source={StaticResource bindingProxy}}" InputGestureText="Enter"/>
                                 <Separator/>
-                                <MenuItem Header="Open in Package Editor" Command="{Binding Data.OpenInPackageEditorCommand, Source={StaticResource bindingProxy}}"/>
+                                <MenuItem Header="Open in Package Editor" Icon="{StaticResource PackageEditorMenuIcon}" Command="{Binding Data.OpenInPackageEditorCommand, Source={StaticResource bindingProxy}}"/>
                                 <Separator/>
                                 <MenuItem Header="Clone Object" Command="{Binding Data.CloneObjectCommand, Source={StaticResource bindingProxy}}"/>
                                 <MenuItem Header="Delete Object" Command="{Binding Data.DeleteObjectCommand, Source={StaticResource bindingProxy}}"/>

@@ -758,7 +758,36 @@
                         <MenuItem Header="Copy all properties" ToolTip="Copies all root properties from the current export so they can be pasted into another export in the same package" Command="{Binding CopyAllPropertiesCommand}" SharedUI:Bindings.VisibilityToEnabled="True"/>
                         <MenuItem Header="Paste property" ToolTip="Pastes the currently copied property" Command="{Binding PastePropertyCommand}" SharedUI:Bindings.VisibilityToEnabled="True"/>
                         <MenuItem Header="Copy parsed value" ToolTip="Copies the parsed value to the clipboard" Command="{Binding CopyValueCommand}" SharedUI:Bindings.VisibilityToEnabled="True"/>
-                        <MenuItem Header="Open in Plot Tool" ToolTip="Opens this bool, conditional, or transition in its plot tool" Command="{Binding OpenPlotElementCommand}" SharedUI:Bindings.VisibilityToEnabled="True"/>
+                        <MenuItem Header="Open in Plot Tool" ToolTip="Opens this bool, conditional, or transition in its plot tool" Command="{Binding OpenPlotElementCommand}" SharedUI:Bindings.VisibilityToEnabled="True">
+                            <MenuItem.Icon>
+                                <Image Width="16" Height="16">
+                                    <Image.Style>
+                                        <Style TargetType="Image">
+                                            <Setter Property="Source" Value="{StaticResource iconPlotDatabase16}"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding CurrentLoadedExport.ClassName}" Value="BioSeqAct_PMExecuteTransition">
+                                                    <Setter Property="Source" Value="{StaticResource iconPlotEditor16}"/>
+                                                </DataTrigger>
+                                                <MultiDataTrigger>
+                                                    <MultiDataTrigger.Conditions>
+                                                        <Condition Binding="{Binding CurrentLoadedExport.ClassName}" Value="BioSeqAct_PMCheckConditional"/>
+                                                        <Condition Binding="{Binding CurrentLoadedExport.FileRef.Game}" Value="{x:Static packages:MEGame.ME3}"/>
+                                                    </MultiDataTrigger.Conditions>
+                                                    <Setter Property="Source" Value="{StaticResource iconConditionalsEditor16}"/>
+                                                </MultiDataTrigger>
+                                                <MultiDataTrigger>
+                                                    <MultiDataTrigger.Conditions>
+                                                        <Condition Binding="{Binding CurrentLoadedExport.ClassName}" Value="BioSeqAct_PMCheckConditional"/>
+                                                        <Condition Binding="{Binding CurrentLoadedExport.FileRef.Game}" Value="{x:Static packages:MEGame.LE3}"/>
+                                                    </MultiDataTrigger.Conditions>
+                                                    <Setter Property="Source" Value="{StaticResource iconConditionalsEditor16}"/>
+                                                </MultiDataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Image.Style>
+                                </Image>
+                            </MenuItem.Icon>
+                        </MenuItem>
 
                         <MenuItem Header="Sort children properties alphabetically" ToolTip="Sorts properties alphabetically. This is a cosmetic only change." Command="{Binding SortChildrenCommand}" SharedUI:Bindings.VisibilityToEnabled="True"/>
                         <MenuItem Header="Clone array element" ToolTip="Clones the selected array element" Command="{Binding CloneArrayElementCommand}" SharedUI:Bindings.VisibilityToEnabled="True"/>
@@ -772,24 +801,11 @@
                         <MenuItem Header="Sync mesh material arrays from binary" ToolTip="Resizes SkeletalMesh LOD material arrays to match the binary material count, setting bEnableShadowCasting to true and TriangleSorting to TRISORT_None." Command="{Binding SyncMeshLodMaterialArraysCommand}" SharedUI:Bindings.VisibilityToEnabled="True"/>
 
                         <MenuItem Header="View referenced object in pop out Properties window" ToolTip="Opens a new Properties window displaying the referenced object value" Command="{Binding PopoutInterpreterForObjectValueCommand}" SharedUI:Bindings.VisibilityToEnabled="True"/>
-                        <MenuItem Header="Open in Package Editor (this instance)" ToolTip="Navigates this package editor to this object" Command="{Binding NavigateToEntryCommandInternal}" SharedUI:Bindings.VisibilityToEnabled="True"/>
-                        <MenuItem Header="Open in new Package Editor" ToolTip="Opens a new Package Editor to this object" Command="{Binding OpenInPackageEditorCommand}" SharedUI:Bindings.VisibilityToEnabled="True">
-                            <MenuItem.Icon>
-                                <Image Source="/Tools/Icons/packageeditorwpf_256x256.ico" Width="64"/>
-                            </MenuItem.Icon>
-                        </MenuItem>
-                        <MenuItem Header="Attempt to find source of this import" ToolTip="Attempts to find the likely source of this import. Note that due to how unreal engine handles memory this may not be the one used." Command="{Binding AttemptOpenImportDefinitionCommand}" SharedUI:Bindings.VisibilityToEnabled="True">
-                            <MenuItem.Icon>
-                                <Image Source="/Tools/Icons/packageeditorwpf_256x256.ico" Width="64"/>
-                            </MenuItem.Icon>
-                        </MenuItem>
+                        <MenuItem Icon="{StaticResource PackageEditorMenuIcon}" Header="Open in Package Editor (this instance)" ToolTip="Navigates this package editor to this object" Command="{Binding NavigateToEntryCommandInternal}" SharedUI:Bindings.VisibilityToEnabled="True"/>
+                        <MenuItem Icon="{StaticResource PackageEditorMenuIcon}" Header="Open in new Package Editor" ToolTip="Opens a new Package Editor to this object" Command="{Binding OpenInPackageEditorCommand}" SharedUI:Bindings.VisibilityToEnabled="True"/>
+                        <MenuItem Icon="{StaticResource PackageEditorMenuIcon}" Header="Attempt to find source of this import" ToolTip="Attempts to find the likely source of this import. Note that due to how unreal engine handles memory this may not be the one used." Command="{Binding AttemptOpenImportDefinitionCommand}" SharedUI:Bindings.VisibilityToEnabled="True"/>
                         <MenuItem Header="Match MaterialInstanceConstants to SkeletalMesh" ToolTip="Makes the referenced SkeletalMeshComponent materials match the SkeletalMesh's material slots by updating or creating MaterialInstanceConstants." Command="{Binding MatchMaterialsToSkeletalMeshCommand}" SharedUI:Bindings.VisibilityToEnabled="True"/>
-                        <MenuItem Header="Open in Meshplorer" ToolTip="Opens the referenced export in Meshplorer" Command="{Binding OpenInMeshplorerCommand}" SharedUI:Bindings.VisibilityToEnabled="True">
-
-                            <MenuItem.Icon>
-                                <Image Source="/Tools/Icons/meshplorer_256x256.ico" Width="64"/>
-                            </MenuItem.Icon>
-                        </MenuItem>
+                        <MenuItem Icon="{StaticResource MeshplorerMenuIcon}" Header="Open in Meshplorer" ToolTip="Opens the referenced export in Meshplorer" Command="{Binding OpenInMeshplorerCommand}" SharedUI:Bindings.VisibilityToEnabled="True"/>
 
                         <MenuItem Header="Expand children" ToolTip="Expands all children of this property" Command="{Binding ExpandChildrenCommand}" SharedUI:Bindings.VisibilityToEnabled="True"/>
                         <MenuItem Header="Collapse children" ToolTip="Collapses all children of this property" Command="{Binding CollapseChildrenCommand}" SharedUI:Bindings.VisibilityToEnabled="True"/>
