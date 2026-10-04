@@ -3405,7 +3405,10 @@ namespace LegendaryExplorer.Tools.PackageEditor
                         }
                     }
 
-                    bool removedFromLevel = includeSelectedEntry && selected.Entry is ExportEntry { ParentName: "PersistentLevel" } exp && exp.IsA("Actor") && Pcc.RemoveFromLevelActors(exp);
+                    if (includeSelectedEntry && selected.Entry is ExportEntry { ParentName: "PersistentLevel" } exp && exp.IsA("Actor"))
+                    {
+                        Pcc.RemoveFromLevelActors(exp);
+                    }
                     RemoveFromStaticCollectionActors(itemsToTrash);
 
                     foreach (ExportEntry sequenceObject in itemsToTrash.OfType<ExportEntry>().Where(export => export.IsA("SequenceObject")))
@@ -3419,10 +3422,6 @@ namespace LegendaryExplorer.Tools.PackageEditor
 
                     RestoreTreeViewViewport(treeViewScrollState);
 
-                    if (removedFromLevel)
-                    {
-                        MessageBox.Show(this, "Trashed and removed from level!");
-                    }
                 });
 
                 static IEntry GetExternallyReferencedEntry(List<IEntry> entriesToTrash)
@@ -5747,8 +5746,47 @@ namespace LegendaryExplorer.Tools.PackageEditor
             }
         }
 
-        private void RestoreSelectionAfterLinkChange(List<IEntry> movedEntries)
+        private void SynchronizeTreeParentLinks(IEnumerable<TreeViewEntry> nodes, IReadOnlyDictionary<int, TreeViewEntry> nodesByIndex)
         {
+            var parentsToSort = new HashSet<TreeViewEntry>();
+            bool wasSuppressingSelection = SuppressSelectionEvent;
+            SuppressSelectionEvent = true;
+            try
+            {
+                foreach (TreeViewEntry node in nodes)
+                {
+                    if (node.Entry is null || node.Parent?.UIndex == node.Entry.idxLink
+                        || !nodesByIndex.TryGetValue(node.Entry.idxLink, out TreeViewEntry newParent))
+                    {
+                        continue;
+                    }
+
+                    node.Parent?.Sublinks.Remove(node);
+                    node.Parent = newParent;
+                    newParent.Sublinks.Add(node);
+                    parentsToSort.Add(newParent);
+                }
+
+                foreach (TreeViewEntry parent in parentsToSort)
+                {
+                    parent.SortChildren();
+                }
+            }
+            finally
+            {
+                SuppressSelectionEvent = wasSuppressingSelection;
+            }
+        }
+
+        internal async Task RestoreSelectionAfterLinkChangeAsync(List<IEntry> movedEntries)
+        {
+            IMEPackage package = Pcc;
+            if (package is null)
+            {
+                return;
+            }
+
+            movedEntries = movedEntries.Where(entry => ReferenceEquals(entry?.FileRef, package)).Distinct().ToList();
             if (movedEntries.Count == 0)
             {
                 return;
@@ -5762,24 +5800,64 @@ namespace LegendaryExplorer.Tools.PackageEditor
                         return;
                     }
 
-                    int primaryUIndex = movedEntries[0].UIndex;
-                    GoToNumber(primaryUIndex);
-                    Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, new Action(() =>
+                    TreeViewEntry root = AllTreeViewNodesX[0];
+                    var nodes = root.FlattenTree();
+                    var nodesByIndex = nodes.ToDictionary(node => node.UIndex);
+                    // Package header notifications are queued. Update the model now so
+                    // navigation follows the new path even before those notifications arrive.
+                    SynchronizeTreeParentLinks(nodes, nodesByIndex);
+                    await UpdateLiveFilterAsync(debounce: false);
+                    if (!ReferenceEquals(package, Pcc) || CurrentView != CurrentViewMode.Tree
+                        || AllTreeViewNodesX.Count == 0 || !ReferenceEquals(root, AllTreeViewNodesX[0]))
                     {
-                        var movedNodes = AllTreeViewNodesX[0]
-                            .FlattenTree()
-                            .Where(node => node.Entry is not null && movedEntries.Any(entry => ReferenceEquals(entry, node.Entry)))
-                            .ToList();
-                        if (movedNodes.Count == 0)
-                        {
-                            return;
-                        }
+                        return;
+                    }
 
-                        SetTreeMultiSelection(movedNodes, movedNodes[0], updatePrimarySelection: true);
-                        EnsureTreeNodeVisible(movedNodes[0]);
-                        LeftSide_TreeView.Focus();
-                        Keyboard.Focus(LeftSide_TreeView);
-                    }));
+                    ApplyTreeViewEditedFilter();
+                    var movedNodes = movedEntries
+                        .Select(entry => nodesByIndex.GetValueOrDefault(entry.UIndex))
+                        .Where(node => node?.Entry is not null && ReferenceEquals(node.Entry.FileRef, package))
+                        .Distinct()
+                        .ToList();
+                    if (movedNodes.Count == 0)
+                    {
+                        return;
+                    }
+
+                    TreeViewEntry primaryNode = movedNodes[0];
+                    foreach (TreeViewEntry node in movedNodes)
+                    {
+                        node.ExpandParents();
+                    }
+                    SetTreeMultiSelection(movedNodes, primaryNode, updatePrimarySelection: true);
+
+                    var selectionBehavior = Interaction.GetBehaviors(LeftSide_TreeView)
+                        .OfType<NodeTreeSelectionBehavior>().FirstOrDefault();
+                    if (selectionBehavior is not null)
+                    {
+                        // Removing the old container can clear the behavior's selection.
+                        // Keep its binding and explicitly reveal even an unchanged selected node.
+                        selectionBehavior.SetCurrentValue(NodeTreeSelectionBehavior.SelectedItemProperty, primaryNode);
+                        await selectionBehavior.BringSelectedItemIntoViewAsync();
+                    }
+
+                    if (ReferenceEquals(package, Pcc) && CurrentView == CurrentViewMode.Tree
+                        && ReferenceEquals(SelectedItem, primaryNode))
+                    {
+                        if (TryGetTreeViewItem(primaryNode, out TreeViewItem item))
+                        {
+                            item.Focus();
+                            // An expanded item can be taller than the viewport. Reveal
+                            // its header rather than its entire subtree after focusing.
+                            FrameworkElement header = item.Template.FindName("PART_Header", item) as FrameworkElement
+                                ?? FindVisualChild<TreeViewEntryContainer>(item);
+                            header?.BringIntoView();
+                        }
+                        else
+                        {
+                            LeftSide_TreeView.Focus();
+                        }
+                    }
                     break;
                 case CurrentViewMode.Imports:
                 case CurrentViewMode.Exports:
@@ -5795,29 +5873,6 @@ namespace LegendaryExplorer.Tools.PackageEditor
                     LeftSide_ListView.ScrollIntoView(movedEntries[0]);
                     break;
             }
-        }
-
-        private void EnsureTreeNodeVisible(TreeViewEntry node)
-        {
-            if (node is null)
-            {
-                return;
-            }
-
-            node.ExpandParents();
-            Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, new Action(() =>
-            {
-                if (!TryGetTreeViewItem(node, out TreeViewItem item))
-                {
-                    return;
-                }
-
-                Rect targetRect = new(-1000, 0, item.ActualWidth + 1000, item.ActualHeight);
-                item.BringIntoView(targetRect);
-                item.Focus();
-                LeftSide_TreeView.Focus();
-                Keyboard.Focus(LeftSide_TreeView);
-            }));
         }
 
         private bool TryGetTreeViewItem(TreeViewEntry node, out TreeViewItem treeViewItem)
@@ -5850,21 +5905,20 @@ namespace LegendaryExplorer.Tools.PackageEditor
             return treeViewItem is not null;
         }
 
-        private void ChangeRowLinks_Click(object sender, RoutedEventArgs e)
+        private async void ChangeRowLinks_Click(object sender, RoutedEventArgs e)
         {
+            e.Handled = true;
             if (sender is FrameworkElement { DataContext: TreeViewEntry { Entry: { } entry } }
                 && ReferenceEquals(entry.FileRef, Pcc))
             {
-                ChangeEntryLinks([entry]);
+                await ChangeEntryLinksAsync([entry]);
             }
-
-            e.Handled = true;
         }
 
-        private void ChangeLinksForSelectedEntries_Click(object sender, RoutedEventArgs e) =>
-            ChangeEntryLinks(GetSelectedLinkableEntries());
+        private async void ChangeLinksForSelectedEntries_Click(object sender, RoutedEventArgs e) =>
+            await ChangeEntryLinksAsync(GetSelectedLinkableEntries());
 
-        private void ChangeEntryLinks(List<IEntry> selectedEntries)
+        private async Task ChangeEntryLinksAsync(List<IEntry> selectedEntries)
         {
             if (Pcc == null)
             {
@@ -5907,14 +5961,12 @@ namespace LegendaryExplorer.Tools.PackageEditor
 
             RefreshView();
             LeftSide_ListView.UpdateLayout();
-            RestoreSelectionAfterLinkChange(selectedEntries);
             ApplySelectionPreview();
 
-            string targetText = selectedPackageRoot ? "the package root" : $"#{selectedEntry.UIndex} {selectedEntry.InstancedFullPath}";
-            string summary = $"Changed the link for {updatedCount} entr{(updatedCount == 1 ? "y" : "ies")} to {targetText}.";
             if (failedEntries.Count > 0)
             {
-                summary += $" Failed to update {failedEntries.Count}.";
+                string targetText = selectedPackageRoot ? "the package root" : $"#{selectedEntry.UIndex} {selectedEntry.InstancedFullPath}";
+                string summary = $"Changed the link for {updatedCount} entr{(updatedCount == 1 ? "y" : "ies")} to {targetText}. Failed to update {failedEntries.Count}.";
                 new ListDialog(failedEntries,
                     "Change links of selected objects",
                     summary,
@@ -5922,14 +5974,9 @@ namespace LegendaryExplorer.Tools.PackageEditor
                 {
                     DoubleClickEntryHandler = entryDoubleClick
                 }.Show();
-                return;
             }
 
-            MessageBox.Show(this,
-                summary,
-                "Change links of selected objects",
-                MessageBoxButton.OK,
-                MessageBoxImage.Information);
+            await RestoreSelectionAfterLinkChangeAsync(selectedEntries);
         }
 
         private bool PackageExportIsSelected()
@@ -6569,31 +6616,8 @@ namespace LegendaryExplorer.Tools.PackageEditor
                 }
 
                 //List<TreeViewEntry> tree = AllTreeViewNodesX[0].FlattenTree();
-                var nodesNeedingResort = new List<TreeViewEntry>();
                 List<TreeViewEntry> tviWithChangedHeaders = uindexMap.Values.Where(x => x.UIndex != 0 && headerChanges.Contains(x.Entry.UIndex)).ToList();
-                foreach (TreeViewEntry tvi in tviWithChangedHeaders)
-                {
-                    if (tvi.Parent.UIndex != tvi.Entry.idxLink)
-                    {
-                        //Debug.WriteLine("Reorder req for " + tvi.UIndex);
-                        if (!uindexMap.TryGetValue(tvi.Entry.idxLink, out var newParent))
-                        {
-                            Debugger.Break();
-                        }
-                        else
-                        {
-                            tvi.Parent.Sublinks.Remove(tvi);
-                            tvi.Parent = newParent;
-                            newParent.Sublinks.Add(tvi);
-                            nodesNeedingResort.Add(newParent);
-                        }
-                    }
-                }
-
-                nodesNeedingResort = nodesNeedingResort.Distinct().ToList();
-                SuppressSelectionEvent = true;
-                nodesNeedingResort.ForEach(x => x.SortChildren());
-                SuppressSelectionEvent = false;
+                SynchronizeTreeParentLinks(tviWithChangedHeaders, uindexMap);
             }
 
             if (CurrentView == CurrentViewMode.Imports && hasImportChanges ||
