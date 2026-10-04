@@ -3327,13 +3327,15 @@ namespace LegendaryExplorer.Tools.PackageEditor
             if (sender is FrameworkElement { DataContext: TreeViewEntry { Entry: { } entry } node }
                 && ReferenceEquals(entry.FileRef, Pcc))
             {
-                TrashEntryAndChildren(sourceNode: node);
+                TrashEntryAndChildren(includeSelectedEntry: !Keyboard.Modifiers.HasFlag(ModifierKeys.Shift),
+                    sourceNode: node, allowShiftReferenceBypass: false);
             }
 
             e.Handled = true;
         }
 
-        private void TrashEntryAndChildren(bool includeSelectedEntry = true, TreeViewEntry sourceNode = null)
+        private void TrashEntryAndChildren(bool includeSelectedEntry = true, TreeViewEntry sourceNode = null,
+            bool allowShiftReferenceBypass = true)
         {
             if (CurrentView == CurrentViewMode.Tree && (sourceNode != null || TreeEntryIsSelected()))
             {
@@ -3346,7 +3348,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
                     return;
                 }
 
-                bool skipReferencesCheck = ShowExperiments &&
+                bool skipReferencesCheck = allowShiftReferenceBypass && ShowExperiments &&
                     (Keyboard.IsKeyDown(Key.LeftShift) || Keyboard.IsKeyDown(Key.RightShift)); // Bypass the check if holding SHIFT
 
                 BusyText = "Performing reference check...";
@@ -5021,7 +5023,14 @@ namespace LegendaryExplorer.Tools.PackageEditor
             if (sender is FrameworkElement { DataContext: TreeViewEntry { Entry: { } entry } }
                 && ReferenceEquals(entry.FileRef, Pcc))
             {
-                CloneTree(1, entry);
+                if (Keyboard.Modifiers.HasFlag(ModifierKeys.Shift))
+                {
+                    CloneTreeMultiple(entry);
+                }
+                else
+                {
+                    CloneTree(1, entry);
+                }
             }
 
             e.Handled = true;
@@ -5076,12 +5085,14 @@ namespace LegendaryExplorer.Tools.PackageEditor
             }
         }
 
-        private void CloneTreeMultiple()
+        private void CloneTreeMultiple() => CloneTreeMultiple(null);
+
+        private void CloneTreeMultiple(IEntry sourceEntry)
         {
             var result = PromptDialog.Prompt(this, "How many times do you want to clone this tree?", "Multiple tree cloning", "2", true);
             if (int.TryParse(result, out var howManyTimes) && howManyTimes > 0)
             {
-                CloneTree(howManyTimes);
+                CloneTree(howManyTimes, sourceEntry);
             }
         }
 
@@ -6912,9 +6923,34 @@ namespace LegendaryExplorer.Tools.PackageEditor
             editorPanel.Visibility = Visibility.Visible;
             Dispatcher.BeginInvoke(DispatcherPriority.Input, new Action(() =>
             {
-                nameEditor.Focus();
-                nameEditor.SelectAll();
+                if (_inlineObjectNameEditor == nameEditor)
+                {
+                    nameEditor.Focus();
+                    nameEditor.SelectAll();
+                }
             }));
+        }
+
+        private void PackageEditor_CommitRenameOnOutsideClick(object sender, MouseButtonEventArgs e)
+        {
+            if (_inlineObjectNameEditor is null || _isEndingInlineObjectNameEdit
+                || e.OriginalSource is Visual source
+                && (source == _inlineObjectNameEditor || _inlineObjectNameEditor.IsAncestorOf(source)
+                    || source == _inlineObjectNameIndexEditor || _inlineObjectNameIndexEditor.IsAncestorOf(source)))
+            {
+                return;
+            }
+
+            // Blank areas do not take keyboard focus, so commit before the click is processed.
+            if (!EndInlineObjectNameEdit(commit: true))
+            {
+                e.Handled = true;
+            }
+        }
+
+        private void PackageEditor_CommitRenameOnDeactivated(object sender, EventArgs e)
+        {
+            EndInlineObjectNameEdit(commit: true);
         }
 
         private void ObjectNameEditor_PreviewKeyDown(object sender, KeyEventArgs e)
@@ -6958,15 +6994,8 @@ namespace LegendaryExplorer.Tools.PackageEditor
             {
                 return true;
             }
-
-            if (commit && string.IsNullOrWhiteSpace(_inlineObjectNameEditor.Text))
+            if (_isEndingInlineObjectNameEdit)
             {
-                MessageBox.Show(this, "Object names cannot be empty.", "Invalid object name", MessageBoxButton.OK, MessageBoxImage.Warning);
-                Dispatcher.BeginInvoke(DispatcherPriority.Input, new Action(() =>
-                {
-                    _inlineObjectNameEditor?.Focus();
-                    _inlineObjectNameEditor?.SelectAll();
-                }));
                 return false;
             }
 
@@ -6978,6 +7007,34 @@ namespace LegendaryExplorer.Tools.PackageEditor
                 Panel editorPanel = _inlineObjectNameEditorPanel;
                 TextBlock display = _inlineObjectNameDisplay;
                 TreeViewEntry node = _inlineObjectNameNode;
+
+                if (commit && string.IsNullOrWhiteSpace(nameEditor.Text))
+                {
+                    MessageBox.Show(this, "Object names cannot be empty.", "Invalid object name", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    Dispatcher.BeginInvoke(DispatcherPriority.Input, new Action(() =>
+                    {
+                        if (_inlineObjectNameEditor == nameEditor)
+                        {
+                            nameEditor.Focus();
+                            nameEditor.SelectAll();
+                        }
+                    }));
+                    return false;
+                }
+
+                if (commit && !indexEditor.CommitInput())
+                {
+                    MessageBox.Show(this, "The object index must be a whole number from 0 to 2147483646, or empty for None.",
+                        "Invalid object index", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    Dispatcher.BeginInvoke(DispatcherPriority.Input, new Action(() =>
+                    {
+                        if (_inlineObjectNameIndexEditor == indexEditor)
+                        {
+                            indexEditor.Focus();
+                        }
+                    }));
+                    return false;
+                }
 
                 _inlineObjectNameEditor = null;
                 _inlineObjectNameIndexEditor = null;

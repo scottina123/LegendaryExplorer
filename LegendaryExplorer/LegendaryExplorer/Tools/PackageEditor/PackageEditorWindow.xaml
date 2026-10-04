@@ -30,7 +30,9 @@
         Drop="Window_Drop"
         AllowDrop="True"
         SizeChanged="PackageEditorWPF_SizeChanged"
+        PreviewMouseDown="PackageEditor_CommitRenameOnOutsideClick"
         PreviewMouseUp="Window_MouseUp"
+        Deactivated="PackageEditor_CommitRenameOnDeactivated"
         Closing="PackageEditorWPF_Closing"
         d:DataContext="{Binding RelativeSource={RelativeSource Self}}">
     <Window.Resources>
@@ -670,14 +672,14 @@
                                         </Button>
                                         <Button x:Name="CloneTreeButton" Style="{StaticResource InlineTreeActionButtonStyle}"
                                                 Visibility="{Binding Entry, Converter={StaticResource NullVisibilityConverter}}"
-                                                Click="CloneRowTree_Click" ToolTip="Clone tree"
+                                                Click="CloneRowTree_Click" ToolTip="Clone tree (Shift-click to clone multiple trees)"
                                                 AutomationProperties.Name="Clone tree">
                                             <fa5:FontAwesome Icon="Solid_Clone" Width="11" Height="11"
                                                              Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
                                         </Button>
                                         <Button x:Name="TrashTreeButton" Style="{StaticResource InlineTreeActionButtonStyle}"
                                                 Visibility="{Binding Entry, Converter={StaticResource NullVisibilityConverter}}"
-                                                Click="TrashRowTree_Click" ToolTip="Trash entry and children"
+                                                Click="TrashRowTree_Click" ToolTip="Trash entry and children (Shift-click to trash children only)"
                                                 AutomationProperties.Name="Trash entry and children">
                                             <fa5:FontAwesome Icon="Solid_TrashAlt" Width="11" Height="11"
                                                              Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
