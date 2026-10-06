@@ -183,10 +183,14 @@ namespace LegendaryExplorer.SharedUI
         /// List of entries that link to this node
         /// </summary>
         public ObservableCollectionExtended<TreeViewEntry> Sublinks { get; set; }
-        public TreeViewEntry(IEntry entry, string displayName = null)
+        private readonly bool _alwaysShowSubText;
+
+        /// <param name="alwaysShowSubText">Show entry metadata regardless of the Package Editor subtitle preference.</param>
+        public TreeViewEntry(IEntry entry, string displayName = null, bool alwaysShowSubText = false)
         {
             Entry = entry;
             DisplayName = displayName;
+            _alwaysShowSubText = alwaysShowSubText;
             Sublinks = new ObservableCollectionExtended<TreeViewEntry>();
 
             // Events don't work in interface without method to raise changes
@@ -208,7 +212,7 @@ namespace LegendaryExplorer.SharedUI
                 OnPropertyChanged(nameof(HasArchetype));
             }
 
-            if (Settings.PackageEditor_ShowTreeEntrySubText)
+            if (_alwaysShowSubText || Settings.PackageEditor_ShowTreeEntrySubText)
             {
                 RefreshSubText();
             }
@@ -221,6 +225,7 @@ namespace LegendaryExplorer.SharedUI
 
         public void RefreshSubText()
         {
+            _subTextVersion++;
             loadedSubtext = false;
             SubText = null;
         }
@@ -262,12 +267,13 @@ namespace LegendaryExplorer.SharedUI
         }
 
         private bool loadedSubtext = false;
+        private int _subTextVersion;
         private string _subtext;
         public string SubText
         {
             get
             {
-                if (!Settings.PackageEditor_ShowTreeEntrySubText) return null;
+                if (!_alwaysShowSubText && !Settings.PackageEditor_ShowTreeEntrySubText) return null;
                 try
                 {
                     if (loadedSubtext) return _subtext;
@@ -555,6 +561,7 @@ namespace LegendaryExplorer.SharedUI
                                         // Resolve in background and surgically update the subtext
                                         // without re-computing the entire subtext (avoids layout thrashing)
                                         var capturedExport = ee;
+                                        int capturedSubTextVersion = _subTextVersion;
                                         Task.Run(() =>
                                         {
                                             var resolved = ConversationExtended.ResolveOwnerTagFromExport(capturedExport);
@@ -564,7 +571,9 @@ namespace LegendaryExplorer.SharedUI
                                                 Application.Current?.Dispatcher?.BeginInvoke(() =>
                                                 {
                                                     // Only update if subtext still starts with unresolved "Owner"
-                                                    if (_subtext != null &&
+                                                    if (ReferenceEquals(Entry, capturedExport) &&
+                                                        _subTextVersion == capturedSubTextVersion &&
+                                                        _subtext != null &&
                                                         _subtext.StartsWith("Owner", StringComparison.Ordinal) &&
                                                         !_subtext.StartsWith("Owner (", StringComparison.Ordinal))
                                                     {
@@ -1133,6 +1142,7 @@ namespace LegendaryExplorer.SharedUI
 
         public void Dispose()
         {
+            _subTextVersion++;
             if (Entry is not null)
             {
                 Entry.PropertyChanged -= TVEntryPropertyChanged;

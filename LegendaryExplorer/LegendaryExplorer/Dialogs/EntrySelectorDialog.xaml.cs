@@ -1,14 +1,19 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Globalization;
+using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Data;
 using System.Windows.Input;
+using System.Windows.Media;
 using LegendaryExplorer.Misc;
+using LegendaryExplorer.Misc.AppSettings;
 using LegendaryExplorer.SharedUI;
 using LegendaryExplorer.Tools.Sequence_Editor;
 using LegendaryExplorer.Tools.TlkManagerNS;
@@ -80,6 +85,64 @@ namespace LegendaryExplorer.Dialogs
         private GridLength AudioPreviewColumnWidth = new(2, GridUnitType.Star);
         private bool AudioPreviewPaneSized;
         private readonly Dictionary<(IMEPackage Package, int StringRef), string> WwiseTlkSubtitleCache = new();
+        private readonly Dictionary<IEntry, TreeViewEntry> EntrySubtitles = new();
+        private bool SubtitleFilterRefreshPending;
+        private bool UpdatingClassFilters;
+        private const string AllClassesLabel = "All classes";
+        private readonly Dictionary<IEntry, EntrySelectorTreeNode> TreeNodes = new();
+        private readonly Dictionary<IMEPackage, EntrySelectorTreeNode> TreePackageRoots = new();
+        private readonly Dictionary<object, EntrySelectorTreeNode> TreeOptionNodes = new();
+        private HashSet<EntrySelectorTreeNode> ActiveTreeNodes = new();
+        private bool SelectorInitialized;
+        private bool SynchronizingTreeSelection;
+
+        public ObservableCollectionExtended<EntrySelectorTreeNode> TreeEntries { get; } = new();
+        private bool HasPackageEntries => AllEntriesList.OfType<IEntry>().Any();
+        private bool IsTreeViewActive => UseTreeView && HasPackageEntries;
+        public Visibility ViewSelectionVisibility => HasPackageEntries ? Visibility.Visible : Visibility.Collapsed;
+        public Visibility TreeViewVisibility => IsTreeViewActive ? Visibility.Visible : Visibility.Collapsed;
+        public Visibility ListViewVisibility => IsTreeViewActive ? Visibility.Collapsed : Visibility.Visible;
+
+        private bool useTreeView = Settings.EntrySelector_UseTreeView;
+        public bool UseTreeView
+        {
+            get => useTreeView;
+            set
+            {
+                if (!SelectorInitialized || !SetProperty(ref useTreeView, value))
+                {
+                    return;
+                }
+
+                Settings.EntrySelector_UseTreeView = value;
+                UpdateEntryViews();
+                ScrollSelectionIntoView();
+            }
+        }
+
+        private EntrySelectorTreeNode selectedTreeNode;
+        public EntrySelectorTreeNode SelectedTreeNode
+        {
+            get => selectedTreeNode;
+            set => SetProperty(ref selectedTreeNode, value);
+        }
+
+        public ObservableCollectionExtended<string> AvailableClasses { get; } = new();
+
+        public Visibility ClassFilterVisibility => AvailableClasses.Count > 1 ? Visibility.Visible : Visibility.Collapsed;
+
+        private string selectedClass = AllClassesLabel;
+        public string SelectedClass
+        {
+            get => selectedClass;
+            set
+            {
+                if (!UpdatingClassFilters && SetProperty(ref selectedClass, value ?? AllClassesLabel))
+                {
+                    UpdateFilteredEntries();
+                }
+            }
+        }
 
         public Visibility ItemSearchVisibility => ItemSearch is null ? Visibility.Collapsed : Visibility.Visible;
 
@@ -157,6 +220,7 @@ namespace LegendaryExplorer.Dialogs
                 UpdateTexturePreview(value as IEntry);
                 UpdateMeshPreview(value as IEntry);
                 UpdateAudioPreview(value as IEntry);
+                SynchronizeTreeSelection();
             }
         }
 
@@ -214,6 +278,7 @@ namespace LegendaryExplorer.Dialogs
             DataContext = this;
             LoadCommands();
             InitializeComponent();
+            InitializeEntryViews();
             InitializeSequencePreview(sequencePreview);
             InitializeTexturePreview(texturePreview);
             InitializeMeshPreview(meshPreview);
@@ -774,6 +839,7 @@ namespace LegendaryExplorer.Dialogs
                 {
                     SearchText = string.Empty;
                     ItemFilterText = string.Empty;
+                    SelectedClass = AllClassesLabel;
                 }
 
                 if (!FilteredEntriesList.Contains(selectedEntry))
@@ -782,7 +848,7 @@ namespace LegendaryExplorer.Dialogs
                 }
 
                 SelectedEntryItem = selectedEntry;
-                EntrySelectorListView.ScrollIntoView(selectedEntry);
+                ScrollSelectionIntoView();
             }
             finally
             {
@@ -819,8 +885,10 @@ namespace LegendaryExplorer.Dialogs
             DataContext = this;
             LoadCommands();
             InitializeComponent();
+            InitializeEntryViews();
             InitializeMeshPreview();
             InitializeAudioPreview();
+            UpdateFilteredEntries();
             if (!string.IsNullOrWhiteSpace(windowTitle))
             {
                 Title = windowTitle;
@@ -839,6 +907,7 @@ namespace LegendaryExplorer.Dialogs
             DataContext = this;
             LoadCommands();
             InitializeComponent();
+            InitializeEntryViews();
             InitializeMeshPreview();
             InitializeAudioPreview();
             UpdateFilteredEntries();
@@ -983,7 +1052,7 @@ namespace LegendaryExplorer.Dialogs
         /// <returns>True if an item is selected; otherwise, false</returns>
         private bool CanAcceptSelection()
         {
-            return SelectedEntryItem != null;
+            return SelectedEntryItem != null && FilteredEntriesList.Contains(SelectedEntryItem);
         }
 
         /// <summary>
@@ -1007,7 +1076,7 @@ namespace LegendaryExplorer.Dialogs
 
             if (SelectedEntryItem is not null)
             {
-                EntrySelectorListView.ScrollIntoView(SelectedEntryItem);
+                ScrollSelectionIntoView();
             }
         }
 
@@ -1020,20 +1089,281 @@ namespace LegendaryExplorer.Dialogs
                                                                   || InitialEntryFilter(packageEntry));
             }
 
+            object[] eligibleEntries = filteredEntries.ToArray();
+            UpdateClassFilters(eligibleEntries);
+            filteredEntries = eligibleEntries;
+            if (SelectedClass != AllClassesLabel)
+            {
+                filteredEntries = filteredEntries.Where(entry => entry is not IEntry packageEntry
+                    || string.Equals(packageEntry.ClassName, SelectedClass, StringComparison.OrdinalIgnoreCase));
+            }
+
             string search = (ItemSearch is null ? SearchText : ItemFilterText)?.Trim();
             if (!string.IsNullOrWhiteSpace(search))
             {
                 filteredEntries = filteredEntries.Where(entry => EntryMatchesSearch(entry, search));
             }
 
+            object previousSelection = SelectedEntryItem;
             FilteredEntriesList.ReplaceAll(filteredEntries);
+            SelectedEntryItem = previousSelection is not null && FilteredEntriesList.Contains(previousSelection)
+                ? previousSelection : FilteredEntriesList.FirstOrDefault();
+            UpdateEntryViews();
+        }
 
-            if (SelectedEntryItem is not null && FilteredEntriesList.Contains(SelectedEntryItem))
+        private void InitializeEntryViews()
+        {
+            SelectorInitialized = true;
+            OnPropertyChanged(nameof(UseTreeView));
+        }
+
+        private void UpdateEntryViews()
+        {
+            OnPropertyChanged(nameof(ViewSelectionVisibility));
+            OnPropertyChanged(nameof(TreeViewVisibility));
+            OnPropertyChanged(nameof(ListViewVisibility));
+            if (IsTreeViewActive)
+            {
+                RebuildEntryTree();
+            }
+        }
+
+        private static HashSet<IEntry> GetEntriesWithAncestors(IEnumerable<IEntry> entries)
+        {
+            var result = new HashSet<IEntry>();
+            foreach (IEntry entry in entries)
+            {
+                for (IEntry current = entry; current is not null && result.Add(current); current = current.Parent)
+                {
+                }
+            }
+            return result;
+        }
+
+        private void RebuildEntryTree()
+        {
+            bool wasSynchronizing = SynchronizingTreeSelection;
+            SynchronizingTreeSelection = true;
+            try
+            {
+                var candidates = FilteredEntriesList.OfType<IEntry>().ToHashSet();
+                HashSet<IEntry> entries = GetEntriesWithAncestors(candidates);
+                var children = new Dictionary<EntrySelectorTreeNode, List<EntrySelectorTreeNode>>();
+                var roots = new List<EntrySelectorTreeNode>();
+                foreach (EntrySelectorTreeNode node in TreeNodes.Values)
+                {
+                    node.CanSelect = false;
+                }
+
+                foreach (IEntry entry in entries)
+                {
+                    if (!TreeNodes.TryGetValue(entry, out EntrySelectorTreeNode node))
+                    {
+                        node = new EntrySelectorTreeNode(entry, GetEntrySubtitle(entry));
+                        TreeNodes.Add(entry, node);
+                    }
+                    node.CanSelect = candidates.Contains(entry);
+                    children[node] = new List<EntrySelectorTreeNode>();
+                }
+
+                foreach (IMEPackage package in candidates.Select(entry => entry.FileRef).Distinct())
+                {
+                    if (!TreePackageRoots.TryGetValue(package, out EntrySelectorTreeNode root))
+                    {
+                        root = new EntrySelectorTreeNode(null, label: Path.GetFileName(package.FilePath) ?? "Package")
+                        {
+                            IsExpanded = true
+                        };
+                        TreePackageRoots.Add(package, root);
+                    }
+                    roots.Add(root);
+                    children[root] = new List<EntrySelectorTreeNode>();
+                }
+
+                foreach (IEntry entry in entries)
+                {
+                    EntrySelectorTreeNode node = TreeNodes[entry];
+                    IEntry parent = entry.Parent;
+                    // A malformed outer chain must not create a cyclic visual tree.
+                    var ancestors = new HashSet<IEntry> { entry };
+                    for (IEntry current = parent; current is not null; current = current.Parent)
+                    {
+                        if (!ancestors.Add(current))
+                        {
+                            parent = null;
+                            break;
+                        }
+                    }
+                    node.Parent = parent is not null && entries.Contains(parent)
+                        ? TreeNodes[parent]
+                        : TreePackageRoots[entry.FileRef];
+                    children[node.Parent].Add(node);
+                }
+
+                foreach (var (node, childNodes) in children)
+                {
+                    EntrySelectorTreeNode[] sortedChildren = childNodes
+                        .OrderBy(child => child.Entry is ExportEntry { ClassName: "World", ObjectName.Name: "TheWorld" }
+                            ? 0 : child.Entry is ExportEntry ? 1 : 2)
+                        .ThenBy(child => Math.Abs((long)child.Entry.UIndex)).ToArray();
+                    UpdateTreeNodeCollection(node.Children, sortedChildren);
+                }
+
+                var options = new List<EntrySelectorTreeNode>();
+                foreach (object item in FilteredEntriesList.Where(item => item is not IEntry && item is not null))
+                {
+                    if (!TreeOptionNodes.TryGetValue(item, out EntrySelectorTreeNode option))
+                    {
+                        option = new EntrySelectorTreeNode(item) { CanSelect = true };
+                        TreeOptionNodes.Add(item, option);
+                    }
+                    options.Add(option);
+                }
+                ActiveTreeNodes = children.Keys.Concat(options).ToHashSet();
+                EntrySelectorTreeNode[] treeRoots = options.Concat(roots).ToArray();
+                UpdateTreeNodeCollection(TreeEntries, treeRoots);
+            }
+            finally
+            {
+                SynchronizingTreeSelection = wasSynchronizing;
+            }
+            SynchronizeTreeSelection();
+        }
+
+        private static void UpdateTreeNodeCollection(ObservableCollectionExtended<EntrySelectorTreeNode> collection,
+            IReadOnlyList<EntrySelectorTreeNode> nodes)
+        {
+            if (collection.SequenceEqual(nodes))
+            {
+                return;
+            }
+            if (collection.Count == 0)
+            {
+                collection.ReplaceAll(nodes);
+                return;
+            }
+
+            // Resetting a tree branch discards surviving containers and promotes its selection to the parent.
+            var remainingNodes = nodes.ToHashSet();
+            for (int i = collection.Count - 1; i >= 0; i--)
+            {
+                if (!remainingNodes.Contains(collection[i]))
+                {
+                    collection.RemoveAt(i);
+                }
+            }
+
+            var existingNodes = collection.ToHashSet();
+            for (int i = 0; i < nodes.Count; i++)
+            {
+                EntrySelectorTreeNode node = nodes[i];
+                if (i < collection.Count && collection[i] == node)
+                {
+                    continue;
+                }
+                if (existingNodes.Contains(node))
+                {
+                    collection.Move(collection.IndexOf(node), i);
+                }
+                else
+                {
+                    collection.Insert(i, node);
+                }
+            }
+        }
+
+        private void SynchronizeTreeSelection()
+        {
+            if (!IsTreeViewActive || SynchronizingTreeSelection)
             {
                 return;
             }
 
-            SelectedEntryItem = FilteredEntriesList.FirstOrDefault();
+            EntrySelectorTreeNode node = SelectedEntryItem is IEntry entry
+                ? TreeNodes.GetValueOrDefault(entry)
+                : SelectedEntryItem is not null ? TreeOptionNodes.GetValueOrDefault(SelectedEntryItem) : null;
+            if (node is not null && (!ActiveTreeNodes.Contains(node) || !node.CanSelect))
+            {
+                node = null;
+            }
+
+            SynchronizingTreeSelection = true;
+            try
+            {
+                if (SelectedTreeNode is { } oldNode && oldNode != node)
+                {
+                    oldNode.IsSelected = false;
+                }
+                for (EntrySelectorTreeNode parent = node?.Parent; parent is not null; parent = parent.Parent)
+                {
+                    parent.IsExpanded = true;
+                }
+                SelectedTreeNode = node;
+                if (node is not null)
+                {
+                    node.IsSelected = true;
+                }
+            }
+            finally
+            {
+                SynchronizingTreeSelection = false;
+            }
+        }
+
+        private void ScrollSelectionIntoView()
+        {
+            if (IsTreeViewActive)
+            {
+                SynchronizeTreeSelection();
+            }
+            else if (SelectedEntryItem is not null)
+            {
+                EntrySelectorListView.ScrollIntoView(SelectedEntryItem);
+            }
+        }
+
+        private void FocusEntryView()
+        {
+            ScrollSelectionIntoView();
+            if (IsTreeViewActive)
+            {
+                EntrySelectorTreeView.Focus();
+            }
+            else
+            {
+                EntrySelectorListView.Focus();
+            }
+        }
+
+        private void UpdateClassFilters(IEnumerable<object> entries)
+        {
+            List<string> classes = entries.OfType<IEntry>()
+                .Select(entry => entry.ClassName)
+                .Where(className => !string.IsNullOrEmpty(className))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(className => className, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            classes.Insert(0, AllClassesLabel);
+            if (AvailableClasses.SequenceEqual(classes))
+            {
+                return;
+            }
+
+            UpdatingClassFilters = true;
+            try
+            {
+                if (!classes.Contains(selectedClass, StringComparer.OrdinalIgnoreCase))
+                {
+                    selectedClass = AllClassesLabel;
+                }
+                AvailableClasses.ReplaceAll(classes);
+                OnPropertyChanged(nameof(SelectedClass));
+                OnPropertyChanged(nameof(ClassFilterVisibility));
+            }
+            finally
+            {
+                UpdatingClassFilters = false;
+            }
         }
 
         private void RunItemSearch()
@@ -1047,8 +1377,8 @@ namespace LegendaryExplorer.Dialogs
             if (string.IsNullOrWhiteSpace(search))
             {
                 AllEntriesList.Clear();
-                FilteredEntriesList.Clear();
-                SelectedEntryItem = null;
+                PruneEntrySubtitles();
+                UpdateFilteredEntries();
                 return;
             }
 
@@ -1058,12 +1388,13 @@ namespace LegendaryExplorer.Dialogs
             {
                 List<object> results = ItemSearch(search).ToList();
                 AllEntriesList.ReplaceAll(results);
+                PruneEntrySubtitles();
                 InitializeMeshPreview();
                 InitializeAudioPreview();
                 UpdateFilteredEntries();
                 if (SelectedEntryItem is not null)
                 {
-                    EntrySelectorListView.ScrollIntoView(SelectedEntryItem);
+                    ScrollSelectionIntoView();
                     EntryFilterTextBox.Focus();
                     EntryFilterTextBox.SelectAll();
                 }
@@ -1099,7 +1430,8 @@ namespace LegendaryExplorer.Dialogs
                    || entry.ClassName.Contains(search, StringComparison.OrdinalIgnoreCase)
                    || entry.InstancedFullPath.Contains(search, StringComparison.OrdinalIgnoreCase)
                    || TryGetWwiseTlkMetadata(entry, out int tlkId, out string subtitle)
-                   && WwiseHelper.MatchesWwiseStreamTlkFilter(tlkId, subtitle, normalizedSearch);
+                   && WwiseHelper.MatchesWwiseStreamTlkFilter(tlkId, subtitle, normalizedSearch)
+                   || GetEntrySubtitle(entry)?.SubText?.Contains(search, StringComparison.OrdinalIgnoreCase) == true;
         }
 
         private bool TryGetWwiseTlkMetadata(IEntry entry, out int tlkId, out string subtitle)
@@ -1136,17 +1468,65 @@ namespace LegendaryExplorer.Dialogs
             return true;
         }
 
-        internal string GetWwiseTlkDisplayText(object item)
+        internal TreeViewEntry GetEntrySubtitle(object item)
         {
-            if (item is not IEntry entry
-                || !TryGetWwiseTlkMetadata(entry, out int tlkId, out string subtitle))
+            if (disposedValue || item is not IEntry entry)
             {
                 return null;
             }
 
-            return string.IsNullOrWhiteSpace(subtitle)
-                ? $"TLK {tlkId}"
-                : $"TLK {tlkId}: {subtitle}";
+            if (!EntrySubtitles.TryGetValue(entry, out TreeViewEntry subtitle))
+            {
+                subtitle = new TreeViewEntry(entry, alwaysShowSubText: true);
+                subtitle.PropertyChanged += EntrySubtitle_PropertyChanged;
+                EntrySubtitles.Add(entry, subtitle);
+            }
+            return subtitle;
+        }
+
+        private void EntrySubtitle_PropertyChanged(object sender, PropertyChangedEventArgs e)
+        {
+            string search = ItemSearch is null ? SearchText : ItemFilterText;
+            if (disposedValue || e.PropertyName != nameof(TreeViewEntry.SubText)
+                || string.IsNullOrWhiteSpace(search) || SubtitleFilterRefreshPending)
+            {
+                return;
+            }
+
+            SubtitleFilterRefreshPending = true;
+            Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, new Action(() =>
+            {
+                SubtitleFilterRefreshPending = false;
+                if (!disposedValue)
+                {
+                    UpdateFilteredEntries();
+                }
+            }));
+        }
+
+        private void PruneEntrySubtitles()
+        {
+            HashSet<IEntry> entries = GetEntriesWithAncestors(AllEntriesList.OfType<IEntry>());
+            foreach (IEntry entry in TreeNodes.Keys.Where(entry => !entries.Contains(entry)).ToArray())
+            {
+                TreeNodes[entry].DetachMetadata();
+                TreeNodes.Remove(entry);
+            }
+            var packages = entries.Select(entry => entry.FileRef).ToHashSet();
+            foreach (IMEPackage package in TreePackageRoots.Keys.Where(package => !packages.Contains(package)).ToArray())
+            {
+                TreePackageRoots.Remove(package);
+            }
+            foreach (object item in TreeOptionNodes.Keys.Where(item => !AllEntriesList.Contains(item)).ToArray())
+            {
+                TreeOptionNodes.Remove(item);
+            }
+            foreach (IEntry entry in EntrySubtitles.Keys.Where(entry => !entries.Contains(entry)).ToArray())
+            {
+                EntrySubtitles[entry].PropertyChanged -= EntrySubtitle_PropertyChanged;
+                EntrySubtitles[entry].Dispose();
+                EntrySubtitles.Remove(entry);
+            }
         }
 
         /// <summary>
@@ -1191,7 +1571,7 @@ namespace LegendaryExplorer.Dialogs
             }
         }
 
-        public string SearchHelpText => SearchHelpTextOverride ?? "Search by export/import number, object name, class, full path, TLK ID, or subtitle text";
+        public string SearchHelpText => SearchHelpTextOverride ?? "Search by export/import number, object name, class, full path, TLK ID, or object subtitle";
 
         #region IDisposable Support
         /// <summary>
@@ -1209,6 +1589,24 @@ namespace LegendaryExplorer.Dialogs
             {
                 if (disposing)
                 {
+                    SynchronizingTreeSelection = true;
+                    SelectedTreeNode = null;
+                    TreeEntries.Clear();
+                    ActiveTreeNodes.Clear();
+                    foreach (EntrySelectorTreeNode node in TreeNodes.Values)
+                    {
+                        node.DetachMetadata();
+                    }
+                    TreeNodes.Clear();
+                    TreePackageRoots.Clear();
+                    TreeOptionNodes.Clear();
+                    foreach (TreeViewEntry subtitle in EntrySubtitles.Values)
+                    {
+                        subtitle.PropertyChanged -= EntrySubtitle_PropertyChanged;
+                        subtitle.Dispose();
+                    }
+                    EntrySubtitles.Clear();
+                    WwiseTlkSubtitleCache.Clear();
                     // TODO: dispose managed state (managed objects).
                     SequencePreviewEditor?.DisposeEmbeddedContent();
                     SequencePreviewEditor = null;
@@ -1291,16 +1689,12 @@ namespace LegendaryExplorer.Dialogs
         {
             if (e.Key == Key.Down && FilteredEntriesList.Count > 0)
             {
-                EntrySelectorListView.Focus();
                 if (SelectedEntryItem is null)
                 {
                     SelectedEntryItem = FilteredEntriesList[0];
                 }
 
-                if (SelectedEntryItem is not null)
-                {
-                    EntrySelectorListView.ScrollIntoView(SelectedEntryItem);
-                }
+                FocusEntryView();
 
                 e.Handled = true;
                 return;
@@ -1326,13 +1720,12 @@ namespace LegendaryExplorer.Dialogs
         {
             if (e.Key == Key.Down && FilteredEntriesList.Count > 0)
             {
-                EntrySelectorListView.Focus();
                 if (SelectedEntryItem is null)
                 {
                     SelectedEntryItem = FilteredEntriesList[0];
                 }
 
-                EntrySelectorListView.ScrollIntoView(SelectedEntryItem);
+                FocusEntryView();
                 e.Handled = true;
                 return;
             }
@@ -1360,14 +1753,74 @@ namespace LegendaryExplorer.Dialogs
                 OKCommand.Execute(null);
             }
         }
+
+        private void EntrySelectorTreeView_SelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
+        {
+            if (SynchronizingTreeSelection || !IsTreeViewActive
+                || e.NewValue is not EntrySelectorTreeNode node || !ActiveTreeNodes.Contains(node))
+            {
+                return;
+            }
+
+            SynchronizingTreeSelection = true;
+            try
+            {
+                SelectedTreeNode = node;
+                SelectedEntryItem = node.CanSelect && FilteredEntriesList.Contains(node.Item) ? node.Item : null;
+            }
+            finally
+            {
+                SynchronizingTreeSelection = false;
+            }
+        }
+
+        private void EntrySelectorTreeView_KeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Enter && OKCommand.CanExecute(null))
+            {
+                e.Handled = true;
+                OKCommand.Execute(null);
+            }
+        }
+
+        private void EntrySelectorTreeView_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+        {
+            if (e.OriginalSource is not DependencyObject source
+                || ItemsControl.ContainerFromElement(null, source) is not TreeViewItem { DataContext: EntrySelectorTreeNode node } container
+                || !node.CanSelect || !FilteredEntriesList.Contains(node.Item))
+            {
+                return;
+            }
+
+            for (DependencyObject current = source; current is not null && current != container;)
+            {
+                if (current is ToggleButton)
+                {
+                    return;
+                }
+
+                current = current switch
+                {
+                    Visual or System.Windows.Media.Media3D.Visual3D => VisualTreeHelper.GetParent(current),
+                    _ => LogicalTreeHelper.GetParent(current)
+                };
+            }
+
+            SelectedEntryItem = node.Item;
+            if (OKCommand.CanExecute(null))
+            {
+                e.Handled = true;
+                OKCommand.Execute(null);
+            }
+        }
     }
 
-    public sealed class EntrySelectorWwiseTlkTextConverter : IMultiValueConverter
+    public sealed class EntrySelectorSubtitleConverter : IMultiValueConverter
     {
         public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
         {
             return values.Length >= 2 && values[1] is EntrySelector selector
-                ? selector.GetWwiseTlkDisplayText(values[0])
+                ? selector.GetEntrySubtitle(values[0])
                 : null;
         }
 

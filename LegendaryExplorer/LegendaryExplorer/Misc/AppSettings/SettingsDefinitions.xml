@@ -33,6 +33,8 @@
            friendlyName="Use memory-safe import porting by default"/>
   <setting name="PackageEditor_MoveDlcModTexturesToCurrentDlcTfcWhenPorting" type="bool" defaultvalue="false"/>
 
+  <!-- Entry Selector specific settings -->
+  <setting name="EntrySelector_UseTreeView" type="bool" defaultvalue="false"/>
 
   <!-- Sequence Editor specific settings -->
   <setting name="SequenceEditor_MaxVarStringLength" type="int" defaultvalue="40" category="Sequence Editor"

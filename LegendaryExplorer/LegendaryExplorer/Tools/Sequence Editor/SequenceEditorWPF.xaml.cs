@@ -6390,6 +6390,31 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                 ToggleSeqVarBool(sVar.Export);
                 e.Handled = true;
             }
+            else if (obj is SVar { Export.ClassName: "SeqVar_Object" } objectVar)
+            {
+                e.Handled = true;
+                PickSeqVarObjectReference(objectVar.Export);
+            }
+        }
+
+        private void PickSeqVarObjectReference(ExportEntry export)
+        {
+            int currentValue = export.GetProperty<ObjectProperty>("ObjValue")?.Value ?? 0;
+            object currentReference = (object)export.FileRef.GetEntry(currentValue) ?? "0 Null";
+            var (selectedNull, selectedEntry) = EntrySelector.GetEntryWithNoOption<IEntry>(
+                this, export.FileRef, "Select an object reference for ObjValue.",
+                defaultItem: currentReference, noOptionLabel: "0 Null");
+            if (!selectedNull && selectedEntry is null)
+            {
+                return;
+            }
+
+            int selectedValue = selectedNull ? 0 : selectedEntry.UIndex;
+            if (selectedValue != currentValue)
+            {
+                export.WriteProperty(new ObjectProperty(selectedValue, "ObjValue"));
+                RefreshView();
+            }
         }
 
         private void ToggleSeqVarBool(ExportEntry export)
