@@ -14,6 +14,19 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                 return;
             }
 
+            UpdateUsageToolMenuIcons(menu);
+        }
+
+        private void UsageToolsSubmenu_Opened(object sender, RoutedEventArgs e)
+        {
+            if (sender is MenuItem menu && ReferenceEquals(e.OriginalSource, menu))
+            {
+                UpdateUsageToolMenuIcons(menu);
+            }
+        }
+
+        private void UpdateUsageToolMenuIcons(ItemsControl menu)
+        {
             foreach (var item in menu.Items.OfType<MenuItem>())
             {
                 if (item.Command == OpenUsagePkgCommand && item.Command.CanExecute(item.CommandParameter))

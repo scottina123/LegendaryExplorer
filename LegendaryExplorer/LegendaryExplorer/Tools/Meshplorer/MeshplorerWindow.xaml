@@ -121,11 +121,7 @@
                               Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}">
                         <ListBox.ContextMenu>
                             <ContextMenu>
-                                <MenuItem Header="Import New Mesh from UDK" Command="{Binding Source={StaticResource bindingProxy}, Path=Data.ImportFromUDKCommand}">
-                                    <MenuItem.Icon>
-                                        <Image Source="/Resources/Images/udk.ico" Width="16"/>
-                                    </MenuItem.Icon>
-                                </MenuItem>
+                                <MenuItem Header="Import New Mesh from UDK" Command="{Binding Source={StaticResource bindingProxy}, Path=Data.ImportFromUDKCommand}" Icon="{StaticResource UDKMenuIcon}"/>
                                 <MenuItem Header="Import new mesh(es) from glTF (Experimental)" Command="{Binding Source={StaticResource bindingProxy}, Path=Data.ImportNewFromGltfCommand}"/>
                             </ContextMenu>
                         </ListBox.ContextMenu>
@@ -177,28 +173,12 @@
                                 <MenuItem Header="Trash entry and children" ToolTip="Convert this mesh and its children into empty data" Click="TrashMeshTree_Click"/>
                                 <Separator/>
                                 <MenuItem Icon="{StaticResource PackageEditorMenuIcon}" Header="Open in Package Editor" ToolTip="Opens this mesh in Package Editor" Click="OpenInPackageEditor_Clicked"/>
-                                <MenuItem Header="Replace Mesh from UDK" Command="{Binding Source={StaticResource bindingProxy}, Path=Data.ReplaceFromUDKCommand}">
-                                    <MenuItem.Icon>
-                                        <Image Source="/Resources/Images/udk.ico" Width="16"/>
-                                    </MenuItem.Icon>
-                                </MenuItem>
+                                <MenuItem Header="Replace Mesh from UDK" Command="{Binding Source={StaticResource bindingProxy}, Path=Data.ReplaceFromUDKCommand}" Icon="{StaticResource UDKMenuIcon}"/>
                                 <MenuItem Header="Replace single LOD from UDK" Command="{Binding Source={StaticResource bindingProxy}, Path=Data.ReplaceLODFromUDKCommand}"
-                                          ToolTip="Replaces a single LOD from UDK (.upk file). Use this if full replacement is wonky">
-                                    <MenuItem.Icon>
-                                        <Image Source="/Resources/Images/udk.ico" Width="16"/>
-                                    </MenuItem.Icon>
-                                </MenuItem>
-                                <MenuItem Header="Export Mesh to UDK" Command="{Binding Source={StaticResource bindingProxy}, Path=Data.ExportToUDKCommand}">
-                                    <MenuItem.Icon>
-                                        <Image Source="/Resources/Images/udk.ico" Width="16"/>
-                                    </MenuItem.Icon>
-                                </MenuItem>
+                                          ToolTip="Replaces a single LOD from UDK (.upk file). Use this if full replacement is wonky" Icon="{StaticResource UDKMenuIcon}"/>
+                                <MenuItem Header="Export Mesh to UDK" Command="{Binding Source={StaticResource bindingProxy}, Path=Data.ExportToUDKCommand}" Icon="{StaticResource UDKMenuIcon}"/>
                                 <MenuItem Header="Export Mesh to PSK with UModel" Command="{Binding Source={StaticResource bindingProxy}, Path=Data.ExportToPSKUModelCommand}"
-                                          sharedUi:Bindings.VisibilityToEnabled="True">
-                                    <MenuItem.Icon>
-                                        <Image Source="/Resources/Images/umodel.ico" Width="16"/>
-                                    </MenuItem.Icon>
-                                </MenuItem>
+                                          sharedUi:Bindings.VisibilityToEnabled="True" Icon="{StaticResource UModelMenuIcon}"/>
                                 <MenuItem Header="Export Mesh to PSK (Experimental)" Command="{Binding Source={StaticResource bindingProxy}, Path=Data.ExportToPSKCommand}"/>
                                 <MenuItem Header="Convert ME3 Skeletal Mesh to ME3 Static Mesh" Command="{Binding Source={StaticResource bindingProxy}, Path=Data.ConvertToStaticMeshCommand}"/>
                                 <MenuItem Header="Export as glTF without textures (Experimental)" Command="{Binding Source={StaticResource bindingProxy}, Path=Data.ExportToGltfCommand}"/>

@@ -13,7 +13,9 @@ internal static class ContextMenuIcons
 {
     private static bool _enabled;
     private static readonly DependencyProperty GeneratedIconProperty = DependencyProperty.RegisterAttached(
-        "GeneratedIcon", typeof(ImageAwesome), typeof(ContextMenuIcons));
+        "GeneratedIcon", typeof(FrameworkElement), typeof(ContextMenuIcons));
+    private static readonly DependencyProperty GeneratedIconResourceKeyProperty = DependencyProperty.RegisterAttached(
+        "GeneratedIconResourceKey", typeof(string), typeof(ContextMenuIcons));
     private static readonly DependencyProperty AppliedTemplateProperty = DependencyProperty.RegisterAttached(
         "AppliedTemplate", typeof(ControlTemplate), typeof(ContextMenuIcons));
     private static readonly DependencyProperty ObservingGeneratorProperty = DependencyProperty.RegisterAttached(
@@ -60,7 +62,7 @@ internal static class ContextMenuIcons
             item.Dispatcher.BeginInvoke(DispatcherPriority.DataBind, () =>
             {
                 if (IsMenuItem(item))
-                    PopulateItem(item, GetParentIcon(item));
+                    PopulateItem(item, GetParentIcon(item), GetParentImageResourceKey(item));
                 else if (ItemsControl.ItemsControlFromItemContainer(item) is Menu)
                     PopulateMenu(item);
             });
@@ -89,6 +91,11 @@ internal static class ContextMenuIcons
             ? ContextMenuActionIcons.GetIcon(parent, GetParentIcon(parent))
             : null;
 
+    private static string GetParentImageResourceKey(MenuItem item) =>
+        ItemsControl.ItemsControlFromItemContainer(item) is MenuItem parent
+            ? ContextMenuActionIcons.GetImageResourceKey(parent, GetParentImageResourceKey(parent))
+            : null;
+
     internal static void PopulateMenu(ItemsControl menu)
     {
         if (!(bool)menu.GetValue(ObservingGeneratorProperty))
@@ -104,8 +111,12 @@ internal static class ContextMenuIcons
         }
 
         EFontAwesomeIcon? parentIcon = menu is MenuItem parent ? GetParentIcon(parent) : null;
+        string parentImageResourceKey = menu is MenuItem imageParent ? GetParentImageResourceKey(imageParent) : null;
         if (menu is MenuItem parentItem)
+        {
             parentIcon = ContextMenuActionIcons.GetIcon(parentItem, parentIcon);
+            parentImageResourceKey = ContextMenuActionIcons.GetImageResourceKey(parentItem, parentImageResourceKey);
+        }
 
         foreach (object entry in menu.Items)
         {
@@ -113,30 +124,40 @@ internal static class ContextMenuIcons
             {
                 // Menu-bar headers keep their normal layout and downward-opening popup.
                 if (menu is not Menu)
-                    PopulateItem(item, parentIcon);
+                    PopulateItem(item, parentIcon, parentImageResourceKey);
                 PopulateMenu(item);
             }
         }
     }
 
-    private static void PopulateItem(MenuItem item, EFontAwesomeIcon? parentIcon)
+    private static void PopulateItem(MenuItem item, EFontAwesomeIcon? parentIcon, string parentImageResourceKey)
     {
         // The pinned-file picker is embedded as a full control rather than an action label.
         if (item.Header is UserControl)
             return;
 
-        var generatedIcon = (ImageAwesome)item.GetValue(GeneratedIconProperty);
+        var generatedIcon = (FrameworkElement)item.GetValue(GeneratedIconProperty);
         if (!BindingOperations.IsDataBound(item, MenuItem.IconProperty)
             && (item.Icon is null || ReferenceEquals(item.Icon, generatedIcon)))
         {
-            if (generatedIcon is null)
+            string resourceKey = ContextMenuActionIcons.GetImageResourceKey(item, parentImageResourceKey);
+            if (generatedIcon is null || resourceKey != (string)item.GetValue(GeneratedIconResourceKeyProperty))
             {
-                generatedIcon = new ImageAwesome { Width = 16, Height = 16, IsHitTestVisible = false, Focusable = false };
-                generatedIcon.SetBinding(ImageAwesome.ForegroundProperty, new Binding(nameof(item.Foreground)) { Source = item });
+                // Menu image resources are x:Shared=False: each action needs its own control.
+                generatedIcon = resourceKey is not null ? item.TryFindResource(resourceKey) as FrameworkElement : null;
+                if (generatedIcon is null)
+                {
+                    generatedIcon = new ImageAwesome { Width = 16, Height = 16 };
+                    generatedIcon.SetBinding(ImageAwesome.ForegroundProperty, new Binding(nameof(item.Foreground)) { Source = item });
+                }
+                generatedIcon.IsHitTestVisible = false;
+                generatedIcon.Focusable = false;
                 item.SetValue(GeneratedIconProperty, generatedIcon);
+                item.SetValue(GeneratedIconResourceKeyProperty, resourceKey);
             }
 
-            generatedIcon.Icon = ContextMenuActionIcons.GetIcon(item, parentIcon);
+            if (generatedIcon is ImageAwesome glyph)
+                glyph.Icon = ContextMenuActionIcons.GetIcon(item, parentIcon);
             item.SetCurrentValue(MenuItem.IconProperty, generatedIcon);
         }
 

@@ -479,6 +479,9 @@
     <BitmapImage x:Key="iconAFCCompactor16" UriSource="Tools/Icons/16x16/AFCCompactor_Icon_16.ico"/>
     <BitmapImage x:Key="iconCoalescedCompiler16" UriSource="Tools/Icons/16x16/CoalescedCompiler_Icon_16.ico"/>
     <BitmapImage x:Key="iconAssetViewer16" UriSource="Tools/Icons/16x16/AssetViewer_Icon_16.ico"/>
+    <BitmapImage x:Key="iconUDK16" UriSource="Resources/Images/udk.ico"/>
+    <BitmapImage x:Key="iconUModel16" UriSource="Resources/Images/umodel.ico"/>
+    <BitmapImage x:Key="iconExcel16" UriSource="Resources/Images/excel.png"/>
 
     <!-- Menu icons need separate controls for each menu item; their image sources are shared. -->
     <Image x:Key="PackageEditorMenuIcon" x:Shared="False" Source="{StaticResource iconPackageEditor16}" Width="16" Height="16"/>
@@ -501,6 +504,10 @@
     <Image x:Key="TLKEditorMenuIcon" x:Shared="False" Source="{StaticResource iconTLKEditor16}" Width="16" Height="16"/>
     <Image x:Key="WindowsExplorerMenuIcon" x:Shared="False" Source="{StaticResource iconWindowsExplorer16}" Width="16" Height="16"/>
     <Image x:Key="AssetViewerMenuIcon" x:Shared="False" Source="{StaticResource iconAssetViewer16}" Width="16" Height="16"/>
+    <Image x:Key="HexConverterMenuIcon" x:Shared="False" Source="{StaticResource iconHexConverter16}" Width="16" Height="16"/>
+    <Image x:Key="UDKMenuIcon" x:Shared="False" Source="{StaticResource iconUDK16}" Width="16" Height="16"/>
+    <Image x:Key="UModelMenuIcon" x:Shared="False" Source="{StaticResource iconUModel16}" Width="16" Height="16"/>
+    <Image x:Key="ExcelMenuIcon" x:Shared="False" Source="{StaticResource iconExcel16}" Width="16" Height="16"/>
 
     <BitmapImage x:Key="iconLoadingSpinner" UriSource="Resources/Images/loadingspinner.png"/>
 

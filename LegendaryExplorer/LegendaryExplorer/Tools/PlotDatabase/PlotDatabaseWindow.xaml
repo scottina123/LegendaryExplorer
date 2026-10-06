@@ -137,16 +137,8 @@
                             <MenuItem Header="Edit Item" Command="{Binding EditModItemCommand}"/>
                             <MenuItem Header="Delete Item" Command="{Binding DeleteModItemCommand}"/>
                             <Separator/>
-                            <MenuItem Header="Import Mod States from Excel" Command="{Binding XLImportCommand}">
-                                <MenuItem.Icon>
-                                    <Image Source="\Resources\Images\excel.png"/>
-                                </MenuItem.Icon>
-                            </MenuItem>
-                            <MenuItem Header="Export Selected Mod States to Excel" Command="{Binding XLExportCommand}">
-                                <MenuItem.Icon>
-                                    <Image Source="\Resources\Images\excel.png"/>
-                                </MenuItem.Icon>
-                            </MenuItem>
+                            <MenuItem Header="Import Mod States from Excel" Command="{Binding XLImportCommand}" Icon="{StaticResource ExcelMenuIcon}"/>
+                            <MenuItem Header="Export Selected Mod States to Excel" Command="{Binding XLExportCommand}" Icon="{StaticResource ExcelMenuIcon}"/>
                             <MenuItem Header="Migrate Data from Old Format" Command="{Binding MigrateCommand}"
                                       ToolTip="Imports saved mod data from the old format (pre-6.1) to the new format."/>
                             <MenuItem Header="Exit" Command="{Binding ExitCommand}"/>

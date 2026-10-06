@@ -7,10 +7,82 @@ using FontAwesome5;
 
 namespace LegendaryExplorer.SharedUI;
 
-/// <summary>Provides consistent action glyphs for static and generated menu options.</summary>
+/// <summary>Provides consistent action images and glyphs for static and generated menu options.</summary>
 internal static class ContextMenuActionIcons
 {
-    internal static EFontAwesomeIcon GetIcon(MenuItem item, EFontAwesomeIcon? parentIcon = null)
+    private static readonly (string Name, string ResourceKey)[] ToolIcons =
+    {
+        ("package editor", "PackageEditorMenuIcon"),
+        ("dialogue editor", "DialogueEditorMenuIcon"),
+        ("sequence editor", "SequenceEditorMenuIcon"),
+        ("interp editor", "InterpEditorMenuIcon"),
+        ("facefx editor", "FaceFXEditorMenuIcon"),
+        ("meshplorer", "MeshplorerMenuIcon"),
+        ("mesh explorer", "MeshplorerMenuIcon"),
+        ("plot editor", "PlotEditorMenuIcon"),
+        ("plot database", "PlotDatabaseMenuIcon"),
+        ("conditionals editor", "ConditionalsEditorMenuIcon"),
+        ("soundplorer", "SoundplorerMenuIcon"),
+        ("sound explorer", "SoundplorerMenuIcon"),
+        ("pathfinding editor", "PathfindingEditorMenuIcon"),
+        ("wwise editor", "WwiseEditorMenuIcon"),
+        ("wwiseeditor", "WwiseEditorMenuIcon"),
+        ("level editor", "LevelEditorMenuIcon"),
+        ("sfx galaxy editor", "SFXGalaxyEditorMenuIcon"),
+        ("sfxgalaxy editor", "SFXGalaxyEditorMenuIcon"),
+        ("gesture animation importer", "AnimationImporterMenuIcon"),
+        ("animation importer", "AnimationImporterMenuIcon"),
+        ("animation viewer", "AnimViewerMenuIcon"),
+        ("anim viewer", "AnimViewerMenuIcon"),
+        ("coalesced editor", "CoalescedEditorMenuIcon"),
+        ("tlk editor", "TLKEditorMenuIcon"),
+        ("hex converter", "HexConverterMenuIcon"),
+        ("asset viewer", "AssetViewerMenuIcon")
+    };
+
+    /// <summary>Uses the same application images as explicit context-menu actions.</summary>
+    internal static string GetImageResourceKey(MenuItem item, string parentResourceKey = null)
+    {
+        // Standard commands keep their action glyph even when their header names a tool.
+        if (GetStandardCommandIcon(item.Command).HasValue)
+            return null;
+
+        string text = GetHeaderText(item);
+        if (StartsWithAny(text, "import", "export", "replace"))
+        {
+            if (text.Contains(" from udk", StringComparison.Ordinal) || text.Contains(" to udk", StringComparison.Ordinal))
+                return "UDKMenuIcon";
+            if (text.Contains(" with umodel", StringComparison.Ordinal))
+                return "UModelMenuIcon";
+            if (text.Contains(" from excel", StringComparison.Ordinal) || text.Contains(" to excel", StringComparison.Ordinal))
+                return "ExcelMenuIcon";
+        }
+
+        if (StartsWithAny(text, "open file location", "open in windows explorer", "open local database folder"))
+            return "WindowsExplorerMenuIcon";
+
+        int destinationStart = text.LastIndexOf(" in ", StringComparison.Ordinal);
+        string destination = destinationStart >= 0 ? text[(destinationStart + 4)..] : string.Empty;
+        foreach (var (name, resourceKey) in ToolIcons)
+        {
+            if (text.TrimEnd('.', '…') == name
+                || (StartsWithAny(text, "open", "base")
+                    && (StartsWithAny(text, "open " + name)
+                        || StartsWithAny(destination, name))))
+                return resourceKey;
+        }
+
+        // Generated file/object names inherit the parent's destination image just as
+        // other targets inherit its action glyph. Recognized child actions keep their own icon.
+        return parentResourceKey is not null && !GetActionIcon(item).HasValue ? parentResourceKey : null;
+    }
+
+    internal static EFontAwesomeIcon GetIcon(MenuItem item, EFontAwesomeIcon? parentIcon = null) =>
+        GetActionIcon(item) ?? parentIcon
+            ?? (item.IsCheckable ? EFontAwesomeIcon.Solid_CheckSquare
+                : item.HasItems ? EFontAwesomeIcon.Solid_Folder : EFontAwesomeIcon.Solid_Cog);
+
+    private static EFontAwesomeIcon? GetActionIcon(MenuItem item)
     {
         EFontAwesomeIcon? commandIcon = GetStandardCommandIcon(item.Command);
         if (commandIcon.HasValue)
@@ -154,10 +226,7 @@ internal static class ContextMenuActionIcons
         if (!item.HasItems && item.Command is null
             && (!item.IsEnabled || long.TryParse(text, out _))) return EFontAwesomeIcon.Solid_InfoCircle;
 
-        // Generated file names and object names describe the target, while their parent names the action.
-        if (parentIcon.HasValue) return parentIcon.Value;
-        if (item.IsCheckable) return EFontAwesomeIcon.Solid_CheckSquare;
-        return item.HasItems ? EFontAwesomeIcon.Solid_Folder : EFontAwesomeIcon.Solid_Cog;
+        return null;
     }
 
     private static EFontAwesomeIcon? GetStandardCommandIcon(ICommand command)

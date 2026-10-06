@@ -268,41 +268,13 @@
                     <MenuItem Header="Open file location" Command="{Binding OpenCurrentFileLocationCommand}" ToolTip="{Binding CurrentPackageFilePath, StringFormat=Open containing folder for {0}}"/>
                     <MenuItem Header="Copy file name" Command="{Binding CopyCurrentFileNameCommand}"/>
                     <MenuItem Header="Open in...">
-                        <MenuItem Header="Dialogue Editor" Tag="DialogueEditor" Click="OpenIn_Clicked" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}">
-                            <MenuItem.Icon>
-                                <Image Source="{StaticResource iconDialogueEditor16}" Width="64"/>
-                            </MenuItem.Icon>
-                        </MenuItem>
-                        <MenuItem Header="FaceFX Editor" Tag="FaceFXEditor" Click="OpenIn_Clicked" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}">
-                            <MenuItem.Icon>
-                                <Image Source="{StaticResource iconFaceFXEditor16}" Width="64"/>
-                            </MenuItem.Icon>
-                        </MenuItem>
-                        <MenuItem Header="Meshplorer" Tag="Meshplorer" Click="OpenIn_Clicked" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}">
-                            <MenuItem.Icon>
-                                <Image Source="{StaticResource iconMeshplorer16}" Width="64"/>
-                            </MenuItem.Icon>
-                        </MenuItem>
-                        <MenuItem Header="Pathfinding Editor" Tag="PathfindingEditor" Click="OpenIn_Clicked" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}">
-                            <MenuItem.Icon>
-                                <Image Source="{StaticResource iconPathfindingEditor16}" Width="64"/>
-                            </MenuItem.Icon>
-                        </MenuItem>
-                        <MenuItem Header="Level Editor" Tag="LevelEditor" Click="OpenIn_Clicked" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}">
-                            <MenuItem.Icon>
-                                <Image Source="{StaticResource iconLevelEditor}" Width="64"/>
-                            </MenuItem.Icon>
-                        </MenuItem>
-                        <MenuItem Header="Soundplorer" Tag="SoundplorerWPF" Click="OpenIn_Clicked" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}">
-                            <MenuItem.Icon>
-                                <Image Source="{StaticResource iconSoundplorer16}" Width="64"/>
-                            </MenuItem.Icon>
-                        </MenuItem>
-                        <MenuItem Header="Sequence Editor" Tag="SequenceEditor" Click="OpenIn_Clicked" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}">
-                            <MenuItem.Icon>
-                                <Image Source="{StaticResource iconSequenceEditor16}" Width="64"/>
-                            </MenuItem.Icon>
-                        </MenuItem>
+                        <MenuItem Header="Dialogue Editor" Tag="DialogueEditor" Click="OpenIn_Clicked" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}" Icon="{StaticResource DialogueEditorMenuIcon}"/>
+                        <MenuItem Header="FaceFX Editor" Tag="FaceFXEditor" Click="OpenIn_Clicked" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}" Icon="{StaticResource FaceFXEditorMenuIcon}"/>
+                        <MenuItem Header="Meshplorer" Tag="Meshplorer" Click="OpenIn_Clicked" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}" Icon="{StaticResource MeshplorerMenuIcon}"/>
+                        <MenuItem Header="Pathfinding Editor" Tag="PathfindingEditor" Click="OpenIn_Clicked" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}" Icon="{StaticResource PathfindingEditorMenuIcon}"/>
+                        <MenuItem Header="Level Editor" Tag="LevelEditor" Click="OpenIn_Clicked" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}" Icon="{StaticResource LevelEditorMenuIcon}"/>
+                        <MenuItem Header="Soundplorer" Tag="SoundplorerWPF" Click="OpenIn_Clicked" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}" Icon="{StaticResource SoundplorerMenuIcon}"/>
+                        <MenuItem Header="Sequence Editor" Tag="SequenceEditor" Click="OpenIn_Clicked" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}" Icon="{StaticResource SequenceEditorMenuIcon}"/>
                     </MenuItem>
                     <Separator />
                     <MenuItem Name="Recents_MenuItem" Header="Recent" IsEnabled="false"/>
@@ -350,11 +322,7 @@
                         <MenuItem Header="Binary data only"  Command="{Binding ImportBinaryDataCommand}" ToolTip="Import a .bin file and replace only the binary section of this export"/>
                     </MenuItem>
                     <Separator/>
-                    <MenuItem Name="HexConverterMenuItem" Header="Hex Converter" Click="HexConverterMenuItem_Click" ToolTip="Open the HexConverter application">
-                        <MenuItem.Icon>
-                            <Image Source="{StaticResource iconHexConverter16}" Width="64"/>
-                        </MenuItem.Icon>
-                    </MenuItem>
+                    <MenuItem Name="HexConverterMenuItem" Header="Hex Converter" Click="HexConverterMenuItem_Click" ToolTip="Open the HexConverter application" Icon="{StaticResource HexConverterMenuIcon}"/>
                     <MenuItem Header="Asset Importer"
                               ToolTip="Import assets from the Asset Database into this package with memory-safe porting."
                               Command="{Binding OpenAssetImporterCommand}"/>
