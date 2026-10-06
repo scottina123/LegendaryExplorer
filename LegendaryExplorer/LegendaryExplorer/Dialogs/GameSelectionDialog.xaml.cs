@@ -3,6 +3,7 @@ using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using LegendaryExplorer.Misc;
+using LegendaryExplorer.Tools.PackageEditor.Experiments;
 using LegendaryExplorerCore.Packages;
 
 namespace LegendaryExplorer.Dialogs
@@ -49,7 +50,7 @@ namespace LegendaryExplorer.Dialogs
         public MEGame SelectedGame { get; private set; }
         public bool CreateLocFile => CreateLocFileCheckBox.IsChecked == true;
         public bool CreateBlankConversation => CreateLocFile
-            && SelectedGame is MEGame.ME3 or MEGame.LE3
+            && PackageEditorExperimentsScottina.SupportsBlankBioConversation(SelectedGame)
             && CreateBlankConversationCheckBox.IsChecked == true;
 
         public (string TopPackageName, string ConversationName) GetBlankConversationNames(string defaultName)
@@ -107,14 +108,16 @@ namespace LegendaryExplorer.Dialogs
                 && (conversationName.Length == 0 || StripConversationSuffix(conversationName).Length > 0);
             bool needsNames = CreateLocFile && CreateBlankConversationCheckBox.IsChecked == true;
             ConversationNameValidationText.Visibility = needsNames && !namesValid ? Visibility.Visible : Visibility.Collapsed;
-            foreach (var button in new[] { ME3Button, LE3Button })
+            foreach (var button in new[] { LE1Button, LE2Button, LE3Button, ME1Button, ME2Button, ME3Button })
             {
                 var game = Enum.Parse<MEGame>((string)button.Tag);
                 bool gameSupported = _supportedGames == null || _supportedGames.Contains(game);
-                button.IsEnabled = gameSupported && (!needsNames || namesValid);
+                bool invalidNames = PackageEditorExperimentsScottina.SupportsBlankBioConversation(game)
+                    && needsNames && !namesValid;
+                button.IsEnabled = gameSupported && !invalidNames;
                 if (gameSupported)
                 {
-                    button.ToolTip = needsNames && !namesValid ? "Enter valid BioConversation names." : null;
+                    button.ToolTip = invalidNames ? "Enter valid BioConversation names." : null;
                     ToolTipService.SetShowOnDisabled(button, true);
                 }
             }

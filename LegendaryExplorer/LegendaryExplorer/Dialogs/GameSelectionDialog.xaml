@@ -54,8 +54,8 @@
                 </Style>
             </StackPanel.Style>
             <CheckBox x:Name="CreateBlankConversationCheckBox"
-                      Content="Generate blank BioConversation in localization file (ME3/LE3 only)"
-                      ToolTip="When choosing ME3 or LE3, also generate a blank BioConversation. Other games receive a blank localization file."
+                      Content="Generate blank BioConversation in localization file (LE1/LE2/LE3/ME3)"
+                      ToolTip="When choosing LE1, LE2, LE3, or ME3, also generate a blank BioConversation. ME1 and ME2 receive a blank localization file."
                       Checked="ConversationOptions_Changed" Unchecked="ConversationOptions_Changed"/>
             <Grid Margin="20,8,0,0">
                 <Grid.ColumnDefinitions>

@@ -15,8 +15,8 @@ public class GameSelectionDialogTests
     [DataRow(MEGame.ME1, false)]
     [DataRow(MEGame.ME2, false)]
     [DataRow(MEGame.ME3, true)]
-    [DataRow(MEGame.LE1, false)]
-    [DataRow(MEGame.LE2, false)]
+    [DataRow(MEGame.LE1, true)]
+    [DataRow(MEGame.LE2, true)]
     [DataRow(MEGame.LE3, true)]
     public void LocalizationCanBeSelectedForEveryGameWithBlankConversationChecked(
         MEGame game, bool expectedBlankConversation)
@@ -46,6 +46,8 @@ public class GameSelectionDialogTests
 
     [STATestMethod]
     [DataRow(MEGame.ME3)]
+    [DataRow(MEGame.LE1)]
+    [DataRow(MEGame.LE2)]
     [DataRow(MEGame.LE3)]
     public void BlankConversationRequiresLocalizationEvenForSupportedGames(MEGame game)
     {
@@ -175,6 +177,15 @@ public class GameSelectionDialogTests
 
     [STATestMethod]
     [DataRow(MEGame.ME3, "TopPackageNameTextBox", "Invalid Package")]
+    [DataRow(MEGame.ME3, "ConversationNameTextBox", "Invalid.Conversation")]
+    [DataRow(MEGame.ME3, "ConversationNameTextBox", "_dlg")]
+    [DataRow(MEGame.LE1, "TopPackageNameTextBox", "Invalid Package")]
+    [DataRow(MEGame.LE1, "ConversationNameTextBox", "Invalid.Conversation")]
+    [DataRow(MEGame.LE1, "ConversationNameTextBox", "_dlg")]
+    [DataRow(MEGame.LE2, "TopPackageNameTextBox", "Invalid Package")]
+    [DataRow(MEGame.LE2, "ConversationNameTextBox", "Invalid.Conversation")]
+    [DataRow(MEGame.LE2, "ConversationNameTextBox", "_dlg")]
+    [DataRow(MEGame.LE3, "TopPackageNameTextBox", "Invalid Package")]
     [DataRow(MEGame.LE3, "ConversationNameTextBox", "Invalid.Conversation")]
     [DataRow(MEGame.LE3, "ConversationNameTextBox", "_dlg")]
     public void InvalidActiveConversationNamePreventsSupportedGameSelection(
@@ -187,6 +198,7 @@ public class GameSelectionDialogTests
             FindCheckBox(dialog, "CreateBlankConversationCheckBox").IsChecked = true;
             FindTextBox(dialog, textBoxName).Text = invalidName;
 
+            Assert.IsFalse(FindGameButton(dialog, game).IsEnabled);
             Assert.IsFalse(SelectGame(dialog, game) == true);
         }
         finally
@@ -197,9 +209,13 @@ public class GameSelectionDialogTests
 
     [STATestMethod]
     [DataRow(MEGame.ME1, true, true)]
-    [DataRow(MEGame.LE2, true, true)]
+    [DataRow(MEGame.ME2, true, true)]
+    [DataRow(MEGame.LE1, true, false)]
+    [DataRow(MEGame.LE2, true, false)]
     [DataRow(MEGame.LE3, true, false)]
     [DataRow(MEGame.ME3, false, true)]
+    [DataRow(MEGame.LE1, false, true)]
+    [DataRow(MEGame.LE2, false, true)]
     public void InactiveConversationNamesDoNotPreventGameSelection(
         MEGame game, bool createLoc, bool createConversation)
     {
@@ -212,6 +228,40 @@ public class GameSelectionDialogTests
             FindTextBox(dialog, "ConversationNameTextBox").Text = "Invalid.Conversation";
 
             Assert.IsTrue(SelectGame(dialog, game) == true);
+            Assert.AreEqual(createLoc, dialog.CreateLocFile);
+            Assert.IsFalse(dialog.CreateBlankConversation);
+        }
+        finally
+        {
+            dialog.Close();
+        }
+    }
+
+    [STATestMethod]
+    [DataRow(MEGame.ME3)]
+    [DataRow(MEGame.LE1)]
+    [DataRow(MEGame.LE2)]
+    [DataRow(MEGame.LE3)]
+    public void CorrectingConversationNamesAllowsSupportedGameSelection(MEGame game)
+    {
+        var dialog = CreateDialog(supportedGames: [game]);
+        try
+        {
+            FindCheckBox(dialog, "CreateLocFileCheckBox").IsChecked = true;
+            FindCheckBox(dialog, "CreateBlankConversationCheckBox").IsChecked = true;
+            FindTextBox(dialog, "TopPackageNameTextBox").Text = "Invalid Package";
+            Assert.IsFalse(FindGameButton(dialog, game).IsEnabled);
+
+            FindTextBox(dialog, "TopPackageNameTextBox").Text = "ValidPackage";
+            FindTextBox(dialog, "ConversationNameTextBox").Text = "ValidConversation";
+
+            foreach (MEGame candidate in new[]
+                     { MEGame.ME1, MEGame.ME2, MEGame.ME3, MEGame.LE1, MEGame.LE2, MEGame.LE3 })
+            {
+                Assert.AreEqual(candidate == game, FindGameButton(dialog, candidate).IsEnabled);
+            }
+            Assert.IsTrue(SelectGame(dialog, game) == true);
+            Assert.IsTrue(dialog.CreateBlankConversation);
         }
         finally
         {

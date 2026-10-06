@@ -1132,6 +1132,9 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             }
         }
 
+        public static bool SupportsBlankBioConversation(MEGame game) =>
+            game is MEGame.ME3 or MEGame.LE1 or MEGame.LE2 or MEGame.LE3;
+
         public static void GenerateBlankBioConversation(PackageEditorWindow pew)
         {
             if (pew?.Pcc == null)
@@ -1139,10 +1142,10 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                 return;
             }
 
-            if (pew.Pcc.Game is not (MEGame.ME3 or MEGame.LE3))
+            if (!SupportsBlankBioConversation(pew.Pcc.Game))
             {
                 MessageBox.Show(pew,
-                    "Blank BioConversation generation is available only for ME3 and LE3 packages.",
+                    "Blank BioConversation generation is available for ME3, LE1, LE2, and LE3 packages.",
                     "Generate blank BioConversation",
                     MessageBoxButton.OK,
                     MessageBoxImage.Warning);
@@ -1207,6 +1210,12 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
         public static (ExportEntry BioConversation, List<ExportEntry> ReferencedExports) GenerateBlankBioConversationAssets(
             IMEPackage package, string topPackageName, string conversationName)
         {
+            ArgumentNullException.ThrowIfNull(package);
+            if (!SupportsBlankBioConversation(package.Game))
+            {
+                throw new ArgumentException("Blank BioConversation generation requires an ME3, LE1, LE2, or LE3 package.", nameof(package));
+            }
+
             ExportEntry topPackage = ExportCreator.CreatePackageExport(package, topPackageName);
 
             ExportEntry bioConversation = ExportCreator.CreateExport(package, $"{conversationName}_dlg",
@@ -1253,6 +1262,11 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                 new(playerFemaleFaceFx.UIndex),
                 new(ownerFemaleFaceFx.UIndex)
             };
+            Property speakerList = package.Game.IsGame3()
+                ? new ArrayProperty<NameProperty>("m_aSpeakerList")
+                : new ArrayProperty<StructProperty>("m_SpeakerList");
+            string sequencePropertyName = package.Game.IsGame1() ? "m_pEvtSystemSeq" : "MatineeSequence";
+            string nonSpeakerFaceFxPropertyName = package.Game.IsGame1() ? "m_pConvFaceFXSet" : "m_pNonSpeakerFaceFXSet";
 
             bioConversation.WriteProperties(new PropertyCollection
             {
@@ -1260,10 +1274,10 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                 entryList,
                 maleFaceSets,
                 femaleFaceSets,
-                new ObjectProperty(sequence.UIndex, "MatineeSequence"),
-                new ObjectProperty(nonSpeakerFaceFx.UIndex, "m_pNonSpeakerFaceFXSet"),
+                new ObjectProperty(sequence.UIndex, sequencePropertyName),
+                new ObjectProperty(nonSpeakerFaceFx.UIndex, nonSpeakerFaceFxPropertyName),
                 new IntProperty(GenerateConversationResourceId(package), "m_nResRefID"),
-                new ArrayProperty<NameProperty>("m_aSpeakerList")
+                speakerList
             });
 
             ExportCreator.CreatePackageExport(package, "Int",

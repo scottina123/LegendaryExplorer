@@ -1607,7 +1607,7 @@ namespace LegendaryExplorer.DialogueEditor
 
         private bool CanGenerateBlankBioConversation()
         {
-            return Pcc?.Game is MEGame.ME3 or MEGame.LE3;
+            return Pcc != null && PackageEditorExperimentsScottina.SupportsBlankBioConversation(Pcc.Game);
         }
 
         private void GenerateBlankBioConversation()
@@ -1620,7 +1620,7 @@ namespace LegendaryExplorer.DialogueEditor
             if (!CanGenerateBlankBioConversation())
             {
                 MessageBox.Show(this,
-                    "Blank BioConversation generation is available only for ME3 and LE3 packages.",
+                    "Blank BioConversation generation is available for LE1, LE2, LE3, and ME3 packages.",
                     "Generate Blank BioConversation",
                     MessageBoxButton.OK,
                     MessageBoxImage.Warning);
