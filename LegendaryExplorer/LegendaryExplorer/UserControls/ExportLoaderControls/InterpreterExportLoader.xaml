@@ -29,6 +29,9 @@
         <Converters:NullOrEmptyStringVisibilityConverter x:Key="NullOrEmptyStringVisibilityConverter"/>
         <Converters:ColorCodeConverter x:Key="ColorCodeConverter"/>
         <Converters:UnsavedChangesForegroundConverter x:Key="UnsavedChangesForegroundConverter"/>
+        <DataTemplate x:Key="MaterialParameterNameTemplate">
+            <TextBlock Text="{Binding Instanced}"/>
+        </DataTemplate>
         <Style x:Key="InlineEditorContextMenuStyle" TargetType="{x:Type ContextMenu}">
             <Setter Property="OverridesDefaultStyle" Value="True"/>
             <Setter Property="SnapsToDevicePixels" Value="True"/>
@@ -211,6 +214,7 @@
                      Style="{DynamicResource {x:Static ToolBar.TextBoxStyleKey}}"/>
                 <ComboBox Name="Value_ComboBox" MinWidth="80" VerticalAlignment="Center" ToolTip="Value for this property" IsTextSearchEnabled="True" ToolBar.OverflowMode="Never"
                           SelectionChanged="Value_ComboBox_SelectionChanged"
+                          DropDownOpened="MaterialParameterName_DropDownOpened"
                           Style="{DynamicResource {x:Static ToolBar.ComboBoxStyleKey}}">
                     <ComboBox.ItemsPanel>
                         <ItemsPanelTemplate>
@@ -380,13 +384,21 @@
                                             <TextBlock Text="Index:" Margin="5,0,2,0" VerticalAlignment="Center" Visibility="{Binding ShowStageBoneNamePicker, Converter={StaticResource BoolToVisibilityConverter}}"/>
                                             <TextBox Width="40" Text="{Binding InlineNameIndexValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Tag="{Binding}" KeyDown="InlineEditor_KeyDown" Style="{StaticResource InlineEditorTextBoxStyle}" Visibility="{Binding ShowStageBoneNamePicker, Converter={StaticResource BoolToVisibilityConverter}}"/>
                                             <Button Margin="5,0,0,0" Padding="6,0" Content="&#x2713;" Tag="{Binding}" Click="InlineEditorConfirmButton_Click" Visibility="{Binding ShowStageBoneNamePicker, Converter={StaticResource BoolToVisibilityConverter}}"/>
-                                            <Button MinWidth="140"
-                                                    Padding="8,0"
-                                                    HorizontalContentAlignment="Left"
-                                                    Content="{Binding InlineNameValue}"
-                                                    ToolTip="Choose from the scalar or vector parameters exposed by this material"
-                                                    Tag="{Binding}"
-                                                    Click="MaterialParameterNamePickerButton_Click"
+                                            <Grid Visibility="{Binding ShowMaterialParameterNamePicker, Converter={StaticResource BoolToVisibilityConverter}}">
+                                                <ComboBox MinWidth="180" IsEditable="False" IsTextSearchEnabled="True"
+                                                          ItemsSource="{Binding MaterialParameterNames}" DisplayMemberPath="Instanced" TextSearch.TextPath="Instanced"
+                                                          SelectedItem="{Binding SelectedMaterialParameterName, Mode=OneWay}"
+                                                          ToolTip="{Binding MaterialParameterNamesStatus}" Tag="{Binding}" KeyDown="InlineEditor_KeyDown"
+                                                          DropDownOpened="MaterialParameterName_DropDownOpened" SelectionChanged="MaterialParameterName_SelectionChanged"
+                                                          ScrollViewer.CanContentScroll="True" VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling">
+                                                    <ComboBox.ItemsPanel>
+                                                        <ItemsPanelTemplate><VirtualizingStackPanel /></ItemsPanelTemplate>
+                                                    </ComboBox.ItemsPanel>
+                                                </ComboBox>
+                                                <TextBlock Text="{Binding MaterialParameterDisplayName}" Margin="8,0,28,0" VerticalAlignment="Center" IsHitTestVisible="False"
+                                                           Visibility="{Binding ShowMaterialParameterPlaceholder, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                                            </Grid>
+                                            <Button Margin="5,0,0,0" Padding="6,0" Content="✓" Tag="{Binding}" Click="InlineEditorConfirmButton_Click"
                                                     Visibility="{Binding ShowMaterialParameterNamePicker, Converter={StaticResource BoolToVisibilityConverter}}"/>
                                             <TextBlock Text="_" Margin="3,0" VerticalAlignment="Center" FontWeight="Bold" Visibility="{Binding ShowStandardNamePicker, Converter={StaticResource BoolToVisibilityConverter}}"/>
                                             <TextBox Width="40" Text="{Binding InlineNameIndexValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Tag="{Binding}" KeyDown="InlineEditor_KeyDown" Style="{StaticResource InlineEditorTextBoxStyle}" Visibility="{Binding ShowStandardNamePicker, Converter={StaticResource BoolToVisibilityConverter}}"/>

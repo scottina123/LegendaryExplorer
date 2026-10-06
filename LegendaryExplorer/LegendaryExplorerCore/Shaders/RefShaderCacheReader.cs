@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using JetBrains.Annotations;
 using LegendaryExplorerCore.DebugTools;
 using LegendaryExplorerCore.GameFilesystem;
@@ -60,13 +61,24 @@ namespace LegendaryExplorerCore.Shaders
 
         public static bool IsShaderOffsetsDictInitialized(MEGame game) => ShaderOffsets(game)?.Count > 0;
 
-        private static int ME3MaterialShaderMapsOffset = 206341927;
-        private static int ME2MaterialShaderMapsOffset = 132795914;
-        private static int ME1MaterialShaderMapsOffset = 69550225;
+        private static int ME3MaterialShaderMapsOffset = VanillaMaterialShaderMapsOffset(MEGame.ME3);
+        private static int ME2MaterialShaderMapsOffset = VanillaMaterialShaderMapsOffset(MEGame.ME2);
+        private static int ME1MaterialShaderMapsOffset = VanillaMaterialShaderMapsOffset(MEGame.ME1);
 
-        private static int LE3MaterialShaderMapsOffset = 1263553925;
-        private static int LE2MaterialShaderMapsOffset = 1014140890;
-        private static int LE1MaterialShaderMapsOffset = 720539980;
+        private static int LE3MaterialShaderMapsOffset = VanillaMaterialShaderMapsOffset(MEGame.LE3);
+        private static int LE2MaterialShaderMapsOffset = VanillaMaterialShaderMapsOffset(MEGame.LE2);
+        private static int LE1MaterialShaderMapsOffset = VanillaMaterialShaderMapsOffset(MEGame.LE1);
+
+        private static int VanillaMaterialShaderMapsOffset(MEGame game) => game switch
+        {
+            MEGame.ME3 => 206341927,
+            MEGame.ME2 => 132795914,
+            MEGame.ME1 => 69550225,
+            MEGame.LE3 => 1263553925,
+            MEGame.LE2 => 1014140890,
+            MEGame.LE1 => 720539980,
+            _ => 0
+        };
 
         private static long ME3RefShaderCacheSize = 232355586;
         private static long ME2RefShaderCacheSize = 151649957;
@@ -99,6 +111,139 @@ namespace LegendaryExplorerCore.Shaders
                 MEGame.LE1 => LE1MaterialShaderMapsOffset,
                 _ => 0
             };
+        }
+
+        /// <summary>
+        /// Reads the texture parameter FNames declared by all compiled materials in the game's
+        /// reference shader cache without loading shader bytecode or retaining the shader maps.
+        /// ME1 and ME2 store named uniforms in individual Material exports instead of these maps.
+        /// Missing caches and games without named uniforms in shader maps return an empty list.
+        /// </summary>
+        public static IReadOnlyList<NameReference> GetTextureParameterNames(MEGame game, string gamePathOverride = null)
+        {
+            if (game is not (MEGame.ME3 or MEGame.LE1 or MEGame.LE2 or MEGame.LE3))
+                return [];
+
+            return GetTextureParameterNamesFromFile(game, ShaderFilePath(game, gamePathOverride));
+        }
+
+        internal static IReadOnlyList<NameReference> GetTextureParameterNamesFromFile(MEGame game, string filePath)
+        {
+            if (game is not (MEGame.ME3 or MEGame.LE1 or MEGame.LE2 or MEGame.LE3) || !File.Exists(filePath))
+                return [];
+
+            using var fs = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read, 1024 * 100, FileOptions.SequentialScan);
+            using IMEPackage shaderCachePackage = MEPackageHandler.OpenMEPackageFromStream(fs, quickLoad: true);
+            if (shaderCachePackage.Game != game || shaderCachePackage.Platform != MEPackage.GamePlatform.PC
+                || shaderCachePackage.IsCompressed || shaderCachePackage.ExportCount == 0)
+                throw new InvalidDataException("The reference shader cache must be an uncompressed PC package for this game.");
+
+            ReadNames(fs, shaderCachePackage);
+            // Use immutable vanilla offsets. Existing helpers can change their cached offsets
+            // after visiting a modified cache, so those shared offsets cannot identify this file.
+            int mapOffset = fs.Length == VanillaRefShaderCacheSize(game)
+                ? VanillaMaterialShaderMapsOffset(game)
+                : FindMaterialShaderMapsOffset(fs, shaderCachePackage);
+            fs.JumpTo(mapOffset);
+            int count = ReadBoundedCount(fs, sizeof(int));
+            var sc = new SerializingContainer(fs, shaderCachePackage, true);
+            var names = new Dictionary<(string Name, int Number), NameReference>();
+            for (int i = 0; i < count; i++)
+            {
+                StaticParameterSet parameters = null;
+                sc.Serialize(ref parameters);
+                MaterialShaderMap map = null;
+                sc.Serialize(ref map);
+                AddTextureParameterNames(map.UniformPixelScalarExpressions, names);
+                AddTextureParameterNames(map.UniformPixelVectorExpressions, names);
+                AddTextureParameterNames(map.UniformVertexScalarExpressions, names);
+                AddTextureParameterNames(map.UniformVertexVectorExpressions, names);
+                AddTextureParameterNames(map.Uniform2DTextureExpressions, names);
+                AddTextureParameterNames(map.UniformCubeTextureExpressions, names);
+            }
+
+            return names.Values.OrderBy(name => name.Instanced, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(name => name.Name, StringComparer.OrdinalIgnoreCase).ThenBy(name => name.Number).ToList();
+        }
+
+        private static int FindMaterialShaderMapsOffset(FileStream fs, IMEPackage package)
+        {
+            // The reference cache's first export has a twelve-byte pre-property/None header.
+            fs.JumpTo(package.ExportOffset + 36);
+            int exportOffset = fs.ReadInt32();
+            if (exportOffset < 0 || exportOffset > fs.Length - 13)
+                throw new InvalidDataException("The reference shader cache export offset is invalid.");
+            fs.JumpTo(exportOffset + 12);
+            fs.Skip(1); // shader platform
+            SkipNameCrcMap(fs);
+            SkipNameCrcMap(fs); // ME3 and LE shader name map
+            int shaderCount = ReadBoundedCount(fs, 28);
+            for (int i = 0; i < shaderCount; i++)
+            {
+                fs.Skip(24); // shader type FName and GUID
+                int shaderEndOffset = fs.ReadInt32();
+                if (shaderEndOffset < fs.Position || shaderEndOffset > fs.Length)
+                    throw new InvalidDataException("A shader bytecode end offset is invalid.");
+                fs.JumpTo(shaderEndOffset);
+            }
+            SkipNameCrcMap(fs); // vertex factory CRC map
+            return checked((int)fs.Position);
+        }
+
+        private static void SkipNameCrcMap(FileStream fs)
+        {
+            int count = ReadBoundedCount(fs, 12);
+            fs.Skip((long)count * 12);
+        }
+
+        private static int ReadBoundedCount(FileStream fs, int minimumItemSize)
+        {
+            int count = fs.ReadInt32();
+            if (count < 0 || count > (fs.Length - fs.Position) / minimumItemSize)
+                throw new InvalidDataException("The reference shader cache contains an invalid collection count.");
+            return count;
+        }
+
+        private static void AddTextureParameterNames(IEnumerable<MaterialUniformExpression> expressions,
+            Dictionary<(string Name, int Number), NameReference> names)
+        {
+            if (expressions is null)
+                return;
+            var pending = new Stack<MaterialUniformExpression>(expressions.Where(expression => expression is not null));
+            var visited = new HashSet<MaterialUniformExpression>(ReferenceEqualityComparer.Instance);
+            while (pending.TryPop(out MaterialUniformExpression expression))
+            {
+                if (!visited.Add(expression))
+                    continue;
+                if (expression is MaterialUniformExpressionTextureParameter parameter
+                    && !string.IsNullOrWhiteSpace(parameter.ParameterName.Name))
+                {
+                    NameReference name = parameter.ParameterName;
+                    // NameReference's hash is case-sensitive although FName equality is not.
+                    names.TryAdd((name.Name.ToUpperInvariant(), name.Number), name);
+                }
+                switch (expression)
+                {
+                    case MaterialUniformExpressionUnaryOp unary:
+                        Push(unary.X);
+                        break;
+                    case MaterialUniformExpressionBinaryOp binary:
+                        Push(binary.A);
+                        Push(binary.B);
+                        break;
+                    case MaterialUniformExpressionClamp clamp:
+                        Push(clamp.Input);
+                        Push(clamp.Min);
+                        Push(clamp.Max);
+                        break;
+                }
+            }
+
+            void Push(MaterialUniformExpression expression)
+            {
+                if (expression is not null)
+                    pending.Push(expression);
+            }
         }
 
         public static void PopulateOffsets(MEGame game)

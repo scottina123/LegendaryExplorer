@@ -3440,6 +3440,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             UpdateEditorSelection(newSelectedItem);
             SelectedItem = newSelectedItem;
             Value_ComboBox.ToolTip = "Value for this property";
+            Value_ComboBox.IsReadOnly = false;
+            Value_ComboBox.ItemTemplate = null;
             //list of visible elements for editing
             var SupportedEditorSetElements = new List<FrameworkElement>();
             if (newSelectedItem?.Property != null)
@@ -3512,7 +3514,18 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                         SupportedEditorSetElements.Add(NameIndex_TextBox);
                         break;
                     case NameProperty np:
-                        if (IsStageSpecificCameraNameProperty(np))
+                        if (newSelectedItem.ShowMaterialParameterNamePicker)
+                        {
+                            TextSearch.SetTextPath(Value_ComboBox, "Instanced");
+                            Value_ComboBox.IsEditable = false;
+                            Value_ComboBox.ItemTemplate = (DataTemplate)FindResource("MaterialParameterNameTemplate");
+                            Value_ComboBox.ItemsSource = newSelectedItem.MaterialParameterNames;
+                            Value_ComboBox.SelectedItem = newSelectedItem.SelectedMaterialParameterName;
+                            Value_ComboBox.ToolTip = newSelectedItem.MaterialParameterNamesStatus;
+                            UpdateParsedEditorValue(newSelectedItem);
+                            SupportedEditorSetElements.Add(ParsedValue_TextBlock);
+                        }
+                        else if (IsStageSpecificCameraNameProperty(np))
                         {
                             List<NameReference> stageBoneNames = GetStageSpecificCameraNames(np).ToList();
                             TextSearch.SetTextPath(Value_ComboBox, "Name");
@@ -4099,6 +4112,9 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                             }
                         }
                         break;
+                    case NameProperty name when tvi.ShowMaterialParameterNamePicker:
+                        ParsedValue_TextBlock.Text = name.Value.Instanced;
+                        break;
                     case NameProperty _:
                         {
                             if (int.TryParse(Value_TextBox.Text, out int index) && int.TryParse(NameIndex_TextBox.Text, out int number))
@@ -4524,6 +4540,13 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                         break;
                     case NameProperty namep:
                         {
+                            if (SelectedItem.ShowMaterialParameterNamePicker)
+                            {
+                                if (Value_ComboBox.SelectedItem is NameReference selectedParameter
+                                    && SelectedItem.SelectMaterialParameterName(selectedParameter))
+                                    updated = SelectedItem.CommitInlineNameEdit();
+                                break;
+                            }
                             if (IsStageSpecificCameraNameProperty(namep))
                             {
                                 if (Value_ComboBox.SelectedItem is not NameReference selectedBone)
@@ -4779,68 +4802,97 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             TryCommitInlineEditor(node);
         }
 
-        private void MaterialParameterNamePickerButton_Click(object sender, RoutedEventArgs e)
+        private async void MaterialParameterName_DropDownOpened(object sender, EventArgs e)
         {
-            if (sender is not FrameworkElement { Tag: UPropertyTreeViewEntry node }
-                || node.Property is not NameProperty _
-                || CurrentLoadedExport is null
-                || !node.ShowMaterialParameterNamePicker)
-            {
+            if (sender is not ComboBox comboBox)
                 return;
-            }
 
-            bool isVectorParameter = node.MaterialParameterArrayName == "VectorParameterValues";
-            IReadOnlyList<string> parameterNames;
+            var node = comboBox.Tag as UPropertyTreeViewEntry ?? (comboBox == Value_ComboBox ? SelectedItem : null);
+            if (node?.ShowMaterialParameterNamePicker != true
+                || node.AttachedExport != CurrentLoadedExport
+                || node.IsMaterialParameterNamesLoading
+                || node.HasMaterialParameterNamesLoaded)
+                return;
+
+            node.IsMaterialParameterNamesLoading = true;
+            bool isTextureParameter = node.MaterialParameterArrayName == "TextureParameterValues";
+            node.MaterialParameterNamesStatus = isTextureParameter
+                ? "Loading all known texture parameters from the game's Asset Database and shader cache..."
+                : "Loading parameters from this material and its parents...";
             try
             {
-                using var cache = new PackageCache();
-                var materialInfo = new MaterialInfo { MaterialExport = CurrentLoadedExport };
-                parameterNames = isVectorParameter
-                    ? materialInfo.GetVectorParameterNames(cache)
-                    : materialInfo.GetScalarParameterNames(cache);
+                var material = node.AttachedExport;
+                string arrayName = node.MaterialParameterArrayName;
+                IReadOnlyList<NameReference> gameTextureNames = [];
+                string gameCatalogError = null;
+                if (isTextureParameter)
+                {
+                    try
+                    {
+                        gameTextureNames = await GameTextureParameterCatalog.GetNamesAsync(material.Game);
+                    }
+                    catch (Exception exception) when (exception is not OutOfMemoryException)
+                    {
+                        gameCatalogError = exception.Message;
+                    }
+                }
+                if (material != CurrentLoadedExport)
+                    return;
+                var names = await Task.Run(() =>
+                {
+                    using var cache = new PackageCache();
+                    return isTextureParameter
+                        ? MaterialParameterCatalog.GetTextureChoices(material, gameTextureNames, cache)
+                        : MaterialParameterCatalog.GetNames(material, arrayName, cache);
+                });
+                if (material != CurrentLoadedExport)
+                    return;
+                node.SetMaterialParameterNames(names);
+                node.MaterialParameterNamesStatus = gameCatalogError is not null
+                    ? $"Game-wide catalog unavailable: {gameCatalogError} Showing {names.Count} texture parameters from this PCC and its resolved materials."
+                    : names.Count == 0
+                    ? "No declared parameters of this type were found on this material."
+                    : isTextureParameter
+                        ? $"{names.Count} known texture parameters across the game. Selecting a name adds it to this PCC if needed. The parent material determines which parameters affect its appearance."
+                        : $"{names.Count} parameters defined by this material, including imported parents. Selecting a name adds it to this PCC if needed.";
+                if (SelectedItem == node)
+                {
+                    Value_ComboBox.ItemsSource = node.MaterialParameterNames;
+                    Value_ComboBox.SelectedItem = node.SelectedMaterialParameterName;
+                    Value_ComboBox.ToolTip = node.MaterialParameterNamesStatus;
+                }
             }
             catch (Exception exception)
             {
+                if (node.AttachedExport != CurrentLoadedExport)
+                    return;
+                node.SetMaterialParameterNames([], isLoaded: false);
+                node.MaterialParameterNamesStatus = $"Material parameters unavailable: {exception.Message}";
+                if (SelectedItem == node)
+                {
+                    Value_ComboBox.ItemsSource = node.MaterialParameterNames;
+                    Value_ComboBox.SelectedItem = null;
+                    Value_ComboBox.ToolTip = node.MaterialParameterNamesStatus;
+                }
                 MessageBox.Show(
                     $"The material's parameter list could not be loaded.\n\n{exception.Message}",
                     "Material parameters unavailable",
                     MessageBoxButton.OK,
                     MessageBoxImage.Warning);
-                return;
             }
-
-            string currentName = ((NameProperty)node.Property).Value.Instanced;
-            parameterNames = parameterNames
-                .Concat(currentName.Equals(NameReference.None.Name, StringComparison.OrdinalIgnoreCase) ? [] : [currentName])
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
-                .ToList();
-            if (parameterNames.Count == 0)
+            finally
             {
-                MessageBox.Show(
-                    $"No {(isVectorParameter ? "vector" : "scalar")} parameters were found on this material or its parent material.",
-                    "No material parameters found",
-                    MessageBoxButton.OK,
-                    MessageBoxImage.Information);
-                return;
+                node.IsMaterialParameterNamesLoading = false;
             }
+        }
 
-            string parameterType = isVectorParameter ? "vector" : "scalar";
-            string selectedName = StringSelectorDialog.GetValue(
-                this,
-                $"Choose a {parameterType} parameter name. Type to search the {parameterNames.Count} available values.",
-                $"Choose {parameterType} parameter",
-                parameterNames.Select(name => new StringSelectorItem(name, name, $"{parameterType} parameter")),
-                currentName);
-            if (string.IsNullOrWhiteSpace(selectedName))
-            {
+        private void MaterialParameterName_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (sender is not ComboBox { Tag: UPropertyTreeViewEntry node, SelectedItem: NameReference selectedName }
+                || node.IsMaterialParameterNamesLoading
+                || node.AttachedExport != CurrentLoadedExport)
                 return;
-            }
-
-            NameReference selectedNameReference = NameReference.FromInstancedString(selectedName);
-            node.InlineNameValue = selectedNameReference.Name;
-            node.InlineNameIndexValue = selectedNameReference.Number.ToString(CultureInfo.InvariantCulture);
-            TryCommitInlineEditor(node);
+            node.SelectMaterialParameterName(selectedName);
         }
 
         private void GestureAnimationPickerButton_Click(object sender, RoutedEventArgs e)
@@ -6960,11 +7012,69 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         };
         public string MaterialParameterArrayName => Property is NameProperty { Name.Name: "ParameterName" }
                                                     && AttachedExport?.IsA("MaterialInstanceConstant") == true
-                                                    && UPParent?.UPParent?.Property is ArrayPropertyBase parameterArray
-                                                    && parameterArray.Name.Name is "ScalarParameterValues" or "VectorParameterValues"
+                                                    && UPParent?.Property is StructProperty parameterStruct
+                                                    && UPParent.UPParent?.Property is ArrayProperty<StructProperty> parameterArray
+                                                    && (parameterArray.Name.Name, parameterStruct.StructType) is
+                                                        ("ScalarParameterValues", "ScalarParameterValue") or
+                                                        ("VectorParameterValues", "VectorParameterValue") or
+                                                        ("TextureParameterValues", "TextureParameterValue")
             ? parameterArray.Name.Name
             : null;
         public bool ShowMaterialParameterNamePicker => MaterialParameterArrayName is not null;
+        private IReadOnlyList<NameReference> _materialParameterNames = [];
+        private NameReference? _stagedMaterialParameterName;
+        public IReadOnlyList<NameReference> MaterialParameterNames => _materialParameterNames;
+        public NameReference? SelectedMaterialParameterName
+        {
+            get
+            {
+                NameReference? selectedName = _stagedMaterialParameterName ?? (Property as NameProperty)?.Value;
+                return selectedName is { } name && _materialParameterNames.Contains(name)
+                    ? _materialParameterNames.First(choice => choice == name)
+                    : (NameReference?)null;
+            }
+        }
+        public bool ShowMaterialParameterPlaceholder => ShowMaterialParameterNamePicker && SelectedMaterialParameterName is null;
+        public bool HasMaterialParameterNamesLoaded { get; private set; }
+        public string MaterialParameterDisplayName => (Property as NameProperty)?.Value.Instanced ?? "";
+        private string _materialParameterNamesStatus;
+        public string MaterialParameterNamesStatus
+        {
+            get => _materialParameterNamesStatus ?? (MaterialParameterArrayName == "TextureParameterValues"
+                ? "Open to load all known texture parameters across the game, including names absent from this PCC."
+                : "Open to load parameters defined by this material and its parents, including other PCCs.");
+            set => SetProperty(ref _materialParameterNamesStatus, value);
+        }
+        private bool _isMaterialParameterNamesLoading;
+        public bool IsMaterialParameterNamesLoading
+        {
+            get => _isMaterialParameterNamesLoading;
+            set => SetProperty(ref _isMaterialParameterNamesLoading, value);
+        }
+        public void SetMaterialParameterNames(IReadOnlyList<NameReference> names, bool isLoaded = true)
+        {
+            HasMaterialParameterNamesLoaded = isLoaded;
+            _materialParameterNames = names
+                .Where(name => !string.IsNullOrWhiteSpace(name.Name))
+                .GroupBy(name => (name.Name.ToUpperInvariant(), name.Number))
+                .Select(group => group.First())
+                .OrderBy(name => name.Instanced, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            OnPropertyChanged(nameof(MaterialParameterNames));
+            OnPropertyChanged(nameof(SelectedMaterialParameterName));
+            OnPropertyChanged(nameof(ShowMaterialParameterPlaceholder));
+        }
+        public bool SelectMaterialParameterName(NameReference name)
+        {
+            if (!ShowMaterialParameterNamePicker || !_materialParameterNames.Contains(name))
+                return false;
+            InlineNameValue = name.Name;
+            InlineNameIndexValue = name.Number.ToString(CultureInfo.InvariantCulture);
+            _stagedMaterialParameterName = name;
+            OnPropertyChanged(nameof(SelectedMaterialParameterName));
+            OnPropertyChanged(nameof(ShowMaterialParameterPlaceholder));
+            return true;
+        }
         public bool ShowStageBoneNamePicker => InlineStageBoneNameChoices is { Count: > 0 };
         public bool ShowStandardNamePicker => !ShowMaterialParameterNamePicker && !ShowStageBoneNamePicker;
         public bool ShowEnumInlineEditor => IsEnumProperty;
@@ -7209,9 +7319,13 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             _inlineNameValue = nameProperty.Value.Name;
             _inlineNameIndexValue = nameProperty.Value.Number.ToString();
             _inlineStageBoneNameValue = nameProperty.Value;
+            _stagedMaterialParameterName = null;
             OnPropertyChanged(nameof(InlineNameValue));
             OnPropertyChanged(nameof(InlineNameIndexValue));
             OnPropertyChanged(nameof(InlineStageBoneNameValue));
+            OnPropertyChanged(nameof(SelectedMaterialParameterName));
+            OnPropertyChanged(nameof(MaterialParameterDisplayName));
+            OnPropertyChanged(nameof(ShowMaterialParameterPlaceholder));
         }
 
         public bool TryGetInlineIntValue(out int value)
@@ -7240,6 +7354,21 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 || instanceIndex < 0)
             {
                 return false;
+            }
+
+            if (ShowMaterialParameterNamePicker)
+            {
+                // Keep the exact FName: a literal suffix such as "Texture_2" is not an instance number.
+                var selectedName = new NameReference(inputName, instanceIndex);
+                if (IsMaterialParameterNamesLoading || !_materialParameterNames.Contains(selectedName) || selectedName == nameProperty.Value)
+                    return false;
+                package.FindNameOrAdd(selectedName.Name);
+                nameProperty.Value = selectedName;
+                _editableValue = $"{package.findName(selectedName.Name)}_{selectedName.Number}";
+                ParsedValue = selectedName.Instanced;
+                ResetInlineEditorValues();
+                OnPropertyChanged(nameof(EditableValue));
+                return true;
             }
 
             string resolvedName;
