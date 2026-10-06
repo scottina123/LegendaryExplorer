@@ -916,18 +916,20 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
 
     private static string EntrySyncKey(IEntry entry) => $"{entry.ClassName}|{entry.InstancedFullPath}";
 
-    private List<ExportEntry> PrepareFullGalaxySync(ExportEntry sourceGalaxy, ExportEntry companionGalaxy)
+    internal static List<ExportEntry> PrepareFullGalaxySync(ExportEntry sourceGalaxy, ExportEntry companionGalaxy)
     {
         List<ExportEntry> sourceExports = GetGalaxyExports(sourceGalaxy);
         // Retail BioPlanet MICs are referenced by the hierarchy but are not consistently outered
         // beneath SFXGalaxy. Include those exports in every full two-package synchronization.
-        sourceExports.AddRange(sourceExports.Where(export => export.IsA("BioPlanet"))
+        // Collect materials before appending them to the hierarchy being enumerated.
+        List<ExportEntry> materials = sourceExports.Where(export => export.IsA("BioPlanet"))
             .SelectMany(planet => new[]
             {
-                planet.GetProperty<ObjectProperty>("PlanetMaterial")?.ResolveToEntry(Pcc) as ExportEntry,
-                planet.GetProperty<ObjectProperty>("CloudMaterial")?.ResolveToEntry(Pcc) as ExportEntry
+                planet.GetProperty<ObjectProperty>("PlanetMaterial")?.ResolveToEntry(sourceGalaxy.FileRef) as ExportEntry,
+                planet.GetProperty<ObjectProperty>("CloudMaterial")?.ResolveToEntry(sourceGalaxy.FileRef) as ExportEntry
             })
-            .Where(material => material is not null && !material.IsTrash()));
+            .Where(material => material is not null && !material.IsTrash()).ToList();
+        sourceExports.AddRange(materials);
         sourceExports = sourceExports.DistinctBy(export => export.UIndex).ToList();
         HashSet<string> sourceKeys = sourceExports.Select(GalaxySyncKey).ToHashSet(StringComparer.OrdinalIgnoreCase);
         List<ExportEntry> companionOnly = GetGalaxyExports(companionGalaxy)
