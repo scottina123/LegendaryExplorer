@@ -318,6 +318,16 @@
                                             <TextBox MinWidth="180" IsReadOnly="True" Text="{Binding InlineObjectDisplayValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Tag="{Binding}" MouseDoubleClick="InlineObjectDisplay_MouseDoubleClick" Style="{StaticResource InlineEditorTextBoxStyle}"/>
                                             <TextBox Width="60" Margin="5,0,0,0" Text="{Binding InlineObjectIndexValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Tag="{Binding}" TextChanged="InlineObjectIndex_TextChanged" KeyDown="InlineEditor_KeyDown" Style="{StaticResource InlineEditorTextBoxStyle}"/>
                                             <Button Margin="5,0,0,0" Padding="6,0" Content="✓" Tag="{Binding}" Click="InlineEditorConfirmButton_Click"/>
+                                            <StackPanel Orientation="Horizontal"
+                                                        Visibility="{Binding ShowTextureFileActions, Converter={StaticResource BoolToVisibilityConverter}}"
+                                                        IsEnabled="{Binding IsTextureFileActionIdle, RelativeSource={RelativeSource AncestorType=global:InterpreterExportLoader}}">
+                                                <Button Margin="5,0,0,0" Padding="8,0" Content="Export" Tag="{Binding}" CommandParameter="Export" Click="TextureFileActionButton_Click"
+                                                        IsEnabled="{Binding CanExportTextureParameter}" ToolTip="{Binding TextureFileActionsToolTip}" ToolTipService.ShowOnDisabled="True"/>
+                                                <Button Margin="5,0,0,0" Padding="8,0" Content="Import" Tag="{Binding}" CommandParameter="Import" Click="TextureFileActionButton_Click"
+                                                        IsEnabled="{Binding CanImportTextureParameter}" ToolTip="{Binding TextureFileActionsToolTip}" ToolTipService.ShowOnDisabled="True"/>
+                                                <Button Margin="5,0,0,0" Padding="8,0" Content="Move to TFC" Tag="{Binding}" CommandParameter="Move" Click="TextureFileActionButton_Click"
+                                                        IsEnabled="{Binding CanMoveTextureParameterToTfc}" ToolTip="{Binding TextureFileActionsToolTip}" ToolTipService.ShowOnDisabled="True"/>
+                                            </StackPanel>
                                             <Button Margin="5,0,0,0" Padding="8,0" Content="{Binding AssetPickerButtonText}" ToolTip="{Binding AssetPickerToolTip}" Tag="{Binding}" Click="AssetPickerButton_Click" Visibility="{Binding ShowAssetPicker, Converter={StaticResource BoolToVisibilityConverter}}"/>
                                              <Button Margin="5,0,0,0" Padding="8,0" Content="Choose client effect..." ToolTip="Show pActionClientEffect values compatible with this nmProp" Tag="{Binding}" Click="ClientEffectPickerButton_Click" Visibility="{Binding ShowClientEffectPicker, Converter={StaticResource BoolToVisibilityConverter}}"/>
                                             <ContentControl Content="{Binding}" ContentTemplate="{StaticResource InlineArrayElementActionsTemplate}"/>

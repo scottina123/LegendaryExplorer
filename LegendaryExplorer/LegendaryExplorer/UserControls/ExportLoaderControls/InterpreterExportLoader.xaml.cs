@@ -30,6 +30,7 @@ using LegendaryExplorer.Tools.PlotDatabase;
 using LegendaryExplorer.Tools.PlotEditor;
 using LegendaryExplorer.Tools.TlkManagerNS;
 using LegendaryExplorer.UserControls.ExportLoaderControls.MaterialEditor;
+using LegendaryExplorer.UserControls.ExportLoaderControls.TextureViewer;
 using LegendaryExplorerCore.GameFilesystem;
 using LegendaryExplorerCore.Gammtek;
 using LegendaryExplorerCore.Gammtek.Extensions;
@@ -66,6 +67,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                                                                 "BioSeqVar_StoryManagerFloat", "BioSeqVar_StoryManagerBool", "BioSeqVar_StoryManagerStateId", "SFXSceneShopNodePlotCheck", "BioWorldInfo", "CoverLink" ];
         public ObservableCollectionExtended<IndexedName> ParentNameList { get; private set; }
         private static readonly ConcurrentDictionary<MEGame, Task<IReadOnlyList<PropActionPickerDialog.PropActionChoice>>> PropActionCatalogTasks = new();
+        private bool _textureFileActionRunning;
+        public bool IsTextureFileActionIdle => !_textureFileActionRunning;
 
         public bool SubstituteImageForHexBox
         {
@@ -4688,6 +4691,72 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             TryCommitInlineEditor(sender as FrameworkElement);
         }
 
+        private async void TextureFileActionButton_Click(object sender, RoutedEventArgs e)
+        {
+            e.Handled = true;
+            if (_textureFileActionRunning
+                || sender is not Button { Tag: UPropertyTreeViewEntry node, CommandParameter: string action }
+                || node.AttachedExport != CurrentLoadedExport
+                || node.TextureParameterEntry is not { } entry)
+            {
+                return;
+            }
+
+            var host = Window.GetWindow(this) as IBusyUIHost;
+            _textureFileActionRunning = true;
+            OnPropertyChanged(nameof(IsTextureFileActionIdle));
+            try
+            {
+                switch (action)
+                {
+                    case "Export" when node.CanExportTextureParameter:
+                        if (entry is ExportEntry texture)
+                        {
+                            TextureFileActions.ExportToFile(texture, this);
+                        }
+                        else if (entry is ImportEntry import)
+                        {
+                            using var cache = new PackageCache();
+                            ExportEntry resolved;
+                            try
+                            {
+                                if (host != null)
+                                {
+                                    host.BusyText = "Resolving texture reference";
+                                    host.IsBusy = true;
+                                }
+                                resolved = await Task.Run(() => EntryImporter.ResolveImport(import, cache));
+                            }
+                            finally
+                            {
+                                if (host != null) host.IsBusy = false;
+                            }
+
+                            if (resolved?.IsTexture() == true && !resolved.IsDefaultObject)
+                                TextureFileActions.ExportToFile(resolved, this);
+                            else
+                                MessageBox.Show("The referenced texture could not be resolved.", "Export texture", MessageBoxButton.OK, MessageBoxImage.Warning);
+                        }
+                        break;
+                    case "Import" when node.CanImportTextureParameter:
+                        await TextureFileActions.ImportFromFileAsync(node.TextureParameterExport, this, host);
+                        break;
+                    case "Move" when node.CanMoveTextureParameterToTfc:
+                        await TextureFileActions.MoveToTfcAsync(node.TextureParameterExport, this, host);
+                        break;
+                }
+            }
+            catch (Exception exception)
+            {
+                MessageBox.Show($"Error performing texture operation:\n{exception.Message}", "Texture tools", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+            finally
+            {
+                _textureFileActionRunning = false;
+                OnPropertyChanged(nameof(IsTextureFileActionIdle));
+            }
+        }
+
         private void MoviePickerButton_Click(object sender, RoutedEventArgs e)
         {
             if (sender is not FrameworkElement { Tag: UPropertyTreeViewEntry node }
@@ -6794,6 +6863,31 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         public bool ShowMoviePicker => Property is StrProperty
                                        && Property.Name.Name.Equals("m_sMovieName", StringComparison.OrdinalIgnoreCase);
         public bool ShowObjectInlineEditor => IsObjectProperty;
+        public bool IsMicTextureParameter => Property is ObjectProperty { Name.Name: "ParameterValue" }
+                                             && AttachedExport?.IsA("MaterialInstanceConstant") == true
+                                             && UPParent?.Property is StructProperty { StructType: "TextureParameterValue" }
+                                             && UPParent.UPParent?.Property is ArrayProperty<StructProperty> { Name.Name: "TextureParameterValues" };
+        public bool ShowTextureFileActions => IsMicTextureParameter;
+        // Require confirmation of an edited reference before operating on its texture.
+        public IEntry TextureParameterEntry => IsMicTextureParameter
+                                              && Property is ObjectProperty objectProperty
+                                              && int.TryParse(InlineObjectIndexValue, out int index)
+                                              && index == objectProperty.Value
+                                              && AttachedExport.FileRef.GetEntry(index) is { } entry
+                                              && entry.IsTexture()
+                                              && entry is not ExportEntry { IsDefaultObject: true }
+            ? entry
+            : null;
+        public ExportEntry TextureParameterExport => TextureParameterEntry as ExportEntry;
+        public bool CanExportTextureParameter => TextureParameterEntry is not null;
+        public bool CanImportTextureParameter => TextureFileActions.CanEdit(TextureParameterExport);
+        public bool CanMoveTextureParameterToTfc => TextureFileActions.CanMoveToTfc(TextureParameterExport);
+        public string TextureFileActionsToolTip => TextureParameterEntry switch
+        {
+            ImportEntry => "Export resolves this imported texture. Import and Move to TFC require a texture export in this package.",
+            ExportEntry => "Export or replace this texture's image, or move it to another TFC. Replacement requires an editable package; TFCs are unavailable in ME1.",
+            _ => "Select a supported texture and confirm the reference with the checkmark to use the texture tools."
+        };
         public bool ShowEditableTextBlock => !(ShowNumericInlineEditor || ShowNameInlineEditor || ShowObjectInlineEditor || ShowEnumInlineEditor);
         public bool ShowNameInlineEditor => IsNameProperty;
         public bool ShowPropActionPicker { get; set; }
@@ -7025,7 +7119,21 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         public string InlineObjectIndexValue
         {
             get => _inlineObjectIndexValue ?? ((Property as ObjectProperty)?.Value.ToString() ?? "0");
-            set => SetProperty(ref _inlineObjectIndexValue, value);
+            set
+            {
+                if (SetProperty(ref _inlineObjectIndexValue, value))
+                    NotifyTextureFileActionsChanged();
+            }
+        }
+
+        private void NotifyTextureFileActionsChanged()
+        {
+            OnPropertyChanged(nameof(TextureParameterEntry));
+            OnPropertyChanged(nameof(TextureParameterExport));
+            OnPropertyChanged(nameof(CanExportTextureParameter));
+            OnPropertyChanged(nameof(CanImportTextureParameter));
+            OnPropertyChanged(nameof(CanMoveTextureParameterToTfc));
+            OnPropertyChanged(nameof(TextureFileActionsToolTip));
         }
 
         private string _inlineNameValue;
@@ -7084,6 +7192,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 _inlineObjectDisplayValue = null;
                 OnPropertyChanged(nameof(InlineObjectIndexValue));
                 OnPropertyChanged(nameof(InlineObjectDisplayValue));
+                NotifyTextureFileActionsChanged();
             }
 
             if (Property is not NameProperty nameProperty)

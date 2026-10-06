@@ -227,10 +227,6 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         public static readonly DependencyProperty HostingControlProperty = DependencyProperty.Register(
             nameof(HostingControl), typeof(IBusyUIHost), typeof(TextureViewerExportLoader));
 
-        private const string CREATE_NEW_TFC_STRING = "Create new TFC";
-        private const string STORE_EXTERNALLY_STRING = "Store externally in new TFC";
-        private const string PACKAGE_STORED_STRING = "Package stored";
-
         private static void ViewerModeOnlyCallback(DependencyObject obj, DependencyPropertyChangedEventArgs e)
         {
             TextureViewerExportLoader i = (TextureViewerExportLoader)obj;
@@ -304,144 +300,17 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         private bool CanMoveCurrentTextureToTfc()
         {
-            return CanReplaceTexture() && CurrentLoadedExport.Game > MEGame.ME1;
+            return !ViewerModeOnly && TextureFileActions.CanMoveToTfc(CurrentLoadedExport);
         }
 
-        private void MoveCurrentTextureToTfc()
+        private async void MoveCurrentTextureToTfc()
         {
             if (!CanMoveCurrentTextureToTfc())
-            {
                 return;
-            }
 
-            string currentTfcName = CurrentLoadedExport.GetProperty<NameProperty>("TextureFileCacheName")?.Value.Name;
-            string preferredTfcName = GetPreferredMoveTfcName() ?? currentTfcName;
-
-            if (!SelectOrAddNamePromptDialog.Prompt(Window.GetWindow(this) as Control ?? this,
-                    "Select or add the destination TFC name. A new .tfc file will be created automatically if needed.",
-                    "Move texture to another TFC",
-                    CurrentLoadedExport.FileRef,
-                    out NameReference targetTfcName,
-                    new NameReference(preferredTfcName)))
-            {
-                return;
-            }
-
-            string selectedTfcName = targetTfcName.Name;
-            if (string.IsNullOrWhiteSpace(selectedTfcName)
-                || !selectedTfcName.StartsWith("Textures_", StringComparison.OrdinalIgnoreCase))
-            {
-                MessageBox.Show("TFC names must start with 'Textures_'.", "Move texture to another TFC", MessageBoxButton.OK, MessageBoxImage.Warning);
-                return;
-            }
-
-            if (!string.IsNullOrWhiteSpace(currentTfcName)
-                && string.Equals(selectedTfcName, currentTfcName, StringComparison.OrdinalIgnoreCase))
-            {
-                MessageBox.Show("The selected destination TFC matches the current TFC.", "Move texture to another TFC", MessageBoxButton.OK, MessageBoxImage.Information);
-                return;
-            }
-
-            if (MEDirectories.BasegameTFCs(CurrentLoadedExport.Game).Contains(selectedTfcName, StringComparer.InvariantCultureIgnoreCase)
-                || MEDirectories.OfficialDLC(CurrentLoadedExport.Game).Any(x => $"Textures_{x}".Equals(selectedTfcName, StringComparison.InvariantCultureIgnoreCase)))
-            {
-                MessageBox.Show("Cannot move textures into a TFC provided by BioWare. Choose a different target TFC from the list.", "Move texture to another TFC", MessageBoxButton.OK, MessageBoxImage.Warning);
-                return;
-            }
-
-            if (HostingControl != null)
-            {
-                HostingControl.IsBusy = true;
-                HostingControl.BusyText = "Moving texture to another TFC";
-            }
-
-            Task.Run(() => MoveCurrentTextureToTfcInternal(selectedTfcName))
-                .ContinueWithOnUIThread(task =>
-                {
-                    if (HostingControl != null)
-                    {
-                        HostingControl.IsBusy = false;
-                    }
-
-                    if (task.Exception != null)
-                    {
-                        MessageBox.Show($"Error moving texture between TFCs:\n{task.Exception.FlattenException()}", "Move texture to another TFC", MessageBoxButton.OK, MessageBoxImage.Error);
-                        return;
-                    }
-
-                    if (task.Result != null && task.Result.Any())
-                    {
-                        new ListDialog(task.Result, "Move texture to another TFC", "The following messages were generated while moving the texture.", Window.GetWindow(this)).Show();
-                    }
-
-                    LoadExport(CurrentLoadedExport);
-                });
-        }
-
-        private List<string> MoveCurrentTextureToTfcInternal(string targetTfcName)
-        {
-            string tempDirectory = Path.Combine(Path.GetTempPath(), "LegendaryExplorer", "MoveTextureBetweenTfcs", Guid.NewGuid().ToString("N"));
-            Directory.CreateDirectory(tempDirectory);
-            try
-            {
-                var texture = new LegendaryExplorerCore.Unreal.Classes.Texture2D(CurrentLoadedExport);
-                string tempTexturePath = Path.Combine(tempDirectory, $"{CurrentLoadedExport.UIndex:D8}_{SanitizeFileName(CurrentLoadedExport.InstancedFullPath)}.tga");
-                texture.ExportToFile(tempTexturePath);
-
-                var props = CurrentLoadedExport.GetProperties();
-                var image = Image.LoadFromFile(tempTexturePath, LegendaryExplorerCore.Textures.PixelFormat.ARGB);
-                var messages = texture.Replace(image, props, tempTexturePath, forcedTFCName: targetTfcName);
-                messages.Insert(0, $"Moved {CurrentLoadedExport.InstancedFullPath} to '{targetTfcName}'.");
-                return messages;
-            }
-            finally
-            {
-                try
-                {
-                    if (Directory.Exists(tempDirectory))
-                    {
-                        Directory.Delete(tempDirectory, true);
-                    }
-                }
-                catch
-                {
-                }
-            }
-        }
-
-        private string GetPreferredMoveTfcName()
-        {
-            string filePath = CurrentLoadedExport?.FileRef?.FilePath;
-            if (string.IsNullOrWhiteSpace(filePath)
-                || CurrentLoadedExport == null
-                || CurrentLoadedExport.Game <= MEGame.ME1)
-            {
-                return null;
-            }
-
-            string topLevelFolderName = filePath.DetermineDLCNameFromPath();
-            if (string.IsNullOrWhiteSpace(topLevelFolderName))
-            {
-                for (DirectoryInfo directory = Directory.GetParent(filePath); directory != null; directory = directory.Parent)
-                {
-                    string normalizedFolderName = directory.Name.NormalizeDLCFolderName();
-                    if (!string.IsNullOrWhiteSpace(normalizedFolderName))
-                    {
-                        topLevelFolderName = normalizedFolderName;
-                        break;
-                    }
-                }
-            }
-
-            return string.IsNullOrWhiteSpace(topLevelFolderName)
-                ? null
-                : $"Textures_{topLevelFolderName}";
-        }
-
-        private static string SanitizeFileName(string value)
-        {
-            var invalidChars = Path.GetInvalidFileNameChars();
-            return new string(value.Select(c => invalidChars.Contains(c) ? '_' : c).ToArray());
+            ExportEntry export = CurrentLoadedExport;
+            if (await TextureFileActions.MoveToTfcAsync(export, this, HostingControl) && CurrentLoadedExport == export)
+                LoadExport(export);
         }
 
         private void DropTopMip()
@@ -468,195 +337,22 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         private bool CanReplaceTexture()
         {
-            return CurrentLoadedExport != null && CurrentLoadedExport.FileRef.CanReconstruct() && !ViewerModeOnly;
+            return !ViewerModeOnly && TextureFileActions.CanEdit(CurrentLoadedExport);
         }
 
-        private void ReplaceFromFile()
+        private async void ReplaceFromFile()
         {
-            var selectedTFCName = GetDestinationTFCName();
-            if (string.IsNullOrEmpty(selectedTFCName))
-            {
+            if (!CanReplaceTexture())
                 return;
-            }
 
-            if (MEDirectories.BasegameTFCs(CurrentLoadedExport.Game).Contains(selectedTFCName, StringComparer.InvariantCultureIgnoreCase) || MEDirectories.OfficialDLC(CurrentLoadedExport.Game).Any(x => $"Textures_{x}".Equals(selectedTFCName, StringComparison.InvariantCultureIgnoreCase)))
-            {
-                MessageBox.Show("Cannot replace textures into a TFC provided by BioWare. Choose a different target TFC from the list.");
-                return;
-            }
-
-            OpenFileDialog selectDDS = new OpenFileDialog
-            {
-                Title = "Select texture file",
-#if WINDOWS
-                Filter = "All supported types|*.png;*.dds;*.tga;*.jpg|PNG files (*.png)|*.png|DDS files (*.dds)|*.dds|TGA files (*.tga)|*.tga|JPEG files (*.jpg)|*.jpg",
-#else
-                Filter = "Texture (DDS PNG BMP TGA)|*.dds;*.png;*.bmp;*.tga",
-#endif
-                CustomPlaces = AppDirectories.GameCustomPlaces
-            };
-            var result = DirectoryMemory.ShowDialog(selectDDS);
-            if (result.HasValue && result.Value)
-            {
-                if (HostingControl != null)
-                {
-                    HostingControl.IsBusy = true;
-                    HostingControl.BusyText = "Replacing textures";
-                }
-
-                if (selectedTFCName == CREATE_NEW_TFC_STRING || selectedTFCName == STORE_EXTERNALLY_STRING)
-                {
-                    string defaultTfcName = GetPreferredDlcTfcName() ?? "Textures_DLC_MOD_YourModFolderNameHere";
-                    PromptDialog p = new PromptDialog("Enter name for a new TFC. It must start with Textures_DLC_MOD_, and will be created in the local directory of this package file.", "Enter new name for TFC", defaultTfcName, true, "Textures_DLC_MOD_".Length) { Owner = Window.GetWindow(this) };
-                    var hasResult = p.ShowDialog();
-                    if (hasResult.HasValue && hasResult.Value)
-                    {
-                        if (p.ResponseText.StartsWith("Textures_DLC_MOD_") && p.ResponseText.Length > 14)
-                        {
-                            //Check TFC name isn't in list
-                            CurrentLoadedExport.FileRef.FindNameOrAdd(p.ResponseText);
-                            selectedTFCName = p.ResponseText;
-                        }
-                        else
-                        {
-                            MessageBox.Show(
-                                "Error: Name must start with Textures_DLC_, and must have at least one additional character.\nThe named should match your DLC's foldername.");
-                            return;
-                        }
-                    }
-                    else
-                    {
-                        if (HostingControl != null)
-                        {
-                            HostingControl.IsBusy = false;
-                        }
-                        return;
-                    }
-                }
-
-                Task.Run(() =>
-                {
-                    //Check aspect ratios
-                    var props = CurrentLoadedExport.GetProperties();
-                    var listedWidth = props.GetProp<IntProperty>("SizeX")?.Value ?? 0;
-                    var listedHeight = props.GetProp<IntProperty>("SizeY")?.Value ?? 0;
-
-                    Image image;
-                    try
-                    {
-#if WINDOWS
-                        image = Image.LoadFromFile(selectDDS.FileName, LegendaryExplorerCore.Textures.PixelFormat.ARGB);
-#else
-                    image = new Image(selectDDS.FileName);
-#endif
-                    }
-                    catch (TextureSizeNotPowerOf2Exception)
-                    {
-                        MessageBox.Show("The width and height of a texture must both be a power of 2\n" +
-                                        "(1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192 (LE only))", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
-                        return null;
-                    }
-                    catch (Exception e)
-                    {
-                        MessageBox.Show($"Error: {e.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
-                        return null;
-                    }
-
-                    if (image.mipMaps[0].origWidth / image.mipMaps[0].origHeight != listedWidth / listedHeight)
-                    {
-                        MessageBox.Show("Cannot replace texture: Aspect ratios must be the same.");
-                        return null;
-                    }
-
-                    bool isPackageStored = selectedTFCName == PACKAGE_STORED_STRING;
-                    if (isPackageStored) selectedTFCName = null;
-                    return ReplaceTextures(image, props, selectDDS.FileName, selectedTFCName, isPackageStored);
-
-                    // MER: Dump to disk
-                    //var binName = Path.Combine(Directory.GetParent(selectDDS.FileName).FullName, Path.GetFileNameWithoutExtension(selectDDS.FileName) + ".bin");
-                    //File.WriteAllBytes(binName, CurrentLoadedExport.GetBinaryData());
-                })
-                .ContinueWithOnUIThread((a) =>
-                {
-                    if (HostingControl != null) HostingControl.IsBusy = false;
-                    if (a.Exception == null && a.Result != null && a.Result.Any())
-                    {
-                        var ld = new ListDialog(a.Result, "Textures replaced", "The following messages were generated during replacement of textures.", Window.GetWindow(this));
-                        ld.Show();
-                    }
-                });
-            }
-        }
-
-        private string GetPreferredDlcTfcName()
-        {
-            string filePath = CurrentLoadedExport?.FileRef?.FilePath;
-            if (string.IsNullOrWhiteSpace(filePath)
-                || CurrentLoadedExport.Game <= MEGame.ME1
-                || MEDirectories.IsInOfficialDLC(filePath, CurrentLoadedExport.Game))
-            {
-                return null;
-            }
-
-            string dlcName = filePath.DetermineDLCNameFromPath();
-            return !string.IsNullOrWhiteSpace(dlcName)
-                ? $"Textures_{dlcName}"
-                : null;
-        }
-
-        private string GetDestinationTFCName()
-        {
-            var tex = ObjectBinary.From<UTexture2D>(CurrentLoadedExport);
-            if (tex.Mips.Count == 1)
-                return PACKAGE_STORED_STRING; // If there is only 1 mip it will always be package stored.
-
-            // This might need updated if we need to stuff textures into UDK for some reason
-            string preferredDlcTfcName = GetPreferredDlcTfcName();
-            var options = new List<string>();
-            if (CurrentLoadedExport.Game > MEGame.ME1)
-            {
-                // TFCs
-                options.AddRange(CurrentLoadedExport.FileRef.Names.Where(x => x.StartsWith("Textures_DLC_MOD_")));
-                int preferredIndex = options.FindIndex(option => option.Equals(preferredDlcTfcName, StringComparison.OrdinalIgnoreCase));
-                if (preferredIndex > 0)
-                {
-                    options.Insert(0, options[preferredIndex]);
-                    options.RemoveAt(preferredIndex + 1);
-                }
-                options.Add(CREATE_NEW_TFC_STRING);
-            }
-
-            options.Add(PACKAGE_STORED_STRING);
-
-            string defaultOption = options.FirstOrDefault(option => option.Equals(preferredDlcTfcName, StringComparison.OrdinalIgnoreCase))
-                ?? options.LastOrDefault(option => option != CREATE_NEW_TFC_STRING && option != PACKAGE_STORED_STRING)
-                ?? options.Last();
-
-            return StringSelectorDialog.GetValue(this,
-                "Select where the new texture should be stored. TFCs are better for game performance.",
-                "Select storage location", options, defaultOption);
+            ExportEntry export = CurrentLoadedExport;
+            if (await TextureFileActions.ImportFromFileAsync(export, this, HostingControl) && CurrentLoadedExport == export)
+                LoadExport(export);
         }
 
         private void ExportToPNG()
         {
-            SaveFileDialog d = new SaveFileDialog
-            {
-#if WINDOWS
-                Filter = "PNG files (*.png)|*.png|DDS files (*.dds)|*.dds|TGA files (*.tga)|*.tga",
-#else
-                Filter = "PNG files|*.png",
-#endif
-                FileName = CurrentLoadedExport.ObjectName.Instanced + ".png"
-            };
-            if (DirectoryMemory.ShowDialog(d) == true)
-            {
-                LegendaryExplorerCore.Unreal.Classes.Texture2D t2d = new LegendaryExplorerCore.Unreal.Classes.Texture2D(CurrentLoadedExport);
-#if WINDOWS
-                t2d.ExportToFile(d.FileName);
-#else
-                t2d.ExportToPNG(d.FileName);
-#endif
-            }
+            TextureFileActions.ExportToFile(CurrentLoadedExport, this);
         }
 
         private bool NonEmptyMipSelected()
