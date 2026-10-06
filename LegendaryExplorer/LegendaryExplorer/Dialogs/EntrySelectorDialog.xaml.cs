@@ -77,6 +77,8 @@ namespace LegendaryExplorer.Dialogs
         private PackageCache AudioPreviewPackageCache;
         private Task AudioPreviewResolutionTask = Task.CompletedTask;
         private int AudioPreviewRequestVersion;
+        private GridLength AudioPreviewColumnWidth = new(2, GridUnitType.Star);
+        private bool AudioPreviewPaneSized;
         private readonly Dictionary<(IMEPackage Package, int StringRef), string> WwiseTlkSubtitleCache = new();
 
         public Visibility ItemSearchVisibility => ItemSearch is null ? Visibility.Collapsed : Visibility.Visible;
@@ -220,12 +222,17 @@ namespace LegendaryExplorer.Dialogs
             EntrySearchTextBox.Focus();
         }
 
-        private void ShowPreviewPane(GridLength previewWidth)
+        private void ShowPreviewPane(GridLength previewWidth, bool resizeWindow = true)
         {
             PreviewSplitterColumn.Width = new GridLength(5);
             PreviewColumn.Width = previewWidth;
             PreviewSplitter.Visibility = Visibility.Visible;
             PreviewHost.Visibility = Visibility.Visible;
+            if (!resizeWindow)
+            {
+                return;
+            }
+
             Width = Math.Min(1600, Math.Max(1000, SystemParameters.WorkArea.Width - 80));
             Height = Math.Min(800, Math.Max(600, SystemParameters.WorkArea.Height - 80));
             MinWidth = Math.Min(1000, Width);
@@ -568,7 +575,6 @@ namespace LegendaryExplorer.Dialogs
                 return;
             }
 
-            ShowPreviewPane(new GridLength(2, GridUnitType.Star));
             AudioPreviewPackageCache = new PackageCache();
             AudioPreviewPlayer = new Soundpanel
             {
@@ -600,10 +606,35 @@ namespace LegendaryExplorer.Dialogs
             previewPanel.Children.Add(AudioPreviewPlayer);
             PreviewHost.Content = previewPanel;
             SetAudioPreviewMessage("Select a WwiseEvent or WwiseStream to preview its audio");
+            UpdateAudioPreview(SelectedEntryItem as IEntry);
         }
 
         private static bool IsWwiseAudioEntry(IEntry entry)
             => entry?.ClassName is "WwiseEvent" or "WwiseStream";
+
+        private void SetAudioPreviewVisibility(bool visible)
+        {
+            if (visible)
+            {
+                if (PreviewHost.Visibility != Visibility.Visible)
+                {
+                    ShowPreviewPane(AudioPreviewColumnWidth, resizeWindow: !AudioPreviewPaneSized);
+                    AudioPreviewPaneSized = true;
+                }
+            }
+            else
+            {
+                if (PreviewHost.Visibility == Visibility.Visible)
+                {
+                    AudioPreviewColumnWidth = PreviewColumn.Width;
+                }
+
+                PreviewHost.Visibility = Visibility.Collapsed;
+                PreviewSplitter.Visibility = Visibility.Collapsed;
+                PreviewColumn.Width = new GridLength(0);
+                PreviewSplitterColumn.Width = new GridLength(0);
+            }
+        }
 
         private void UpdateAudioPreview(IEntry entry)
         {
@@ -615,22 +646,15 @@ namespace LegendaryExplorer.Dialogs
             int requestVersion = Interlocked.Increment(ref AudioPreviewRequestVersion);
             AudioPreviewPlayer.StopPlaying();
             AudioPreviewPlayer.UnloadExport();
-            AudioPreviewHeader.Text = entry is null
-                ? "Audio preview"
-                : $"Audio preview — {entry.InstancedFullPath}";
-            AudioPreviewHeader.ToolTip = entry?.InstancedFullPath ?? "The currently selected Wwise audio entry";
-
-            if (entry is null)
+            bool isAudioEntry = IsWwiseAudioEntry(entry);
+            SetAudioPreviewVisibility(isAudioEntry);
+            if (!isAudioEntry)
             {
-                SetAudioPreviewMessage("No entry selected");
                 return;
             }
 
-            if (!IsWwiseAudioEntry(entry))
-            {
-                SetAudioPreviewMessage("The selected entry is not a WwiseEvent or WwiseStream");
-                return;
-            }
+            AudioPreviewHeader.Text = $"Audio preview — {entry.InstancedFullPath}";
+            AudioPreviewHeader.ToolTip = entry.InstancedFullPath;
 
             if (entry is ExportEntry audioExport)
             {
