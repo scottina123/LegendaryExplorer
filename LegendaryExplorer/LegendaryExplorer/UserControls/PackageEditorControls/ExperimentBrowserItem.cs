@@ -4,6 +4,9 @@ using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media;
+using FontAwesome5;
+using LegendaryExplorer.SharedUI;
 
 namespace LegendaryExplorer.UserControls.PackageEditorControls
 {
@@ -14,6 +17,8 @@ namespace LegendaryExplorer.UserControls.PackageEditorControls
         public string Name { get; }
         public string Category { get; }
         public string Description { get; }
+        public EFontAwesomeIcon Icon { get; }
+        public ImageSource IconImage { get; }
         public string SelectionKey => $"{Category}\n{Name}";
 
         public bool IsEnabled
@@ -41,6 +46,21 @@ namespace LegendaryExplorer.UserControls.PackageEditorControls
             Name = name;
             Category = category;
             Description = description;
+            Icon = menuItem.Icon is ImageAwesome glyph ? glyph.Icon : ContextMenuActionIcons.GetIcon(menuItem);
+
+            // Share image sources, not controls: menu icons may already have a visual parent.
+            IconImage = menuItem.Icon switch
+            {
+                ImageAwesome => null,
+                Image image => image.Source,
+                ImageSource source => source,
+                _ => null
+            };
+            if (IconImage == null && menuItem.Icon == null
+                && ContextMenuActionIcons.GetImageResourceKey(menuItem) is string resourceKey)
+            {
+                IconImage = (menuItem.TryFindResource(resourceKey) as Image)?.Source;
+            }
         }
 
         public void Invoke()

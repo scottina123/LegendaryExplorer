@@ -1,6 +1,7 @@
 <Window x:Class="LegendaryExplorer.UserControls.PackageEditorControls.ExperimentsBrowserWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:fa="http://schemas.fontawesome.com/icons/"
         Title="Package Editor Experiments"
         Width="920"
         Height="640"
@@ -68,16 +69,39 @@
                     </ListBox.ItemContainerStyle>
                     <ListBox.ItemTemplate>
                         <DataTemplate>
-                            <StackPanel>
-                                <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextWrapping="Wrap"/>
-                                <TextBlock Text="{Binding Category}"
-                                           Margin="0,2,0,0"
-                                           Foreground="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}"/>
-                                <TextBlock Text="{Binding Description}"
-                                           Margin="0,3,0,0"
-                                           TextWrapping="Wrap"
-                                           Foreground="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}"/>
-                            </StackPanel>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="16"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <fa:ImageAwesome x:Name="ActionIcon"
+                                                 Icon="{Binding Icon}"
+                                                 Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ListBoxItem}}"
+                                                 Width="16" Height="16"
+                                                 VerticalAlignment="Top" Margin="0,2,0,0"
+                                                 Visibility="Collapsed" IsHitTestVisible="False"/>
+                                <Image x:Name="ToolIcon"
+                                       Source="{Binding IconImage}"
+                                       Width="16" Height="16"
+                                       VerticalAlignment="Top" Margin="0,2,0,0"
+                                       IsHitTestVisible="False"/>
+                                <StackPanel Grid.Column="1" Margin="8,0,0,0">
+                                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                                    <TextBlock Text="{Binding Category}"
+                                               Margin="0,2,0,0"
+                                               Foreground="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}"/>
+                                    <TextBlock Text="{Binding Description}"
+                                               Margin="0,3,0,0"
+                                               TextWrapping="Wrap"
+                                               Foreground="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}"/>
+                                </StackPanel>
+                            </Grid>
+                            <DataTemplate.Triggers>
+                                <DataTrigger Binding="{Binding IconImage}" Value="{x:Null}">
+                                    <Setter TargetName="ActionIcon" Property="Visibility" Value="Visible"/>
+                                    <Setter TargetName="ToolIcon" Property="Visibility" Value="Collapsed"/>
+                                </DataTrigger>
+                            </DataTemplate.Triggers>
                         </DataTemplate>
                     </ListBox.ItemTemplate>
                 </ListBox>
