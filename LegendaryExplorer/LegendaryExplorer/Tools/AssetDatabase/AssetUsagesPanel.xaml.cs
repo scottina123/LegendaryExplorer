@@ -63,6 +63,12 @@ namespace LegendaryExplorer.Tools.AssetDatabase
 
         public int SelectedIndex => internalListBox.SelectedIndex;
 
+        public event SelectionChangedEventHandler SelectionChanged
+        {
+            add => internalListBox.SelectionChanged += value;
+            remove => internalListBox.SelectionChanged -= value;
+        }
+
         public AssetUsagesPanel()
         {
             InitializeComponent();
