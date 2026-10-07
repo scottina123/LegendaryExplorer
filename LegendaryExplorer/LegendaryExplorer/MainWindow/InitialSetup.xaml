@@ -4,13 +4,15 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
-        Title="Legendary Explorer Initial Setup" Background="#FFD8D8D8"
+        Title="Legendary Explorer Initial Setup"
+        Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"
+        Foreground="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}"
         WindowStartupLocation="CenterScreen" ResizeMode="CanMinimize" Width="616" Height="446">
     <Window.Resources>
         <Style x:Key="setupButton" TargetType="Button" BasedOn="{StaticResource BorderedButton}">
-            <Setter Property="Background" Value="#7e8285"/>
-            <Setter Property="Foreground" Value="#FFFDFDFD"/>
-            <Setter Property="BorderBrush" Value="#FFFDFDFD"/>
+            <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"/>
+            <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"/>
             <Setter Property="BorderThickness" Value="2"/>
             <Setter Property="FontFamily" Value="{StaticResource Exo-Regular}"/>
             <Setter Property="FontSize" Value="15"/>
@@ -22,26 +24,37 @@
                         <Condition Property="IsEnabled" Value="True"/>
                         <Condition Property="IsMouseOver" Value="True"/>
                     </MultiTrigger.Conditions>
-                    <Setter Property="Foreground" Value="#FF1F283C"/>
+                    <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.ControlLightBrushKey}}"/>
+                    <Setter Property="BorderBrush" Value="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}"/>
                 </MultiTrigger>
+                <Trigger Property="IsKeyboardFocused" Value="True">
+                    <Setter Property="BorderBrush" Value="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}"/>
+                </Trigger>
+                <Trigger Property="IsPressed" Value="True">
+                    <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}"/>
+                </Trigger>
+                <Trigger Property="IsEnabled" Value="False">
+                    <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}"/>
+                </Trigger>
             </Style.Triggers>
         </Style>
     </Window.Resources>
 
     <StackPanel Width="600">
         <StackPanel Orientation="Horizontal">
-            <Image Width="248" Height="109" Source="../Resources/Images/LEX_Splash.png" RenderOptions.BitmapScalingMode="HighQuality"/>
-            <Grid Width="351" Height="109" Background="#FF30343E">
-                <TextBlock Text="Welcome to Legendary Explorer, the fan-made modding toolkit for the Mass Effect trilogy!" Margin="0" Foreground="#FFD8D8D8"
+            <Image x:Name="setupImage" Width="248" Height="109" RenderOptions.BitmapScalingMode="HighQuality"/>
+            <Grid Width="352" Height="109" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}">
+                <TextBlock Text="Welcome to Legendary Explorer, the fan-made modding toolkit for the Mass Effect trilogy!" Margin="0"
+                           Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"
                            TextWrapping="Wrap" HorizontalAlignment="Center" FontSize="18" FontFamily="{StaticResource Exo-SemiBold}" TextAlignment="Center"
                            Width="293" VerticalAlignment="Center"/>
             </Grid>
         </StackPanel>
-        <Rectangle Height="4" Fill="#FFF3F3F3"/>
+        <Rectangle Height="4" Fill="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"/>
         <Grid>
             <StackPanel x:Name="step1Section">
-                <Label Height="32" Background="#7e8285">
-                    <TextBlock x:Name="step1TextBlock" Foreground="#FFFDFDFD" FontSize="18" VerticalAlignment="Center"
+                <Label Height="32" Background="{DynamicResource {x:Static SystemColors.ControlLightBrushKey}}">
+                    <TextBlock x:Name="step1TextBlock" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}" FontSize="18" VerticalAlignment="Center"
                                FontFamily="{StaticResource TitilliumWeb-SemiBold}" Margin="0,0,0,-1">
                         <Run Text=" Set Game Paths " FontFamily="{StaticResource TitilliumWeb-Regular}"/>
                     </TextBlock>
@@ -52,8 +65,8 @@
                 <Grid Margin="10">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="105"/>
-                        <ColumnDefinition Width="350"/>
                         <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="*"/>
@@ -65,10 +78,7 @@
                         <Style TargetType="TextBlock">
                             <Setter Property="FontFamily" Value="{StaticResource TitilliumWeb-Regular}"/>
                             <Setter Property="FontSize" Value="15"/>
-                            <Setter Property="Foreground" Value="#FF080808"/>
-                        </Style>
-                        <Style TargetType="TextBox">
-                            <Setter Property="Width" Value="350"/>
+                            <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}"/>
                         </Style>
                     </Grid.Resources>
 
@@ -100,20 +110,6 @@
         </Grid>
 
         <Button x:Name="doneButton" Content="Click here to continue" Width="480" Height="45" Click="DoneButton_Click"
-                    Foreground="#FFD8D8D8" FontSize="18" Background="#FF30343E" Margin="60,5" FontFamily="{StaticResource Exo-SemiBold}">
-            <Button.Style>
-                <Style TargetType="Button" BasedOn="{StaticResource setupButton}">
-                    <Style.Triggers>
-                        <MultiTrigger>
-                            <MultiTrigger.Conditions>
-                                <Condition Property="IsEnabled" Value="True"/>
-                                <Condition Property="IsMouseOver" Value="True"/>
-                            </MultiTrigger.Conditions>
-                            <Setter Property="Foreground" Value="#FFFDFDFD"/>
-                        </MultiTrigger>
-                    </Style.Triggers>
-                </Style>
-            </Button.Style>
-        </Button>
+                Style="{StaticResource setupButton}" FontSize="18" Margin="60,5" FontFamily="{StaticResource Exo-SemiBold}"/>
     </StackPanel>
 </Window>

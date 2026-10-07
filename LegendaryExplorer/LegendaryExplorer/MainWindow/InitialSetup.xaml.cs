@@ -5,6 +5,7 @@ using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using LegendaryExplorer.SharedUI;
 using LegendaryExplorer.SharedUI.Controls;
 using LegendaryExplorer.Misc.AppSettings;
@@ -32,6 +33,24 @@ namespace LegendaryExplorer.MainWindow
         {
             InitializeComponent();
             CustomWindowChrome.ApplyCustomChrome(this);
+
+            // The splash is embedded for the native startup window, rather than packaged as a WPF resource.
+#if NIGHTLY
+            const string splashImagePath = "LegendaryExplorer.Resources.Images.LEX_Splash_Nightly.png";
+#else
+            const string splashImagePath = "LegendaryExplorer.Resources.Images.LEX_Splash.png";
+#endif
+            using (Stream splashStream = typeof(InitialSetup).Assembly.GetManifestResourceStream(splashImagePath))
+            {
+                var splashImage = new BitmapImage();
+                splashImage.BeginInit();
+                splashImage.CacheOption = BitmapCacheOption.OnLoad;
+                splashImage.StreamSource = splashStream;
+                splashImage.EndInit();
+                splashImage.Freeze();
+                setupImage.Source = splashImage;
+            }
+
             me1PathBox.Text = ME1Directory.DefaultGamePath;
             me2PathBox.Text = ME2Directory.DefaultGamePath;
             me3PathBox.Text = ME3Directory.DefaultGamePath;

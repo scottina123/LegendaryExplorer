@@ -28,6 +28,18 @@ namespace LegendaryExplorer.Misc.AppSettings
             set => Global_Theme = value ? AppTheme.Dark.ToString() : AppTheme.Light.ToString();
         }
 
+        private static string GetThemeSetting(Dictionary<string, object> settings)
+        {
+            if (settings.ContainsKey("global_theme"))
+            {
+                return ThemeManager.ParseThemeName(
+                    TryGetSetting(settings, "global_theme", "Dark")).ToString();
+            }
+
+            // Preserve the original dark-mode preference, and default new installations to Dark.
+            return TryGetSetting(settings, "global_darkmode_enabled", true) ? "Dark" : "Light";
+        }
+
         #region Static Property Changed
 
         private static bool Loaded = false;

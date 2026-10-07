@@ -442,7 +442,7 @@ namespace LegendaryExplorer.Misc.AppSettings
             get => _global_analytics_enabled;
             set => SetProperty(ref _global_analytics_enabled, value);
         }
-        private static string _global_theme = "Light";
+        private static string _global_theme = "Dark";
         public static string Global_Theme {
             get => _global_theme;
             set => SetProperty(ref _global_theme, ThemeManager.ParseThemeName(value).ToString());
@@ -639,14 +639,6 @@ namespace LegendaryExplorer.Misc.AppSettings
             //if the settings file has been corrupted somehow, the JSON deserializer will return null.
             settingsJson ??= new();
 
-            // Global_Theme replaces the original dark-mode Boolean. Preserve existing
-            // installations by mapping that value to the traditional Dark theme once.
-            if (!settingsJson.ContainsKey("global_theme"))
-            {
-                bool legacyDarkMode = TryGetSetting(settingsJson, "global_darkmode_enabled", false);
-                settingsJson["global_theme"] = legacyDarkMode ? "Dark" : "Light";
-            }
-
             MainWindow_DisableTransparencyAndAnimations = TryGetSetting(settingsJson, "mainwindow_disabletransparencyandanimations", false);
             MainWindow_Favorites = TryGetSetting(settingsJson, "mainwindow_favorites", "");
             MainWindow_CompletedInitialSetup = TryGetSetting(settingsJson, "mainwindow_completedinitialsetup", false);
@@ -730,8 +722,7 @@ namespace LegendaryExplorer.Misc.AppSettings
             TFCCompactor_LastStagingPath = TryGetSetting(settingsJson, "tfccompactor_laststagingpath", "");
             Global_PropertyParsing_ParseUnknownArrayTypeAsObject = TryGetSetting(settingsJson, "global_propertyparsing_parseunknownarraytypeasobject", false);
             Global_Analytics_Enabled = TryGetSetting(settingsJson, "global_analytics_enabled", true);
-            Global_Theme = ThemeManager.ParseThemeName(
-                TryGetSetting(settingsJson, "global_theme", "Light")).ToString();
+            Global_Theme = GetThemeSetting(settingsJson);
             Global_UseOwnerFriendlyNames = TryGetSetting(settingsJson, "global_useownerfriendlynames", false);
             Global_UseOrbitCameraControls = TryGetSetting(settingsJson, "global_useorbitcameracontrols", false);
             Global_ME1Directory = TryGetSetting(settingsJson, "global_me1directory", "");
