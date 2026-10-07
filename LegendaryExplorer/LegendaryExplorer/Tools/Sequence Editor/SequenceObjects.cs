@@ -2012,7 +2012,7 @@ namespace LegendaryExplorer.Tools.SequenceObjects
             AddChild(VarLinkBox);
             AddChild(OutLinkBox);
             connectionHandle = PPath.CreateRectangle(TitleBox.Width / 2 - 5, -5, 10, 10, new Pen(EventColor));
-            connectionHandle.Brush = MostlyTransparentBrush;
+            connectionHandle.Brush = new SolidBrush(EventColor);
             connectionHandle.Tag = SequenceGraphEditor.NonDraggableNodeTag;
             connectionHandle.AddInputEventListener(eventConnectionDragHandler);
             AddChild(connectionHandle);
