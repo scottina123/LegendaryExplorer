@@ -90,6 +90,10 @@ namespace LegendaryExplorer.Misc.AppSettings
                 {
                     // Apply theme immediately when setting changes
                     ThemeManager.ApplyTheme();
+                    // Persist backgrounds even when these tools are closed. Startup
+                    // loading leaves saved custom colors intact because Loaded is false.
+                    Meshplorer_BackgroundColor = ThemeManager.MeshplorerBackgroundMediaColor.ToString();
+                    PathfindingEditor_BackgroundColor = ThemeManager.PathfindingBackgroundDrawingColor.ToArgb();
                     StaticPropertyChanged?.Invoke(null, new PropertyChangedEventArgs(nameof(Global_DarkMode_Enabled)));
                 }
             }

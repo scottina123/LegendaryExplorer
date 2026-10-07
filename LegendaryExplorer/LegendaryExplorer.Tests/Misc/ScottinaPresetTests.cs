@@ -4,7 +4,11 @@ using System.ComponentModel;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Windows;
+using System.Windows.Media;
+using LegendaryExplorer.Misc;
 using LegendaryExplorer.Misc.AppSettings;
+using LegendaryExplorer.UserControls.ExportLoaderControls;
 using LegendaryExplorer.UserControls.ExportLoaderControls.ScriptEditor;
 using LegendaryExplorer.UserControls.SharedToolControls;
 using MEGame = LegendaryExplorerCore.Packages.MEGame;
@@ -19,13 +23,18 @@ public class ScottinaPresetTests
 {
     private static readonly FieldInfo LoadedField = typeof(Settings)
         .GetField("Loaded", BindingFlags.Static | BindingFlags.NonPublic)!;
+    private static readonly FieldInfo DeferSavingField = typeof(Settings)
+        .GetField("_deferSaving", BindingFlags.Static | BindingFlags.NonPublic)!;
     private Dictionary<PropertyInfo, object> _originalSettings;
     private object _originalLoaded;
+    private object _originalDeferSaving;
 
     [TestInitialize]
     public void Initialize()
     {
         _originalLoaded = LoadedField.GetValue(null);
+        _originalDeferSaving = DeferSavingField.GetValue(null);
+        DeferSavingField.SetValue(null, true); // Also suppress explicit Save calls from live controls.
         LoadedField.SetValue(null, false); // Never write to the user's settings during these tests.
         _originalSettings = typeof(Settings).GetProperties(BindingFlags.Public | BindingFlags.Static)
             .Where(property => property.CanRead && property.CanWrite)
@@ -46,6 +55,7 @@ public class ScottinaPresetTests
         finally
         {
             LoadedField.SetValue(null, _originalLoaded);
+            DeferSavingField.SetValue(null, _originalDeferSaving);
         }
     }
 
@@ -62,6 +72,8 @@ public class ScottinaPresetTests
         Assert.IsTrue(settings.Value<bool>("packageeditor_showexperiments"));
         Assert.IsTrue(settings.Value<bool>("interpreter_showlinearcolorwheel"));
         Assert.AreEqual("Dark", settings.Value<string>("global_theme"));
+        Assert.AreEqual("#FF202020", settings.Value<string>("meshplorer_backgroundcolor"));
+        Assert.AreEqual(-14935269, settings.Value<int>("pathfindingeditor_backgroundcolor"));
         Assert.IsFalse(settings.Value<bool>("global_analytics_enabled"));
 
         foreach (string name in new[]
@@ -226,6 +238,87 @@ public class ScottinaPresetTests
         finally
         {
             Settings.StaticPropertyChanged -= themeListener;
+        }
+    }
+
+    [STATestMethod]
+    public void SelectedThemesAndPresetUpdateBackgroundsForClosedAndOpenEditors()
+    {
+        InitializeApplicationResources();
+        Settings.Global_Theme = "Light";
+        Settings.Meshplorer_BackgroundColor = "#FF454647";
+        Settings.PathfindingEditor_BackgroundColor = System.Drawing.Color.MediumPurple.ToArgb();
+        LoadedField.SetValue(null, true);
+        try
+        {
+            foreach (var (theme, mesh, path) in new[]
+                     {
+                         ("Dark", "#FF202020", "#FF1C1B1B"),
+                         ("ModernDark", "#FF05080D", "#FF05080D"),
+                         ("Light", "#FF808080", "#FF828282")
+                     })
+            {
+                Settings.Global_Theme = theme;
+
+                Assert.AreEqual(mesh, Settings.Meshplorer_BackgroundColor,
+                    $"Selecting {theme} must store the mesh background even when Meshplorer is closed.");
+                Color pathColor = (Color)ColorConverter.ConvertFromString(path)!;
+                Assert.AreEqual(System.Drawing.Color.FromArgb(pathColor.A, pathColor.R, pathColor.G, pathColor.B).ToArgb(),
+                    Settings.PathfindingEditor_BackgroundColor,
+                    $"Selecting {theme} must store the graph background even when Pathfinding Editor is closed.");
+            }
+        }
+        finally
+        {
+            LoadedField.SetValue(null, false);
+        }
+
+        VerifyOpenMeshRendererAppliesThemesAndReloadsCapturedPresetBackground();
+    }
+
+    private static void VerifyOpenMeshRendererAppliesThemesAndReloadsCapturedPresetBackground()
+    {
+        Settings.Global_Theme = "Light";
+        using var renderer = new MeshRenderer();
+        LoadedField.SetValue(null, true);
+        try
+        {
+            foreach (var (theme, color) in new[]
+                     {
+                         ("Dark", Color.FromRgb(32, 32, 32)),
+                         ("ModernDark", Color.FromRgb(5, 8, 13)),
+                         ("Light", Color.FromRgb(128, 128, 128)),
+                         ("Dark", Color.FromRgb(32, 32, 32))
+                     })
+            {
+                Settings.Global_Theme = theme;
+                Assert.AreEqual(color, renderer.BackgroundColor, $"Open Meshplorer must refresh when selecting {theme}.");
+                Assert.AreEqual(color, renderer.MeshContext.BackgroundColor);
+            }
+
+            renderer.BackgroundColor = Color.FromRgb(70, 71, 72);
+            var capturedSettings = (JObject)ReadPreset()["Settings"]!;
+            ApplySettings(new JObject
+            {
+                ["global_theme"] = capturedSettings["global_theme"]!.DeepClone(),
+                ["meshplorer_backgroundcolor"] = capturedSettings["meshplorer_backgroundcolor"]!.DeepClone(),
+                ["pathfindingeditor_backgroundcolor"] = capturedSettings["pathfindingeditor_backgroundcolor"]!.DeepClone()
+            });
+            // The theme is already Dark, so restoration must come from the preset notification.
+            ((EventHandler)typeof(ScottinaPreset).GetField("Applied", BindingFlags.Static | BindingFlags.NonPublic)!
+                .GetValue(null)!)?.Invoke(null, EventArgs.Empty);
+
+            Color captured = Color.FromRgb(32, 32, 32);
+            Assert.AreEqual(captured, renderer.BackgroundColor);
+            Assert.AreEqual(captured, renderer.MeshContext.BackgroundColor);
+            Assert.AreEqual(-14935269, Settings.PathfindingEditor_BackgroundColor);
+            using var subsequentlyOpenedRenderer = new MeshRenderer();
+            Assert.AreEqual(captured, subsequentlyOpenedRenderer.BackgroundColor,
+                "Meshplorer opened after applying the preset must retain its captured background.");
+        }
+        finally
+        {
+            LoadedField.SetValue(null, false);
         }
     }
 
@@ -428,6 +521,16 @@ public class ScottinaPresetTests
         Assert.IsNotNull(stream, "The captured Scottina preset must ship with LEX.");
         using var reader = new StreamReader(stream);
         return JObject.Parse(reader.ReadToEnd());
+    }
+
+    private static void InitializeApplicationResources()
+    {
+        typeof(Application).GetField("_resourceAssembly", BindingFlags.Static | BindingFlags.NonPublic)!
+            .SetValue(null, typeof(ScottinaPreset).Assembly);
+        _ = Application.Current ?? new Application();
+        Application.Current.ShutdownMode = ShutdownMode.OnExplicitShutdown;
+        Application.Current.Resources = (ResourceDictionary)Application.LoadComponent(
+            new Uri("/LegendaryExplorer;component/AppResources.xaml", UriKind.Relative));
     }
 
     private static void ApplySettings(JObject settings) => typeof(ScottinaPreset)

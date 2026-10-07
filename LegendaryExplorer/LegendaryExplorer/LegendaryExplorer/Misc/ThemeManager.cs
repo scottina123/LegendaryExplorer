@@ -48,6 +48,18 @@ namespace LegendaryExplorer.Misc
         public static System.Windows.Media.Color DarkCanvasMediaColor => IsModernDark
             ? System.Windows.Media.Color.FromRgb(5, 8, 13)
             : System.Windows.Media.Color.FromRgb(30, 30, 30);
+        public static System.Windows.Media.Color MeshplorerBackgroundMediaColor => CurrentTheme switch
+        {
+            AppTheme.Dark => System.Windows.Media.Color.FromRgb(32, 32, 32),
+            AppTheme.ModernDark => DarkCanvasMediaColor,
+            _ => System.Windows.Media.Color.FromRgb(128, 128, 128)
+        };
+        public static Color PathfindingBackgroundDrawingColor => CurrentTheme switch
+        {
+            AppTheme.Dark => Color.FromArgb(28, 27, 27),
+            AppTheme.ModernDark => DarkCanvasDrawingColor,
+            _ => Color.FromArgb(130, 130, 130)
+        };
         public static bool IsDarkCanvasColor(System.Windows.Media.Color color) =>
             color == System.Windows.Media.Color.FromRgb(5, 8, 13)
             || color == System.Windows.Media.Color.FromRgb(30, 30, 30);

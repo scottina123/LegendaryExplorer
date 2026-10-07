@@ -713,17 +713,7 @@ namespace LegendaryExplorer.Tools.PathfindingEditor
         /// </summary>
         private void ApplyThemeDefaults()
         {
-            if (Settings.Global_DarkMode_Enabled)
-            {
-                // Dark theme - match Sequence Editor dark mode background
-                _graphEditorBackColor = ThemeManager.DarkCanvasDrawingColor;
-            }
-            else
-            {
-                // Light theme - default color
-                _graphEditorBackColor = Color.FromArgb(130, 130, 130);
-            }
-
+            _graphEditorBackColor = ThemeManager.PathfindingBackgroundDrawingColor;
             Settings.PathfindingEditor_BackgroundColor = _graphEditorBackColor.ToArgb();
         }
 

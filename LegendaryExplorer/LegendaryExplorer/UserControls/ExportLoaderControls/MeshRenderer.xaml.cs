@@ -263,23 +263,24 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             }
         }
 
-        private static System.Windows.Media.Color DarkThemeDefaultBackgroundColor => ThemeManager.DarkCanvasMediaColor;
         private static readonly System.Windows.Media.Color LightThemeDefaultBackgroundColor = System.Windows.Media.Color.FromRgb(128, 128, 128);
+        private static readonly System.Windows.Media.Color DarkThemeDefaultBackgroundColor = System.Windows.Media.Color.FromRgb(32, 32, 32);
 
         /// <summary>
         /// Returns the default background color for the current theme.
-        /// Dark mode uses the same dark background as the Sequence Editor.
+        /// Traditional Dark mode uses Scottina's dark gray background.
         /// </summary>
         public static System.Windows.Media.Color GetThemeDefaultBackgroundColor()
         {
-            return Settings.Global_DarkMode_Enabled
-                ? DarkThemeDefaultBackgroundColor
-                : LightThemeDefaultBackgroundColor;
+            return ThemeManager.MeshplorerBackgroundMediaColor;
         }
 
         private static bool IsThemeDefaultBackgroundColor(System.Windows.Media.Color color)
         {
-            return ThemeManager.IsDarkCanvasColor(color) || color == LightThemeDefaultBackgroundColor;
+            return ThemeManager.IsDarkCanvasColor(color)
+                || color == DarkThemeDefaultBackgroundColor
+                || color == LightThemeDefaultBackgroundColor
+                || color == System.Windows.Media.Color.FromRgb(153, 153, 153);
         }
         #endregion
 
@@ -850,6 +851,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             };
 
             ThemeManager.ThemeChanged += OnThemeChanged;
+            ScottinaPreset.Applied += OnScottinaPresetApplied;
 
             startingUp = false;
         }
@@ -857,6 +859,20 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         private void OnThemeChanged(object sender, bool isDarkMode)
         {
             BackgroundColor = GetThemeDefaultBackgroundColor();
+        }
+
+        private void OnScottinaPresetApplied(object sender, EventArgs e)
+        {
+            if (!Dispatcher.CheckAccess())
+            {
+                Dispatcher.Invoke(() => OnScottinaPresetApplied(sender, e));
+                return;
+            }
+
+            if (ColorConverter.ConvertFromString(Settings.Meshplorer_BackgroundColor) is System.Windows.Media.Color color)
+            {
+                BackgroundColor = color;
+            }
         }
 
         public ICommand UModelExportCommand { get; set; }
@@ -2595,6 +2611,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             _previewAnimation = null;
             UnloadAnimationPreview();
             ThemeManager.ThemeChanged -= OnThemeChanged;
+            ScottinaPreset.Applied -= OnScottinaPresetApplied;
             if (Parent is TabItem { Parent: TabControl tc })
             {
                 tc.SelectionChanged -= MeshRendererWPF_HostingTabSelectionChanged;
