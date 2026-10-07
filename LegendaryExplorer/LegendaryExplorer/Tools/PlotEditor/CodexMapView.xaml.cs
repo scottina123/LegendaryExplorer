@@ -24,6 +24,7 @@ using LegendaryExplorerCore.Packages.CloningImportingAndRelinking;
 using LegendaryExplorerCore.Sound.Wwise;
 using LegendaryExplorerCore.Unreal;
 using Microsoft.Win32;
+using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
 using WwiseEventBinary = LegendaryExplorerCore.Unreal.BinaryConverters.WwiseEvent;
 using WwiseStreamBinary = LegendaryExplorerCore.Unreal.BinaryConverters.WwiseStream;
 
@@ -1308,7 +1309,7 @@ namespace LegendaryExplorer.Tools.PlotEditor
 
                 if (wwiseEventExport == null)
                 {
-                    MessageBox.Show($"Imported audio completed, but the new WwiseEvent '{eventName}' could not be found.", "Codex Audio", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    MessageBox.Show(Window.GetWindow(this), $"Imported audio completed, but the new WwiseEvent '{eventName}' could not be found.", "Codex Audio", MessageBoxButton.OK, MessageBoxImage.Warning);
                     return;
                 }
 
@@ -1339,7 +1340,7 @@ namespace LegendaryExplorer.Tools.PlotEditor
 
             if (!TryResolveCodexPageWwiseStream(out var wwiseStreamExport, out var sourcePackage, out var releasePackage, out var errorMessage))
             {
-                MessageBox.Show(errorMessage, "Codex Audio", MessageBoxButton.OK, MessageBoxImage.Warning);
+                MessageBox.Show(Window.GetWindow(this), errorMessage, "Codex Audio", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
 
@@ -1347,7 +1348,7 @@ namespace LegendaryExplorer.Tools.PlotEditor
             {
                 if (!ReferenceEquals(sourcePackage, package))
                 {
-                    MessageBox.Show("Replace Audio is only supported for codex audio that already points to a local WwiseStream export. Use Add Audio to create a local override first.", "Codex Audio", MessageBoxButton.OK, MessageBoxImage.Information);
+                    MessageBox.Show(Window.GetWindow(this), "Replace Audio is only supported for codex audio that already points to a local WwiseStream export. Use Add Audio to create a local override first.", "Codex Audio", MessageBoxButton.OK, MessageBoxImage.Information);
                     return;
                 }
 
@@ -1413,7 +1414,7 @@ namespace LegendaryExplorer.Tools.PlotEditor
         {
             if (!TryResolveCodexPageWwiseStream(out var wwiseStreamExport, out var sourcePackage, out var releasePackage, out var errorMessage))
             {
-                MessageBox.Show(errorMessage, "Codex Audio", MessageBoxButton.OK, MessageBoxImage.Warning);
+                MessageBox.Show(Window.GetWindow(this), errorMessage, "Codex Audio", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
 
@@ -1422,7 +1423,7 @@ namespace LegendaryExplorer.Tools.PlotEditor
                 var stream = wwiseStreamExport.GetBinaryData<WwiseStreamBinary>().CreateWaveStream();
                 if (stream == null)
                 {
-                    MessageBox.Show("Could not decode the linked WwiseStream.", "Codex Audio", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    MessageBox.Show(Window.GetWindow(this), "Could not decode the linked WwiseStream.", "Codex Audio", MessageBoxButton.OK, MessageBoxImage.Warning);
                     return;
                 }
 
@@ -1465,7 +1466,7 @@ namespace LegendaryExplorer.Tools.PlotEditor
         {
             if (!TryResolveCodexPageWwiseStream(out var wwiseStreamExport, out var sourcePackage, out var releasePackage, out var errorMessage))
             {
-                MessageBox.Show(errorMessage, "Codex Audio", MessageBoxButton.OK, MessageBoxImage.Warning);
+                MessageBox.Show(Window.GetWindow(this), errorMessage, "Codex Audio", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
 
@@ -1484,7 +1485,7 @@ namespace LegendaryExplorer.Tools.PlotEditor
                 var wavPath = wwiseStreamExport.GetBinaryData<WwiseStreamBinary>().CreateWave();
                 if (wavPath == null || !File.Exists(wavPath))
                 {
-                    MessageBox.Show("Could not extract the linked WwiseStream.", "Codex Audio", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    MessageBox.Show(Window.GetWindow(this), "Could not extract the linked WwiseStream.", "Codex Audio", MessageBoxButton.OK, MessageBoxImage.Warning);
                     return;
                 }
 
