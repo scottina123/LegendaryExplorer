@@ -169,7 +169,7 @@ namespace LegendaryExplorer.UnrealExtensions
                 LoadLE3Tlk
             };
             Parallel.ForEach(loaders, action => action());
-            string lastReloaded = $"{DateTime.Now:HH:mm:ss tt}";
+            string lastReloaded = $"{DateTime.Now:MM/dd/yyyy hh:mm:ss tt}";
             TLKManagerWPF.ME1LastReloaded = lastReloaded;
             TLKManagerWPF.ME2LastReloaded = lastReloaded;
             TLKManagerWPF.ME3LastReloaded = lastReloaded;

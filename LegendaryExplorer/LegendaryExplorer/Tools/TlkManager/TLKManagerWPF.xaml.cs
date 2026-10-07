@@ -482,7 +482,7 @@ namespace LegendaryExplorer.Tools.TlkManagerNS
             {
                 ME1TalkFiles.LoadTlkData(tlk.tlkPath, tlk.exportNumber);
             }
-            ME1LastReloaded = $"{DateTime.Now:HH:mm:ss tt}";
+            ME1LastReloaded = $"{DateTime.Now:MM/dd/yyyy hh:mm:ss tt}";
             TLKLoader.SaveTLKList(MEGame.ME1);
         }
 
@@ -494,7 +494,7 @@ namespace LegendaryExplorer.Tools.TlkManagerNS
             {
                 ME2TalkFiles.LoadTlkData(tlk.tlkPath);
             }
-            ME2LastReloaded = $"{DateTime.Now:HH:mm:ss tt}";
+            ME2LastReloaded = $"{DateTime.Now:MM/dd/yyyy hh:mm:ss tt}";
             TLKLoader.SaveTLKList(MEGame.ME2);
         }
 
@@ -506,7 +506,7 @@ namespace LegendaryExplorer.Tools.TlkManagerNS
             {
                 ME3TalkFiles.LoadTlkData(tlk.tlkPath);
             }
-            ME3LastReloaded = $"{DateTime.Now:HH:mm:ss tt}";
+            ME3LastReloaded = $"{DateTime.Now:MM/dd/yyyy hh:mm:ss tt}";
             TLKLoader.SaveTLKList(MEGame.ME3);
         }
 
@@ -520,7 +520,7 @@ namespace LegendaryExplorer.Tools.TlkManagerNS
             {
                 LE1TalkFiles.LoadTlkData(tlk.tlkPath, tlk.exportNumber);
             }
-            LE1LastReloaded = $"{DateTime.Now:HH:mm:ss tt}";
+            LE1LastReloaded = $"{DateTime.Now:MM/dd/yyyy hh:mm:ss tt}";
             TLKLoader.SaveTLKList(MEGame.LE1);
         }
 
@@ -532,7 +532,7 @@ namespace LegendaryExplorer.Tools.TlkManagerNS
             {
                 LE2TalkFiles.LoadTlkData(tlk.tlkPath);
             }
-            LE2LastReloaded = $"{DateTime.Now:HH:mm:ss tt}";
+            LE2LastReloaded = $"{DateTime.Now:MM/dd/yyyy hh:mm:ss tt}";
             TLKLoader.SaveTLKList(MEGame.LE2);
         }
 
@@ -544,7 +544,7 @@ namespace LegendaryExplorer.Tools.TlkManagerNS
             {
                 LE3TalkFiles.LoadTlkData(tlk.tlkPath);
             }
-            LE3LastReloaded = $"{DateTime.Now:HH:mm:ss tt}";
+            LE3LastReloaded = $"{DateTime.Now:MM/dd/yyyy hh:mm:ss tt}";
             TLKLoader.SaveTLKList(MEGame.LE3);
         }
 
