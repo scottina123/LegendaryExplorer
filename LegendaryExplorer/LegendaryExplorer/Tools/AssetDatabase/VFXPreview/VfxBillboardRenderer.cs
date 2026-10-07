@@ -90,13 +90,39 @@ public sealed class VfxBillboardRenderer : IDisposable
     internal const int MaterialMaskedFlag = 1 << 21;
     internal const int OpacitySourceShift = 22;
 
-    internal const string ParticleShader = """
+    internal const string ParticleShader = VfxMaterialBlending.ShaderFunctions + """
 struct VS_IN { float4 pos : POSITION0; float3 hitTestID : TANGENT0; float4 normal : NORMAL0; float4 color : COLOR1; float2 uv : TEXCOORD0; };
 struct VS_OUT { float4 pos : SV_POSITION; float4 color : COLOR1; float3 normal : NORMAL; float3 worldPos : TEXCOORD1; float2 uv : TEXCOORD0; };
 cbuffer constants { float4x4 projection; float4x4 view; float4x4 model; float3 HitTestID; int Flags; float4 AmbientColor; float4 LightPositionRadius[4]; float4 LightColorIntensity[4]; float4 LightDirectionInnerCone[4]; float4 LightOuterConeAndType[4]; };
 Texture2D tex : register(t0); SamplerState samstate : register(s0);
 VS_OUT VSMain(VS_IN input) { VS_OUT output = (VS_OUT)0; float4 worldPos = mul(float4(input.pos.xyz, 1), model); output.worldPos = worldPos.xyz; output.pos = mul(mul(worldPos, view), projection); output.color = input.color; output.normal = normalize(mul(float4(input.normal.xyz, 0), model).xyz); output.uv = input.uv; return output; }
-float4 PSMain(VS_OUT input) : SV_TARGET0 { float4 textureSample = tex.Sample(samstate, input.uv); int opacitySource = (Flags >> 22) & 7; float textureOpacity = opacitySource == 1 ? dot(textureSample.rgb, float3(0.299, 0.587, 0.114)) : opacitySource == 2 ? textureSample.r : opacitySource == 3 ? textureSample.g : opacitySource == 4 ? textureSample.b : opacitySource == 5 ? 1 : textureSample.a; float alpha = saturate(textureOpacity * input.color.a); if ((Flags & (1 << 21)) != 0) clip(alpha - AmbientColor.a); float3 color = textureSample.rgb * input.color.rgb * AmbientColor.rgb; if (alpha <= 0.0001) color = 0; if ((Flags & (1 << 20)) != 0) return float4(color, alpha); float3 lighting = 0.2; [unroll] for (int i = 0; i < 4; i++) { float radius = LightPositionRadius[i].w; if (radius <= 0) continue; float3 delta = LightPositionRadius[i].xyz - input.worldPos; float distanceToLight = length(delta); if (distanceToLight >= radius) continue; float attenuation = saturate(1 - distanceToLight / radius); attenuation *= attenuation; lighting += LightColorIntensity[i].rgb * (LightColorIntensity[i].a * saturate(dot(normalize(input.normal), delta / max(distanceToLight, 0.0001))) * attenuation); } return float4(color * saturate(lighting), alpha); }
+float4 PSMain(VS_OUT input) : SV_TARGET0
+{
+    float4 textureSample = tex.Sample(samstate, input.uv);
+    int opacitySource = (Flags >> 22) & 7;
+    int blendMode = (Flags >> 25) & 7;
+    float textureOpacity = opacitySource == 1 ? dot(textureSample.rgb, float3(0.299, 0.587, 0.114)) : opacitySource == 2 ? textureSample.r : opacitySource == 3 ? textureSample.g : opacitySource == 4 ? textureSample.b : opacitySource == 5 ? 1 : textureSample.a;
+    float alpha = saturate(textureOpacity * input.color.a);
+    if ((Flags & (1 << 21)) != 0) clip(alpha - AmbientColor.a);
+    float3 color = textureSample.rgb * input.color.rgb * AmbientColor.rgb;
+    if ((Flags & (1 << 20)) == 0)
+    {
+        float3 lighting = 0.2;
+        [unroll] for (int i = 0; i < 4; i++)
+        {
+            float radius = LightPositionRadius[i].w;
+            if (radius <= 0) continue;
+            float3 delta = LightPositionRadius[i].xyz - input.worldPos;
+            float distanceToLight = length(delta);
+            if (distanceToLight >= radius) continue;
+            float attenuation = saturate(1 - distanceToLight / radius);
+            attenuation *= attenuation;
+            lighting += LightColorIntensity[i].rgb * (LightColorIntensity[i].a * saturate(dot(normalize(input.normal), delta / max(distanceToLight, 0.0001))) * attenuation);
+        }
+        color *= saturate(lighting);
+    }
+    return ApplyVfxMaterialBlend(color, alpha, input.color.a, blendMode, opacitySource);
+}
 """;
 
     private readonly List<WorldVertex> vertices = [];
@@ -122,11 +148,11 @@ float4 PSMain(VS_OUT input) : SV_TARGET0 { float4 textureSample = tex.Sample(sam
         Matrix4x4 previewSpaceTransform = previewTransform == default ? Matrix4x4.Identity : previewTransform;
         if (particleSource is null)
         {
-            SortParticles(particles, emitter.Definition.SortMode, context.Camera.Position, previewSpaceTransform);
+            SortParticles(particles, emitter.Definition.SortMode, context.Camera.Position, previewSpaceTransform, context.Camera.CameraForward);
         }
 
         // ParticleModuleRequired.MaxDrawCount clamps how many particles are actually rendered.
-        if (emitter.Definition.UseMaxDrawCount && emitter.Definition.MaxDrawCount >= 0 && particles.Count > emitter.Definition.MaxDrawCount)
+        if (particleSource is null && emitter.Definition.UseMaxDrawCount && emitter.Definition.MaxDrawCount >= 0 && particles.Count > emitter.Definition.MaxDrawCount)
         {
             particles.RemoveRange(emitter.Definition.MaxDrawCount, particles.Count - emitter.Definition.MaxDrawCount);
         }
@@ -179,8 +205,10 @@ float4 PSMain(VS_OUT input) : SV_TARGET0 { float4 textureSample = tex.Sample(sam
             constants.Flags |= (RenderContext.ShaderFlags)MaterialMaskedFlag;
         }
         constants.Flags |= (RenderContext.ShaderFlags)((int)material.OpacitySource << OpacitySourceShift);
+        constants.Flags |= (RenderContext.ShaderFlags)((int)material.BlendMode << VfxMaterialBlending.BlendModeShift);
         constants.AmbientColor = new Vector4(material.EmissiveTint.X, material.EmissiveTint.Y, material.EmissiveTint.Z, material.OpacityMaskClipValue);
         effect.PrepDraw(context.ImmediateContext, blendState ?? context.AlphaBlendState, constants);
+        context.ImmediateContext.PixelShader.SetSampler(0, context.SampleState);
         context.ImmediateContext.OutputMerger.SetDepthStencilState(depthState);
         context.ImmediateContext.PixelShader.SetShaderResource(0, texture);
         effect.PrepPrimitiveBuffers(context, [], System.Runtime.InteropServices.CollectionsMarshal.AsSpan(vertices), System.Runtime.InteropServices.CollectionsMarshal.AsSpan(indices));
@@ -193,7 +221,7 @@ float4 PSMain(VS_OUT input) : SV_TARGET0 { float4 textureSample = tex.Sample(sam
     /// Applies ParticleModuleRequired.SortMode. PSORTMODE_None keeps spawn order, the depth modes sort
     /// back-to-front, and the age modes order by remaining lifetime.
     /// </summary>
-    public static void SortParticles(List<VfxParticle> particles, VfxSortMode sortMode, Vector3 cameraPosition, Matrix4x4 transform)
+    public static void SortParticles(List<VfxParticle> particles, VfxSortMode sortMode, Vector3 cameraPosition, Matrix4x4 transform, Vector3 cameraForward = default)
     {
         switch (sortMode)
         {
@@ -205,12 +233,19 @@ float4 PSMain(VS_OUT input) : SV_TARGET0 { float4 textureSample = tex.Sample(sam
             case VfxSortMode.AgeNewestFirst:
                 particles.Sort((left, right) => left.Age.CompareTo(right.Age));
                 break;
+            case VfxSortMode.ViewProjectionDepth when cameraForward != default:
+                particles.Sort((left, right) => ViewDepth(right, cameraPosition, cameraForward, transform)
+                    .CompareTo(ViewDepth(left, cameraPosition, cameraForward, transform)));
+                break;
             default:
                 particles.Sort((left, right) => DistanceSquared(right, cameraPosition, transform)
                     .CompareTo(DistanceSquared(left, cameraPosition, transform)));
                 break;
         }
     }
+
+    internal static float ViewDepth(in VfxParticle particle, Vector3 cameraPosition, Vector3 cameraForward, Matrix4x4 transform)
+        => Vector3.Dot(Vector3.Transform(particle.Position + particle.OrbitOffset, transform) - cameraPosition, cameraForward);
 
     public static float DistanceSquared(in VfxParticle particle, Vector3 cameraPosition, Matrix4x4 transform = default)
     {

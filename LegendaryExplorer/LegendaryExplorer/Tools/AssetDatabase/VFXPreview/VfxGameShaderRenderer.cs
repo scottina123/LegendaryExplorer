@@ -278,27 +278,48 @@ public sealed class VfxGameShaderRenderer : IDisposable
         return textureMap;
     }
 
+    public bool TryGetSpriteDepthWrite(VfxEmitterDefinition emitter, out bool depthWrite)
+    {
+        bool hasResources = spriteEmitters.TryGetValue(emitter, out SpriteResources resources);
+        depthWrite = hasResources && resources.DepthWrite;
+        return hasResources;
+    }
+
+    public bool TryGetBeamTrailDepthWrite(VfxEmitterDefinition emitter, out bool depthWrite)
+    {
+        bool hasResources = beamTrailEmitters.TryGetValue(emitter, out BeamTrailResources resources);
+        depthWrite = hasResources && resources.DepthWrite;
+        return hasResources;
+    }
+
     public bool TryRenderSprite(
         MeshRenderContext context,
         VfxEmitterState emitter,
-        Matrix4x4 previewTransform)
+        Matrix4x4 previewTransform,
+        IReadOnlyList<VfxParticle> particleSource = null)
     {
         if (!spriteEmitters.TryGetValue(emitter.Definition, out SpriteResources resources))
         {
             return false;
         }
 
-        List<VfxParticle> particles = [.. emitter.Particles];
-        VfxBillboardRenderer.SortParticles(
-            particles,
-            emitter.Definition.SortMode,
-            context.Camera.Position,
-            previewTransform);
-        if (emitter.Definition.UseMaxDrawCount
-            && emitter.Definition.MaxDrawCount >= 0
-            && particles.Count > emitter.Definition.MaxDrawCount)
+        IReadOnlyList<VfxParticle> particles = particleSource;
+        if (particles is null)
         {
-            particles.RemoveRange(emitter.Definition.MaxDrawCount, particles.Count - emitter.Definition.MaxDrawCount);
+            var sortedParticles = new List<VfxParticle>(emitter.Particles);
+            VfxBillboardRenderer.SortParticles(
+                sortedParticles,
+                emitter.Definition.SortMode,
+                context.Camera.Position,
+                previewTransform,
+                context.Camera.CameraForward);
+            if (emitter.Definition.UseMaxDrawCount
+                && emitter.Definition.MaxDrawCount >= 0
+                && sortedParticles.Count > emitter.Definition.MaxDrawCount)
+            {
+                sortedParticles.RemoveRange(emitter.Definition.MaxDrawCount, sortedParticles.Count - emitter.Definition.MaxDrawCount);
+            }
+            particles = sortedParticles;
         }
         if (particles.Count == 0)
         {
@@ -613,13 +634,15 @@ public sealed class VfxGameShaderRenderer : IDisposable
         RenderTargetBlendDescription blendDescription,
         bool depthTest,
         bool depthWrite,
-        int indexCount)
+        int indexCount,
+        int startIndex = 0)
         where TVertex : IVertexBase
     {
         LEEffect effect = context.LEEffect;
-        PixelShader pixelShader = context.GetCachedNativePixelShader(
+        PixelShader pixelShader = GetNativeMaterialPixelShader(context,
             material.UnrealPixelShader.Guid,
-            material.UnrealPixelShader.ShaderByteCode);
+            material.UnrealPixelShader.ShaderByteCode,
+            depthWrite);
         (VertexShader vertexShader, InputLayout inputLayout) = context.GetCachedVertexShader<TVertex>(
             material.UnrealVertexShader.Guid,
             material.UnrealVertexShader.ShaderByteCode);
@@ -631,13 +654,8 @@ public sealed class VfxGameShaderRenderer : IDisposable
             context.GetCachedBlendState(blendDescription));
 
         SceneCamera camera = context.Camera;
-        var vertexConstants = new LEVSConstants
-        {
-            ViewProjectionMatrix = camera.ViewMatrix * camera.ProjectionMatrix,
-            CameraPosition = new Vector4(material.VertexFactoryType == "FLensFlareVertexFactory"
-                ? material.LensFlareCameraPosition : camera.Position, 1),
-            PreViewTranslation = Vector4.Zero
-        };
+        LEVSConstants vertexConstants = CreateNativeVertexConstants(context,
+            material.VertexFactoryType == "FLensFlareVertexFactory" ? material.LensFlareCameraPosition : null);
         float depthMultiplier = camera.ProjectionMatrix[2, 2];
         float depthAddition = camera.ProjectionMatrix[3, 2];
         var pixelConstants = new LEPSConstants
@@ -663,10 +681,31 @@ public sealed class VfxGameShaderRenderer : IDisposable
             vertexConstants,
             pixelConstants,
             mesh,
-            0,
+            startIndex,
             indexCount);
         context.ImmediateContext.OutputMerger.SetDepthStencilState(null);
     }
+
+    internal static PixelShader GetNativeMaterialPixelShader(
+        MeshRenderContext context,
+        Guid shaderId,
+        byte[] shaderBytecode,
+        bool depthWrite)
+        // Opaque base-pass shaders can store zero in output alpha. Keep the mesh preview's coverage repair
+        // for those surfaces, without gamma conversion. Blended shaders must retain their cooked alpha.
+        => depthWrite
+            ? context.GetCachedPixelShader(shaderId, shaderBytecode, useSrgbColorManagement: false)
+            : context.GetCachedNativePixelShader(shaderId, shaderBytecode);
+
+    internal static LEVSConstants CreateNativeVertexConstants(MeshRenderContext context, Vector3? cameraPositionOverride = null)
+        => new()
+        {
+            // Match the coordinate space used by MaterialRenderProxy's local-to-world and camera parameters.
+            // Level Editor mesh particles use camera-relative transforms to preserve precision in large levels.
+            ViewProjectionMatrix = context.GetNativeShaderViewMatrix() * context.Camera.ProjectionMatrix,
+            CameraPosition = new Vector4(cameraPositionOverride ?? context.GetNativeShaderCameraPosition(), 1),
+            PreViewTranslation = Vector4.Zero
+        };
 
     private static Vector3 GetParticleSize(VfxParticle particle, VfxEmitterDefinition emitter)
     {
@@ -849,48 +888,17 @@ public sealed class VfxGameShaderRenderer : IDisposable
         return new Mesh<ParticleBeamTrailVertex>(context.Device, triangles, vertices, isDynamic: true);
     }
 
-    internal static RenderTargetBlendDescription CreateBlendDescription(EBlendMode blendMode) => blendMode switch
-    {
-        EBlendMode.BLEND_Opaque or EBlendMode.BLEND_Masked => DisabledBlend(),
-        EBlendMode.BLEND_Translucent or EBlendMode.BLEND_SoftMasked => EnabledBlend(
-            BlendOption.SourceAlpha, BlendOption.InverseSourceAlpha,
-            BlendOption.SourceAlphaSaturate, BlendOption.InverseSourceAlpha),
-        EBlendMode.BLEND_Additive => EnabledBlend(
-            BlendOption.One, BlendOption.One, BlendOption.Zero, BlendOption.One),
-        EBlendMode.BLEND_Modulate => EnabledBlend(
-            BlendOption.DestinationColor, BlendOption.Zero, BlendOption.Zero, BlendOption.One),
-        EBlendMode.BLEND_AlphaComposite => EnabledBlend(
-            BlendOption.One, BlendOption.InverseSourceAlpha, BlendOption.One, BlendOption.InverseSourceAlpha),
-        _ => DisabledBlend()
-    };
-
-    private static RenderTargetBlendDescription DisabledBlend() => new()
-    {
-        RenderTargetWriteMask = ColorWriteMaskFlags.All,
-        BlendOperation = BlendOperation.Add,
-        AlphaBlendOperation = BlendOperation.Add,
-        SourceBlend = BlendOption.One,
-        DestinationBlend = BlendOption.Zero,
-        SourceAlphaBlend = BlendOption.One,
-        DestinationAlphaBlend = BlendOption.Zero,
-        IsBlendEnabled = false
-    };
-
-    private static RenderTargetBlendDescription EnabledBlend(
-        BlendOption source,
-        BlendOption destination,
-        BlendOption sourceAlpha,
-        BlendOption destinationAlpha) => new()
-    {
-        RenderTargetWriteMask = ColorWriteMaskFlags.All,
-        BlendOperation = BlendOperation.Add,
-        AlphaBlendOperation = BlendOperation.Add,
-        SourceBlend = source,
-        DestinationBlend = destination,
-        SourceAlphaBlend = sourceAlpha,
-        DestinationAlphaBlend = destinationAlpha,
-        IsBlendEnabled = true
-    };
+    internal static RenderTargetBlendDescription CreateBlendDescription(EBlendMode blendMode)
+        => VfxMaterialBlending.CreateBlendDescription(blendMode switch
+        {
+            EBlendMode.BLEND_Masked => VfxBlendMode.Masked,
+            EBlendMode.BLEND_Translucent => VfxBlendMode.Translucent,
+            EBlendMode.BLEND_Additive => VfxBlendMode.Additive,
+            EBlendMode.BLEND_Modulate => VfxBlendMode.Modulate,
+            EBlendMode.BLEND_SoftMasked => VfxBlendMode.SoftMasked,
+            EBlendMode.BLEND_AlphaComposite => VfxBlendMode.AlphaComposite,
+            _ => VfxBlendMode.Opaque
+        });
 
     public void Clear()
     {

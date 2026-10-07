@@ -1,6 +1,7 @@
 using LegendaryExplorer.Tools.LevelEditor.Scene3D;
 using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.Packages.CloningImportingAndRelinking;
+using LegendaryExplorerCore.Unreal;
 using LegendaryExplorerCore.Unreal.BinaryConverters;
 using SharpDX.Direct3D11;
 using System;
@@ -35,8 +36,9 @@ public sealed class VfxMeshRenderer : IDisposable
     private const int MaterialUnlitFlag = 1 << 0;
     private const int MaterialMaskedFlag = 1 << 1;
     private const int OpacitySourceShift = 2;
+    private const int BlendModeShift = 5;
 
-    private const string MeshShader = """
+    internal const string MeshShader = VfxMaterialBlending.ShaderFunctions + """
 struct VS_IN { float4 pos : POSITION0; float3 hitTestID : TANGENT0; float4 normal : NORMAL0; float4 color : COLOR1; float2 uv : TEXCOORD0; };
 struct VS_OUT { float4 pos : SV_POSITION; float3 normal : NORMAL; float2 uv : TEXCOORD0; };
 cbuffer constants { float4x4 projection; float4x4 view; float4x4 model; float4 ParticleColor; float4 TintAndClip; int Flags; int pad0; int pad1; int pad2; };
@@ -50,10 +52,12 @@ float4 PSMain(VS_OUT input) : SV_TARGET0
     float alpha = saturate(textureOpacity * ParticleColor.a);
     if ((Flags & 2) != 0) clip(alpha - TintAndClip.a);
     float3 color = textureSample.rgb * ParticleColor.rgb * TintAndClip.rgb;
-    if (alpha <= 0.0001) color = 0;
-    if ((Flags & 1) != 0) return float4(color, alpha);
-    float3 lighting = saturate(0.35 + 0.65 * saturate(dot(normalize(input.normal), normalize(float3(0.4, 0.5, 0.75)))));
-    return float4(color * lighting, alpha);
+    if ((Flags & 1) == 0)
+    {
+        float3 lighting = saturate(0.35 + 0.65 * saturate(dot(normalize(input.normal), normalize(float3(0.4, 0.5, 0.75)))));
+        color *= lighting;
+    }
+    return ApplyVfxMaterialBlend(color, alpha, ParticleColor.a, (Flags >> 5) & 7, opacitySource);
 }
 """;
 
@@ -79,6 +83,8 @@ float4 PSMain(VS_OUT input) : SV_TARGET0
         public StaticMesh StaticMesh;
         public ModelPreview<WorldVertex> Preview;
         public ModelPreview<LEVertex> GameShaderPreview;
+        public Mesh<LEVertex> GameShaderMesh;
+        public Vector4[] GameShaderVertexColors;
         public Mesh<WorldVertex> Mesh;
         public List<MeshSection> Sections = [];
         public VfxBounds LocalBounds;
@@ -87,9 +93,12 @@ float4 PSMain(VS_OUT input) : SV_TARGET0
         {
             Preview?.Dispose();
             GameShaderPreview?.Dispose();
+            GameShaderMesh?.Dispose();
             StaticMesh = null;
             Preview = null;
             GameShaderPreview = null;
+            GameShaderMesh = null;
+            GameShaderVertexColors = null;
             Mesh = null;
             Sections.Clear();
         }
@@ -162,6 +171,9 @@ float4 PSMain(VS_OUT input) : SV_TARGET0
         warning = null;
         resources.GameShaderPreview?.Dispose();
         resources.GameShaderPreview = null;
+        resources.GameShaderMesh?.Dispose();
+        resources.GameShaderMesh = null;
+        resources.GameShaderVertexColors = null;
         if (resources.StaticMesh is null)
         {
             return false;
@@ -212,6 +224,12 @@ float4 PSMain(VS_OUT input) : SV_TARGET0
                 lod.Sections[sectionIndex] = section;
             }
 
+            // Particle colors vary per instance. Keep this dynamic vertex stream private to the VFX preview,
+            // so uploading a particle's color never modifies cached StaticMesh geometry used by other tools.
+            Vector4[] vertexColors = ReadMeshVertexColors(resources.StaticMesh.LODModels[0], lod.Mesh.Vertices.Count);
+            resources.GameShaderMesh = new Mesh<LEVertex>(context.Device,
+                [.. lod.Mesh.Triangles], [.. lod.Mesh.Vertices], isDynamic: true);
+            resources.GameShaderVertexColors = vertexColors;
             resources.GameShaderPreview = preview;
             return true;
         }
@@ -223,40 +241,91 @@ float4 PSMain(VS_OUT input) : SV_TARGET0
         }
     }
 
+    public static bool HasBlendedSections(MeshEmitterResources resources, bool useGameShader)
+    {
+        if (useGameShader && resources.GameShaderPreview is { } preview && resources.GameShaderMesh is not null)
+        {
+            return preview.LODs[0].Sections.Any(section =>
+                preview.Materials[section.MaterialName] is LEShaderPreviewMaterial material
+                && material.RenderProxy.BlendMode is not (EBlendMode.BLEND_Opaque or EBlendMode.BLEND_Masked));
+        }
+        return resources.Sections.Any(section => !section.IsOpaque);
+    }
+
+    internal static Vector4[] ReadMeshVertexColors(StaticMeshRenderData lod, int vertexCount)
+    {
+        var colors = new Vector4[vertexCount];
+        bool hasColor = false;
+        for (int vertexIndex = 0; vertexIndex < vertexCount; vertexIndex++)
+        {
+            LegendaryExplorerCore.SharpDX.Color color = lod.ColorVertexBuffer?.VertexData is { } separateColors
+                && vertexIndex < separateColors.Length
+                    ? separateColors[vertexIndex]
+                    : lod.VertexBuffer.VertexData[vertexIndex].Color;
+            colors[vertexIndex] = new Vector4(color.R, color.G, color.B, color.A) / 255f;
+            hasColor |= colors[vertexIndex] != Vector4.Zero;
+        }
+        // An absent color stream is represented by an all-zero buffer in some cooked meshes. Supply a
+        // neutral vertex color in that case, while preserving every authored color in populated streams.
+        if (!hasColor)
+        {
+            Array.Fill(colors, Vector4.One);
+        }
+        return colors;
+    }
+
     /// <summary>
-    /// Draws every live mesh particle using the Meshplorer/Morph Editor in-game material pipeline.
+    /// Draws live mesh particles with their native material shaders and VFX blend/depth state.
     /// </summary>
     public static bool RenderGameShader(
         MeshRenderContext context,
         VfxEmitterState emitter,
         MeshEmitterResources resources,
-        Matrix4x4 previewTransform)
+        Matrix4x4 previewTransform,
+        IReadOnlyList<VfxParticle> particleSource = null,
+        bool? opaquePass = null)
     {
-        if (resources?.GameShaderPreview is null)
+        if (resources?.GameShaderPreview is null || resources.GameShaderMesh is null)
         {
             return false;
         }
 
-        IReadOnlyList<VfxParticle> particles = emitter.Particles;
+        IReadOnlyList<VfxParticle> particles = particleSource ?? emitter.Particles;
         if (particles.Count == 0)
         {
             return true;
         }
-        if (emitter.Definition.UseMaxDrawCount
+        Matrix4x4 transform = previewTransform == default ? Matrix4x4.Identity : previewTransform;
+        if (particleSource is null && HasBlendedSections(resources, useGameShader: true))
+        {
+            var sortedParticles = new List<VfxParticle>(particles);
+            VfxBillboardRenderer.SortParticles(sortedParticles, emitter.Definition.SortMode, context.Camera.Position, transform,
+                context.Camera.CameraForward);
+            particles = sortedParticles;
+        }
+        if (particleSource is null && emitter.Definition.UseMaxDrawCount
             && emitter.Definition.MaxDrawCount >= 0
             && particles.Count > emitter.Definition.MaxDrawCount)
         {
             particles = [.. particles.Take(emitter.Definition.MaxDrawCount)];
         }
-
-        Matrix4x4 transform = previewTransform == default ? Matrix4x4.Identity : previewTransform;
-        if (resources.Sections.Any(section => !section.IsOpaque))
+        if (opaquePass is null)
         {
-            var sortedParticles = new List<VfxParticle>(particles);
-            VfxBillboardRenderer.SortParticles(sortedParticles, emitter.Definition.SortMode, context.Camera.Position, transform);
-            particles = sortedParticles;
+            // Complete depth-writing surfaces before any transparency even for callers that do not use
+            // the preview's shared render queue.
+            RenderGameShader(context, emitter, resources, transform, particles, opaquePass: true);
+            RenderGameShader(context, emitter, resources, transform, particles, opaquePass: false);
+            return true;
         }
 
+        ModelPreviewLOD<LEVertex> lod = resources.GameShaderPreview.LODs[0];
+        if (opaquePass is { } requestedOpaque && !lod.Sections.Any(section =>
+                resources.GameShaderPreview.Materials[section.MaterialName] is LEShaderPreviewMaterial material
+                && (material.RenderProxy.BlendMode is EBlendMode.BLEND_Opaque or EBlendMode.BLEND_Masked) == requestedOpaque))
+        {
+            return true;
+        }
+        Mesh<LEVertex> mesh = resources.GameShaderMesh;
         foreach (VfxParticle particle in particles)
         {
             Matrix4x4 model = VfxMeshMath.CreateParticleTransform(
@@ -268,8 +337,46 @@ float4 PSMain(VS_OUT input) : SV_TARGET0
                 context.Camera.CameraUp,
                 context.Camera.CameraForward,
                 transform);
-            resources.GameShaderPreview.UpdateLocalToWorld(model);
-            resources.GameShaderPreview.Render(RenderPass.ANY, context, 0);
+            mesh.LocalToWorld = model;
+            for (int vertexIndex = 0; vertexIndex < mesh.Vertices.Count; vertexIndex++)
+            {
+                // The local factory consumes COLOR1. Keep authored mesh color and apply the instance color
+                // through that stream so vertex-color material expressions receive particle fades as well.
+                mesh.Vertices[vertexIndex] = lod.Mesh.Vertices[vertexIndex]
+                    .WithColor(resources.GameShaderVertexColors[vertexIndex] * particle.Color);
+            }
+            mesh.UpdateVertices(context.ImmediateContext);
+            for (int sectionIndex = 0; sectionIndex < lod.Sections.Count; sectionIndex++)
+            {
+                MeshSection resolvedSection = resources.Sections[sectionIndex];
+                ModelPreviewSection section = lod.Sections[sectionIndex];
+                if (resources.GameShaderPreview.Materials[section.MaterialName] is not LEShaderPreviewMaterial shaderMaterial
+                    || !shaderMaterial.CanRender || !shaderMaterial.RenderProxy.HasRequiredTextures(context))
+                {
+                    continue;
+                }
+                MaterialRenderProxy material = shaderMaterial.RenderProxy;
+                bool isOpaque = material.BlendMode is EBlendMode.BLEND_Opaque or EBlendMode.BLEND_Masked;
+                if (opaquePass is { } drawOpaque && isOpaque != drawOpaque)
+                {
+                    continue;
+                }
+                try
+                {
+                    // Native shaders retain their cooked alpha. The general model preview recompiles alpha
+                    // for inspection and uses default depth writes, which breaks translucent mesh particles.
+                    VfxGameShaderRenderer.RenderNativeMaterial(context, material, mesh,
+                        VfxGameShaderRenderer.CreateBlendDescription(material.BlendMode),
+                        !resolvedSection.Material.DisableDepthTest,
+                        isOpaque,
+                        (int)section.TriangleCount * 3,
+                        startIndex: (int)section.StartIndex);
+                }
+                finally
+                {
+                    context.ResetTextureSamplers();
+                }
+            }
         }
         return true;
     }
@@ -279,7 +386,8 @@ float4 PSMain(VS_OUT input) : SV_TARGET0
         VfxEmitterState emitter,
         MeshEmitterResources resources,
         IReadOnlyList<VfxParticle> particleSource,
-        Matrix4x4 previewTransform)
+        Matrix4x4 previewTransform,
+        bool? opaquePass = null)
     {
         if (effect is null || resources?.Mesh is null)
         {
@@ -291,34 +399,32 @@ float4 PSMain(VS_OUT input) : SV_TARGET0
             return;
         }
 
-        // ParticleModuleRequired.MaxDrawCount clamps how many mesh instances are drawn.
-        if (emitter.Definition.UseMaxDrawCount && emitter.Definition.MaxDrawCount >= 0 && particles.Count > emitter.Definition.MaxDrawCount)
-        {
-            particles = [.. particles.Take(emitter.Definition.MaxDrawCount)];
-        }
-
         VfxMeshEmitterDefinition meshDefinition = emitter.Definition.MeshEmitter;
         Matrix4x4 transform = previewTransform == default ? Matrix4x4.Identity : previewTransform;
 
         // Opaque and masked sections can be drawn in any order, but blended sections have to be drawn
         // back-to-front. Sorting once per emitter is enough because every section shares the same transform.
-        List<VfxParticle> sortedParticles = null;
-        if (resources.Sections.Any(section => !section.IsOpaque))
+        if (particleSource is null && resources.Sections.Any(section => !section.IsOpaque))
         {
-            sortedParticles = [.. particles];
-            VfxBillboardRenderer.SortParticles(sortedParticles, emitter.Definition.SortMode, context.Camera.Position, transform);
+            var sortedParticles = new List<VfxParticle>(particles);
+            VfxBillboardRenderer.SortParticles(sortedParticles, emitter.Definition.SortMode, context.Camera.Position, transform,
+                context.Camera.CameraForward);
+            particles = sortedParticles;
+        }
+        // Clamp after the authored ordering, matching the sprite renderer and shared preview queue.
+        if (particleSource is null && emitter.Definition.UseMaxDrawCount && emitter.Definition.MaxDrawCount >= 0 && particles.Count > emitter.Definition.MaxDrawCount)
+        {
+            particles = [.. particles.Take(emitter.Definition.MaxDrawCount)];
         }
 
-        // Sections form the outer loop so that blend/depth/texture state is only set once per section.
-        foreach (MeshSection section in resources.Sections)
+        void RenderParticles(bool drawOpaque)
         {
-            if (section.Texture?.TextureView is null)
-            {
-                continue;
-            }
-
-            ShaderResourceView textureView = section.Texture.TextureView;
-            foreach (VfxParticle particle in section.IsOpaque ? particles : sortedParticles ?? particles)
+            MeshSection[] sections = resources.Sections
+                .Where(section => section.IsOpaque == drawOpaque && section.Texture?.TextureView is not null)
+                .ToArray();
+            // All sections of a farther particle must be blended before any section of a nearer one.
+            // A section-outer loop changes that order when particles have multiple translucent materials.
+            foreach (VfxParticle particle in particles)
             {
                 Matrix4x4 model = VfxMeshMath.CreateParticleTransform(
                     particle,
@@ -330,28 +436,40 @@ float4 PSMain(VS_OUT input) : SV_TARGET0
                     context.Camera.CameraForward,
                     transform);
 
-                var constants = new MeshConstants
+                foreach (MeshSection section in sections)
                 {
-                    Projection = context.Camera.ProjectionMatrix,
-                    View = context.Camera.ViewMatrix,
-                    Model = model,
-                    ParticleColor = particle.Color,
-                    TintAndClip = new Vector4(
-                        section.Material.EmissiveTint.X,
-                        section.Material.EmissiveTint.Y,
-                        section.Material.EmissiveTint.Z,
-                        section.Material.OpacityMaskClipValue),
-                    Flags = BuildFlags(section.Material)
-                };
-                effect.PrepDraw(context.ImmediateContext, section.BlendState ?? context.AlphaBlendState, constants);
-                context.ImmediateContext.OutputMerger.SetDepthStencilState(section.DepthState);
-                effect.RenderObject(
-                    context.ImmediateContext,
-                    resources.Mesh,
-                    (int)section.Section.StartIndex,
-                    (int)section.Section.TriangleCount * 3,
-                    textureView);
+                    var constants = new MeshConstants
+                    {
+                        Projection = context.Camera.ProjectionMatrix,
+                        View = context.Camera.ViewMatrix,
+                        Model = model,
+                        ParticleColor = particle.Color,
+                        TintAndClip = new Vector4(
+                            section.Material.EmissiveTint.X,
+                            section.Material.EmissiveTint.Y,
+                            section.Material.EmissiveTint.Z,
+                            section.Material.OpacityMaskClipValue),
+                        Flags = BuildFlags(section.Material)
+                    };
+                    effect.PrepDraw(context.ImmediateContext, section.BlendState ?? context.AlphaBlendState, constants);
+                    context.ImmediateContext.PixelShader.SetSampler(0, context.SampleState);
+                    context.ImmediateContext.OutputMerger.SetDepthStencilState(section.DepthState);
+                    effect.RenderObject(
+                        context.ImmediateContext,
+                        resources.Mesh,
+                        (int)section.Section.StartIndex,
+                        (int)section.Section.TriangleCount * 3,
+                        section.Texture.TextureView);
+                }
             }
+        }
+        if (opaquePass != false)
+        {
+            RenderParticles(drawOpaque: true);
+        }
+        if (opaquePass != true)
+        {
+            RenderParticles(drawOpaque: false);
         }
         context.ImmediateContext.PixelShader.SetShaderResource(0, null);
         context.ImmediateContext.OutputMerger.SetDepthStencilState(null);
@@ -364,11 +482,12 @@ float4 PSMain(VS_OUT input) : SV_TARGET0
         {
             flags |= MaterialUnlitFlag;
         }
-        if (material.BlendMode is VfxBlendMode.Masked or VfxBlendMode.SoftMasked)
+        if (material.BlendMode == VfxBlendMode.Masked)
         {
             flags |= MaterialMaskedFlag;
         }
-        return flags | ((int)material.OpacitySource << OpacitySourceShift);
+        return flags | ((int)material.OpacitySource << OpacitySourceShift)
+            | ((int)material.BlendMode << BlendModeShift);
     }
 
     /// <summary>
