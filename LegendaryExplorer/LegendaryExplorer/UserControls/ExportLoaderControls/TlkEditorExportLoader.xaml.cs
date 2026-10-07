@@ -785,10 +785,10 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             elhw.ContentGrid.Children.Remove(elhw.RecentsController);
             EditorContentGrid.Children.Add(elhw.RecentsController);
             AddOpenHighestMountedBaseTlksMenuItem(elhw);
-            AddSaveToAllLanguageTlksMenuItem(elhw);
+            AddSaveToAllLanguageTlksMenuItems(elhw);
         }
 
-        private void AddSaveToAllLanguageTlksMenuItem(ExportLoaderHostedWindow elhw)
+        private void AddSaveToAllLanguageTlksMenuItems(ExportLoaderHostedWindow elhw)
         {
             MenuItem fileMenu = elhw.MainMenu.Items.OfType<MenuItem>()
                                        .FirstOrDefault(menuItem => string.Equals(menuItem.Header?.ToString()?.Replace("_", ""), "File", StringComparison.OrdinalIgnoreCase));
@@ -808,6 +808,13 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                                              .FirstOrDefault(item => string.Equals(item.Header?.ToString(), "Save As", StringComparison.OrdinalIgnoreCase));
             int saveAsItemIndex = saveAsItem is not null ? fileMenu.Items.IndexOf(saveAsItem) : -1;
             fileMenu.Items.Insert(saveAsItemIndex >= 0 ? saveAsItemIndex + 1 : fileMenu.Items.Count, menuItem);
+
+            elhw.MainMenu.Items.Insert(elhw.MainMenu.Items.IndexOf(fileMenu) + 1, new MenuItem
+            {
+                Header = "Save All TLKs",
+                ToolTip = menuItem.ToolTip,
+                Command = menuItem.Command
+            });
         }
 
         private void AddOpenHighestMountedBaseTlksMenuItem(ExportLoaderHostedWindow elhw)
@@ -1343,17 +1350,6 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 return;
             }
 
-            string languageList = string.Join(Environment.NewLine, languageTlks.Select(Path.GetFileName));
-            MessageBoxResult result = MessageBox.Show(
-                $"This will overwrite {languageTlks.Count} TLK files with the current TLK data:\n\n{languageList}\n\nContinue?",
-                "Save to all TLK languages",
-                MessageBoxButton.YesNo,
-                MessageBoxImage.Warning);
-            if (result != MessageBoxResult.Yes)
-            {
-                return;
-            }
-
             MoveFocus(new TraversalRequest(FocusNavigationDirection.Next));
             NormalizeLoadedStrings();
 
@@ -1388,10 +1384,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     "Save to all TLK languages",
                     MessageBoxButton.OK,
                     MessageBoxImage.Warning);
-                return;
             }
-
-            MessageBox.Show($"Saved {savedFiles.Count} TLK files.", "Save to all TLK languages", MessageBoxButton.OK, MessageBoxImage.Information);
         }
 
         private static List<string> GetLanguageSiblingTlkFiles(string tlkPath)
@@ -1447,6 +1440,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 LoadedStrings = ActiveTab.LoadedStrings;
                 RefreshVisibleStrings();
                 SetFileModified(false);
+                _hostedWindow?.RefreshLastSavedText();
             }
         }
 

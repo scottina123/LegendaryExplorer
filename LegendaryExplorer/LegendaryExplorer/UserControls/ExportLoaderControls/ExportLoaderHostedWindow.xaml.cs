@@ -322,6 +322,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             }
         }
 
+        internal void RefreshLastSavedText() => OnPropertyChanged(nameof(CurrentLastSavedText));
+
         private bool CanOpenCurrentFileLocation()
         {
             return !string.IsNullOrWhiteSpace(CurrentFilePath) && File.Exists(CurrentFilePath);
