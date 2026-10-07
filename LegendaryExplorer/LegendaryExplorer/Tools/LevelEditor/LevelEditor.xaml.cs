@@ -3348,7 +3348,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
 
     private async void OpenRecentFileSet(RecentFileSet set) => await OpenRecentFileSetAsync(set);
 
-    private async Task OpenRecentFileSetAsync(RecentFileSet set)
+    private async Task OpenRecentFileSetAsync(RecentFileSet set, LevelCameraPreset cameraPreset = null)
     {
         string loadingPath = null;
         try
@@ -3367,6 +3367,14 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
                     if (openFile is not null && set.ReadOnlyFilePaths.Contains(path, StringComparer.OrdinalIgnoreCase))
                         openFile.IsReadOnly = true;
                 }
+            }
+
+            if (cameraPreset != null && OpenFiles.Count > 0)
+            {
+                IsOrthographicView = false;
+                cameraPreset.ApplyTo(RenderContext.Camera);
+                UpdateCameraPositionText();
+                UpdateCameraRotationText();
             }
         }
         catch (Exception exception)
@@ -3427,11 +3435,24 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
     private void SaveLevelPreset_Click(object sender, RoutedEventArgs e) => ShowLevelPresets(
         Game, OpenFiles.Select(file => file.FilePath), OpenFiles.Where(file => file.IsReadOnly).Select(file => file.FilePath));
 
-    private void ShowLevelPresets(MEGame? game = null, IEnumerable<string> currentFiles = null, IEnumerable<string> readOnlyFiles = null)
+    private void ShowLevelPresets(MEGame? game = null, IEnumerable<string> currentFiles = null,
+        IEnumerable<string> readOnlyFiles = null, LevelPreset selectedPreset = null)
     {
-        var dialog = new LevelPresetsDialog(game, currentFiles, readOnlyFiles) { Owner = this };
+        var dialog = new LevelPresetsDialog(game, currentFiles, readOnlyFiles,
+            currentCamera: HasAnyFileOpen ? LevelCameraPreset.FromCamera(RenderContext.Camera) : null) { Owner = this };
+        if (selectedPreset != null)
+        {
+            dialog.SelectedPreset = selectedPreset;
+            dialog.ShowCameraLocations();
+        }
         if (dialog.ShowDialog() == true && dialog.SelectedPreset is { } preset)
-            OpenLevelPreset(preset, missingFilesReported: true);
+            OpenLevelPreset(preset, missingFilesReported: true, cameraPreset: dialog.SelectedCameraPreset);
+    }
+
+    private void LevelPresetCameraLocations_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button { DataContext: LevelPreset preset })
+            ShowLevelPresets(preset.Game, selectedPreset: preset);
     }
 
     private void OpenLevelPreset_Click(object sender, RoutedEventArgs e)
@@ -3446,10 +3467,18 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
     private void LevelPresetButton_ContextMenuOpening(object sender, ContextMenuEventArgs e)
     {
         if (sender is Button { DataContext: LevelPreset preset } button)
-            button.ContextMenu = FileReferenceMenu.Create(preset.FilePaths);
+        {
+            var menu = FileReferenceMenu.Create(preset.FilePaths);
+            menu.Items.Add(new Separator());
+            var cameraLocations = new MenuItem { Header = "Camera locations..." };
+            cameraLocations.Click += (_, _) => ShowLevelPresets(preset.Game, selectedPreset: preset);
+            menu.Items.Add(cameraLocations);
+            button.ContextMenu = menu;
+        }
     }
 
-    private async void OpenLevelPreset(LevelPreset preset, bool missingFilesReported = false)
+    private async void OpenLevelPreset(LevelPreset preset, bool missingFilesReported = false,
+        LevelCameraPreset cameraPreset = null)
     {
         if (_openingLevelPreset || IsBusy) return;
         _openingLevelPreset = true;
@@ -3471,7 +3500,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
                 Game = preset.Game,
                 FilePaths = preset.FilePaths.ToList(),
                 ReadOnlyFilePaths = preset.ReadOnlyFilePaths.ToList()
-            });
+            }, cameraPreset);
         }
         catch (Exception exception)
         {

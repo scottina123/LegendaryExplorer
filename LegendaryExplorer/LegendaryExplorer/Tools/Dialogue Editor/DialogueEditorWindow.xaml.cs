@@ -850,7 +850,8 @@ namespace LegendaryExplorer.DialogueEditor
                 conversationPreview: false);
             var preview = new CurveEditor3D();
             preview.ConfigureDialogueNodePreview(SelectedConv, SelectedDialogueNode, actors,
-                options.SelectedLevelPaths, stageContext, options.PlayerSelection, options.HenchmanAssignments);
+                options.SelectedLevelPaths, stageContext, options.PlayerSelection, options.HenchmanAssignments,
+                options.SelectedCameraPreset);
             var window = new ExportLoaderHostedWindow(preview, previewTrackMove)
             {
                 Title = $"Dialogue Node Preview - {(SelectedDialogueNode.IsReply ? "Reply" : "Entry")} {SelectedDialogueNode.NodeCount}",
@@ -5922,7 +5923,8 @@ namespace LegendaryExplorer.DialogueEditor
             var preview = new CurveEditor3D();
             preview.ConfigureDialogueConversationPreview(SelectedConv, startNode, actors,
                 options.SelectedLevelPaths, stageContext, options.PlayerSelection,
-                options.HenchmanAssignments, options.SelectedCachePreset, options.NewCacheLabel);
+                options.HenchmanAssignments, options.SelectedCachePreset, options.NewCacheLabel,
+                options.SelectedCameraPreset);
             var window = new ExportLoaderHostedWindow(preview, previewTrackMove)
             {
                 Title = $"Dialogue Conversation Preview - {SelectedConv.Export.ObjectName.Instanced} - {(startNode.IsReply ? "R" : "E")}{startNode.NodeCount}"

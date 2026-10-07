@@ -1,10 +1,12 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Numerics;
 using System.Text.Json.Nodes;
 using System.Threading.Tasks;
 using LegendaryExplorer.Dialogs;
 using LegendaryExplorer.Tools.LevelEditor;
+using LegendaryExplorer.Tools.LevelEditor.Scene3D;
 using LegendaryExplorerCore;
 using LegendaryExplorerCore.Packages;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -211,6 +213,246 @@ public class LevelPresetTests
     }
 
     [TestMethod]
+    public void CameraPresetsPreserveNamesLocationsRotationsAndOrderAfterReload()
+    {
+        using var files = new TestFiles();
+        var store = new LevelPresetStore(files.StorePath);
+        var first = new LevelCameraPreset
+        {
+            Name = "  Market entrance  ", X = 123.5f, Y = -987.25f, Z = 456,
+            Roll = -15.5f, Pitch = 120, Yaw = 270.25f
+        };
+        var second = new LevelCameraPreset { Name = "Upper balcony", X = 20, Y = 30, Z = 40, Pitch = -35 };
+
+        LevelPreset saved = store.Save(new LevelPreset
+        {
+            Name = "Citadel", Game = MEGame.LE3, FilePaths = [files.Level("Citadel.pcc")],
+            CameraPresets = [first, second]
+        });
+
+        LevelPreset restored = new LevelPresetStore(files.StorePath).Presets.Single();
+        Assert.HasCount(2, restored.CameraPresets);
+        Assert.AreEqual(first with { Name = "Market entrance" }, restored.CameraPresets[0]);
+        Assert.AreEqual(second, restored.CameraPresets[1]);
+        CollectionAssert.AreEqual(saved.CameraPresets.ToArray(), restored.CameraPresets.ToArray());
+        Assert.AreEqual(1, JsonNode.Parse(File.ReadAllText(files.StorePath))!["Version"]!.GetValue<int>());
+    }
+
+    [TestMethod]
+    public void LegacyPresetWithoutCameraEntriesKeepsItsDefaultSpawnBehavior()
+    {
+        using var files = new TestFiles();
+        new LevelPresetStore(files.StorePath).Save(new LevelPreset
+        {
+            Name = "Legacy", Game = MEGame.LE3, FilePaths = [files.Level("Legacy.pcc")]
+        });
+        var document = JsonNode.Parse(File.ReadAllText(files.StorePath))!;
+        document["Presets"]![0]!.AsObject().Remove("CameraPresets");
+        File.WriteAllText(files.StorePath, document.ToJsonString());
+
+        var restored = new LevelPresetStore(files.StorePath);
+
+        Assert.IsNull(restored.LoadError);
+        Assert.IsEmpty(restored.Presets.Single().CameraPresets);
+        LevelPreset saved = restored.Save(restored.Presets.Single() with { Name = "Legacy renamed" });
+        Assert.IsEmpty(saved.CameraPresets);
+        Assert.IsEmpty(new LevelPresetStore(files.StorePath).Presets.Single().CameraPresets);
+    }
+
+    [TestMethod]
+    public void CameraCollectionsBelongToTheirParentAndAreClonedWhenSaved()
+    {
+        using var files = new TestFiles();
+        var store = new LevelPresetStore(files.StorePath);
+        var camera = new LevelCameraPreset { Name = "Entrance", X = 10 };
+        var firstInput = new LevelPreset
+        {
+            Name = "First", Game = MEGame.LE3, FilePaths = [files.Level("First.pcc")], CameraPresets = [camera]
+        };
+        LevelPreset first = store.Save(firstInput);
+        LevelPreset second = store.Save(new LevelPreset
+        {
+            Name = "Second", Game = MEGame.LE3, FilePaths = [files.Level("Second.pcc")],
+            CameraPresets = [camera with { X = 20 }]
+        });
+
+        firstInput.CameraPresets.Clear();
+
+        Assert.HasCount(1, first.CameraPresets, "Changing the caller's list must not change the saved preset.");
+        Assert.AreNotSame(first.CameraPresets, second.CameraPresets);
+        Assert.AreEqual(10f, first.CameraPresets.Single().X);
+        Assert.AreEqual(20f, second.CameraPresets.Single().X);
+        store.Save(first with { CameraPresets = [] });
+        LevelPreset[] restored = new LevelPresetStore(files.StorePath).Presets.ToArray();
+        Assert.IsEmpty(restored.Single(preset => preset.Id == first.Id).CameraPresets);
+        Assert.AreEqual(camera with { X = 20 }, restored.Single(preset => preset.Id == second.Id).CameraPresets.Single());
+        Assert.AreNotSame(new LevelPreset().CameraPresets, new LevelPreset().CameraPresets);
+    }
+
+    [TestMethod]
+    public void DuplicateCameraNamesAndIdentifiersDoNotAlterSavedPresets()
+    {
+        using var files = new TestFiles();
+        var store = new LevelPresetStore(files.StorePath);
+        var camera = new LevelCameraPreset { Name = "Entrance", X = 15 };
+        LevelPreset existing = store.Save(new LevelPreset
+        {
+            Name = "Valid", Game = MEGame.LE3, FilePaths = [files.Level("Valid.pcc")], CameraPresets = [camera]
+        });
+        byte[] originalBytes = File.ReadAllBytes(files.StorePath);
+
+        Assert.Throws<ArgumentException>(() => store.Save(existing with
+        {
+            CameraPresets = [camera, new LevelCameraPreset { Name = "  ENTRANCE  " }]
+        }));
+        Assert.Throws<ArgumentException>(() => store.Save(existing with
+        {
+            CameraPresets = [camera, camera with { Name = "Another location" }]
+        }));
+
+        CollectionAssert.AreEqual(originalBytes, File.ReadAllBytes(files.StorePath));
+        Assert.AreSame(existing, store.Presets.Single());
+        Assert.AreEqual(camera, store.Presets.Single().CameraPresets.Single());
+    }
+
+    [TestMethod]
+    public void InvalidCameraNamesAndNonfiniteValuesDoNotAlterSavedPresets()
+    {
+        using var files = new TestFiles();
+        var store = new LevelPresetStore(files.StorePath);
+        var camera = new LevelCameraPreset { Name = "Entrance", X = 15 };
+        LevelPreset existing = store.Save(new LevelPreset
+        {
+            Name = "Valid", Game = MEGame.LE3, FilePaths = [files.Level("Valid.pcc")], CameraPresets = [camera]
+        });
+        byte[] originalBytes = File.ReadAllBytes(files.StorePath);
+        LevelCameraPreset[] invalidCameras =
+        [
+            camera with { Name = "   " }, camera with { Name = null },
+            camera with { X = float.NaN }, camera with { Y = float.PositiveInfinity },
+            camera with { Z = float.NegativeInfinity }, camera with { Roll = float.NaN },
+            camera with { Pitch = float.PositiveInfinity }, camera with { Yaw = float.NegativeInfinity }, null
+        ];
+
+        foreach (LevelCameraPreset invalid in invalidCameras)
+        {
+            Assert.Throws<ArgumentException>(() => store.Save(existing with { CameraPresets = [invalid] }));
+            CollectionAssert.AreEqual(originalBytes, File.ReadAllBytes(files.StorePath));
+            Assert.AreSame(existing, store.Presets.Single());
+        }
+    }
+
+    [TestMethod]
+    public void InvalidSavedCameraEntriesReportAnErrorAndPreserveTheLibrary()
+    {
+        using var files = new TestFiles();
+        var camera = new LevelCameraPreset { Name = "Entrance" };
+        new LevelPresetStore(files.StorePath).Save(new LevelPreset
+        {
+            Name = "Valid", Game = MEGame.LE3, FilePaths = [files.Level("Valid.pcc")], CameraPresets = [camera]
+        });
+        var document = JsonNode.Parse(File.ReadAllText(files.StorePath))!;
+        document["Presets"]![0]!["CameraPresets"]!.AsArray().Add(
+            JsonNode.Parse(document["Presets"]![0]!["CameraPresets"]![0]!.ToJsonString()));
+        File.WriteAllText(files.StorePath, document.ToJsonString());
+
+        AssertUnreadableStorePreserved(files);
+    }
+
+    [TestMethod]
+    public void CameraSearchMatchesNamesIgnoringCaseAndOuterWhitespace()
+    {
+        var camera = new LevelCameraPreset { Name = "Market entrance" };
+
+        Assert.IsTrue(LevelPresetStore.MatchesCameraSearch(camera, null));
+        Assert.IsTrue(LevelPresetStore.MatchesCameraSearch(camera, "  "));
+        Assert.IsTrue(LevelPresetStore.MatchesCameraSearch(camera, "  ENTRANCE  "));
+        Assert.IsFalse(LevelPresetStore.MatchesCameraSearch(camera, "balcony"));
+        Assert.IsFalse(LevelPresetStore.MatchesCameraSearch(null, ""));
+    }
+
+    [TestMethod]
+    public void ApplyingCameraPresetsConvertsDegreesAndKeepsUnclampedPitch()
+    {
+        var camera = new SceneCamera { Position = new Vector3(-10, 20, 30), FocusDepth = 100 };
+        var preset = new LevelCameraPreset
+        {
+            Name = "Tilted view", X = 123, Y = -456, Z = 789, Roll = 30, Pitch = 120, Yaw = 270
+        };
+
+        preset.ApplyTo(camera);
+
+        Assert.AreEqual(new Vector3(123, -456, 789), camera.Position);
+        Assert.AreEqual(0f, camera.FocusDepth);
+        Assert.AreEqual(MathF.PI / 6f, camera.Roll, 0.00001f);
+        Assert.AreEqual(MathF.PI * 2f / 3f, camera.Pitch, 0.00001f);
+        Assert.AreEqual(MathF.PI * 1.5f, camera.Yaw, 0.00001f);
+    }
+
+    [TestMethod]
+    public void CapturingOrbitCameraPreservesTheEyeLocationAndViewWhenApplied()
+    {
+        var original = new SceneCamera
+        {
+            Position = new Vector3(100, -200, 300), FocusDepth = 500,
+            Roll = MathF.PI / 6, Pitch = -MathF.PI / 4, Yaw = MathF.PI * 1.5f
+        };
+        Matrix4x4 view = original.ViewMatrix;
+
+        LevelCameraPreset preset = LevelCameraPreset.FromCamera(original, "Orbit view");
+        var restored = new SceneCamera();
+        preset.ApplyTo(restored);
+
+        Assert.AreEqual("Orbit view", preset.Name);
+        Vector3 expectedEye = original.Position - original.CameraForward * original.FocusDepth;
+        Assert.AreEqual(expectedEye.X, preset.X, 0.00001f);
+        Assert.AreEqual(expectedEye.Y, preset.Y, 0.00001f);
+        Assert.AreEqual(expectedEye.Z, preset.Z, 0.00001f);
+        Assert.AreEqual(30f, preset.Roll, 0.00001f);
+        Assert.AreEqual(-45f, preset.Pitch, 0.00001f);
+        Assert.AreEqual(270f, preset.Yaw, 0.0001f);
+        AssertMatricesEqual(view, restored.ViewMatrix);
+    }
+
+    [TestMethod]
+    public void CapturingFirstPersonCameraUsesItsPositionWithoutOrbitOffset()
+    {
+        var camera = new SceneCamera
+        {
+            FirstPerson = true, Position = new Vector3(100, 200, 300), FocusDepth = 500,
+            Roll = MathF.PI / 6, Pitch = MathF.PI / 4, Yaw = MathF.PI / 2
+        };
+
+        LevelCameraPreset preset = LevelCameraPreset.FromCamera(camera, "First person");
+
+        Assert.AreEqual(camera.Position, new Vector3(preset.X, preset.Y, preset.Z));
+        var restored = new SceneCamera { FirstPerson = true };
+        preset.ApplyTo(restored);
+        AssertMatricesEqual(camera.ViewMatrix, restored.ViewMatrix);
+    }
+
+    [TestMethod]
+    public void CapturingOrthographicCameraPreservesItsPositionAndTopDownOrientation()
+    {
+        var camera = new SceneCamera
+        {
+            IsOrthographic = true, Position = new Vector3(100, 200, 300), FocusDepth = 500,
+            Roll = MathF.PI / 6, Pitch = MathF.PI / 4, Yaw = MathF.PI
+        };
+
+        LevelCameraPreset preset = LevelCameraPreset.FromCamera(camera, "Top down");
+        var restored = new SceneCamera();
+        preset.ApplyTo(restored);
+
+        Assert.AreEqual(camera.Position, restored.Position);
+        Assert.AreEqual(0f, preset.Roll);
+        Assert.AreEqual(-90f, preset.Pitch);
+        Assert.AreEqual(90f, preset.Yaw);
+        Assert.IsFalse(restored.IsOrthographic);
+        AssertMatricesEqual(camera.ViewMatrix, restored.ViewMatrix);
+    }
+
+    [TestMethod]
     public void PresetCollectionHasNoRecentFilesLimit()
     {
         using var files = new TestFiles();
@@ -332,6 +574,26 @@ public class LevelPresetTests
         }));
         CollectionAssert.AreEqual(originalBytes, File.ReadAllBytes(files.StorePath),
             "An unreadable collection must remain available for recovery.");
+    }
+
+    private static void AssertMatricesEqual(Matrix4x4 expected, Matrix4x4 actual)
+    {
+        Assert.AreEqual(expected.M11, actual.M11, 0.0001f);
+        Assert.AreEqual(expected.M12, actual.M12, 0.0001f);
+        Assert.AreEqual(expected.M13, actual.M13, 0.0001f);
+        Assert.AreEqual(expected.M14, actual.M14, 0.0001f);
+        Assert.AreEqual(expected.M21, actual.M21, 0.0001f);
+        Assert.AreEqual(expected.M22, actual.M22, 0.0001f);
+        Assert.AreEqual(expected.M23, actual.M23, 0.0001f);
+        Assert.AreEqual(expected.M24, actual.M24, 0.0001f);
+        Assert.AreEqual(expected.M31, actual.M31, 0.0001f);
+        Assert.AreEqual(expected.M32, actual.M32, 0.0001f);
+        Assert.AreEqual(expected.M33, actual.M33, 0.0001f);
+        Assert.AreEqual(expected.M34, actual.M34, 0.0001f);
+        Assert.AreEqual(expected.M41, actual.M41, 0.001f);
+        Assert.AreEqual(expected.M42, actual.M42, 0.001f);
+        Assert.AreEqual(expected.M43, actual.M43, 0.001f);
+        Assert.AreEqual(expected.M44, actual.M44, 0.0001f);
     }
 
     private static string CreateValidationPackage(string path, MEGame game, bool containsLevel = true)

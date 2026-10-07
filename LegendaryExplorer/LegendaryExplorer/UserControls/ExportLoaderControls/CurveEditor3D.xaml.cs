@@ -1052,6 +1052,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     private readonly Dictionary<string, CameraOrigin> dialogueLookAtTargets =
         new(StringComparer.OrdinalIgnoreCase);
     private CameraOrigin dialoguePreviewInitialCameraOrigin;
+    private LevelCameraPreset pendingDialogueLevelCameraPreset;
     private float dialoguePreviewInitialCameraFovDegrees = 60f;
     private AssetDB previewAssetDatabase;
     private List<MeshRecord> previewActorMeshes = [];
@@ -1362,23 +1363,23 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     internal void ConfigureDialogueNodePreview(ConversationExtended conversation, DialogueNodeExtended node,
         IReadOnlyList<DialogueNodePreviewActor> actors, IReadOnlyList<string> levelPaths,
         StageConversationContext stageContext, DialoguePreviewPlayerSelection playerSelection,
-        IReadOnlyDictionary<string, string> henchmanAssignments) =>
+        IReadOnlyDictionary<string, string> henchmanAssignments, LevelCameraPreset cameraPreset = null) =>
         ConfigureDialoguePreview(conversation, node, actors, levelPaths, stageContext, playerSelection,
-            henchmanAssignments, cachePreset: null, newCacheLabel: null, conversationPreview: false);
+            henchmanAssignments, cachePreset: null, newCacheLabel: null, conversationPreview: false, cameraPreset);
 
     internal void ConfigureDialogueConversationPreview(ConversationExtended conversation, DialogueNodeExtended startNode,
         IReadOnlyList<DialogueNodePreviewActor> actors, IReadOnlyList<string> levelPaths,
         StageConversationContext stageContext, DialoguePreviewPlayerSelection playerSelection,
         IReadOnlyDictionary<string, string> henchmanAssignments, DialogueCachePreset cachePreset,
-        string newCacheLabel) =>
+        string newCacheLabel, LevelCameraPreset cameraPreset = null) =>
         ConfigureDialoguePreview(conversation, startNode, actors, levelPaths, stageContext, playerSelection,
-            henchmanAssignments, cachePreset, newCacheLabel, conversationPreview: true);
+            henchmanAssignments, cachePreset, newCacheLabel, conversationPreview: true, cameraPreset);
 
     private void ConfigureDialoguePreview(ConversationExtended conversation, DialogueNodeExtended startNode,
         IReadOnlyList<DialogueNodePreviewActor> actors, IReadOnlyList<string> levelPaths,
         StageConversationContext stageContext, DialoguePreviewPlayerSelection playerSelection,
         IReadOnlyDictionary<string, string> henchmanAssignments, DialogueCachePreset cachePreset,
-        string newCacheLabel, bool conversationPreview)
+        string newCacheLabel, bool conversationPreview, LevelCameraPreset cameraPreset)
     {
         ArgumentNullException.ThrowIfNull(conversation);
         ArgumentNullException.ThrowIfNull(startNode);
@@ -1395,6 +1396,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         activeDialogueSceneShopChoices.Clear();
         displayedDialogueSceneShopSegment = null;
         loadedDialogueCachePreset = null;
+        pendingDialogueLevelCameraPreset = cameraPreset;
         isDialogueConversationPreview = conversationPreview;
         dialogueNodeInterpDataCache.Clear();
         DisposeDialoguePackageEditor();
@@ -4202,7 +4204,8 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             }
 
             var options = new DialoguePreviewLevelPicker(CurrentLoadedExport.Game, scene.Value.Conversation,
-                scene.Value.Node, includeCache: false, requirePlayerGenderSelection: true)
+                scene.Value.Node, includeCache: false, requirePlayerGenderSelection: true,
+                currentCamera: LevelCameraPreset.FromCamera(RenderContext.Camera))
             {
                 Owner = Window.GetWindow(this),
             };
@@ -4228,6 +4231,10 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                 options.HenchmanAssignments);
             stageContext = null; // Ownership transferred to generatedDialogueActorConfiguration.
             await generation.ConfigureAwait(true);
+            if (options.SelectedCameraPreset is { } cameraPreset)
+            {
+                ApplyLevelCameraPreset(cameraPreset);
+            }
         }
         catch (Exception exception)
         {
@@ -5571,6 +5578,11 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                     ConfigureDialoguePreviewPlayback();
                 }
                 StartDialogueTimelinePlaybackAt(0, reconstruct: true);
+                if (pendingDialogueLevelCameraPreset is { } cameraPreset)
+                {
+                    pendingDialogueLevelCameraPreset = null;
+                    ApplyLevelCameraPreset(cameraPreset);
+                }
             }
             SetPreviewActorStatus(meshes.Count == 0
                 ? $"The {game} Asset Database contains no skeletal meshes."
@@ -13608,7 +13620,8 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
     private async void LevelPresets_Click(object sender, RoutedEventArgs e)
     {
-        var dialog = new LevelPresetsDialog(CurrentLoadedExport?.Game, levelPaths)
+        var dialog = new LevelPresetsDialog(CurrentLoadedExport?.Game, levelPaths,
+            currentCamera: LevelCameraPreset.FromCamera(RenderContext.Camera))
         {
             Owner = Window.GetWindow(this)
         };
@@ -13634,6 +13647,26 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                 LevelPaths = levelPaths.ToArray()
             };
         }
+        if (dialog.SelectedCameraPreset is { } cameraPreset)
+        {
+            ApplyLevelCameraPreset(cameraPreset);
+        }
+    }
+
+    private void ApplyLevelCameraPreset(LevelCameraPreset cameraPreset)
+    {
+        // Authored camera playback would replace the selected opening view on its next frame.
+        // Leave the preview paused so the user can inspect it, then resume playback explicitly.
+        if (isPlayingDialogueTimeline)
+        {
+            PauseDialogueTimeline();
+        }
+        StopPlayback(false);
+        CameraFramingMode = false;
+        cameraPreset.ApplyTo(RenderContext.Camera);
+        UpdateCameraPositionText();
+        UpdateCameraRotationText();
+        SceneViewer.MarkRenderDirty();
     }
 
     private void RecentLevelsMenu_Opened(object sender, RoutedEventArgs e)

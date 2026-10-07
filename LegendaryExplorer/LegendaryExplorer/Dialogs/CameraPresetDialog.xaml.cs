@@ -244,7 +244,8 @@ public partial class CameraPresetDialog : Window
     private async void PreviewLevelPresets_Click(object sender, RoutedEventArgs e)
     {
         var dialog = new LevelPresetsDialog(_package?.Game ?? _selectedTrackMove?.Game ?? _selectedDirectorTrack?.Game,
-            CameraPreviewControl.LevelPaths)
+            CameraPreviewControl.LevelPaths,
+            currentCamera: LevelCameraPreset.FromCamera(CameraPreviewControl.RenderContext.Camera))
         {
             Owner = this
         };
@@ -257,6 +258,10 @@ public partial class CameraPresetDialog : Window
         for (int index = 0; index < availablePaths.Count; index++)
         {
             await LoadPreviewLevelAsync(availablePaths[index], replace: index == 0).ConfigureAwait(true);
+        }
+        if (dialog.SelectedCameraPreset is { } cameraPreset)
+        {
+            CameraPreviewControl.ApplyLevelCameraPreset(cameraPreset);
         }
     }
 

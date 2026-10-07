@@ -1181,19 +1181,24 @@
                                                          ScrollViewer.VerticalScrollBarVisibility="Auto" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
                                                     <ListBox.ItemTemplate>
                                                         <DataTemplate>
-                                                            <Button Click="OpenLevelPreset_Click" Margin="3" Padding="8,4" MinHeight="39"
-                                                                    ToolTip="{Binding TooltipText}" HorizontalContentAlignment="Stretch"
-                                                                    ContextMenuOpening="LevelPresetButton_ContextMenuOpening">
-                                                                <Button.ContextMenu><ContextMenu/></Button.ContextMenu>
-                                                                <DockPanel>
-                                                                    <Image DockPanel.Dock="Left" Margin="0,0,8,0" Source="{Binding Game, Converter={StaticResource GameToImageIconConverter}}"
-                                                                           Height="20" Width="20" RenderOptions.BitmapScalingMode="HighQuality"/>
-                                                                    <StackPanel>
-                                                                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
-                                                                        <TextBlock Text="{Binding Summary}" FontSize="11" TextTrimming="CharacterEllipsis"/>
-                                                                    </StackPanel>
-                                                                </DockPanel>
-                                                            </Button>
+                                                            <DockPanel LastChildFill="True">
+                                                                <Button DockPanel.Dock="Right" Content="Camera locations…"
+                                                                        Click="LevelPresetCameraLocations_Click" Padding="8,4" Margin="3" MinHeight="39"
+                                                                        ToolTip="Choose, search, or edit named camera locations before opening these levels"/>
+                                                                <Button Click="OpenLevelPreset_Click" Margin="3" Padding="8,4" MinHeight="39"
+                                                                        ToolTip="{Binding TooltipText}" HorizontalContentAlignment="Stretch"
+                                                                        ContextMenuOpening="LevelPresetButton_ContextMenuOpening">
+                                                                    <Button.ContextMenu><ContextMenu/></Button.ContextMenu>
+                                                                    <DockPanel>
+                                                                        <Image DockPanel.Dock="Left" Margin="0,0,8,0" Source="{Binding Game, Converter={StaticResource GameToImageIconConverter}}"
+                                                                               Height="20" Width="20" RenderOptions.BitmapScalingMode="HighQuality"/>
+                                                                        <StackPanel>
+                                                                            <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                                                                            <TextBlock Text="{Binding Summary}" FontSize="11" TextTrimming="CharacterEllipsis"/>
+                                                                        </StackPanel>
+                                                                    </DockPanel>
+                                                                </Button>
+                                                            </DockPanel>
                                                         </DataTemplate>
                                                     </ListBox.ItemTemplate>
                                                 </ListBox>

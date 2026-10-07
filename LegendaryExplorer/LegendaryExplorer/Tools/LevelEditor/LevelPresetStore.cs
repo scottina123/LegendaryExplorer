@@ -16,6 +16,7 @@ public sealed record LevelPreset
     public MEGame Game { get; init; }
     public List<string> FilePaths { get; init; } = [];
     public List<string> ReadOnlyFilePaths { get; init; } = [];
+    public List<LevelCameraPreset> CameraPresets { get; init; } = [];
 
     [JsonIgnore]
     public string Summary => $"{Game} · {FilePaths.Count} level{(FilePaths.Count == 1 ? "" : "s")}";
@@ -92,6 +93,13 @@ public sealed class LevelPresetStore
             || preset.FilePaths.Any(path => path.Contains(search, StringComparison.OrdinalIgnoreCase));
     }
 
+    public static bool MatchesCameraSearch(LevelCameraPreset preset, string search)
+    {
+        if (preset == null) return false;
+        search = search?.Trim() ?? "";
+        return preset.Name?.Contains(search, StringComparison.OrdinalIgnoreCase) == true;
+    }
+
     private static LevelPreset Normalize(LevelPreset preset)
     {
         ArgumentNullException.ThrowIfNull(preset);
@@ -104,12 +112,32 @@ public sealed class LevelPresetStore
         var paths = preset.FilePaths.Select(Path.GetFullPath).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         var readOnly = (preset.ReadOnlyFilePaths ?? []).Where(path => !string.IsNullOrWhiteSpace(path))
             .Select(Path.GetFullPath).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var cameras = (preset.CameraPresets ?? []).Select(NormalizeCamera).ToList();
+        if (cameras.Select(camera => camera.Id).Distinct().Count() != cameras.Count
+            || cameras.Select(camera => camera.Name).Distinct(StringComparer.OrdinalIgnoreCase).Count() != cameras.Count)
+            throw new ArgumentException("A level preset cannot contain camera presets with duplicate names or identifiers.");
         return preset with
         {
             Id = preset.Id == Guid.Empty ? Guid.NewGuid() : preset.Id,
             Name = preset.Name.Trim(),
             FilePaths = paths,
-            ReadOnlyFilePaths = paths.Where(readOnly.Contains).ToList()
+            ReadOnlyFilePaths = paths.Where(readOnly.Contains).ToList(),
+            CameraPresets = cameras
+        };
+    }
+
+    private static LevelCameraPreset NormalizeCamera(LevelCameraPreset camera)
+    {
+        ArgumentNullException.ThrowIfNull(camera);
+        if (string.IsNullOrWhiteSpace(camera.Name))
+            throw new ArgumentException("Enter a name for the camera preset.");
+        if (!float.IsFinite(camera.X) || !float.IsFinite(camera.Y) || !float.IsFinite(camera.Z)
+            || !float.IsFinite(camera.Roll) || !float.IsFinite(camera.Pitch) || !float.IsFinite(camera.Yaw))
+            throw new ArgumentException("Camera preset coordinates and rotations must be finite numbers.");
+        return camera with
+        {
+            Id = camera.Id == Guid.Empty ? Guid.NewGuid() : camera.Id,
+            Name = camera.Name.Trim()
         };
     }
 

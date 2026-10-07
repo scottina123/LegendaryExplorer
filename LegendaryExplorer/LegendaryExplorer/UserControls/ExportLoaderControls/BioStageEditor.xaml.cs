@@ -2218,7 +2218,8 @@ public sealed partial class BioStageEditor : ExportLoaderControl, IActorEditorCo
 
     private async void LevelPresets_Click(object sender, RoutedEventArgs e)
     {
-        var dialog = new LevelPresetsDialog(CurrentLoadedExport?.Game, levelPaths)
+        var dialog = new LevelPresetsDialog(CurrentLoadedExport?.Game, levelPaths,
+            currentCamera: LevelCameraPreset.FromCamera(RenderContext.Camera))
         {
             Owner = Window.GetWindow(this)
         };
@@ -2231,6 +2232,12 @@ public sealed partial class BioStageEditor : ExportLoaderControl, IActorEditorCo
         for (int index = 0; index < availablePaths.Count; index++)
         {
             await LoadLevelAsync(availablePaths[index], replace: index == 0).ConfigureAwait(true);
+        }
+        if (dialog.SelectedCameraPreset is { } cameraPreset)
+        {
+            CameraFocusMode = false;
+            cameraPreset.ApplyTo(RenderContext.Camera);
+            SceneViewer.MarkRenderDirty();
         }
     }
 

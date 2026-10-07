@@ -10,6 +10,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using LegendaryExplorer.SharedUI.Bases;
 using LegendaryExplorer.Tools.InterpEditor;
+using LegendaryExplorer.Tools.LevelEditor;
 using LegendaryExplorer.UserControls.ExportLoaderControls;
 using LegendaryExplorerCore.Dialogue;
 using LegendaryExplorerCore.Packages;
@@ -25,6 +26,7 @@ public partial class DialoguePreviewLevelPicker : TrackingNotifyPropertyChangedW
     private readonly IReadOnlySet<string> availableHenchmanTags;
     private readonly bool allowUnassignedHenchmen;
     private readonly MEGame game;
+    private readonly LevelCameraPreset currentCamera;
     private DialogueCachePreset selectedCachePreset;
 
     public sealed record HenchmanChoice(string ActorTag, string DisplayName);
@@ -45,6 +47,7 @@ public partial class DialoguePreviewLevelPicker : TrackingNotifyPropertyChangedW
     public ObservableCollection<string> SelectedFiles { get; } = [];
     public ObservableCollection<HenchmanSlotSelection> HenchmanSlots { get; } = [];
     public IReadOnlyList<string> SelectedLevelPaths => SelectedFiles.ToArray();
+    public LevelCameraPreset SelectedCameraPreset { get; private set; }
     public IReadOnlyDictionary<string, string> HenchmanAssignments => HenchmanSlots
         .Where(slot => !string.IsNullOrWhiteSpace(slot.SelectedHenchmanTag))
         .ToDictionary(slot => slot.Slot.SlotTag, slot => slot.SelectedHenchmanTag,
@@ -76,9 +79,12 @@ public partial class DialoguePreviewLevelPicker : TrackingNotifyPropertyChangedW
 
     public DialoguePreviewLevelPicker(MEGame game, ConversationExtended conversation,
         DialogueNodeExtended startNode, bool includeCache,
-        bool requirePlayerGenderSelection = false) : base("Dialogue Preview Options", false)
+        bool requirePlayerGenderSelection = false,
+        LevelCameraPreset currentCamera = null) : base("Dialogue Preview Options", false)
     {
         this.game = game;
+        this.currentCamera = currentCamera;
+        SelectedFiles.CollectionChanged += (_, _) => SelectedCameraPreset = null;
         allowUnassignedHenchmen = game is MEGame.LE1 or MEGame.LE2;
         InitializeComponent();
         if (requirePlayerGenderSelection)
@@ -302,7 +308,8 @@ public partial class DialoguePreviewLevelPicker : TrackingNotifyPropertyChangedW
 
     private void LevelPresets_Click(object sender, RoutedEventArgs e)
     {
-        var dialog = new LevelPresetsDialog(game == MEGame.Unknown ? null : game, SelectedFiles)
+        var dialog = new LevelPresetsDialog(game == MEGame.Unknown ? null : game, SelectedFiles,
+            currentCamera: currentCamera)
         {
             Owner = this
         };
@@ -313,6 +320,7 @@ public partial class DialoguePreviewLevelPicker : TrackingNotifyPropertyChangedW
 
         SelectedFiles.Clear();
         AddPaths(preset.FilePaths);
+        SelectedCameraPreset = dialog.SelectedCameraPreset;
     }
 
     private void AddPaths(IEnumerable<string> paths)

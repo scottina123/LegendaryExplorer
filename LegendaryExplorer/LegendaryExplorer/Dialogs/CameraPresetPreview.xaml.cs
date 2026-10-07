@@ -605,6 +605,17 @@ public partial class CameraPresetPreview : UserControl, IDisposable, IActorEdito
         SceneViewer.MarkRenderDirty();
     }
 
+    public void ApplyLevelCameraPreset(LevelCameraPreset cameraPreset)
+    {
+        ArgumentNullException.ThrowIfNull(cameraPreset);
+        // A looping shot would replace the chosen opening view on its next frame.
+        _isDynamic = false;
+        _renderContext.ForceContinuousRendering = false;
+        cameraPreset.ApplyTo(_renderContext.Camera);
+        PreviewStatusTextBlock.Text = $"Viewing from {cameraPreset.Name}";
+        SceneViewer.MarkRenderDirty();
+    }
+
     public void SetMulticamPreview(MulticamCameraPreset preset, CameraOrigin origin,
         IReadOnlyDictionary<string, IReadOnlyList<GeneratedCameraKey>> cameras,
         Action<GeneratedCameraKey> activeCameraChanged = null)
