@@ -1294,7 +1294,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
 
         private void VFX_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            if (VfxPreviewEnabledCheckBox?.IsChecked == true)
+            if (btn_VfxPreviewToggle?.IsChecked == true)
             {
                 LoadVfxPreview();
             }
@@ -1306,7 +1306,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
 
         private void VfxPreviewEnabled_Changed(object sender, RoutedEventArgs e)
         {
-            if (VfxPreviewEnabledCheckBox.IsChecked == true)
+            if (btn_VfxPreviewToggle.IsChecked == true)
             {
                 LoadVfxPreview();
             }
@@ -1320,7 +1320,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         {
             UnloadVfxPreview();
 
-            if (VfxPreviewEnabledCheckBox?.IsChecked != true)
+            if (btn_VfxPreviewToggle?.IsChecked != true)
             {
                 return;
             }
