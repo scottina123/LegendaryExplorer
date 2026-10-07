@@ -66,6 +66,7 @@ namespace LegendaryExplorer.Tools.WwiseEditor
     {
         private const uint StopAllEventId = 788884573;
         private const int MaximumEffectSlots = 4;
+        private bool loadingSavedPreferences;
 
         private sealed class EditableOpaqueMusicNode : WwiserHircItem, WwiserIHasNode
         {
@@ -101,9 +102,6 @@ namespace LegendaryExplorer.Tools.WwiseEditor
 
             RecentsController.InitRecentControl(Toolname, Recents_MenuItem, fileName=>LoadFile(fileName));
 
-            // Apply theme-appropriate colors based on current dark mode setting
-            ApplyThemeDefaults();
-
             // Subscribe to theme changes to update graph colors dynamically
             ThemeManager.ThemeChanged += OnThemeChanged;
 
@@ -111,16 +109,8 @@ namespace LegendaryExplorer.Tools.WwiseEditor
             graphEditor.BackColor = GraphEditorBackColor;
             graphEditor.Camera.MouseDown += GraphEditor_BackgroundMouseDown;
 
-            AutoSaveView_MenuItem.IsChecked = Misc.AppSettings.Settings.WwiseGraphEditor_AutoSaveView;
-
-            // Initialize color pickers with loaded colors
-            ClrPcker_Background.SelectedColor = GraphEditorBackColor.ToWPFColor();
-            ClrPcker_BoxFill.SelectedColor = BoxFillColor.ToWPFColor();
-            ClrPcker_TitleBox.SelectedColor = TitleBoxColor.ToWPFColor();
-            ClrPcker_CommentText.SelectedColor = CommentTextColor.ToWPFColor();
-            ClrPcker_BoxText.SelectedColor = BoxTextColor.ToWPFColor();
-            ClrPcker_BoxOutline.SelectedColor = BoxOutlineColor.ToWPFColor();
-            ClrPcker_Connection.SelectedColor = ConnectionColor.ToWPFColor();
+            LoadSavedPreferences();
+            ScottinaPreset.Applied += OnScottinaPresetApplied;
 
             soundPanel.SoundPanel_TabsControl.SelectedIndex = 1;
             soundPanel.HIRCObjectSelected += SoundPanel_HIRCObjectSelected;
@@ -359,6 +349,8 @@ namespace LegendaryExplorer.Tools.WwiseEditor
 
         private void ColorPicker_SelectedColorChanged(object sender, RoutedPropertyChangedEventArgs<System.Windows.Media.Color?> e)
         {
+            if (loadingSavedPreferences) return;
+
             var source = (Xceed.Wpf.Toolkit.ColorPicker)sender;
             if (e.NewValue is not null)
             {
@@ -396,6 +388,52 @@ namespace LegendaryExplorer.Tools.WwiseEditor
                 }
                 Settings.Save();
             }
+        }
+
+        private void OnScottinaPresetApplied(object sender, EventArgs e)
+        {
+            if (!Dispatcher.CheckAccess())
+            {
+                Dispatcher.Invoke(() => OnScottinaPresetApplied(sender, e));
+                return;
+            }
+            LoadSavedPreferences();
+        }
+
+        private void LoadSavedPreferences()
+        {
+            loadingSavedPreferences = true;
+            try
+            {
+                AutoSaveView_MenuItem.IsChecked = Settings.WwiseGraphEditor_AutoSaveView;
+                _graphEditorBackColor = Color.FromArgb(Settings.WwiseGraphEditor_BackgroundColor);
+                _boxFillColor = Color.FromArgb(Settings.WwiseGraphEditor_BoxFillColor);
+                _titleBoxColor = Color.FromArgb(Settings.WwiseGraphEditor_TitleBoxColor);
+                _commentTextColor = Color.FromArgb(Settings.WwiseGraphEditor_CommentTextColor);
+                _boxTextColor = Color.FromArgb(Settings.WwiseGraphEditor_BoxTextColor);
+                _boxOutlineColor = Color.FromArgb(Settings.WwiseGraphEditor_BoxOutlineColor);
+                _connectionColor = Color.FromArgb(Settings.WwiseGraphEditor_ConnectionColor);
+                WwiseHircObjNode.NodeBrushColor = _boxFillColor;
+                WwiseHircObjNode.TitleBoxBrushColor = _titleBoxColor;
+                WwiseHircObjNode.CommentTextColor = _commentTextColor;
+                WwiseHircObjNode.BoxTextColor = _boxTextColor;
+                WwiseHircObjNode.BoxOutlineColor = _boxOutlineColor;
+                WwiseHircObjNode.ConnectionColor = _connectionColor;
+                graphEditor.BackColor = GraphEditorBackColor;
+
+                ClrPcker_Background.SelectedColor = GraphEditorBackColor.ToWPFColor();
+                ClrPcker_BoxFill.SelectedColor = BoxFillColor.ToWPFColor();
+                ClrPcker_TitleBox.SelectedColor = TitleBoxColor.ToWPFColor();
+                ClrPcker_CommentText.SelectedColor = CommentTextColor.ToWPFColor();
+                ClrPcker_BoxText.SelectedColor = BoxTextColor.ToWPFColor();
+                ClrPcker_BoxOutline.SelectedColor = BoxOutlineColor.ToWPFColor();
+                ClrPcker_Connection.SelectedColor = ConnectionColor.ToWPFColor();
+            }
+            finally
+            {
+                loadingSavedPreferences = false;
+            }
+            if (CurrentObjects.Any()) RefreshView();
         }
 
         #endregion
@@ -3018,6 +3056,7 @@ namespace LegendaryExplorer.Tools.WwiseEditor
 
             Misc.AppSettings.Settings.WwiseGraphEditor_AutoSaveView = AutoSaveView_MenuItem.IsChecked;
             ThemeManager.ThemeChanged -= OnThemeChanged;
+            ScottinaPreset.Applied -= OnScottinaPresetApplied;
             soundPanel.HIRCObjectSelected -= SoundPanel_HIRCObjectSelected;
             soundPanel.HIRCEventSettingsRequested -= SoundPanel_HIRCEventSettingsRequested;
             soundPanel.HIRCEventOpenInPackageEditorRequested -= SoundPanel_HIRCEventOpenInPackageEditorRequested;

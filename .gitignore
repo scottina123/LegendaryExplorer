@@ -210,6 +210,8 @@ Release_x64/
 
 
 *APIKeysPrivate.cs
+# Local ElevenLabs credentials must never be included in the fork.
+**/ElevenLabs.json
 /ME3ExplorerCore.Tests/coverage.cobertura.xml
 /ME3Explorer/Deployment
 /LegendaryExplorer/LegendaryExplorer/BuildInfo.cs

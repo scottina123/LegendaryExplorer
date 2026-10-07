@@ -14,6 +14,7 @@ using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Media;
 using LegendaryExplorer.Misc;
+using LegendaryExplorer.Misc.AppSettings;
 using LegendaryExplorer.SharedUI;
 using LegendaryExplorer.SharedUI.Bases;
 using LegendaryExplorerCore.Coalesced;
@@ -197,6 +198,7 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
             TextEditor.TextArea.SelectionChanged += TextArea_SelectionChanged;
             RestoreOpenFiles();
             UpdateWelcomeVisibility();
+            ScottinaPreset.Applied += OnScottinaPresetApplied;
         }
 
         private void LoadCommands()
@@ -1745,7 +1747,27 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
 
         private void Root_Closed(object sender, EventArgs e)
         {
+            ScottinaPreset.Applied -= OnScottinaPresetApplied;
             SaveOpenFilesList();
+        }
+
+        private void OnScottinaPresetApplied(object sender, EventArgs e)
+        {
+            if (!Dispatcher.CheckAccess())
+            {
+                Dispatcher.Invoke(() => OnScottinaPresetApplied(sender, e));
+                return;
+            }
+
+            if (!File.Exists(StateFilePath))
+                return;
+
+            using var state = JsonDocument.Parse(File.ReadAllText(StateFilePath));
+            if (state.RootElement.TryGetProperty(nameof(ShowTlkBoxes), out var showTlkBoxes)
+                && showTlkBoxes.ValueKind is JsonValueKind.True or JsonValueKind.False)
+            {
+                ShowTlkBoxes = showTlkBoxes.GetBoolean();
+            }
         }
 
         private void SaveOpenFilesList()

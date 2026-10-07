@@ -37,6 +37,7 @@ public class RecentsControlTests
         PinnedFilesStayInSyncOnlyForTheSameTool();
         FileMenuOffersPinningWithoutRecentHistory();
         PinsOnlyInitializationPreservesLegacyRecentFiles();
+        ApplyingScottinaPresetReloadsDisplayedPinsWithoutChangingHistory();
     }
 
     private static void TabsKeepSeparateHistoriesAndRouteNonPccFilesToMisc()
@@ -407,6 +408,65 @@ public class RecentsControlTests
             Assert.HasCount(2, File.ReadAllLines(pinnedFile));
             CollectionAssert.AreEqual(originalRecents, File.ReadAllBytes(recentsFile),
                 "Saving pins must leave the tool's legacy recent-file bytes unchanged.");
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
+    }
+
+    private static void ApplyingScottinaPresetReloadsDisplayedPinsWithoutChangingHistory()
+    {
+        string directory = Path.Combine(Path.GetTempPath(), $"LEXPresetPinReloadTests-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+        try
+        {
+            string recentPath = Path.Combine(directory, "UserHistory.pcc");
+            string oldPinPath = Path.Combine(directory, "OldPin.pcc");
+            string newPinPath = Path.Combine(directory, "PresetPin.pcc");
+            foreach (string path in new[] { recentPath, oldPinPath, newPinPath })
+            {
+                File.WriteAllText(path, "");
+            }
+            using var control = CreateControl();
+            control.InitRecentControl(directory, new MenuItem(), _ => { });
+            control.AddRecent(recentPath, false, MEGame.LE3);
+            control.PinItem(new RecentsControl.RecentItem(oldPinPath, MEGame.LE3));
+            control.SelectedRecentGroup = control.PinnedGroup;
+            UpdateControlLayout(control);
+            Assert.AreEqual(oldPinPath, control.PinnedGroup.Items.Single().Path);
+            string[] originalHistory = control.RecentItems.Select(item => item.ConvertToRecentEntry()).ToArray();
+            string recentsFile = Path.Combine(directory, "RECENTFILES");
+            byte[] originalHistoryBytes = File.ReadAllBytes(recentsFile);
+            string pinnedFile = Path.Combine(directory, "PINNEDFILES");
+            string newPinEntry = new RecentsControl.RecentItem(newPinPath, MEGame.LE3).ConvertToRecentEntry();
+            File.WriteAllLines(pinnedFile, [newPinEntry]);
+
+            // Simulate the completed preset notification without applying it to the user's real profile.
+            typeof(RecentsControl).GetMethod("OnScottinaPresetApplied", BindingFlags.Static | BindingFlags.NonPublic)!
+                .Invoke(null, new object[] { null, EventArgs.Empty });
+            UpdateControlLayout(control);
+
+            Assert.IsFalse(control.IsPinned(oldPinPath));
+            Assert.IsTrue(control.IsPinned(newPinPath));
+            Assert.AreEqual(newPinPath, control.PinnedItems.Single().Path);
+            Assert.AreEqual(newPinPath, control.PinnedGroup.Items.Single().Path,
+                "The visible pinned tab must reload the preset's saved pins.");
+            Assert.AreSame(control.PinnedGroup, control.SelectedRecentGroup);
+            var pinnedMenu = (MenuItem)control.RecentsMenu.Items[0];
+            Assert.AreEqual("Pinned files", pinnedMenu.Header);
+            var menuControl = (RecentsControl)((MenuItem)pinnedMenu.Items[0]).Header;
+            Assert.AreEqual(newPinPath, menuControl.PinnedItems.Single().Path);
+            Assert.AreEqual(newPinPath, menuControl.PinnedGroup.Items.Single().Path,
+                "The File menu's embedded pin list must reload too.");
+            CollectionAssert.AreEqual(originalHistory,
+                control.RecentItems.Select(item => item.ConvertToRecentEntry()).ToArray());
+            CollectionAssert.AreEqual(new[] { recentPath },
+                control.RecentsMenu.Items.OfType<MenuItem>().Where(item => item.Tag is string)
+                    .Select(item => (string)item.Tag).ToArray());
+            CollectionAssert.AreEqual(originalHistoryBytes, File.ReadAllBytes(recentsFile),
+                "Reloading preset pins must preserve the user's recent-file bytes.");
+            CollectionAssert.AreEqual(new[] { newPinEntry }, File.ReadAllLines(pinnedFile));
         }
         finally
         {

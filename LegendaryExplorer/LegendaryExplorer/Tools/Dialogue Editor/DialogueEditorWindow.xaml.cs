@@ -919,9 +919,18 @@ namespace LegendaryExplorer.DialogueEditor
             Node_Combo_ReplyType.ItemsSource = Enums.GetValues<EReplyTypes>();
             HideUnrelatedConnectionsOnSelection_MenuItem.IsChecked = hideUnrelatedConnectionsOnSelection;
             RebuildSpeakerNodeFilterMenu();
+            LoadSavedOptions();
+            if (persistUserState)
+            {
+                ScottinaPreset.Applied += OnScottinaPresetApplied;
+            }
+        }
+
+        private void LoadSavedOptions()
+        {
             // Detect if theme changed while editor was closed so we skip stale saved colors
             bool themeChangedWhileEditorClosed = false;
-            bool hasSavedOptions = initializeUserState && File.Exists(OptionsPath);
+            bool hasSavedOptions = persistUserState && File.Exists(OptionsPath);
             if (hasSavedOptions) //Handle options
             {
                 var options = JsonConvert.DeserializeObject<Dictionary<string, object>>(File.ReadAllText(OptionsPath));
@@ -1111,6 +1120,23 @@ namespace LegendaryExplorer.DialogueEditor
             }
 
             UpdateLayoutDefaults("startup");
+        }
+
+        private void OnScottinaPresetApplied(object sender, EventArgs e)
+        {
+            if (!Dispatcher.CheckAccess())
+            {
+                Dispatcher.Invoke(() => OnScottinaPresetApplied(sender, e));
+                return;
+            }
+
+            LoadSavedOptions();
+            graphEditor.BackColor = GraphBackgroundColor;
+            UpdateNodeBrush();
+            if (CurrentObjects.Any())
+            {
+                RefreshView();
+            }
         }
 
         private void SortBottomViewportTabsAlphabetically()
@@ -1434,6 +1460,7 @@ namespace LegendaryExplorer.DialogueEditor
 
             // Unsubscribe from theme changes to prevent memory leaks
             ThemeManager.ThemeChanged -= OnThemeChanged;
+            ScottinaPreset.Applied -= OnScottinaPresetApplied;
 
             //Code here remove these objects from leaking the window memory
             graphEditor.Camera.MouseDown -= backMouseDown_Handler;

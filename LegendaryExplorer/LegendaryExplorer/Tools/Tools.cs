@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -75,6 +76,7 @@ public static class ToolSet
     private const string ICON_COMING_SOON_RES_NAME = "iconPlaceholder";
 
     private static HashSet<Tool> items;
+    private static bool synchronizingFavorites;
 
     public static event EventHandler FavoritesChanged;
 
@@ -811,6 +813,8 @@ public static class ToolSet
 
         items = set;
 
+        Settings.StaticPropertyChanged -= Settings_StaticPropertyChanged;
+        Settings.StaticPropertyChanged += Settings_StaticPropertyChanged;
         loadFavorites();
     }
 
@@ -839,45 +843,60 @@ public static class ToolSet
 
     private static void loadFavorites()
     {
+        if (items == null) return;
+
+        synchronizingFavorites = true;
         try
         {
-            var favorites = new HashSet<string>(Misc.AppSettings.Settings.MainWindow_Favorites.Split(';'));
+            var favorites = new HashSet<string>((Settings.MainWindow_Favorites ?? string.Empty).Split(';'), StringComparer.Ordinal);
             foreach (var tool in items)
             {
-                if (favorites.Contains(tool.name))
-                {
-                    tool.IsFavorited = true;
-                }
+                tool.IsFavorited = favorites.Contains(tool.name);
             }
         }
-        catch
+        finally
         {
-            return;
+            synchronizingFavorites = false;
+        }
+
+        FavoritesChanged?.Invoke(null, EventArgs.Empty);
+    }
+
+    private static void Settings_StaticPropertyChanged(object sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(Settings.MainWindow_Favorites) && !synchronizingFavorites)
+        {
+            loadFavorites();
         }
     }
 
     public static void saveFavorites()
     {
-        if (FavoritesChanged != null)
+        if (items == null || synchronizingFavorites) return;
+
+        synchronizingFavorites = true;
+        try
         {
-            FavoritesChanged.Invoke(null, EventArgs.Empty);
-            try
+            var favorites = new StringBuilder();
+            foreach (var tool in items)
             {
-                var favorites = new StringBuilder();
-                foreach (var tool in items)
+                if (tool.IsFavorited)
                 {
-                    if (tool.IsFavorited)
-                    {
-                        favorites.Append(tool.name + ";");
-                    }
+                    favorites.Append(tool.name + ";");
                 }
-                if (favorites.Length > 0) favorites.Remove(favorites.Length - 1, 1);
-                Misc.AppSettings.Settings.MainWindow_Favorites = favorites.ToString();
             }
-            catch
-            {
-                return;
-            }
+            if (favorites.Length > 0) favorites.Remove(favorites.Length - 1, 1);
+            Settings.MainWindow_Favorites = favorites.ToString();
         }
+        catch
+        {
+            return;
+        }
+        finally
+        {
+            synchronizingFavorites = false;
+        }
+
+        FavoritesChanged?.Invoke(null, EventArgs.Empty);
     }
 }

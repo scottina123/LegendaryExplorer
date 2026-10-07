@@ -75,6 +75,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
     public partial class SequenceEditorWPF : WPFBase, IRecents, IDropTarget
     {
         private readonly SequenceGraphEditor graphEditor;
+        private bool loadingSavedPreferences;
         private Window floatingToolboxWindow;
         private System.Windows.Point floatingToolboxScreenLocation;
         private ClassToolBox floatingFavoritesToolBox;
@@ -107,6 +108,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
         private bool isEmbeddedContentLoaded;
         private bool isReadOnlyPreview;
         private readonly bool recentsEnabled;
+        private readonly bool loadCustomSourcesEnabled;
         private bool suppressReadOnlyPreviewSelectionCallback;
         private int? pendingReadOnlyPreviewObjectUIndex;
         private Action<ExportEntry> readOnlyPreviewObjectSelected;
@@ -302,6 +304,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
         internal SequenceEditorWPF(bool enableRecents, bool loadCustomSources = true) : base("Sequence Editor")
         {
             recentsEnabled = enableRecents;
+            loadCustomSourcesEnabled = loadCustomSources;
             LoadCommands();
             DataContext = this;
             StatusText = string.Empty;
@@ -317,9 +320,6 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                 RecentsController.Visibility = Visibility.Collapsed;
                 Recents_MenuItem.Visibility = Visibility.Collapsed;
             }
-
-            // Apply theme-appropriate colors based on current dark mode setting
-            ApplyThemeDefaults();
 
             // Subscribe to theme changes to update graph colors dynamically
             ThemeManager.ThemeChanged += OnThemeChanged;
@@ -351,18 +351,8 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             variablesToolBox.ShiftClickCallback = SetFavorite;
             // Custom sequences are not ClassInfo so they cannot be set as a favorite
 
-            AutoSaveView_MenuItem.IsChecked = Settings.SequenceEditor_AutoSaveViewV2;
-            ShowOutputNumbers_MenuItem.IsChecked = Settings.SequenceEditor_ShowOutputNumbers;
-            SObj.OutputNumbers = ShowOutputNumbers_MenuItem.IsChecked;
-
-            // Initialize color pickers with loaded colors
-            ClrPcker_Background.SelectedColor = GraphEditorBackColor.ToWPFColor();
-            ClrPcker_BoxFill.SelectedColor = BoxFillColor.ToWPFColor();
-            ClrPcker_TitleBox.SelectedColor = TitleBoxColor.ToWPFColor();
-            ClrPcker_CommentText.SelectedColor = CommentTextColor.ToWPFColor();
-            ClrPcker_BoxText.SelectedColor = BoxTextColor.ToWPFColor();
-            ClrPcker_Connection.SelectedColor = ConnectionColor.ToWPFColor();
-            ClrPcker_VarLink.SelectedColor = VarLinkColor.ToWPFColor();
+            LoadSavedPreferences();
+            ScottinaPreset.Applied += OnScottinaPresetApplied;
 
             if (loadCustomSources)
             {
@@ -425,6 +415,62 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             {
                 RefreshView();
             }
+        }
+
+        private void OnScottinaPresetApplied(object sender, EventArgs e)
+        {
+            if (!Dispatcher.CheckAccess())
+            {
+                Dispatcher.Invoke(() => OnScottinaPresetApplied(sender, e));
+                return;
+            }
+            if (isDisposed || isReadOnlyPreview) return;
+
+            LoadSavedPreferences();
+            if (loadCustomSourcesEnabled)
+            {
+                LoadRememberedCustomSequenceObjectSources();
+            }
+            RefreshToolboxItems();
+        }
+
+        private void LoadSavedPreferences()
+        {
+            loadingSavedPreferences = true;
+            try
+            {
+                AutoSaveView_MenuItem.IsChecked = Settings.SequenceEditor_AutoSaveViewV2;
+                ShowOutputNumbers_MenuItem.IsChecked = Settings.SequenceEditor_ShowOutputNumbers;
+                SObj.OutputNumbers = ShowOutputNumbers_MenuItem.IsChecked;
+
+                _graphEditorBackColor = Color.FromArgb(Settings.SequenceEditor_BackgroundColor);
+                _boxFillColor = Color.FromArgb(Settings.SequenceEditor_BoxFillColor);
+                _titleBoxColor = Color.FromArgb(Settings.SequenceEditor_TitleBoxColor);
+                _commentTextColor = Color.FromArgb(Settings.SequenceEditor_CommentTextColor);
+                _boxTextColor = Color.FromArgb(Settings.SequenceEditor_BoxTextColor);
+                _connectionColor = Color.FromArgb(Settings.SequenceEditor_ConnectionColor);
+                _varLinkColor = Color.FromArgb(Settings.SequenceEditor_VarLinkColor);
+                SObj.NodeBrushColor = _boxFillColor;
+                SObj.TitleBoxBrushColor = _titleBoxColor;
+                SObj.CommentTextColor = _commentTextColor;
+                SObj.BoxTextColor = _boxTextColor;
+                SObj.ConnectionColor = _connectionColor;
+                SObj.VarLinkColor = _varLinkColor;
+                graphEditor.BackColor = GraphEditorBackColor;
+
+                ClrPcker_Background.SelectedColor = GraphEditorBackColor.ToWPFColor();
+                ClrPcker_BoxFill.SelectedColor = BoxFillColor.ToWPFColor();
+                ClrPcker_TitleBox.SelectedColor = TitleBoxColor.ToWPFColor();
+                ClrPcker_CommentText.SelectedColor = CommentTextColor.ToWPFColor();
+                ClrPcker_BoxText.SelectedColor = BoxTextColor.ToWPFColor();
+                ClrPcker_Connection.SelectedColor = ConnectionColor.ToWPFColor();
+                ClrPcker_VarLink.SelectedColor = VarLinkColor.ToWPFColor();
+            }
+            finally
+            {
+                loadingSavedPreferences = false;
+            }
+            if (CurrentObjects.Any()) RefreshView();
         }
 
         private void CreateCustomSequence(object obj)
@@ -6460,6 +6506,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
 
             // Unsubscribe from theme changes to prevent memory leaks
             ThemeManager.ThemeChanged -= OnThemeChanged;
+            ScottinaPreset.Applied -= OnScottinaPresetApplied;
             //Code here remove these objects from leaking the window memory
             graphEditor.Camera.MouseDown -= backMouseDown_Handler;
             graphEditor.Camera.MouseUp -= back_MouseUp;
@@ -7962,6 +8009,8 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
 
         private void ColorPicker_SelectedColorChanged(object sender, RoutedPropertyChangedEventArgs<System.Windows.Media.Color?> e)
         {
+            if (loadingSavedPreferences) return;
+
             var source = (Xceed.Wpf.Toolkit.ColorPicker)sender;
             if (e.NewValue is not null)
             {

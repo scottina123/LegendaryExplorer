@@ -12,6 +12,7 @@ using LegendaryExplorer.SharedUI;
 using LegendaryExplorerCore;
 using LegendaryExplorerCore.GameFilesystem;
 using Microsoft.WindowsAPICodePack.Dialogs;
+using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
 using Path = System.IO.Path;
 
 namespace LegendaryExplorer.MainWindow
@@ -239,6 +240,22 @@ namespace LegendaryExplorer.MainWindow
         private void SaveFile_Click(object sender, RoutedEventArgs e)
         {
             Settings.Save();
+        }
+
+        private void ApplyScottinaPreset_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                ScottinaPreset.Apply();
+                MessageBox.Show(this,
+                    "Scottina's preset has been applied and saved. Restart LEX to refresh tools that only read settings when they launch.",
+                    "Scottina's preset", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            catch (Exception exception)
+            {
+                MessageBox.Show(this, $"Unable to apply Scottina's preset: {exception.Message}",
+                    "Scottina's preset", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
         }
 
         private void AssociatePCCSFM_Click(object sender, RoutedEventArgs e)

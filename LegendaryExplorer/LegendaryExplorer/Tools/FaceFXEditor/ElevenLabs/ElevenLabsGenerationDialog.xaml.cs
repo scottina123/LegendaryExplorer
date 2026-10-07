@@ -13,6 +13,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using LegendaryExplorer.Misc.AppSettings;
 using LegendaryExplorer.SharedUI;
 using LegendaryExplorer.Tools.FaceFXEditor.ElevenLabs.Rvc;
 using Microsoft.WindowsAPICodePack.Dialogs;
@@ -32,7 +33,7 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.ElevenLabs
     public partial class ElevenLabsGenerationDialog : Window, INotifyPropertyChanged
     {
         private readonly bool _isFemaleAsset;
-        private readonly ElevenLabsPreferences _preferences;
+        private ElevenLabsPreferences _preferences;
         private readonly MediaPlayer _mediaPlayer = new();
         private CancellationTokenSource _cancellationTokenSource;
         private ElevenLabsApiClient _client;
@@ -41,6 +42,7 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.ElevenLabs
         private ElevenLabsSubscription _subscription;
         private bool _suppressSelectionEvents;
         private bool _isBusy;
+        private bool _reloadPresetWhenIdle;
         private bool _isConnected;
         private ElevenLabsVoice _selectedVoice;
         private ElevenLabsModel _selectedModel;
@@ -154,6 +156,7 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.ElevenLabs
             Lines.CollectionChanged += Lines_CollectionChanged;
             Loaded += ElevenLabsGenerationDialog_Loaded;
             UpdateBatchState();
+            ScottinaPreset.Applied += OnScottinaPresetApplied;
         }
 
         public ObservableCollection<ElevenLabsVoice> Voices { get; } = [];
@@ -185,6 +188,10 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.ElevenLabs
                     OnPropertyChanged(nameof(CanEditLines));
                     OnPropertyChanged(nameof(BusyVisibility));
                     OnPropertyChanged(nameof(RvcSettingsEnabled));
+                    if (!value && _reloadPresetWhenIdle)
+                    {
+                        OnScottinaPresetApplied(this, EventArgs.Empty);
+                    }
                 }
             }
         }
@@ -1240,12 +1247,44 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.ElevenLabs
             RvcProtect = Math.Clamp(_preferences.RvcProtect, 0d, 0.5d);
         }
 
+        private void OnScottinaPresetApplied(object sender, EventArgs e)
+        {
+            if (!Dispatcher.CheckAccess())
+            {
+                Dispatcher.Invoke(() => OnScottinaPresetApplied(sender, e));
+                return;
+            }
+
+            // Keep an in-flight generation on its existing settings. Pending changes
+            // are loaded when it finishes, and cannot be overwritten by its saves.
+            if (IsBusy)
+            {
+                _reloadPresetWhenIdle = true;
+                return;
+            }
+
+            _reloadPresetWhenIdle = false;
+            _preferences = ElevenLabsPreferencesStore.Load();
+            _suppressSelectionEvents = true;
+            SelectedVoice = Voices.FirstOrDefault(voice => voice.VoiceId == _preferences.VoiceId)
+                            ?? SelectedVoice;
+            SelectedModel = Models.FirstOrDefault(model => model.ModelId == _preferences.ModelId)
+                            ?? SelectedModel;
+            ConfigureLanguages(_preferences.LanguageCode);
+            ApplyPreferences();
+            RefreshRvcInstallation(_preferences.RvcModelPath, _preferences.RvcIndexSelection);
+            UpdateBatchState();
+        }
+
         private void SavePreferences()
         {
+            if (_reloadPresetWhenIdle)
+                return;
+
             _preferences.RememberApiKey = RememberApiKeyCheckBox.IsChecked == true;
-            _preferences.VoiceId = SelectedVoice?.VoiceId;
-            _preferences.ModelId = SelectedModel?.ModelId;
-            _preferences.LanguageCode = SelectedLanguage?.LanguageId;
+            if (Voices.Count > 0) _preferences.VoiceId = SelectedVoice?.VoiceId;
+            if (Models.Count > 0) _preferences.ModelId = SelectedModel?.ModelId;
+            if (Models.Count > 0) _preferences.LanguageCode = SelectedLanguage?.LanguageId;
             _preferences.Stability = Stability;
             _preferences.SimilarityBoost = SimilarityBoost;
             _preferences.Style = Style;
@@ -1484,6 +1523,7 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.ElevenLabs
 
         protected override void OnClosed(EventArgs e)
         {
+            ScottinaPreset.Applied -= OnScottinaPresetApplied;
             _cancellationTokenSource?.Dispose();
             _client?.Dispose();
             _rvcClient?.Dispose();

@@ -31,7 +31,23 @@ namespace LegendaryExplorer.Misc.AppSettings
         #region Static Property Changed
 
         private static bool Loaded = false;
+        private static bool _deferSaving;
         public static event PropertyChangedEventHandler StaticPropertyChanged;
+
+        internal static void ApplyPresetChanges(Action apply)
+        {
+            bool previouslyDeferred = _deferSaving;
+            _deferSaving = true;
+            try
+            {
+                apply();
+            }
+            finally
+            {
+                _deferSaving = previouslyDeferred;
+            }
+            if (!previouslyDeferred) Save(throwOnError: true);
+        }
 
         /// <summary>
         /// Sets given property and notifies listeners of its change. IGNORES setting the property to same value.

@@ -8,6 +8,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using LegendaryExplorer.Misc;
+using LegendaryExplorer.Misc.AppSettings;
 using LegendaryExplorer.SharedUI;
 using LegendaryExplorer.SharedUI.Converters;
 using LegendaryExplorer.SharedUI.Interfaces;
@@ -381,6 +382,42 @@ namespace LegendaryExplorer.UserControls.SharedToolControls
         {
             PinControls.RemoveAll(reference => !reference.TryGetTarget(out var control) || ReferenceEquals(control, this));
             PinControls.Add(new WeakReference<RecentsControl>(this));
+            // A static handler uses the existing weak registry so closed controls
+            // do not stay alive when a hosted tool omits its Dispose call.
+            ScottinaPreset.Applied -= OnScottinaPresetApplied;
+            ScottinaPreset.Applied += OnScottinaPresetApplied;
+        }
+
+        private static void OnScottinaPresetApplied(object sender, EventArgs e)
+        {
+            PinControls.RemoveAll(reference => !reference.TryGetTarget(out _));
+            foreach (var reference in PinControls.ToList())
+            {
+                if (reference.TryGetTarget(out var control))
+                {
+                    control.ReloadPinnedPreferences();
+                }
+            }
+            if (PinControls.Count == 0)
+                ScottinaPreset.Applied -= OnScottinaPresetApplied;
+        }
+
+        private void ReloadPinnedPreferences()
+        {
+            if (RecentsFoldername == null)
+                return;
+
+            if (!Dispatcher.CheckAccess())
+            {
+                Dispatcher.Invoke(ReloadPinnedPreferences);
+                return;
+            }
+
+            SetPinnedItems(File.Exists(PinnedAppDataFile)
+                ? File.ReadAllLines(PinnedAppDataFile).Where(entry => entry.Length > 4)
+                    .Select(RecentItem.FromRecentEntryString)
+                : []);
+            RefreshRecentsMenu();
         }
 
         private void SavePinnedList()
@@ -706,6 +743,8 @@ namespace LegendaryExplorer.UserControls.SharedToolControls
             PinControls.RemoveAll(reference => !reference.TryGetTarget(out var control) || ReferenceEquals(control, this));
             pinnedMenuControl?.Dispose();
             pinnedMenuControl = null;
+            if (PinControls.Count == 0)
+                ScottinaPreset.Applied -= OnScottinaPresetApplied;
             RecentItemClicked = null;
             RecentsMenu = null;
             RecentsFoldername = null;

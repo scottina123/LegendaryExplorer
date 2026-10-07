@@ -40,6 +40,16 @@ public class SettingsWindowTests
             var general = categories.Single(tab => Equals(tab.Header, "General"));
             tabs.SelectedItem = general;
 
+            var presetButton = (Button)window.FindName("ApplyScottinaPresetButton");
+            Assert.AreEqual("Apply Scottina's preset", presetButton.Content);
+            foreach (string presetSearch in new[] { "Scottina", "favorites" })
+            {
+                search.Text = presetSearch;
+                Assert.AreSame(general, tabs.SelectedItem);
+                Assert.AreEqual(1, categories.Count(tab => tab.Visibility == Visibility.Visible));
+                Assert.AreEqual(Visibility.Visible, ((FrameworkElement)presetButton.Parent).Visibility);
+            }
+
             search.Text = "  AUTO-save  ";
             CollectionAssert.AreEqual(new[] { "Sequence Editor", "Audio" },
                 categories.Where(tab => tab.Visibility == Visibility.Visible).Select(tab => (string)tab.Header).ToArray());

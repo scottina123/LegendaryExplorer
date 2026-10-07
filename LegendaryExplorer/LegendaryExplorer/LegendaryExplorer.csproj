@@ -115,6 +115,7 @@
 		<EmbeddedResource Include="Resources\Fonts\KismetFont.ttf" />
 		<EmbeddedResource Include="Resources\StandardShader.hlsl" />
 		<EmbeddedResource Include="WwiseTestData\QurianFacefx.xml" />
+		<EmbeddedResource Include="Misc\AppSettings\ScottinaPreset.json" LogicalName="LegendaryExplorer.Misc.AppSettings.ScottinaPreset.json" />
 	</ItemGroup>
 	<ItemGroup>
 		<ProjectReference Include="..\..\SharedProjects\Be.Windows.Forms.HexBox\Be.Windows.Forms.HexBox.csproj" />

@@ -576,6 +576,7 @@ namespace LegendaryExplorer.Tools.PathfindingEditor
         #endregion
 
         #region Load+I/O
+        private bool loadingSavedPreferences = true;
         private Color _graphEditorBackColor = Color.FromArgb(Settings.PathfindingEditor_BackgroundColor);
         public Color GraphEditorBackColor
         {
@@ -601,9 +602,6 @@ namespace LegendaryExplorer.Tools.PathfindingEditor
             InitializeComponent();
             var contextMenu = (ContextMenu)FindResource("nodeContextMenu");
             contextMenu.DataContext = this;
-
-            // Apply theme-appropriate colors based on current dark mode setting
-            ApplyThemeDefaults();
 
             // Subscribe to theme changes to update graph colors dynamically
             ThemeManager.ThemeChanged += OnThemeChanged;
@@ -633,6 +631,8 @@ namespace LegendaryExplorer.Tools.PathfindingEditor
             InitializeExperimentsBrowser();
             pathfindingMouseListener = new PathfindingMouseListener(this); //Must be member so we can release reference
             graphEditor.AddInputEventListener(pathfindingMouseListener);
+            LoadSavedPreferences();
+            ScottinaPreset.Applied += OnScottinaPresetApplied;
         }
 
         private void InitializeExperimentsBrowser()
@@ -732,6 +732,12 @@ namespace LegendaryExplorer.Tools.PathfindingEditor
         /// </summary>
         private void OnThemeChanged(object sender, bool isDarkMode)
         {
+            if (!Dispatcher.CheckAccess())
+            {
+                Dispatcher.Invoke(() => OnThemeChanged(sender, isDarkMode));
+                return;
+            }
+
             ApplyThemeDefaults();
 
             if (graphEditor != null)
@@ -742,10 +748,43 @@ namespace LegendaryExplorer.Tools.PathfindingEditor
             ClrPcker_Background.SelectedColor = GraphEditorBackColor.ToWPFColor();
         }
 
+        private void LoadSavedPreferences()
+        {
+            loadingSavedPreferences = true;
+            try
+            {
+                GraphEditorBackColor = Color.FromArgb(Settings.PathfindingEditor_BackgroundColor);
+                ClrPcker_Background.SelectedColor = GraphEditorBackColor.ToWPFColor();
+                ShowActorsLayer = Settings.PathfindingEditor_ShowActorsLayer;
+                ShowArtLayer = Settings.PathfindingEditor_ShowArtLayer;
+                ShowSplinesLayer = Settings.PathfindingEditor_ShowSplinesLayer;
+                ShowPathfindingNodesLayer = Settings.PathfindingEditor_ShowPathfindingNodesLayer;
+                ShowEverythingElseLayer = Settings.PathfindingEditor_ShowEverythingElseLayer;
+            }
+            finally
+            {
+                loadingSavedPreferences = false;
+            }
+        }
+
+        private void OnScottinaPresetApplied(object sender, EventArgs e)
+        {
+            if (!Dispatcher.CheckAccess())
+            {
+                Dispatcher.Invoke(() => OnScottinaPresetApplied(sender, e));
+                return;
+            }
+
+            LoadSavedPreferences();
+            if (Pcc != null)
+            {
+                RefreshGraph();
+            }
+        }
+
         private void PathfindingEditorWPF_Loaded(object sender, RoutedEventArgs e)
         {
-            // Initialize color picker with saved color
-            ClrPcker_Background.SelectedColor = GraphEditorBackColor.ToWPFColor();
+            LoadSavedPreferences();
 
             if (FileQueuedForLoad != null || PackageQueuedForLoad != null)
             {
@@ -784,6 +823,7 @@ namespace LegendaryExplorer.Tools.PathfindingEditor
 
                 // Unsubscribe from theme changes to prevent memory leaks
                 ThemeManager.ThemeChanged -= OnThemeChanged;
+                ScottinaPreset.Applied -= OnScottinaPresetApplied;
                 graphEditor.Camera.ViewTransformChanged -= Camera_ViewTransformChanged;
 
                 graphEditor.RemoveInputEventListener(pathfindingMouseListener);
@@ -5249,6 +5289,9 @@ namespace LegendaryExplorer.Tools.PathfindingEditor
 
         private void ColorPicker_SelectedColorChanged(object sender, RoutedPropertyChangedEventArgs<System.Windows.Media.Color?> e)
         {
+            if (loadingSavedPreferences)
+                return;
+
             if (e.NewValue is not null)
             {
                 var newColor = Color.FromArgb(e.NewValue.Value.A, e.NewValue.Value.R, e.NewValue.Value.G, e.NewValue.Value.B);

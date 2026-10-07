@@ -70,6 +70,15 @@
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                 <StackPanel>
 
+                <# if (category.categoryName == "General") { #>
+                        <StackPanel Margin="5,5,5,10">
+                            <Button x:Name="ApplyScottinaPresetButton" HorizontalAlignment="Left" Padding="5,3"
+                                    Click="ApplyScottinaPreset_Click">Apply Scottina's preset</Button>
+                            <TextBlock Margin="0,5,0,0" TextWrapping="Wrap"
+                                       Text="Restore Scottina's saved global and tool preferences, including main-menu favorites and directories. Reopen tools or restart LEX for settings that are read when tools launch."/>
+                        </StackPanel>
+                <# } #>
+
                 <#  foreach (var setting in category.settings){ 
                         switch(setting.type){
                             case "bool":

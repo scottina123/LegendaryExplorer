@@ -427,6 +427,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         };
 
         private string CurrentDBPath { get; set; }
+        private (string DatabasePath, MEGame Game, string AmbPerfPath)? sessionPreferencesBeforePreset;
         public AssetDB CurrentDataBase { get; } = new();
         private string _morphPreviewStatus = "Select a morph to preview.";
         public string MorphPreviewStatus
@@ -1102,6 +1103,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             EnsureMaterialTextureCriteria();
             EnsureGestureCriteria();
             InitializeComponent();
+            ScottinaPreset.Applied += OnScottinaPresetApplied;
         }
 
         public AssetDatabaseWindow(MEGame game, bool materialSelectionMode, bool selectMaterialInstancesOnly, string initialMaterialSearchText = null) : this()
@@ -1216,14 +1218,39 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             Activate();
         }
 
+        private void OnScottinaPresetApplied(object sender, EventArgs e)
+        {
+            if (!Dispatcher.CheckAccess())
+            {
+                Dispatcher.Invoke(() => OnScottinaPresetApplied(sender, e));
+                return;
+            }
+
+            // Keep the loaded database and preview package available for this session.
+            // Their unchanged values must not replace the restored launch preferences.
+            sessionPreferencesBeforePreset = (CurrentDBPath, CurrentGame, AmbPerfMasterPccPath);
+            foreach (var materialClass in AssetFilters.MaterialFilter.Types.OfType<MaterialClassSpec>()
+                         .Where(specification => !specification.IsMaterial))
+            {
+                materialClass.IsSelected = Settings.AssetDB_HideMICs;
+            }
+            if (currentView == 2) Filter();
+        }
+
         private void AssetDB_Closing(object sender, CancelEventArgs e)
         {
             if (e.Cancel)
                 return;
 
-            Settings.AssetDBPath = CurrentDBPath;
-            Settings.AssetDBGame = CurrentGame.ToString();
-            Settings.AssetDB_AmbPerfMasterPccPath = AmbPerfMasterPccPath ?? "";
+            ScottinaPreset.Applied -= OnScottinaPresetApplied;
+            // An already-open database can keep its current session without replacing
+            // the restored defaults when LEX closes. Subsequent user changes still save.
+            if (sessionPreferencesBeforePreset is not { } previous || previous.DatabasePath != CurrentDBPath)
+                Settings.AssetDBPath = CurrentDBPath;
+            if (sessionPreferencesBeforePreset is not { } previousGame || previousGame.Game != CurrentGame)
+                Settings.AssetDBGame = CurrentGame.ToString();
+            if (sessionPreferencesBeforePreset is not { } previousAmbPerf || previousAmbPerf.AmbPerfPath != AmbPerfMasterPccPath)
+                Settings.AssetDB_AmbPerfMasterPccPath = AmbPerfMasterPccPath ?? "";
 
             MeshRendererTab_MeshRenderer?.Dispose();
             UnloadMorphPreview();

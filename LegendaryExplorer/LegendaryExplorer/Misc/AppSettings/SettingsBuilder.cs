@@ -772,8 +772,11 @@ namespace LegendaryExplorer.Misc.AppSettings
         /// <summary>
         /// Commits settings to disk.
         /// </summary>
-        public static void Save()
+        public static void Save() => Save(throwOnError: false);
+
+        private static void Save(bool throwOnError)
         {
+            if (_deferSaving) return;
             var settingsJson = new Dictionary<string,object>();
             settingsJson["mainwindow_disabletransparencyandanimations"] = MainWindow_DisableTransparencyAndAnimations.ToString();
             settingsJson["mainwindow_favorites"] = MainWindow_Favorites.ToString();
@@ -894,6 +897,7 @@ namespace LegendaryExplorer.Misc.AppSettings
             }
             catch (Exception e)
             {
+                if (throwOnError) throw;
                 Debug.WriteLine($"Could not save settings: {e.Message}");
             }
         }

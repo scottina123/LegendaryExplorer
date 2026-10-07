@@ -173,8 +173,11 @@ namespace LegendaryExplorer.Misc.AppSettings
         /// <summary>
         /// Commits settings to disk.
         /// </summary>
-        public static void Save()
+        public static void Save() => Save(throwOnError: false);
+
+        private static void Save(bool throwOnError)
         {
+            if (_deferSaving) return;
             var settingsJson = new Dictionary<string,object>();
 <#          foreach (var setting in settings){#>
 <#              if (setting.Item5) { #>
@@ -197,6 +200,7 @@ namespace LegendaryExplorer.Misc.AppSettings
             }
             catch (Exception e)
             {
+                if (throwOnError) throw;
                 Debug.WriteLine($"Could not save settings: {e.Message}");
             }
         }
