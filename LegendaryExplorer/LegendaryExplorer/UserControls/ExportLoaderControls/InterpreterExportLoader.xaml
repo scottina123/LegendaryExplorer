@@ -442,8 +442,12 @@
                                         <Button Margin="5,0,0,0" Padding="6,0" Content="×" ToolTip="Remove this property from the export" Tag="{Binding}" Click="InlineRemovePropertyButton_Click" Visibility="{Binding IsRemovableProperty, Converter={StaticResource BoolToVisibilityConverter}}"/>
                                     </StackPanel>
                                 </Border>
-                                <TextBlock Grid.Row="1" x:Name="PropertyItem_DisplayType" FontSize="10" Text="{Binding PropertyType, Mode=OneTime}" VerticalAlignment="Center" Margin="5,0,0,0"
-                                           Visibility="{Binding AdvancedView, RelativeSource={RelativeSource Mode=FindAncestor, AncestorType=global:InterpreterExportLoader}, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                                <StackPanel Grid.Row="1">
+                                    <TextBlock FontSize="10" Text="{Binding StreamingLevelPackageName}" FontStyle="Italic" Margin="5,0,0,0"
+                                               Visibility="{Binding HasStreamingLevelPackageName, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                                    <TextBlock x:Name="PropertyItem_DisplayType" FontSize="10" Text="{Binding PropertyType, Mode=OneTime}" VerticalAlignment="Center" Margin="5,0,0,0"
+                                               Visibility="{Binding AdvancedView, RelativeSource={RelativeSource Mode=FindAncestor, AncestorType=global:InterpreterExportLoader}, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                                </StackPanel>
                                 <TextBlock Grid.Column="1" Grid.Row="0" Grid.RowSpan="2" Text="⇔" Margin="8,0" VerticalAlignment="Center"
                                            Visibility="{Binding HasLinkedNode, Converter={StaticResource BoolToVisibilityConverter}}"/>
                                 <Border x:Name="PropertyItem_LinkedSelectionBorder" Grid.Column="2" Background="Transparent" Visibility="{Binding HasLinkedNode, Converter={StaticResource BoolToVisibilityConverter}}" MouseLeftButtonDown="LinkedNodePanel_PreviewMouseLeftButtonDown">

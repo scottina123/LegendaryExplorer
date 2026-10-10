@@ -641,6 +641,16 @@ namespace LegendaryExplorer.SharedUI
                             _subtext = staticMesh.ObjectName.Instanced;
                         }
 
+                        if (ee.IsA("LevelStreaming"))
+                        {
+                            var packageName = ee.GetProperty<NameProperty>("PackageName");
+                            if (!string.IsNullOrWhiteSpace(packageName?.Value.Name)
+                                && !string.Equals(packageName.Value.Name, "None", StringComparison.OrdinalIgnoreCase))
+                            {
+                                _subtext = packageName.Value.Instanced;
+                            }
+                        }
+
                         if (ee.ClassName is "SFXPointOfInterest" or "SFXStuntActor" or "SFXSimpleUseModule"
                             && ResolveUseModuleGameName(ee) is { } gameName)
                         {

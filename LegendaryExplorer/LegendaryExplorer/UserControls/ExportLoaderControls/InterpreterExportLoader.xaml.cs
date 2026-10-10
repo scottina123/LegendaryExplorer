@@ -3323,7 +3323,9 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 case "LevelStreamingKismet":
                     {
                         NameProperty prop = exportEntry.GetProperty<NameProperty>("PackageName");
-                        return $"({prop.Value.Instanced})";
+                        return string.IsNullOrWhiteSpace(prop?.Value.Name) || prop.Value.Name.Equals("None", StringComparison.OrdinalIgnoreCase)
+                            ? ""
+                            : $"({prop.Value.Instanced})";
                     }
                 case "StaticMeshComponent":
                     {
@@ -7255,9 +7257,35 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             set
             {
                 if (SetProperty(ref _inlineObjectIndexValue, value))
+                {
                     NotifyTextureFileActionsChanged();
+                    OnPropertyChanged(nameof(StreamingLevelPackageName));
+                    OnPropertyChanged(nameof(HasStreamingLevelPackageName));
+                }
             }
         }
+
+        public string StreamingLevelPackageName
+        {
+            get
+            {
+                if (Property is not ObjectProperty
+                    || UPParent?.Property is not ArrayProperty<ObjectProperty> { Name.Name: "StreamingLevels" }
+                    || !int.TryParse(InlineObjectIndexValue, out int index)
+                    || AttachedExport?.FileRef.GetEntry(index) is not ExportEntry streamingLevel
+                    || !streamingLevel.IsA("LevelStreaming"))
+                {
+                    return "";
+                }
+
+                NameProperty packageName = streamingLevel.GetProperty<NameProperty>("PackageName");
+                return string.IsNullOrWhiteSpace(packageName?.Value.Name) || packageName.Value.Name.Equals("None", StringComparison.OrdinalIgnoreCase)
+                    ? ""
+                    : packageName.Value.Instanced;
+            }
+        }
+
+        public bool HasStreamingLevelPackageName => !string.IsNullOrWhiteSpace(StreamingLevelPackageName);
 
         private void NotifyTextureFileActionsChanged()
         {
@@ -7326,6 +7354,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 OnPropertyChanged(nameof(InlineObjectIndexValue));
                 OnPropertyChanged(nameof(InlineObjectDisplayValue));
                 NotifyTextureFileActionsChanged();
+                OnPropertyChanged(nameof(StreamingLevelPackageName));
+                OnPropertyChanged(nameof(HasStreamingLevelPackageName));
             }
 
             if (Property is not NameProperty nameProperty)
