@@ -1,10 +1,12 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
 using LegendaryExplorer.Dialogs;
 using LegendaryExplorerCore.GameFilesystem;
 using LegendaryExplorerCore.Packages;
+using LegendaryExplorerCore.Packages.CloningImportingAndRelinking;
 
 namespace LegendaryExplorer.SharedUI;
 
@@ -18,6 +20,20 @@ internal sealed record PackageSaveWarning(string CurrentPath, string HighestMoun
 /// <summary>Destination selection for interactive package saves in LEX tools.</summary>
 internal static class PackageSaveService
 {
+    internal static bool ConfirmReferenceIssues(IMEPackage package, string destination, ReferenceCheckPackage references)
+    {
+        int issueCount = references.GetBlockingErrors().Count + references.GetSignificantIssues().Count;
+        return Application.Current.Dispatcher.Invoke(() =>
+        {
+            var owner = Application.Current.Windows.OfType<Window>().FirstOrDefault(window => window.IsActive);
+            owner ??= Application.Current.MainWindow;
+            var dialog = new PackageReferenceSaveWarningDialog(destination, issueCount);
+            if (owner?.IsVisible == true)
+                dialog.Owner = owner;
+            return dialog.ShowDialog() == true;
+        });
+    }
+
     internal static PackageSaveWarning GetWarning(IMEPackage package)
     {
         if (package == null || !package.Game.IsMEGame() || string.IsNullOrWhiteSpace(package.FilePath)) return null;
@@ -72,8 +88,7 @@ internal static class PackageSaveService
     {
         string destination = ChooseSavePath(package, owner, savePath, choose);
         if (destination == null) return false;
-        await package.SaveAsync(destination, compress);
-        return true;
+        return await package.TrySaveAsync(destination, compress);
     }
 
     internal static bool SaveWithMountWarning(this IMEPackage package, Window owner,
@@ -81,7 +96,6 @@ internal static class PackageSaveService
     {
         string destination = ChooseSavePath(package, owner, savePath, choose);
         if (destination == null) return false;
-        package.Save(destination, compress);
-        return true;
+        return package.TrySave(destination, compress);
     }
 }

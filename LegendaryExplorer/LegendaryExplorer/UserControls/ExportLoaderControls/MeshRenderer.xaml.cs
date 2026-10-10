@@ -1469,7 +1469,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 var export = CurrentLoadedExport;
                 string destination = PackageSaveService.ChooseSavePath(export.FileRef, Window.GetWindow(this));
                 if (destination == null) return;
-                export.FileRef.Save(destination);
+                if (!export.FileRef.TrySave(destination)) return;
 
                 var bw = new BackgroundWorker();
                 bw.DoWork += EnsureUModel_BackgroundThread;

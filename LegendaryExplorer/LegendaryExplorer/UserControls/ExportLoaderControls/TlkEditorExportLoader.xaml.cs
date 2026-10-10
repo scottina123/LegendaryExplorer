@@ -1304,7 +1304,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
                 string destination = PackageSaveService.ChooseSavePath(CurrentLoadedExport.FileRef, Window.GetWindow(this));
                 if (destination == null) return;
-                CurrentLoadedExport.FileRef.Save(destination);
+                if (!CurrentLoadedExport.FileRef.TrySave(destination)) return;
                 RefreshLoadedTlksAfterSave(CurrentLoadedExport.FileRef.Game, destination, CurrentLoadedExport.UIndex);
             }
             else if (_currentMe2Me3Me2Me3TalkFile is not null)

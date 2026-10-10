@@ -177,6 +177,7 @@ namespace LegendaryExplorer.Startup
             Log.Logger = CreateLogger();
 #endif
             LegendaryExplorerCoreLib.InitLib(TaskScheduler.FromCurrentSynchronizationContext(), packageSaveFailed, Log.Logger);
+            PackageSaver.PackageSaveReferenceWarningCallback = PackageSaveService.ConfirmReferenceIssues;
             CoreLibSettingsBridge.MapSettingsIntoBridge();
             PackageSaver.CheckME3Running = () =>
             {

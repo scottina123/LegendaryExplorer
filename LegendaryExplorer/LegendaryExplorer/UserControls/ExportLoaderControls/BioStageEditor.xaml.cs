@@ -12,11 +12,13 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
 using LegendaryExplorer.Dialogs;
+using LegendaryExplorer.MainWindow;
 using LegendaryExplorer.Misc;
 using LegendaryExplorer.Misc.AppSettings;
 using LegendaryExplorer.SharedUI;
 using LegendaryExplorer.Tools.LevelEditor;
 using LegendaryExplorer.Tools.LevelEditor.Scene3D;
+using LegendaryExplorer.Tools.PackageEditor;
 using LegendaryExplorer.UserControls.Interfaces;
 using LegendaryExplorerCore.Misc;
 using LegendaryExplorerCore.Packages;
@@ -854,9 +856,10 @@ public sealed partial class BioStageEditor : ExportLoaderControl, IActorEditorCo
                     MessageBoxImage.Warning);
             if (result == MessageBoxResult.Yes)
             {
+                bool saved = false;
                 try
                 {
-                    context.MainPackage.Save();
+                    saved = context.MainPackage.TrySave();
                 }
                 catch (Exception exception)
                 {
@@ -866,6 +869,18 @@ public sealed partial class BioStageEditor : ExportLoaderControl, IActorEditorCo
                     else
                         MessageBox.Show(owner, error, "Main PCC save failed", MessageBoxButton.OK,
                             MessageBoxImage.Error);
+                }
+                if (!saved)
+                {
+                    LEXMainWindow.IsAllowedToClose = false;
+                    if (!context.MainPackage.Users.OfType<PackageEditorWindow>().Any())
+                    {
+                        // Unloading this editor releases its linked package. Retain canceled/failed save changes
+                        // in a package tool so the user can review the reference issues and save later.
+                        var packageEditor = new PackageEditorWindow();
+                        packageEditor.LoadPackage(context.MainPackage);
+                        packageEditor.Show();
+                    }
                 }
             }
         }
