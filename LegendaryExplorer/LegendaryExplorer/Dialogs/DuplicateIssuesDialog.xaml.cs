@@ -62,11 +62,21 @@ public partial class DuplicateIssuesDialog : TrackingNotifyPropertyChangedWindow
 
     public void RefreshIssues()
     {
-        if (IsCurrentPackage)
+        if (!IsCurrentPackage)
+            return;
+
+        try
+        {
             SetIssues(EntryChecker.CheckForDuplicateIndices(package));
+        }
+        catch (Exception ex)
+        {
+            SetIssues([new EntryStringPair($"Duplicate index checking could not finish: {ex.Message}")]);
+            StatusText = "Could not check duplicate indexes; see list for details.";
+        }
     }
 
-    private void SetIssues(IEnumerable<EntryStringPair> issues)
+    internal void SetIssues(IEnumerable<EntryStringPair> issues)
     {
         Issues.ReplaceAll(issues);
         StatusText = $"{Issues.Count} duplicate issues.";

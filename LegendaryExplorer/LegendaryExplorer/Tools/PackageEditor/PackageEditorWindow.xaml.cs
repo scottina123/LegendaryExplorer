@@ -4986,7 +4986,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
 
         private void CheckForDuplicateIndexes() => ShowDuplicateIssues();
 
-        internal DuplicateIssuesDialog ShowDuplicateIssues()
+        internal DuplicateIssuesDialog ShowDuplicateIssues(IEnumerable<EntryStringPair> issues = null)
         {
             if (Pcc == null)
             {
@@ -4995,16 +4995,29 @@ namespace LegendaryExplorer.Tools.PackageEditor
 
             if (OwnedWindows.OfType<DuplicateIssuesDialog>().FirstOrDefault() is { } existingDialog)
             {
-                existingDialog.RefreshIssues();
+                if (issues is null)
+                    existingDialog.RefreshIssues();
+                else
+                    existingDialog.SetIssues(issues);
                 existingDialog.RestoreAndBringToFront();
                 return existingDialog;
             }
 
-            var duplicates = EntryChecker.CheckForDuplicateIndices(Pcc);
-
-            if (duplicates.Count > 0)
+            if (issues is null)
             {
-                var dialog = new DuplicateIssuesDialog(this, Pcc, duplicates, entryDoubleClick, () => Preview(true));
+                try
+                {
+                    issues = EntryChecker.CheckForDuplicateIndices(Pcc);
+                }
+                catch (Exception ex)
+                {
+                    issues = [new EntryStringPair($"Duplicate index checking could not finish: {ex.Message}")];
+                }
+            }
+
+            if (issues.Any())
+            {
+                var dialog = new DuplicateIssuesDialog(this, Pcc, issues, entryDoubleClick, () => Preview(true));
                 dialog.Show();
                 return dialog;
             }

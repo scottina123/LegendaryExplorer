@@ -32,6 +32,7 @@ public class DuplicateIssuesDialogTests
         ClickAndEnterNavigateToTheRequestedEntry();
         RefreshMenuAndF5ReflectChangedNamesAndIndices();
         FixAllRescansNestedAndImportedDuplicatesWithoutChangingOtherData();
+        IncompleteChecksStayRefreshableWithoutChangingThePackage();
         PackageSwitchClosesTheDialogAndRejectsStaleRepairs();
     }
 
@@ -175,6 +176,38 @@ public class DuplicateIssuesDialogTests
             var repairedNames = entries.Select(entry => entry.ObjectName).ToArray();
             Assert.AreEqual(0, dialog.FixDuplicateIssues());
             CollectionAssert.AreEqual(repairedNames, entries.Select(entry => entry.ObjectName).ToArray());
+        }
+        finally
+        {
+            dialog.Close();
+        }
+    }
+
+    private static void IncompleteChecksStayRefreshableWithoutChangingThePackage()
+    {
+        using var package = MEPackageHandler.CreateMemoryEmptyPackage("CyclicDuplicates.pcc", MEGame.LE3);
+        var first = package.CreateExport("First", "Object", indexed: false);
+        var second = package.CreateExport("Second", "Object", indexed: false);
+        first.idxLink = second.UIndex;
+        second.idxLink = first.UIndex;
+        byte[] firstHeader = first.Header;
+        byte[] secondHeader = second.Header;
+        var dialog = new DuplicateIssuesDialog(null, package, [], null, null);
+        try
+        {
+            ShowOffscreen(dialog);
+            ((MenuItem)dialog.FindName("RefreshMenuItem")).RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+            Assert.HasCount(1, dialog.Issues);
+            Assert.IsNull(dialog.Issues.Single().Entry);
+            StringAssert.Contains(dialog.Issues.Single().Message, "Duplicate index checking could not finish");
+            StringAssert.Contains(dialog.StatusText, "Could not check duplicate indexes");
+
+            var key = KeyArgs(dialog, Key.F5, Keyboard.PreviewKeyDownEvent);
+            dialog.RaiseEvent(key);
+            Assert.IsTrue(key.Handled);
+            Assert.HasCount(1, dialog.Issues);
+            CollectionAssert.AreEqual(firstHeader, first.Header);
+            CollectionAssert.AreEqual(secondHeader, second.Header);
         }
         finally
         {

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
@@ -7,6 +8,7 @@ using LegendaryExplorer.Dialogs;
 using LegendaryExplorer.Misc;
 using LegendaryExplorer.Tools.PackageEditor;
 using LegendaryExplorerCore.GameFilesystem;
+using LegendaryExplorerCore.Misc;
 using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.Packages.CloningImportingAndRelinking;
 
@@ -41,6 +43,36 @@ internal static class PackageSaveService
 
     internal static PackageEditorWindow OpenReferenceIssues(IMEPackage package, ReferenceCheckPackage references)
     {
+        var editor = GetPackageEditor(package);
+        editor.ShowReferenceIssues(references.GetBlockingErrors().Concat(references.GetSignificantIssues()));
+        return editor;
+    }
+
+    internal static bool ConfirmDuplicateIssues(IMEPackage package, string destination, IReadOnlyList<EntryStringPair> issues)
+    {
+        return Application.Current.Dispatcher.Invoke(() =>
+        {
+            var owner = Application.Current.Windows.OfType<Window>().FirstOrDefault(window => window.IsActive);
+            owner ??= Application.Current.MainWindow;
+            var dialog = new PackageDuplicateSaveWarningDialog(destination, issues.Count);
+            if (owner?.IsVisible == true)
+                dialog.Owner = owner;
+            bool save = dialog.ShowDialog() == true;
+            if (dialog.OpenDuplicateIssues)
+                OpenDuplicateIssues(package, issues);
+            return save;
+        });
+    }
+
+    internal static PackageEditorWindow OpenDuplicateIssues(IMEPackage package, IReadOnlyList<EntryStringPair> issues)
+    {
+        var editor = GetPackageEditor(package);
+        editor.ShowDuplicateIssues(issues);
+        return editor;
+    }
+
+    private static PackageEditorWindow GetPackageEditor(IMEPackage package)
+    {
         // Keep the exact open package, including unsaved edits and Save As sources. Loading the destination
         // from disk would show different data and could lose a temporary package when the saving tool releases it.
         var editor = Application.Current.Windows.OfType<PackageEditorWindow>()
@@ -52,7 +84,6 @@ internal static class PackageSaveService
             editor.LoadPackage(package);
         }
         editor.RestoreAndBringToFront();
-        editor.ShowReferenceIssues(references.GetBlockingErrors().Concat(references.GetSignificantIssues()));
         return editor;
     }
 

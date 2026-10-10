@@ -539,6 +539,13 @@ namespace LegendaryExplorerCore.Packages.CloningImportingAndRelinking
         /// <returns>A list of <see cref="EntryStringPair"/> objects that detail the second or further duplicate. If this list is empty, there are no duplicates detected.</returns>
         public static List<EntryStringPair> CheckForDuplicateIndices(IMEPackage Pcc)
         {
+            // Reading a full path follows every outer link. Reject invalid/circular chains before
+            // building identities so malformed headers cannot hang callers such as save warnings.
+            foreach (ExportEntry export in Pcc.Exports)
+                ReferenceIssueCleaner.ValidateOuterChain(export);
+            foreach (ImportEntry import in Pcc.Imports)
+                ReferenceIssueCleaner.ValidateOuterChain(import);
+
             var duplicates = new List<EntryStringPair>();
             var duplicatesPackagePathIndexMapping = new Dictionary<ObjectComparer, List<int>>();
             foreach (ExportEntry exp in Pcc.Exports)

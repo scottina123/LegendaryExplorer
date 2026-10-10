@@ -7,6 +7,7 @@ using LegendaryExplorerCore.GameFilesystem;
 using LegendaryExplorerCore.Helpers;
 using LegendaryExplorerCore.Localization;
 using LegendaryExplorerCore.Memory;
+using LegendaryExplorerCore.Misc;
 using LegendaryExplorerCore.Packages.CloningImportingAndRelinking;
 using Newtonsoft.Json;
 
@@ -27,6 +28,13 @@ namespace LegendaryExplorerCore.Packages
         /// When unset, package saves retain their normal behavior without running a reference check.
         /// </summary>
         public static Func<IMEPackage, string, ReferenceCheckPackage, bool> PackageSaveReferenceWarningCallback { get; set; }
+
+        /// <summary>
+        /// Optional host confirmation for saving packages with duplicate object indexes. This check follows
+        /// reference confirmation, if configured. Returning false cancels the save before writing the file.
+        /// When unset, package saves retain their normal behavior without running a duplicate check.
+        /// </summary>
+        public static Func<IMEPackage, string, IReadOnlyList<EntryStringPair>, bool> PackageSaveDuplicateWarningCallback { get; set; }
 
         public static bool CanReconstruct(this IMEPackage pcc) => CanReconstruct(pcc, pcc.FilePath);
 
@@ -95,6 +103,24 @@ namespace LegendaryExplorerCore.Packages
                 }
                 if (references.GetBlockingErrors().Count + references.GetSignificantIssues().Count > 0
                     && !confirmReferenceIssues(package, savePath ?? package.FilePath, references))
+                    return false;
+            }
+
+            var confirmDuplicateIssues = PackageSaveDuplicateWarningCallback;
+            if (confirmDuplicateIssues is not null)
+            {
+                List<EntryStringPair> duplicates;
+                try
+                {
+                    duplicates = EntryChecker.CheckForDuplicateIndices(package);
+                }
+                catch (Exception exception)
+                {
+                    // As with the reference check, an incomplete check must still permit saving.
+                    duplicates = [new EntryStringPair($"Duplicate index checking could not finish: {exception.Message}")];
+                }
+                if (duplicates.Count > 0
+                    && !confirmDuplicateIssues(package, savePath ?? package.FilePath, duplicates))
                     return false;
             }
 
