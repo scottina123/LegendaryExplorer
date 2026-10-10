@@ -4922,7 +4922,9 @@ namespace LegendaryExplorer.Tools.PackageEditor
             MessageBox.Show($"{count} names were amended.", "Search and Replace Names", MessageBoxButton.OK);
         }
 
-        private void CheckForBadObjectPropertyReferences()
+        private void CheckForBadObjectPropertyReferences() => ShowReferenceIssues();
+
+        internal void ShowReferenceIssues(IEnumerable<EntryStringPair> issues = null)
         {
             if (Pcc == null)
             {
@@ -4931,15 +4933,21 @@ namespace LegendaryExplorer.Tools.PackageEditor
 
             if (OwnedWindows.OfType<ReferenceIssuesDialog>().FirstOrDefault() is { } existingDialog)
             {
-                existingDialog.RefreshIssues();
+                if (issues is null)
+                    existingDialog.RefreshIssues();
+                else
+                    existingDialog.SetIssues(issues);
                 existingDialog.RestoreAndBringToFront();
                 return;
             }
 
-            ReferenceCheckPackage rcp = new ReferenceCheckPackage();
-            EntryChecker.CheckReferences(rcp, Pcc, LECLocalizationShim.NonLocalizedStringConverter);
+            if (issues is null)
+            {
+                ReferenceCheckPackage rcp = new ReferenceCheckPackage();
+                EntryChecker.CheckReferences(rcp, Pcc, LECLocalizationShim.NonLocalizedStringConverter);
+                issues = rcp.GetBlockingErrors().Concat(rcp.GetSignificantIssues()).ToList();
+            }
 
-            var issues = rcp.GetBlockingErrors().Concat(rcp.GetSignificantIssues()).ToList();
             if (issues.Any())
             {
                 var lw = new ReferenceIssuesDialog(this, Pcc, issues, objectReferenceDoubleClick, () => Preview(true));

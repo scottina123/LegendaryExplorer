@@ -2,15 +2,24 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Threading;
 using LegendaryExplorer.Dialogs;
+using LegendaryExplorer.Misc.AppSettings;
 using LegendaryExplorer.SharedUI;
+using LegendaryExplorer.SharedUI.Bases;
+using LegendaryExplorer.SharedUI.PeregrineTreeView;
+using LegendaryExplorer.Tools.PackageEditor;
+using LegendaryExplorer.UserControls.ExportLoaderControls;
+using LegendaryExplorer.UserControls.ExportLoaderControls.ScriptEditor.IDE;
 using LegendaryExplorerCore;
 using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.Packages.CloningImportingAndRelinking;
+using LegendaryExplorerCore.Misc;
 using LegendaryExplorerCore.Unreal;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -30,6 +39,7 @@ public class PackageReferenceSaveWarningTests
         ModalButtonsAndWindowCloseReturnTheExpectedChoice();
         SaveServicesPropagateReferenceWarningChoices();
         WorkerThreadWarningRunsItsDialogOnTheApplicationDispatcher();
+        OpeningIssuesCancelsTheSaveAndUsesTheUnsavedPackage();
     }
 
     private static void ModalButtonsAndWindowCloseReturnTheExpectedChoice()
@@ -44,15 +54,26 @@ public class PackageReferenceSaveWarningTests
         Assert.IsTrue(cancelButton.IsDefault);
         Assert.IsTrue(cancelButton.IsCancel);
         Assert.AreEqual(true, ShowModalAndRespond(saveDialog, () => ClickButton(saveButton)));
+        Assert.IsFalse(saveDialog.OpenReferenceIssues);
 
         var cancelDialog = new PackageReferenceSaveWarningDialog(destination, 1);
         StringAssert.Contains(cancelDialog.WarningMessage, "1 reference issue.");
         Assert.AreEqual(false, ShowModalAndRespond(cancelDialog,
             () => ClickButton((Button)cancelDialog.FindName("CancelButton"))));
+        Assert.IsFalse(cancelDialog.OpenReferenceIssues);
+
+        var openDialog = new PackageReferenceSaveWarningDialog(destination, 1);
+        var openButton = (Button)openDialog.FindName("OpenIssuesButton");
+        Assert.IsFalse(openButton.IsDefault);
+        Assert.IsFalse(openButton.IsCancel);
+        Assert.AreEqual(false, ShowModalAndRespond(openDialog, () => ClickButton(openButton)),
+            "Opening reference issues must cancel the pending save.");
+        Assert.IsTrue(openDialog.OpenReferenceIssues);
 
         var closedDialog = new PackageReferenceSaveWarningDialog(destination, 3);
         Assert.AreEqual(false, ShowModalAndRespond(closedDialog, closedDialog.Close),
             "Closing the warning must not authorize a save.");
+        Assert.IsFalse(closedDialog.OpenReferenceIssues);
     }
 
     private static bool? ShowModalAndRespond(Window dialog, Action respond)
@@ -194,6 +215,140 @@ public class PackageReferenceSaveWarningTests
             responseTimer.Stop();
             foreach (var dialog in Application.Current.Windows.OfType<PackageReferenceSaveWarningDialog>().ToArray())
                 dialog.Close();
+        }
+    }
+
+    private static void OpeningIssuesCancelsTheSaveAndUsesTheUnsavedPackage()
+    {
+        var previousCallback = PackageSaver.PackageSaveReferenceWarningCallback;
+        var previousSynchronizationContext = SynchronizationContext.Current;
+        var previousScheduler = LegendaryExplorerCoreLib.SYNCHRONIZATION_CONTEXT;
+        var settingsLoaded = typeof(Settings).GetField("Loaded", BindingFlags.Static | BindingFlags.NonPublic)!;
+        object previousSettingsLoaded = settingsLoaded.GetValue(null);
+        bool previousLiveFiltering = Settings.PackageEditor_LiveFiltering;
+        settingsLoaded.SetValue(null, false);
+        Settings.PackageEditor_LiveFiltering = false;
+        DispatcherHelper.Initialize();
+        SyntaxInfo.LoadFromSettings();
+        SynchronizationContext.SetSynchronizationContext(new DispatcherSynchronizationContext(Dispatcher.CurrentDispatcher));
+        LegendaryExplorerCoreLib.SetSynchronizationContext(TaskScheduler.FromCurrentSynchronizationContext());
+
+        string directory = Path.Combine(Path.GetTempPath(), $"LEX_OpenReferenceIssues_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+        using var package = MEPackageHandler.CreateMemoryEmptyPackage(Path.Combine(directory, "UnsavedSource.pcc"), MEGame.LE3);
+        var export = package.CreateExport("UnsavedObjectVariable", "SeqVar_Object", indexed: false);
+        export.WriteProperty(new ObjectProperty(900000, "ObjValue"));
+        export.WriteProperty(new StrProperty("Pending edit", "ObjName"));
+        byte[] unsavedData = export.Data;
+        string destination = Path.Combine(directory, "CancelledSaveAs.pcc");
+        ReferenceCheckPackage warnedReferences = null;
+        Exception responseFailure = null;
+        bool responded = false;
+        var responseTimer = new DispatcherTimer(DispatcherPriority.ApplicationIdle)
+        {
+            Interval = TimeSpan.FromMilliseconds(10)
+        };
+        responseTimer.Tick += (_, _) =>
+        {
+            var warning = Application.Current.Windows.OfType<PackageReferenceSaveWarningDialog>()
+                .FirstOrDefault(window => window.IsVisible);
+            if (warning is null) return;
+            responseTimer.Stop();
+            try
+            {
+                Assert.AreSame(Application.Current.Dispatcher, warning.Dispatcher);
+                warning.ShowActivated = false;
+                warning.Left = warning.Top = -10000;
+                ClickButton((Button)warning.FindName("OpenIssuesButton"));
+                Assert.IsTrue(warning.OpenReferenceIssues);
+                responded = true;
+            }
+            catch (Exception exception)
+            {
+                responseFailure = exception;
+                warning.Close();
+            }
+        };
+        try
+        {
+            PackageSaver.PackageSaveReferenceWarningCallback = (warnedPackage, warnedPath, references) =>
+            {
+                Assert.AreSame(package, warnedPackage);
+                Assert.AreEqual(destination, warnedPath);
+                warnedReferences = references;
+                return PackageSaveService.ConfirmReferenceIssues(warnedPackage, warnedPath, references);
+            };
+            responseTimer.Start();
+            var saveTask = Task.Run(() => package.TrySave(destination, compress: false));
+            WaitWithDispatcher(saveTask);
+            Assert.IsTrue(responded);
+            Assert.IsNull(responseFailure, responseFailure?.ToString());
+            Assert.IsFalse(saveTask.GetAwaiter().GetResult());
+            Assert.IsFalse(File.Exists(destination), "Cancel and open issues must not write the Save As destination.");
+            Assert.IsFalse(File.Exists(package.FilePath));
+            Assert.IsTrue(package.IsModified, "The pending edits must stay unsaved after opening issues.");
+            CollectionAssert.AreEqual(unsavedData, export.Data);
+
+            var editor = Application.Current.Windows.OfType<PackageEditorWindow>()
+                .Single(window => ReferenceEquals(window.Pcc, package));
+            editor.ShowActivated = editor.ShowInTaskbar = false;
+            editor.Left = editor.Top = -10000;
+            var issues = editor.OwnedWindows.OfType<ReferenceIssuesDialog>().Single();
+            issues.ShowActivated = issues.ShowInTaskbar = false;
+            issues.Left = issues.Top = -10000;
+            Assert.IsTrue(editor.IsVisible);
+            Assert.IsTrue(issues.IsVisible);
+            Assert.AreSame(package, editor.Pcc, "The editor must use the exact package being saved, including its unsaved edits.");
+            CollectionAssert.AreEqual(warnedReferences.GetBlockingErrors().Concat(warnedReferences.GetSignificantIssues()).ToArray(),
+                issues.Issues.ToArray(), "The issue window must display the report that triggered the warning.");
+
+            var list = (ListView)issues.FindName("IssuesList");
+            var propertyIssue = issues.Issues.OfType<ReferenceIssue>()
+                .Single(issue => ReferenceEquals(issue.Entry, export) && issue.Location == ReferenceIssueLocation.Property);
+            list.SelectedItem = propertyIssue;
+            list.RaiseEvent(new KeyEventArgs(Keyboard.PrimaryDevice, PresentationSource.FromVisual(issues), Environment.TickCount, Key.Enter)
+            {
+                RoutedEvent = Keyboard.KeyDownEvent
+            });
+            var interpreter = (InterpreterExportLoader)editor.FindName("InterpreterTab_Interpreter");
+            DateTime deadline = DateTime.UtcNow.AddSeconds(10);
+            while (interpreter.SelectedItem?.Property?.ValueOffset != propertyIssue.ValueOffset && DateTime.UtcNow < deadline)
+                WaitWithDispatcher(Task.Delay(30));
+            Assert.AreSame(export, editor.SelectedItem?.Entry);
+            Assert.AreEqual(propertyIssue.ValueOffset, interpreter.SelectedItem?.Property?.ValueOffset,
+                "Opening issues from a save warning must retain working property navigation.");
+
+            Assert.AreSame(editor, PackageSaveService.OpenReferenceIssues(package, warnedReferences),
+                "Opening issues again must reuse the editor already working on this package.");
+            Assert.AreSame(issues, editor.OwnedWindows.OfType<ReferenceIssuesDialog>().Single(),
+                "Opening issues again must reuse the existing issue window.");
+            Assert.AreEqual(1, Application.Current.Windows.OfType<PackageEditorWindow>()
+                .Count(window => ReferenceEquals(window.Pcc, package)));
+            Assert.IsTrue(package.IsModified);
+            CollectionAssert.AreEqual(unsavedData, export.Data);
+        }
+        finally
+        {
+            responseTimer.Stop();
+            PackageSaver.PackageSaveReferenceWarningCallback = previousCallback;
+            foreach (var warning in Application.Current.Windows.OfType<PackageReferenceSaveWarningDialog>().ToArray())
+                warning.Close();
+            foreach (var editor in Application.Current.Windows.OfType<PackageEditorWindow>()
+                         .Where(window => ReferenceEquals(window.Pcc, package)).ToArray())
+            {
+                foreach (var issues in editor.OwnedWindows.OfType<ReferenceIssuesDialog>().ToArray())
+                    issues.Close();
+                typeof(WPFBase).GetMethod("UnLoadMEPackage", BindingFlags.Instance | BindingFlags.NonPublic)!
+                    .Invoke(editor, null);
+                editor.Close();
+            }
+            Settings.PackageEditor_LiveFiltering = previousLiveFiltering;
+            settingsLoaded.SetValue(null, previousSettingsLoaded);
+            LegendaryExplorerCoreLib.SetSynchronizationContext(previousScheduler);
+            SynchronizationContext.SetSynchronizationContext(previousSynchronizationContext);
+            foreach (string file in Directory.EnumerateFiles(directory))
+                File.Delete(file);
+            Directory.Delete(directory);
         }
     }
 

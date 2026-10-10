@@ -41,8 +41,7 @@ public partial class ReferenceIssuesDialog : TrackingNotifyPropertyChangedWindow
         InitializeComponent();
         Owner = owner;
         Title = $"Reference issues in {package.FilePath}";
-        Issues.ReplaceAll(issues);
-        StatusText = $"{Issues.Count} reference issues.";
+        SetIssues(issues);
         PreviewKeyDown += Dialog_PreviewKeyDown;
         if (editor != null)
             editor.PropertyChanged += Editor_PropertyChanged;
@@ -70,7 +69,12 @@ public partial class ReferenceIssuesDialog : TrackingNotifyPropertyChangedWindow
 
         var check = new ReferenceCheckPackage();
         EntryChecker.CheckReferences(check, package, LECLocalizationShim.NonLocalizedStringConverter);
-        Issues.ReplaceAll(check.GetBlockingErrors().Concat(check.GetSignificantIssues()));
+        SetIssues(check.GetBlockingErrors().Concat(check.GetSignificantIssues()));
+    }
+
+    internal void SetIssues(IEnumerable<EntryStringPair> issues)
+    {
+        Issues.ReplaceAll(issues);
         StatusText = $"{Issues.Count} reference issues.";
     }
 

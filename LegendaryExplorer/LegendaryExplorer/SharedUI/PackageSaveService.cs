@@ -4,6 +4,8 @@ using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
 using LegendaryExplorer.Dialogs;
+using LegendaryExplorer.Misc;
+using LegendaryExplorer.Tools.PackageEditor;
 using LegendaryExplorerCore.GameFilesystem;
 using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.Packages.CloningImportingAndRelinking;
@@ -30,8 +32,28 @@ internal static class PackageSaveService
             var dialog = new PackageReferenceSaveWarningDialog(destination, issueCount);
             if (owner?.IsVisible == true)
                 dialog.Owner = owner;
-            return dialog.ShowDialog() == true;
+            bool save = dialog.ShowDialog() == true;
+            if (dialog.OpenReferenceIssues)
+                OpenReferenceIssues(package, references);
+            return save;
         });
+    }
+
+    internal static PackageEditorWindow OpenReferenceIssues(IMEPackage package, ReferenceCheckPackage references)
+    {
+        // Keep the exact open package, including unsaved edits and Save As sources. Loading the destination
+        // from disk would show different data and could lose a temporary package when the saving tool releases it.
+        var editor = Application.Current.Windows.OfType<PackageEditorWindow>()
+            .FirstOrDefault(window => ReferenceEquals(window.Pcc, package));
+        if (editor is null)
+        {
+            editor = new PackageEditorWindow(submitTelemetry: false, enableRecents: false);
+            editor.Show();
+            editor.LoadPackage(package);
+        }
+        editor.RestoreAndBringToFront();
+        editor.ShowReferenceIssues(references.GetBlockingErrors().Concat(references.GetSignificantIssues()));
+        return editor;
     }
 
     internal static PackageSaveWarning GetWarning(IMEPackage package)

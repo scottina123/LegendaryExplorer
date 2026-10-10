@@ -7,10 +7,11 @@
         <TextBlock Text="{Binding WarningMessage}" FontWeight="Bold" TextWrapping="Wrap" Margin="0,0,0,12"/>
         <TextBlock Text="Saving to" FontWeight="SemiBold"/>
         <TextBox Text="{Binding DestinationPath, Mode=OneWay}" IsReadOnly="True" TextWrapping="Wrap" Margin="0,4,0,12"/>
-        <TextBlock Text="You can save the file with these issues, or cancel to review them before saving."
+        <TextBlock Text="You can save the file with these issues, or cancel and open the reference issues list to review them."
                    TextWrapping="Wrap" Margin="0,0,0,20"/>
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
             <Button x:Name="SaveAnywayButton" Content="Save anyway" Click="SaveAnyway_Click" Padding="12,8" MinWidth="110" Margin="0,0,8,0"/>
+            <Button x:Name="OpenIssuesButton" Content="Cancel and open reference issues" Click="OpenIssues_Click" Padding="12,8" Margin="0,0,8,0"/>
             <Button x:Name="CancelButton" Content="Cancel" IsCancel="True" IsDefault="True" Padding="12,8" MinWidth="100"/>
         </StackPanel>
     </StackPanel>
