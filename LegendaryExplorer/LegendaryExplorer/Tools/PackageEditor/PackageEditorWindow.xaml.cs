@@ -4984,73 +4984,36 @@ namespace LegendaryExplorer.Tools.PackageEditor
             }
         }
 
-        private void CheckForDuplicateIndexes()
+        private void CheckForDuplicateIndexes() => ShowDuplicateIssues();
+
+        internal DuplicateIssuesDialog ShowDuplicateIssues()
         {
             if (Pcc == null)
             {
-                return;
+                return null;
+            }
+
+            if (OwnedWindows.OfType<DuplicateIssuesDialog>().FirstOrDefault() is { } existingDialog)
+            {
+                existingDialog.RefreshIssues();
+                existingDialog.RestoreAndBringToFront();
+                return existingDialog;
             }
 
             var duplicates = EntryChecker.CheckForDuplicateIndices(Pcc);
 
             if (duplicates.Count > 0)
             {
-                string copy = "";
-                foreach (var ei in duplicates)
-                {
-                    copy += ei.Message + "\n";
-                }
+                var dialog = new DuplicateIssuesDialog(this, Pcc, duplicates, entryDoubleClick, () => Preview(true));
+                dialog.Show();
+                return dialog;
+            }
 
-                //Clipboard.SetText(copy);
-                MessageBox.Show(duplicates.Count + " duplicate indexes were found.", "BAD INDEXING");
-                ListDialog lw = new ListDialog(duplicates, "Duplicate indexes",
-                        "The following items have duplicate indexes. The game may choose to use the first occurrence of the index it finds, or may crash if indexing is checked internally (such as pathfinding). You can reindex an object to force all same named items to be reindexed in the given unique path. You should reindex from the topmost duplicate entry first if one is found, as it may resolve lower item duplicates.",
-                        this)
-                { DoubleClickEntryHandler = entryDoubleClick };
-                lw.Show();
-            }
-            else
-            {
-                MessageBox.Show("No duplicate indexes were found.", "Indexing OK");
-            }
+            MessageBox.Show("No duplicate indexes were found.", "Indexing OK");
+            return null;
         }
 
-        private void ReindexDuplicateIndexes()
-        {
-            if (Pcc == null)
-            {
-                return;
-            }
-
-            if (MessageBox.Show(
-                $"This will reindex all objects that have duplicate indexing. Objects this will affect can be seen via `Debugging > Check for duplicate indexes`\n" +
-                "If you don't understand what this does, do not do it!\n\n" +
-                "Ensure this file has a backup, this operation may cause the file to stop working if you use it improperly.",
-                "Confirm Reindexing",
-                MessageBoxButton.YesNo) == MessageBoxResult.Yes)
-            {
-                var duplicatesPackagePathIndexMapping = new Dictionary<string, List<ExportEntry>>();
-                foreach (ExportEntry exp in Pcc.Exports)
-                {
-                    string key = exp.InstancedFullPath;
-                    if (key.StartsWith(UnrealPackageFile.TrashPackageName))
-                        continue; //Do not report these as requiring re-indexing.
-                    if (!duplicatesPackagePathIndexMapping.TryGetValue(key, out List<ExportEntry> indexList))
-                    {
-                        indexList = [];
-                        duplicatesPackagePathIndexMapping[key] = indexList;
-                    }
-
-                    indexList.Add(exp);
-                }
-
-                foreach (ExportEntry exp in duplicatesPackagePathIndexMapping.Values.Where(list => list.Count > 1)
-                    .Select(list => list.First()))
-                {
-                    ReindexObjectsByName(exp, false);
-                }
-            }
-        }
+        private void ReindexDuplicateIndexes() => ShowDuplicateIssues()?.ConfirmAndFixDuplicateIssues();
 
         private void FindEntryViaOffset()
         {
