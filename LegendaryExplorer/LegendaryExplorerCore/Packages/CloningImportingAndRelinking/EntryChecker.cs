@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -10,8 +10,6 @@ using LegendaryExplorerCore.Localization;
 using LegendaryExplorerCore.Misc;
 using LegendaryExplorerCore.Unreal;
 using LegendaryExplorerCore.Unreal.BinaryConverters;
-using LegendaryExplorerCore.Unreal.ObjectInfo;
-using System.Threading;
 
 namespace LegendaryExplorerCore.Packages.CloningImportingAndRelinking
 {
@@ -44,11 +42,23 @@ namespace LegendaryExplorerCore.Packages.CloningImportingAndRelinking
             }
         }
 
-        public void AddSignificantIssue(string message, IEntry entry = null)
+        public void AddBlockingError(string message, IEntry entry, ReferenceIssueLocation location, int offset)
         {
             lock (syncLock)
             {
-                SignificantIssues.Add(new EntryStringPair(entry, message));
+                BlockingErrors.Add(new ReferenceIssue(entry, message, location, offset));
+            }
+        }
+
+        public void AddSignificantIssue(string message, IEntry entry = null)
+            => AddSignificantIssue(message, entry, ReferenceIssueLocation.Entry);
+
+        public void AddSignificantIssue(string message, IEntry entry, ReferenceIssueLocation location,
+            int? offset = null, int? valueOffset = null, int? referencedUIndex = null)
+        {
+            lock (syncLock)
+            {
+                SignificantIssues.Add(new ReferenceIssue(entry, message, location, offset, valueOffset, referencedUIndex));
             }
         }
 
@@ -129,9 +139,11 @@ namespace LegendaryExplorerCore.Packages.CloningImportingAndRelinking
                 //Debug.WriteLine($"Checking {exp.UIndex} {exp.InstancedFullPath} in {exp.FileRef.FilePath}");
                 if (exp.idxLink == exp.UIndex)
                 {
-                    item.AddBlockingError(localizationDelegate(LECLocalizationShim.string_interp_fatalExportCircularReference, relativePath ?? fName, exp.UIndex));
+                    item.AddBlockingError(localizationDelegate(LECLocalizationShim.string_interp_fatalExportCircularReference, relativePath ?? fName, exp.UIndex), exp, ReferenceIssueLocation.Header, ExportEntry.OFFSET_idxLink);
                     continue;
                 }
+                if (!CheckOuterChain(item, exp, relativePath ?? fName))
+                    continue;
 
                 // UDK-specific checks.
                 if (exp.Game == MEGame.UDK)
@@ -151,27 +163,22 @@ namespace LegendaryExplorerCore.Packages.CloningImportingAndRelinking
                     {
                         if (!package.IsEntry(exp.idxArchetype))
                         {
-                            item.AddSignificantIssue(localizationDelegate(LECLocalizationShim.string_interp_warningArchetypeOutsideTables, prefix, exp.idxArchetype), exp);
+                            item.AddSignificantIssue(localizationDelegate(LECLocalizationShim.string_interp_warningArchetypeOutsideTables, prefix, exp.idxArchetype), exp, ReferenceIssueLocation.Header, 0x14);
                         }
                         else if (IsTrashedReference(package.GetEntry(exp.idxArchetype)))
                         {
-                            item.AddSignificantIssue($"{prefix} Header Archetype ({exp.idxArchetype}) is a Trashed object", exp);
+                            item.AddSignificantIssue($"{prefix} Header Archetype ({exp.idxArchetype}) is a Trashed object", exp, ReferenceIssueLocation.Header, 0x14);
                         }
                     }
 
                     if (exp.idxSuperClass != 0 && !package.IsEntry(exp.idxSuperClass))
                     {
-                        item.AddSignificantIssue(localizationDelegate(LECLocalizationShim.string_interp_warningSuperclassOutsideTables, prefix, exp.idxSuperClass), exp);
+                        item.AddSignificantIssue(localizationDelegate(LECLocalizationShim.string_interp_warningSuperclassOutsideTables, prefix, exp.idxSuperClass), exp, ReferenceIssueLocation.Header, 0x4);
                     }
 
                     if (exp.idxClass != 0 && !package.IsEntry(exp.idxClass))
                     {
-                        item.AddSignificantIssue(localizationDelegate(LECLocalizationShim.string_interp_warningClassOutsideTables, prefix, exp.idxClass), exp);
-                    }
-
-                    if (exp.idxLink != 0 && !package.IsEntry(exp.idxLink))
-                    {
-                        item.AddSignificantIssue(localizationDelegate(LECLocalizationShim.string_interp_warningLinkOutsideTables, prefix, exp.idxLink), exp);
+                        item.AddSignificantIssue(localizationDelegate(LECLocalizationShim.string_interp_warningClassOutsideTables, prefix, exp.idxClass), exp, ReferenceIssueLocation.Header, 0x0);
                     }
 
                     if (exp.HasComponentMap)
@@ -194,12 +201,12 @@ namespace LegendaryExplorerCore.Packages.CloningImportingAndRelinking
                         var stack2 = EndianReader.ToInt32(data, 4, exp.FileRef.Endian);
                         if (stack1 != 0 && !package.IsEntry(stack1))
                         {
-                            item.AddSignificantIssue(localizationDelegate(LECLocalizationShim.string_interp_warningExportStackElementOutsideTables, prefix, 0, stack1), exp);
+                            item.AddSignificantIssue(localizationDelegate(LECLocalizationShim.string_interp_warningExportStackElementOutsideTables, prefix, 0, stack1), exp, ReferenceIssueLocation.Binary, 0, referencedUIndex: stack1);
                         }
 
                         if (stack2 != 0 && !package.IsEntry(stack2))
                         {
-                            item.AddSignificantIssue(localizationDelegate(LECLocalizationShim.string_interp_warningExportStackElementOutsideTables, prefix, 1, stack2), exp);
+                            item.AddSignificantIssue(localizationDelegate(LECLocalizationShim.string_interp_warningExportStackElementOutsideTables, prefix, 1, stack2), exp, ReferenceIssueLocation.Binary, 4, referencedUIndex: stack2);
                         }
                     }
                     else if (exp.TemplateOwnerClassIdx is var toci and >= 0)
@@ -207,14 +214,14 @@ namespace LegendaryExplorerCore.Packages.CloningImportingAndRelinking
                         var TemplateOwnerClassIdx = EndianReader.ToInt32(exp.DataReadOnly, toci, exp.FileRef.Endian);
                         if (TemplateOwnerClassIdx != 0 && !package.IsEntry(TemplateOwnerClassIdx))
                         {
-                            item.AddSignificantIssue(localizationDelegate(LECLocalizationShim.string_interp_warningTemplateOwnerClassOutsideTables, prefix, toci.ToString(@"X6"), TemplateOwnerClassIdx), exp);
+                            item.AddSignificantIssue(localizationDelegate(LECLocalizationShim.string_interp_warningTemplateOwnerClassOutsideTables, prefix, toci.ToString(@"X6"), TemplateOwnerClassIdx), exp, ReferenceIssueLocation.Binary, toci, referencedUIndex: TemplateOwnerClassIdx);
                         }
                     }
 
                     var props = exp.GetProperties();
                     foreach (var p in props)
                     {
-                        recursiveCheckProperty(item, localizationDelegate, relativePath, exp.ClassName, exp, p);
+                        recursiveCheckProperty(item, localizationDelegate, relativePath ?? fName, exp.ClassName, exp, p);
                     }
                 }
                 catch (Exception e)
@@ -231,19 +238,23 @@ namespace LegendaryExplorerCore.Packages.CloningImportingAndRelinking
                     if (!exp.IsDefaultObject && ObjectBinary.From(exp) is ObjectBinary objBin)
                     {
                         List<int> indices = objBin.GetUIndexes(exp.FileRef.Game);
+                        var referenceOffsets = indices.Any(index => ReferenceIssueCleaner.IsBadReference(package, index))
+                            ? GetBinaryReferenceOffsets(objBin, indices)
+                            : new Dictionary<int, Queue<int>>();
                         foreach (int uIndex in indices)
                         {
+                            int? offset = referenceOffsets.TryGetValue(uIndex, out var offsets) && offsets.Count > 0
+                                ? offsets.Dequeue()
+                                : null;
                             if (uIndex != 0 && !exp.FileRef.IsEntry(uIndex))
                             {
-                                item.AddSignificantIssue(localizationDelegate(LECLocalizationShim.string_interp_warningBinaryReferenceOutsideTables, prefix, uIndex), exp);
+                                item.AddSignificantIssue(localizationDelegate(LECLocalizationShim.string_interp_warningBinaryReferenceOutsideTables, prefix, uIndex), exp,
+                                    ReferenceIssueLocation.Binary, offset, referencedUIndex: uIndex);
                             }
-                            else if (exp.FileRef.GetEntry(uIndex)?.ClassName == @"Package" && exp.FileRef.GetEntry(uIndex).ObjectName.ToString().CaseInsensitiveEquals(@"Trash"))
+                            else if (ReferenceIssueCleaner.IsBadReference(package, uIndex))
                             {
-                                item.AddSignificantIssue(localizationDelegate(LECLocalizationShim.string_interp_warningBinaryReferenceTrashed, prefix, uIndex), exp);
-                            }
-                            else if (exp.FileRef.GetEntry(uIndex) != null && exp.FileRef.GetEntry(uIndex).ObjectName.ToString().CaseInsensitiveEquals(UnrealPackageFile.TrashPackageName))
-                            {
-                                item.AddSignificantIssue(localizationDelegate(LECLocalizationShim.string_interp_warningBinaryReferenceTrashed, prefix, uIndex), exp);
+                                item.AddSignificantIssue(localizationDelegate(LECLocalizationShim.string_interp_warningBinaryReferenceTrashed, prefix, uIndex), exp,
+                                    ReferenceIssueLocation.Binary, offset, referencedUIndex: uIndex);
                             }
                         }
 
@@ -265,6 +276,16 @@ namespace LegendaryExplorerCore.Packages.CloningImportingAndRelinking
 
             foreach (ImportEntry imp in package.Imports)
             {
+                if (cts != null && cts.IsCancellationRequested)
+                    return;
+                if (imp.idxLink == imp.UIndex)
+                {
+                    item.AddBlockingError(localizationDelegate(LECLocalizationShim.string_interp_fatalImportCircularReference, relativePath ?? fName, imp.UIndex), imp, ReferenceIssueLocation.Header, ImportEntry.OFFSET_idxLink);
+                    continue;
+                }
+                if (!CheckOuterChain(item, imp, relativePath ?? fName))
+                    continue;
+
                 // UDK specific checks.
                 if (imp.Game == MEGame.UDK)
                 {
@@ -272,15 +293,6 @@ namespace LegendaryExplorerCore.Packages.CloningImportingAndRelinking
                     {
                         item.AddBlockingError("UDK does not work with SFXGame imports!");
                     }
-                }
-
-                if (imp.idxLink != 0 && !package.TryGetEntry(imp.idxLink, out _))
-                {
-                    item.AddSignificantIssue(localizationDelegate(LECLocalizationShim.string_interp_warningImportLinkOutideOfTables, relativePath ?? fName, imp.UIndex, imp.idxLink), imp);
-                }
-                else if (imp.idxLink == imp.UIndex)
-                {
-                    item.AddBlockingError(localizationDelegate(LECLocalizationShim.string_interp_fatalImportCircularReference, relativePath ?? fName, imp.UIndex), imp);
                 }
 
                 if (imp.Game == MEGame.UDK && imp.Parent is ExportEntry)
@@ -291,6 +303,40 @@ namespace LegendaryExplorerCore.Packages.CloningImportingAndRelinking
                 // Values check
                 checkName(item, localizationDelegate, () => imp.PackageFile, "Package file", $"import {imp.UIndex}", relativePath, fName, imp);
                 checkName(item, localizationDelegate, () => imp.ClassName, "Class name", $"import {imp.UIndex}", relativePath, fName, imp);
+            }
+        }
+
+        private static bool CheckOuterChain(ReferenceCheckPackage item, IEntry entry, string fileName)
+        {
+            try
+            {
+                ReferenceIssueCleaner.ValidateOuterChain(entry);
+                return true;
+            }
+            catch (InvalidDataException exception)
+            {
+                item.AddSignificantIssue($"{fileName}, entry {entry.UIndex}: {exception.Message}", entry,
+                    ReferenceIssueLocation.Header,
+                    entry is ExportEntry ? ExportEntry.OFFSET_idxLink : ImportEntry.OFFSET_idxLink);
+                return false;
+            }
+        }
+
+        private static Dictionary<int, Queue<int>> GetBinaryReferenceOffsets(ObjectBinary binary, List<int> indices)
+        {
+            try
+            {
+                var counts = indices.GroupBy(index => index).ToDictionary(group => group.Key, group => group.Count());
+                // ForEachUIndex need not visit fields in serialization order. Equal references are interchangeable
+                // for reporting, but only assign offsets if the two readers agree on every occurrence of that value.
+                return binary.GetUIndexOffsets().GroupBy(reference => reference.UIndex)
+                    .Where(group => counts.TryGetValue(group.Key, out int count) && count == group.Count())
+                    .ToDictionary(group => group.Key, group => new Queue<int>(group.Select(reference => reference.Offset)));
+            }
+            catch
+            {
+                // Navigation metadata is optional; an older converter must not suppress actual reference warnings.
+                return new Dictionary<int, Queue<int>>();
             }
         }
 
@@ -320,12 +366,20 @@ namespace LegendaryExplorerCore.Packages.CloningImportingAndRelinking
                 || entry.ClassName == "Package" && objectName.CaseInsensitiveEquals("Trash");
         }
 
-        private static void recursiveCheckProperty(ReferenceCheckPackage item, LECLocalizationShim.GetLocalizedStringDelegate localizationDelegate, string relativePath, string containingClassOrStructName, IEntry entry, Property property)
+        private static void recursiveCheckProperty(ReferenceCheckPackage item, LECLocalizationShim.GetLocalizedStringDelegate localizationDelegate, string relativePath, string containingClassOrStructName, IEntry entry, Property property, NameReference? arrayPropertyName = null)
         {
+            void AddPropertyIssue(string message) => item.AddSignificantIssue(message, entry,
+                ReferenceIssueLocation.Property, property.StartOffset, property.ValueOffset,
+                property switch
+                {
+                    ObjectProperty op => op.Value,
+                    DelegateProperty dp => dp.Value.ContainingObjectUIndex,
+                    _ => null
+                });
             var prefix = localizationDelegate(LECLocalizationShim.string_interp_warningPropertyTypingWrongPrefix, relativePath, entry.UIndex, entry.ObjectName.Instanced, entry.ClassName, property.StartOffset.ToString(@"X6"));
             if (property is UnknownProperty up)
             {
-                item.AddSignificantIssue(localizationDelegate(LECLocalizationShim.string_interp_warningFoundBrokenPropertyData, prefix), entry);
+                AddPropertyIssue(localizationDelegate(LECLocalizationShim.string_interp_warningFoundBrokenPropertyData, prefix));
             }
             else if (property is ObjectProperty op)
             {
@@ -335,127 +389,71 @@ namespace LegendaryExplorerCore.Packages.CloningImportingAndRelinking
                     //bad
                     if (op.Name.Name != null)
                     {
-                        item.AddSignificantIssue(localizationDelegate(LECLocalizationShim.string_interp_warningReferenceNotInExportTable, prefix, op.Name.Name, op.Value), entry);
+                        AddPropertyIssue(localizationDelegate(LECLocalizationShim.string_interp_warningReferenceNotInExportTable, prefix, op.Name.Name, op.Value));
                         validRef = false;
                     }
                     else
                     {
-                        item.AddSignificantIssue(localizationDelegate(LECLocalizationShim.string_interp_nested_warningReferenceNoInExportTable, prefix, op.Value), entry);
+                        AddPropertyIssue(localizationDelegate(LECLocalizationShim.string_interp_nested_warningReferenceNoInExportTable, prefix, op.Value));
                         validRef = false;
                     }
                 }
-                else if (op.Value < 0 && Math.Abs(op.Value) > entry.FileRef.ImportCount)
+                else if (op.Value < 0 && !entry.FileRef.IsEntry(op.Value))
                 {
                     //bad
                     if (op.Name.Name != null)
                     {
-                        item.AddSignificantIssue(localizationDelegate(LECLocalizationShim.string_interp_warningReferenceNotInImportTable, prefix, op.Name.Name, op.Value), entry);
+                        AddPropertyIssue(localizationDelegate(LECLocalizationShim.string_interp_warningReferenceNotInImportTable, prefix, op.Name.Name, op.Value));
                         validRef = false;
                     }
                     else
                     {
-                        item.AddSignificantIssue(localizationDelegate(LECLocalizationShim.string_interp_nested_warningReferenceNoInImportTable, prefix, op.Value), entry);
+                        AddPropertyIssue(localizationDelegate(LECLocalizationShim.string_interp_nested_warningReferenceNoInImportTable, prefix, op.Value));
                         validRef = false;
                     }
                 }
-                else if (op.Value != 0 && entry.FileRef.GetEntry(op.Value).ClassName == "Package")
+                else if (ReferenceIssueCleaner.IsBadReference(entry.FileRef, op.Value))
                 {
-                    // Nested if to make this a bit more readable
-                    if (entry.FileRef.GetEntry(op.Value) != null &&
-                        (entry.FileRef.GetEntry(op.Value).ObjectName.ToString().CaseInsensitiveEquals(@"Trash")
-                         || entry.FileRef.GetEntry(op.Value).ObjectName.ToString().CaseInsensitiveEquals(UnrealPackageFile.TrashPackageName)))
-                    {
-                        item.AddSignificantIssue(localizationDelegate(LECLocalizationShim.string_interp_nested_warningTrashedExportReference,
-                                prefix, op.Value), entry);
-                        validRef = false;
-                    }
+                    AddPropertyIssue(localizationDelegate(LECLocalizationShim.string_interp_nested_warningTrashedExportReference,
+                            prefix, op.Value));
+                    validRef = false;
                 }
 
                 // Check object is of correct typing?
-                if (validRef && op.Value != 0)
+                if (validRef && ObjectReferenceTypeChecker.TryGetMismatch(entry, op, containingClassOrStructName,
+                        arrayPropertyName ?? op.Name, out string expectedType, out bool expectsClass))
                 {
                     var referencedEntry = op.ResolveToEntry(entry.FileRef);
-                    if (referencedEntry.FullPath.Equals(@"SFXGame.BioDeprecated", StringComparison.InvariantCulture)) return; //This will appear as wrong even though it's technically not
-                    if (entry.FileRef.Game == MEGame.ME2)
+                    if (expectsClass)
                     {
-                        if (op.Name == "m_oAreaMap" && referencedEntry.ClassName == @"BioSWF") return; //This will appear as wrong even though it's technically not (deprecated leftover)
-                        if (op.Name == "AIController" && referencedEntry.ObjectName.Name.StartsWith("BioAI_")) return; //These are all deprecated. A few things use them still but the inheritance is wrong
-                        if (op.Name == "TrackingSound" && entry.ClassName == "SFXSeqAct_SecurityCam" && referencedEntry.ClassName == "WwiseEvent") return; // Appears to be incorrect in vanilla. Don't report it as an issue
-                    }
-
-                    var propInfo = GlobalUnrealObjectInfo.GetPropertyInfo(entry.Game, op.Name, containingClassOrStructName, containingExport: entry as ExportEntry);
-                    var customClassInfos = new Dictionary<string, ClassInfo>();
-
-                    if (referencedEntry.ClassName == @"Class" && op.Value > 0)
-                    {
-                        // Make sure we have info about this class.
-                        var lookupEnt = referencedEntry as ExportEntry;
-                        while (lookupEnt != null && lookupEnt.IsClass && !GlobalUnrealObjectInfo.GetClasses(entry.FileRef.Game).ContainsKey(lookupEnt.ObjectName))
+                        if (op.Name.Name != null)
                         {
-                            // Needs dynamically generated
-                            var cc = GlobalUnrealObjectInfo.generateClassInfo(lookupEnt);
-                            customClassInfos[lookupEnt.ObjectName] = cc;
-                            lookupEnt = lookupEnt.Parent as ExportEntry;
+                            AddPropertyIssue(localizationDelegate(
+                                LECLocalizationShim.string_interp_warningWrongPropertyTypingWrongMessage, prefix,
+                                op.Name.Name, op.Value, referencedEntry.InstancedFullPath,
+                                expectedType, referencedEntry.ClassName));
                         }
-
-                        // If we did not pull it previously, we should try again with our custom info.
-                        if (propInfo == null && customClassInfos.Any())
+                        else
                         {
-                            propInfo = GlobalUnrealObjectInfo.GetPropertyInfo(entry.Game, op.Name,
-                                containingClassOrStructName, customClassInfos[referencedEntry.ObjectName],
-                                containingExport: entry as ExportEntry);
+                            AddPropertyIssue(localizationDelegate(
+                                LECLocalizationShim.string_interp_nested_warningWrongClassPropertyTypingWrongMessage,
+                                prefix, op.Value, referencedEntry.InstancedFullPath,
+                                expectedType, referencedEntry.ClassName));
                         }
                     }
-
-                    if (propInfo != null && propInfo.Reference != null)
+                    else if (op.Name.Name != null)
                     {
-                        // We can't resolve if an object inherits from a class object that's only defined in native.
-                        // This is only possible if the reference is an import and it's importing native class object.
-                        // Like Engine.CodecBinkMovie
-                        if (!referencedEntry.IsAKnownNativeClass())
-                        {
-                            if (referencedEntry.ClassName == @"Class" && propInfo.Reference != @"Class")
-                            {
-                                // Inherits
-                                if (!referencedEntry.InheritsFrom(propInfo.Reference, customClassInfos /*, (entry as ExportEntry)?.SuperClassName) */))
-                                {
-                                    if (op.Name.Name != null)
-                                    {
-                                        item.AddSignificantIssue(localizationDelegate(
-                                            LECLocalizationShim.string_interp_warningWrongPropertyTypingWrongMessage, prefix,
-                                            op.Name.Name, op.Value, op.ResolveToEntry(entry.FileRef).InstancedFullPath,
-                                            propInfo.Reference, referencedEntry.ClassName), entry);
-                                    }
-                                    else
-                                    {
-                                        item.AddSignificantIssue(localizationDelegate(
-                                            LECLocalizationShim
-                                                .string_interp_nested_warningWrongClassPropertyTypingWrongMessage,
-                                            prefix, op.Value, op.ResolveToEntry(entry.FileRef).InstancedFullPath,
-                                            propInfo.Reference, referencedEntry.ClassName), entry);
-                                    }
-                                }
-                            }
-                            else if (!referencedEntry.IsA(propInfo.Reference, customClassInfos))
-                            {
-                                // Is instance of
-                                if (op.Name.Name != null)
-                                {
-                                    item.AddSignificantIssue(localizationDelegate(
-                                        LECLocalizationShim.string_interp_warningWrongObjectPropertyTypingWrongMessage,
-                                        prefix, op.Name.Name, op.Value,
-                                        op.ResolveToEntry(entry.FileRef).InstancedFullPath, propInfo.Reference,
-                                        referencedEntry.ClassName), entry);
-                                }
-                                else
-                                {
-                                    item.AddSignificantIssue(localizationDelegate(
-                                        LECLocalizationShim.string_interp_nested_warningWrongObjectPropertyTypingWrongMessage,
-                                        prefix, op.Value, op.ResolveToEntry(entry.FileRef).InstancedFullPath,
-                                        propInfo.Reference, referencedEntry.ClassName), entry);
-                                }
-                            }
-                        }
+                        AddPropertyIssue(localizationDelegate(
+                            LECLocalizationShim.string_interp_warningWrongObjectPropertyTypingWrongMessage,
+                            prefix, op.Name.Name, op.Value, referencedEntry.InstancedFullPath,
+                            expectedType, referencedEntry.ClassName));
+                    }
+                    else
+                    {
+                        AddPropertyIssue(localizationDelegate(
+                            LECLocalizationShim.string_interp_nested_warningWrongObjectPropertyTypingWrongMessage,
+                            prefix, op.Value, referencedEntry.InstancedFullPath,
+                            expectedType, referencedEntry.ClassName));
                     }
                 }
             }
@@ -463,7 +461,8 @@ namespace LegendaryExplorerCore.Packages.CloningImportingAndRelinking
             {
                 foreach (var p in aop)
                 {
-                    recursiveCheckProperty(item, localizationDelegate, relativePath, aop.Name, entry, p);
+                    recursiveCheckProperty(item, localizationDelegate, relativePath, containingClassOrStructName,
+                        entry, p, aop.Name);
                 }
             }
             else if (property is StructProperty sp)
@@ -484,14 +483,19 @@ namespace LegendaryExplorerCore.Packages.CloningImportingAndRelinking
             {
                 if (dp.Value.ContainingObjectUIndex != 0 && !entry.FileRef.IsEntry(dp.Value.ContainingObjectUIndex))
                 {
-                    item.AddSignificantIssue(localizationDelegate(LECLocalizationShim.string_interp_warningDelegatePropertyIsOutsideOfExportTable, prefix, dp.Name.Name), entry);
+                    AddPropertyIssue(localizationDelegate(LECLocalizationShim.string_interp_warningDelegatePropertyIsOutsideOfExportTable, prefix, dp.Name.Name));
+                }
+                else if (ReferenceIssueCleaner.IsBadReference(entry.FileRef, dp.Value.ContainingObjectUIndex))
+                {
+                    AddPropertyIssue(localizationDelegate(LECLocalizationShim.string_interp_nested_warningTrashedExportReference,
+                        prefix, dp.Value.ContainingObjectUIndex));
                 }
             }
             else if (property is NameProperty np)
             {
                 if (np.Value.Name == "") // Failed to resolve
                 {
-                    item.AddSignificantIssue(localizationDelegate(LECLocalizationShim.string_interp_invalidNameIndexonNameProperty, prefix, property.Name.Instanced), entry);
+                    AddPropertyIssue(localizationDelegate(LECLocalizationShim.string_interp_invalidNameIndexonNameProperty, prefix, property.Name.Instanced));
                 }
             }
         }

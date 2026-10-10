@@ -13,8 +13,9 @@ namespace LegendaryExplorerCore.Unreal.BinaryConverters
 {
     public abstract class ObjectBinary
     {
+        private ExportEntry export;
         [JsonIgnore]
-        public ExportEntry Export { get; init; }
+        public ExportEntry Export { get => export; init => export = value; }
         public static T From<T>(ExportEntry export, PackageCache packageCache = null, int? dataOffsetOverride = null) where T : ObjectBinary, new()
         {
             var t = new T { Export = export };
@@ -494,6 +495,58 @@ namespace LegendaryExplorerCore.Unreal.BinaryConverters
             ForEachUIndex(game, new UIndexCollector(result));
             return result;
         }
+
+        /// <summary>
+        /// Gets the export-data offsets of references explicitly read with <see cref="SerializingContainer.SerializeObjectRef"/>.
+        /// This rereads the source export without writing or changing the package. Some older converters read references
+        /// as plain integers, so this is not a replacement for <see cref="GetUIndexes"/>.
+        /// </summary>
+        public List<(int UIndex, int Offset)> GetUIndexOffsets()
+            => GetSerializedOffsets().References;
+
+        // File offsets are tracked alongside references so byte-preserving repairs can move inline payloads
+        // when a tagged property is removed, without rewriting the binary through a lossy converter.
+        internal (List<(int UIndex, int Offset)> References, List<(int Value, int Offset, int ExpectedValue)> FileOffsets) GetSerializedOffsets()
+        {
+            var result = new List<(int UIndex, int Offset)>();
+            var fileOffsets = new List<(int Value, int Offset, int ExpectedValue)>();
+            if (Export is null)
+            {
+                return (result, fileOffsets);
+            }
+
+            using var stream = Export.GetReadOnlyBinaryStream();
+            var reader = new ReferenceOffsetContainer(stream, Export, result, fileOffsets);
+            // Deserialize a fresh object so callers retain the state of this instance.
+            var copy = (ObjectBinary)Activator.CreateInstance(GetType());
+            copy.export = Export;
+            copy.Serialize(reader);
+            return (result, fileOffsets);
+        }
+
+        private sealed class ReferenceOffsetContainer(System.IO.Stream stream, ExportEntry export,
+            List<(int UIndex, int Offset)> references, List<(int Value, int Offset, int ExpectedValue)> fileOffsets)
+            : SerializingContainer(stream, export.FileRef, true, export.DataOffset + export.propsEnd())
+        {
+            private readonly int binaryStart = export.propsEnd();
+
+            public override void SerializeObjectRef(ref int value)
+            {
+                int offset = binaryStart + (int)ms.Position;
+                base.SerializeObjectRef(ref value);
+                references.Add((value, offset));
+            }
+
+            public override int SerializeFileOffset()
+            {
+                int offset = binaryStart + (int)ms.Position;
+                int expectedValue = FileOffset + sizeof(int);
+                int value = base.SerializeFileOffset();
+                fileOffsets.Add((value, offset, expectedValue));
+                return value;
+            }
+        }
+
         public virtual List<(NameReference, string)> GetNames(MEGame game) => new();
 
         /// <summary>

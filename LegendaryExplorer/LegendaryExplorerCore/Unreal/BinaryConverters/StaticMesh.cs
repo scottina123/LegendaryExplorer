@@ -41,7 +41,7 @@ namespace LegendaryExplorerCore.Unreal.BinaryConverters
         protected override void Serialize(SerializingContainer sc)
         {
             sc.Serialize(ref Bounds);
-            sc.Serialize(ref BodySetup);
+            sc.SerializeObjectRef(ref BodySetup);
             if (sc.IsSaving)
             {
                 if (sc.Game >= MEGame.ME3 && kDOPTreeME3UDKLE == null)
@@ -559,7 +559,7 @@ namespace LegendaryExplorerCore.Unreal.BinaryConverters
                 meshElement = new StaticMeshElement();
             }
 
-            Serialize(ref meshElement.Material);
+            SerializeObjectRef(ref meshElement.Material);
             Serialize(ref meshElement.EnableCollision);
             Serialize(ref meshElement.OldEnableCollision);
             Serialize(ref meshElement.bEnableShadowCasting);

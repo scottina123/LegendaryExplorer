@@ -448,9 +448,15 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         private string PendingInlineEditorPath;
         private string PendingInlineEditorName;
         private int PendingInlineEditorCaretIndex = -1;
+        private ReferenceIssue pendingReferenceIssue;
+        private int binaryScanVersion;
+        private bool isBinaryScanRunning;
 
         public override void LoadExport(ExportEntry exportEntry)
         {
+            binaryScanVersion++;
+            isBinaryScanRunning = false;
+            pendingReferenceIssue = null;
             if (CurrentLoadedExport?.FileRef != exportEntry.FileRef)
             {
                 InlineNameChoices = null;
@@ -580,6 +586,9 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             {
                 return;
             }
+            int scanVersion = ++binaryScanVersion;
+            var scannedExport = CurrentLoadedExport;
+            isBinaryScanRunning = true;
             OnDemand_Title_TextBlock.Text = "Parsing binary";
             OnDemand_Subtext_TextBlock.Text = "Please wait";
             ParseBinary_Button.Visibility = Visibility.Collapsed;
@@ -605,13 +614,22 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             Task.Run(() => PerformScanBackground(topLevelTree, binarystart))
                 .ContinueWithOnUIThread(prevTask =>
                 {
+                    if (scanVersion != binaryScanVersion || !ReferenceEquals(CurrentLoadedExport, scannedExport))
+                    {
+                        return;
+                    }
+                    isBinaryScanRunning = false;
                     var result = prevTask.Result;
                     OnDemand_Panel.Visibility = Visibility.Collapsed;
                     LoadedContent_Panel.Visibility = Visibility.Visible;
                     InitializeInlineEditors(result);
                     TreeViewItems.Replace(result);
                     ApplyWwiseStreamFilter();
-                    if (PreviousLoadedUIndex == CurrentLoadedExport?.UIndex)
+                    if (pendingReferenceIssue is not null)
+                    {
+                        SelectPendingReferenceIssue();
+                    }
+                    else if (PreviousLoadedUIndex == CurrentLoadedExport?.UIndex)
                     {
                         RestoreTreeState(result);
                     }
@@ -698,6 +716,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
             foreach (BinInterpNode child in node.Items.OfType<BinInterpNode>())
             {
+                child.Parent = node;
                 InitializeInlineEditors(child);
             }
         }
@@ -1401,8 +1420,90 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             }
         }
 
+        internal void SelectReferenceIssue(ReferenceIssue issue)
+        {
+            if (!ReferenceEquals(issue.Entry, CurrentLoadedExport))
+            {
+                return;
+            }
+            pendingReferenceIssue = issue;
+            if (isBinaryScanRunning)
+            {
+                return;
+            }
+            if (LoadedContent_Panel.Visibility != Visibility.Visible)
+            {
+                StartBinaryScan();
+                return;
+            }
+            SelectPendingReferenceIssue();
+        }
+
+        private void SelectPendingReferenceIssue()
+        {
+            var issue = pendingReferenceIssue;
+            pendingReferenceIssue = null;
+            if (issue is null || !ReferenceEquals(issue.Entry, CurrentLoadedExport))
+            {
+                return;
+            }
+            var nodes = TreeViewItems.SelectMany(FlattenBinaryNodes).ToList();
+            int? targetOffset = issue.Offset;
+            if (targetOffset is null && issue.ReferencedUIndex is int referencedUIndex)
+            {
+                // Older binary converters sometimes serialize an object reference as an ordinary integer.
+                // The interpreter can still locate it if there is exactly one matching object-reference field.
+                var candidates = nodes.Where(candidate => candidate.Tag is NodeType.ArrayLeafObject or NodeType.StructLeafObject or NodeType.ObjectProperty
+                    && candidate.Offset >= 0 && candidate.Offset <= CurrentLoadedExport.DataSize - sizeof(int)
+                    && EndianReader.ToInt32(CurrentLoadedExport.DataReadOnly, candidate.Offset, CurrentLoadedExport.FileRef.Endian) == referencedUIndex)
+                    .Select(candidate => candidate.Offset).Distinct().ToList();
+                if (candidates.Count == 1)
+                {
+                    targetOffset = candidates[0];
+                }
+            }
+            if (targetOffset is not int offset || offset < 0 || offset > CurrentLoadedExport.DataSize - sizeof(int))
+            {
+                return;
+            }
+            // The list may predate an edit. Do not navigate to a different field that has moved into this offset.
+            if (issue.ReferencedUIndex is int reference
+                && EndianReader.ToInt32(CurrentLoadedExport.DataReadOnly, offset, CurrentLoadedExport.FileRef.Endian) != reference)
+            {
+                return;
+            }
+
+            var node = nodes.LastOrDefault(candidate => candidate.Offset == offset);
+            if (node is not null)
+            {
+                for (var parent = node.Parent; parent is not null; parent = parent.Parent)
+                {
+                    parent.IsExpanded = true;
+                }
+                node.IsProgramaticallySelecting = true;
+                node.IsSelected = true;
+            }
+            SetHexboxSelectedOffset(offset);
+            BinaryInterpreter_Hexbox.SelectionLength = sizeof(int);
+        }
+
+        private static IEnumerable<BinInterpNode> FlattenBinaryNodes(BinInterpNode node)
+        {
+            yield return node;
+            foreach (var child in node.Items.OfType<BinInterpNode>())
+            {
+                foreach (var descendant in FlattenBinaryNodes(child))
+                {
+                    yield return descendant;
+                }
+            }
+        }
+
         public override void UnloadExport()
         {
+            binaryScanVersion++;
+            isBinaryScanRunning = false;
+            pendingReferenceIssue = null;
             //Todo: convert to this single byteprovider and clear bytes rather than instantiating new ones.
             BinaryInterpreter_Hexbox.ByteProvider = new ReadOptimizedByteProvider();
             TreeViewItems.ClearEx();

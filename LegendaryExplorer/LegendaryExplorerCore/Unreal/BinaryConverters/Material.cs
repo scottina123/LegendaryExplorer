@@ -1260,7 +1260,7 @@ namespace LegendaryExplorerCore.Unreal.BinaryConverters
                 mres = new MaterialResource();
             }
             Serialize(ref mres.CompileErrors, Serialize);
-            Serialize(ref mres.TextureDependencyLengthMap, Serialize, Serialize);
+            Serialize(ref mres.TextureDependencyLengthMap, SerializeObjectRef, Serialize);
             Serialize(ref mres.MaxTextureDependencyLength);
             Serialize(ref mres.ID);
             Serialize(ref mres.NumUserTexCoords);

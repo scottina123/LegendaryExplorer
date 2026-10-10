@@ -364,6 +364,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
         private int QueuedGotoNumber;
         private bool IsLoadingFile;
         private DispatcherOperation _pendingStringRefNavigationOperation;
+        private DispatcherOperation _pendingReferenceNavigationOperation;
         private CancellationTokenSource _stringRefSearchCancellationTokenSource;
         private ListDialog _stringRefSearchResultsDialog;
         /// <summary>
@@ -2709,6 +2710,12 @@ namespace LegendaryExplorer.Tools.PackageEditor
 
         private void objectReferenceDoubleClick(EntryStringPair clickedItem)
         {
+            if (clickedItem?.Entry is not { } targetEntry || targetEntry.UIndex == 0
+                || !ReferenceEquals(targetEntry.FileRef, Pcc)
+                || !ReferenceEquals(Pcc.GetEntry(targetEntry.UIndex), targetEntry))
+            {
+                return;
+            }
             if (CurrentView is CurrentViewMode.Names)
             {
                 SearchHintText = "Object name";
@@ -2716,9 +2723,26 @@ namespace LegendaryExplorer.Tools.PackageEditor
                 CurrentView = CurrentViewMode.Tree;
             }
 
-            entryDoubleClick(clickedItem);
+            if (_pendingReferenceNavigationOperation?.Status == DispatcherOperationStatus.Pending)
+            {
+                _pendingReferenceNavigationOperation.Abort();
+            }
+            CancelPendingStringRefNavigation();
+            if (!GoToNumber(targetEntry.UIndex))
+            {
+                return;
+            }
 
-            Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(() => SelectObjectReferenceInRightPanel(clickedItem)));
+            _pendingReferenceNavigationOperation = Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
+            {
+                _pendingReferenceNavigationOperation = null;
+                if (!IsLoaded || !ReferenceEquals(targetEntry.FileRef, Pcc)
+                    || !TryGetSelectedEntry(out var selectedEntry) || !ReferenceEquals(selectedEntry, targetEntry))
+                {
+                    return;
+                }
+                SelectObjectReferenceInRightPanel(clickedItem);
+            }));
         }
 
         private void stringRefUsageDoubleClick(EntryStringPair clickedItem)
@@ -2805,6 +2829,28 @@ namespace LegendaryExplorer.Tools.PackageEditor
         {
             if (clickedItem?.Entry is null || clickedItem.Entry.UIndex == 0)
             {
+                return;
+            }
+
+            if (clickedItem is ReferenceIssue issue)
+            {
+                switch (issue.Location)
+                {
+                    case ReferenceIssueLocation.Header when issue.Offset is int headerOffset:
+                        SelectMetadataOffset(headerOffset);
+                        break;
+                    case ReferenceIssueLocation.Property when ReferenceEquals(issue.Entry, InterpreterTab_Interpreter.CurrentLoadedExport):
+                        Interpreter_Tab.IsSelected = true;
+                        if (issue.Offset is int propertyOffset)
+                        {
+                            InterpreterTab_Interpreter.SelectPropertyAtOffset(propertyOffset, issue.ValueOffset, issue.ReferencedUIndex);
+                        }
+                        break;
+                    case ReferenceIssueLocation.Binary when ReferenceEquals(issue.Entry, BinaryInterpreterTab_BinaryInterpreter.CurrentLoadedExport):
+                        BinaryInterpreter_Tab.IsSelected = true;
+                        BinaryInterpreterTab_BinaryInterpreter.SelectReferenceIssue(issue);
+                        break;
+                }
                 return;
             }
 
@@ -4883,17 +4929,20 @@ namespace LegendaryExplorer.Tools.PackageEditor
                 return;
             }
 
+            if (OwnedWindows.OfType<ReferenceIssuesDialog>().FirstOrDefault() is { } existingDialog)
+            {
+                existingDialog.RefreshIssues();
+                existingDialog.RestoreAndBringToFront();
+                return;
+            }
+
             ReferenceCheckPackage rcp = new ReferenceCheckPackage();
             EntryChecker.CheckReferences(rcp, Pcc, LECLocalizationShim.NonLocalizedStringConverter);
 
             var issues = rcp.GetBlockingErrors().Concat(rcp.GetSignificantIssues()).ToList();
             if (issues.Any())
             {
-                MessageBox.Show($"{issues.Count} object reference issues were found.", "Reference issues found");
-                var lw = new ListDialog(issues.ToList(), $"Reference issues in {Pcc.FilePath}",
-                        "The following items have referencing issues. Note that this is a best-effort check and may not be 100% accurate.",
-                        this)
-                { DoubleClickEntryHandler = objectReferenceDoubleClick };
+                var lw = new ReferenceIssuesDialog(this, Pcc, issues, objectReferenceDoubleClick, () => Preview(true));
                 lw.Show();
             }
             else

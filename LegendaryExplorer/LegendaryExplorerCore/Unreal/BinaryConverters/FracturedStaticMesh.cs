@@ -22,7 +22,7 @@ namespace LegendaryExplorerCore.Unreal.BinaryConverters
         protected override void Serialize(SerializingContainer sc)
         {
             base.Serialize(sc);
-            sc.Serialize(ref SourceStaticMesh);
+            sc.SerializeObjectRef(ref SourceStaticMesh);
             sc.Serialize(ref Fragments, sc.Serialize);
             sc.Serialize(ref CoreFragmentIndex);
             if (sc.Game >= MEGame.ME3)

@@ -1,0 +1,75 @@
+<bases:TrackingNotifyPropertyChangedWindowBase x:Class="LegendaryExplorer.Dialogs.ReferenceIssuesDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:bases="clr-namespace:LegendaryExplorer.SharedUI.Bases"
+        xmlns:fa5="http://schemas.fontawesome.com/icons/"
+        Title="Reference issues" Width="820" Height="520" MinWidth="600" MinHeight="300"
+        WindowStartupLocation="CenterOwner">
+    <DockPanel Margin="5">
+        <Menu DockPanel.Dock="Top" Margin="0,0,0,5">
+            <MenuItem x:Name="RefreshMenuItem" Header="_Refresh" Click="Refresh_Click"
+                      InputGestureText="F5" ToolTip="Check the current package again and update this list"/>
+            <MenuItem x:Name="RemoveAllMenuItem" Header="Remove all bad references…" Click="RemoveAll_Click"
+                      ToolTip="Remove out-of-range, trashed, or wrong-type property references and set bad binary references to 0"/>
+        </Menu>
+        <TextBlock DockPanel.Dock="Top" TextWrapping="Wrap" Margin="0,0,0,8"
+                   Text="Click an issue to go to its property or binary field. This is a best-effort check and may not find every reference issue."/>
+        <DockPanel DockPanel.Dock="Bottom" Margin="0,8,0,0">
+            <Button DockPanel.Dock="Right" Content="Copy items to clipboard" Click="Copy_Click" Padding="6,3" Margin="8,0,0,0"/>
+            <TextBlock Text="{Binding StatusText}" TextWrapping="Wrap" VerticalAlignment="Center"/>
+        </DockPanel>
+        <Grid>
+            <ListView x:Name="IssuesList" ItemsSource="{Binding Issues}" SelectionMode="Single" AlternationCount="2"
+                      ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                      PreviewMouseLeftButtonUp="IssuesList_MouseLeftButtonUp" KeyDown="IssuesList_KeyDown">
+                <ListView.ItemContainerStyle>
+                    <Style TargetType="ListViewItem">
+                        <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                        <Setter Property="Padding" Value="4"/>
+                        <Style.Triggers>
+                            <Trigger Property="ItemsControl.AlternationIndex" Value="1">
+                                <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"/>
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}"/>
+                                <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.HighlightTextBrushKey}}"/>
+                            </Trigger>
+                        </Style.Triggers>
+                    </Style>
+                </ListView.ItemContainerStyle>
+                <ListView.ItemTemplate>
+                    <DataTemplate>
+                        <DockPanel>
+                            <fa5:ImageAwesome Icon="Solid_MousePointer" Height="16" Width="16" Margin="0,0,5,0"
+                                              Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ListViewItem}}"
+                                              VerticalAlignment="Top" ToolTip="Go to this issue" Cursor="Hand">
+                                <fa5:ImageAwesome.Style>
+                                    <Style TargetType="fa5:ImageAwesome">
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding Entry}" Value="{x:Null}">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </fa5:ImageAwesome.Style>
+                            </fa5:ImageAwesome>
+                            <TextBlock Text="{Binding Message}" TextWrapping="Wrap"/>
+                        </DockPanel>
+                    </DataTemplate>
+                </ListView.ItemTemplate>
+            </ListView>
+            <TextBlock Text="No reference issues found." HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False">
+                <TextBlock.Style>
+                    <Style TargetType="TextBlock">
+                        <Setter Property="Visibility" Value="Collapsed"/>
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding Issues.Count}" Value="0">
+                                <Setter Property="Visibility" Value="Visible"/>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </TextBlock.Style>
+            </TextBlock>
+        </Grid>
+    </DockPanel>
+</bases:TrackingNotifyPropertyChangedWindowBase>

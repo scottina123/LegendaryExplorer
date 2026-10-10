@@ -1340,6 +1340,29 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             }
         }
 
+        internal bool SelectPropertyAtOffset(int offset, int? valueOffset = null, int? referencedUIndex = null)
+        {
+            var node = PropertyNodes.SelectMany(root => root.FlattenTree()).LastOrDefault(candidate =>
+                candidate.Property is { } property && property.StartOffset == offset
+                && (valueOffset is null || property.ValueOffset == valueOffset)
+                && (referencedUIndex is null || property switch
+                {
+                    ObjectProperty objectProperty => objectProperty.Value == referencedUIndex,
+                    DelegateProperty delegateProperty => delegateProperty.Value.ContainingObjectUIndex == referencedUIndex,
+                    _ => false
+                }));
+            if (node is null)
+            {
+                return false;
+            }
+
+            node.ExpandParents();
+            node.IsSelected = true;
+            SelectedItem = node;
+            SetHexboxSelectedOffset(node.Property.ValueOffset);
+            return true;
+        }
+
         private bool CanSortArrayPropByParsedValue()
         {
             return SelectedItem != null && !SelectedItem.HasTooManyChildrenToDisplay && (SelectedItem.Property is ArrayProperty<NameProperty> ||

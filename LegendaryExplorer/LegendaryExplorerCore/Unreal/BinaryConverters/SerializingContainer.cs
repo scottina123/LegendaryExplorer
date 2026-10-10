@@ -59,7 +59,7 @@ namespace LegendaryExplorerCore.Unreal.BinaryConverters
 
     public partial class SerializingContainer
     {
-        public int SerializeFileOffset()
+        public virtual int SerializeFileOffset()
         {
             int offset = FileOffset + 4;
             Serialize(ref offset);
