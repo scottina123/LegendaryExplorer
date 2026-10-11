@@ -1007,7 +1007,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     private const float PreviewBodyMeshRelativeZ = StageBoneOriginResolver.StuntActorBodyMeshRelativeZ;
     internal const float ConversationSwitchCameraFovDegrees = 52.9f;
     private const int PlaybackUiFramesPerSecond = 20;
-    private static readonly RenderPass[] RenderPasses = [RenderPass.Base, RenderPass.Hair];
+    private static readonly RenderPass[] RenderPasses = [RenderPass.Base, RenderPass.Hair, RenderPass.Lighting, RenderPass.Translucent];
     private static readonly object sessionLevelPathsLock = new();
     private static readonly List<string> sessionLevelPaths = [];
     private static IMEPackage sessionSourcePackage;
@@ -1267,6 +1267,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         {
             ConstrainedAspectRatio = 16f / 9f,
             UseGameShaderMeshPreviews = true,
+            UseGameShaders = true,
             UseGameShaderStaticMeshPreviews = false,
             UseSrgbColorManagement = true,
             ShowCameraPositionInStatsOverlay = false,
@@ -13284,6 +13285,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                     RenderContext.CurrentHitTestId = hitTestId;
                     actor.Render(RenderContext, pass);
                 }
+                if (pass == RenderPass.Lighting) RenderContext.EndLightingPass();
             }
 
             if (canCacheBackdrop)
@@ -13375,6 +13377,9 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                         component.LocalTransform));
                     actorModel.Render(RenderPass.Base, RenderContext, 0);
                     actorModel.Render(RenderPass.Hair, RenderContext, 0);
+                    actorModel.Render(RenderPass.Lighting, RenderContext, 0);
+                    RenderContext.EndLightingPass();
+                    actorModel.Render(RenderPass.Translucent, RenderContext, 0);
                 }
             }
         }

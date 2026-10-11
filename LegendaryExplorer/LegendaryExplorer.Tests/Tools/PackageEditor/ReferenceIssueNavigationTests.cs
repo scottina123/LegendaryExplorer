@@ -109,7 +109,15 @@ public class ReferenceIssueNavigationTests
             var binaryTree = (TreeView)binaryInterpreter.FindName("BinaryInterpreter_TreeView");
 
             Invoke(window, "objectReferenceDoubleClick", propertyIssues[1]);
-            WaitUntil(() => interpreter.SelectedItem?.Property?.ValueOffset == propertyIssues[1].ValueOffset);
+            WaitUntil(() => interpreter.SelectedItem?.Property?.ValueOffset == propertyIssues[1].ValueOffset,
+                () => $"Expected property offsets {propertyIssues[1].Offset}/{propertyIssues[1].ValueOffset}; "
+                    + $"export {interpreter.CurrentLoadedExport?.ObjectName}; selected export {window.SelectedItem?.Entry?.ObjectName}; "
+                    + $"selected property {interpreter.SelectedItem?.Property?.Name} "
+                    + $"at {interpreter.SelectedItem?.Property?.StartOffset}/{interpreter.SelectedItem?.Property?.ValueOffset}; "
+                    + $"tab {((TabItem)window.FindName("Interpreter_Tab")).IsSelected}; "
+                    + string.Join("\n", interpreter.PropertyNodes.SelectMany(root => root.FlattenTree())
+                        .Where(node => node.Property is ObjectProperty).Select(node =>
+                            $"{node.Property.Name}: {node.Property.StartOffset}/{node.Property.ValueOffset}; selected={node.IsSelected}")));
             Assert.AreSame(propertiesExport, window.SelectedItem.Entry);
             Assert.IsTrue(((TabItem)window.FindName("Interpreter_Tab")).IsSelected);
             Assert.AreEqual(-999, ((ObjectProperty)interpreter.SelectedItem.Property).Value);

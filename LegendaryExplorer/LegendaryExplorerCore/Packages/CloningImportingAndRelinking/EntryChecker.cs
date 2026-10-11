@@ -10,6 +10,7 @@ using LegendaryExplorerCore.Localization;
 using LegendaryExplorerCore.Misc;
 using LegendaryExplorerCore.Unreal;
 using LegendaryExplorerCore.Unreal.BinaryConverters;
+using LegendaryExplorerCore.Unreal.ObjectInfo;
 
 namespace LegendaryExplorerCore.Packages.CloningImportingAndRelinking
 {
@@ -248,12 +249,12 @@ namespace LegendaryExplorerCore.Packages.CloningImportingAndRelinking
                                 : null;
                             if (uIndex != 0 && !exp.FileRef.IsEntry(uIndex))
                             {
-                                item.AddSignificantIssue(localizationDelegate(LECLocalizationShim.string_interp_warningBinaryReferenceOutsideTables, prefix, uIndex), exp,
+                                item.AddSignificantIssue(localizationDelegate(LECLocalizationShim.string_interp_warningBinaryReferenceOutsideTables, prefix, uIndex, string.Empty), exp,
                                     ReferenceIssueLocation.Binary, offset, referencedUIndex: uIndex);
                             }
                             else if (ReferenceIssueCleaner.IsBadReference(package, uIndex))
                             {
-                                item.AddSignificantIssue(localizationDelegate(LECLocalizationShim.string_interp_warningBinaryReferenceTrashed, prefix, uIndex), exp,
+                                item.AddSignificantIssue(localizationDelegate(LECLocalizationShim.string_interp_warningBinaryReferenceTrashed, prefix, uIndex, string.Empty), exp,
                                     ReferenceIssueLocation.Binary, offset, referencedUIndex: uIndex);
                             }
                         }
@@ -266,6 +267,8 @@ namespace LegendaryExplorerCore.Packages.CloningImportingAndRelinking
                                 item.AddSignificantIssue(localizationDelegate(LECLocalizationShim.string_interp_warningBinaryNameReferenceOutsideNameTable, prefix), exp);
                             }
                         }
+
+                        objBin.VerifyUIndexRefs(exp.FileRef.Game, new BinaryReferenceVerifier(item, localizationDelegate, prefix, exp, indices));
                     }
                 }
                 catch (Exception e) /* when (!App.IsDebug)*/
@@ -497,6 +500,74 @@ namespace LegendaryExplorerCore.Packages.CloningImportingAndRelinking
                 {
                     AddPropertyIssue(localizationDelegate(LECLocalizationShim.string_interp_invalidNameIndexonNameProperty, prefix, property.Name.Instanced));
                 }
+            }
+        }
+
+        /// <summary>
+        /// Checks that the entries referenced by an ObjectBinary's annotated UIndexes are of the classes the
+        /// annotations say they should be. This is the binary equivalent of the ObjectProperty typing check in
+        /// <see cref="recursiveCheckProperty"/>, except the expected class comes from a [UIndexRef] attribute
+        /// rather than from the Unrealscript class definitions. Also checks that the reference resolves at all and
+        /// that it doesn't point into the Trash, which applies to every reference whether or not a class is named.
+        /// </summary>
+        /// <remarks>
+        /// Unlike the property check, there is no metaclass case here. A <c>class&lt;Foo&gt;</c> property limits which
+        /// class object it can point to, which is something only the Unrealscript type system can express. A binary
+        /// UIndex is just a pointer, so the referenced entry is always checked with a plain instance-of test.
+        /// </remarks>
+        private sealed class BinaryReferenceVerifier(ReferenceCheckPackage item,
+            LECLocalizationShim.GetLocalizedStringDelegate localizationDelegate, string prefix, ExportEntry exp,
+            List<int> checkedIndices) : IUIndexRefVerifier
+        {
+            public void Verify(int uIndex, string acceptedClass, string fieldPath)
+            {
+                if (uIndex == 0)
+                {
+                    return; // Not a reference
+                }
+
+                IMEPackage pcc = exp.FileRef;
+                IEntry referencedEntry = pcc.GetEntry(uIndex);
+
+                if (referencedEntry is null)
+                {
+                    // The legacy enumeration retains coverage of converters without annotations and
+                    // supplies precise offsets for cleanup. Do not report its references twice.
+                    if (!checkedIndices.Contains(uIndex))
+                    {
+                        item.AddSignificantIssue(localizationDelegate(
+                            LECLocalizationShim.string_interp_warningBinaryReferenceOutsideTables, prefix, uIndex, fieldPath),
+                            exp, ReferenceIssueLocation.Binary, referencedUIndex: uIndex);
+                    }
+                    return;
+                }
+
+                if (ReferenceIssueCleaner.IsBadReference(pcc, uIndex))
+                {
+                    if (!checkedIndices.Contains(uIndex))
+                    {
+                        item.AddSignificantIssue(localizationDelegate(
+                            LECLocalizationShim.string_interp_warningBinaryReferenceTrashed, prefix, uIndex, fieldPath),
+                            exp, ReferenceIssueLocation.Binary, referencedUIndex: uIndex);
+                    }
+                    return;
+                }
+
+                if (acceptedClass is null)
+                {
+                    return; // A reference that can point at anything
+                }
+
+                ReferenceIssueCleaner.ValidateOuterChain(referencedEntry);
+                if (referencedEntry.IsA(acceptedClass))
+                {
+                    return;
+                }
+
+                item.AddSignificantIssue(localizationDelegate(
+                    LECLocalizationShim.string_interp_warningWrongBinaryReferenceTyping, prefix, fieldPath, uIndex,
+                    referencedEntry.InstancedFullPath, acceptedClass, referencedEntry.ClassName),
+                    exp, ReferenceIssueLocation.Binary, referencedUIndex: uIndex);
             }
         }
 

@@ -9,6 +9,7 @@ using LegendaryExplorerCore.Unreal.BinaryConverters.Shaders;
 using LegendaryExplorerCore.Unreal.Classes;
 using SharpDX.Direct3D11;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
@@ -27,6 +28,114 @@ public class MaterialRenderProxy : MaterialInstanceConstantLevelEditor, ILiveMat
     private const string UNLIT_PIXEL_SHADER_TYPE_NAME = "TBasePassPixelShaderFNoLightMapPolicyNoSkyLight";
     private const string HUMAN_LASH_MASTER_MATERIAL_NAME = "HMN_HED_LASH_Unlit_MASTER_MAT";
     private const string HUMAN_LASH_OPACITY_PARAMETER_NAME = "HED_Lash_Diff";
+    internal const string VERTEX_FACTORY_TYPE_NAME = "FLocalVertexFactory";
+
+    /// <summary>
+    /// A base pass vertex shader and pixel shader that render together. Which pair the game uses is determined by the light-map policy.
+    /// </summary>
+    private readonly record struct BasePassShaderTypes(string VertexShaderType, string PixelShaderType);
+
+    /// <summary>
+    /// Light-map policies that render one directional light plus sky lighting (see <see cref="PreviewLighting"/>), in order of preference
+    /// </summary>
+    private static readonly BasePassShaderTypes[] LitShaderTypes =
+    [
+        new("TBasePassVertexShaderFDirectionalLightLightMapPolicyFNoDensityPolicy", "TBasePassPixelShaderFDirectionalLightLightMapPolicySkyLight"),
+        //SH light is the directional light plus an SH ambient term. For preview lighting the SH is left at 0, since the sky provides ambient; light environments set it
+        new("TBasePassVertexShaderFSHLightLightMapPolicyFNoDensityPolicy", "TBasePassPixelShaderFSHLightLightMapPolicySkyLight"),
+    ];
+
+    /// <summary>
+    /// Light-map policies with no direct light, in order of preference. Unlit materials only have these
+    /// </summary>
+    private static readonly BasePassShaderTypes[] UnlitShaderTypes =
+    [
+        new("TBasePassVertexShaderFNoLightMapPolicyFNoDensityPolicy", "TBasePassPixelShaderFNoLightMapPolicySkyLight"),
+        new("TBasePassVertexShaderFNoLightMapPolicyFNoDensityPolicy", "TBasePassPixelShaderFNoLightMapPolicyNoSkyLight"),
+    ];
+
+    /// <summary>
+    /// The light-map policy the game renders each type of static light-map with. BioWare added LMT_3 to LMT_6
+    /// </summary>
+    private static string GetLightMapPolicyName(ELightMapType lightMapType) => lightMapType switch
+    {
+        ELightMapType.LMT_1D => "FDirectionalVertexLightMapPolicy",
+        ELightMapType.LMT_2D => "FDirectionalLightMapTexturePolicy",
+        ELightMapType.LMT_3 => "FCustomVectorVertexLightMapPolicy",
+        ELightMapType.LMT_4 => "FCustomVectorLightMapTexturePolicy",
+        ELightMapType.LMT_5 => "FCustomSimpleVertexLightMapPolicy",
+        ELightMapType.LMT_6 => "FCustomSimpleLightMapTexturePolicy",
+        _ => null
+    };
+
+    /// <summary>
+    /// Shaders that render a static light-map, in order of preference. The sky light is only for primitives the game lights with a dynamic sky light,
+    /// so the variant without it is preferred.
+    /// </summary>
+    private static BasePassShaderTypes[] GetLightMapShaderTypes(ELightMapType lightMapType)
+    {
+        if (GetLightMapPolicyName(lightMapType) is not string policy)
+        {
+            return [];
+        }
+        string vertexShaderType = $"TBasePassVertexShader{policy}FNoDensityPolicy";
+        return
+        [
+            new(vertexShaderType, $"TBasePassPixelShader{policy}NoSkyLight"),
+            new(vertexShaderType, $"TBasePassPixelShader{policy}SkyLight"),
+        ];
+    }
+
+    /// <summary>
+    /// Every shader type that <see cref="SelectShaders"/> can choose from, for primitives without a static light-map
+    /// </summary>
+    internal static readonly string[] ShaderTypeNames = GetShaderTypeNames(ELightMapType.LMT_None);
+
+    private static string[] GetShaderTypeNames(ELightMapType lightMapType) => GetLightMapShaderTypes(lightMapType).Concat(LitShaderTypes).Concat(UnlitShaderTypes)
+        .SelectMany(types => new[] { types.VertexShaderType, types.PixelShaderType })
+        .Distinct().ToArray();
+
+    /// <summary>
+    /// Picks the vertex and pixel shader to render with. Lit materials use a lit pair if they have one, otherwise they fall back to an unlit pair.
+    /// </summary>
+    /// <param name="shaders">A material's shaders. Nulls are ignored</param>
+    /// <returns>Nulls if the material has no usable pair</returns>
+    internal static (Shader vertexShader, Shader pixelShader) SelectShaders(IEnumerable<Shader> shaders, bool isUnlit) =>
+        SelectShaders(shaders, isUnlit, ELightMapType.LMT_None, out _);
+
+    /// <summary>
+    /// Picks the vertex and pixel shader to render with. Lit materials use the shaders for <paramref name="lightMapType"/> if they have them,
+    /// then a dynamically lit pair, then an unlit pair.
+    /// </summary>
+    /// <param name="shaders">A material's shaders. Nulls are ignored</param>
+    /// <param name="usesLightMap">Whether the chosen shaders render the light-map</param>
+    /// <returns>Nulls if the material has no usable pair</returns>
+    internal static (Shader vertexShader, Shader pixelShader) SelectShaders(IEnumerable<Shader> shaders, bool isUnlit, ELightMapType lightMapType, out bool usesLightMap)
+    {
+        var shadersByType = new Dictionary<string, Shader>();
+        foreach (Shader shader in shaders)
+        {
+            if (shader is not null)
+            {
+                shadersByType.TryAdd(shader.ShaderType.Name, shader);
+            }
+        }
+
+        //Unlit materials ignore light-maps
+        BasePassShaderTypes[] lightMapShaderTypes = isUnlit ? [] : GetLightMapShaderTypes(lightMapType);
+        IEnumerable<BasePassShaderTypes> candidates = isUnlit ? UnlitShaderTypes : lightMapShaderTypes.Concat(LitShaderTypes).Concat(UnlitShaderTypes);
+        foreach (BasePassShaderTypes types in candidates)
+        {
+            if (shadersByType.TryGetValue(types.VertexShaderType, out Shader vertexShader)
+                && shadersByType.TryGetValue(types.PixelShaderType, out Shader pixelShader))
+            {
+                usesLightMap = lightMapShaderTypes.Contains(types);
+                return (vertexShader, pixelShader);
+            }
+        }
+        usesLightMap = false;
+        return (null, null);
+    }
 
     public EBlendMode BlendMode;
     public bool UseHairPass;
@@ -41,6 +150,24 @@ public class MaterialRenderProxy : MaterialInstanceConstantLevelEditor, ILiveMat
     private readonly Dictionary<string, (bool Exists, float Value)> PreviewScalarBaselines = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, (bool Exists, LinearColor Value)> PreviewVectorBaselines = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, (bool Exists, string Value)> PreviewTextureBaselines = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>
+    /// Backfaces aren't culled
+    /// </summary>
+    public bool IsTwoSided;
+
+    // materials that displace vertices disqualify the mesh from culling
+    public bool HasUndisplacedVertices { get; private set; }
+
+    /// <summary>
+    /// The type of static light-map the mesh this material is on has. Set by <see cref="QueueGameShaderLoad"/>, since it determines which shaders are loaded
+    /// </summary>
+    public ELightMapType LightMapType { get; private set; }
+
+    /// <summary>
+    /// Whether <see cref="UnrealVertexShader"/> and <see cref="UnrealPixelShader"/> render a static light-map (of type <see cref="LightMapType"/>).
+    /// If false, they're lit by <see cref="PreviewLighting"/> instead.
+    /// </summary>
+    public bool UsesLightMap { get; private set; }
     private readonly List<string> Uniform2DTextureExpressions = [];
     public Dictionary<string, PreviewTextureCache.TextureEntry> TextureMap;
     private MaterialShaderMap ShaderMap;
@@ -64,14 +191,112 @@ public class MaterialRenderProxy : MaterialInstanceConstantLevelEditor, ILiveMat
     private ExportEntry ShaderOwner;
     private MaterialResource ShaderOwnerResource;
 
-    public VertexShaderType UnrealVertexShader;
-    public PixelShaderType UnrealPixelShader;
+    /// <summary>
+    /// A TBasePassVertexShader. See <see cref="SelectShaders"/>
+    /// </summary>
+    public Shader UnrealVertexShader;
+    /// <summary>
+    /// A TBasePassPixelShader. See <see cref="SelectShaders"/>
+    /// </summary>
+    public Shader UnrealPixelShader;
+
+    /// <summary>
+    /// For lit materials, base pass shaders without any lighting (FNoLightMapPolicy). The game uses these for meshes without a light-map,
+    /// which the level's lights are then rendered on in separate passes. Also used for the Unlit viewport mode.
+    /// </summary>
+    public Shader NoLightMapVertexShader;
+    /// <inheritdoc cref="NoLightMapVertexShader"/>
+    public Shader NoLightMapPixelShader;
+
+    /// <summary>
+    /// The variant of <see cref="UnrealPixelShader"/> that also adds sky lighting, for meshes the level's sky lights aren't baked into the light-map of.
+    /// Null if <see cref="UsesLightMap"/> is false, or the material doesn't have it.
+    /// </summary>
+    public Shader LightMapSkyLightPixelShader;
+
+    //Always excludes baked lighting, even for materials whose default pair uses a light-map.
+    public Shader PreviewVertexShader;
+    public Shader PreviewPixelShader;
+
+    /// <summary>
+    /// The base pass shaders with a directional light and an SH light (FSHLightLightMapPolicy), which light environments with an SH light render with.
+    /// Null if the material doesn't have them
+    /// </summary>
+    public Shader SHLightVertexShader;
+    /// <inheritdoc cref="SHLightVertexShader"/>
+    public Shader SHLightPixelShader;
+
+    /// <summary>
+    /// The base pass shaders for a mesh lit by a light environment: its directional light, plus its SH light or sky light
+    /// </summary>
+    public (Shader vertexShader, Shader pixelShader) GetLightEnvironmentShaders(MeshRenderContext context, LightEnvironmentLighting lighting)
+    {
+        if (context.IsUnlit || IsUnlit)
+            return (NoLightMapVertexShader, NoLightMapPixelShader);
+        if (lighting.UsesSHLight && SHLightVertexShader is not null && SHLightPixelShader is not null)
+            return (SHLightVertexShader, SHLightPixelShader);
+        return (PreviewVertexShader, PreviewPixelShader);
+    }
+
+    /// <summary>
+    /// Selects a cached base-pass pair without changing the material or reloading the level.
+    /// Missing variants return null so the caller can use the preview shader for this draw only.
+    /// </summary>
+    /// <param name="hasSkyLighting">Whether the level's sky lights add to the mesh's lighting (see <see cref="MeshStaticLighting.GetSkyLighting"/>)</param>
+    public (Shader vertexShader, Shader pixelShader) GetBasePassShaders(MeshRenderContext context, bool usesLevelLights, out bool usePreviewLighting, bool hasSkyLighting = false)
+    {
+        usePreviewLighting = false;
+        if (context.IsUnlit || IsUnlit)
+            return (NoLightMapVertexShader, NoLightMapPixelShader);
+        if (context.AreLightMapsActive && UsesLightMap)
+            return (UnrealVertexShader, hasSkyLighting && LightMapSkyLightPixelShader is not null ? LightMapSkyLightPixelShader : UnrealPixelShader);
+        if (!context.IsDynamicLightingActive || usesLevelLights)
+            return (NoLightMapVertexShader, NoLightMapPixelShader);
+        usePreviewLighting = true;
+        return (PreviewVertexShader, PreviewPixelShader);
+    }
+
+    //Light shaders are loaded as they're needed, since there are many combinations of light type and shadowing, and most are never used.
+    private ExportEntry LightShaderMapOwner;
+    private readonly ConcurrentDictionary<(SceneLightType, StaticShadowingType), (Shader, Shader)> LightShaders = new();
+
+    //The material chain is read from most to least derived. The first Material, or MaterialInstance with a StaticPermutationResource,
+    //owns the shaders the game will use. Everything after that point only contributes parameter values.
+    private bool FoundShaderMapOwner;
+    private ExportEntry ShaderMapOwner;
+    //Shaders aren't loaded in the constructor, since that's expensive and they aren't needed if game shaders are never turned on.
+    //See MeshRenderContext.LoadPendingGameShaders
+    private volatile bool AttemptedShaderLoad;
+    private readonly object ShaderLoadLock = new();
+    private readonly MeshRenderContext Context;
+
+    private string gameShaderError;
+    /// <summary>
+    /// Why this material can't be rendered with the game's shaders. Null if it can. Loads the shaders if they haven't been already.
+    /// </summary>
+    public string GameShaderError
+    {
+        get
+        {
+            LoadGameShaders();
+            return gameShaderError;
+        }
+    }
+
+    /// <summary>
+    /// Loads the shaders if they haven't been already.
+    /// </summary>
+    public bool CanRenderWithGameShaders => GameShaderError is null;
     public string VertexFactoryType { get; private set; } = LocalVertexFactoryType;
     public ParticleVertexFactoryRenderParameters ParticleFactoryParameters { get; } = new();
     public float LensFlareOcclusion { get; set; } = 1f;
     public Vector3 LensFlareCameraPosition { get; set; }
     public ExportEntry MaterialExport { get; }
     public bool UseSrgbColorManagement { get; }
+
+    // The fork's generic VFX draw API preserves its optional color management. The selected
+    // mesh/light shader APIs render into upstream's linear HDR target and always use linear views.
+    internal bool UsesLinearTextureSampling { get; private set; } = true;
 
     /// <summary>
     /// Effective scalar parameters used by the preview, including inherited defaults and instance overrides.
@@ -87,8 +312,10 @@ public class MaterialRenderProxy : MaterialInstanceConstantLevelEditor, ILiveMat
         MaterialRenderProxy parameterSource = null, bool useSrgbColorManagement = false)
         : base(export, context.PackageCache, true)
     {
+        Context = context;
         MaterialExport = export;
         UseSrgbColorManagement = useSrgbColorManagement;
+        LoadGameShaders();
         if (parameterSource is not null)
         {
             CopyEffectiveParametersFrom(parameterSource);
@@ -98,6 +325,7 @@ public class MaterialRenderProxy : MaterialInstanceConstantLevelEditor, ILiveMat
     public MaterialRenderProxy(MeshRenderContext context, ExportEntry export, string vertexFactoryType)
         : base(export, context.PackageCache, true)
     {
+        Context = context;
         MaterialExport = export;
         VertexFactoryType = string.IsNullOrWhiteSpace(vertexFactoryType)
             ? LocalVertexFactoryType
@@ -105,7 +333,8 @@ public class MaterialRenderProxy : MaterialInstanceConstantLevelEditor, ILiveMat
         // ReadBaseMaterial runs during the base constructor, before a derived constructor can select its
         // particle factory. Reload from the actual shader owner rather than blindly parsing the selected MIC.
         // Non-static MICs have no serialized MaterialInstance binary and must inherit their parent's shaders.
-        LoadShaders(ShaderOwner ?? export, ShaderOwnerResource);
+        LoadShaders(ShaderMapOwner ?? ShaderOwner ?? export, ShaderOwnerResource);
+        AttemptedShaderLoad = true;
     }
 
     public void SetScalarParameter(string parameterName, float value)
@@ -218,6 +447,65 @@ public class MaterialRenderProxy : MaterialInstanceConstantLevelEditor, ILiveMat
         CachedPixelFrameNumber = CachedVertexFrameNumber = uint.MaxValue;
     }
 
+    /// <summary>
+    /// Queues this material's shaders to be loaded by <see cref="MeshRenderContext.LoadPendingGameShaders"/>.
+    /// (Otherwise they're loaded the first time they're needed.)
+    /// </summary>
+    /// <param name="lightMapType">The type of static light-map the mesh this material is on has</param>
+    public void QueueGameShaderLoad(ELightMapType lightMapType)
+    {
+        if (LightMapType != lightMapType)
+        {
+            LightMapType = lightMapType;
+            gameShaderError = null;
+            AttemptedShaderLoad = false;
+            ShaderMapOwner = ShaderOwner;
+        }
+        if (!AttemptedShaderLoad)
+        {
+            Context.AddPendingGameShaderLoad(this);
+        }
+    }
+
+    /// <summary>
+    /// Call if rendering with game shaders fails, so that this material falls back to the LEX shader
+    /// </summary>
+    public void MarkGameShadersFailed(Exception e)
+    {
+        gameShaderError = e.Message;
+    }
+
+    /// <summary>
+    /// Loads the game's shaders for this material, if they haven't been already. Thread-safe.
+    /// </summary>
+    public void LoadGameShaders()
+    {
+        if (AttemptedShaderLoad) return;
+        lock (ShaderLoadLock)
+        {
+            if (AttemptedShaderLoad) return;
+            if (gameShaderError is null)
+            {
+                if (ShaderMapOwner is null)
+                {
+                    gameShaderError = "Could not find the Material that owns this material's shaders";
+                }
+                else
+                {
+                    LoadShaders(ShaderMapOwner, ShaderOwnerResource);
+                    LightShaderMapOwner = ShaderMapOwner;
+                    ShaderMapOwner = null;
+                    if (gameShaderError is null && (ShaderMap is null || UnrealVertexShader is null || UnrealPixelShader is null))
+                    {
+                        gameShaderError = "Could not find the material's shaders";
+                    }
+                }
+            }
+            //set last, so that other threads don't see a partially loaded material
+            AttemptedShaderLoad = true;
+        }
+    }
+
     protected override void ReadBaseMaterial(ExportEntry mat, PackageCache assetCache, Material parsedMaterial)
     {
         base.ReadBaseMaterial(mat, assetCache, parsedMaterial);
@@ -225,9 +513,12 @@ public class MaterialRenderProxy : MaterialInstanceConstantLevelEditor, ILiveMat
         var props = mat.GetProperties(packageCache: assetCache);
         Enum.TryParse(props.GetProp<EnumProperty>("BlendMode")?.Value ?? "BLEND_Opaque", out BlendMode);
 
-        //if the MIC had a StaticPermutationResource, this is already set
-        if (Uniform2DTextureExpressions.IsEmpty())
+        //if a MIC had a StaticPermutationResource, the shaders came from that instead
+        bool isShaderMapOwner = !FoundShaderMapOwner;
+        if (isShaderMapOwner)
         {
+            HasUndisplacedVertices = !parsedMaterial.SM3MaterialResource.bUsesMaterialVertexPositionOffset;
+            FoundShaderMapOwner = true;
             foreach (int uIndex in parsedMaterial.SM3MaterialResource.UniformExpressionTextures)
             {
                 Uniform2DTextureExpressions.Add(mat.FileRef.GetEntry(uIndex)?.InstancedFullPath);
@@ -235,6 +526,7 @@ public class MaterialRenderProxy : MaterialInstanceConstantLevelEditor, ILiveMat
         }
 
         UseHairPass = props.GetProp<BoolProperty>("bHairPass") is { Value: true };
+        IsTwoSided = props.GetProp<BoolProperty>("TwoSided") is { Value: true };
         IsUnlit = props.GetProp<EnumProperty>("LightingModel") is {} lightingModelProp && lightingModelProp.Value == "MLM_Unlit";
         IsHumanLashMaterial = mat.ObjectName.Name.Equals(HUMAN_LASH_MASTER_MATERIAL_NAME, StringComparison.OrdinalIgnoreCase);
 
@@ -273,18 +565,21 @@ public class MaterialRenderProxy : MaterialInstanceConstantLevelEditor, ILiveMat
             }
         }
 
-        //if the MIC had a StaticPermutationResource, this is already set
-        if (ShaderMap is null)
+        if (isShaderMapOwner)
         {
-            LoadShaders(mat, parsedMaterial.SM3MaterialResource);
+            ShaderMapOwner = mat;
+            ShaderOwner = mat;
+            ShaderOwnerResource = parsedMaterial.SM3MaterialResource;
         }
     }
 
     private void LoadShaders(ExportEntry mat, MaterialResource legacyMaterialResource = null)
     {
+        try
+        {
         string factoryType = VertexFactoryType ?? LocalVertexFactoryType;
         (ShaderMap, Shader[] shaders) = ShaderCacheManipulator.GetMaterialShaderMapAndShadersForVertexFactory(
-            mat, factoryType, VERTEX_SHADER_TYPE_NAME, LIT_PIXEL_SHADER_TYPE_NAME, UNLIT_PIXEL_SHADER_TYPE_NAME);
+            mat, factoryType, GetShaderTypeNames(LightMapType));
 
         ShaderOwner = mat;
         ShaderOwnerResource = legacyMaterialResource;
@@ -326,8 +621,158 @@ public class MaterialRenderProxy : MaterialInstanceConstantLevelEditor, ILiveMat
             AddUniformExpressionParameters(expression);
         }
 
-        UnrealVertexShader = (VertexShaderType)shaders[0];
-        UnrealPixelShader = (PixelShaderType)(shaders[1] ?? shaders[2]);
+            (UnrealVertexShader, UnrealPixelShader) = SelectShaders(shaders, IsUnlit, LightMapType, out bool usesLightMap);
+            UsesLightMap = usesLightMap;
+            if (usesLightMap)
+            {
+                string skyLightPixelShaderType = $"TBasePassPixelShader{GetLightMapPolicyName(LightMapType)}SkyLight";
+                LightMapSkyLightPixelShader = shaders.FirstOrDefault(shader => shader?.ShaderType.Name == skyLightPixelShaderType);
+            }
+            (NoLightMapVertexShader, NoLightMapPixelShader) = SelectShaders(shaders, isUnlit: true);
+            (PreviewVertexShader, PreviewPixelShader) = SelectShaders(shaders, IsUnlit);
+            BasePassShaderTypes shLightTypes = LitShaderTypes[1];
+            SHLightVertexShader = shaders.FirstOrDefault(shader => shader?.ShaderType.Name == shLightTypes.VertexShaderType);
+            SHLightPixelShader = shaders.FirstOrDefault(shader => shader?.ShaderType.Name == shLightTypes.PixelShaderType);
+        }
+        catch (Exception e)
+        {
+            ShaderMap = null;
+            UnrealVertexShader = null;
+            UnrealPixelShader = null;
+            gameShaderError = $"Failed to load shaders for {mat.InstancedFullPath}: {e.Message}";
+        }
+    }
+
+    /// <summary>
+    /// Gets the shaders that render a light on this material in its own pass (TLightVertexShader and TLightPixelShader), loading them if they haven't been. Thread-safe.
+    /// </summary>
+    /// <returns>Nulls if the material doesn't have them</returns>
+    public (Shader vertexShader, Shader pixelShader) GetLightShaders(SceneLightType lightType, StaticShadowingType shadowing)
+    {
+        if (!CanRenderWithGameShaders || IsUnlit)
+        {
+            return (null, null);
+        }
+        if (LightShaders.TryGetValue((lightType, shadowing), out (Shader, Shader) lightShaders))
+        {
+            return lightShaders;
+        }
+        lock (LightShaders)
+        {
+            if (LightShaders.TryGetValue((lightType, shadowing), out lightShaders))
+            {
+                return lightShaders;
+            }
+            string lightPolicy = lightType switch
+            {
+                SceneLightType.Spot => "FSpotLightPolicy",
+                SceneLightType.Directional => "FDirectionalLightPolicy",
+                SceneLightType.Point => "FPointLightPolicy",
+                //sky lights are part of the base pass
+                _ => throw new ArgumentOutOfRangeException(nameof(lightType), lightType, null)
+            };
+            string shadowingPolicy = shadowing switch
+            {
+                StaticShadowingType.ShadowTexture => "FShadowTexturePolicy",
+                StaticShadowingType.DistanceFieldShadowTexture => "FSignedDistanceFieldShadowTexturePolicy",
+                StaticShadowingType.ShadowVertexBuffer => "FShadowVertexBufferPolicy",
+                _ => "FNoStaticShadowingPolicy",
+            };
+            lightShaders = LoadLightPassShaders($"TLightVertexShader{lightPolicy}{shadowingPolicy}", $"TLightPixelShader{lightPolicy}{shadowingPolicy}");
+            LightShaders[(lightType, shadowing)] = lightShaders;
+            return lightShaders;
+        }
+    }
+
+    private bool LoadedSHLightPassShaders;
+    private (Shader, Shader) SHLightPassShaders;
+
+    /// <summary>
+    /// The shaders that render an SH light on this material in its own pass (FSphericalHarmonicLightPolicy), loading them if they haven't been. Thread-safe.
+    /// Light environments that cast a shadow render their SH light with these, after the modulated shadows
+    /// </summary>
+    /// <returns>Nulls if the material doesn't have them</returns>
+    public (Shader vertexShader, Shader pixelShader) GetSHLightPassShaders()
+    {
+        if (!CanRenderWithGameShaders || IsUnlit)
+        {
+            return (null, null);
+        }
+        lock (LightShaders)
+        {
+            if (!LoadedSHLightPassShaders)
+            {
+                SHLightPassShaders = LoadLightPassShaders("TLightVertexShaderFSphericalHarmonicLightPolicyFNoStaticShadowingPolicy",
+                    "TLightPixelShaderFSphericalHarmonicLightPolicyFNoStaticShadowingPolicy");
+                LoadedSHLightPassShaders = true;
+            }
+            return SHLightPassShaders;
+        }
+    }
+
+    //Call under the LightShaders lock
+    private (Shader, Shader) LoadLightPassShaders(string vertexShaderType, string pixelShaderType)
+    {
+        if (LightShaderMapOwner is null)
+        {
+            return (null, null);
+        }
+        try
+        {
+            (_, Shader[] shaders) = ShaderCacheManipulator.GetMaterialShaderMapAndShaders(LightShaderMapOwner, Context.GetSeekFreeShaderCache,
+                [vertexShaderType, pixelShaderType]);
+            Shader vertexShader = shaders.FirstOrDefault(shader => shader?.ShaderType.Name == vertexShaderType);
+            Shader pixelShader = shaders.FirstOrDefault(shader => shader?.ShaderType.Name == pixelShaderType);
+            if (vertexShader is null || pixelShader is null)
+            {
+                return (null, null);
+            }
+            if (Context.Device is not null)
+            {
+                Context.GetCachedVertexShader(vertexShader.Guid, vertexShader.ShaderByteCode);
+                Context.GetCachedMeshPixelShader(pixelShader.Guid, pixelShader.ShaderByteCode, UseSrgbColorManagement);
+            }
+            return (vertexShader, pixelShader);
+        }
+        catch (Exception e)
+        {
+            //the light just isn't rendered on this material
+            System.Diagnostics.Debug.WriteLine($"Could not load {pixelShaderType} for {InstancedFullPath}: {e.Message}");
+            return (null, null);
+        }
+    }
+
+    private bool LoadedLightFunctionShader;
+    private Shader LightFunctionPixelShader;
+
+    /// <summary>
+    /// For a material used as a light function: its FLightFunctionPixelShader, loading it if it hasn't been. Null if it doesn't have one.
+    /// (These materials have no base pass shaders, so <see cref="CanRenderWithGameShaders"/> is false for them.)
+    /// </summary>
+    public Shader GetLightFunctionPixelShader()
+    {
+        LoadGameShaders();
+        lock (LightShaders)
+        {
+            if (!LoadedLightFunctionShader)
+            {
+                LoadedLightFunctionShader = true;
+                if (LightShaderMapOwner is not null && ShaderMap is not null)
+                {
+                    try
+                    {
+                        (_, Shader[] shaders) = ShaderCacheManipulator.GetMaterialShaderMapAndMaterialShaders(LightShaderMapOwner, Context.GetSeekFreeShaderCache, "FLightFunctionPixelShader");
+                        LightFunctionPixelShader = shaders[0];
+                    }
+                    catch (Exception e)
+                    {
+                        //the light function just isn't rendered
+                        System.Diagnostics.Debug.WriteLine($"Could not load the light function shader of {InstancedFullPath}: {e.Message}");
+                    }
+                }
+            }
+            return LightFunctionPixelShader;
+        }
     }
 
     private void AddUniformExpressionParameters(MaterialUniformExpression expression)
@@ -398,35 +843,129 @@ public class MaterialRenderProxy : MaterialInstanceConstantLevelEditor, ILiveMat
             }
         }
 
-        if (props.GetProp<BoolProperty>("bHasStaticPermutationResource") is { Value: true }
-            && ObjectBinary.From(matInst) is MaterialInstance binary)
+        if (!FoundShaderMapOwner && props.GetProp<BoolProperty>("bHasStaticPermutationResource") is { Value: true })
         {
+            FoundShaderMapOwner = true;
+            MaterialInstance binary;
+            try
+            {
+                binary = ObjectBinary.From<MaterialInstance>(matInst);
+            }
+            catch (Exception e)
+            {
+                gameShaderError = $"Failed to parse {matInst.InstancedFullPath}: {e.Message}";
+                return;
+            }
+            HasUndisplacedVertices = !binary.SM3StaticPermutationResource.bUsesMaterialVertexPositionOffset;
             foreach (int uIndex in binary.SM3StaticPermutationResource.UniformExpressionTextures)
             {
                 Uniform2DTextureExpressions.Add(matInst.FileRef.GetEntry(uIndex)?.InstancedFullPath);
             }
-            LoadShaders(matInst, binary.SM3StaticPermutationResource);
+            ShaderMapOwner = matInst;
+            ShaderOwner = matInst;
+            ShaderOwnerResource = binary.SM3StaticPermutationResource;
         }
     }
 
-    public void UpdateShaderParams<TVertex>(Span<byte> vertexConstantBuffer, Span<byte> pixelConstantBuffer, MeshRenderContext context, Mesh<TVertex> mesh)
-        where TVertex : IVertexBase
+    public void UpdateShaderParams<TVertex>(Span<byte> vertexConstantBuffer, Span<byte> pixelConstantBuffer,
+        MeshRenderContext context, Mesh<TVertex> mesh) where TVertex : IVertexBase
     {
-        //Span<byte> vertBufferBytes = [0, 80, 175, 250, 100, 2, 0, 0, 96, 241, 173, 250, 100, 2, 0, 0, 160, 112, 80, 85, 249, 127, 0, 0, 160, 112, 80, 85, 249, 127, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 24, 94, 80, 85, 249, 127, 0, 0, 24, 94, 80, 85, 249, 127, 0, 0, 128, 91, 80, 85, 249, 127, 0, 0, 128, 91, 80, 85, 249, 127, 0, 0, 168, 91, 80, 85, 249, 127, 0, 0, 168, 91, 80, 85, 249, 127, 0, 0, 56, 91, 80, 85, 249, 127, 0, 0, 56, 91, 80, 85, 249, 127, 0, 0, 160, 93, 80, 85, 249, 127, 0, 0, 160, 93, 80, 85, 249, 127, 0, 0, 200, 93, 80, 85, 249, 127, 0, 0, 200, 93, 80, 85, 249, 127, 0, 0, 240, 93, 80, 85, 249, 127, 0, 0, 240, 93, 80, 85, 249, 127, 0, 0, 112, 94, 80, 85, 249, 127, 0, 0, 112, 94, 80, 85, 249, 127, 0, 0, 152, 94, 80, 85, 249, 127, 0, 0, 152, 94, 80, 85, 249, 127, 0, 0, 192, 94, 80, 85, 249, 127, 0, 0, 192, 94, 80, 85, 249, 127, 0, 0, 88, 98, 80, 85, 249, 127, 0, 0, 88, 98, 80, 85, 249, 127, 0, 0, 192, 98, 80, 85, 249, 127, 0, 0, 192, 98, 80, 85, 249, 127, 0, 0, 8, 99, 80, 85, 249, 127, 0, 0, 8, 99, 80, 85, 249, 127, 0, 0, 80, 99, 80, 85, 249, 127, 0, 0, 80, 99, 80, 85, 249, 127, 0, 0, 192, 104, 80, 85, 249, 127, 0, 0, 192, 104, 80, 85, 249, 127, 0, 0, 248, 104, 80, 85, 249, 127, 0, 0, 248, 104, 80, 85, 249, 127, 0, 0, 48, 105, 80, 85, 249, 127, 0, 0, 48, 105, 80, 85, 249, 127, 0, 0, 208, 108, 80, 85, 249, 127, 0, 0, 208, 108, 80, 85, 249, 127, 0, 0, 8, 109, 80, 85, 249, 127, 0, 0, 8, 109, 80, 85, 249, 127, 0, 0, 48, 109, 80, 85, 249, 127, 0, 0, 48, 109, 80, 85, 249, 127, 0, 0, 104, 109, 80, 85, 249, 127, 0, 0, 104, 109, 80, 85, 249, 127, 0, 0, 144, 109, 80, 85, 249, 127, 0, 0, 144, 109, 80, 85, 249, 127, 0, 0, 200, 109, 80, 85, 249, 127, 0, 0, 200, 109, 80, 85, 249, 127, 0, 0, 240, 109, 80, 85, 249, 127, 0, 0, 0, 0, 128, 63, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 128, 63, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 128, 63, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 128, 63, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 128, 63, 8, 91, 80, 85, 249, 127, 0, 0, 32, 91, 80, 85, 249, 127, 0, 0, 32, 91, 80, 85, 249, 127, 0, 0, 208, 91, 80, 85, 249, 127, 0, 0, 208, 91, 80, 85, 249, 127, 0, 0, 232, 91, 80, 85, 249, 127, 0, 0, 0, 0, 128, 63, 249, 127, 0, 0, 0, 92, 80, 85, 249, 127, 0, 0, 0, 0, 128, 63, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 249, 127, 0, 0, 96, 92, 80, 85, 249, 127, 0, 0, 96, 92, 80, 85, 249, 127, 0, 0, 120, 92, 80, 85, 249, 127, 0, 0, 120, 92, 80, 85, 249, 127, 0, 0, 144, 92, 80, 85, 249, 127, 0, 0, 144, 92, 80, 85, 249, 127, 0, 0, 184, 92, 80, 85, 249, 127, 0, 0, 184, 92, 80, 85, 249, 127, 0, 0, 224, 92, 80, 85, 249, 127, 0, 0, 224, 92, 80, 85, 249, 127, 0, 0, 248, 92, 80, 85, 249, 127, 0, 0, 248, 92, 80, 85, 249, 127, 0, 0, 16, 93, 80, 85, 249, 127, 0, 0, 16, 93, 80, 85, 249, 127, 0, 0, 40, 93, 80, 85, 249, 127, 0, 0, 40, 93, 80, 85, 249, 127, 0, 0, 64, 93, 80, 85, 249, 127, 0, 0, 64, 93, 80, 85, 249, 127, 0, 0, 88, 93, 80, 85, 249, 127, 0, 0, 88, 93, 80, 85, 249, 127, 0, 0, 112, 93, 80, 85, 249, 127, 0, 0, 112, 93, 80, 85, 249, 127, 0, 0, 136, 93, 80, 85, 249, 127, 0, 0, 136, 93, 80, 85, 249, 127, 0, 0, 64, 94, 80, 85, 249, 127, 0, 0, 64, 94, 80, 85, 249, 127, 0, 0, 88, 94, 80, 85, 249, 127, 0, 0, 88, 94, 80, 85, 249, 127, 0, 0, 232, 94, 80, 85, 249, 127, 0, 0, 232, 94, 80, 85, 249, 127, 0, 0, 0, 95, 80, 85, 249, 127, 0, 0, 0, 95, 80, 85, 249, 127, 0, 0, 24, 95, 80, 85, 249, 127, 0, 0, 24, 95, 80, 85, 249, 127, 0, 0, 64, 95, 80, 85, 249, 127, 0, 0, 64, 95, 80, 85, 249, 127, 0, 0, 104, 95, 80, 85, 249, 127, 0, 0, 104, 95, 80, 85, 249, 127, 0, 0, 144, 95, 80, 85, 249, 127, 0, 0, 144, 95, 80, 85, 249, 127, 0, 0, 184, 95, 80, 85, 249, 127, 0, 0, 184, 95, 80, 85, 249, 127, 0, 0, 208, 95, 80, 85, 249, 127, 0, 0, 208, 95, 80, 85, 249, 127, 0, 0, 248, 95, 80, 85, 249, 127, 0, 0, 248, 95, 80, 85, 249, 127, 0, 0, 32, 96, 80, 85, 249, 127, 0, 0, 32, 96, 80, 85, 249, 127, 0, 0, 56, 96, 80, 85, 249, 127, 0, 0, 56, 96, 80, 85, 249, 127, 0, 0, 80, 96, 80, 85, 249, 127, 0, 0, 80, 96, 80, 85, 249, 127, 0, 0, 120, 96, 80, 85, 249, 127, 0, 0, 120, 96, 80, 85, 249, 127, 0, 0, 160, 96, 80, 85, 249, 127, 0, 0, 160, 96, 80, 85, 249, 127, 0, 0, 200, 96, 80, 85, 249, 127, 0, 0, 200, 96, 80, 85, 249, 127, 0, 0, 240, 96, 80, 85, 249, 127, 0, 0, 240, 96, 80, 85, 249, 127, 0, 0, 24, 97, 80, 85, 249, 127, 0, 0, 24, 97, 80, 85, 249, 127, 0, 0, 64, 97, 80, 85, 249, 127, 0, 0, 64, 97, 80, 85, 249, 127, 0, 0, 104, 97, 80, 85, 249, 127, 0, 0, 104, 97, 80, 85, 249, 127, 0, 0, 144, 97, 80, 85, 249, 127, 0, 0, 144, 97, 80, 85, 249, 127, 0, 0, 184, 97, 80, 85, 249, 127, 0, 0, 184, 97, 80, 85, 249, 127, 0, 0, 224, 97, 80, 85, 249, 127, 0, 0, 224, 97, 80, 85, 249, 127, 0, 0, 8, 98, 80, 85, 249, 127, 0, 0, 8, 98, 80, 85, 249, 127, 0, 0, 48, 98, 80, 85, 249, 127, 0, 0, 48, 98, 80, 85, 249, 127, 0, 0, 152, 99, 80, 85, 249, 127, 0, 0, 152, 99, 80, 85, 249, 127, 0, 0, 192, 99, 80, 85, 249, 127, 0, 0, 192, 99, 80, 85, 249, 127, 0, 0, 232, 99, 80, 85, 249, 127, 0, 0, 232, 99, 80, 85, 249, 127, 0, 0, 16, 100, 80, 85, 249, 127, 0, 0, 16, 100, 80, 85, 249, 127, 0, 0, 56, 100, 80, 85, 249, 127, 0, 0, 56, 100, 80, 85, 249, 127, 0, 0, 96, 100, 80, 85, 249, 127, 0, 0, 96, 100, 80, 85, 249, 127, 0, 0, 136, 100, 80, 85, 249, 127, 0, 0, 136, 100, 80, 85, 249, 127, 0, 0, 176, 100, 80, 85, 249, 127, 0, 0, 176, 100, 80, 85, 249, 127, 0, 0, 216, 100, 80, 85, 249, 127, 0, 0, 216, 100, 80, 85, 249, 127, 0, 0, 0, 101, 80, 85, 249, 127, 0, 0, 0, 101, 80, 85, 249, 127, 0, 0, 40, 101, 80, 85, 249, 127, 0, 0, 40, 101, 80, 85, 249, 127, 0, 0, 80, 101, 80, 85, 249, 127, 0, 0, 80, 101, 80, 85, 249, 127, 0, 0, 120, 101, 80, 85, 249, 127, 0, 0, 120, 101, 80, 85, 249, 127, 0, 0, 160, 101, 80, 85, 249, 127, 0, 0, 160, 101, 80, 85, 249, 127, 0, 0, 200, 101, 80, 85, 249, 127, 0, 0, 200, 101, 80, 85, 249, 127, 0, 0, 240, 101, 80, 85, 249, 127, 0, 0, 240, 101, 80, 85, 249, 127, 0, 0, 24, 102, 80, 85, 249, 127, 0, 0, 24, 102, 80, 85, 249, 127, 0, 0, 64, 102, 80, 85, 249, 127, 0, 0, 64, 102, 80, 85, 249, 127, 0, 0, 104, 102, 80, 85, 249, 127, 0, 0, 104, 102, 80, 85, 249, 127, 0, 0, 144, 102, 80, 85, 249, 127, 0, 0, 144, 102, 80, 85, 249, 127, 0, 0, 184, 102, 80, 85, 249, 127, 0, 0, 184, 102, 80, 85, 249, 127, 0, 0, 224, 102, 80, 85, 249, 127, 0, 0, 224, 102, 80, 85, 249, 127, 0, 0, 8, 103, 80, 85, 249, 127, 0, 0, 8, 103, 80, 85, 249, 127, 0, 0, 48, 103, 80, 85, 249, 127, 0, 0, 48, 103, 80, 85, 249, 127, 0, 0, 88, 103, 80, 85, 249, 127, 0, 0, 88, 103, 80, 85, 249, 127, 0, 0, 128, 103, 80, 85, 249, 127, 0, 0, 128, 103, 80, 85, 249, 127, 0, 0, 168, 103, 80, 85, 249, 127, 0, 0, 168, 103, 80, 85, 249, 127, 0, 0, 208, 103, 80, 85, 249, 127, 0, 0, 208, 103, 80, 85, 249, 127, 0, 0, 248, 103, 80, 85, 249, 127, 0, 0, 248, 103, 80, 85, 249, 127, 0, 0, 32, 104, 80, 85, 249, 127, 0, 0, 32, 104, 80, 85, 249, 127, 0, 0, 72, 104, 80, 85, 249, 127, 0, 0, 72, 104, 80, 85, 249, 127, 0, 0, 112, 104, 80, 85, 249, 127, 0, 0, 112, 104, 80, 85, 249, 127, 0, 0, 152, 104, 80, 85, 249, 127, 0, 0, 152, 104, 80, 85, 249, 127, 0, 0, 104, 105, 80, 85, 249, 127, 0, 0, 104, 105, 80, 85, 249, 127, 0, 0, 144, 105, 80, 85, 249, 127, 0, 0, 144, 105, 80, 85, 249, 127, 0, 0, 184, 105, 80, 85, 249, 127, 0, 0, 184, 105, 80, 85, 249, 127, 0, 0, 224, 105, 80, 85, 249, 127, 0, 0, 224, 105, 80, 85, 249, 127, 0, 0, 8, 106, 80, 85, 249, 127, 0, 0, 8, 106, 80, 85, 249, 127, 0, 0, 48, 106, 80, 85, 249, 127, 0, 0, 48, 106, 80, 85, 249, 127, 0, 0, 88, 106, 80, 85, 249, 127, 0, 0, 88, 106, 80, 85, 249, 127, 0, 0, 128, 106, 80, 85, 249, 127, 0, 0, 128, 106, 80, 85, 249, 127, 0, 0, 200, 106, 80, 85, 249, 127, 0, 0, 200, 106, 80, 85, 249, 127, 0, 0, 240, 106, 80, 85, 249, 127, 0, 0, 240, 106, 80, 85, 249, 127, 0, 0, 24, 107, 80, 85, 249, 127, 0, 0, 24, 107, 80, 85, 249, 127, 0, 0, 64, 107, 80, 85, 249, 127, 0, 0, 64, 107, 80, 85, 249, 127, 0, 0, 104, 107, 80, 85, 249, 127, 0, 0, 104, 107, 80, 85, 249, 127, 0, 0, 144, 107, 80, 85, 249, 127, 0, 0, 144, 107, 80, 85, 249, 127, 0, 0, 184, 107, 80, 85, 249, 127, 0, 0, 184, 107, 80, 85, 249, 127, 0, 0, 224, 107, 80, 85, 249, 127, 0, 0, 224, 107, 80, 85, 249, 127, 0, 0, 8, 108, 80, 85, 249, 127, 0, 0, 8, 108, 80, 85, 249, 127, 0, 0, 48, 108, 80, 85, 249, 127, 0, 0, 48, 108, 80, 85, 249, 127, 0, 0, 88, 108, 80, 85, 249, 127, 0, 0, 88, 108, 80, 85, 249, 127, 0, 0, 128, 108, 80, 85, 249, 127, 0, 0, 128, 108, 80, 85, 249, 127, 0, 0, 168, 108, 80, 85, 249, 127, 0, 0, 168, 108, 80, 85, 249, 127, 0, 0, 152, 110, 80, 85, 249, 127, 0, 0, 152, 110, 80, 85, 249, 127, 0, 0, 192, 110, 80, 85, 249, 127, 0, 0, 192, 110, 80, 85, 249, 127, 0, 0, 232, 110, 80, 85, 249, 127, 0, 0, 232, 110, 80, 85, 249, 127, 0, 0, 16, 111, 80, 85, 249, 127, 0, 0, 16, 111, 80, 85, 249, 127, 0, 0, 56, 111, 80, 85, 249, 127, 0, 0, 56, 111, 80, 85, 249, 127, 0, 0, 96, 111, 80, 85, 249, 127, 0, 0, 96, 111, 80, 85, 249, 127, 0, 0, 136, 111, 80, 85, 249, 127, 0, 0, 136, 111, 80, 85, 249, 127, 0, 0, 176, 111, 80, 85, 249, 127, 0, 0, 176, 111, 80, 85, 249, 127, 0, 0, 216, 111, 80, 85, 249, 127, 0, 0, 216, 111, 80, 85, 249, 127, 0, 0, 0, 112, 80, 85, 249, 127, 0, 0, 0, 112, 80, 85, 249, 127, 0, 0, 40, 112, 80, 85, 249, 127, 0, 0, 40, 112, 80, 85, 249, 127, 0, 0, 80, 112, 80, 85, 249, 127, 0, 0, 80, 112, 80, 85, 249, 127, 0, 0, 120, 112, 80, 85, 249, 127, 0, 0, 120, 112, 80, 85, 249, 127, 0, 0, 88, 91, 80, 85, 249, 127, 0, 0, 88, 91, 80, 85, 249, 127, 0, 0, 144, 91, 80, 85, 249, 127, 0, 0, 144, 91, 80, 85, 249, 127, 0, 0, 184, 91, 80, 85, 249, 127, 0, 0, 184, 91, 80, 85, 249, 127, 0, 0, 176, 93, 80, 85, 249, 127, 0, 0, 176, 93, 80, 85, 249, 127, 0, 0, 216, 93, 80, 85, 249, 127, 0, 0, 216, 93, 80, 85, 249, 127, 0, 0, 0, 94, 80, 85, 249, 127, 0, 0, 0, 94, 80, 85, 249, 127, 0, 0, 40, 94, 80, 85, 249, 127, 0, 0, 40, 94, 80, 85, 249, 127, 0, 0, 128, 94, 80, 85, 249, 127, 0, 0, 128, 94, 80, 85, 249, 127, 0, 0, 168, 94, 80, 85, 249, 127, 0, 0, 168, 94, 80, 85, 249, 127, 0, 0, 208, 94, 80, 85, 249, 127, 0, 0, 208, 94, 80, 85, 249, 127, 0, 0, 120, 98, 80, 85, 249, 127, 0, 0, 120, 98, 80, 85, 249, 127, 0, 0, 224, 98, 80, 85, 249, 127, 0, 0, 224, 98, 80, 85, 249, 127, 0, 0, 40, 99, 80, 85, 249, 127, 0, 0, 40, 99, 80, 85, 249, 127, 0, 0, 112, 99, 80, 85, 249, 127, 0, 0, 112, 99, 80, 85, 249, 127, 0, 0, 54, 0, 0, 54, 96, 148, 17, 0, 176, 252, 123, 251, 100, 2, 0, 0, 160, 212, 156, 93, 100, 2, 0, 0];
-        ////Span<byte> pixelBufferBytes = [80, 1, 185, 91, 36, 2, 0, 0, 96, 241, 173, 250, 100, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 15, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 7, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 3, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 7, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 154, 21, 124, 189, 64, 58, 32, 189, 131, 81, 127, 191, 197, 131, 127, 191, 146, 19, 30, 59, 5, 228, 123, 61, 0, 0, 0, 0, 167, 205, 127, 63, 39, 136, 32, 189, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 128, 63, 57, 151, 2, 62, 224, 190, 134, 62, 193, 2, 76, 63, 0, 0, 112, 65, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 128, 63, 0, 0, 128, 63, 0, 0, 128, 63, 0, 0, 0, 0, 0, 0, 128, 63, 0, 0, 128, 63, 0, 0, 128, 63, 0, 0, 128, 63, 0, 0, 128, 63, 0, 0, 128, 63, 0, 0, 128, 63, 0, 0, 128, 63, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 128, 63, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
-
-        //vertBufferBytes.CopyTo(vertexConstantBuffer);
-        ////pixelBufferBytes.CopyTo(pixelConstantBuffer);
-        //if (InstancedFullPath is "BIOG_HMM_HED_PROMorph.Sheppard.HMM_HED_PROSheppard_Face_Mat_1a")
-        //{
-        //    vertexConstantBuffer.Slice(672).Clear();
-        //}
+        context.LEEffect.EnsureFrame(context);
+        context.LEEffect.PixelShaderResources.Reset();
         vertexConstantBuffer.Clear();
         pixelConstantBuffer.Clear();
-        UnrealVertexShader?.WriteValues(vertexConstantBuffer, context, mesh, this);
-        UnrealPixelShader?.WriteValues(pixelConstantBuffer, context, mesh, this);
-        //System.Diagnostics.Debug.WriteLine(string.Join(',', vertexConstantBuffer.ToArray()));
-        //System.Diagnostics.Debug.WriteLine(string.Join(',', pixelConstantBuffer.ToArray()));
+        UsesLinearTextureSampling = !context.UsesLegacyNativeMeshColorPipeline || UseSrgbColorManagement;
+        try
+        {
+            if (mesh is Mesh<LEVertex> leMesh)
+            {
+                ShaderParameterSetters.WriteBasePassVertexShaderValues(UnrealVertexShader, vertexConstantBuffer, context, leMesh, this, null);
+                ShaderParameterSetters.WriteBasePassPixelShaderValues(UnrealPixelShader, pixelConstantBuffer, context, leMesh, this, null, true, default);
+            }
+            else
+            {
+                if (UnrealVertexShader is TBasePassVertexShader<FNullPolicy, FNullPolicy> vertexShader)
+                    vertexShader.WriteValues(vertexConstantBuffer, context, mesh, this);
+                if (UnrealPixelShader is TBasePassPixelShader<FNullPolicy> pixelShader)
+                    pixelShader.WriteValues(pixelConstantBuffer, context, mesh, this);
+            }
+        }
+        finally
+        {
+            UsesLinearTextureSampling = true;
+        }
+    }
+
+    /// <summary>
+    /// Writes the parameters of the base pass shaders
+    /// </summary>
+    /// <param name="vertexShader">The base pass vertex shader being rendered with: <see cref="UnrealVertexShader"/> or <see cref="NoLightMapVertexShader"/></param>
+    /// <param name="pixelShader">The matching pixel shader</param>
+    /// <param name="staticLighting">The mesh's precomputed lighting. Its light-map is required if <see cref="UsesLightMap"/></param>
+    /// <param name="usePreviewLighting">Light the mesh with <see cref="MeshRenderContext.Lighting"/>, rather than the level's lighting</param>
+    /// <param name="skyLighting">The level's sky lighting on the mesh. Unused if <paramref name="usePreviewLighting"/></param>
+    /// <param name="lightEnvironment">The lights of the light environment that lights the mesh, which replace the preview lighting. Null if it isn't lit by one</param>
+    public void UpdateShaderParams(Span<byte> vertexConstantBuffer, Span<byte> pixelConstantBuffer, MeshRenderContext context, Mesh<LEVertex> mesh,
+        Shader vertexShader, Shader pixelShader, MeshStaticLighting staticLighting, bool usePreviewLighting, SkyLighting skyLighting = default,
+        LightEnvironmentLighting lightEnvironment = null)
+    {
+
+        bool previousTextureSampling = UsesLinearTextureSampling;
+        UsesLinearTextureSampling = !context.UsesLegacyNativeMeshColorPipeline || UseSrgbColorManagement;
+        try
+        {
+            vertexConstantBuffer.Clear();
+            pixelConstantBuffer.Clear();
+            ShaderParameterSetters.WriteBasePassVertexShaderValues(vertexShader, vertexConstantBuffer, context, mesh, this, staticLighting, lightEnvironment);
+            ShaderParameterSetters.WriteBasePassPixelShaderValues(pixelShader, pixelConstantBuffer, context, mesh, this, staticLighting, usePreviewLighting, skyLighting,
+                lightEnvironment);
+        }
+        finally
+        {
+            UsesLinearTextureSampling = previousTextureSampling;
+        }
+    }
+
+    /// <summary>
+    /// Writes the parameters of the shaders that render a light on this material (see <see cref="GetLightShaders"/>)
+    /// </summary>
+    /// <param name="lightAttenuation">The light's dynamic shadows and light function, rendered in screen space (see <see cref="LightAttenuationRenderer"/>). Null if it has neither</param>
+    public void UpdateLightPassShaderParams(Span<byte> vertexConstantBuffer, Span<byte> pixelConstantBuffer, MeshRenderContext context, Mesh<LEVertex> mesh,
+        Shader vertexShader, Shader pixelShader, LightInteraction interaction, ShaderResourceView lightAttenuation = null)
+    {
+        bool previousTextureSampling = UsesLinearTextureSampling;
+        UsesLinearTextureSampling = !context.UsesLegacyNativeMeshColorPipeline || UseSrgbColorManagement;
+        try
+        {
+            vertexConstantBuffer.Clear();
+            pixelConstantBuffer.Clear();
+            ShaderParameterSetters.WriteLightVertexShaderValues(vertexShader, vertexConstantBuffer, context, mesh, this, interaction);
+            ShaderParameterSetters.WriteLightPixelShaderValues(pixelShader, pixelConstantBuffer, context, mesh, this, interaction, lightAttenuation);
+        }
+        finally
+        {
+            UsesLinearTextureSampling = previousTextureSampling;
+        }
+    }
+
+    /// <summary>
+    /// Writes the parameters of the shaders that render an SH light on this material (see <see cref="GetSHLightPassShaders"/>)
+    /// </summary>
+    public void UpdateSHLightPassShaderParams(Span<byte> vertexConstantBuffer, Span<byte> pixelConstantBuffer, MeshRenderContext context, Mesh<LEVertex> mesh,
+        Shader vertexShader, Shader pixelShader, in SHVectorRGB incidentLighting)
+    {
+        bool previousTextureSampling = UsesLinearTextureSampling;
+        UsesLinearTextureSampling = !context.UsesLegacyNativeMeshColorPipeline || UseSrgbColorManagement;
+        try
+        {
+            vertexConstantBuffer.Clear();
+            pixelConstantBuffer.Clear();
+            ShaderParameterSetters.WriteSHLightPassValues(vertexShader, pixelShader, vertexConstantBuffer, pixelConstantBuffer, context, mesh, this, incidentLighting);
+        }
+        finally
+        {
+            UsesLinearTextureSampling = previousTextureSampling;
+        }
     }
 
     public (List<Vector4> scalar, List<Vector4> vector) GetCachedVertexParameters(MeshRenderContext context)
@@ -451,8 +990,8 @@ public class MaterialRenderProxy : MaterialInstanceConstantLevelEditor, ILiveMat
         CachedVertexVectorParameters.Clear();
 
         var uniformContext = new UniformExpressionRenderContext(
-            ScalarParameterValues, VectorParameterValues, 
-            context.Time, context.Time, GetFlipBookTextureOffset);
+            ScalarParameterValues, VectorParameterValues,
+            context.Time, context.Time, GetFlipBookTextureOffset, GetFlipBookTextureScale);
 
         UpdateExpressions(uniformContext,
             VertexVectorExpressions, VertexScalarExpressions,
@@ -469,8 +1008,8 @@ public class MaterialRenderProxy : MaterialInstanceConstantLevelEditor, ILiveMat
         CachedCubeTextureParameters.Clear();
 
         var uniformContext = new UniformExpressionRenderContext(
-            ScalarParameterValues, VectorParameterValues, 
-            context.Time, context.Time, GetFlipBookTextureOffset);
+            ScalarParameterValues, VectorParameterValues,
+            context.Time, context.Time, GetFlipBookTextureOffset, GetFlipBookTextureScale);
 
         UpdateExpressions(uniformContext,
             PixelVectorExpressions, PixelScalarExpressions,
@@ -482,14 +1021,23 @@ public class MaterialRenderProxy : MaterialInstanceConstantLevelEditor, ILiveMat
 
     private LinearColor GetFlipBookTextureOffset(UniformExpressionRenderContext context, int texIndex)
     {
-        if ((uint)texIndex < Uniform2DTextureExpressions.Count 
+        return GetFlipBookTexture(texIndex)?.GetTextureOffset(context) ?? LinearColor.Black;
+    }
+
+    private LinearColor GetFlipBookTextureScale(UniformExpressionRenderContext context, int texIndex)
+    {
+        return GetFlipBookTexture(texIndex)?.GetTextureScale() ?? LinearColor.Black;
+    }
+
+    private PreviewTextureCache.FlipBookTextureEntry GetFlipBookTexture(int texIndex)
+    {
+        if ((uint)texIndex < Uniform2DTextureExpressions.Count
             && Uniform2DTextureExpressions[texIndex] is { } texifp
-            && TextureMap.TryGetValue(texifp, out var texture)
-            && texture is PreviewTextureCache.FlipBookTextureEntry flipBookTexture)
+            && TextureMap.TryGetValue(texifp, out var texture))
         {
-            return flipBookTexture.GetTextureOffset(context);
+            return texture as PreviewTextureCache.FlipBookTextureEntry;
         }
-        return LinearColor.Black;
+        return null;
     }
 
     private void UpdateTextureExpressions(MaterialUniformExpressionTexture[] textureExpressions,

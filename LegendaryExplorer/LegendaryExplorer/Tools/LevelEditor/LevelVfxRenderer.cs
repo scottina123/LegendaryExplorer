@@ -291,7 +291,7 @@ internal sealed class LevelVfxRenderer : IDisposable
                         new DepthStencilStateDescription
                         {
                             IsDepthEnabled = depthTest,
-                            DepthComparison = Comparison.LessEqual,
+                            DepthComparison = Comparison.GreaterEqual,
                             DepthWriteMask = depthWrite ? DepthWriteMask.All : DepthWriteMask.Zero
                         });
                 }

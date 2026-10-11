@@ -20,9 +20,12 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext, IVfxDepthStateP
 {
     /// <summary>
     /// Native soft-particle materials require scene depth even when there is no opaque preview scene behind them.
-    /// Sampling 1.0 represents the far plane and preserves the authored particle instead of fading it to zero.
+    /// Sampling zero represents the far plane in the reversed depth buffer.
     /// </summary>
-    public override ShaderResourceView PreviewSceneDepthTextureView => WhiteTexView;
+    public override ShaderResourceView PreviewSceneDepthTextureView => BlackTexView;
+
+    protected override int PreferredSampleCount => 1;
+    public override bool UsesLegacyNativeMeshColorPipeline => true;
 
     private sealed class ActorMeshResources : IDisposable
     {
@@ -108,6 +111,7 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext, IVfxDepthStateP
                 return;
             }
             useGameShader = value;
+            UseGameShaders = value;
             if (!IsReady || Simulation.Definition is null)
             {
                 return;
@@ -154,6 +158,8 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext, IVfxDepthStateP
 
     public VfxPreviewRenderContext()
     {
+        UseGameShaders = useGameShader;
+        LightingMode = ViewportLightingMode.Preview;
         Camera.FirstPerson = !Settings.Global_UseOrbitCameraControls;
         Camera.Yaw = MathF.PI;
         Camera.Pitch = -0.15f;
@@ -1315,14 +1321,14 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext, IVfxDepthStateP
             new SharpDX.Mathematics.Interop.RawColor4(
                 BackgroundColor.R / 255f, BackgroundColor.G / 255f,
                 BackgroundColor.B / 255f, BackgroundColor.A / 255f));
-        try
-        {
-            RenderPreviewEffects();
-        }
-        finally
-        {
-            sceneColorBuffer.Resolve(ImmediateContext, BackbufferView, DepthBufferView, HitBufferView);
-        }
+        RenderPreviewEffects();
+    }
+
+    protected override void ResolveSceneColor()
+    {
+        // Resolve hit IDs through the shared renderer, then retain the VFX preview's display transfer.
+        base.ResolveSceneColor();
+        sceneColorBuffer.Resolve(ImmediateContext, BackbufferView, DepthBufferView, HitBufferView);
     }
 
     private void RenderPreviewEffects()
@@ -1435,6 +1441,9 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext, IVfxDepthStateP
         // Every opaque/masked effect has populated depth before any blended effect is submitted, regardless
         // of its emitter type or whether a compiled material was available.
         RenderActor(RenderPass.Hair);
+        RenderActor(RenderPass.Lighting);
+        EndLightingPass();
+        RenderActor(RenderPass.Translucent);
         RenderBlendedEmitters(blendedEmitters);
     }
 
@@ -1526,7 +1535,7 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext, IVfxDepthStateP
     {
         ImmediateContext.OutputMerger.SetDepthStencilState(GetVfxDepthState(!disableDepthTest, false));
         primitives.Render(this, false);
-        ImmediateContext.OutputMerger.SetDepthStencilState(null);
+        ImmediateContext.OutputMerger.SetDepthStencilState(DefaultDepthState);
     }
 
     private void AddBeamPreview(VfxEmitterState emitter, Matrix4x4 transform)
@@ -1745,7 +1754,7 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext, IVfxDepthStateP
                 depthStates[(depthTest, depthWrite)] = new DepthStencilState(Device, new DepthStencilStateDescription
                 {
                     IsDepthEnabled = depthTest,
-                    DepthComparison = Comparison.LessEqual,
+                    DepthComparison = Comparison.GreaterEqual,
                     DepthWriteMask = depthWrite ? DepthWriteMask.All : DepthWriteMask.Zero
                 });
             }

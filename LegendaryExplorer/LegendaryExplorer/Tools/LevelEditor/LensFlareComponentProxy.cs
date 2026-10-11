@@ -46,7 +46,7 @@ public sealed class LensFlareComponentProxy : PrimitiveComponentProxy, ILevelRen
 
     public override void Render(MeshRenderContext context, RenderPass pass)
     {
-        if (IsVisible && active && RenderResourcesInitialized && pass == RenderPass.Hair
+        if (IsVisible && active && RenderResourcesInitialized && pass == RenderPass.Translucent
             && (Actor is not LensFlareSourceProxy source || source.IsFlareActive))
         {
             renderContext.LensFlareRenderer.Render(flare, LocalToWorld, sourceColor);

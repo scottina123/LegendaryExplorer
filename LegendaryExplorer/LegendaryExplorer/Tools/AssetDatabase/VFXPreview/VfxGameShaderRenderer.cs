@@ -151,7 +151,7 @@ public sealed class VfxGameShaderRenderer : IDisposable
                     failures.Add($"{candidateFactory}: no base-pass shader");
                     continue;
                 }
-                if (!string.Equals(material.UnrealVertexShader.VertexFactoryParameters.VertexFactoryType.Name,
+                if (!string.Equals(material.UnrealVertexShader.VertexFactoryType?.Name,
                         candidateFactory, StringComparison.Ordinal))
                 {
                     failures.Add($"{candidateFactory}: mismatched shader map");
@@ -222,7 +222,7 @@ public sealed class VfxGameShaderRenderer : IDisposable
                     failures.Add($"{candidateFactory}: no base-pass shader");
                     continue;
                 }
-                if (!string.Equals(material.UnrealVertexShader.VertexFactoryParameters.VertexFactoryType.Name,
+                if (!string.Equals(material.UnrealVertexShader.VertexFactoryType?.Name,
                         candidateFactory, StringComparison.Ordinal))
                 {
                     failures.Add($"{candidateFactory}: mismatched shader map");
@@ -683,7 +683,7 @@ public sealed class VfxGameShaderRenderer : IDisposable
             mesh,
             startIndex,
             indexCount);
-        context.ImmediateContext.OutputMerger.SetDepthStencilState(null);
+        context.ImmediateContext.OutputMerger.SetDepthStencilState(context.DefaultDepthState);
     }
 
     internal static PixelShader GetNativeMaterialPixelShader(

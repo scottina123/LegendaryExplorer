@@ -40,13 +40,13 @@ public class Mesh<TVertex> : IDisposable where TVertex : IVertexBase
         {
             localToWorld = value;
             TransformedBounds = BaseBounds.TransformBy(localToWorld);
-            Matrix4x4.Invert(LocalToWorld, out Matrix4x4 wtl);
-            worldToLocal = new SharpDX.Matrix3x3(wtl.M11, wtl.M12, wtl.M13, wtl.M21, wtl.M22, wtl.M23, wtl.M31, wtl.M32, wtl.M33);
+            Matrix4x4.Invert(LocalToWorld, out worldToLocal);
         }
     }
 
-    private SharpDX.Matrix3x3 worldToLocal = SharpDX.Matrix3x3.Identity;
-    public SharpDX.Matrix3x3 WorldToLocal => worldToLocal;
+    //A Matrix4x4 rather than a 3x3, so that it can be written to float3x3 shader parameters, whose rows are padded to 4 floats
+    private Matrix4x4 worldToLocal = Matrix4x4.Identity;
+    public Matrix4x4 WorldToLocal => worldToLocal;
 
     // Dynamic vertex buffer for fast skinning updates (Map/Unmap instead of recreate)
     private SharpDX.Direct3D11.Buffer _dynamicVertexBuffer;
@@ -511,6 +511,9 @@ public struct LEVertex : IVertexBase
     public readonly LEVertex WithPositionAndNormal(MEGame game, Vector3 newPosition, Vector4 newNormal) =>
         new(new Vector4(newPosition, position.W), tangent, EncodeShaderNormal(game, newNormal), color, uvs);
 
+    public readonly LEVertex WithPositionNormalAndTangent(MEGame game, Vector3 newPosition, Vector4 newNormal, Vector3 newTangent) =>
+        new(new Vector4(newPosition, position.W), EncodeShaderNormal(game, newTangent), EncodeShaderNormal(game, newNormal), color, uvs);
+
     public readonly LEVertex WithColor(Vector4 newColor) =>
         new(position, tangent, normal, newColor, uvs);
 
@@ -522,7 +525,7 @@ public struct LEVertex : IVertexBase
             new Vector4(position, 1),
             EncodeShaderNormal(game, tangent),
             EncodeShaderNormal(game, normal),
-            Vector4.Zero,
+            Vector4.One,
             uvs);
     }
 

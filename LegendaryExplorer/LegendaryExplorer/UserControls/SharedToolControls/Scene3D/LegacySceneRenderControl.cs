@@ -204,7 +204,7 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
         public virtual void CreateResources()
         {
             DeviceCreationFlags deviceFlags = DeviceCreationFlags.BgraSupport | DeviceCreationFlags.SingleThreaded;
-#if DEBUG
+#if D3D11_DEBUG
             deviceFlags |= DeviceCreationFlags.Debug;
 #endif
             Device = new Device(DriverType.Hardware, deviceFlags);
@@ -245,7 +245,7 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
             ImmediateContext.Dispose();
             ImmediateContext = null;
 
-#if DEBUG
+#if D3D11_DEBUG
             var debug = Device.QueryInterface<DeviceDebug>();
             debug.ReportLiveDeviceObjects(ReportingLevel.Detail);
             debug.Dispose();

@@ -1,4 +1,4 @@
-﻿using LegendaryExplorer.Misc;
+using LegendaryExplorer.Misc;
 using LegendaryExplorer.Tools.AssetDatabase.VFXPreview;
 using LegendaryExplorer.Tools.LevelEditor.Scene3D;
 using LegendaryExplorerCore.Gammtek;
@@ -24,6 +24,8 @@ public class PrimitiveComponentProxy : NotifyPropertyChangedBase, IDisposable
     public ExportEntry Export { get; protected set; }
 
     public ActorProxy Actor;
+
+    protected readonly MeshRenderContext RenderContext;
 
     private Rotator rotation;
     private Vector3 translation;
@@ -69,6 +71,7 @@ public class PrimitiveComponentProxy : NotifyPropertyChangedBase, IDisposable
     }
 
     public bool IsVisible { get; set; } = true;
+    public bool HiddenGame { get; private set; }
 
     public uint LightingChannelMask;
 
@@ -109,6 +112,7 @@ public class PrimitiveComponentProxy : NotifyPropertyChangedBase, IDisposable
     {
         Actor = parent;
         Export = componentExport;
+        RenderContext = context;
         Properties = componentExport.GetCondensedProperties();
 
         LoadFromProperties();
@@ -131,6 +135,7 @@ public class PrimitiveComponentProxy : NotifyPropertyChangedBase, IDisposable
         absoluteScale = Properties.GetProp<BoolProperty>("AbsoluteScale")?.Value ?? false;
 
         LightingChannelMask = ReadLightingChannelMask(Properties);
+        HiddenGame = Properties.GetProp<BoolProperty>("HiddenGame")?.Value ?? false;
     }
 
     public static PrimitiveComponentProxy Create(MeshRenderContext context, ExportEntry componentExport, ActorProxy parent)
@@ -347,8 +352,8 @@ public sealed class DecalComponentProxy : PrimitiveComponentProxy, ILevelRenderR
         receivers = (decalComponent.StaticReceivers ?? [])
             .Where(receiver => receiver.Vertices is { Length: > 0 }
                                && receiver.Indices is { Length: >= 3 }
-                               && componentsByIndex.ContainsKey(receiver.PrimitiveComponent))
-            .Select(receiver => new Receiver(receiver, componentsByIndex[receiver.PrimitiveComponent]))
+                               && componentsByIndex.ContainsKey(receiver.Component))
+            .Select(receiver => new Receiver(receiver, componentsByIndex[receiver.Component]))
             .ToList();
     }
 
@@ -529,7 +534,7 @@ public sealed class ParticleSystemComponentProxy : PrimitiveComponentProxy, ILev
 
     public override void Render(MeshRenderContext context, RenderPass pass)
     {
-        if (!IsVisible || !renderContext.ShowEmitterVfx || pass is not RenderPass.Hair
+        if (!IsVisible || !renderContext.ShowEmitterVfx || pass is not RenderPass.Translucent
             || !RenderResourcesInitialized || instance is null)
         {
             return;
@@ -612,6 +617,7 @@ public class PointLightComponentProxy : PrimitiveComponentProxy
         Properties.AddOrReplaceProp(new FloatProperty(Brightness, "Brightness"));
         Properties.AddOrReplaceProp(CommonStructs.ColorProp(LightColor, "LightColor"));
         Properties.AddOrReplaceProp(CommonStructs.ColorProp(LightEnv_BouncedModulationColor, "LightEnv_BouncedModulationColor"));
+        Properties.AddOrReplaceProp(CommonStructs.MatrixProp(Actor.LocalToWorld, "CachedParentToWorld"));
         Export.WriteProperties(Properties);
     }
 
@@ -695,6 +701,7 @@ public class DirectionalLightComponentProxy : PrimitiveComponentProxy
     {
         Properties.AddOrReplaceProp(new FloatProperty(Brightness, "Brightness"));
         Properties.AddOrReplaceProp(CommonStructs.ColorProp(LightColor, "LightColor"));
+        Properties.AddOrReplaceProp(CommonStructs.MatrixProp(Actor.LocalToWorld, "CachedParentToWorld"));
         Export.WriteProperties(Properties);
     }
 
@@ -715,7 +722,6 @@ public class DirectionalLightComponentProxy : PrimitiveComponentProxy
 
 public abstract class MeshComponentProxy : PrimitiveComponentProxy, ILevelRenderResource
 {
-    protected readonly MeshRenderContext RenderContext;
     public bool IsVolumetric;
     public string MeshIFP { get; protected set; }
     protected ModelPreview<WorldVertex> Mesh;
@@ -734,9 +740,49 @@ public abstract class MeshComponentProxy : PrimitiveComponentProxy, ILevelRender
         private protected set => renderResourcesInitialized = value;
     }
 
+    private LightEnvironmentPrimitive lightEnvironmentPrimitive;
+    private DynamicLightEnvironment lightEnvironment;
+    protected bool HasLightEnvironment => lightEnvironmentPrimitive is not null;
+
+    protected bool IsInScene() => !HiddenGame && Actor is not { IsHidden: true };
+    protected bool IsShown() => IsVisible && (Actor is null || RenderContext.IsActorVisible(Actor))
+                               && (!HiddenGame || RenderContext is not LevelEditorRenderContext { ShowHidden: false });
+
+    protected void JoinLightEnvironment(DynamicLightEnvironment environment, LightingChannels channels,
+        bool castsShadow, MeshStaticLighting staticLighting = null)
+    {
+        if (environment is null || GameShaderMesh is null || GameShaderMesh.LODs.Count <= LOD) return;
+        ModelPreviewLOD<LEVertex> lod = GameShaderMesh.LODs[LOD];
+        int lodIndex = LOD;
+        lightEnvironmentPrimitive = new LightEnvironmentPrimitive
+        {
+            GetBounds = () => lod.Mesh.TransformedBounds,
+            GetLocalToWorld = () => lod.Mesh.LocalToWorld,
+            DrawShadowCaster = castsShadow ? ctx =>
+            {
+                PrepareShadowCaster(RenderContext);
+                GameShaderMesh?.DrawShadowCaster(ctx, lodIndex);
+            } : null,
+            IsInScene = IsInScene,
+            IsShown = IsShown,
+            LightingChannels = channels,
+        };
+        lightEnvironment = RenderContext.AddLightEnvironmentPrimitive(environment, lightEnvironmentPrimitive);
+        lod.LightEnvironment = lightEnvironment;
+        if (staticLighting is not null) staticLighting.LightEnvironment = lightEnvironment;
+    }
+
+    protected virtual void PrepareShadowCaster(MeshRenderContext context) { }
+
+    protected void LeaveLightEnvironment()
+    {
+        if (lightEnvironmentPrimitive is null) return;
+        RenderContext.RemoveLightEnvironmentPrimitive(lightEnvironment, lightEnvironmentPrimitive);
+        lightEnvironmentPrimitive = null;
+    }
+
     protected MeshComponentProxy(MeshRenderContext context, ExportEntry componentExport, ActorProxy parent) : base(context, componentExport, parent)
     {
-        RenderContext = context;
         if (Properties.GetProp<ArrayProperty<ObjectProperty>>("Materials") is { } mats)
         {
             MaterialOverrides.AddRange(mats.Select(x => x.Value != 0 ? x.ResolveToEntry(Export.FileRef) : null));
@@ -928,6 +974,7 @@ public abstract class MeshComponentProxy : PrimitiveComponentProxy, ILevelRender
     {
         lock (RenderResourceLock)
         {
+            LeaveLightEnvironment();
             Mesh?.Dispose();
             Mesh = null;
             GameShaderMesh?.Dispose();
@@ -940,6 +987,7 @@ public abstract class MeshComponentProxy : PrimitiveComponentProxy, ILevelRender
 public class StaticMeshComponentProxy : MeshComponentProxy
 {
     private Mesh<WorldVertex> CollisionMesh;
+    private MeshStaticLighting staticLighting;
     private readonly StaticMesh staticMesh;
     private readonly ExportEntry meshExport;
     private readonly bool useGameShader;
@@ -948,9 +996,10 @@ public class StaticMeshComponentProxy : MeshComponentProxy
     private bool collisionGeometryLoaded;
 
     internal override bool IsStaticSceneCacheSafe => !RenderResourcesInitialized
-                                                     || (GameShaderMesh?.IsStaticSceneCacheSafe
-                                                         ?? Mesh?.IsStaticSceneCacheSafe
-                                                         ?? true);
+                                                     || (!HasLightEnvironment
+                                                         && (GameShaderMesh?.IsStaticSceneCacheSafe
+                                                             ?? Mesh?.IsStaticSceneCacheSafe
+                                                             ?? true));
 
     internal void AppendNavigationCollision(List<LevelCollisionTriangle> output)
     {
@@ -981,6 +1030,30 @@ public class StaticMeshComponentProxy : MeshComponentProxy
                 }
             }
         }
+    }
+
+    private static (Vector3[] Positions, int[] Indices) ReadLineCheckTriangles(StaticMesh stm)
+    {
+        //the collision triangles index LOD 0's positions
+        var kDOPTriangles = stm.kDOPTreeME3UDKLE?.Triangles ?? [];
+        if (stm.LODModels.Length == 0 || kDOPTriangles.Length == 0)
+        {
+            return ([], []);
+        }
+        var vertexData = stm.LODModels[0].PositionVertexBuffer.VertexData;
+        var lodPositions = new Vector3[vertexData.Length];
+        for (int i = 0; i < vertexData.Length; i++)
+        {
+            lodPositions[i] = new Vector3(vertexData[i].X, vertexData[i].Y, vertexData[i].Z);
+        }
+        var triangleIndices = new int[kDOPTriangles.Length * 3];
+        for (int i = 0; i < kDOPTriangles.Length; i++)
+        {
+            triangleIndices[i * 3] = kDOPTriangles[i].Vertex1;
+            triangleIndices[i * 3 + 1] = kDOPTriangles[i].Vertex2;
+            triangleIndices[i * 3 + 2] = kDOPTriangles[i].Vertex3;
+        }
+        return (lodPositions, triangleIndices);
     }
 
     private IEnumerable<IEntry> GetEffectiveMaterialEntries()
@@ -1016,7 +1089,22 @@ public class StaticMeshComponentProxy : MeshComponentProxy
 
         if (useGameShader)
         {
-            GameShaderMesh = new ModelPreview<LEVertex>(RenderContext, staticMesh, LOD, MaterialOverrides);
+            staticLighting = MeshStaticLighting.Create(RenderContext, Export, staticMesh, LOD);
+            GameShaderMesh = new ModelPreview<LEVertex>(RenderContext, staticMesh, LOD, MaterialOverrides,
+                staticLighting: staticLighting);
+            if (staticLighting is not null)
+            {
+                staticLighting.IsInScene = IsInScene;
+                staticLighting.IsShown = IsShown;
+                if (MeshRenderContext.SupportsLightEnvironments(Export.Game))
+                {
+                    staticLighting.GeometryMesh = RenderContext.GetLevelGeometryMesh(
+                        $"{meshExport.FileRef.FilePath}|{meshExport.UIndex}", () => ReadLineCheckTriangles(staticMesh));
+                }
+                JoinLightEnvironment(staticLighting.LightEnvironment, staticLighting.Channels,
+                    staticLighting.CastsDynamicShadow, staticLighting);
+            }
+            UpdateSelfLocalToWorld(force: true);
             GameShaderMesh.PrepareGraphicsResources(RenderContext);
         }
         else
@@ -1027,6 +1115,38 @@ public class StaticMeshComponentProxy : MeshComponentProxy
         UpdateSelfLocalToWorld(force: true);
         RenderResourcesInitialized = true;
         return true;
+    }
+
+    public override void RefreshFromExport()
+    {
+        base.RefreshFromExport();
+        // A lightmass bake can replace the component's serialized light/shadow maps without
+        // replacing the actor. Recreate its GPU lighting on the existing background worker.
+        lock (RenderResourceLock)
+        {
+            if (!RenderResourcesInitialized) return;
+            RenderResourcesInitialized = false;
+            LeaveLightEnvironment();
+            GameShaderMesh?.Dispose();
+            GameShaderMesh = null;
+            Mesh?.Dispose();
+            Mesh = null;
+            staticLighting = null;
+            MaterialOverrides.Clear();
+            if (Properties.GetProp<ArrayProperty<ObjectProperty>>("Materials") is { } materials)
+            {
+                MaterialOverrides.AddRange(materials.Select(material => material.Value != 0
+                    ? material.ResolveToEntry(Export.FileRef) : null));
+            }
+        }
+        if (RenderContext is LevelEditorRenderContext context)
+        {
+            context.RefreshActorRenderResources(Actor);
+        }
+        else
+        {
+            PrepareRenderResources();
+        }
     }
 
     public override void Render(MeshRenderContext context, RenderPass pass)
@@ -1083,6 +1203,11 @@ public class StaticMeshComponentProxy : MeshComponentProxy
         if ((force || RenderResourcesInitialized) && GameShaderMesh is not null)
         {
             GameShaderMesh.UpdateLocalToWorld(LocalToWorld);
+        }
+        if ((force || RenderResourcesInitialized)
+            && staticLighting is { GeometryMesh: not null, CanBlockVisibilityTraces: true })
+        {
+            RenderContext.InvalidateLevelGeometry();
         }
     }
 
@@ -1153,8 +1278,31 @@ public class SkeletalMeshComponentProxy : MeshComponentProxy
 
         if (useGameShader)
         {
+            PropertyCollection condensedProps = null;
+            DynamicLightEnvironment environment = null;
+            MeshStaticLighting dynamicLighting = null;
+            if (Export.Game.IsLEGame())
+            {
+                condensedProps = Export.GetCondensedProperties(RenderContext.PackageCache,
+                    resolveImports: true, mergeStructs: true);
+                if (!RenderContext.ResolveLightEnvironment(Export, condensedProps, Actor?.Export, out environment))
+                {
+                    dynamicLighting = MeshStaticLighting.CreateDynamic(RenderContext, Export, condensedProps);
+                    dynamicLighting.IsInScene = IsInScene;
+                    dynamicLighting.IsShown = IsShown;
+                }
+            }
             GameShaderMesh = new ModelPreview<LEVertex>(RenderContext, skeletalMesh, MaterialOverrides,
-                loadOnlyFirstLod: true);
+                loadOnlyFirstLod: true, staticLighting: dynamicLighting);
+            if (environment is not null)
+            {
+                bool castsShadow = condensedProps.GetProp<BoolProperty>("CastShadow") is not { Value: false }
+                                   && condensedProps.GetProp<BoolProperty>("bCastDynamicShadow") is not { Value: false };
+                JoinLightEnvironment(environment, LightingChannels.FromProperty(
+                    condensedProps.GetProp<StructProperty>("LightingChannels"), default,
+                    isInitialized: false, LightingChannels.DynamicPrimitiveDefault), castsShadow);
+            }
+            UpdateSelfLocalToWorld(force: true);
             GameShaderMesh.PrepareGraphicsResources(RenderContext);
         }
         else
@@ -1218,6 +1366,8 @@ public class SkeletalMeshComponentProxy : MeshComponentProxy
             ? skinnedMeshRenderer.PrepareSkinning(GameShaderMesh.LODs[LOD].Mesh, animPlayer)
             : Mesh is not null && skinnedMeshRenderer.PrepareSkinning(Mesh.LODs[LOD].Mesh, animPlayer);
     }
+
+    protected override void PrepareShadowCaster(MeshRenderContext context) => UploadPreparedSkinning(context);
 
     private void UploadPreparedSkinning(MeshRenderContext context)
     {
@@ -1383,8 +1533,8 @@ public class SkeletalMeshComponentProxy : MeshComponentProxy
 
     public override void UpdateLocalToWorld()
     {
-        // Head, hair, headgear, and accessory SMCs can inherit the body animation component transform.
-        // Reapplying their authored component transform when the actor moves detaches them from the body.
+        // Head, hair, headgear, and accessory components follow their animation parent's world
+        // transform. Their inherited authored offsets must not be applied a second time.
         if (animationParentComponent is not null)
         {
             LocalToWorld = animationParentComponent.LocalToWorld;
@@ -1444,7 +1594,7 @@ public class BrushComponentProxy : PrimitiveComponentProxy
 
     public override void Render(MeshRenderContext context, RenderPass pass)
     {
-        if (!IsVisible || pass is RenderPass.Hair) return;
+        if (!IsVisible || pass is not (RenderPass.Base or RenderPass.Collision or RenderPass.HitTest)) return;
         if (Brush is not null)
         {
             context.RenderMeshAsWireframe(Brush);

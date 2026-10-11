@@ -449,6 +449,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         private string PendingInlineEditorName;
         private int PendingInlineEditorCaretIndex = -1;
         private ReferenceIssue pendingReferenceIssue;
+        private int referenceSelectionVersion;
         private int binaryScanVersion;
         private bool isBinaryScanRunning;
 
@@ -1384,6 +1385,12 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                         case "BioGestureRulesData":
                             subNodes.AddRange(StartBioGestureRulesDataScan(data, ref binarystart));
                             break;
+                        case "BioPersistentCookerData":
+                            subNodes.AddRange(StartBioPersistentCookerDataScan(data, ref binarystart));
+                            break;
+                        case "BioInert":
+                            subNodes.AddRange(StartBioInertScan(data, ref binarystart));
+                            break;
                         default:
                             if (!CurrentLoadedExport.HasStack)
                             {
@@ -1427,6 +1434,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 return;
             }
             pendingReferenceIssue = issue;
+            referenceSelectionVersion++;
             if (isBinaryScanRunning)
             {
                 return;
@@ -1480,8 +1488,27 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 {
                     parent.IsExpanded = true;
                 }
-                node.IsProgramaticallySelecting = true;
-                node.IsSelected = true;
+                ExportEntry selectedExport = CurrentLoadedExport;
+                int selectedScanVersion = binaryScanVersion;
+                int selectedReferenceVersion = referenceSelectionVersion;
+                // The expanded containers must exist before selection. Use this control's dispatcher,
+                // as RestoreTreeState does, rather than the shared tree-helper operation queue.
+                Dispatcher.BeginInvoke(() =>
+                {
+                    if (selectedScanVersion != binaryScanVersion
+                        || selectedReferenceVersion != referenceSelectionVersion
+                        || !ReferenceEquals(CurrentLoadedExport, selectedExport)
+                        || offset > selectedExport.DataSize - sizeof(int)
+                        || issue.ReferencedUIndex is int expectedReference
+                        && EndianReader.ToInt32(selectedExport.DataReadOnly, offset, selectedExport.FileRef.Endian) != expectedReference)
+                    {
+                        return;
+                    }
+                    node.IsProgramaticallySelecting = false;
+                    node.IsSelected = true;
+                    SetHexboxSelectedOffset(offset);
+                    BinaryInterpreter_Hexbox.SelectionLength = sizeof(int);
+                }, DispatcherPriority.Loaded);
             }
             SetHexboxSelectedOffset(offset);
             BinaryInterpreter_Hexbox.SelectionLength = sizeof(int);

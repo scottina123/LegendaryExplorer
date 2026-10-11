@@ -206,7 +206,7 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
                 new Vector4(position, 1),
                 EncodeShaderNormal(game, tangent),
                 EncodeShaderNormal(game, normal),
-                Vector4.Zero,
+                Vector4.One,
                 uvs);
         }
 

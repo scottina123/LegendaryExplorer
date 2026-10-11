@@ -338,7 +338,7 @@ public sealed partial class BioStageEditor : ExportLoaderControl, IActorEditorCo
     }
 
     private static readonly RenderPass[] BackdropRenderPasses =
-        [RenderPass.Base, RenderPass.Hair, RenderPass.Collision];
+        [RenderPass.Base, RenderPass.Hair, RenderPass.Lighting, RenderPass.Translucent, RenderPass.Collision];
     private static readonly object SessionLevelPathsLock = new();
     private static readonly List<string> SessionLevelPaths = [];
 
@@ -2011,6 +2011,7 @@ public sealed partial class BioStageEditor : ExportLoaderControl, IActorEditorCo
                     ((hitId >> 8) & 0xFF) / 255f, ((hitId >> 16) & 0xFF) / 255f);
                 actor.Render(RenderContext, pass);
             }
+            if (pass == RenderPass.Lighting) RenderContext.EndLightingPass();
         }
 
         RenderStageWireframe();

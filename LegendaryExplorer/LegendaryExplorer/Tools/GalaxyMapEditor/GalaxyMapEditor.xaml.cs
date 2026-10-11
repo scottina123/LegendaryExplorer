@@ -384,9 +384,6 @@ public sealed class GalaxyMapSharedStaticMeshProxy : PrimitiveComponentProxy
 
     public override void Render(MeshRenderContext context, RenderPass pass)
     {
-        if (pass is not RenderPass.Base)
-            return;
-
         _meshLE?.Render(pass, context, 0);
         _meshWorld?.Render(pass, context, 0);
     }
@@ -1604,7 +1601,7 @@ public partial class GalaxyMapEditor : WPFBase, ISceneRenderContextConfigurable,
 
     public GalaxyMapEditor() : base("Galaxy Map Editor")
     {
-        RenderContext = new GalaxyMap2DRenderContext();
+        RenderContext = new GalaxyMap2DRenderContext { UseGameShaders = true, LightingMode = ViewportLightingMode.Preview };
         _backgroundColor = GetThemeDefaultBackgroundColor();
         RenderContext.BackgroundColor = _backgroundColor;
 
@@ -3014,7 +3011,7 @@ public partial class GalaxyMapEditor : WPFBase, ISceneRenderContextConfigurable,
                 _backgroundTexture.TextureView);
         }
 
-        foreach (RenderPass pass in (RenderPass[])[RenderPass.Base])
+        foreach (RenderPass pass in (RenderPass[])[RenderPass.Base, RenderPass.Hair, RenderPass.Lighting, RenderPass.Translucent])
         {
             for (int i = 0; i < RenderContext.DrawList_3D.Count; i++)
             {
@@ -3031,6 +3028,7 @@ public partial class GalaxyMapEditor : WPFBase, ISceneRenderContextConfigurable,
                 actor.Render(RenderContext, pass);
                 RenderContext.RenderFlags &= ~LevelEditorRenderContext.ShaderFlags.Selected;
             }
+            if (pass == RenderPass.Lighting) RenderContext.EndLightingPass();
         }
         RenderContext.DrawUI();
     }

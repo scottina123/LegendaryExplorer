@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using Newtonsoft.Json;
 using System.Collections.Generic;
 using System;
@@ -86,6 +86,11 @@ namespace LegendaryExplorer.Misc.AppSettings
         public static bool EntrySelector_UseTreeView {
             get => _entryselector_usetreeview;
             set => SetProperty(ref _entryselector_usetreeview, value);
+        }
+        private static Dictionary<string, string> _packageeditor_boundexperimentshortcuts = new Dictionary<string, string>();
+        public static Dictionary<string, string> PackageEditor_BoundExperimentShortcuts {
+            get => _packageeditor_boundexperimentshortcuts;
+            set => SetProperty(ref _packageeditor_boundexperimentshortcuts, value);
         }
         private static int _sequenceeditor_maxvarstringlength = 40;
         public static int SequenceEditor_MaxVarStringLength {
@@ -612,11 +617,11 @@ namespace LegendaryExplorer.Misc.AppSettings
             }
             return defaultValue;
         }
-        public static Dictionary<string, ThemeData> TryGetSetting(Dictionary<string, object> settings, string key, Dictionary<string, ThemeData> defaultValue)
+        public static Dictionary<string, T> TryGetSetting<T>(Dictionary<string, object> settings, string key, Dictionary<string, T> defaultValue)
         {
             if (settings.TryGetValue(key, out var value) && value is JObject jObj)
             {
-                try { return jObj.ToObject<Dictionary<string, ThemeData>>() ?? defaultValue; }
+                try { return jObj.ToObject<Dictionary<string, T>>() ?? defaultValue; }
                 catch { return defaultValue; }
             }
             return defaultValue;
@@ -653,6 +658,7 @@ namespace LegendaryExplorer.Misc.AppSettings
             PackageEditor_DefaultMemorySafeImportPorting = TryGetSetting(settingsJson, "packageeditor_defaultmemorysafeimportporting", false);
             PackageEditor_MoveDlcModTexturesToCurrentDlcTfcWhenPorting = TryGetSetting(settingsJson, "packageeditor_movedlcmodtexturestocurrentdlctfcwhenporting", false);
             EntrySelector_UseTreeView = TryGetSetting(settingsJson, "entryselector_usetreeview", false);
+            PackageEditor_BoundExperimentShortcuts = TryGetSetting(settingsJson, "packageeditor_boundexperimentshortcuts", new Dictionary<string, string>());
             SequenceEditor_MaxVarStringLength = TryGetSetting(settingsJson, "sequenceeditor_maxvarstringlength", 40);
             SequenceEditor_ShowParsedInfo = TryGetSetting(settingsJson, "sequenceeditor_showparsedinfo", true);
             SequenceEditor_AutoSaveViewV2 = TryGetSetting(settingsJson, "sequenceeditor_autosaveviewv2", true);
@@ -780,6 +786,7 @@ namespace LegendaryExplorer.Misc.AppSettings
             settingsJson["packageeditor_showexporttypeicons"] = PackageEditor_ShowExportTypeIcons.ToString();
             settingsJson["packageeditor_showtreeentrysubtext"] = PackageEditor_ShowTreeEntrySubText.ToString();
             settingsJson["packageeditor_showexperiments"] = PackageEditor_ShowExperiments.ToString();
+            settingsJson["packageeditor_boundexperimentshortcuts"] = PackageEditor_BoundExperimentShortcuts;
             settingsJson["packageeditor_defaultmemorysafeimportporting"] = PackageEditor_DefaultMemorySafeImportPorting.ToString();
             settingsJson["packageeditor_movedlcmodtexturestocurrentdlctfcwhenporting"] = PackageEditor_MoveDlcModTexturesToCurrentDlcTfcWhenPorting.ToString();
             settingsJson["entryselector_usetreeview"] = EntrySelector_UseTreeView.ToString();

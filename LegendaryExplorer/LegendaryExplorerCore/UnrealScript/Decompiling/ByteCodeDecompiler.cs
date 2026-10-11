@@ -34,8 +34,6 @@ namespace LegendaryExplorerCore.UnrealScript.Decompiling
 
         private Dictionary<ushort, Statement> StatementLocations;
         private Stack<ushort> StartPositions;
-        private List<List<Statement>> Scopes;
-        private Stack<int> CurrentScope;
         private readonly List<ForEachLoop> decompiledForEachLoops = [];
         
         private readonly List<FunctionParameter> Parameters;
@@ -46,6 +44,12 @@ namespace LegendaryExplorerCore.UnrealScript.Decompiling
         private Stack<ushort> ForEachScopes; // For tracking ForEach etc endpoints
 
         private bool isInContextExpression; // For super lookups
+
+        private Class contextClassForVTableValidation; // class of the current context expression (if it could be resolved), for validating NamedFunction vtable indices
+
+        private readonly Dictionary<SymbolReference, IEntry> symbolRefsToEntries = []; // for recovering type info when resolving the class of a context expression
+
+        private readonly List<string> decompilationErrors = [];
 
         private readonly Dictionary<ushort, List<string>> ReplicatedProperties; //for decompiling Class replication blocks
 
@@ -98,10 +102,8 @@ namespace LegendaryExplorerCore.UnrealScript.Decompiling
         {
             Position = 0;
             _totalPadding = 0;
-            CurrentScope = [];
             StatementLocations = [];
             StartPositions = [];
-            Scopes = [];
             LabelTable = [];
             ForEachScopes = [];
             var statements = new List<Statement>();
@@ -133,8 +135,6 @@ namespace LegendaryExplorerCore.UnrealScript.Decompiling
                 }
             }
 
-            Scopes.Add(statements);
-            CurrentScope.Push(Scopes.Count - 1);
             while (Position < Size && !CurrentIs(OpCodes.EndOfScript))
             {
                 Statement current;
@@ -157,7 +157,6 @@ namespace LegendaryExplorerCore.UnrealScript.Decompiling
 
                 statements.Add(current);
             }
-            CurrentScope.Pop();
 
             Dictionary<Statement, ushort> LocationStatements = StatementLocations.ToDictionary(kvp => kvp.Value, kvp => kvp.Key);
 
@@ -179,6 +178,7 @@ namespace LegendaryExplorerCore.UnrealScript.Decompiling
                     List<SymbolReference> replicatedVariables = propNames.Select(s => new SymbolReference(null, s)).ToList();
                     newStatements.Add(new ReplicationStatement(exprStatement.Value, replicatedVariables));
                 }
+                PrependDecompilationErrors(newStatements);
                 return new CodeBody(newStatements);
             }
 
@@ -221,13 +221,14 @@ namespace LegendaryExplorerCore.UnrealScript.Decompiling
                 InsertLabel(label);
             }
 
-            //a void return at the end of a function is a bytecode implementation detail, get rid of it.
-            //This will also get rid of returnnothings, so loop to make sure we get both
+            //A single void return at the end of a function is a bytecode implementation detail.
+            //Do not remove earlier explicit returns; ReturnNothing is also a void return.
             for (int i = statements.Count - 1; i >= 0; i--)
             {
                 if (statements[i] is ReturnStatement { Value: null})
                 {
                     statements.RemoveAt(i);
+                    break;
                 }
                 else if (statements[i] is not CommentStatement)
                 {
@@ -235,7 +236,19 @@ namespace LegendaryExplorerCore.UnrealScript.Decompiling
                 }
             }
 
+            PrependDecompilationErrors(statements);
+
             return codeBody;
+        }
+
+        private void PrependDecompilationErrors(List<Statement> statements)
+        {
+            if (decompilationErrors.Count > 0)
+            {
+                var comment = new CommentStatement();
+                comment.CommentLines.AddRange(decompilationErrors);
+                statements.Insert(0, comment);
+            }
         }
 
         private static void ClearToDecompilationError(List<Statement> statements)
@@ -353,9 +366,14 @@ namespace LegendaryExplorerCore.UnrealScript.Decompiling
                             }
                         }
                     }
+                    // A preceding assignment is a for-loop initializer only when every
+                    // path into the loop goes through it. Keep it outside when another
+                    // branch jumps directly to the shared condition.
+                    bool canUseForInit = !statements.Take(Math.Max(0, conditionIdx - 1))
+                        .OfType<Jump>().Any(jump => jump.JumpLoc == loopEnd.JumpLoc);
                     AssignStatement forInit = null;
                     ushort loopLoc = loopEnd.JumpLoc;
-                    if (isForLoop && conditionIdx > 0 && statements[conditionIdx - 1] is AssignStatement assignStatement)
+                    if (isForLoop && canUseForInit && conditionIdx > 0 && statements[conditionIdx - 1] is AssignStatement assignStatement)
                     {
                         forInit = assignStatement;
                         skipStart = conditionIdx - 1;

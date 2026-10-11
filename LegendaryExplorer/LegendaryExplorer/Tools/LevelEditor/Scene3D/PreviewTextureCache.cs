@@ -5,6 +5,7 @@ using LegendaryExplorerCore.Packages.CloningImportingAndRelinking;
 using LegendaryExplorerCore.Unreal;
 using LegendaryExplorerCore.Unreal.BinaryConverters;
 using SharpDX.Direct3D11;
+using SharpDX.DXGI;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -30,9 +31,15 @@ public class PreviewTextureCache : IDisposable
         public string InstanceFullPath { get; }
 
         /// <summary>
-        /// The Direct3D ShaderResourceView for binding to shaders.
+        /// The Direct3D ShaderResourceView for binding to shaders. Reads raw texel values.
         /// </summary>
         public ShaderResourceView TextureView { get; private set; }
+
+        /// <summary>
+        /// For textures holding sRGB-encoded color, a view that converts to linear when sampled, as the game's shaders expect.
+        /// Otherwise, the same as <see cref="TextureView"/>.
+        /// </summary>
+        public ShaderResourceView LinearTextureView { get; private set; }
 
         /// <summary>
         /// The Direct3D texture for ShaderResourceView creation.
@@ -45,10 +52,14 @@ public class PreviewTextureCache : IDisposable
         public DateTime LastUsageTime = DateTime.Now;
 
         public readonly bool IsTextureCube;
-        public readonly TextureAddressMode AddressU;
-        public readonly TextureAddressMode AddressV;
         public int Width => Texture?.Description.Width ?? 1;
         public int Height => Texture?.Description.Height ?? 1;
+
+        /// <summary>
+        /// How the game samples this texture outside [0,1]. (The texture's AddressX and AddressY)
+        /// </summary>
+        public readonly TextureAddressMode AddressU = TextureAddressMode.Wrap;
+        public readonly TextureAddressMode AddressV = TextureAddressMode.Wrap;
 
         /// <summary>
         /// Creates a new cache entry for the given texture.
@@ -59,13 +70,40 @@ public class PreviewTextureCache : IDisposable
             MemoryAnalyzer.AddTrackedMemoryItem($"PreviewTexture {export.ObjectName}", new WeakReference(this));
             InstanceFullPath = export.InstancedFullPath;
             IsTextureCube = export.ClassName == "TextureCube";
-            AddressU = GetTextureAddressMode(export, "AddressX");
-            AddressV = GetTextureAddressMode(export, "AddressY");
+            if (!IsTextureCube)
+            {
+                PropertyCollection props = export.GetProperties();
+                AddressU = GetAddressMode(props.GetProp<EnumProperty>("AddressX"));
+                AddressV = GetAddressMode(props.GetProp<EnumProperty>("AddressY"));
+            }
 
-            Texture = IsTextureCube
-                ? renderContext.LoadUnrealTextureCube(export, useSrgbColorManagement: useSrgbColorManagement)
-                : renderContext.LoadUnrealTexture(export, useSrgbColorManagement);
-            TextureView = new ShaderResourceView(renderContext.Device, Texture);
+            MeshRenderContext.LoadedTexture loaded = IsTextureCube ? renderContext.LoadUnrealTextureCubeViews(export) : renderContext.LoadUnrealTextureViews(export, useSrgbColorManagement);
+            Texture = loaded.Texture;
+            TextureView = CreateView(renderContext, loaded.ViewFormat);
+            LinearTextureView = loaded.SRGBViewFormat is Format srgbFormat ? CreateView(renderContext, srgbFormat) : TextureView;
+        }
+
+        private static TextureAddressMode GetAddressMode(EnumProperty textureAddress) => textureAddress?.Value.Name switch
+        {
+            "TA_Clamp" => TextureAddressMode.Clamp,
+            "TA_Mirror" => TextureAddressMode.Mirror,
+            _ => TextureAddressMode.Wrap //TA_Wrap is the default
+        };
+
+        private ShaderResourceView CreateView(MeshRenderContext renderContext, Format format)
+        {
+            var desc = new ShaderResourceViewDescription { Format = format };
+            if (IsTextureCube)
+            {
+                desc.Dimension = SharpDX.Direct3D.ShaderResourceViewDimension.TextureCube;
+                desc.TextureCube.MipLevels = -1;
+            }
+            else
+            {
+                desc.Dimension = SharpDX.Direct3D.ShaderResourceViewDimension.Texture2D;
+                desc.Texture2D.MipLevels = -1;
+            }
+            return new ShaderResourceView(renderContext.Device, Texture, desc);
         }
 
         private static TextureAddressMode GetTextureAddressMode(ExportEntry export, string propertyName)
@@ -81,6 +119,11 @@ public class PreviewTextureCache : IDisposable
         /// </summary>
         public void Dispose()
         {
+            if (LinearTextureView != TextureView)
+            {
+                LinearTextureView?.Dispose();
+            }
+            LinearTextureView = null;
             TextureView?.Dispose();
             TextureView = null;
             Texture?.Dispose();
@@ -298,6 +341,8 @@ public class PreviewTextureCache : IDisposable
             Tick(context.CurrentTime);
             return new LinearColor(HorizontalScale * CurrentColumn, VerticalScale * CurrentRow, 0, 0);
         }
+
+        public LinearColor GetTextureScale() => new(HorizontalScale, VerticalScale, 0, 0);
     }
 
     public MeshRenderContext RenderContext { get; }
@@ -354,7 +399,7 @@ public class PreviewTextureCache : IDisposable
     /// Queues a texture for eventual loading.
     /// </summary>
     public TextureEntry LoadTexture(IEntry textureEntry, PackageCache packageCache = null,
-        bool useSrgbColorManagement = false)
+        bool useSrgbColorManagement = false, string cacheKey = null)
     {
         if (textureEntry is null)
         {
@@ -362,7 +407,7 @@ public class PreviewTextureCache : IDisposable
             return null;
         }
         string ifp = textureEntry.InstancedFullPath;
-        var key = new TextureCacheKey(ifp, useSrgbColorManagement);
+        var key = new TextureCacheKey(cacheKey ?? ifp, useSrgbColorManagement);
         lock (textureLoadLock)
         {
             if (AssetCache.TryGetValue(key, out TextureEntry entry))
@@ -376,7 +421,7 @@ public class PreviewTextureCache : IDisposable
             }
             if (textureEntry is ExportEntry textureExport)
             {
-                key = new TextureCacheKey(textureExport.InstancedFullPath, useSrgbColorManagement);
+                key = new TextureCacheKey(cacheKey ?? textureExport.InstancedFullPath, useSrgbColorManagement);
                 if (AssetCache.TryGetValue(key, out entry))
                 {
                     entry.LastUsageTime = DateTime.Now;

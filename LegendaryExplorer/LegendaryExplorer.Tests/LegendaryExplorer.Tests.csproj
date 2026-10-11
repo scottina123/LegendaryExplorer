@@ -26,6 +26,11 @@
 
     <ItemGroup>
         <None Include="TestData\**" CopyToOutputDirectory="PreserveNewest" />
+        <!-- App post-build assets do not flow through ProjectReference into the test output. -->
+        <None Include="..\LegendaryExplorer\Resources\exec\Default.png"
+              Link="exec\Default.png" CopyToOutputDirectory="PreserveNewest" />
+        <None Include="..\LegendaryExplorer\Resources\exec\ME3AnimViewer.pcc"
+              Link="exec\ME3AnimViewer.pcc" CopyToOutputDirectory="PreserveNewest" />
     </ItemGroup>
 
     <ItemGroup>

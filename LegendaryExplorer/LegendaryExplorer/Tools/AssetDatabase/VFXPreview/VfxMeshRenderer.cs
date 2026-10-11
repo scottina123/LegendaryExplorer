@@ -472,7 +472,7 @@ float4 PSMain(VS_OUT input) : SV_TARGET0
             RenderParticles(drawOpaque: false);
         }
         context.ImmediateContext.PixelShader.SetShaderResource(0, null);
-        context.ImmediateContext.OutputMerger.SetDepthStencilState(null);
+        context.ImmediateContext.OutputMerger.SetDepthStencilState(context.DefaultDepthState);
     }
 
     private static int BuildFlags(VfxParticleMaterialDefinition material)

@@ -125,4 +125,27 @@ public class ReferenceIssueNavigationTests
         Assert.AreEqual(-999, issue.ReferencedUIndex);
         Assert.IsNull(issue.Offset);
     }
+
+    [TestMethod]
+    public void AnnotatedBinaryTypesReportWrongClassesWithoutChangingReferences()
+    {
+        using var package = MEPackageHandler.CreateMemoryEmptyPackage("BinaryReferenceTypes.pcc", MEGame.LE3);
+        var wrongType = package.CreateExport("WrongTexture", "Sequence", indexed: false);
+        var material = package.CreateExport("Material", "Material", indexed: false);
+        var binary = Material.Create();
+        binary.SM3MaterialResource.UniformExpressionTextures = [wrongType.UIndex];
+        material.WriteBinary(binary);
+        byte[] originalData = material.Data;
+        var results = new ReferenceCheckPackage();
+
+        EntryChecker.CheckReferences(results, package, LECLocalizationShim.NonLocalizedStringConverter);
+
+        var issue = results.GetSignificantIssues().OfType<ReferenceIssue>()
+            .Single(result => result.Entry == material && result.Location == ReferenceIssueLocation.Binary);
+        Assert.AreEqual(wrongType.UIndex, issue.ReferencedUIndex);
+        StringAssert.Contains(issue.Message, "SM3MaterialResource.UniformExpressionTextures[0]");
+        StringAssert.Contains(issue.Message, "Texture");
+        StringAssert.Contains(issue.Message, "Sequence");
+        CollectionAssert.AreEqual(originalData, material.Data);
+    }
 }

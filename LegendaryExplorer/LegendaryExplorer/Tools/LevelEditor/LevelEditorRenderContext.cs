@@ -1,10 +1,12 @@
-﻿using LegendaryExplorer.Tools.LevelEditor.Scene3D;
+using LegendaryExplorer.Tools.LevelEditor.Scene3D;
 using LegendaryExplorer.Tools.AssetDatabase.VFXPreview;
 using LegendaryExplorer.Misc.AppSettings;
 using LegendaryExplorerCore.Gammtek.Extensions;
 using LegendaryExplorerCore.Helpers;
 using LegendaryExplorerCore.SharpDX;
 using LegendaryExplorerCore.Unreal.BinaryConverters;
+using LegendaryExplorerCore.Unreal;
+using LegendaryExplorerCore.Unreal.ObjectInfo;
 using LegendaryExplorerCore.Unreal.Collections;
 using SharpDX.Direct3D11;
 using SharpDX.DXGI;
@@ -54,6 +56,7 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
     private readonly EmitterIconOverlay EmitterIcons = new();
     private readonly PointOfInterestIconOverlay PointOfInterestIcons = new();
     private readonly Dictionary<ActorProxy, SceneLight> sceneLightCache = [];
+    private readonly Dictionary<ActorProxy, List<SceneLight>> nativeActorLights = [];
     private readonly ConcurrentDictionary<ActorProxy, BoxSphereBounds> actorBoundsCache = [];
     private readonly ConcurrentDictionary<ActorProxy, int> actorVisualRevisions = [];
     private readonly ConcurrentDictionary<ActorProxy, byte> pendingActorVisualInvalidations = [];
@@ -118,7 +121,7 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
     // Match the native VFX preview's far-depth fallback only while particles draw; other Level Editor materials
     // retain their previous scene-depth behavior.
     public override ShaderResourceView PreviewSceneDepthTextureView
-        => UseVfxSceneDepthFallback ? WhiteTexView : base.PreviewSceneDepthTextureView;
+        => UseVfxSceneDepthFallback ? BlackTexView : base.PreviewSceneDepthTextureView;
 
     /// <summary>
     /// Resource construction runs on a dedicated worker. The composition callback only consumes a redraw
@@ -307,6 +310,23 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
     public bool ShowPointsOfInterest = true;
     public bool ShowVolumes;
     public bool ShowVolumetrics;
+    // Keep the fork's existing visibility behavior. Hidden actors remain editable without adding UI.
+    public bool ShowHidden = true;
+
+    public override bool IsActorVisible(ActorProxy actor) => actor is not null
+        && (!actor.IsVolume || ShowVolumes)
+        && (!actor.IsVolumetricMesh || ShowVolumetrics)
+        && (actor is not DecalActorProxy || ShowDecalActors)
+        && (actor is not SFXPointOfInterestProxy || ShowPointsOfInterest)
+        && (!actor.IsHidden || ShowHidden);
+
+    private bool IsHitProxyVisible(IHitProxy proxy) => proxy switch
+    {
+        ActorProxy actor => IsActorVisible(actor),
+        AxisHitProxy => TransformWidget.Attach is { } target
+                        && (target is not ActorProxy actor || IsActorVisible(actor)),
+        _ => true
+    };
 
     // Maximum distance to show light icons (world units). <=0 = unlimited.
     public float LightIconRadius = 20000f;
@@ -357,7 +377,8 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
         IncrementActorVisualRevision(actor);
         Interlocked.Increment(ref staticSceneRevision);
         pendingActorVisualInvalidations.TryAdd(actor, 0);
-        if (actor.HasLightSettings && CanAffectSceneLight(e.PropertyName))
+        if ((actor.HasLightSettings || nativeActorLights.ContainsKey(actor))
+            && CanAffectSceneLight(e.PropertyName))
         {
             pendingSceneLightRefreshes.TryAdd(actor, 0);
         }
@@ -388,6 +409,7 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
 
     private void CacheSceneLight(ActorProxy actor)
     {
+        RefreshNativeSceneLights(actor, usePackageSnapshot: true);
         if (actor.TryGetSceneLight(out SceneLight light))
         {
             sceneLightCache[actor] = light;
@@ -395,8 +417,70 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
         }
     }
 
+    private void RefreshNativeSceneLights(ActorProxy actor, bool usePackageSnapshot = false)
+    {
+        var components = actor.Components.Where(component => component.Export.IsA("LightComponent")).ToList();
+        if (components.Count == 0) return;
+        if (usePackageSnapshot && actor.OwningFile is { } owningFile)
+        {
+            var componentExports = components.Select(component => component.Export).ToHashSet();
+            var snapshot = owningFile.Lights.Where(light => componentExports.Contains(light.Export)).ToList();
+            if (snapshot.Count > 0)
+            {
+                nativeActorLights[actor] = snapshot;
+                return;
+            }
+        }
+        if (nativeActorLights.Remove(actor, out var previous))
+        {
+            RemoveLights(previous);
+            actor.OwningFile?.Lights.RemoveAll(previous.Contains);
+        }
+        else if (actor.OwningFile is { } file)
+        {
+            // Replace the package snapshot with the editable proxy's current values.
+            var exports = components.Select(component => component.Export).ToHashSet();
+            previous = file.Lights.Where(light => exports.Contains(light.Export)).ToList();
+            RemoveLights(previous);
+            file.Lights.RemoveAll(previous.Contains);
+        }
+        string ownerClass = actor is CollectionActorComponentProxy collection
+            ? collection.CollectionActorExport.ClassName : actor.Export.ClassName;
+        List<SceneLight> lights = [];
+        foreach (PrimitiveComponentProxy component in components)
+        {
+            PropertyCollection overrides = [CommonStructs.MatrixProp(actor.LocalToWorld, "CachedParentToWorld")];
+            if (component is PointLightComponentProxy point)
+            {
+                overrides.Add(new FloatProperty(point.Radius, "Radius"));
+                overrides.Add(new FloatProperty(point.Brightness, "Brightness"));
+                overrides.Add(CommonStructs.ColorProp(point.ApplyBouncedModulationColor
+                    ? point.LightEnv_BouncedModulationColor : point.LightColor, "LightColor"));
+                overrides.Add(CommonStructs.ColorProp(point.LightEnv_BouncedModulationColor,
+                    "LightEnv_BouncedModulationColor"));
+                if (point is SpotLightComponentProxy spot)
+                {
+                    overrides.Add(new FloatProperty(spot.InnerConeAngle, "InnerConeAngle"));
+                    overrides.Add(new FloatProperty(spot.OuterConeAngle, "OuterConeAngle"));
+                }
+            }
+            if (component is DirectionalLightComponentProxy directional)
+            {
+                overrides.Add(new FloatProperty(directional.Brightness, "Brightness"));
+                overrides.Add(CommonStructs.ColorProp(directional.LightColor, "LightColor"));
+            }
+            SceneLight light = SceneLight.Create(component.Export, ownerClass, PackageCache,
+                actor.LocalToWorld, propertyOverrides: overrides);
+            if (light is not null) lights.Add(light);
+        }
+        nativeActorLights[actor] = lights;
+        actor.OwningFile?.Lights.AddRange(lights);
+        AddLights(lights);
+    }
+
     private void RefreshCachedSceneLight(ActorProxy actor)
     {
+        RefreshNativeSceneLights(actor);
         sceneLightCache.Remove(actor);
         if (actor.TryGetSceneLight(out SceneLight light))
         {
@@ -409,6 +493,11 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
 
     private void RemoveSceneLight(ActorProxy actor)
     {
+        if (nativeActorLights.Remove(actor, out var nativeLights))
+        {
+            RemoveLights(nativeLights);
+            actor.OwningFile?.Lights.RemoveAll(nativeLights.Contains);
+        }
         if (sceneLightCache.Remove(actor))
         {
             SceneLights.Clear();
@@ -709,7 +798,7 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
 
         for (int i = 0; i < indexes.Length; i += 1)
         {
-            if (HitProxies.TryGetAt(indexes[i], out IHitProxy hitProxy) && (selected is null || selected.HitPriority < hitProxy.HitPriority))
+            if (HitProxies.TryGetAt(indexes[i], out IHitProxy hitProxy) && IsHitProxyVisible(hitProxy) && (selected is null || selected.HitPriority < hitProxy.HitPriority))
             {
                 selected = hitProxy;
             }
@@ -755,10 +844,12 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
         NavigationOverlay.Draw(this);
         Primitives.Render(this, clearDepth: false);
 
-        bool drawTransformWidgetLast = DrawList_UI.Contains(TransformWidget);
+        bool drawTransformWidgetLast = DrawList_UI.Contains(TransformWidget)
+                                       && TransformWidget.Attach is { } target
+                                       && (target is not ActorProxy actor || IsActorVisible(actor));
         foreach (UIElement uiElem in DrawList_UI)
         {
-            if (drawTransformWidgetLast && ReferenceEquals(uiElem, TransformWidget))
+            if (ReferenceEquals(uiElem, TransformWidget))
             {
                 continue;
             }
@@ -774,7 +865,7 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
         }
         finally
         {
-            ImmediateContext.OutputMerger.SetDepthStencilState(null);
+            ImmediateContext.OutputMerger.SetDepthStencilState(DefaultDepthState);
         }
 
         if (drawTransformWidgetLast)
@@ -823,6 +914,16 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
         if (emittersChanged) Interlocked.Increment(ref emitterIconRevision);
         if (pointsOfInterestChanged) Interlocked.Increment(ref pointOfInterestIconRevision);
         EnableTransformWidget();
+    }
+
+    internal void RefreshActorRenderResources(ActorProxy actor)
+    {
+        actorBoundsCache.TryRemove(actor, out _);
+        IncrementActorVisualRevision(actor);
+        Interlocked.Increment(ref staticSceneRevision);
+        QueueRenderResources(actor);
+        StartRenderResourceWorker();
+        Interlocked.Exchange(ref renderResourceRedrawRequested, 1);
     }
 
     private void QueueRenderResources(ActorProxy actor)
@@ -997,6 +1098,8 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
         Interlocked.Increment(ref staticSceneRevision);
         StopRenderResourceWorker();
         EmptyCaches();
+        ClearLights();
+        nativeActorLights.Clear();
         HitProxies.Reset();
         foreach (ActorProxy actor in DrawList_3D)
         {

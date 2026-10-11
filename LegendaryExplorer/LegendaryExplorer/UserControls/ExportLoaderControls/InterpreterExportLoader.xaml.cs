@@ -2275,10 +2275,13 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             item.IsSelected = true;
 
             long inputVersion = propertyTreeInputVersion;
+            ExportEntry export = CurrentLoadedExport;
             pendingPropertyTreeSelectionRestore = Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, (Action)(() =>
             {
                 pendingPropertyTreeSelectionRestore = null;
-                if (propertyTreeInputVersion != inputVersion)
+                if (propertyTreeInputVersion != inputVersion
+                    || CurrentLoadedExport is null
+                    || !ReferenceEquals(CurrentLoadedExport, export))
                 {
                     return;
                 }
@@ -2295,12 +2298,12 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         private void PropertyTree_UserInput(object sender, InputEventArgs e)
         {
-            propertyTreeInputVersion++;
             CancelPendingPropertyTreeRestores();
         }
 
         private void CancelPendingPropertyTreeRestores()
         {
+            propertyTreeInputVersion++;
             pendingPropertyTreeSelectionRestore?.Abort();
             pendingPropertyTreeSelectionRestore = null;
             pendingPropertyTreeScrollRestore?.Abort();
@@ -6072,6 +6075,9 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         public override void Dispose()
         {
+            pendingPropertyDataReload?.Abort();
+            pendingPropertyDataReload = null;
+            CancelPendingPropertyTreeRestores();
             Settings.StaticPropertyChanged -= SettingChanged;
 
             if (Interpreter_Hexbox != null)

@@ -1,4 +1,4 @@
-<exportLoaderControls:FileExportLoaderControl
+﻿<exportLoaderControls:FileExportLoaderControl
              x:Class="LegendaryExplorer.UserControls.ExportLoaderControls.TLKEditorExportLoader"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -313,6 +313,12 @@
                     </StackPanel>
                 </Button>
                 <Border Width="1" Height="28" Margin="14,4" Background="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"/>
+                <Button Command="{Binding SynchronizeToOtherLanguagesCommand}"
+                        ToolTip="Add missing StringRefs to sibling language TLKs"
+                        Style="{StaticResource TlkToolbarButtonStyle}"
+                        Visibility="{Binding IsFileBackedTlkLoaded, Converter={StaticResource BoolToVisibilityConverter}}">
+                    <TextBlock Text="Synchronize languages" FontSize="14" VerticalAlignment="Center"/>
+                </Button>
                 <Button Name="btnImportXML" Command="{Binding ImportXmlCommand}" ToolTip="Import from XML" Style="{StaticResource TlkToolbarButtonStyle}">
                     <StackPanel Orientation="Horizontal">
                         <Path Style="{StaticResource TlkToolbarIconStyle}" Data="M 9,1 L 9,12 M 5,8 L 9,12 L 13,8 M 2,12 L 2,17 L 16,17 L 16,12"/>

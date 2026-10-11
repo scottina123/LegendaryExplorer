@@ -511,6 +511,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
             if (SetProperty(ref _unlit, value))
             {
                 Settings.LevelEditor_Unlit = value;
+                RenderContext.LightingMode = value ? ViewportLightingMode.Unlit : ViewportLightingMode.Level;
                 if (value)
                     RenderContext.RenderFlags |= LevelEditorRenderContext.ShaderFlags.Unlit;
                 else
@@ -789,7 +790,12 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         LevelPresetsView.Filter = item => item is LevelPreset preset && LevelPresetStore.MatchesSearch(preset, LevelPresetSearchText);
         LevelPresetsView.SortDescriptions.Add(new SortDescription(nameof(LevelPreset.Name), ListSortDirection.Ascending));
         LevelPresetStore.Shared.Presets.CollectionChanged += LevelPresets_CollectionChanged;
-        RenderContext = new LevelEditorRenderContext();
+        RenderContext = new LevelEditorRenderContext
+        {
+            UseGameShaders = true,
+            UseGameShaderMeshPreviews = true,
+            LightingMode = _unlit ? ViewportLightingMode.Unlit : ViewportLightingMode.Level,
+        };
         RenderContext.ShowSelectedLightWireframe = _showSelectedLightWireframe;
         RenderContext.ShowLightIcons = _showLightIcons;
         RenderContext.SetShowEmitterVfx(_showEmitterVfx);
@@ -909,8 +915,14 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
                 && RenderContext.IsBoundsVisible(RenderContext.GetActorBounds(source))));
     }
 
+    private readonly ViewFrustum nativeViewFrustum = new();
+
     private void RenderScene(object sender, EventArgs e)
     {
+        // Cull individual native mesh components as well as the fork's cached actor bounds.
+        // The renderer disables near/far depth clipping, so only the side planes apply.
+        nativeViewFrustum.Update(RenderContext.Camera.ViewProjectionMatrix, depthClipEnabled: false);
+        RenderContext.CullingFrustum = nativeViewFrustum;
         RenderContext.ShowVolumes = ShowVolumes;
         RenderContext.ShowVolumetrics = ShowVolumetrics;
         BuildVisibleActorList();
@@ -963,6 +975,9 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
 
         DoRenderPass(RenderPass.Base, liveVisibleActors);
         DoRenderPass(RenderPass.Hair, liveVisibleActors);
+        DoRenderPass(RenderPass.Lighting, visibleActors);
+        RenderContext.EndLightingPass();
+        DoRenderPass(RenderPass.Translucent, visibleActors);
         if (ShowCollision)
         {
             DoRenderPass(RenderPass.Collision, visibleActors);
@@ -990,8 +1005,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
             ActorProxy actor = RenderContext.DrawList_3D[actorIndex];
             if (actor is DecalActorProxy && !ShowDecalActors) continue;
             if (actor is SFXPointOfInterestProxy && !ShowPointsOfInterest) continue;
-            if (actor.IsVolume && !ShowVolumes) continue;
-            if (actor.IsVolumetricMesh && !ShowVolumetrics) continue;
+            if (!RenderContext.IsActorVisible(actor)) continue;
             if (_zCutoffEnabled && actor.Location.Z >= _zCutoff) continue;
             if (HasIncompleteCharacterResources(actor)) continue;
 
@@ -1033,6 +1047,10 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         hash.Add(RenderContext.Wireframe);
         hash.Add(RenderContext.UseGameShaderMeshPreviews);
         hash.Add(RenderContext.UseGameShaderStaticMeshPreviews);
+        hash.Add(RenderContext.UseGameShaders);
+        hash.Add(RenderContext.LightingMode);
+        hash.Add(RenderContext.UseDynamicLighting);
+        hash.Add(RenderContext.UseLightMaps);
         hash.Add(RenderContext.SceneLightRevision);
         hash.Add(staticVisibleActors.Count);
         foreach (VisibleActor visibleActor in staticVisibleActors)
@@ -1195,10 +1213,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
             {
                 RenderContext.TransformWidget.Attach = selectedActor;
                 RenderContext.PrioritizeActorResources(selectedActor);
-                if (focus)
-                {
-                    FocusOnBounds(selectedActor.GetBounds());
-                }
+
                 selectedActor.PropertyChanged += OnActorPropertyChanged;
                 _preEditSnapshot = selectedActor.SnapshotTransform();
                 RefreshPropertiesExportSelection(selectedActor, PropertiesTabControl.SelectedIndex);
@@ -1214,6 +1229,10 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
             SynchronizeLevelMorphEditor(selectedActor);
             UpdateActorRotationDialIndicator();
             UpdateLightValueDialIndicator();
+        }
+        if (focus && selectedActor is not null)
+        {
+            FocusOnBounds(selectedActor.GetBounds());
         }
     }
 
@@ -2131,6 +2150,8 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
             actor.Dispose();
         }
 
+        RenderContext.RemoveLights(file.Lights);
+        RenderContext.ForgetLevel(file.Package);
         file.Dispose();
         OpenFiles.Remove(file);
         RefreshNavigationOverlay();
@@ -2238,6 +2259,10 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         {
             actor.ResolveAttachment(actors);
         }
+        RenderContext.RemoveLights(owningFile.Lights);
+        owningFile.Lights = SceneLight.LoadLevelLights(level, RenderContext.PackageCache);
+        RenderContext.AddLights(owningFile.Lights);
+        RenderContext.SetLevelModel(level.Export.FileRef, level.Model);
         return new(actors, ignoredActorClasses);
     }
 
@@ -3071,7 +3096,8 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
 
         return actor.Export.ObjectName.Instanced?.Contains(_actorFilterText, StringComparison.OrdinalIgnoreCase) == true
                || actor.Tag.Instanced?.Contains(_actorFilterText, StringComparison.OrdinalIgnoreCase) == true
-               || actor.DisplaySubtitle?.Contains(_actorFilterText, StringComparison.OrdinalIgnoreCase) == true;
+               || actor.DisplaySubtitle?.Contains(_actorFilterText, StringComparison.OrdinalIgnoreCase) == true
+               || actor.Export.ClassName.Contains(_actorFilterText, StringComparison.OrdinalIgnoreCase);
     }
 
     private void ActorFilter_TextBox_KeyUp(object sender, KeyEventArgs e)

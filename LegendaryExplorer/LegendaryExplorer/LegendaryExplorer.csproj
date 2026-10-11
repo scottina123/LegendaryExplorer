@@ -56,6 +56,12 @@
 		<DefineConstants>WINDOWS;AZURE</DefineConstants>
 	</PropertyGroup>
 
+	<!-- D3D11 validation is expensive even in Debug builds. Opt in when diagnosing graphics issues:
+	     dotnet build -c WinDebug -p:EnableD3D11DebugLayer=true -->
+	<PropertyGroup Condition="'$(EnableD3D11DebugLayer)' == 'true'">
+		<DefineConstants>$(DefineConstants);D3D11_DEBUG</DefineConstants>
+	</PropertyGroup>
+
 	<ItemGroup>
 		<None Remove="Resources\HLSL.xshd" />
 		<None Remove="Resources\Images\bink.jpg" />
@@ -177,7 +183,6 @@
 			<PrivateAssets>all</PrivateAssets>
 			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
 		</PackageReference>
-		<PackageReference Include="YellowDogMan.Mikktspace.Net" Version="0.1.4" />
 	</ItemGroup>
 
 	<ItemGroup>

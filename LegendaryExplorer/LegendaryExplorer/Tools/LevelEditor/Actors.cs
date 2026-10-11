@@ -240,6 +240,7 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy, ITr
 
     public virtual bool IsVolume => false;
     public bool IsVolumetricMesh { get; protected set; }
+    public bool IsHidden { get; private set; }
     public virtual bool HasLightSettings => false;
     public virtual bool HasLightRadius => false;
     public virtual bool HasBouncedModulationColor => false;
@@ -291,6 +292,7 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy, ITr
         PropertyCollection props = Properties;
 
         props.ReadProp(ref Tag);
+        IsHidden = props.GetProp<BoolProperty>("bHidden")?.Value ?? false;
 
         var rotationProp = props.GetProp<StructProperty>("Rotation");
         var locationsProp = props.GetProp<StructProperty>("location") ?? props.GetProp<StructProperty>("Location");
@@ -566,6 +568,7 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy, ITr
     {
         foreach (var component in Components)
         {
+            if (component.HiddenGame && !context.ShowHidden) continue;
             context.CurrentLightingChannelMask = component.LightingChannelMask;
             component.Render(context, pass);
         }
@@ -1901,8 +1904,7 @@ public class PrefabInstanceProxy : ActorProxy
     {
         foreach (var actor in Actors)
         {
-            if (actor.IsVolume && !context.ShowVolumes) continue;
-            if (actor.IsVolumetricMesh && !context.ShowVolumetrics) continue;
+            if (!context.IsActorVisible(actor)) continue;
             actor.Render(context, pass);
         }
     }

@@ -214,7 +214,7 @@ float4 PSMain(VS_OUT input) : SV_TARGET0
         effect.PrepPrimitiveBuffers(context, [], System.Runtime.InteropServices.CollectionsMarshal.AsSpan(vertices), System.Runtime.InteropServices.CollectionsMarshal.AsSpan(indices));
         effect.RenderPrimitives(context, PrimitiveTopology.TriangleList, 0, indices.Count, 0);
         context.ImmediateContext.PixelShader.SetShaderResource(0, null);
-        context.ImmediateContext.OutputMerger.SetDepthStencilState(null);
+        context.ImmediateContext.OutputMerger.SetDepthStencilState(context.DefaultDepthState);
     }
 
     /// <summary>

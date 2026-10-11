@@ -1,4 +1,4 @@
-using LegendaryExplorer.Dialogs;
+﻿using LegendaryExplorer.Dialogs;
 using LegendaryExplorer.Misc;
 using LegendaryExplorer.Misc.AppSettings;
 using LegendaryExplorer.Tools.LevelEditor;
@@ -16,6 +16,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
+using System.Diagnostics;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
@@ -33,7 +34,8 @@ public partial class ActorPreviewControl : ExportLoaderControl, IActorEditorCont
 
     public LevelEditorRenderContext RenderContext { get; } = new()
     {
-        UseGameShaderMeshPreviews = true
+        UseGameShaderMeshPreviews = true,
+        UseGameShaders = true
     };
     public bool IsApplyingUndoRedo => false;
 
@@ -260,6 +262,7 @@ public partial class ActorPreviewControl : ExportLoaderControl, IActorEditorCont
             BackgroundColor = GetThemeDefaultBackgroundColor();
         }
         RenderContext.Camera.FirstPerson = true;
+        RenderContext.ShowHidden = true;
         SceneViewer.Loaded += SceneViewer_Loaded;
         SceneViewer.Unloaded += SceneViewer_Unloaded;
         ThemeManager.ThemeChanged += OnThemeChanged;
@@ -360,10 +363,16 @@ public partial class ActorPreviewControl : ExportLoaderControl, IActorEditorCont
         ConfigurePreviewLighting();
 
         Span<RenderPass> passes = ShowCollision
-            ? [RenderPass.Base, RenderPass.Hair, RenderPass.Collision]
-            : [RenderPass.Base, RenderPass.Hair];
+            ? [RenderPass.Base, RenderPass.Hair, RenderPass.Lighting, RenderPass.Translucent, RenderPass.Collision]
+            : [RenderPass.Base, RenderPass.Hair, RenderPass.Lighting, RenderPass.Translucent];
         foreach (RenderPass pass in passes)
+        {
             _actor?.Render(RenderContext, pass);
+            if (pass is RenderPass.Lighting)
+            {
+                RenderContext.EndLightingPass();
+            }
+        }
         RenderContext.DrawUI();
     }
 
@@ -440,6 +449,15 @@ public partial class ActorPreviewControl : ExportLoaderControl, IActorEditorCont
             {
                 RenderContext.ErrorText = null;
                 RenderContext.LoadActors([_actor]);
+                if (RenderContext.HasPendingGameShaderLoads)
+                {
+                    BusyText = "Loading game shaders...";
+                    await Task.Run(() => RenderContext.LoadPendingGameShaders());
+                    if (loadVersion != _actorLoadVersion || !ReferenceEquals(CurrentLoadedExport, requestedExport))
+                    {
+                        return;
+                    }
+                }
                 RecenterActorAtOrigin(_actor);
                 BoxSphereBounds bounds = _actor.GetBounds();
                 FrameFirstPersonCamera(bounds);

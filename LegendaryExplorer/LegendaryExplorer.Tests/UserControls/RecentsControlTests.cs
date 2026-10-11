@@ -33,6 +33,7 @@ public class RecentsControlTests
         // Application and the shared icon resources must stay on the same STA thread.
         TabsKeepSeparateHistoriesAndRouteNonPccFilesToMisc();
         SavedHistoryLoadsTabsAndIncomingUpdatesPreserveSelection();
+        DetachedHistorySavesWhileOtherWindowsAreOpen();
         PinnedFilesPersistWithoutHistoryLimitsAndFilterByPath();
         PinnedFilesStayInSyncOnlyForTheSameTool();
         FileMenuOffersPinningWithoutRecentHistory();
@@ -150,6 +151,41 @@ public class RecentsControlTests
                 File.Delete(path);
             }
             Directory.Delete(directory);
+        }
+    }
+
+    private static void DetachedHistorySavesWhileOtherWindowsAreOpen()
+    {
+        string directory = Path.Combine(Path.GetTempPath(), $"LEXDetachedRecentsTests-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+        using var control = CreateControl();
+        var otherWindow = new Window
+        {
+            Content = new Border(),
+            ShowActivated = false,
+            ShowInTaskbar = false,
+            Left = -10000,
+            Top = -10000
+        };
+        try
+        {
+            otherWindow.Show();
+            control.InitRecentControl(directory, new MenuItem(), _ => { });
+            string recentPath = Path.Combine(directory, "Detached.pcc");
+            File.WriteAllText(recentPath, "");
+
+            control.AddRecent(recentPath, false, MEGame.LE3);
+
+            Assert.AreEqual(recentPath, control.RecentItems.Single().Path);
+            CollectionAssert.AreEqual(
+                control.RecentItems.Select(item => item.ConvertToRecentEntry()).ToArray(),
+                File.ReadAllLines(Path.Combine(directory, "RECENTFILES")),
+                "A detached control must save its history while unrelated windows are open.");
+        }
+        finally
+        {
+            otherWindow.Close();
+            Directory.Delete(directory, true);
         }
     }
 

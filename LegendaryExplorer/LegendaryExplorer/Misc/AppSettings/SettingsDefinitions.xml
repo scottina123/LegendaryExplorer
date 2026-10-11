@@ -32,6 +32,7 @@
   <setting name="PackageEditor_DefaultMemorySafeImportPorting" type="bool" defaultvalue="false" category="Package Editor"
            friendlyName="Use memory-safe import porting by default"/>
   <setting name="PackageEditor_MoveDlcModTexturesToCurrentDlcTfcWhenPorting" type="bool" defaultvalue="false"/>
+  <setting name="PackageEditor_BoundExperimentShortcuts" type="Dictionary&lt;string, string&gt;" defaultvalue="new Dictionary&lt;string, string&gt;()"/>
 
   <!-- Entry Selector specific settings -->
   <setting name="EntrySelector_UseTreeView" type="bool" defaultvalue="false"/>

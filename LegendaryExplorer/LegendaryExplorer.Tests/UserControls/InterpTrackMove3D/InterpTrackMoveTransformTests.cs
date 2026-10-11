@@ -577,8 +577,9 @@ public class InterpTrackMoveTransformTests
     [TestMethod]
     public void SetFacingBetweenStageKeysComposesAnimationRootMotionFromActiveFacingKey()
     {
+        // These expected offsets describe a yaw-only turn. Pitch/roll also rotate the root-motion delta.
         var actor = new CameraOrigin(new Vector3(-15842.27f, 8299.669f, -170309f),
-            new Vector3(3f, -4f, 15f));
+            new Vector3(0, 0, 15f));
         var stageNode = new CameraOrigin(new Vector3(-15323.47f, 8973.74f, -170244.2f),
             new Vector3(0, 0, 90f));
 

@@ -303,7 +303,7 @@ namespace LegendaryExplorerCore.UnrealScript.Lexing
                 value = first.ToString();
             }
             
-            return new ScriptToken(type, value, startPos, CurrentIndex) { SyntaxType = ST.Number };
+            return new ScriptToken(type, value, startPos, CurrentIndex) { SyntaxType = ST.Number, RawText = Text[startPos..CurrentIndex] };
         }
 
         private string SubNumberHex()
@@ -495,7 +495,7 @@ namespace LegendaryExplorerCore.UnrealScript.Lexing
             
             Log.LogLexError("String Literal was not terminated properly!", startPos, CurrentIndex);
         end:
-            return new ScriptToken(TokenType.StringLiteral, Builder.ToString(), startPos, CurrentIndex) { SyntaxType = ST.String };
+            return new ScriptToken(TokenType.StringLiteral, Builder.ToString(), startPos, CurrentIndex) { SyntaxType = ST.String, RawText = Text[startPos..CurrentIndex] };
         }
 
         private ScriptToken MatchSingleLineComment()
@@ -506,8 +506,10 @@ namespace LegendaryExplorerCore.UnrealScript.Lexing
             {
                 ++CurrentIndex;
             }
-            
-            return new ScriptToken(TokenType.SingleLineComment, Text.Substring(commentStart, CurrentIndex - commentStart), startPos, CurrentIndex) { SyntaxType = ST.Comment };
+
+            string commentText = Text.Substring(commentStart, CurrentIndex - commentStart);
+            var st = commentText.StartsWith("ERROR") ? ST.ERROR : ST.Comment;
+            return new ScriptToken(TokenType.SingleLineComment, commentText, startPos, CurrentIndex) { SyntaxType = st };
         }
         
         private ScriptToken MakeSymbolToken(TokenType type, string symbol)

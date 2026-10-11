@@ -721,6 +721,10 @@ namespace LegendaryExplorer.UserControls.SharedToolControls
             if (outboundPropogation)
             {
                 var propogationSource = Window.GetWindow(this);
+                if (propogationSource is null)
+                {
+                    return;
+                }
                 //we are posting an update to other instances
                 foreach (var form in Application.Current.Windows)
                 {

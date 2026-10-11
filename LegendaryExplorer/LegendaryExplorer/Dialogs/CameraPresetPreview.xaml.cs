@@ -69,7 +69,7 @@ public partial class CameraPresetPreview : UserControl, IDisposable, IActorEdito
     }
 
     private const float PreviewBodyMeshRelativeZ = -88f;
-    private static readonly RenderPass[] BaseRenderPasses = [RenderPass.Base, RenderPass.Hair];
+    private static readonly RenderPass[] BaseRenderPasses = [RenderPass.Base, RenderPass.Hair, RenderPass.Lighting, RenderPass.Translucent];
 
     private sealed class PreviewActorWidgetTarget : ITransformWidgetTarget
     {
@@ -763,7 +763,7 @@ public partial class CameraPresetPreview : UserControl, IDisposable, IActorEdito
     private void RenderScene(object sender, EventArgs e)
     {
         ReadOnlySpan<RenderPass> renderPasses = ShowCollision
-            ? [RenderPass.Base, RenderPass.Hair, RenderPass.Collision]
+            ? [RenderPass.Base, RenderPass.Hair, RenderPass.Lighting, RenderPass.Translucent, RenderPass.Collision]
             : BaseRenderPasses;
         foreach (RenderPass pass in renderPasses)
         {
@@ -775,6 +775,7 @@ public partial class CameraPresetPreview : UserControl, IDisposable, IActorEdito
                 _renderContext.CurrentHitTestId = new Vector3((hitId & 0xFF) / 255f, ((hitId >> 8) & 0xFF) / 255f, ((hitId >> 16) & 0xFF) / 255f);
                 actor.Render(_renderContext, pass);
             }
+            if (pass == RenderPass.Lighting) _renderContext.EndLightingPass();
         }
         if (_multicamPreset is not null)
         {
@@ -804,6 +805,9 @@ public partial class CameraPresetPreview : UserControl, IDisposable, IActorEdito
                 actorModel.UpdateLocalToWorld(localToWorld);
                 actorModel.Render(RenderPass.Base, _renderContext, 0);
                 actorModel.Render(RenderPass.Hair, _renderContext, 0);
+                actorModel.Render(RenderPass.Lighting, _renderContext, 0);
+                _renderContext.EndLightingPass();
+                actorModel.Render(RenderPass.Translucent, _renderContext, 0);
             }
         }
     }

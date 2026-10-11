@@ -75,7 +75,7 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
             (List<Vector4> scalarParamValues, List<Vector4> vectorParamValues) = mat.GetCachedVertexParameters(context);
             foreach (TUniformParameter<FShaderParameter> scalarParam in p.UniformVertexScalarShaderParameters)
             {
-                buffer.WriteVal(scalarParam.Param, scalarParamValues[scalarParam.Index]);
+                WriteScalarUniform(buffer, scalarParam, scalarParamValues);
             }
             foreach (TUniformParameter<FShaderParameter> vectorParam in p.UniformVertexVectorShaderParameters)
             {
@@ -99,7 +99,7 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
 
             foreach (TUniformParameter<FShaderParameter> scalarParam in p.UniformPixelScalarShaderParameters)
             {
-                buffer.WriteVal(scalarParam.Param, scalarParamValues[scalarParam.Index]);
+                WriteScalarUniform(buffer, scalarParam, scalarParamValues);
             }
             foreach (TUniformParameter<FShaderParameter> vectorParam in p.UniformPixelVectorShaderParameters)
             {
@@ -122,9 +122,9 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
 
 
             buffer.WriteVal(p.LocalToWorld, Matrix4x4.Identity);
-            buffer.WriteVal(p.WorldToLocal, Matrix3x3.Identity);
+            buffer.WriteVal(p.WorldToLocal, Matrix4x4.Identity); //float3x3 params have rows padded to 4 floats, which a Matrix4x4 matches
             Matrix4x4 viewMatrix = camera.ViewMatrix;
-            buffer.WriteVal(p.WorldToView, new Matrix3x3(viewMatrix.M11, viewMatrix.M12, viewMatrix.M13, viewMatrix.M21, viewMatrix.M22, viewMatrix.M23, viewMatrix.M31, viewMatrix.M32, viewMatrix.M33));
+            buffer.WriteVal(p.WorldToView, viewMatrix);
             Matrix4x4.Invert(viewMatrix, out Matrix4x4 inverseViewMatrix);
             Matrix4x4 projectionMatrix = camera.ProjectionMatrix;
             Matrix4x4.Invert(projectionMatrix, out Matrix4x4 inverseProjectionMatrix);
@@ -211,8 +211,22 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
         public static void WriteValues(this FLocalVertexFactoryShaderParameters p, Span<byte> buffer, MeshRenderContext context, Mesh<LEVertex> mesh, MaterialRenderProxy mat)
         {
             buffer.WriteVal(p.LocalToWorld, Matrix4x4.Identity);
-            buffer.WriteVal(p.WorldToLocal, Matrix3x3.Identity);
+            buffer.WriteVal(p.WorldToLocal, Matrix4x4.Identity); //float3x3 params have rows padded to 4 floats, which a Matrix4x4 matches
             buffer.WriteVal(p.LocalToWorldRotDeterminantFlip, 1f);
+        }
+
+        //Scalar uniform expressions are packed 4 to a float4 (UniformPixelScalars_N etc.). A parameter bound to a whole float4
+        //has that float4's index, so all 4 components must be written, not just the first.
+        private static void WriteScalarUniform(Span<byte> buffer, TUniformParameter<FShaderParameter> scalarParam, List<Vector4> scalarValues)
+        {
+            if (scalarParam.Param.NumBytes > sizeof(float))
+            {
+                buffer.WriteVal(scalarParam.Param, scalarValues[scalarParam.Index]);
+            }
+            else
+            {
+                buffer.WriteVal(scalarParam.Param, scalarValues[scalarParam.Index / 4][scalarParam.Index % 4]);
+            }
         }
 
     }

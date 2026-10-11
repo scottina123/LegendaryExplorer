@@ -202,8 +202,7 @@ public class NavigationGenerationTests
     [TestMethod]
     public void Serializer_WritesNavigationCoverAndReachSpecsToLevelBinary()
     {
-        string packagePath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
-            "..", "..", "..", "..", "LegendaryExplorer", "Resources", "exec", "ME3AnimViewer.pcc"));
+        string packagePath = Path.Combine(AppContext.BaseDirectory, "exec", "ME3AnimViewer.pcc");
         using IMEPackage package = MEPackageHandler.OpenMEPackage(packagePath, forceLoadFromDisk: true);
         ExportEntry levelExport = package.Exports.FirstOrDefault(export => export.ClassName == "Level");
         Assert.IsNotNull(levelExport);

@@ -2733,7 +2733,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
                 return;
             }
 
-            _pendingReferenceNavigationOperation = Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
+            _pendingReferenceNavigationOperation = Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(() =>
             {
                 _pendingReferenceNavigationOperation = null;
                 if (!IsLoaded || !ReferenceEquals(targetEntry.FileRef, Pcc)

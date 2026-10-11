@@ -24,6 +24,7 @@ namespace LegendaryExplorer.Tools.LevelEditor.Scene3D;
 public struct SkinVertex
 {
     public Vector3 BindPosition;  // Unreal space (Z-up)
+    public Vector3 BindTangent;
     public Vector3 BindNormal;    // Unreal space
     public float BindNormalW;     // Tangent-basis handedness from TangentZ.W
     public Vector2 UV;
@@ -44,6 +45,7 @@ public class SkinnedMeshRenderer : IDisposable
         {
             float4 BindPosition;
             float4 BindNormal;
+            float4 BindTangent;
             int4 AnimationBones;
             int4 SourceBones;
             float4 Weights;
@@ -85,8 +87,12 @@ public class SkinnedMeshRenderer : IDisposable
             float4 encodedNormal = clamp((float4(skinnedNormal, vertex.BindNormal.w) + 1.0)
                                          * NormalScale, 0.0, NormalMaximum);
 
+            float3 skinnedTangent = mul(float4(vertex.BindTangent.xyz, 0.0), blended).xyz;
+            float3 encodedTangent = clamp((skinnedTangent + 1.0) * NormalScale, 0.0, NormalMaximum);
+
             uint outputOffset = vertexIndex * 116;
             OutputVertices.Store3(outputOffset, asuint(skinnedPosition));
+            OutputVertices.Store3(outputOffset + 16, asuint(encodedTangent));
             OutputVertices.Store4(outputOffset + 28, asuint(encodedNormal));
         }
         """;
@@ -103,6 +109,7 @@ public class SkinnedMeshRenderer : IDisposable
     {
         public Vector4 BindPosition;
         public Vector4 BindNormal;
+        public Vector4 BindTangent;
         public int Bone0, Bone1, Bone2, Bone3;
         public int SourceBone0, SourceBone1, SourceBone2, SourceBone3;
         public Vector4 Weights;
@@ -167,6 +174,7 @@ public class SkinnedMeshRenderer : IDisposable
                 ref var skinVert = ref _skinVertices[v];
                 skinVert.BindPosition = sv.Position;
                 skinVert.BindNormal = (Vector3)sv.TangentZ;
+                skinVert.BindTangent = (Vector3)sv.TangentX;
                 skinVert.BindNormalW = ((Vector4)sv.TangentZ).W;
                 skinVert.UV = sv.UV;
                 ResolveInfluences(ref skinVert, sv.InfluenceBones, sv.InfluenceWeights, chunk, boneMap);
@@ -182,6 +190,7 @@ public class SkinnedMeshRenderer : IDisposable
                 ref var skinVert = ref _skinVertices[v];
                 skinVert.BindPosition = gv.Position;
                 skinVert.BindNormal = (Vector3)gv.TangentZ;
+                skinVert.BindTangent = (Vector3)gv.TangentX;
                 skinVert.BindNormalW = ((Vector4)gv.TangentZ).W;
                 skinVert.UV = gv.UV;
                 ResolveInfluences(ref skinVert, gv.InfluenceBones, gv.InfluenceWeights, chunk, boneMap);
@@ -345,8 +354,8 @@ public class SkinnedMeshRenderer : IDisposable
 
             var skinnedPos = Vector3.Transform(sv.BindPosition, blended);
             var skinnedNormal = Vector3.TransformNormal(sv.BindNormal, blended);
-            mesh.Vertices[i] = mesh.Vertices[i].WithPositionAndNormal(
-                _game, skinnedPos, new Vector4(skinnedNormal, sv.BindNormalW));
+            mesh.Vertices[i] = mesh.Vertices[i].WithPositionNormalAndTangent(
+                _game, skinnedPos, new Vector4(skinnedNormal, sv.BindNormalW), Vector3.TransformNormal(sv.BindTangent, blended));
         }
 
         if (vertexCount >= ParallelSkinningVertexThreshold && Environment.ProcessorCount > 1)
@@ -451,6 +460,7 @@ public class SkinnedMeshRenderer : IDisposable
             {
                 BindPosition = new Vector4(source.BindPosition, 1),
                 BindNormal = new Vector4(source.BindNormal, source.BindNormalW),
+                BindTangent = new Vector4(source.BindTangent, 0),
                 Bone0 = source.Bone0,
                 Bone1 = source.Bone1,
                 Bone2 = source.Bone2,
