@@ -2569,7 +2569,10 @@ xmlns:controls="clr-namespace:LegendaryExplorer.SharedUI.Controls">
         <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"/>
         <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
         <Setter Property="BorderBrush" Value="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"/>
+        <Setter Property="DropDownContentBackground" Value="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"/>
     </Style>
+
+    <Style TargetType="{x:Type xctk:SplitButton}" BasedOn="{StaticResource {x:Type xctk:DropDownButton}}"/>
     
     <!-- Xceed ButtonSpinner/NumericUpDown resource key overrides for dark theme -->
     <!-- These override the hardcoded light theme colors in Xceed's Brushes.xaml -->

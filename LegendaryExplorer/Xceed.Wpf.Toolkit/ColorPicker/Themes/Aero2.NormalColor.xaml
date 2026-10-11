@@ -362,7 +362,7 @@
               </Popup.Resources>
               <Border BorderThickness="1"
                       Background="{TemplateBinding DropDownBackground}"
-                      BorderBrush="{StaticResource PopupDarkBorderBrush}"
+                      BorderBrush="{TemplateBinding BorderBrush}"
                       Padding="3">
                 <TabControl x:Name="ColorPickerTabControl"
                             Background="Transparent"
