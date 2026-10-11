@@ -1302,6 +1302,16 @@ namespace LegendaryExplorer.DialogueEditor
                 }
 
                 e.Handled = true;
+                if (e.Shift)
+                {
+                    int replyIndex = linkIndex >= 0 && linkIndex < Links.Count ? Links[linkIndex].Index : -1;
+                    if (replyIndex >= 0 && replyIndex < (Editor.SelectedConv?.ReplyList.Count ?? 0))
+                    {
+                        Editor.SelectDialogueNodeByIndex(replyIndex, isReply: true, centerView: true);
+                    }
+                    return;
+                }
+
                 Editor.SelectGraphOutgoingLinkStrRefFromTlkText(this, linkIndex);
             };
 
