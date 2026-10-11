@@ -451,7 +451,7 @@ public partial class AnimationPreviewControl : NotifyPropertyChangedControlBase,
         }
     }
 
-    public void LoadAnimSequence(ExportEntry animSequenceExport)
+    public void LoadAnimSequence(ExportEntry animSequenceExport, AnimSequence preparedAnimation = null)
     {
         bool resume = false;
         if (_animPlayer?.IsPlaying is true)
@@ -467,14 +467,18 @@ public partial class AnimationPreviewControl : NotifyPropertyChangedControlBase,
 
         try
         {
-            var animSequence = ObjectBinary.From<AnimSequence>(animSequenceExport);
-            animSequence.DecompressAnimationData();
+            var animSequence = preparedAnimation ?? ObjectBinary.From<AnimSequence>(animSequenceExport);
+            if (preparedAnimation is null)
+                animSequence.DecompressAnimationData();
 
             // Create or reuse AnimSequencePlayer
             if (_animPlayer is not AnimSequencePlayer animSeqPlayer)
                 _animPlayer = animSeqPlayer = new AnimSequencePlayer(_skm) { PlaybackSpeed = (float)PlaybackSpeed };
 
-            animSeqPlayer.SetAnimation(animSequence, _packageCache);
+            animSeqPlayer.SetAnimation(animSequence, _packageCache, animationDataIsPrepared: true);
+            if (!_skm.RefSkeleton.Any(bone =>
+                    animSequence.Bones.Contains(bone.Name.Instanced, StringComparer.OrdinalIgnoreCase)))
+                throw new InvalidOperationException("This animation has no bones in common with the selected mesh.");
             _meshContext.ErrorText = null;
 
             IsTimeMode = false;
@@ -495,8 +499,10 @@ public partial class AnimationPreviewControl : NotifyPropertyChangedControlBase,
         }
         catch (Exception ex)
         {
+            _animPlayer = null;
             _meshContext.ErrorText = $"Error loading animation: {ex.Message}";
         }
+        OnPropertyChanged(nameof(PlayPauseIcon));
     }
 
     public void LoadAnimSequenceTimeline(IEnumerable<AnimationTimelineClip> clips)
@@ -665,21 +671,29 @@ public partial class AnimationPreviewControl : NotifyPropertyChangedControlBase,
 
     public void ClearAnimation()
     {
+        Pause();
         _lastAnimExport = null;
         _lastFxActor = null;
         _lastFxAnimSet = null;
         _lastFxLine = null;
         _animEndFired = false;
+        if (_animPlayer is FaceFxPlayer ffp)
+            ffp.SetFaceFXLine(null);
+        // A cleared FaceFx player returns no skinning matrices. Animation load failures may leave no player.
+        // In both cases, create a reference-pose player so the previously animated vertices can be restored.
+        if (_animPlayer is not AnimSequencePlayer && _skm is not null)
+            _animPlayer = new AnimSequencePlayer(_skm) { PlaybackSpeed = (float)PlaybackSpeed };
         if (_animPlayer is AnimSequencePlayer asp)
             asp.SetAnimation(null);
-        else if (_animPlayer is FaceFxPlayer ffp)
-            ffp.SetFaceFXLine(null);
+        UpdateSkinningOneShot();
+        _meshContext.ErrorText = null;
         IsTimeMode = false;
         AnimSliderMin = 0;
         AnimSliderMax = 0;
         _animSliderValue = 0;
         OnPropertyChanged(nameof(AnimSliderValue));
         OnPropertyChanged(nameof(AnimPositionText));
+        OnPropertyChanged(nameof(PlayPauseIcon));
     }
 
     public void Clear()

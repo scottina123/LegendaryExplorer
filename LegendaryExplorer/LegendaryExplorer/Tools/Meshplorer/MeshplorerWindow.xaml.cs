@@ -45,8 +45,8 @@ namespace LegendaryExplorer.Tools.Meshplorer
             set
             {
                 _animationLoading?.Cancel();
-                if (_loadedAnimation != null && value?.Game != _loadedAnimation.Sequence.Export.Game)
-                    ClearAnimation();
+                if (value?.Game != _currentExport?.Game)
+                    _selectedAnimationEntry = null;
                 SetProperty(ref _currentExport, value);
                 if (value == null)
                 {
@@ -378,7 +378,8 @@ namespace LegendaryExplorer.Tools.Meshplorer
                 return;
 
             _animationWindowClosed = true;
-            ClearAnimation();
+            _animationLoading?.Cancel();
+            _selectedAnimationEntry = null;
             _animationCatalog = null;
             CurrentExport = null;
             Mesh3DViewer.IsBusyChanged -= RendererIsBusyChanged;

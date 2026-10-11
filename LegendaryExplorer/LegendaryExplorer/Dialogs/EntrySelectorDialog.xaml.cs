@@ -57,6 +57,13 @@ namespace LegendaryExplorer.Dialogs
         /// </summary>
         private Func<string, IEnumerable<object>> ItemSearch;
 
+        private FrameworkElement ItemPreview;
+        private Action<object> ItemPreviewSelectionChanged;
+        private bool PreviewOnly;
+
+        public string AcceptButtonText => PreviewOnly ? "Close" : "OK";
+        public Visibility CancelButtonVisibility => PreviewOnly ? Visibility.Collapsed : Visibility.Visible;
+
         /// <summary>
         /// Optional filter applied when the dialog opens. The user can disable it to see every valid entry.
         /// </summary>
@@ -217,9 +224,16 @@ namespace LegendaryExplorer.Dialogs
                     SequencePreviewEditor?.FocusReadOnlyPreviewObject(export);
                 }
 
-                UpdateTexturePreview(value as IEntry);
-                UpdateMeshPreview(value as IEntry);
-                UpdateAudioPreview(value as IEntry);
+                if (ItemPreview is not null)
+                {
+                    ItemPreviewSelectionChanged?.Invoke(value);
+                }
+                else
+                {
+                    UpdateTexturePreview(value as IEntry);
+                    UpdateMeshPreview(value as IEntry);
+                    UpdateAudioPreview(value as IEntry);
+                }
                 SynchronizeTreeSelection();
             }
         }
@@ -302,6 +316,32 @@ namespace LegendaryExplorer.Dialogs
             Height = Math.Min(800, Math.Max(600, SystemParameters.WorkArea.Height - 80));
             MinWidth = Math.Min(1000, Width);
             MinHeight = Math.Min(600, Height);
+        }
+
+        /// <summary>
+        /// Hosts a caller-owned preview and reports the selection already established by the selector.
+        /// The caller remains responsible for the preview's resources and asynchronous loading.
+        /// </summary>
+        internal void ConfigureItemPreview<T>(FrameworkElement preview, Action<T> previewSelectionChanged,
+            bool previewOnly = false) where T : class
+        {
+            ArgumentNullException.ThrowIfNull(preview);
+            ConfigurePreviewOnly(previewOnly);
+            ItemPreview = preview;
+            ItemPreviewSelectionChanged = previewSelectionChanged is null ? null : item => previewSelectionChanged(item as T);
+            ShowPreviewPane(new GridLength(3, GridUnitType.Star));
+            PreviewHost.Content = preview;
+            ItemPreviewSelectionChanged?.Invoke(SelectedEntryItem);
+        }
+
+        private void ConfigurePreviewOnly(bool previewOnly)
+        {
+            PreviewOnly = previewOnly;
+            if (previewOnly)
+                Title = "Preview";
+            OnPropertyChanged(nameof(AcceptButtonText));
+            OnPropertyChanged(nameof(CancelButtonVisibility));
+            CommandManager.InvalidateRequerySuggested();
         }
 
         private void InitializeSequencePreview(ExportEntry sequencePreview)
@@ -1007,11 +1047,23 @@ namespace LegendaryExplorer.Dialogs
             return null;
         }
 
-        public static T GetItem<T>(Window owner, IEnumerable<T> items, string directionsText = null, T defaultItem = default, bool selectLastItemByDefault = false, string searchHelpText = null) where T : class
+        public static T GetItem<T>(Window owner, IEnumerable<T> items, string directionsText = null, T defaultItem = default,
+            bool selectLastItemByDefault = false, string searchHelpText = null, FrameworkElement preview = null,
+            Action<T> previewSelectionChanged = null, bool previewOnly = false, string windowTitle = null) where T : class
         {
             using var dlg = new EntrySelector(owner, items?.Cast<object>() ?? [], directionsText, searchHelpText);
             dlg.SetInitialSelection(defaultItem, selectLastItemByDefault);
-            if (dlg.ShowDialog() == true)
+            if (preview is not null)
+            {
+                dlg.ConfigureItemPreview(preview, previewSelectionChanged, previewOnly);
+            }
+            else
+            {
+                dlg.ConfigurePreviewOnly(previewOnly);
+            }
+            if (!string.IsNullOrWhiteSpace(windowTitle))
+                dlg.Title = windowTitle;
+            if (dlg.ShowDialog() == true && !previewOnly)
             {
                 return dlg.SelectedEntryItem as T;
             }
@@ -1052,7 +1104,7 @@ namespace LegendaryExplorer.Dialogs
         /// <returns>True if an item is selected; otherwise, false</returns>
         private bool CanAcceptSelection()
         {
-            return SelectedEntryItem != null && FilteredEntriesList.Contains(SelectedEntryItem);
+            return PreviewOnly || SelectedEntryItem != null && FilteredEntriesList.Contains(SelectedEntryItem);
         }
 
         /// <summary>
@@ -1060,6 +1112,12 @@ namespace LegendaryExplorer.Dialogs
         /// </summary>
         private void AcceptSelection()
         {
+            if (PreviewOnly)
+            {
+                Close();
+                Dispose();
+                return;
+            }
             DialogResult = true;
             ChosenEntry = SelectedEntryItem as IEntry;
             ChoseRoot = SelectedEntryItem is string;
@@ -1589,6 +1647,8 @@ namespace LegendaryExplorer.Dialogs
             {
                 if (disposing)
                 {
+                    ItemPreviewSelectionChanged = null;
+                    ItemPreview = null;
                     SynchronizingTreeSelection = true;
                     SelectedTreeNode = null;
                     TreeEntries.Clear();
@@ -1705,6 +1765,10 @@ namespace LegendaryExplorer.Dialogs
                 RunItemSearch();
                 e.Handled = true;
             }
+            else if (IgnorePreviewOnlyAcceptanceKey(e))
+            {
+                return;
+            }
             else if (e.Key == Key.Enter && OKCommand.CanExecute(null))
             {
                 OKCommand.Execute(null);
@@ -1718,6 +1782,7 @@ namespace LegendaryExplorer.Dialogs
 
         private void EntryFilterTextBox_KeyDown(object sender, KeyEventArgs e)
         {
+            if (IgnorePreviewOnlyAcceptanceKey(e)) return;
             if (e.Key == Key.Down && FilteredEntriesList.Count > 0)
             {
                 if (SelectedEntryItem is null)
@@ -1738,6 +1803,7 @@ namespace LegendaryExplorer.Dialogs
 
         private void EntrySelectorListView_KeyDown(object sender, KeyEventArgs e)
         {
+            if (IgnorePreviewOnlyAcceptanceKey(e)) return;
             if (e.Key == Key.Enter && OKCommand.CanExecute(null))
             {
                 OKCommand.Execute(null);
@@ -1746,6 +1812,11 @@ namespace LegendaryExplorer.Dialogs
 
         private void EntrySelectorListView_MouseDoubleClick(object sender, MouseButtonEventArgs e)
         {
+            if (PreviewOnly)
+            {
+                e.Handled = true;
+                return;
+            }
             if (e.OriginalSource is DependencyObject source
                 && ItemsControl.ContainerFromElement(EntrySelectorListView, source) is ListViewItem
                 && OKCommand.CanExecute(null))
@@ -1776,6 +1847,7 @@ namespace LegendaryExplorer.Dialogs
 
         private void EntrySelectorTreeView_KeyDown(object sender, KeyEventArgs e)
         {
+            if (IgnorePreviewOnlyAcceptanceKey(e)) return;
             if (e.Key == Key.Enter && OKCommand.CanExecute(null))
             {
                 e.Handled = true;
@@ -1785,6 +1857,11 @@ namespace LegendaryExplorer.Dialogs
 
         private void EntrySelectorTreeView_MouseDoubleClick(object sender, MouseButtonEventArgs e)
         {
+            if (PreviewOnly)
+            {
+                e.Handled = true;
+                return;
+            }
             if (e.OriginalSource is not DependencyObject source
                 || ItemsControl.ContainerFromElement(null, source) is not TreeViewItem { DataContext: EntrySelectorTreeNode node } container
                 || !node.CanSelect || !FilteredEntriesList.Contains(node.Item))
@@ -1812,6 +1889,13 @@ namespace LegendaryExplorer.Dialogs
                 e.Handled = true;
                 OKCommand.Execute(null);
             }
+        }
+
+        private bool IgnorePreviewOnlyAcceptanceKey(KeyEventArgs e)
+        {
+            if (!PreviewOnly || e.Key != Key.Enter) return false;
+            e.Handled = true;
+            return true;
         }
     }
 
