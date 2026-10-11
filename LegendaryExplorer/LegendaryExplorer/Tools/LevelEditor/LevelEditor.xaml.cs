@@ -824,6 +824,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         RefreshRecentsMenu();
 
         SceneViewer.Context = RenderContext;
+        CopyViewportIssuesCommand = SceneViewer.CreateCopyViewportIssuesCommand(() => TextBelowActors);
         UndoHistory.PropertyChanged += UndoHistory_PropertyChanged;
         ThemeManager.ThemeChanged += OnThemeChanged;
     }
@@ -1052,6 +1053,8 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         hash.Add(RenderContext.UseDynamicLighting);
         hash.Add(RenderContext.UseLightMaps);
         hash.Add(RenderContext.SceneLightRevision);
+        RenderContext.GetLights(out int nativeLightsVersion);
+        hash.Add(nativeLightsVersion);
         hash.Add(staticVisibleActors.Count);
         foreach (VisibleActor visibleActor in staticVisibleActors)
         {
@@ -2301,6 +2304,12 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
     public ICommand SaveAllCommand { get; set; }
     public ICommand SaveAsCommand { get; set; }
     public ICommand CaptureViewportCommand { get; set; }
+    private ICommand _copyViewportIssuesCommand;
+    public ICommand CopyViewportIssuesCommand
+    {
+        get => _copyViewportIssuesCommand;
+        private set => SetProperty(ref _copyViewportIssuesCommand, value);
+    }
     public ICommand SaveSingleFileCommand { get; set; }
     public ICommand CloseFileCommand { get; set; }
     public ICommand ToggleTranslateCommand { get; set; }

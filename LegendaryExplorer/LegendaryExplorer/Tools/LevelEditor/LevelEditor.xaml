@@ -310,6 +310,10 @@
                                          BorderBrush="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}">
                         <xctk:DropDownButton.DropDownContent>
                             <StackPanel Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}">
+                                <Button Content="Copy viewport issues" Margin="4,4,4,0" Padding="6,3"
+                                        Command="{Binding CopyViewportIssuesCommand}"
+                                        ToolTip="Copy viewport errors, exception details, and the current actor or navigation issues to the clipboard."/>
+                                <Separator Margin="0,4,0,4"/>
                                 <scene3D:SceneControlOptionsControl/>
                                 <Separator Margin="0,4,0,4"/>
                                 <CheckBox Content="Show selected light wireframe" Margin="4,1"

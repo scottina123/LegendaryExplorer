@@ -53,3 +53,25 @@ Final results: 238 core tests passed; 930 application tests passed, with the
 existing `NativeBackend_Benchmark1024Texture` benchmark intentionally skipped.
 All 26 focused rendering/navigation checks passed. The x64 WinDebug test build
 and x64 WinRelease application build completed with zero errors.
+
+Viewport cache follow-up: the existing static-cache allocation stripped all bind
+flags from the new multisampled scene textures, causing `E_INVALIDARG` during
+`CreateTexture2D`. Cache textures now retain render-target bindings for HDR color
+and hit IDs and a depth-stencil binding for depth, with the original sample count,
+quality, format, and dimensions. Allocation publishes the resources together and
+disposes partial allocations on failure. The hit-cache guard checks the actual
+multisampled source. Native light versions also participate in the backdrop key
+so sky-light changes discard cached ambient lighting.
+
+The existing View options menu now includes Copy viewport issues, which copies
+resource and render exceptions with current level diagnostics. Viewport error
+text is white. Regression checks use real D3D11 hardware and WARP devices at 1x
+and 4x samples, verify every HDR/depth/hit sample after capture and restore, and
+cover stale keys/cameras, invalidation, native sky-light changes, and copying
+current exception details. Before the fix, all three 4x cache cases reproduced
+the reported allocation failure.
+
+Follow-up validation: all 9 focused checks passed in x64 WinDebug. The full x64
+WinRelease application suite passed 939 tests with only the existing benchmark
+intentionally skipped. Both managed configurations built with zero errors; the
+native WinRelease lightmap backend built with zero warnings and zero errors.

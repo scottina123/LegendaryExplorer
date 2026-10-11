@@ -21,6 +21,8 @@ using LegendaryExplorerCore.Packages;
 using Texture2D = SharpDX.Direct3D11.Texture2D;
 using LegendaryExplorer.Dialogs;
 using LegendaryExplorer.Misc;
+using LegendaryExplorer.SharedUI;
+using LegendaryExplorerCore.Helpers;
 using System.Numerics;
 using System.Runtime.InteropServices;
 
@@ -521,6 +523,32 @@ public sealed class SceneRenderControl : ContentControl, IDisposable, INotifyPro
     public int RenderWidth => (int)RenderSize.Width;
     public int RenderHeight => (int)RenderSize.Height;
 
+    /// <summary>
+    /// Resource failures happen before the renderer can draw its error overlay.
+    /// Retain their exception details so the hosting editor can copy them too.
+    /// </summary>
+    public string ResourceErrorText { get; private set; }
+
+    public ICommand CreateCopyViewportIssuesCommand(Func<string> additionalIssues, Action<string> copyText = null)
+    {
+        copyText ??= Clipboard.SetText;
+        return new GenericCommand(() => copyText(GetViewportIssuesText(additionalIssues?.Invoke())));
+    }
+
+    public string GetViewportIssuesText(string additionalIssues = null)
+    {
+        var sections = new List<string>();
+        if (!string.IsNullOrWhiteSpace(ResourceErrorText))
+            sections.Add("Viewport resource error:" + Environment.NewLine + ResourceErrorText);
+        if (Context is MeshRenderContext { ErrorText: { } errorText } && !string.IsNullOrWhiteSpace(errorText))
+            sections.Add("Viewport rendering error:" + Environment.NewLine + errorText);
+        if (!string.IsNullOrWhiteSpace(additionalIssues))
+            sections.Add("Level issues:" + Environment.NewLine + additionalIssues);
+        return sections.Count == 0
+            ? "No viewport errors or level issues have been recorded."
+            : string.Join(Environment.NewLine + Environment.NewLine, sections);
+    }
+
     public unsafe BitmapSource CaptureBitmap()
     {
         if (Context?.Backbuffer is null)
@@ -633,9 +661,11 @@ public sealed class SceneRenderControl : ContentControl, IDisposable, INotifyPro
             try
             {
                 Context.CreateResources();
+                ResourceErrorText = null;
             }
             catch (Exception exception)
             {
+                ResourceErrorText = exception.FlattenException();
                 SetShouldRender(false);
                 Content = Image = new ImageAwesome
                 {
@@ -688,10 +718,10 @@ public sealed class SceneRenderControl : ContentControl, IDisposable, INotifyPro
         CompositionTarget.Rendering -= CompositionTarget_Rendering;
         Unloaded -= SceneRenderControlWPF_Unloaded;
 
-        if (Context.Backbuffer != null)
+        if (Context?.Backbuffer != null)
             Context.DisposeSizeDependentResources();
 
-        if (Context.Device != null)
+        if (Context?.Device != null)
             Context.DisposeResources();
 
         D3DImage?.Dispose();
@@ -785,9 +815,11 @@ public sealed class SceneRenderControl : ContentControl, IDisposable, INotifyPro
             try
             {
                 Context.CreateSizeDependentResources(RenderWidth, RenderHeight, d3dres.QueryInterface<Texture2D>());
+                ResourceErrorText = null;
             }
             catch (Exception exception)
             {
+                ResourceErrorText = exception.FlattenException();
                 SetShouldRender(false);
                 Content = Image = new ImageAwesome
                 {

@@ -1809,7 +1809,7 @@ public class MeshRenderContext : RenderContext
         using var factory = new D2D.Factory(D2D.FactoryType.SingleThreaded, App.IsDebug ? D2D.DebugLevel.Information : D2D.DebugLevel.None);
         RenderTarget2D = new D2D.RenderTarget(factory, newBackBuffer.QueryInterface<Surface>(), new D2D.RenderTargetProperties(new D2D.PixelFormat(Format.Unknown, D2D.AlphaMode.Premultiplied)));
         statsTextBrush = new D2D.SolidColorBrush(RenderTarget2D, GetStatsTextColor(), new D2D.BrushProperties { Opacity = 1 });
-        errorTextBrush = new D2D.SolidColorBrush(RenderTarget2D, new RawColor4(0.2f, 0, 0, 1), new D2D.BrushProperties { Opacity = 1 });
+        errorTextBrush = new D2D.SolidColorBrush(RenderTarget2D, new RawColor4(1, 1, 1, 1), new D2D.BrushProperties { Opacity = 1 });
         using var dwFactory = new DW.Factory(DW.FactoryType.Shared);
         statsTextFormat = new DW.TextFormat(dwFactory, "Verdana", 12)
         {
@@ -1875,7 +1875,7 @@ public class MeshRenderContext : RenderContext
     {
         evaluatingStaticSceneCache = false;
         if (staticSceneCacheRejected || SceneColor is null || DepthBuffer is null
-            || (captureHitBuffer && HitBuffer is null))
+            || (captureHitBuffer && HitBufferMS is null))
         {
             InvalidateStaticSceneCache();
             return false;
@@ -1901,32 +1901,47 @@ public class MeshRenderContext : RenderContext
 
     private void EnsureStaticSceneCacheResources(bool includeHitBuffer)
     {
-        if (StaticSceneColorCache is null || StaticSceneDepthCache is null)
+        Texture2D colorCache = null;
+        Texture2D depthCache = null;
+        Texture2D hitCache = null;
+        try
         {
-            Texture2DDescription colorDescription = SceneColor.Description;
-            colorDescription.BindFlags = BindFlags.None;
-            colorDescription.CpuAccessFlags = CpuAccessFlags.None;
-            colorDescription.OptionFlags = ResourceOptionFlags.None;
-            colorDescription.Usage = ResourceUsage.Default;
-            StaticSceneColorCache = new Texture2D(Device, colorDescription);
+            if (StaticSceneColorCache is null)
+            {
+                colorCache = CreateStaticSceneCacheTexture(SceneColor, BindFlags.RenderTarget);
+            }
+            if (StaticSceneDepthCache is null)
+            {
+                depthCache = CreateStaticSceneCacheTexture(DepthBuffer, BindFlags.DepthStencil);
+            }
+            if (includeHitBuffer && StaticSceneHitCache is null)
+            {
+                hitCache = CreateStaticSceneCacheTexture(HitBufferMS, BindFlags.RenderTarget);
+            }
 
-            Texture2DDescription depthDescription = DepthBuffer.Description;
-            depthDescription.BindFlags = BindFlags.None;
-            depthDescription.CpuAccessFlags = CpuAccessFlags.None;
-            depthDescription.OptionFlags = ResourceOptionFlags.None;
-            depthDescription.Usage = ResourceUsage.Default;
-            StaticSceneDepthCache = new Texture2D(Device, depthDescription);
+            StaticSceneColorCache ??= colorCache;
+            StaticSceneDepthCache ??= depthCache;
+            StaticSceneHitCache ??= hitCache;
+            colorCache = depthCache = hitCache = null;
         }
-
-        if (includeHitBuffer && StaticSceneHitCache is null)
+        finally
         {
-            Texture2DDescription hitDescription = HitBufferMS.Description;
-            hitDescription.BindFlags = BindFlags.None;
-            hitDescription.CpuAccessFlags = CpuAccessFlags.None;
-            hitDescription.OptionFlags = ResourceOptionFlags.None;
-            hitDescription.Usage = ResourceUsage.Default;
-            StaticSceneHitCache = new Texture2D(Device, hitDescription);
+            colorCache?.Dispose();
+            depthCache?.Dispose();
+            hitCache?.Dispose();
         }
+    }
+
+    private Texture2D CreateStaticSceneCacheTexture(Texture2D source, BindFlags bindFlags)
+    {
+        Texture2DDescription description = source.Description;
+        // Multisampled resources require a render-target or depth-stencil binding, even when only
+        // used for copies. Keep every sample so HDR color, reversed depth and hit IDs restore exactly.
+        description.BindFlags = bindFlags;
+        description.CpuAccessFlags = CpuAccessFlags.None;
+        description.OptionFlags = ResourceOptionFlags.None;
+        description.Usage = ResourceUsage.Default;
+        return new Texture2D(Device, description);
     }
 
     private void CopyStaticSceneResources(Texture2D colorSource, Texture2D colorDestination,
