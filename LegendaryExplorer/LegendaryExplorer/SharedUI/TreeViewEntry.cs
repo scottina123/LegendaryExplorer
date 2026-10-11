@@ -1133,16 +1133,33 @@ namespace LegendaryExplorer.SharedUI
         }
 
         /// <summary>
-        /// Sorts this node's children in ascending positives first, then descending negatives
+        /// Sorts exports before imports, with the main Sequence and BioWorldInfo first under PersistentLevel.
         /// </summary>
         internal void SortChildren()
         {
-            var exportNodes = Sublinks.Where(x => x.Entry.UIndex > 0).OrderBy(GetExportSortPriority).ThenBy(x => x.UIndex).ToList();
+            var exportNodes = Sublinks.Where(x => x.Entry.UIndex > 0).OrderBy(x => x.UIndex).ToList();
+            TreeViewEntry mainSequence = null;
+            TreeViewEntry bioWorldInfo = null;
+            if (Entry is ExportEntry { ClassName: "Level", ObjectName.Name: "PersistentLevel" })
+            {
+                // Pin only one sequence so BioWorldInfo stays second even if other sequences exist.
+                mainSequence = exportNodes.FirstOrDefault(x => x.Entry is ExportEntry { ClassName: "Sequence", ObjectName.Name: "Main_Sequence" })
+                               ?? exportNodes.FirstOrDefault(x => x.Entry.ClassName == "Sequence");
+                bioWorldInfo = exportNodes.FirstOrDefault(x => x.Entry.ClassName == "BioWorldInfo");
+            }
+
+            exportNodes = exportNodes.OrderBy(x => x == mainSequence ? -3 : x == bioWorldInfo ? -2 : GetExportSortPriority(x)).ToList();
             var importNodes = Sublinks.Where(x => x.Entry.UIndex < 0).OrderByDescending(x => x.UIndex).ToList();
 
             exportNodes.AddRange(importNodes);
-            Sublinks.ClearEx();
-            Sublinks.AddRange(exportNodes);
+            // Move existing rows so re-sorting after header edits preserves the selection.
+            for (int i = 0; i < exportNodes.Count; i++)
+            {
+                if (Sublinks[i] != exportNodes[i])
+                {
+                    Sublinks.Move(Sublinks.IndexOf(exportNodes[i]), i);
+                }
+            }
         }
 
         private static int GetExportSortPriority(TreeViewEntry entry)

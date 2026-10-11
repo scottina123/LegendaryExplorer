@@ -5799,7 +5799,19 @@ namespace LegendaryExplorer.Tools.PackageEditor
             {
                 foreach (TreeViewEntry node in nodes)
                 {
-                    if (node.Entry is null || node.Parent?.UIndex == node.Entry.idxLink
+                    if (node.Entry is null)
+                    {
+                        continue;
+                    }
+
+                    // Header edits can change sort priority without changing the parent link.
+                    parentsToSort.Add(node);
+                    if (node.Parent is not null)
+                    {
+                        parentsToSort.Add(node.Parent);
+                    }
+
+                    if (node.Parent?.UIndex == node.Entry.idxLink
                         || !nodesByIndex.TryGetValue(node.Entry.idxLink, out TreeViewEntry newParent))
                     {
                         continue;
