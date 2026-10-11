@@ -75,3 +75,38 @@ Follow-up validation: all 9 focused checks passed in x64 WinDebug. The full x64
 WinRelease application suite passed 939 tests with only the existing benchmark
 intentionally skipped. Both managed configurations built with zero errors; the
 native WinRelease lightmap backend built with zero warnings and zero errors.
+
+Character rendering follow-up: translucent materials with `bHairPass` now render
+after opaque lighting and shadows. The previous ordering added the body's light
+passes over hair that did not write depth, making Allers' hair in
+`BioD_CitHub_Dock.pcc` look too transparent. Authored opacity and native material
+shaders are preserved. Opaque and masked hair retain the earlier hair pass.
+
+Light-environment visibility now filters static-mesh collision triangles by
+their material slot's shadow policy. Translucent glass no longer blocks the
+character's light as an opaque wall. Opaque and masked sections, explicit
+translucent shadow opt-ins, and unresolved material slots remain occluders;
+disabled shadow sections are excluded. The geometry cache includes the effective
+per-component material policy, while physical and navigation collision retain
+their original triangles. In the dock scene, actor 11621's blue directional
+light was incorrectly blocked by the glass section of
+`Emb_Railing_Glass_02`; its metal section still blocks light after the fix.
+
+Actor 11631 exposed a second issue: uploading the preview animation replaced the
+light environment's component bounds with the tight rendered-vertex bounds.
+That shifted the visibility-ray origin behind the railing's metal section and
+removed all incident light. Skeletal lighting now uses the physics asset's
+authored bounds bodies transformed by the current bone pose, with authored
+skeletal bounds as the fallback. Rendered bounds remain available for culling.
+An offscreen render of the actual posed actor confirms that correcting only the
+bounds restores its level lighting without changing its shader or brightness.
+
+Character follow-up validation: all 21 focused checks passed, including 1x/4x
+GPU hair blending, depth and picking, glass/opaque shadow visibility, component
+material overrides, sparse/shared collision material IDs, physics body selection,
+pose/transform cache invalidation, and authored bounds fallback. The full x64
+WinRelease application suite passed 960 tests with only the existing benchmark
+skipped; the application/test build completed with zero errors. Fresh offscreen
+renders loaded the four dock packages with full static geometry and configured
+animation poses: actors 11621 and 11631 have visible native level lighting, Allers'
+hair composites after lighting, and all target renders report no errors.

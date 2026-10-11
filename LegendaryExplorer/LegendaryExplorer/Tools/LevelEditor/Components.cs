@@ -756,7 +756,7 @@ public abstract class MeshComponentProxy : PrimitiveComponentProxy, ILevelRender
         int lodIndex = LOD;
         lightEnvironmentPrimitive = new LightEnvironmentPrimitive
         {
-            GetBounds = () => lod.Mesh.TransformedBounds,
+            GetBounds = () => GetLightEnvironmentBounds(lod),
             GetLocalToWorld = () => lod.Mesh.LocalToWorld,
             DrawShadowCaster = castsShadow ? ctx =>
             {
@@ -773,6 +773,8 @@ public abstract class MeshComponentProxy : PrimitiveComponentProxy, ILevelRender
     }
 
     protected virtual void PrepareShadowCaster(MeshRenderContext context) { }
+
+    protected virtual BoxSphereBounds GetLightEnvironmentBounds(ModelPreviewLOD<LEVertex> lod) => lod.Mesh.TransformedBounds;
 
     protected void LeaveLightEnvironment()
     {
@@ -1040,12 +1042,7 @@ public class StaticMeshComponentProxy : MeshComponentProxy
         {
             return ([], []);
         }
-        var vertexData = stm.LODModels[0].PositionVertexBuffer.VertexData;
-        var lodPositions = new Vector3[vertexData.Length];
-        for (int i = 0; i < vertexData.Length; i++)
-        {
-            lodPositions[i] = new Vector3(vertexData[i].X, vertexData[i].Y, vertexData[i].Z);
-        }
+        Vector3[] lodPositions = ReadLineCheckPositions(stm);
         var triangleIndices = new int[kDOPTriangles.Length * 3];
         for (int i = 0; i < kDOPTriangles.Length; i++)
         {
@@ -1054,6 +1051,125 @@ public class StaticMeshComponentProxy : MeshComponentProxy
             triangleIndices[i * 3 + 2] = kDOPTriangles[i].Vertex3;
         }
         return (lodPositions, triangleIndices);
+    }
+
+    private static Vector3[] ReadLineCheckPositions(StaticMesh stm)
+    {
+        var vertexData = stm.LODModels[0].PositionVertexBuffer.VertexData;
+        var positions = new Vector3[vertexData.Length];
+        for (int i = 0; i < vertexData.Length; i++)
+        {
+            positions[i] = new Vector3(vertexData[i].X, vertexData[i].Y, vertexData[i].Z);
+        }
+        return positions;
+    }
+
+    internal static bool[] CreateLightVisibilityShadowMask(StaticMesh stm, IReadOnlyList<EBlendMode?> blendModes,
+        IReadOnlyList<bool> castTranslucencyAsMasked = null)
+    {
+        StaticMeshElement[] sections = stm.LODModels.Length > 0 ? stm.LODModels[0].Elements : [];
+        var castsShadow = new bool[sections.Length];
+        for (int slot = 0; slot < sections.Length; slot++)
+        {
+            EBlendMode? blendMode = slot < blendModes.Count ? blendModes[slot] : null;
+            // Match the native shadow renderer while retaining explicit translucent shadow opt-ins.
+            // An unresolved material remains an occluder;
+            // explicit section flags still apply even when its material could not be read.
+            castsShadow[slot] = sections[slot].bEnableShadowCasting
+                                && (blendMode is null or EBlendMode.BLEND_Opaque or EBlendMode.BLEND_Masked
+                                    || slot < (castTranslucencyAsMasked?.Count ?? 0) && castTranslucencyAsMasked[slot]);
+        }
+        return castsShadow;
+    }
+
+    internal static string GetLightVisibilityGeometryKey(ExportEntry meshExport, IReadOnlyList<bool> castsShadow)
+        => $"{meshExport.FileRef.FilePath}|{meshExport.UIndex}|shadow:{new string(castsShadow.Select(casts => casts ? '1' : '0').ToArray())}";
+
+    internal static (Vector3[] Positions, int[] Indices) ReadLineCheckShadowTriangles(StaticMesh stm, IReadOnlyList<bool> castsShadow)
+    {
+        var triangles = stm.kDOPTreeME3UDKLE?.Triangles ?? [];
+        if (stm.LODModels.Length == 0 || triangles.Length == 0) return ([], []);
+        Vector3[] positions = ReadLineCheckPositions(stm);
+        var materialShadows = new Dictionary<int, bool>();
+        StaticMeshElement[] sections = stm.LODModels[0].Elements;
+        for (int slot = 0; slot < sections.Length; slot++)
+        {
+            int materialIndex = sections[slot].MaterialIndex;
+            bool casts = slot >= castsShadow.Count || castsShadow[slot];
+            // Collision tags use the element's material ID, which need not equal its array slot.
+            // If multiple sections share an ID, retain it when any matching section casts shadows.
+            materialShadows[materialIndex] = casts || materialShadows.GetValueOrDefault(materialIndex);
+        }
+        var indices = new List<int>(triangles.Length * 3);
+        foreach (var triangle in triangles)
+        {
+            // Unknown collision material IDs remain occluders conservatively.
+            if (materialShadows.TryGetValue(triangle.MaterialIndex, out bool casts) && !casts) continue;
+            indices.Add(triangle.Vertex1);
+            indices.Add(triangle.Vertex2);
+            indices.Add(triangle.Vertex3);
+        }
+        return (positions, indices.ToArray());
+    }
+
+    private bool[] GetLightVisibilityShadowMask()
+    {
+        var blendModes = new EBlendMode?[staticMesh.LODModels[0].Elements.Length];
+        var castTranslucencyAsMasked = new bool[blendModes.Length];
+        for (int slot = 0; slot < blendModes.Length; slot++)
+        {
+            IEntry entry = LOD == 0 && slot < GameShaderMesh.MaterialSlots.Count
+                ? GameShaderMesh.MaterialSlots[slot]
+                : slot < MaterialOverrides.Count && MaterialOverrides[slot] is { } materialOverride
+                    ? materialOverride
+                    : meshExport.FileRef.IsEntry(staticMesh.LODModels[0].Elements[slot].Material)
+                        ? meshExport.FileRef.GetEntry(staticMesh.LODModels[0].Elements[slot].Material)
+                        : null;
+            if (entry is not null && GameShaderMesh.Materials.TryGetValue(entry.InstancedFullPath, out var material)
+                && material is LEShaderPreviewMaterial nativeMaterial)
+            {
+                blendModes[slot] = nativeMaterial.RenderProxy.BlendMode;
+                castTranslucencyAsMasked[slot] = nativeMaterial.RenderProxy.CastLitTranslucencyShadowAsMasked;
+            }
+            else
+            {
+                (blendModes[slot], castTranslucencyAsMasked[slot]) = ReadLightVisibilityMaterialPolicy(RenderContext, entry);
+            }
+        }
+        return CreateLightVisibilityShadowMask(staticMesh, blendModes, castTranslucencyAsMasked);
+    }
+
+    internal static (EBlendMode? BlendMode, bool CastTranslucencyAsMasked) ReadLightVisibilityMaterialPolicy(
+        MeshRenderContext context, IEntry entry)
+    {
+        bool castAsMasked = false;
+        var visited = new HashSet<(IMEPackage Package, int UIndex)>();
+        try
+        {
+            while (entry is not null && visited.Add((entry.FileRef, entry.UIndex)))
+            {
+                ExportEntry material = entry switch
+                {
+                    ExportEntry export => export,
+                    ImportEntry import => context.ResolveExportCached(import.FileRef, import.UIndex),
+                    _ => null
+                };
+                if (material is null) break;
+                PropertyCollection props = material.GetProperties();
+                castAsMasked |= props.GetProp<BoolProperty>("bCastLitTranslucencyShadowAsMasked") is { Value: true };
+                if (material.ClassName == "Material")
+                {
+                    return (Enum.TryParse(props.GetProp<EnumProperty>("BlendMode")?.Value.Name ?? "BLEND_Opaque",
+                        out EBlendMode blendMode) ? blendMode : null, castAsMasked);
+                }
+                entry = props.GetProp<ObjectProperty>("Parent")?.ResolveToEntry(material.FileRef);
+            }
+        }
+        catch (Exception e)
+        {
+            System.Diagnostics.Debug.WriteLine($"Could not read shadow material {entry?.InstancedFullPath}: {e.Message}");
+        }
+        return (null, castAsMasked);
     }
 
     private IEnumerable<IEntry> GetEffectiveMaterialEntries()
@@ -1098,8 +1214,9 @@ public class StaticMeshComponentProxy : MeshComponentProxy
                 staticLighting.IsShown = IsShown;
                 if (MeshRenderContext.SupportsLightEnvironments(Export.Game))
                 {
+                    bool[] shadowMask = GetLightVisibilityShadowMask();
                     staticLighting.GeometryMesh = RenderContext.GetLevelGeometryMesh(
-                        $"{meshExport.FileRef.FilePath}|{meshExport.UIndex}", () => ReadLineCheckTriangles(staticMesh));
+                        GetLightVisibilityGeometryKey(meshExport, shadowMask), () => ReadLineCheckShadowTriangles(staticMesh, shadowMask));
                 }
                 JoinLightEnvironment(staticLighting.LightEnvironment, staticLighting.Channels,
                     staticLighting.CastsDynamicShadow, staticLighting);
@@ -1235,6 +1352,7 @@ public class SkeletalMeshComponentProxy : MeshComponentProxy
     // but D3D11's immediate context is owned by the render thread, so publish the prepared vertices
     // and defer only their dynamic-buffer upload until the component is actually rendered.
     private volatile bool preparedSkinningUploadPending;
+    private SkeletalLightEnvironmentBounds lightEnvironmentBounds;
 
     public SkeletalMeshComponentProxy(MeshRenderContext context, ExportEntry componentExport, ActorProxy parent) : base(context, componentExport, parent)
     {
@@ -1296,6 +1414,7 @@ public class SkeletalMeshComponentProxy : MeshComponentProxy
                 loadOnlyFirstLod: true, staticLighting: dynamicLighting);
             if (environment is not null)
             {
+                lightEnvironmentBounds = SkeletalLightEnvironmentBounds.Create(RenderContext, Export, condensedProps, skeletalMesh);
                 bool castsShadow = condensedProps.GetProp<BoolProperty>("CastShadow") is not { Value: false }
                                    && condensedProps.GetProp<BoolProperty>("bCastDynamicShadow") is not { Value: false };
                 JoinLightEnvironment(environment, LightingChannels.FromProperty(
@@ -1365,6 +1484,14 @@ public class SkeletalMeshComponentProxy : MeshComponentProxy
         preparedSkinningUploadPending = GameShaderMesh is not null
             ? skinnedMeshRenderer.PrepareSkinning(GameShaderMesh.LODs[LOD].Mesh, animPlayer)
             : Mesh is not null && skinnedMeshRenderer.PrepareSkinning(Mesh.LODs[LOD].Mesh, animPlayer);
+    }
+
+    protected override BoxSphereBounds GetLightEnvironmentBounds(ModelPreviewLOD<LEVertex> lod)
+    {
+        return lightEnvironmentBounds is null ? base.GetLightEnvironmentBounds(lod)
+            : lightEnvironmentBounds.GetBounds(
+                skinnedMeshRenderer?.GetCurrentBoneComponentSpaceTransforms(animPlayer) ?? animPlayer?.BoneComponentSpaceTransforms,
+                LocalToWorld);
     }
 
     protected override void PrepareShadowCaster(MeshRenderContext context) => UploadPreparedSkinning(context);
@@ -1567,6 +1694,7 @@ public class SkeletalMeshComponentProxy : MeshComponentProxy
         {
             skinnedMeshRenderer?.Dispose();
             skinnedMeshRenderer = null;
+            lightEnvironmentBounds = null;
             animPlayer = null;
             pendingPreviewAnimation = null;
         }

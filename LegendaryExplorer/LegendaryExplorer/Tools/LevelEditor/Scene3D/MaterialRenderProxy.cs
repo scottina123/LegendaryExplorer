@@ -139,6 +139,7 @@ public class MaterialRenderProxy : MaterialInstanceConstantLevelEditor, ILiveMat
 
     public EBlendMode BlendMode;
     public bool UseHairPass;
+    public bool CastLitTranslucencyShadowAsMasked;
     public bool IsUnlit;
     public bool IsHumanLashMaterial;
     public bool HasFrameDependentUniforms { get; private set; }
@@ -526,6 +527,7 @@ public class MaterialRenderProxy : MaterialInstanceConstantLevelEditor, ILiveMat
         }
 
         UseHairPass = props.GetProp<BoolProperty>("bHairPass") is { Value: true };
+        CastLitTranslucencyShadowAsMasked = props.GetProp<BoolProperty>("bCastLitTranslucencyShadowAsMasked") is { Value: true };
         IsTwoSided = props.GetProp<BoolProperty>("TwoSided") is { Value: true };
         IsUnlit = props.GetProp<EnumProperty>("LightingModel") is {} lightingModelProp && lightingModelProp.Value == "MLM_Unlit";
         IsHumanLashMaterial = mat.ObjectName.Name.Equals(HUMAN_LASH_MASTER_MATERIAL_NAME, StringComparison.OrdinalIgnoreCase);

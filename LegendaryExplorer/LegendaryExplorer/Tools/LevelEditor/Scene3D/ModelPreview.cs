@@ -315,8 +315,10 @@ internal class LEShaderPreviewMaterial : ModelPreviewMaterial<LEVertex>
         {
             TextureMap.TryGetValue(diffEntry.InstancedFullPath, out FallbackDiffTexture);
         }
-        Pass = mat.UseHairPass ? RenderPass.Hair
-            : IsTranslucent ? RenderPass.Translucent
+        // Translucent hair does not write depth, so composite it after opaque lighting and shadows.
+        // Only opaque/masked hair can safely use the earlier, depth-writing hair pass.
+        Pass = IsTranslucent ? RenderPass.Translucent
+            : mat.UseHairPass ? RenderPass.Hair
             : RenderPass.Base;
         BlendDescription = mat.BlendMode switch
         {

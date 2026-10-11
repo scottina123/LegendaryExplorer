@@ -611,6 +611,13 @@ public class SkinnedMeshRenderer : IDisposable
         return ComputeRetargetedSkinningMatricesCached(animationPose);
     }
 
+    /// <summary>
+    /// Component-space bone pose produced by the last skinning update. Physics bounds attach to
+    /// these bone transforms, including morph/retarget adjustments, rather than inverse-bind matrices.
+    /// </summary>
+    internal Matrix4x4[] GetCurrentBoneComponentSpaceTransforms(AnimPlayer animPlayer) =>
+        _retargetAnimatedComponentPose ?? animPlayer?.BoneComponentSpaceTransforms;
+
     private void PrepareRetargetingCache()
     {
         bool requiresRetargeting = _skinningBindSkeleton is { Length: > 0 }
