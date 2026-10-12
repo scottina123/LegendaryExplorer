@@ -405,6 +405,24 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         set => SetProperty(ref RenderContext.MaxLightIcons, value);
     }
 
+    private bool _useGameMeshShaders = Settings.LevelEditor_UseGameMeshShaders;
+    public bool UseGameMeshShaders
+    {
+        get => _useGameMeshShaders;
+        set
+        {
+            if (SetProperty(ref _useGameMeshShaders, value))
+            {
+                Settings.LevelEditor_UseGameMeshShaders = value;
+                // Retain the prepared mesh previews for instant switching. This controls only their
+                // material draw path; emitters, decals, and lens flares keep their native VFX shaders.
+                RenderContext.UseGameShaders = value;
+                RenderContext.InvalidateStaticSceneCache();
+                SceneViewer?.MarkRenderDirty();
+            }
+        }
+    }
+
     private bool _showEmitterVfx = Settings.LevelEditor_ShowEmitterVfx;
     public bool ShowEmitterVfx
     {
@@ -792,7 +810,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         LevelPresetStore.Shared.Presets.CollectionChanged += LevelPresets_CollectionChanged;
         RenderContext = new LevelEditorRenderContext
         {
-            UseGameShaders = true,
+            UseGameShaders = _useGameMeshShaders,
             UseGameShaderMeshPreviews = true,
             LightingMode = _unlit ? ViewportLightingMode.Unlit : ViewportLightingMode.Level,
         };

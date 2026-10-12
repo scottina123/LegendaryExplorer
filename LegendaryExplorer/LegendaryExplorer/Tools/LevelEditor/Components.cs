@@ -442,7 +442,11 @@ public sealed class DecalComponentProxy : PrimitiveComponentProxy, ILevelRenderR
             }
 
             bool previousCameraRelative = context.UseCameraRelativeNativeRendering;
+            bool previousGameShaders = context.UseGameShaders;
             context.UseCameraRelativeNativeRendering = true;
+            // Decals are VFX. Their receiver meshes share the standard material preview, but the
+            // Level Editor's mesh shader switch must leave their authored shaders enabled.
+            context.UseGameShaders = true;
             try
             {
                 receiverPreview.Preview.Render(pass, context, 0);
@@ -450,6 +454,7 @@ public sealed class DecalComponentProxy : PrimitiveComponentProxy, ILevelRenderR
             finally
             {
                 context.UseCameraRelativeNativeRendering = previousCameraRelative;
+                context.UseGameShaders = previousGameShaders;
             }
         }
     }
@@ -850,7 +855,11 @@ public abstract class MeshComponentProxy : PrimitiveComponentProxy, ILevelRender
         }
 
         bool previousCameraRelative = context.UseCameraRelativeNativeRendering;
+        bool previousGameShaders = context.UseGameShaders;
         context.UseCameraRelativeNativeRendering = true;
+        // Volumetric light meshes are VFX even though they use the local mesh vertex factory.
+        // Preserve their materials when ordinary mesh shaders are disabled.
+        if (IsVolumetric) context.UseGameShaders = true;
         try
         {
             GameShaderMesh.Render(pass, context, lod);
@@ -858,6 +867,7 @@ public abstract class MeshComponentProxy : PrimitiveComponentProxy, ILevelRender
         finally
         {
             context.UseCameraRelativeNativeRendering = previousCameraRelative;
+            context.UseGameShaders = previousGameShaders;
         }
     }
 

@@ -75,7 +75,7 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
             (List<Vector4> scalarParamValues, List<Vector4> vectorParamValues) = mat.GetCachedVertexParameters(context);
             foreach (TUniformParameter<FShaderParameter> scalarParam in p.UniformVertexScalarShaderParameters)
             {
-                WriteScalarUniform(buffer, scalarParam, scalarParamValues);
+                buffer.WriteScalarUniform(scalarParam, scalarParamValues, mat.Game);
             }
             foreach (TUniformParameter<FShaderParameter> vectorParam in p.UniformVertexVectorShaderParameters)
             {
@@ -99,7 +99,7 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
 
             foreach (TUniformParameter<FShaderParameter> scalarParam in p.UniformPixelScalarShaderParameters)
             {
-                WriteScalarUniform(buffer, scalarParam, scalarParamValues);
+                buffer.WriteScalarUniform(scalarParam, scalarParamValues, mat.Game);
             }
             foreach (TUniformParameter<FShaderParameter> vectorParam in p.UniformPixelVectorShaderParameters)
             {
@@ -213,20 +213,6 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
             buffer.WriteVal(p.LocalToWorld, Matrix4x4.Identity);
             buffer.WriteVal(p.WorldToLocal, Matrix4x4.Identity); //float3x3 params have rows padded to 4 floats, which a Matrix4x4 matches
             buffer.WriteVal(p.LocalToWorldRotDeterminantFlip, 1f);
-        }
-
-        //Scalar uniform expressions are packed 4 to a float4 (UniformPixelScalars_N etc.). A parameter bound to a whole float4
-        //has that float4's index, so all 4 components must be written, not just the first.
-        private static void WriteScalarUniform(Span<byte> buffer, TUniformParameter<FShaderParameter> scalarParam, List<Vector4> scalarValues)
-        {
-            if (scalarParam.Param.NumBytes > sizeof(float))
-            {
-                buffer.WriteVal(scalarParam.Param, scalarValues[scalarParam.Index]);
-            }
-            else
-            {
-                buffer.WriteVal(scalarParam.Param, scalarValues[scalarParam.Index / 4][scalarParam.Index % 4]);
-            }
         }
 
     }

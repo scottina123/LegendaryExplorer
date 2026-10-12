@@ -502,8 +502,10 @@ internal static class ShaderParameterSetters
     public static void WriteValues<TVertex>(this ref FMaterialVertexShaderParameters p, Span<byte> buffer, MeshRenderContext context, Mesh<TVertex> mesh, MaterialRenderProxy mat)
         where TVertex : IVertexBase
     {
+        // Materials reconstruct absolute world coordinates by adding this position to the
+        // camera-relative vertex varying. The shared vertex view constants use a separate origin.
         buffer.WriteVal(p.CameraWorldPosition, mat.VertexFactoryType == "FLensFlareVertexFactory"
-            ? mat.LensFlareCameraPosition : context.GetNativeShaderCameraPosition());
+            ? mat.LensFlareCameraPosition : context.Camera.EyePosition);
         buffer.WriteVal(p.ObjectWorldPositionAndRadius, new Vector4(
             context.GetNativeShaderWorldPosition(mesh.TransformedBounds.Origin), mesh.TransformedBounds.SphereRadius));
         buffer.WriteVal(p.ObjectOrientation, mesh.LocalToWorld.GetAxis(2).Normal());
@@ -514,7 +516,7 @@ internal static class ShaderParameterSetters
         (List<Vector4> scalarParamValues, List<Vector4> vectorParamValues) = mat.GetCachedVertexParameters(context);
         foreach (TUniformParameter<FShaderParameter> scalarParam in p.UniformVertexScalarShaderParameters)
         {
-            WriteScalarUniform(buffer, scalarParam, scalarParamValues);
+            buffer.WriteScalarUniform(scalarParam, scalarParamValues, mat.Game);
         }
         foreach (TUniformParameter<FShaderParameter> vectorParam in p.UniformVertexVectorShaderParameters)
         {
@@ -530,8 +532,10 @@ internal static class ShaderParameterSetters
     public static void WriteValues(this ref FMaterialPixelShaderParameters p, Span<byte> buffer, MeshRenderContext context, MaterialRenderProxy mat,
         BoxSphereBounds bounds, Matrix4x4 localToWorld, Matrix4x4 worldToLocal)
     {
+        // Keep world-mapped textures anchored when the view moves. This is the absolute eye,
+        // even when the vertex factory and shared view constants use camera-relative coordinates.
         buffer.WriteVal(p.CameraWorldPosition, mat?.VertexFactoryType == "FLensFlareVertexFactory"
-            ? mat.LensFlareCameraPosition : context.GetNativeShaderCameraPosition());
+            ? mat.LensFlareCameraPosition : context.Camera.EyePosition);
         buffer.WriteVal(p.ObjectWorldPositionAndRadius, new Vector4(context.GetNativeShaderWorldPosition(bounds.Origin), bounds.SphereRadius));
         buffer.WriteVal(p.ObjectOrientation, localToWorld.GetAxis(2).Normal());
         buffer.WriteVal(p.WindDirectionAndSpeed, Vector4.Zero);
@@ -545,7 +549,7 @@ internal static class ShaderParameterSetters
 
         foreach (TUniformParameter<FShaderParameter> scalarParam in p.UniformPixelScalarShaderParameters)
         {
-            WriteScalarUniform(buffer, scalarParam, scalarParamValues);
+            buffer.WriteScalarUniform(scalarParam, scalarParamValues, mat.Game);
         }
         foreach (TUniformParameter<FShaderParameter> vectorParam in p.UniformPixelVectorShaderParameters)
         {
@@ -652,20 +656,6 @@ internal static class ShaderParameterSetters
         buffer.WriteVal(p.LocalToWorld, context.GetNativeShaderLocalToWorld(mesh.LocalToWorld));
         buffer.WriteVal(p.WorldToLocal, mesh.WorldToLocal);
         buffer.WriteVal(p.LocalToWorldRotDeterminantFlip, mesh.LocalToWorld.GetDeterminant() >= 0 ? 1f : -1f);
-    }
-
-    //Scalar uniform expressions are packed 4 to a float4 (UniformPixelScalars_N etc.). A parameter bound to a whole float4
-    //has that float4's index, so all 4 components must be written, not just the first.
-    private static void WriteScalarUniform(Span<byte> buffer, TUniformParameter<FShaderParameter> scalarParam, List<Vector4> scalarValues)
-    {
-        if (scalarParam.Param.NumBytes > sizeof(float))
-        {
-            buffer.WriteVal(scalarParam.Param, scalarValues[scalarParam.Index]);
-        }
-        else
-        {
-            buffer.WriteVal(scalarParam.Param, scalarValues[scalarParam.Index / 4][scalarParam.Index % 4]);
-        }
     }
 
     /// <summary>
