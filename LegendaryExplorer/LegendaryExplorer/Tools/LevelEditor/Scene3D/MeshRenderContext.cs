@@ -223,6 +223,11 @@ public class MeshRenderContext : RenderContext
     public virtual ShaderResourceView PreviewSceneDepthTextureView => null;
     private RasterizerState FillRasterizerState;
     private RasterizerState WireframeRasterizerState;
+    private RasterizerState ScissorFillRasterizerState;
+    private RasterizerState ScissorCullBackRasterizerState;
+    private RasterizerState ScissorCullFrontRasterizerState;
+    private bool useLightScissor;
+    private readonly ViewFrustum lightBoundsFrustum = new();
     private BlendState NativeHitTestBlendState;
     private DepthStencilState NativeHitTestDepthState;
     public SamplerState SampleState { get; private set; }
@@ -257,9 +262,11 @@ public class MeshRenderContext : RenderContext
     public void SetMeshRasterizerState(bool isTwoSided, bool reverseCulling)
     {
         if (Wireframe) return;
-        ImmediateContext.Rasterizer.State = isTwoSided ? FillRasterizerState
-            : reverseCulling ? CullFrontRasterizerState
-            : CullBackRasterizerState;
+        ImmediateContext.Rasterizer.State = useLightScissor
+            ? isTwoSided ? ScissorFillRasterizerState
+                : reverseCulling ? ScissorCullFrontRasterizerState : ScissorCullBackRasterizerState
+            : isTwoSided ? FillRasterizerState
+                : reverseCulling ? CullFrontRasterizerState : CullBackRasterizerState;
     }
 
     public void RestoreRasterizerState()
@@ -283,7 +290,7 @@ public class MeshRenderContext : RenderContext
         ImmediateContext.PixelShader.SetSamplers(0, DefaultSamplers);
     }
 
-    private readonly Dictionary<(TextureAddressMode, TextureAddressMode), SamplerState> SamplerStateCache = [];
+    private readonly ConcurrentDictionary<(TextureAddressMode, TextureAddressMode), SamplerState> SamplerStateCache = [];
 
     /// <summary>
     /// Gets a sampler like <see cref="SampleState"/>, with the given address modes
@@ -293,6 +300,10 @@ public class MeshRenderContext : RenderContext
         if (addressU is TextureAddressMode.Wrap && addressV is TextureAddressMode.Wrap)
         {
             return SampleState;
+        }
+        if (SamplerStateCache.TryGetValue((addressU, addressV), out SamplerState cachedSampler))
+        {
+            return cachedSampler;
         }
         lock (ShaderObjectCacheLock)
         {
@@ -306,7 +317,7 @@ public class MeshRenderContext : RenderContext
                     Filter = Filter.Anisotropic,
                     MaximumAnisotropy = 8
                 });
-                SamplerStateCache.Add((addressU, addressV), samplerState);
+                SamplerStateCache.TryAdd((addressU, addressV), samplerState);
             }
             return samplerState;
         }
@@ -558,14 +569,42 @@ public class MeshRenderContext : RenderContext
     {
         try
         {
-            //GroupBy keeps the order lights were first queued in, and each light's passes in order
-            foreach (IGrouping<SceneLight, (SceneLight Light, Action<ShaderResourceView> Draw)> lightPasses in PendingLightPasses.GroupBy(pass => pass.Light))
+            bool appliedScissor = false;
+            Matrix4x4 relativeView = Camera.ViewMatrix;
+            relativeView.Translation = Vector3.Zero;
+            lightBoundsFrustum.Update(relativeView * Camera.ProjectionMatrix, depthClipEnabled: false);
+            try
             {
-                ShaderResourceView attenuation = GetLightAttenuation(lightPasses.Key);
-                foreach ((_, Action<ShaderResourceView> draw) in lightPasses)
+                //GroupBy keeps the order lights were first queued in, and each light's passes in order
+                foreach (IGrouping<SceneLight, (SceneLight Light, Action<ShaderResourceView> Draw)> lightPasses in PendingLightPasses.GroupBy(pass => pass.Light))
                 {
-                    draw(attenuation);
+                    RawRectangle? scissor = LightScissorBounds.Compute(lightPasses.Key, Camera,
+                        SceneViewportX, SceneViewportY, SceneViewportWidth, SceneViewportHeight, lightBoundsFrustum);
+                    if (scissor is { } rectangle && (rectangle.Left >= rectangle.Right || rectangle.Top >= rectangle.Bottom))
+                    {
+                        continue;
+                    }
+                    // Shadow masks and light functions use the full scene; only the additive mesh
+                    // draws are restricted to the local light's conservative screen bounds.
+                    if (useLightScissor) RestoreRasterizerState();
+                    useLightScissor = false;
+                    ShaderResourceView attenuation = GetLightAttenuation(lightPasses.Key);
+                    useLightScissor = scissor.HasValue;
+                    if (scissor is { } bounds)
+                    {
+                        appliedScissor = true;
+                        ImmediateContext.Rasterizer.SetScissorRectangle(bounds.Left, bounds.Top, bounds.Right, bounds.Bottom);
+                    }
+                    foreach ((_, Action<ShaderResourceView> draw) in lightPasses)
+                    {
+                        draw(attenuation);
+                    }
                 }
+            }
+            finally
+            {
+                useLightScissor = false;
+                if (appliedScissor) RestoreRasterizerState();
             }
             RenderModulatedShadows();
             foreach (Action draw in PendingPostModulatedShadowPasses)
@@ -1588,7 +1627,8 @@ public class MeshRenderContext : RenderContext
         return 1;
     }
 
-    private RasterizerState CreateRasterizerState(CullMode cullMode, FillMode fillMode = FillMode.Solid, int depthBias = 0)
+    private RasterizerState CreateRasterizerState(CullMode cullMode, FillMode fillMode = FillMode.Solid, int depthBias = 0,
+        bool scissorEnabled = false)
     {
         return new RasterizerState(Device, new RasterizerStateDescription
         {
@@ -1598,6 +1638,7 @@ public class MeshRenderContext : RenderContext
             IsFrontCounterClockwise = true,
             IsMultisampleEnabled = SampleCount > 1,
             IsAntialiasedLineEnabled = false,
+            IsScissorEnabled = scissorEnabled,
             DepthBias = depthBias
         });
     }
@@ -1615,6 +1656,9 @@ public class MeshRenderContext : RenderContext
         WireframeRasterizerState = CreateRasterizerState(CullMode.None, FillMode.Wireframe, depthBias: 10);
         CullBackRasterizerState = CreateRasterizerState(CullMode.Back);
         CullFrontRasterizerState = CreateRasterizerState(CullMode.Front);
+        ScissorFillRasterizerState = CreateRasterizerState(CullMode.None, scissorEnabled: true);
+        ScissorCullBackRasterizerState = CreateRasterizerState(CullMode.Back, scissorEnabled: true);
+        ScissorCullFrontRasterizerState = CreateRasterizerState(CullMode.Front, scissorEnabled: true);
 
         DefaultDepthState = new DepthStencilState(Device, new DepthStencilStateDescription
         {
@@ -2111,6 +2155,9 @@ public class MeshRenderContext : RenderContext
         LightAttenuations.Dispose();
         FillRasterizerState?.Dispose();
         WireframeRasterizerState?.Dispose();
+        ScissorFillRasterizerState?.Dispose();
+        ScissorCullBackRasterizerState?.Dispose();
+        ScissorCullFrontRasterizerState?.Dispose();
         EmptyCaches();
         base.DisposeResources();
     }

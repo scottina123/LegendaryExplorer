@@ -290,7 +290,7 @@ internal class LEShaderPreviewMaterial : ModelPreviewMaterial<LEVertex>
     private LEShaderPreviewMaterial(MeshRenderContext renderContext, ExportEntry export,
         MaterialRenderProxy parameterSource, bool useSrgbColorManagement, ELightMapType lightMapType = ELightMapType.LMT_None)
         : base(renderContext, export, new MaterialRenderProxy(renderContext, export, parameterSource,
-            useSrgbColorManagement))
+            useSrgbColorManagement, lightMapType))
     {
         UseSrgbColorManagement = useSrgbColorManagement;
         foreach (IEntry textureEntry in Material.Textures)

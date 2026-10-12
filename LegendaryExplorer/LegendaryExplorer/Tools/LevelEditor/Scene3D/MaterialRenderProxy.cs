@@ -311,11 +311,18 @@ public class MaterialRenderProxy : MaterialInstanceConstantLevelEditor, ILiveMat
 
     public MaterialRenderProxy(MeshRenderContext context, ExportEntry export,
         MaterialRenderProxy parameterSource = null, bool useSrgbColorManagement = false)
+        : this(context, export, parameterSource, useSrgbColorManagement, ELightMapType.LMT_None)
+    {
+    }
+
+    public MaterialRenderProxy(MeshRenderContext context, ExportEntry export,
+        MaterialRenderProxy parameterSource, bool useSrgbColorManagement, ELightMapType lightMapType)
         : base(export, context.PackageCache, true)
     {
         Context = context;
         MaterialExport = export;
         UseSrgbColorManagement = useSrgbColorManagement;
+        LightMapType = lightMapType;
         LoadGameShaders();
         if (parameterSource is not null)
         {
@@ -581,7 +588,7 @@ public class MaterialRenderProxy : MaterialInstanceConstantLevelEditor, ILiveMat
         {
         string factoryType = VertexFactoryType ?? LocalVertexFactoryType;
         (ShaderMap, Shader[] shaders) = ShaderCacheManipulator.GetMaterialShaderMapAndShadersForVertexFactory(
-            mat, factoryType, GetShaderTypeNames(LightMapType));
+            mat, factoryType, Context.GetSeekFreeShaderCache, GetShaderTypeNames(LightMapType));
 
         ShaderOwner = mat;
         ShaderOwnerResource = legacyMaterialResource;
