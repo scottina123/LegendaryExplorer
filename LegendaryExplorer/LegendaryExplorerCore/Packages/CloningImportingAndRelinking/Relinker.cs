@@ -234,7 +234,8 @@ namespace LegendaryExplorerCore.Packages.CloningImportingAndRelinking
             // If porting cross game, functions need to be recompiled
             if (rop.IsCrossGame)
             {
-                var functionsToRelink = rop.CrossPackageMap.Keys.OfType<ExportEntry>().Where(x => x.ClassName == "Function").ToList();
+                var functionsToRelink = rop.CrossPackageMap.Keys.OfType<ExportEntry>()
+                    .Where(x => x.ClassName == "Function" && !rop.RelinkMapEntriesToSkip.Contains(x)).ToList();
                 if (functionsToRelink.Any())
                 {
                     UnrealScriptOptionsPackage usopSource = new UnrealScriptOptionsPackage()
@@ -1028,6 +1029,9 @@ namespace LegendaryExplorerCore.Packages.CloningImportingAndRelinking
                 //Debug.WriteLine($"Relink hit [EXPERIMENTAL]: Existing entry in file was found, linking to it:  {uIndex} {sourceExport.InstancedFullPath} -> {existingEntry.InstancedFullPath}");
                 if (!rop.CrossPackageMap.ContainsKey(sourceExport))
                 {
+                    // This dependency already contains destination-local references. Cache the
+                    // mapping without queuing its data for another source-to-destination relink.
+                    rop.RelinkMapEntriesToSkip.Add(sourceExport);
                     rop.CrossPackageMap.Add(sourceExport, existingEntry);
                 }
                 uIndex = existingEntry.UIndex;
@@ -1072,6 +1076,7 @@ namespace LegendaryExplorerCore.Packages.CloningImportingAndRelinking
                                 // Relink to existing object
                                 if (!rop.CrossPackageMap.ContainsKey(sourceExport))
                                 {
+                                    rop.RelinkMapEntriesToSkip.Add(sourceExport);
                                     rop.CrossPackageMap.Add(sourceExport, existingEntry);
                                 }
                                 uIndex = existingEntry.UIndex;

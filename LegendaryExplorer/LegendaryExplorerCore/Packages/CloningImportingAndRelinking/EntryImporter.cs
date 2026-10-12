@@ -204,7 +204,10 @@ namespace LegendaryExplorerCore.Packages.CloningImportingAndRelinking
 
             if (portingCache == null && !isCrossGame)
             {
-                portingCache = ShaderCacheManipulator.GetLocalShadersForMaterials(rop.CrossPackageMap.Keys.OfType<ExportEntry>().ToList(), rop.GamePathOverride);
+                // Reused destination materials keep their own shader resources, just as they
+                // keep their already-local properties and binary references.
+                portingCache = ShaderCacheManipulator.GetLocalShadersForMaterials(rop.CrossPackageMap.Keys.OfType<ExportEntry>()
+                    .Where(export => !rop.RelinkMapEntriesToSkip.Contains(export)).ToList(), rop.GamePathOverride);
             }
 
             if (!rop.ForceAllowMaterialPorting && !allowedToPortShaders)
@@ -259,6 +262,7 @@ namespace LegendaryExplorerCore.Packages.CloningImportingAndRelinking
                     if (portingOption == PortingOption.CloneAllDependencies && sameObjInTarget != null)
                     {
                         // Already exists in target
+                        rop.RelinkMapEntriesToSkip.Add(node);
                         rop.CrossPackageMap[node] = sameObjInTarget;
                         importChildrenOf(node, sameObjInTarget);
                         continue;
