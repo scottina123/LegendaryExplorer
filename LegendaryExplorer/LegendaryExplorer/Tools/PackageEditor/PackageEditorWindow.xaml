@@ -715,7 +715,7 @@
                         <TabItem.Header>
                             <TextBlock Text="Properties" ToolTip="Edit UnrealScript properties on exports"/>
                         </TabItem.Header>
-                        <exportLoaderControls:InterpreterExportLoader x:Name="InterpreterTab_Interpreter" SubstituteImageForHexBox="{Binding Source={StaticResource bindingProxy}, Path=Data.IsBusy}" NavigateToEntryCommand="{Binding Source={StaticResource bindingProxy}, Path=Data.NavigateToEntryCommand}"/>
+                        <exportLoaderControls:InterpreterExportLoader x:Name="InterpreterTab_Interpreter" SubstituteImageForHexBox="{Binding Source={StaticResource bindingProxy}, Path=Data.IsBusy}" NavigateToEntryCommand="{Binding Source={StaticResource bindingProxy}, Path=Data.NavigateToEntryCommand}" OpenEntryInNewTabCommand="{Binding Source={StaticResource bindingProxy}, Path=Data.OpenEntryInNewTabCommand}"/>
                     </TabItem>
                     <TabItem Name="Metadata_Tab" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}">
                         <TabItem.Header>
@@ -739,7 +739,7 @@
                         <TabItem.Header>
                             <TextBlock Text="Binary Interpreter" ToolTip="View and edit binary data for supported classes"/>
                         </TabItem.Header>
-                        <exportLoaderControls:BinaryInterpreterWPF x:Name="BinaryInterpreterTab_BinaryInterpreter" SubstituteImageForHexBox="{Binding Source={StaticResource bindingProxy}, Path=Data.IsBusy}" NavigateToEntryCommand="{Binding Source={StaticResource bindingProxy}, Path=Data.NavigateToEntryCommand}" HostingControl="{Binding Source={StaticResource bindingProxy}, Path=Data}"/>
+                        <exportLoaderControls:BinaryInterpreterWPF x:Name="BinaryInterpreterTab_BinaryInterpreter" SubstituteImageForHexBox="{Binding Source={StaticResource bindingProxy}, Path=Data.IsBusy}" NavigateToEntryCommand="{Binding Source={StaticResource bindingProxy}, Path=Data.NavigateToEntryCommand}" OpenEntryInNewTabCommand="{Binding Source={StaticResource bindingProxy}, Path=Data.OpenEntryInNewTabCommand}" HostingControl="{Binding Source={StaticResource bindingProxy}, Path=Data}"/>
                     </TabItem>
                     <TabItem Name="MeshRenderer_Tab" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}">
                         <TabItem.Header>

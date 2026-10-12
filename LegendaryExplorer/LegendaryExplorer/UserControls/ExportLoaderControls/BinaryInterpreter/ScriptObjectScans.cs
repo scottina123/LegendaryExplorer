@@ -191,6 +191,31 @@ public partial class BinaryInterpreterWPF
                     Offset = pos + 4,
                     Length = count
                 });
+
+                var referencesNode = new BinInterpNode("Referenced objects") { IsExpanded = true };
+                var referencePositions = new HashSet<int>();
+                foreach (Token token in tokens)
+                {
+                    foreach (var reference in token.inPackageReferences)
+                    {
+                        if (reference.type != Token.INPACKAGEREFTYPE_ENTRY
+                            || reference.position < 0 || reference.position > scriptBytes.Length - 4
+                            || !referencePositions.Add(reference.position))
+                        {
+                            continue;
+                        }
+
+                        referencesNode.Items.Add(new BinInterpNode(pos + 4 + reference.position,
+                            $"Reference: #{reference.value} {Pcc.GetEntryString(reference.value)}", NodeType.StructLeafObject)
+                        {
+                            Length = 4
+                        });
+                    }
+                }
+                if (referencesNode.Items.Count > 0)
+                {
+                    scriptNode.Items.Add(referencesNode);
+                }
             }
             catch (Exception)
             {
@@ -253,7 +278,17 @@ public partial class BinaryInterpreterWPF
         yield return MakeInt16Node(bin, "Label Table Offset");
         yield return new BinInterpNode(bin.Position, $"StateFlags: {getStateFlagsStr((UnrealFlags.EStateFlags)bin.ReadUInt32())}") { Length = 4 };
         yield return MakeArrayNode(bin, "Local Functions", i =>
-            new BinInterpNode(bin.Position, $"{bin.ReadNameReference(Pcc)}() = {Pcc.GetEntryString(bin.ReadInt32())}"));
+        {
+            long position = bin.Position;
+            NameReference functionName = bin.ReadNameReference(Pcc);
+            BinInterpNode functionNode = MakeEntryNode(bin, "Function", out int functionIndex);
+            return new BinInterpNode(position, $"{functionName}() = {Pcc.GetEntryString(functionIndex)}")
+            {
+                Length = 12,
+                IsExpanded = true,
+                Items = { functionNode }
+            };
+        });
     }
 
     private List<ITreeItem> StartClassScan(byte[] data)
@@ -296,9 +331,29 @@ public partial class BinaryInterpreterWPF
             }
 
             subnodes.Add(MakeArrayNode(bin, "Component Table", i =>
-                new BinInterpNode(bin.Position, $"{bin.ReadNameReference(Pcc)} ({Pcc.GetEntryString(bin.ReadInt32())})")));
+            {
+                long position = bin.Position;
+                NameReference componentName = bin.ReadNameReference(Pcc);
+                BinInterpNode componentNode = MakeEntryNode(bin, "Component", out int componentIndex);
+                return new BinInterpNode(position, $"{componentName} ({Pcc.GetEntryString(componentIndex)})")
+                {
+                    Length = 12,
+                    IsExpanded = true,
+                    Items = { componentNode }
+                };
+            }));
             subnodes.Add(MakeArrayNode(bin, "Interface Table", i =>
-                new BinInterpNode(bin.Position, $"{Pcc.GetEntryString(bin.ReadInt32())} => {Pcc.GetEntryString(bin.ReadInt32())}")));
+            {
+                long position = bin.Position;
+                BinInterpNode interfaceNode = MakeEntryNode(bin, "Interface", out int interfaceIndex);
+                BinInterpNode pointerNode = MakeEntryNode(bin, "Pointer property", out int pointerIndex);
+                return new BinInterpNode(position, $"{Pcc.GetEntryString(interfaceIndex)} => {Pcc.GetEntryString(pointerIndex)}")
+                {
+                    Length = 8,
+                    IsExpanded = true,
+                    Items = { interfaceNode, pointerNode }
+                };
+            }));
 
             if (Pcc.Game is MEGame.UDK)
             {

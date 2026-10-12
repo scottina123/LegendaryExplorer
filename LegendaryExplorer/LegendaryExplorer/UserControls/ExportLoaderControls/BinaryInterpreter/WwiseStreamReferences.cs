@@ -108,17 +108,4 @@ public partial class BinaryInterpreterWPF
         }
     }
 
-    private void NavigateToReferencedWwiseStream_Click(object sender, RoutedEventArgs e)
-    {
-        if (sender is not FrameworkElement { Tag: BinInterpNode node }
-            || CurrentLoadedExport?.FileRef.GetEntry(node.ReferencedWwiseStreamUIndex) is not ExportEntry stream
-            || stream.ClassName != "WwiseStream"
-            || NavigateToEntryCommand?.CanExecute(stream) != true)
-        {
-            return;
-        }
-
-        NavigateToEntryCommand.Execute(stream);
-        e.Handled = true;
-    }
 }

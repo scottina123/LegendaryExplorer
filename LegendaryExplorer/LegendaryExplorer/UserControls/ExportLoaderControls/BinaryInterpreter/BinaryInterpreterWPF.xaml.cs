@@ -72,6 +72,17 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         public static readonly DependencyProperty NavigateToEntryCallbackProperty = DependencyProperty.Register(
             nameof(NavigateToEntryCommand), typeof(RelayCommand), typeof(BinaryInterpreterWPF), new PropertyMetadata(null));
 
+        public RelayCommand OpenEntryInNewTabCommand
+        {
+            get => (RelayCommand)GetValue(OpenEntryInNewTabCommandProperty);
+            set => SetValue(OpenEntryInNewTabCommandProperty, value);
+        }
+
+        public static readonly DependencyProperty OpenEntryInNewTabCommandProperty = DependencyProperty.Register(
+            nameof(OpenEntryInNewTabCommand), typeof(RelayCommand), typeof(BinaryInterpreterWPF), new PropertyMetadata(null));
+
+        public RelayCommand GoToReferenceCommand { get; private set; }
+
         public int HexBoxMinWidth
         {
             get => (int)GetValue(HexBoxMinWidthProperty);
@@ -177,6 +188,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         {
             CopyOffsetCommand = new RelayCommand(CopyFileOffsetToClipboard, OffsetIsSelected);
             NavigateToEntryCommandInternal = new GenericCommand(FireNavigateCallback, CanFireNavigateCallback);
+            GoToReferenceCommand = new RelayCommand(NavigateToReference, CanNavigateToReference);
             OpenInPackageEditorCommand = new GenericCommand(OpenInPackageEditor, IsSelectedItemAnObjectRef);
             FindDefinitionOfImportCommand = new GenericCommand(FindDefinitionOfImport, IsSelectedItemAnImportObjectRef);
             CopyGuidCommand = new GenericCommand(CopyGuid, IsSelectedItemAGuid);
@@ -211,28 +223,68 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         private void FireNavigateCallback()
         {
-            if (CurrentLoadedExport != null && NavigateToEntryCommand != null && BinaryInterpreter_TreeView.SelectedItem is BinInterpNode b && IsObjectNodeType(b))
-            {
-                var pos = b.GetPos();
-                var value = EndianReader.ToInt32(CurrentLoadedExport.DataReadOnly, (int)pos, CurrentLoadedExport.FileRef.Endian);
-                if (CurrentLoadedExport.FileRef.IsEntry(value))
-                {
-                    NavigateToEntryCommand?.Execute(CurrentLoadedExport.FileRef.GetEntry(value));
-                }
-            }
+            NavigateToReference(BinaryInterpreter_TreeView.SelectedItem, false);
         }
 
         private bool CanFireNavigateCallback()
         {
-            if (NavigateToEntryCommand != null && BinaryInterpreter_TreeView.SelectedItem is BinInterpNode b &&
-                IsObjectNodeType(b))
-            {
-                var pos = b.GetPos();
-                var value = EndianReader.ToInt32(CurrentLoadedExport.DataReadOnly, (int)pos, CurrentLoadedExport.FileRef.Endian);
-                return CurrentLoadedExport.FileRef.IsEntry(value);
-            }
+            return GetReferenceEntry(BinaryInterpreter_TreeView.SelectedItem) is { } entry && NavigateToEntryCommand?.CanExecute(entry) == true;
+        }
 
-            return false;
+        private IEntry GetReferenceEntry(object parameter)
+        {
+            if (CurrentLoadedExport is not { } export)
+            {
+                return null;
+            }
+            if (parameter is UPropertyTreeViewEntry { Property: ObjectProperty property } propertyNode)
+            {
+                return propertyNode.AttachedExport == export ? export.FileRef.GetEntry(property.Value) : null;
+            }
+            if (parameter is not BinInterpNode { IsObjectReference: true } node)
+            {
+                return null;
+            }
+            if (node.MaterialTexture is { } texture)
+            {
+                return texture.Material.FileRef.GetEntry(texture.ReadIndex());
+            }
+            if (node.ReferencedEntryUIndex is int referencedIndex)
+            {
+                return export.FileRef.GetEntry(referencedIndex);
+            }
+            if (!IsObjectNodeType(node) && node.IsWwiseStreamReference)
+            {
+                return export.FileRef.GetEntry(node.ReferencedWwiseStreamUIndex) is ExportEntry { ClassName: "WwiseStream" } stream
+                    ? stream : null;
+            }
+            var data = export.DataReadOnly;
+            if (node.Offset < 0 || node.Offset > data.Length - sizeof(int))
+            {
+                return null;
+            }
+            int index = EndianReader.ToInt32(data, node.Offset, export.FileRef.Endian);
+            return export.FileRef.GetEntry(index);
+        }
+
+        private bool CanNavigateToReference(object parameter)
+        {
+            var command = Keyboard.Modifiers.HasFlag(ModifierKeys.Shift) ? OpenEntryInNewTabCommand : NavigateToEntryCommand;
+            return GetReferenceEntry(parameter) is { } entry && command?.CanExecute(entry) == true;
+        }
+
+        private void NavigateToReference(object parameter)
+        {
+            NavigateToReference(parameter, Keyboard.Modifiers.HasFlag(ModifierKeys.Shift));
+        }
+
+        private void NavigateToReference(object parameter, bool openInNewTab)
+        {
+            var command = openInNewTab ? OpenEntryInNewTabCommand : NavigateToEntryCommand;
+            if (GetReferenceEntry(parameter) is { } entry && command?.CanExecute(entry) == true)
+            {
+                command.Execute(entry);
+            }
         }
 
         private void OpenInPackageEditor()

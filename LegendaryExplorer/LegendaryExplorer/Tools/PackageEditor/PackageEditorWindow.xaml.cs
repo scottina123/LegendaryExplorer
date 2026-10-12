@@ -12,6 +12,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Threading;
 using System.Windows.Interop;
@@ -200,6 +201,13 @@ namespace LegendaryExplorer.Tools.PackageEditor
         //Objects in this collection are displayed on the left list view (names, imports, exports)
 
         readonly Dictionary<ExportLoaderControl, TabItem> ExportLoaders = [];
+
+        private sealed record ReferencedEntryTab(IEntry Entry, ExportLoaderControl Loader, TextBlock HeaderText)
+        {
+            public RoutedEventHandler PendingLoadedHandler { get; set; }
+        }
+
+        private readonly Dictionary<TabItem, ReferencedEntryTab> _referencedEntryTabs = [];
 
         private CurrentViewMode _currentView;
 
@@ -524,6 +532,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
         public ICommand GoToArchetypeCommand { get; set; }
         public ICommand ReplaceNamesCommand { get; set; }
         public ICommand NavigateToEntryCommand { get; set; }
+        public ICommand OpenEntryInNewTabCommand { get; set; }
         public ICommand ResolveImportCommand { get; set; }
         public ICommand ExtractToPackageCommand { get; set; }
         public ICommand PackageExportIsSelectedCommand { get; set; }
@@ -634,6 +643,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
             MatchMaterialsToSkeletalMeshCommand = new GenericCommand(MatchMaterialsToSkeletalMesh);
 
             NavigateToEntryCommand = new RelayCommand(NavigateToEntry, CanNavigateToEntry);
+            OpenEntryInNewTabCommand = new RelayCommand(OpenEntryInNewTab, CanNavigateToEntry);
 
             ResolveImportCommand = new GenericCommand(OpenImportDefinition, ImportIsSelected);
             ResolveImportsTreeViewCommand = new GenericCommand(ResolveImportsTreeView, PackageIsLoaded);
@@ -1662,10 +1672,234 @@ namespace LegendaryExplorer.Tools.PackageEditor
         private void NavigateToEntry(object obj)
         {
             IEntry e = (IEntry)obj;
-            GoToNumber(e.UIndex);
+            bool restorePreview = CurrentView == CurrentViewMode.Names && ReferenceEquals(SelectedItem?.Entry, e);
+            if (CurrentView == CurrentViewMode.Names)
+            {
+                CurrentView = CurrentViewMode.Tree;
+            }
+            if (!GoToNumber(e.UIndex))
+            {
+                return;
+            }
+            if (restorePreview)
+            {
+                Preview();
+            }
+            if (EditorTabs.SelectedItem is TabItem selectedTab && _referencedEntryTabs.ContainsKey(selectedTab))
+            {
+                // Referenced tabs retain their own entry when the main selection changes.
+                EditorTabs.SelectedItem = e is ImportEntry ? Metadata_Tab : Interpreter_Tab;
+            }
         }
 
         private bool CanNavigateToEntry(object o) => o is IEntry entry && entry.FileRef == Pcc;
+
+        private void OpenEntryInNewTab(object obj)
+        {
+            if (!CanNavigateToEntry(obj) || obj is not IEntry entry)
+            {
+                return;
+            }
+
+            ExportLoaderControl loader;
+            if (entry is ExportEntry)
+            {
+                var interpreter = new InterpreterExportLoader
+                {
+                    NavigateToEntryCommand = (RelayCommand)NavigateToEntryCommand,
+                    OpenEntryInNewTabCommand = (RelayCommand)OpenEntryInNewTabCommand,
+                    UseAssetDatabaseOwnerFriendlyNames = true,
+                    HideHexBox = Settings.PackageEditor_HideInterpreterHexBox
+                };
+                interpreter.SetParentNameList(NamesList);
+                interpreter.ToggleHexbox_Button.Visibility = Visibility.Visible;
+                interpreter.bind(InterpreterExportLoader.SubstituteImageForHexBoxProperty, this, nameof(IsBusy));
+                loader = interpreter;
+            }
+            else if (entry is ImportEntry)
+            {
+                var metadata = new EntryMetadataExportLoader();
+                metadata.LoadPccData(Pcc);
+                metadata.bind(EntryMetadataExportLoader.SubstituteImageForHexBoxProperty, this, nameof(IsBusy));
+                loader = metadata;
+            }
+            else
+            {
+                return;
+            }
+
+            var headerText = new TextBlock
+            {
+                Text = $"{entry.UIndex}: {entry.ObjectName.Instanced}",
+                MaxWidth = 260,
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            var tab = new TabItem { Content = loader, ToolTip = entry.InstancedFullPath };
+            var closeButton = new Button
+            {
+                Content = "×",
+                ToolTip = "Close this object tab",
+                Style = (Style)FindResource("InlineTreeActionButtonStyle"),
+                Tag = tab
+            };
+            closeButton.Click += ReferencedEntryTabCloseButton_Click;
+            var header = new StackPanel { Orientation = Orientation.Horizontal };
+            header.Children.Add(headerText);
+            header.Children.Add(closeButton);
+            tab.Header = header;
+            var referencedTab = new ReferencedEntryTab(entry, loader, headerText);
+            _referencedEntryTabs.Add(tab, referencedTab);
+            EditorTabs.Items.Add(tab);
+            QueueReferencedEntryTabLoad(tab, referencedTab);
+            EditorTabs.IsEnabled = true;
+            tab.IsSelected = true;
+        }
+
+        private void QueueReferencedEntryTabLoad(TabItem tab, ReferencedEntryTab referencedTab)
+        {
+            if (!referencedTab.Loader.IsLoaded)
+            {
+                if (referencedTab.PendingLoadedHandler is null)
+                {
+                    referencedTab.PendingLoadedHandler = (_, _) =>
+                    {
+                        DetachReferencedEntryTabLoadedHandler(referencedTab);
+                        if (_referencedEntryTabs.TryGetValue(tab, out var currentTab)
+                            && ReferenceEquals(currentTab, referencedTab))
+                        {
+                            QueueReferencedEntryTabLoad(tab, referencedTab);
+                        }
+                    };
+                    referencedTab.Loader.Loaded += referencedTab.PendingLoadedHandler;
+                }
+                return;
+            }
+
+            DetachReferencedEntryTabLoadedHandler(referencedTab);
+            try
+            {
+                LoadReferencedEntryTab(tab, referencedTab);
+            }
+            catch
+            {
+                CloseReferencedEntryTab(tab);
+                throw;
+            }
+        }
+
+        private static void DetachReferencedEntryTabLoadedHandler(ReferencedEntryTab referencedTab)
+        {
+            if (referencedTab.PendingLoadedHandler is { } handler)
+            {
+                referencedTab.Loader.Loaded -= handler;
+                referencedTab.PendingLoadedHandler = null;
+            }
+        }
+
+        private void LoadReferencedEntryTab(TabItem tab, ReferencedEntryTab referencedTab)
+        {
+            referencedTab.HeaderText.Text = $"{referencedTab.Entry.UIndex}: {referencedTab.Entry.ObjectName.Instanced}";
+            tab.ToolTip = referencedTab.Entry.InstancedFullPath;
+            if (referencedTab.Entry is ExportEntry export)
+            {
+                referencedTab.Loader.LoadExport(export);
+            }
+            else if (referencedTab.Entry is ImportEntry import
+                     && referencedTab.Loader is EntryMetadataExportLoader metadata)
+            {
+                metadata.LoadImport(import);
+            }
+        }
+
+        private void ReferencedEntryTabCloseButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button { Tag: TabItem tab })
+            {
+                CloseReferencedEntryTab(tab);
+            }
+            e.Handled = true;
+        }
+
+        private void CloseReferencedEntryTab(TabItem tab)
+        {
+            if (!_referencedEntryTabs.Remove(tab, out ReferencedEntryTab referencedTab))
+            {
+                return;
+            }
+
+            bool wasSelected = tab.IsSelected;
+            DetachReferencedEntryTabLoadedHandler(referencedTab);
+            BindingOperations.ClearAllBindings(referencedTab.Loader);
+            if (referencedTab.Loader is InterpreterExportLoader interpreter)
+            {
+                interpreter.NavigateToEntryCommand = null;
+                interpreter.OpenEntryInNewTabCommand = null;
+            }
+            EditorTabs.Items.Remove(tab);
+            referencedTab.Loader.UnloadExport();
+            referencedTab.Loader.Dispose();
+            if (tab.Header is StackPanel header && header.Children.OfType<Button>().FirstOrDefault() is { } closeButton)
+            {
+                closeButton.Click -= ReferencedEntryTabCloseButton_Click;
+                closeButton.Tag = null;
+            }
+            tab.Header = null;
+            tab.Content = null;
+            if (wasSelected)
+            {
+                EditorTabs.SelectedItem = _referencedEntryTabs.Keys.LastOrDefault()
+                    ?? ExportLoaders.Values.FirstOrDefault(candidate => candidate.IsVisible && candidate.IsEnabled)
+                    ?? Intro_Tab;
+            }
+            EditorTabs.IsEnabled = _referencedEntryTabs.Count > 0 || TryGetSelectedEntry(out _);
+        }
+
+        private void ClearReferencedEntryTabs()
+        {
+            foreach (TabItem tab in _referencedEntryTabs.Keys.ToList())
+            {
+                CloseReferencedEntryTab(tab);
+            }
+        }
+
+        private void RefreshReferencedEntryTabs(List<PackageUpdate> updates)
+        {
+            bool entryListsChanged = updates.Any(update => update.Change.HasFlag(PackageChange.Name)
+                || update.Change.HasFlag(PackageChange.EntryAdd)
+                || update.Change.HasFlag(PackageChange.EntryHeader)
+                || update.Change is PackageChange.ExportRemove or PackageChange.ImportRemove);
+            foreach ((TabItem tab, ReferencedEntryTab referencedTab) in _referencedEntryTabs.ToList())
+            {
+                if (!ReferenceEquals(Pcc.GetEntry(referencedTab.Entry.UIndex), referencedTab.Entry))
+                {
+                    CloseReferencedEntryTab(tab);
+                    continue;
+                }
+
+                if (entryListsChanged && referencedTab.Loader is EntryMetadataExportLoader metadata)
+                {
+                    metadata.RefreshAllEntriesList(Pcc);
+                }
+
+                referencedTab.HeaderText.Text = $"{referencedTab.Entry.UIndex}: {referencedTab.Entry.ObjectName.Instanced}";
+                tab.ToolTip = referencedTab.Entry.InstancedFullPath;
+                if (!updates.Any(update => update.Index == referencedTab.Entry.UIndex
+                    && (update.Change.HasFlag(PackageChange.Export) || update.Change.HasFlag(PackageChange.Import))))
+                {
+                    continue;
+                }
+
+                if (referencedTab.Entry is ExportEntry export
+                    && referencedTab.Loader is InterpreterExportLoader interpreter
+                    && interpreter.ConsumePendingPropertyWrite(export))
+                {
+                    continue;
+                }
+
+                QueueReferencedEntryTabLoad(tab, referencedTab);
+            }
+        }
 
         private void GoToArchetype()
         {
@@ -6236,6 +6470,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
         private void preloadPackage(string loadingName, long loadingSize,
             bool preserveExistingTreeUntilLoaded = false)
         {
+            ClearReferencedEntryTabs();
             CancelLiveFilter();
             LiveFilterMatches = null;
             ApplyTreeViewEditedFilter();
@@ -6522,22 +6757,24 @@ namespace LegendaryExplorer.Tools.PackageEditor
         public override void HandleUpdate(List<PackageUpdate> updates)
         {
             ScheduleLiveFilter();
-            int selectedEditorTabIndex = EditorTabs?.SelectedIndex ?? -1;
+            TabItem selectedEditorTab = EditorTabs?.SelectedItem as TabItem;
 
             List<PackageChange> changes = updates.ConvertAll(x => x.Change);
             if (changes.Any(x => x.HasFlag(PackageChange.Name)))
             {
-                foreach (ExportLoaderControl elc in ExportLoaders.Keys)
+                foreach (ExportLoaderControl elc in ExportLoaders.Keys.Concat(_referencedEntryTabs.Values.Select(tab => tab.Loader)))
                 {
                     elc.SignalNamelistAboutToUpdate();
                 }
 
                 RefreshNames(updates.Where(x => x.Change.HasFlag(PackageChange.Name)).ToList());
-                foreach (ExportLoaderControl elc in ExportLoaders.Keys)
+                foreach (ExportLoaderControl elc in ExportLoaders.Keys.Concat(_referencedEntryTabs.Values.Select(tab => tab.Loader)))
                 {
                     elc.SignalNamelistChanged();
                 }
             }
+
+            RefreshReferencedEntryTabs(updates);
 
             if (updates.Any(x => x.Change is PackageChange.ExportRemove or PackageChange.ImportRemove))
             {
@@ -6701,16 +6938,15 @@ namespace LegendaryExplorer.Tools.PackageEditor
                 }
             }
 
-            if (selectedEditorTabIndex >= 0)
+            if (selectedEditorTab is not null)
             {
                 Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, new Action(() =>
                 {
-                    if (selectedEditorTabIndex < EditorTabs.Items.Count
-                        && EditorTabs.Items[selectedEditorTabIndex] is TabItem tab
-                        && tab.IsEnabled
-                        && tab.IsVisible)
+                    if (EditorTabs.Items.Contains(selectedEditorTab)
+                        && selectedEditorTab.IsEnabled
+                        && selectedEditorTab.IsVisible)
                     {
-                        EditorTabs.SelectedIndex = selectedEditorTabIndex;
+                        EditorTabs.SelectedItem = selectedEditorTab;
                     }
                 }));
             }
@@ -7155,11 +7391,14 @@ namespace LegendaryExplorer.Tools.PackageEditor
                 exportLoader.UnloadExport();
             }
 
-            EditorTabs.IsEnabled = false;
+            EditorTabs.IsEnabled = _referencedEntryTabs.Count > 0;
             Metadata_Tab.Visibility = Visibility.Collapsed;
             MetadataTab_MetadataEditor.ClearMetadataPane();
             Intro_Tab.Visibility = Visibility.Visible;
-            Intro_Tab.IsSelected = true;
+            if (EditorTabs.SelectedItem is not TabItem selectedTab || !_referencedEntryTabs.ContainsKey(selectedTab))
+            {
+                Intro_Tab.IsSelected = true;
+            }
         }
 
         /// <summary>
@@ -8419,6 +8658,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
                 CancelStringRefSearch();
                 CancelPendingStringRefNavigation();
                 CloseStringRefSearchResults();
+                ClearReferencedEntryTabs();
                 SoundTab_Soundpanel.FreeAudioResources();
                 foreach (ExportLoaderControl el in ExportLoaders.Keys)
                 {

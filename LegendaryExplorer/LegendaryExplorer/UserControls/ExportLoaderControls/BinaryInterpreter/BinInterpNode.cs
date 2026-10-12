@@ -41,6 +41,10 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         /// Used to cache the UIndex of object refs
         /// </summary>
         public int UIndexValue { get; set; }
+        /// <summary>
+        /// An entry represented by a derived row whose binary offset contains other data.
+        /// </summary>
+        public int? ReferencedEntryUIndex { get; set; }
         public int Offset { get; set; } = -1;
 
         public int Length { get; set; }
@@ -74,6 +78,10 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         public string WwiseStreamTlkDisplayText { get; set; }
 
         public bool IsWwiseStreamReference => ReferencedWwiseStreamUIndex > 0;
+        public bool IsObjectReference => ReferencedEntryUIndex.HasValue || IsWwiseStreamReference
+            || Tag is BinaryInterpreterWPF.NodeType.ArrayLeafObject
+                or BinaryInterpreterWPF.NodeType.StructLeafObject
+                or BinaryInterpreterWPF.NodeType.ObjectProperty;
         /// <summary>
         /// Indicates that this object reference is a material slot and can use the material picker.
         /// </summary>

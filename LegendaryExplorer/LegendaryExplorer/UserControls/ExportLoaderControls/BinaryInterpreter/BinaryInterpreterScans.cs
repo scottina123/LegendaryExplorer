@@ -1007,7 +1007,11 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 int count;
                 subnodes.Add(new BinInterpNode(bin.Position, $"AnimationMap? ({count = bin.ReadInt32()})")
                 {
-                    Items = ReadList(count, i => new BinInterpNode(bin.Position, $"{bin.ReadNameReference(Pcc)}: {entryRefString(bin)}", NodeType.StructLeafObject) { Length = 4 })
+                    Items = ReadList(count, i =>
+                    {
+                        NameReference animationName = bin.ReadNameReference(Pcc);
+                        return MakeEntryNode(bin, animationName.Instanced);
+                    })
                 });
 
                 binarystart = (int)bin.Position;
@@ -1552,7 +1556,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                             node.Items.Add(new BinInterpNode(bin.Position, $"ShadowMap1D ({count = bin.ReadInt32()})")
                             {
                                 Length = 4 + count * 4,
-                                Items = ReadList(count, j => new BinInterpNode(bin.Position, $"{j}: {entryRefString(bin)}") { Length = 4 })
+                                Items = ReadList(count, j => MakeEntryNode(bin, $"{j}"))
                             });
                             node.Items.Add(MakeInt32Node(bin, "Data"));
                             node.Items.Add(MakeInt32Node(bin, "InstanceIndex"));
@@ -1780,11 +1784,12 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
                         for (int k = 0; k < langTlkCount; k++)
                         {
-                            int tlkIndex = BitConverter.ToInt32(data, offset); //-1 in reader
+                            int tlkIndex = EndianReader.ToInt32(data, offset, Pcc.Endian); //-1 in reader
                             languageNode.Items.Add(new BinInterpNode
                             {
                                 Header = $"0x{offset:X4} TLK #{k} export: {tlkIndex} {CurrentLoadedExport.FileRef.GetEntryString(tlkIndex)}",
                                 Offset = offset,
+                                Length = 4,
                                 Tag = NodeType.StructLeafObject
                             });
                             offset += 4;
@@ -2442,7 +2447,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                         {
                             Header = $"0x{offset:X5} Goal Name StrRef: {gTitle} {gttlkLookup}",
                             Offset = offset,
-                            Tag = NodeType.StructLeafObject
+                            Tag = NodeType.StringRefProperty
                         });
                         offset += 4;
 
@@ -2452,7 +2457,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                         {
                             Header = $"0x{offset:X5} Goal Description StrRef: {gDescription} {gdtlkLookup}",
                             Offset = offset,
-                            Tag = NodeType.StructLeafObject
+                            Tag = NodeType.StringRefProperty
                         });
                         offset += 4;
 
@@ -2510,7 +2515,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                         {
                             Header = $"0x{offset:X5} Task Finishes Quest: {tFinish}  {bFinish}",
                             Offset = offset,
-                            Tag = NodeType.StructLeafObject
+                            Tag = NodeType.StructLeafBool
                         });
                         offset += 4;
 
@@ -2520,7 +2525,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                         {
                             Header = $"0x{offset:X5} Task Name StrRef: {tTitle} {tttlkLookup}",
                             Offset = offset,
-                            Tag = NodeType.StructLeafObject
+                            Tag = NodeType.StringRefProperty
                         });
                         offset += 4;
 
@@ -2530,7 +2535,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                         {
                             Header = $"0x{offset:X5} Task Description StrRef: {tDescription} {tdtlkLookup}",
                             Offset = offset,
-                            Tag = NodeType.StructLeafObject
+                            Tag = NodeType.StringRefProperty
                         });
                         offset += 4;
 
@@ -2624,7 +2629,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                         {
                             Header = $"0x{offset:X5} Goal Name StrRef: {pTitle} {pitlkLookup}",
                             Offset = offset,
-                            Tag = NodeType.StructLeafObject
+                            Tag = NodeType.StringRefProperty
                         });
                         offset += 4;
 
@@ -3024,7 +3029,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     {
                         Header = $"0x{offset:X5} Section Title StrRef: {sTitle} {ttlkLookup}",
                         Offset = offset,
-                        Tag = NodeType.StructLeafObject
+                        Tag = NodeType.StringRefProperty
                     });
                     offset += 4;
 
@@ -3034,7 +3039,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     {
                         Header = $"0x{offset:X5} Section Description StrRef: {sDescription} {dtlkLookup}",
                         Offset = offset,
-                        Tag = NodeType.StructLeafObject
+                        Tag = NodeType.StringRefProperty
                     });
                     offset += 4;
 
@@ -3052,17 +3057,18 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     {
                         Header = $"0x{offset:X5} Section Priority: {sPriority}  (5 is low, 1 is high)",
                         Offset = offset,
-                        Tag = NodeType.StructLeafObject
+                        Tag = NodeType.StructLeafInt
                     });
                     offset += 4;
 
                     if (instVersion >= 3)
                     {
-                        int sndExport = BitConverter.ToInt32(data, offset);
+                        int sndExport = EndianReader.ToInt32(data, offset, Pcc.Endian);
                         SectionIDs.Items.Add(new BinInterpNode
                         {
                             Header = $"0x{offset:X8} Codex Sound: {sndExport} {CurrentLoadedExport.FileRef.GetEntryString(sndExport)}",
                             Offset = offset,
+                            Length = 4,
                             Tag = NodeType.StructLeafObject
                         });
                         offset += 4;
@@ -3075,7 +3081,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     {
                         Header = $"0x{offset:X5} Is Primary Codex: {sPrimary}  {bPrimary}",
                         Offset = offset,
-                        Tag = NodeType.StructLeafObject
+                        Tag = NodeType.StructLeafBool
                     });
                     offset += 4;
                 }
@@ -3151,11 +3157,12 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
                     if (instVersion == 4) //ME3 use object reference found sound then section
                     {
-                        int sndExport = BitConverter.ToInt32(data, offset);
+                        int sndExport = EndianReader.ToInt32(data, offset, Pcc.Endian);
                         PageIDs.Items.Add(new BinInterpNode
                         {
                             Header = $"0x{offset:X8} Codex Sound: {sndExport} {CurrentLoadedExport.FileRef.GetEntryString(sndExport)}",
                             Offset = offset,
+                            Length = 4,
                             Tag = NodeType.StructLeafObject
                         });
                         offset += 4;
@@ -3212,7 +3219,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                         {
                             Header = $"0x{offset:X5} SoundRef String: {sndRef} ",
                             Offset = offset,
-                            Tag = NodeType.StructLeafObject
+                            Tag = NodeType.StructLeafStr
                         });
                         offset += 4;
                         offset += sndStrLgth;
@@ -3241,7 +3248,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                         {
                             Header = $"0x{offset:X5} SoundRef String: {sndRef} ",
                             Offset = offset,
-                            Tag = NodeType.StructLeafObject
+                            Tag = NodeType.StructLeafStr
                         });
                         offset += sndStrLgth;
                     }
@@ -4362,16 +4369,28 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 bin.JumpTo(binarystart);
                 subnodes.Add(MakeArrayNode(bin, "Count", i =>
                 {
+                    long position = bin.Position;
                     string entry = null;
+                    BinInterpNode entryNode = null;
                     if (Pcc.Game.IsLEGame())
                     {
-                        entry = Pcc.GetEntryString(bin.ReadInt32());
+                        entryNode = MakeEntryNode(bin, "Object", out int entryIndex);
+                        entry = Pcc.GetEntryString(entryIndex);
                     }
 
                     var guid = bin.ReadGuid();
                     int num = bin.ReadInt32();
 
-                    return new BinInterpNode(bin.Position, $"{guid}: {num} {entry}");
+                    var node = new BinInterpNode(position, $"{guid}: {num} {entry}")
+                    {
+                        Length = (int)(bin.Position - position)
+                    };
+                    if (entryNode != null)
+                    {
+                        node.IsExpanded = true;
+                        node.Items.Add(entryNode);
+                    }
+                    return node;
                 }));
             }
             catch (Exception ex)
@@ -4624,9 +4643,16 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 subnodes.Add(new BinInterpNode(bin.Position, $"TextureToInstancesMap: ({texToInstCount = bin.ReadInt32()})")
                 {
                     Items = ReadList(texToInstCount, i =>
-                                         new BinInterpNode(bin.Position, $"{entryRefString(bin)}: ({streamableTexInstCount = bin.ReadInt32()} StreamableTextureInstances)")
-                                         {
-                                             Items = ReadList(streamableTexInstCount, j => new BinInterpNode(bin.Position, $"{j}")
+                    {
+                        long position = bin.Position;
+                        BinInterpNode textureNode = MakeEntryNode(bin, "Texture", out int textureIndex);
+                        streamableTexInstCount = bin.ReadInt32();
+                        var instancesNode = new BinInterpNode(position, $"#{textureIndex} {Pcc.GetEntryString(textureIndex)}: ({streamableTexInstCount} StreamableTextureInstances)")
+                        {
+                            IsExpanded = true,
+                            Items = { textureNode }
+                        };
+                        instancesNode.Items.AddRange(ReadList(streamableTexInstCount, j => new BinInterpNode(bin.Position, $"{j}")
                                              {
                                                  IsExpanded = true,
                                                  Items =
@@ -4642,13 +4668,24 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                                 },
                                 new BinInterpNode(bin.Position, $"TexelFactor: {bin.ReadSingle()}")
                             }
-                                             })
-                                         })
+                                             }));
+                        return instancesNode;
+                    })
                 });
                 if (Pcc.Game == MEGame.UDK)
                 {
-                    subnodes.Add(MakeArrayNode(bin, "MeshesComponentsWithDynamicLighting?",
-                                               i => new BinInterpNode(bin.Position, $"{i}: {entryRefString(bin)}, {bin.ReadInt32()}")));
+                    subnodes.Add(MakeArrayNode(bin, "MeshesComponentsWithDynamicLighting?", i =>
+                    {
+                        long position = bin.Position;
+                        BinInterpNode componentNode = MakeEntryNode(bin, "Component", out int componentIndex);
+                        BinInterpNode valueNode = MakeInt32Node(bin, "Value", out int value);
+                        return new BinInterpNode(position, $"{i}: #{componentIndex} {Pcc.GetEntryString(componentIndex)}, {value}")
+                        {
+                            Length = 8,
+                            IsExpanded = true,
+                            Items = { componentNode, valueNode }
+                        };
+                    }));
                 }
 
                 if (Pcc.Game >= MEGame.ME3)
@@ -4678,13 +4715,20 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 int cachedPhysSMDataMapCount;
                 subnodes.Add(new BinInterpNode(bin.Position, $"CachedPhysSMDataMap: ({cachedPhysSMDataMapCount = bin.ReadInt32()})")
                 {
-                    Items = ReadList(cachedPhysSMDataMapCount, i => new BinInterpNode(bin.Position, $"{entryRefString(bin)}")
+                    Items = ReadList(cachedPhysSMDataMapCount, i =>
                     {
-                        Items =
+                        long position = bin.Position;
+                        BinInterpNode meshReference = MakeEntryNode(bin, "Static mesh", out int meshIndex);
+                        return new BinInterpNode(position, $"#{meshIndex} {Pcc.GetEntryString(meshIndex)}")
                         {
-                            MakeVectorNode(bin, "Scale3D"),
-                            new BinInterpNode(bin.Position, $"CachedDataIndex: {bin.ReadInt32()}")
-                        }
+                            IsExpanded = true,
+                            Items =
+                            {
+                                meshReference,
+                                MakeVectorNode(bin, "Scale3D"),
+                                new BinInterpNode(bin.Position, $"CachedDataIndex: {bin.ReadInt32()}")
+                            }
+                        };
                     })
                 });
 
@@ -4710,13 +4754,20 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 int cachedPhysPerTriSMDataMapCount;
                 subnodes.Add(new BinInterpNode(bin.Position, $"CachedPhysPerTriSMDataMap: ({cachedPhysPerTriSMDataMapCount = bin.ReadInt32()})")
                 {
-                    Items = ReadList(cachedPhysPerTriSMDataMapCount, i => new BinInterpNode(bin.Position, $"{entryRefString(bin)}")
+                    Items = ReadList(cachedPhysPerTriSMDataMapCount, i =>
                     {
-                        Items =
+                        long position = bin.Position;
+                        BinInterpNode meshReference = MakeEntryNode(bin, "Static mesh", out int meshIndex);
+                        return new BinInterpNode(position, $"#{meshIndex} {Pcc.GetEntryString(meshIndex)}")
                         {
-                            MakeVectorNode(bin, "Scale3D"),
-                            new BinInterpNode(bin.Position, $"CachedDataIndex: {bin.ReadInt32()}")
-                        }
+                            IsExpanded = true,
+                            Items =
+                            {
+                                meshReference,
+                                MakeVectorNode(bin, "Scale3D"),
+                                new BinInterpNode(bin.Position, $"CachedDataIndex: {bin.ReadInt32()}")
+                            }
+                        };
                     })
                 });
 
@@ -4741,7 +4792,18 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 int forceStreamTexturesCount;
                 subnodes.Add(new BinInterpNode(bin.Position, $"ForceStreamTextures: ({forceStreamTexturesCount = bin.ReadInt32()})")
                 {
-                    Items = ReadList(forceStreamTexturesCount, i => MakeBoolIntNode(bin, $"Texture: {entryRefString(bin)} | ForceStream"))
+                    Items = ReadList(forceStreamTexturesCount, i =>
+                    {
+                        long position = bin.Position;
+                        BinInterpNode textureNode = MakeEntryNode(bin, "Texture", out int textureIndex);
+                        BinInterpNode forceStreamNode = MakeBoolIntNode(bin, "ForceStream", out bool forceStream);
+                        return new BinInterpNode(position, $"Texture: #{textureIndex} {Pcc.GetEntryString(textureIndex)} | ForceStream: {forceStream}")
+                        {
+                            Length = 8,
+                            IsExpanded = true,
+                            Items = { textureNode, forceStreamNode }
+                        };
+                    })
                 });
 
                 if (Pcc.Game == MEGame.UDK)
@@ -5511,19 +5573,12 @@ private List<ITreeItem> StartStaticMeshCollectionActorScan(byte[] data, ref int 
     try
     {
         //get a list of staticmesh stuff from the props.
-        var smacitems = new List<ExportEntry>();
+        var smacitems = new List<IEntry>();
         var props = CurrentLoadedExport.GetProperty<ArrayProperty<ObjectProperty>>("StaticMeshComponents");
 
         foreach (var prop in props)
         {
-            if (prop.Value > 0)
-            {
-                smacitems.Add(Pcc.GetUExport(prop.Value));
-            }
-            else
-            {
-                smacitems.Add(null);
-            }
+            smacitems.Add(Pcc.GetEntry(prop.Value));
         }
 
         //find start of class binary (end of props)
@@ -5548,39 +5603,23 @@ private List<ITreeItem> StartStaticMeshCollectionActorScan(byte[] data, ref int 
             {
                 Tag = NodeType.Unknown
             };
-            ExportEntry associatedData = smacitems[smcaindex];
+            IEntry associatedData = smacitems[smcaindex];
             string staticmesh = "";
             string objtext = "Null - unused data";
             if (associatedData != null)
             {
-                objtext = $"[Export {associatedData.UIndex}] {associatedData.ObjectName.Instanced}";
+                objtext = $"[{(associatedData is ExportEntry ? "Export" : "Import")} {associatedData.UIndex}] {associatedData.ObjectName.Instanced}";
+                smcanode.ReferencedEntryUIndex = associatedData.UIndex;
 
-                //find associated static mesh value for display.
-                var smc_data = associatedData.DataReadOnly;
-                int staticmeshstart = 0x4;
-                bool found = false;
-                while (staticmeshstart < smc_data.Length && smc_data.Length - 8 >= staticmeshstart)
+                if (associatedData is ExportEntry componentExport
+                    && componentExport.GetProperty<ObjectProperty>("StaticMesh") is { Value: var staticMeshIndex }
+                    && Pcc.GetEntry(staticMeshIndex) is { } staticMeshEntry)
                 {
-                    ulong nameindex = EndianReader.ToUInt64(smc_data, staticmeshstart, Pcc.Endian);
-                    if (nameindex < (ulong)CurrentLoadedExport.FileRef.Names.Count && CurrentLoadedExport.FileRef.Names[(int)nameindex] == "StaticMesh")
+                    staticmesh = staticMeshEntry.ObjectName.Instanced;
+                    smcanode.Items.Add(new BinInterpNode($"Static mesh: #{staticMeshIndex} {Pcc.GetEntryString(staticMeshIndex)}")
                     {
-                        //found it
-                        found = true;
-                        break;
-                    }
-                    else
-                    {
-                        staticmeshstart += 1;
-                    }
-                }
-
-                if (found)
-                {
-                    int staticmeshexp = EndianReader.ToInt32(smc_data, staticmeshstart + 0x18, Pcc.Endian);
-                    if (staticmeshexp > 0 && staticmeshexp < CurrentLoadedExport.FileRef.ExportCount)
-                    {
-                        staticmesh = Pcc.GetEntry(staticmeshexp).ObjectName.Instanced;
-                    }
+                        ReferencedEntryUIndex = staticMeshIndex
+                    });
                 }
             }
 
@@ -5679,19 +5718,12 @@ private List<ITreeItem> StartStaticLightCollectionActorScan(byte[] data, ref int
     try
     {
         //get a list of lightcomponents from the props.
-        var slcaitems = new List<ExportEntry>();
+        var slcaitems = new List<IEntry>();
         var props = CurrentLoadedExport.GetProperty<ArrayProperty<ObjectProperty>>("LightComponents");
 
         foreach (var prop in props)
         {
-            if (prop.Value > 0)
-            {
-                slcaitems.Add(CurrentLoadedExport.FileRef.GetEntry(prop.Value) as ExportEntry);
-            }
-            else
-            {
-                slcaitems.Add(null);
-            }
+            slcaitems.Add(Pcc.GetEntry(prop.Value));
         }
 
         //find start of class binary (end of props)
@@ -5716,11 +5748,12 @@ private List<ITreeItem> StartStaticLightCollectionActorScan(byte[] data, ref int
             {
                 Tag = NodeType.Unknown
             };
-            ExportEntry assossiateddata = slcaitems[slcaindex];
+            IEntry assossiateddata = slcaitems[slcaindex];
             string objtext = "Null - unused data";
             if (assossiateddata != null)
             {
-                objtext = $"[Export {assossiateddata.UIndex}] {assossiateddata.ObjectName.Instanced}";
+                objtext = $"[{(assossiateddata is ExportEntry ? "Export" : "Import")} {assossiateddata.UIndex}] {assossiateddata.ObjectName.Instanced}";
+                slcanode.ReferencedEntryUIndex = assossiateddata.UIndex;
             }
 
             slcanode.Header = $"{start:X4} [{slcaindex}] {objtext}";
@@ -5878,7 +5911,7 @@ private List<ITreeItem> StartGenericScan(byte[] data, ref int binarystart)
             {
                 case InterpreterMode.Objects:
                     {
-                        int val = BitConverter.ToInt32(data, binarypos);
+                        int val = EndianReader.ToInt32(data, binarypos, Pcc.Endian);
                         string name = $"0x{binarypos:X6}: {val}";
                         if (CurrentLoadedExport.FileRef.IsEntry(val) && CurrentLoadedExport.FileRef.GetEntry(val) is IEntry ent)
                         {

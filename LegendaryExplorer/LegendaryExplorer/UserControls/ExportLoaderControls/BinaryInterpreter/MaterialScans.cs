@@ -181,7 +181,18 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             try
             {
                 nodes.Add(MakeArrayNode(bin, "Compile Errors", i => MakeStringNode(bin, $"{i}")));
-                nodes.Add(MakeArrayNode(bin, "TextureDependencyLengthMap", i => new BinInterpNode(bin.Position, $"{entryRefString(bin)}: {bin.ReadInt32()}")));
+                nodes.Add(MakeArrayNode(bin, "TextureDependencyLengthMap", i =>
+                {
+                    long position = bin.Position;
+                    BinInterpNode textureNode = MakeEntryNode(bin, "Texture", out int textureIndex);
+                    BinInterpNode lengthNode = MakeInt32Node(bin, "Dependency length", out int dependencyLength);
+                    return new BinInterpNode(position, $"#{textureIndex} {Pcc.GetEntryString(textureIndex)}: {dependencyLength}")
+                    {
+                        Length = 8,
+                        IsExpanded = true,
+                        Items = { textureNode, lengthNode }
+                    };
+                }));
                 nodes.Add(MakeInt32Node(bin, "MaxTextureDependencyLength"));
                 nodes.Add(MakeMaterialGuidNode(bin, "ID", materialGuidMap));
                 nodes.Add(MakeUInt32Node(bin, "NumUserTexCoords"));

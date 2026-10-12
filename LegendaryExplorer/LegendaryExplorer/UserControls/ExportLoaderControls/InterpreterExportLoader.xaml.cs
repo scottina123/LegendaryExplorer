@@ -96,6 +96,17 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         public static readonly DependencyProperty NavigateToEntryCallbackProperty = DependencyProperty.Register(
             nameof(NavigateToEntryCommand), typeof(RelayCommand), typeof(InterpreterExportLoader), new PropertyMetadata(null));
 
+        public RelayCommand OpenEntryInNewTabCommand
+        {
+            get => (RelayCommand)GetValue(OpenEntryInNewTabCommandProperty);
+            set => SetValue(OpenEntryInNewTabCommandProperty, value);
+        }
+
+        public static readonly DependencyProperty OpenEntryInNewTabCommandProperty = DependencyProperty.Register(
+            nameof(OpenEntryInNewTabCommand), typeof(RelayCommand), typeof(InterpreterExportLoader), new PropertyMetadata(null));
+
+        public RelayCommand GoToObjectCommand { get; private set; }
+
         public bool HideHexBox
         {
             get => (bool)GetValue(HideHexBoxProperty);
@@ -443,6 +454,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             MoveArrayElementToBottomCommand = new GenericCommand(MoveArrayElementToBottom, CanMoveArrayElementToBottom);
             GenerateGUIDCommand = new GenericCommand(GenerateNewGUID, IsItemGUIDImmutable);
             NavigateToEntryCommandInternal = new GenericCommand(FireNavigateCallback, CanFireNavigateCallback);
+            GoToObjectCommand = new RelayCommand(NavigateToObject, CanNavigateToObject);
             OpenInPackageEditorCommand = new GenericCommand(OpenInPackageEditor, ObjectPropertyExportIsSelected);
             AttemptOpenImportDefinitionCommand = new GenericCommand(AttemptOpenImport, ObjectPropertyImportIsSelected);
             OpenPlotElementCommand = new GenericCommand(OpenPlotElement, CanOpenPlotElement);
@@ -1081,6 +1093,33 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             }
 
             return false;
+        }
+
+        private IEntry GetObjectNavigationEntry(UPropertyTreeViewEntry node)
+        {
+            return CurrentLoadedExport != null && node?.AttachedExport == CurrentLoadedExport && node.Property is ObjectProperty property
+                ? CurrentLoadedExport.FileRef.GetEntry(property.Value)
+                : null;
+        }
+
+        private bool CanNavigateToObject(object parameter)
+        {
+            var command = Keyboard.Modifiers.HasFlag(ModifierKeys.Shift) ? OpenEntryInNewTabCommand : NavigateToEntryCommand;
+            return GetObjectNavigationEntry(parameter as UPropertyTreeViewEntry) is { } entry && command?.CanExecute(entry) == true;
+        }
+
+        private void NavigateToObject(object parameter)
+        {
+            NavigateToObject(parameter as UPropertyTreeViewEntry, Keyboard.Modifiers.HasFlag(ModifierKeys.Shift));
+        }
+
+        private void NavigateToObject(UPropertyTreeViewEntry node, bool openInNewTab)
+        {
+            var command = openInNewTab ? OpenEntryInNewTabCommand : NavigateToEntryCommand;
+            if (GetObjectNavigationEntry(node) is { } entry && command?.CanExecute(entry) == true)
+            {
+                command.Execute(entry);
+            }
         }
 
         private bool CanAddArrayElement()
