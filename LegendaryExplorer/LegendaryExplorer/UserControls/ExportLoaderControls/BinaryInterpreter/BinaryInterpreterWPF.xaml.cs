@@ -269,7 +269,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         private bool CanNavigateToReference(object parameter)
         {
-            var command = Keyboard.Modifiers.HasFlag(ModifierKeys.Shift) ? OpenEntryInNewWindowCommand : NavigateToEntryCommand;
+            var command = InterpreterEntryNavigation.GetCommand(NavigateToEntryCommand, OpenEntryInNewWindowCommand,
+                Keyboard.Modifiers.HasFlag(ModifierKeys.Shift));
             return GetReferenceEntry(parameter) is { } entry && command?.CanExecute(entry) == true;
         }
 
@@ -280,7 +281,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         private void NavigateToReference(object parameter, bool openInNewWindow)
         {
-            var command = openInNewWindow ? OpenEntryInNewWindowCommand : NavigateToEntryCommand;
+            var command = InterpreterEntryNavigation.GetCommand(NavigateToEntryCommand, OpenEntryInNewWindowCommand, openInNewWindow);
             if (GetReferenceEntry(parameter) is { } entry && command?.CanExecute(entry) == true)
             {
                 command.Execute(entry);

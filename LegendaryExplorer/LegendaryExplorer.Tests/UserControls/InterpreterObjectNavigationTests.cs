@@ -224,9 +224,39 @@ public class InterpreterObjectNavigationTests
     });
 
     [TestMethod]
-    [Timeout(90_000)]
-    public void PackageEditorReferenceWindowsShareUnsavedPackageAndKeepIndependentSelections() => RunOnSta(() =>
+    public void StandaloneInterpreterUsesItsNewWindowCallbackForNormalAndShiftNavigation() => RunOnSta(() =>
     {
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("InterpreterStandaloneCallback.pcc", MEGame.LE3);
+        ExportEntry source = package.CreateExport("Source", "Object", indexed: false);
+        ExportEntry target = package.CreateExport("Target", "Object", indexed: false);
+        source.WriteProperty(new ObjectProperty(target.UIndex, "Reference"));
+        var newWindows = new List<IEntry>();
+        using var view = new InterpreterTestView(source, null, entry => newWindows.Add((IEntry)entry));
+        UPropertyTreeViewEntry node = view.Node("Reference");
+
+        Assert.IsTrue(view.GoToButton(node).IsEnabled);
+        InvokeButton(view.GoToButton(node));
+        Navigate(view.Interpreter, node, true);
+        CollectionAssert.AreEqual(new IEntry[] { target, target }, newWindows);
+
+        view.Interpreter.OpenEntryInNewWindowCommand = new RelayCommand(_ => Assert.Fail("Disabled callback executed."), _ => false);
+        Assert.IsFalse(view.Interpreter.GoToObjectCommand.CanExecute(node));
+        Navigate(view.Interpreter, node, false);
+        Navigate(view.Interpreter, node, true);
+        CollectionAssert.AreEqual(new IEntry[] { target, target }, newWindows);
+    });
+
+    [TestMethod]
+    [Timeout(90_000)]
+    public void StandaloneInterpreterGoToButtonsOpenNewEditorsWithTheSameUnsavedPackage() => RunOnSta(() =>
+    {
+        FieldInfo settingsLoaded = typeof(Settings).GetField("Loaded", BindingFlags.Static | BindingFlags.NonPublic)!;
+        FieldInfo deferSettingsSaving = typeof(Settings).GetField("_deferSaving", BindingFlags.Static | BindingFlags.NonPublic)!;
+        object previousSettingsLoaded = settingsLoaded.GetValue(null);
+        object previousDeferSettingsSaving = deferSettingsSaving.GetValue(null);
+        bool previousLiveFiltering = Settings.PackageEditor_LiveFiltering;
+        settingsLoaded.SetValue(null, false);
+        deferSettingsSaving.SetValue(null, true);
         InitializeApplicationResources();
         SyntaxInfo.LoadFromSettings();
         DispatcherHelper.Initialize();
@@ -234,10 +264,132 @@ public class InterpreterObjectNavigationTests
         TaskScheduler previousScheduler = LegendaryExplorerCoreLib.SYNCHRONIZATION_CONTEXT;
         SynchronizationContext.SetSynchronizationContext(new DispatcherSynchronizationContext(Dispatcher.CurrentDispatcher));
         LegendaryExplorerCoreLib.SetSynchronizationContext(TaskScheduler.FromCurrentSynchronizationContext());
+        Settings.PackageEditor_LiveFiltering = false;
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("StandaloneInterpreterReferenceWindows.pcc", MEGame.LE3);
+        ExportEntry source = package.CreateExport("Source", "Object", indexed: false);
+        ExportEntry binarySource = package.CreateExport("BinarySource", "Object", indexed: false);
+        ExportEntry target = package.CreateExport("Target", "Object", indexed: false);
+        var import = new ImportEntry(package) { ObjectName = "ImportedTarget", ClassName = "Object", PackageFile = "Engine" };
+        package.AddImport(import);
+        source.WriteProperties(new PropertyCollection
+        {
+            new ObjectProperty(target.UIndex, "ExportReference"),
+            new ObjectProperty(import.UIndex, "ImportReference"),
+            new ObjectProperty(0, "NullReference"),
+            new ObjectProperty(int.MaxValue, "InvalidReference")
+        });
+        target.WriteProperty(new IntProperty(314, "UnsavedValue"));
+        binarySource.Data = new[] { target.UIndex, import.UIndex, 0, int.MaxValue }.SelectMany(BitConverter.GetBytes).ToArray();
+        byte[] originalProperties = source.Data.ToArray();
+        byte[] originalBinary = binarySource.Data.ToArray();
+        var binaryNodes = new[]
+        {
+            new BinInterpNode(0, "Export reference", BinaryInterpreterWPF.NodeType.StructLeafObject),
+            new BinInterpNode(4, "Import reference", BinaryInterpreterWPF.NodeType.ArrayLeafObject),
+            new BinInterpNode(8, "Null reference", BinaryInterpreterWPF.NodeType.StructLeafObject),
+            new BinInterpNode(12, "Invalid reference", BinaryInterpreterWPF.NodeType.StructLeafObject)
+        };
+        var previousWindows = Application.Current.Windows.OfType<PackageEditorWindow>().ToHashSet();
+        try
+        {
+            using var propertyView = new InterpreterTestView(source, null);
+            using var binaryView = new StandaloneBinaryTestView(binarySource, binaryNodes);
+            Assert.IsNull(propertyView.Interpreter.NavigateToEntryCommand);
+            Assert.IsNull(propertyView.Interpreter.OpenEntryInNewWindowCommand);
+            Assert.IsNull(binaryView.Interpreter.NavigateToEntryCommand);
+            Assert.IsNull(binaryView.Interpreter.OpenEntryInNewWindowCommand);
+            Assert.IsTrue(package.IsModified, "The fixture must contain unsaved content.");
+            var openedWindows = new List<PackageEditorWindow>();
+
+            foreach ((string propertyName, int binaryNodeIndex, IEntry entry) in new[]
+                     {
+                         ("ExportReference", 0, (IEntry)target),
+                         ("ImportReference", 1, (IEntry)import)
+                     })
+            {
+                foreach (Button button in new[]
+                         {
+                             propertyView.GoToButton(propertyView.Node(propertyName)),
+                             binaryView.GoToButton(binaryNodes[binaryNodeIndex])
+                         })
+                {
+                    Assert.IsTrue(button.IsEnabled);
+                    PackageEditorWindow openedWindow = OpenReferenceWindow(() => InvokeButton(button, waitForIdle: false), entry);
+                    Assert.IsFalse(openedWindows.Contains(openedWindow), "Each Go to click must create a new editor instance.");
+                    openedWindows.Add(openedWindow);
+                    Assert.AreSame(package, openedWindow.Pcc);
+                    Assert.AreSame(entry, openedWindow.SelectedItem.Entry);
+                    if (entry is ExportEntry)
+                    {
+                        var loader = (InterpreterExportLoader)openedWindow.FindName("InterpreterTab_Interpreter");
+                        Assert.AreSame(target, loader.CurrentLoadedExport);
+                        Assert.AreEqual(314, ((IntProperty)loader.PropertyNodes[0].ChildrenProperties
+                            .Single(node => node.Property?.Name.Name == "UnsavedValue").Property).Value);
+                    }
+                    else
+                    {
+                        var loader = (EntryMetadataExportLoader)openedWindow.FindName("MetadataTab_MetadataEditor");
+                        Assert.AreSame(import, loader.CurrentLoadedEntry);
+                    }
+                    Assert.AreSame(source, propertyView.Interpreter.CurrentLoadedExport);
+                    Assert.AreSame(binarySource, binaryView.Interpreter.CurrentLoadedExport);
+                }
+            }
+
+            foreach (string propertyName in new[] { "NullReference", "InvalidReference" })
+            {
+                UPropertyTreeViewEntry node = propertyView.Node(propertyName);
+                Assert.IsFalse(propertyView.Interpreter.GoToObjectCommand.CanExecute(node));
+                Assert.IsFalse(propertyView.GoToButton(node).IsEnabled);
+                Navigate(propertyView.Interpreter, node, false);
+            }
+            foreach (BinInterpNode node in binaryNodes.Skip(2))
+            {
+                Assert.IsFalse(binaryView.Interpreter.GoToReferenceCommand.CanExecute(node));
+                Assert.IsFalse(binaryView.GoToButton(node).IsEnabled);
+                typeof(BinaryInterpreterWPF).GetMethod("NavigateToReference", BindingFlags.Instance | BindingFlags.NonPublic,
+                    null, new[] { typeof(object), typeof(bool) }, null)!.Invoke(binaryView.Interpreter, new object[] { node, false });
+            }
+            CollectionAssert.AreEquivalent(openedWindows, Application.Current.Windows.OfType<PackageEditorWindow>()
+                .Where(window => !previousWindows.Contains(window)).ToArray());
+            CollectionAssert.AreEqual(originalProperties, source.Data);
+            CollectionAssert.AreEqual(originalBinary, binarySource.Data);
+            Assert.IsTrue(package.IsModified);
+        }
+        finally
+        {
+            typeof(UnrealPackageFile).GetProperty(nameof(IMEPackage.IsModified))!.SetValue(package, false);
+            foreach (PackageEditorWindow window in Application.Current.Windows.OfType<PackageEditorWindow>()
+                         .Where(candidate => !previousWindows.Contains(candidate)).ToArray())
+            {
+                window.Close();
+            }
+            Settings.PackageEditor_LiveFiltering = previousLiveFiltering;
+            settingsLoaded.SetValue(null, previousSettingsLoaded);
+            deferSettingsSaving.SetValue(null, previousDeferSettingsSaving);
+            LegendaryExplorerCoreLib.SetSynchronizationContext(previousScheduler);
+            SynchronizationContext.SetSynchronizationContext(previousSynchronizationContext);
+        }
+    });
+
+    [TestMethod]
+    [Timeout(90_000)]
+    public void PackageEditorReferenceWindowsShareUnsavedPackageAndKeepIndependentSelections() => RunOnSta(() =>
+    {
         FieldInfo settingsLoaded = typeof(Settings).GetField("Loaded", BindingFlags.Static | BindingFlags.NonPublic)!;
+        FieldInfo deferSettingsSaving = typeof(Settings).GetField("_deferSaving", BindingFlags.Static | BindingFlags.NonPublic)!;
         object previousSettingsLoaded = settingsLoaded.GetValue(null);
+        object previousDeferSettingsSaving = deferSettingsSaving.GetValue(null);
         bool previousLiveFiltering = Settings.PackageEditor_LiveFiltering;
         settingsLoaded.SetValue(null, false);
+        deferSettingsSaving.SetValue(null, true);
+        InitializeApplicationResources();
+        SyntaxInfo.LoadFromSettings();
+        DispatcherHelper.Initialize();
+        SynchronizationContext previousSynchronizationContext = SynchronizationContext.Current;
+        TaskScheduler previousScheduler = LegendaryExplorerCoreLib.SYNCHRONIZATION_CONTEXT;
+        SynchronizationContext.SetSynchronizationContext(new DispatcherSynchronizationContext(Dispatcher.CurrentDispatcher));
+        LegendaryExplorerCoreLib.SetSynchronizationContext(TaskScheduler.FromCurrentSynchronizationContext());
         Settings.PackageEditor_LiveFiltering = false;
         using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("PackageEditorReferenceWindows.pcc", MEGame.LE3);
         ExportEntry source = package.CreateExport("Source", "Object", indexed: false);
@@ -296,10 +448,15 @@ public class InterpreterObjectNavigationTests
                 package.Users.OfType<PackageEditorWindow>().ToArray());
 
             TestContext.WriteLine("Navigating from Names");
+            // Preview uses tab visibility to choose its properties tab; keep the window shown for each navigation.
+            window.Show();
             window.NavigateToEntryCommand.Execute(target);
+            window.Hide();
             FlushDispatcher();
+            window.Show();
             window.CurrentView = PackageEditorWindow.CurrentViewMode.Names;
             window.NavigateToEntryCommand.Execute(target);
+            window.Hide();
             FlushDispatcher();
             Assert.AreEqual(PackageEditorWindow.CurrentViewMode.Tree, window.CurrentView);
             Assert.AreSame(target, window.SelectedItem.Entry);
@@ -325,8 +482,8 @@ public class InterpreterObjectNavigationTests
             TestContext.WriteLine("Closing the source window");
             typeof(UnrealPackageFile).GetProperty(nameof(IMEPackage.IsModified))!.SetValue(nextPackage, false);
             window.Close();
-            Assert.IsTrue(exportWindow.IsVisible);
-            Assert.IsTrue(importWindow.IsVisible);
+            Assert.IsTrue(Application.Current.Windows.OfType<PackageEditorWindow>().Contains(exportWindow));
+            Assert.IsTrue(Application.Current.Windows.OfType<PackageEditorWindow>().Contains(importWindow));
             Assert.AreSame(package, exportWindow.Pcc);
             Assert.AreSame(package, importWindow.Pcc);
             Assert.AreSame(target, exportWindow.SelectedItem.Entry);
@@ -347,36 +504,60 @@ public class InterpreterObjectNavigationTests
             }
             Settings.PackageEditor_LiveFiltering = previousLiveFiltering;
             settingsLoaded.SetValue(null, previousSettingsLoaded);
+            deferSettingsSaving.SetValue(null, previousDeferSettingsSaving);
             LegendaryExplorerCoreLib.SetSynchronizationContext(previousScheduler);
             SynchronizationContext.SetSynchronizationContext(previousSynchronizationContext);
         }
     });
 
     private static PackageEditorWindow OpenReferenceWindow(PackageEditorWindow sourceWindow, IEntry entry)
+        => OpenReferenceWindow(() => sourceWindow.OpenEntryInNewWindowCommand.Execute(entry), entry);
+
+    private static PackageEditorWindow OpenReferenceWindow(Action navigate, IEntry entry)
     {
         var existingWindows = Application.Current.Windows.OfType<PackageEditorWindow>().ToHashSet();
-        sourceWindow.OpenEntryInNewWindowCommand.Execute(entry);
-        PackageEditorWindow window = Application.Current.Windows.OfType<PackageEditorWindow>()
-            .Single(candidate => !existingWindows.Contains(candidate));
-        window.ShowInTaskbar = false;
-        window.Left = -10000;
-        window.Top = -10000;
+        navigate();
+        PackageEditorWindow window = null;
+        WaitForDispatcher(() =>
+        {
+            if (window is not null)
+            {
+                return true;
+            }
+            window = Application.Current.Windows.OfType<PackageEditorWindow>()
+                .SingleOrDefault(candidate => !existingWindows.Contains(candidate));
+            if (window is null)
+            {
+                return false;
+            }
+            Assert.IsTrue(window.IsVisible, "Reference navigation must show its new package editor.");
+            window.ShowInTaskbar = false;
+            window.Left = -10000;
+            window.Top = -10000;
+            window.Hide();
+            return true;
+        }, "Reference navigation did not open a package editor.");
         WaitForPackageEditor(window, () => !window.IsBusy && ReferenceEquals(entry, window.SelectedItem?.Entry));
         return window;
     }
 
     private static void WaitForPackageEditor(PackageEditorWindow window, Func<bool> ready)
     {
-        bool wasVisible = window.IsVisible;
-        if (wasVisible)
+        // Keep native previews hidden while testing selection and package ownership.
+        window.Hide();
+        WaitForDispatcher(ready, "Package editor did not finish loading and selecting its target.");
+    }
+
+    private static void WaitForDispatcher(Func<bool> ready, string failureMessage)
+    {
+        if (ready())
         {
-            // Native preview controls can keep rendering while a shown editor loads.
-            window.Hide();
+            return;
         }
         var frame = new DispatcherFrame();
         DateTime deadline = DateTime.UtcNow.AddSeconds(10);
-        // Package loading waits synchronously for ApplicationIdle before navigating.
-        var timer = new DispatcherTimer(DispatcherPriority.ApplicationIdle)
+        // A higher priority timer can still check the deadline while previews render.
+        var timer = new DispatcherTimer(DispatcherPriority.Normal)
         {
             Interval = TimeSpan.FromMilliseconds(25)
         };
@@ -395,12 +576,8 @@ public class InterpreterObjectNavigationTests
         finally
         {
             timer.Stop();
-            if (wasVisible)
-            {
-                window.Show();
-            }
         }
-        Assert.IsTrue(ready(), "Package editor did not finish loading and selecting its target.");
+        Assert.IsTrue(ready(), failureMessage);
     }
 
     private static void Navigate(InterpreterExportLoader interpreter, UPropertyTreeViewEntry node, bool newWindow)
@@ -412,11 +589,14 @@ public class InterpreterObjectNavigationTests
         method.Invoke(interpreter, new object[] { node, newWindow });
     }
 
-    private static void InvokeButton(Button button)
+    private static void InvokeButton(Button button, bool waitForIdle = true)
     {
         var peer = new ButtonAutomationPeer(button);
         ((IInvokeProvider)peer.GetPattern(PatternInterface.Invoke)).Invoke();
-        FlushDispatcher();
+        if (waitForIdle)
+        {
+            FlushDispatcher();
+        }
     }
 
     private static void InitializeApplicationResources()
@@ -456,7 +636,7 @@ public class InterpreterObjectNavigationTests
             Interpreter = new InterpreterExportLoader
             {
                 ReloadPropertyDataAfterWrite = false,
-                NavigateToEntryCommand = new RelayCommand(navigate),
+                NavigateToEntryCommand = navigate is null ? null : new RelayCommand(navigate),
                 OpenEntryInNewWindowCommand = newWindow is null ? null : new RelayCommand(newWindow)
             };
             window = new Window
@@ -483,6 +663,40 @@ public class InterpreterObjectNavigationTests
             FlushDispatcher();
             window.UpdateLayout();
         }
+
+        public void Dispose()
+        {
+            window.Close();
+            Interpreter.Dispose();
+        }
+    }
+
+    private sealed class StandaloneBinaryTestView : IDisposable
+    {
+        private readonly Window window;
+        public BinaryInterpreterWPF Interpreter { get; }
+
+        public StandaloneBinaryTestView(ExportEntry export, BinInterpNode[] nodes)
+        {
+            Interpreter = new BinaryInterpreterWPF { HideHexBox = true };
+            typeof(ExportLoaderControl).GetProperty(nameof(ExportLoaderControl.CurrentLoadedExport))!
+                .SetValue(Interpreter, export);
+            window = new Window
+            {
+                Content = Interpreter, Width = 1500, Height = 700,
+                ShowActivated = false, ShowInTaskbar = false, Left = -10000, Top = -10000
+            };
+            window.Show();
+            var root = new BinInterpNode("Binary start") { IsExpanded = true };
+            root.Items.AddRange(nodes);
+            Interpreter.TreeViewItems.Add(root);
+            FlushDispatcher();
+            window.UpdateLayout();
+        }
+
+        public Button GoToButton(BinInterpNode node) => FindVisualDescendants<Button>(Interpreter)
+            .Single(button => button.IsVisible && ReferenceEquals(button.Command, Interpreter.GoToReferenceCommand)
+                && ReferenceEquals(button.CommandParameter, node));
 
         public void Dispose()
         {

@@ -273,6 +273,29 @@ public class BinaryInterpreterNavigationTests
     });
 
     [TestMethod]
+    public void StandaloneInterpreterUsesItsNewWindowCallbackForNormalAndShiftNavigation() => RunOnSta(() =>
+    {
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("BinaryStandaloneCallback.pcc", MEGame.LE3);
+        ExportEntry source = package.CreateExport("Source", "Object", indexed: false);
+        ExportEntry target = package.CreateExport("Target", "Object", indexed: false);
+        source.Data = IndexBytes(target.UIndex);
+        var node = new BinInterpNode(0, "Reference", BinaryInterpreterWPF.NodeType.StructLeafObject);
+        var newWindows = new List<IEntry>();
+        using var view = new BinaryTestView(source, null, entry => newWindows.Add((IEntry)entry), items: [node]);
+
+        Assert.IsTrue(view.GoToButton(node).IsEnabled);
+        InvokeButton(view.GoToButton(node));
+        Navigate(view.Interpreter, node, true);
+        CollectionAssert.AreEqual(new IEntry[] { target, target }, newWindows);
+
+        view.Interpreter.OpenEntryInNewWindowCommand = new RelayCommand(_ => Assert.Fail("Disabled callback executed."), _ => false);
+        Assert.IsFalse(view.Interpreter.GoToReferenceCommand.CanExecute(node));
+        Navigate(view.Interpreter, node, false);
+        Navigate(view.Interpreter, node, true);
+        CollectionAssert.AreEqual(new IEntry[] { target, target }, newWindows);
+    });
+
+    [TestMethod]
     public void MaterialTextureReferencesResolveCurrentSlotsInTheirOwningPackage() => RunOnSta(() =>
     {
         using IMEPackage meshPackage = MEPackageHandler.CreateMemoryEmptyPackage("BinaryNavigationMesh.pcc", MEGame.LE3);
@@ -447,7 +470,7 @@ public class BinaryInterpreterNavigationTests
             Interpreter = new BinaryInterpreterWPF
             {
                 HideHexBox = true,
-                NavigateToEntryCommand = new RelayCommand(navigate),
+                NavigateToEntryCommand = navigate is null ? null : new RelayCommand(navigate),
                 OpenEntryInNewWindowCommand = newWindow is null ? null : new RelayCommand(newWindow)
             };
             // Supply the export synchronously so the fixture exercises the real control without starting an async scan.

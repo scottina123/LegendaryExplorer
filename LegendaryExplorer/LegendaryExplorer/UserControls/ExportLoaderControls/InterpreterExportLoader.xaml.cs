@@ -1104,7 +1104,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         private bool CanNavigateToObject(object parameter)
         {
-            var command = Keyboard.Modifiers.HasFlag(ModifierKeys.Shift) ? OpenEntryInNewWindowCommand : NavigateToEntryCommand;
+            var command = InterpreterEntryNavigation.GetCommand(NavigateToEntryCommand, OpenEntryInNewWindowCommand,
+                Keyboard.Modifiers.HasFlag(ModifierKeys.Shift));
             return GetObjectNavigationEntry(parameter as UPropertyTreeViewEntry) is { } entry && command?.CanExecute(entry) == true;
         }
 
@@ -1115,7 +1116,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         private void NavigateToObject(UPropertyTreeViewEntry node, bool openInNewWindow)
         {
-            var command = openInNewWindow ? OpenEntryInNewWindowCommand : NavigateToEntryCommand;
+            var command = InterpreterEntryNavigation.GetCommand(NavigateToEntryCommand, OpenEntryInNewWindowCommand, openInNewWindow);
             if (GetObjectNavigationEntry(node) is { } entry && command?.CanExecute(entry) == true)
             {
                 command.Execute(entry);
