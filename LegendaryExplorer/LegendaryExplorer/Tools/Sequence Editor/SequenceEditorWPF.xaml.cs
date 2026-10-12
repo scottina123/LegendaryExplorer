@@ -100,7 +100,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
         public string CurrentFile;
         public string JSONpath;
 
-        private bool _useSavedViews = true; // Should probably be a global setting
+        private bool _useSavedViews = Settings.SequenceEditor_UseSavedViews;
         private int suppressInterpreterUnloadDepth;
         private int suppressInterpDataInterpreterUnloadDepth;
         private DispatcherOperation pendingInterpDataEditorsReload;
@@ -120,9 +120,13 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             get => _useSavedViews;
             set
             {
-                if (SetProperty(ref _useSavedViews, value) && SelectedSequence != null)
+                if (SetProperty(ref _useSavedViews, value))
                 {
-                    LoadSequence(SelectedSequence);
+                    Settings.SequenceEditor_UseSavedViews = value;
+                    if (SelectedSequence != null)
+                    {
+                        LoadSequence(SelectedSequence);
+                    }
                 }
             }
         }
@@ -265,9 +269,6 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
         ];
 
         private SavedViewData SavedView;
-        private bool forceAutoLayoutOnInitialPackageLoad = true;
-        private bool forceAutoLayoutForCurrentPackage;
-        private readonly HashSet<int> autoLaidOutSequencesForCurrentPackage = [];
         private PointF? backgroundContextMenuGraphLocation;
         private PointF? pendingNewObjectPosition;
         private List<CopiedInputConnection> copiedInputConnections;
@@ -668,7 +669,6 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
         public ICommand NavigateSelectionForwardCommand { get; set; }
         public ICommand FocusSelectedNodeCommand { get; set; }
         public ICommand AutoLayoutCommand { get; set; }
-        public ICommand UseSavedViewsCommand { get; set; }
         public ICommand ScanFolderForLoopsCommand { get; set; }
         public ICommand CheckSequenceSetsCommand { get; set; }
         public ICommand ConvertSeqActLogCommentCommand { get; set; }
@@ -709,8 +709,6 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             ConvertSeqActLogCommentCommand = new GenericCommand(
                 () => SequenceEditorExperimentsM.ConvertSeqAct_Log_objComments(Pcc), () => SequenceExports.Any);
             SearchCommand = new GenericCommand(SearchDialogue, () => CurrentObjects.Any);
-            UseSavedViewsCommand = new GenericCommand(ToggleSavedViews,
-                () => Pcc != null && (Pcc is { Game: MEGame.ME1 } || Pcc.Game.IsLEGame()));
             ResetFavoritesCommand = new GenericCommand(ResetFavorites, () => Pcc != null);
             OpenOtherVersionCommand = new GenericCommand(OpenOtherVersion, () => Pcc != null && Pcc.Game.IsMEGame());
             CompareToUnmoddedCommand =
@@ -1044,11 +1042,6 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             {
                 GoToExport(clickedItem.Entry.UIndex);
             }
-        }
-
-        private void ToggleSavedViews()
-        {
-            UseSavedViews = !UseSavedViews;
         }
 
         private bool CanNavigateSelectionBack() => FindSelectionHistoryIndex(-1) >= 0;
@@ -1669,10 +1662,6 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
         {
             try
             {
-                forceAutoLayoutForCurrentPackage = forceAutoLayoutOnInitialPackageLoad;
-                autoLaidOutSequencesForCurrentPackage.Clear();
-                forceAutoLayoutOnInitialPackageLoad = false;
-
                 LoadSequences();
                 if (TreeViewRootNodes.IsEmpty())
                 {
@@ -2137,7 +2126,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             SelectedSequence = seqExport;
             SetupJSON(SelectedSequence);
             var selectedExports = SelectedObjects.Select(o => o.Export).ToList();
-            bool forceAutoLayout = fromFile;
+            bool forceAutoLayout = !UseSavedViews;
             if (fromFile)
             {
                 if (!isReadOnlyPreview)
@@ -2145,7 +2134,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                     Properties_InterpreterWPF.LoadExport(seqExport);
                 }
 
-                if (!forceAutoLayout && UseSavedViews && File.Exists(JSONpath))
+                if (UseSavedViews && File.Exists(JSONpath))
                 {
                     SavedView = JsonConvert.DeserializeObject<SavedViewData>(File.ReadAllText(JSONpath));
                 }
@@ -2322,7 +2311,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             StartPosActions = 0;
             StartPosVars = 0;
             GetObjects(SelectedSequence);
-            Layout();
+            Layout(forceAutoLayout);
             foreach (SObj o in CurrentObjects)
             {
                 if (isReadOnlyPreview)
@@ -2345,11 +2334,6 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                 {
                     edge.Pickable = false;
                 }
-            }
-
-            if (forceAutoLayout || (SavedView.Positions.IsEmpty() && (Pcc.Game is MEGame.ME2 or MEGame.ME3)))
-            {
-                AutoLayout();
             }
         }
 
@@ -2486,7 +2470,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             contextMenu.IsOpen = true;
         }
 
-        public void Layout()
+        public void Layout(bool forceAutoLayout = false)
         {
             var objsInNeedOfLayout = new HashSet<SObj>();
             if (CurrentObjects != null && CurrentObjects.Any())
@@ -2507,14 +2491,14 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
 
                 foreach (SObj obj in CurrentObjects)
                 {
-                    if (SavedView.Positions.TryGetValue(obj.UIndex, out PointF savedInfo))
+                    if (!forceAutoLayout && UseSavedViews)
                     {
-                        obj.Layout(savedInfo.X, savedInfo.Y);
-                        continue;
-                    }
+                        if (SavedView.Positions.TryGetValue(obj.UIndex, out PointF savedInfo))
+                        {
+                            obj.Layout(savedInfo.X, savedInfo.Y);
+                            continue;
+                        }
 
-                    if (Pcc.Game is MEGame.ME1 or MEGame.UDK || Pcc.Game.IsLEGame())
-                    {
                         var props = obj.Export.GetProperties();
                         IntProperty xPos = props.GetProp<IntProperty>("ObjPosX");
                         IntProperty yPos = props.GetProp<IntProperty>("ObjPosY");

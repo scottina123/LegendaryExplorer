@@ -184,7 +184,7 @@
                                     <Button Margin="5,0,0,0" Padding="8,0" Content="Go to" Tag="{Binding}" CommandParameter="{Binding}"
                                             Visibility="{Binding IsObjectReference, Converter={StaticResource BoolToVisibilityConverter}}"
                                             Command="{Binding GoToReferenceCommand, RelativeSource={RelativeSource AncestorType=exportLoaderControls:BinaryInterpreterWPF}}"
-                                            ToolTip="Open the referenced object in this package editor. Shift-click to open it in a new tab."/>
+                                            ToolTip="Open the referenced object in this package editor. Shift-click to open it in a new Package Editor window."/>
                                     <StackPanel Orientation="Horizontal" Margin="8,0,0,0"
                                                 Visibility="{Binding IsWwiseStreamReference, Converter={StaticResource BoolToVisibilityConverter}}">
                                         <TextBlock MaxWidth="600" VerticalAlignment="Center" Foreground="{DynamicResource SecondaryTextBrush}"
@@ -203,7 +203,7 @@
                                             <Button Margin="5,0,0,0" Padding="8,0" Content="Go to" Tag="{Binding}" CommandParameter="{Binding}"
                                                     Visibility="{Binding ShowObjectInlineEditor, Converter={StaticResource BoolToVisibilityConverter}}"
                                                     Command="{Binding GoToReferenceCommand, RelativeSource={RelativeSource AncestorType=exportLoaderControls:BinaryInterpreterWPF}}"
-                                                    ToolTip="Open the referenced object in this package editor. Shift-click to open it in a new tab."/>
+                                                    ToolTip="Open the referenced object in this package editor. Shift-click to open it in a new Package Editor window."/>
                                         </StackPanel>
                                         <TextBlock x:Name="PropertyItem_DisplayType" Text="{Binding PropertyType}" VerticalAlignment="Center" Margin="5,0,0,0"/>
                                         <b:Interaction.Triggers>

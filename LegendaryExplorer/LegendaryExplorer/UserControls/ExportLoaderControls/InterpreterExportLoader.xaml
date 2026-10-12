@@ -324,7 +324,7 @@
                                             <Button Margin="5,0,0,0" Padding="6,0" Content="✓" Tag="{Binding}" Click="InlineEditorConfirmButton_Click"/>
                                             <Button Margin="5,0,0,0" Padding="8,0" Content="Go to" Tag="{Binding}" CommandParameter="{Binding}"
                                                     Command="{Binding GoToObjectCommand, RelativeSource={RelativeSource AncestorType=global:InterpreterExportLoader}}"
-                                                    ToolTip="Open the referenced object in this package editor. Shift-click to open it in a new tab."/>
+                                                    ToolTip="Open the referenced object in this package editor. Shift-click to open it in a new Package Editor window."/>
                                             <StackPanel Orientation="Horizontal"
                                                         Visibility="{Binding ShowTextureFileActions, Converter={StaticResource BoolToVisibilityConverter}}"
                                                         IsEnabled="{Binding IsTextureFileActionIdle, RelativeSource={RelativeSource AncestorType=global:InterpreterExportLoader}}">
@@ -473,7 +473,7 @@
                                             <Button Margin="5,0,0,0" Padding="6,0" Content="✓" Tag="{Binding LinkedNode}" Click="InlineEditorConfirmButton_Click"/>
                                             <Button Margin="5,0,0,0" Padding="8,0" Content="Go to" Tag="{Binding LinkedNode}" CommandParameter="{Binding LinkedNode}"
                                                     Command="{Binding GoToObjectCommand, RelativeSource={RelativeSource AncestorType=global:InterpreterExportLoader}}"
-                                                    ToolTip="Open the referenced object in this package editor. Shift-click to open it in a new tab."/>
+                                                    ToolTip="Open the referenced object in this package editor. Shift-click to open it in a new Package Editor window."/>
                                             <Button Margin="5,0,0,0" Padding="8,0" Content="{Binding LinkedNode.AssetPickerButtonText}" ToolTip="{Binding LinkedNode.AssetPickerToolTip}" Tag="{Binding LinkedNode}" Click="AssetPickerButton_Click" Visibility="{Binding LinkedNode.ShowAssetPicker, Converter={StaticResource BoolToVisibilityConverter}}"/>
                                         </StackPanel>
                                         <StackPanel x:Name="PropertyItem_LinkedNameInlineEditor" Orientation="Horizontal" Margin="5,0,0,0" VerticalAlignment="Top"
@@ -548,7 +548,7 @@
                                             <Button Margin="5,0,0,0" Padding="6,0" Content="✓" Tag="{Binding SecondLinkedNode}" Click="InlineEditorConfirmButton_Click"/>
                                             <Button Margin="5,0,0,0" Padding="8,0" Content="Go to" Tag="{Binding SecondLinkedNode}" CommandParameter="{Binding SecondLinkedNode}"
                                                     Command="{Binding GoToObjectCommand, RelativeSource={RelativeSource AncestorType=global:InterpreterExportLoader}}"
-                                                    ToolTip="Open the referenced object in this package editor. Shift-click to open it in a new tab."/>
+                                                    ToolTip="Open the referenced object in this package editor. Shift-click to open it in a new Package Editor window."/>
                                             <Button Margin="5,0,0,0" Padding="8,0" Content="{Binding SecondLinkedNode.AssetPickerButtonText}" ToolTip="{Binding SecondLinkedNode.AssetPickerToolTip}" Tag="{Binding SecondLinkedNode}" Click="AssetPickerButton_Click" Visibility="{Binding SecondLinkedNode.ShowAssetPicker, Converter={StaticResource BoolToVisibilityConverter}}"/>
                                         </StackPanel>
                                         <StackPanel x:Name="PropertyItem_SecondLinkedNameInlineEditor" Orientation="Horizontal" Margin="5,0,0,0" VerticalAlignment="Top"

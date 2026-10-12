@@ -96,14 +96,14 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         public static readonly DependencyProperty NavigateToEntryCallbackProperty = DependencyProperty.Register(
             nameof(NavigateToEntryCommand), typeof(RelayCommand), typeof(InterpreterExportLoader), new PropertyMetadata(null));
 
-        public RelayCommand OpenEntryInNewTabCommand
+        public RelayCommand OpenEntryInNewWindowCommand
         {
-            get => (RelayCommand)GetValue(OpenEntryInNewTabCommandProperty);
-            set => SetValue(OpenEntryInNewTabCommandProperty, value);
+            get => (RelayCommand)GetValue(OpenEntryInNewWindowCommandProperty);
+            set => SetValue(OpenEntryInNewWindowCommandProperty, value);
         }
 
-        public static readonly DependencyProperty OpenEntryInNewTabCommandProperty = DependencyProperty.Register(
-            nameof(OpenEntryInNewTabCommand), typeof(RelayCommand), typeof(InterpreterExportLoader), new PropertyMetadata(null));
+        public static readonly DependencyProperty OpenEntryInNewWindowCommandProperty = DependencyProperty.Register(
+            nameof(OpenEntryInNewWindowCommand), typeof(RelayCommand), typeof(InterpreterExportLoader), new PropertyMetadata(null));
 
         public RelayCommand GoToObjectCommand { get; private set; }
 
@@ -1104,7 +1104,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         private bool CanNavigateToObject(object parameter)
         {
-            var command = Keyboard.Modifiers.HasFlag(ModifierKeys.Shift) ? OpenEntryInNewTabCommand : NavigateToEntryCommand;
+            var command = Keyboard.Modifiers.HasFlag(ModifierKeys.Shift) ? OpenEntryInNewWindowCommand : NavigateToEntryCommand;
             return GetObjectNavigationEntry(parameter as UPropertyTreeViewEntry) is { } entry && command?.CanExecute(entry) == true;
         }
 
@@ -1113,9 +1113,9 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             NavigateToObject(parameter as UPropertyTreeViewEntry, Keyboard.Modifiers.HasFlag(ModifierKeys.Shift));
         }
 
-        private void NavigateToObject(UPropertyTreeViewEntry node, bool openInNewTab)
+        private void NavigateToObject(UPropertyTreeViewEntry node, bool openInNewWindow)
         {
-            var command = openInNewTab ? OpenEntryInNewTabCommand : NavigateToEntryCommand;
+            var command = openInNewWindow ? OpenEntryInNewWindowCommand : NavigateToEntryCommand;
             if (GetObjectNavigationEntry(node) is { } entry && command?.CanExecute(entry) == true)
             {
                 command.Execute(entry);

@@ -38,6 +38,7 @@ public class SequenceObjectReferenceTests
         bool previousTree = Settings.EntrySelector_UseTreeView;
         bool previousAutoSave = Settings.SequenceEditor_AutoSaveViewV2;
         bool previousOutputNumbers = Settings.SequenceEditor_ShowOutputNumbers;
+        bool previousUseSavedViews = Settings.SequenceEditor_UseSavedViews;
         loaded.SetValue(null, false);
         Settings.EntrySelector_UseTreeView = true;
         using var package = MEPackageHandler.CreateMemoryEmptyPackage("ObjectReferenceGesture.pcc", MEGame.LE3);
@@ -126,6 +127,7 @@ public class SequenceObjectReferenceTests
             Settings.EntrySelector_UseTreeView = previousTree;
             Settings.SequenceEditor_AutoSaveViewV2 = previousAutoSave;
             Settings.SequenceEditor_ShowOutputNumbers = previousOutputNumbers;
+            Settings.SequenceEditor_UseSavedViews = previousUseSavedViews;
             loaded.SetValue(null, previousLoaded);
         }
     }

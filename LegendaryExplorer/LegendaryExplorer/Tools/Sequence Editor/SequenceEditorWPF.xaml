@@ -325,8 +325,9 @@
                     <MenuItem Header="Re-Run Auto Layout" Command="{Binding AutoLayoutCommand}"
                                 InputGestureText="Ctrl+L"
                                 ToolTip="Attempt to layout sequence objects in a comprehensible fashion" />
-                    <MenuItem Header="Use saved views" Command="{Binding UseSavedViewsCommand}"
-                              ToolTip="Use saved user layouts for sequences as it was viewed in Sequence Editor. Turning this off will use the BioWare layout. Only works on ME1 and Legendary Edition games." />
+                    <MenuItem Name="UseSavedViews_MenuItem" Header="Use saved views" IsCheckable="True"
+                              IsChecked="{Binding UseSavedViews, Mode=TwoWay}"
+                              ToolTip="Use saved Sequence Editor views and object positions stored in the package. Objects without saved positions use automatic layout. Turning this off always uses automatic layout." />
                 </MenuItem>
                 <MenuItem Header="Designer" Padding="4">
                     <MenuItem Header="Create new activation input" Command="{Binding DesignerCreateInputCommand}"

@@ -12,7 +12,6 @@ using System.Windows.Media;
 using System.Windows.Threading;
 using LegendaryExplorer.Misc.AppSettings;
 using LegendaryExplorer.SharedUI;
-using LegendaryExplorer.SharedUI.Bases;
 using LegendaryExplorer.SharedUI.PeregrineTreeView;
 using LegendaryExplorer.Tools.PackageEditor;
 using LegendaryExplorer.UserControls.ExportLoaderControls;
@@ -196,37 +195,37 @@ public class InterpreterObjectNavigationTests
     });
 
     [TestMethod]
-    public void ShiftNavigationUsesNewTabCallbackAndNeverFallsBackToCurrentEditor() => RunOnSta(() =>
+    public void ShiftNavigationUsesNewWindowCallbackAndNeverFallsBackToCurrentEditor() => RunOnSta(() =>
     {
         using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("InterpreterShiftObjectNavigation.pcc", MEGame.LE3);
         ExportEntry source = package.CreateExport("Source", "Object", indexed: false);
         ExportEntry target = package.CreateExport("Target", "Object", indexed: false);
         source.WriteProperty(new ObjectProperty(target.UIndex, "Reference"));
         var currentEditor = new List<IEntry>();
-        var newTabs = new List<IEntry>();
+        var newWindows = new List<IEntry>();
         using var view = new InterpreterTestView(source,
-            entry => currentEditor.Add((IEntry)entry), entry => newTabs.Add((IEntry)entry));
+            entry => currentEditor.Add((IEntry)entry), entry => newWindows.Add((IEntry)entry));
         UPropertyTreeViewEntry node = view.Node("Reference");
 
         Navigate(view.Interpreter, node, false);
         Navigate(view.Interpreter, node, true);
         CollectionAssert.AreEqual(new IEntry[] { target }, currentEditor);
-        CollectionAssert.AreEqual(new IEntry[] { target }, newTabs);
+        CollectionAssert.AreEqual(new IEntry[] { target }, newWindows);
 
-        view.Interpreter.OpenEntryInNewTabCommand = new RelayCommand(_ => Assert.Fail("Disabled callback executed."), _ => false);
+        view.Interpreter.OpenEntryInNewWindowCommand = new RelayCommand(_ => Assert.Fail("Disabled callback executed."), _ => false);
         Navigate(view.Interpreter, node, true);
-        view.Interpreter.OpenEntryInNewTabCommand = null;
+        view.Interpreter.OpenEntryInNewWindowCommand = null;
         Navigate(view.Interpreter, node, true);
         view.Interpreter.NavigateToEntryCommand = new RelayCommand(_ => Assert.Fail("Disabled callback executed."), _ => false);
         Navigate(view.Interpreter, node, false);
         Assert.IsFalse(view.Interpreter.GoToObjectCommand.CanExecute(node));
         CollectionAssert.AreEqual(new IEntry[] { target }, currentEditor);
-        CollectionAssert.AreEqual(new IEntry[] { target }, newTabs);
+        CollectionAssert.AreEqual(new IEntry[] { target }, newWindows);
     });
 
     [TestMethod]
-    [Timeout(45_000)]
-    public void PackageEditorObjectTabsKeepTheirTargetsAndUnloadOnCloseOrPackageSwitch() => RunOnSta(() =>
+    [Timeout(90_000)]
+    public void PackageEditorReferenceWindowsShareUnsavedPackageAndKeepIndependentSelections() => RunOnSta(() =>
     {
         InitializeApplicationResources();
         SyntaxInfo.LoadFromSettings();
@@ -240,14 +239,16 @@ public class InterpreterObjectNavigationTests
         bool previousLiveFiltering = Settings.PackageEditor_LiveFiltering;
         settingsLoaded.SetValue(null, false);
         Settings.PackageEditor_LiveFiltering = false;
-        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("PackageEditorObjectTabs.pcc", MEGame.LE3);
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("PackageEditorReferenceWindows.pcc", MEGame.LE3);
         ExportEntry source = package.CreateExport("Source", "Object", indexed: false);
         ExportEntry target = package.CreateExport("Target", "Object", indexed: false);
         source.WriteProperty(new ObjectProperty(target.UIndex, "Reference"));
+        target.WriteProperty(new IntProperty(314, "UnsavedValue"));
         var import = new ImportEntry(package) { ObjectName = "ImportedTarget", ClassName = "Object", PackageFile = "Engine" };
         package.AddImport(import);
-        using IMEPackage nextPackage = MEPackageHandler.CreateMemoryEmptyPackage("PackageEditorNextObjectTabs.pcc", MEGame.LE3);
+        using IMEPackage nextPackage = MEPackageHandler.CreateMemoryEmptyPackage("PackageEditorNextReferenceWindow.pcc", MEGame.LE3);
         ExportEntry nextSource = nextPackage.CreateExport("NextSource", "Object", indexed: false);
+        var previousWindows = Application.Current.Windows.OfType<PackageEditorWindow>().ToHashSet();
         var window = new PackageEditorWindow(submitTelemetry: false, enableRecents: false)
         {
             ShowActivated = false, ShowInTaskbar = false, Left = -10000, Top = -10000,
@@ -256,66 +257,81 @@ public class InterpreterObjectNavigationTests
         try
         {
             window.Show();
-            TestContext.WriteLine("Loading first package");
-            SetUpPackageTree(window, package, source);
-            TestContext.WriteLine("Opening export tab");
+            TestContext.WriteLine("Loading source window");
+            window.LoadPackage(package, source.UIndex);
+            WaitForPackageEditor(window, () => !window.IsBusy && ReferenceEquals(source, window.SelectedItem?.Entry));
             var tabs = (TabControl)window.FindName("EditorTabs");
             int originalTabCount = tabs.Items.Count;
-            Assert.IsTrue(window.OpenEntryInNewTabCommand.CanExecute(target));
-            window.OpenEntryInNewTabCommand.Execute(target);
-            FlushPackageEditorDispatcher();
-            var exportTab = (TabItem)tabs.SelectedItem;
-            var exportLoader = (InterpreterExportLoader)exportTab.Content;
+            object originalSelectedTab = tabs.SelectedItem;
+            var interpreter = (InterpreterExportLoader)window.FindName("InterpreterTab_Interpreter");
+            var binaryInterpreter = (BinaryInterpreterWPF)window.FindName("BinaryInterpreterTab_BinaryInterpreter");
+            Assert.AreSame(window.OpenEntryInNewWindowCommand, interpreter.OpenEntryInNewWindowCommand);
+            Assert.AreSame(window.OpenEntryInNewWindowCommand, binaryInterpreter.OpenEntryInNewWindowCommand);
+            Assert.IsTrue(package.IsModified, "The fixture must contain unsaved content.");
+
+            TestContext.WriteLine("Opening export window");
+            Assert.IsTrue(window.OpenEntryInNewWindowCommand.CanExecute(target));
+            PackageEditorWindow exportWindow = OpenReferenceWindow(window, target);
+            var exportLoader = (InterpreterExportLoader)exportWindow.FindName("InterpreterTab_Interpreter");
+            Assert.AreSame(package, exportWindow.Pcc);
             Assert.AreSame(target, exportLoader.CurrentLoadedExport);
+            Assert.AreEqual(314, ((IntProperty)exportLoader.PropertyNodes[0].ChildrenProperties
+                .Single(node => node.Property?.Name.Name == "UnsavedValue").Property).Value);
             Assert.AreSame(source, window.SelectedItem.Entry);
-            Assert.AreEqual(originalTabCount + 1, tabs.Items.Count);
+            Assert.AreSame(originalSelectedTab, tabs.SelectedItem);
+            Assert.AreEqual(originalTabCount, tabs.Items.Count);
 
-            TestContext.WriteLine("Opening import tab");
-            window.OpenEntryInNewTabCommand.Execute(import);
-            FlushPackageEditorDispatcher();
-            var importTab = (TabItem)tabs.SelectedItem;
-            var importLoader = (EntryMetadataExportLoader)importTab.Content;
+            TestContext.WriteLine("Opening import window");
+            PackageEditorWindow importWindow = OpenReferenceWindow(window, import);
+            var importLoader = (EntryMetadataExportLoader)importWindow.FindName("MetadataTab_MetadataEditor");
+            Assert.AreNotSame(exportWindow, importWindow);
+            Assert.AreSame(package, importWindow.Pcc);
             Assert.AreSame(import, importLoader.CurrentLoadedEntry);
+            Assert.AreSame(importWindow.FindName("Metadata_Tab"),
+                ((TabControl)importWindow.FindName("EditorTabs")).SelectedItem);
             Assert.AreSame(source, window.SelectedItem.Entry);
-            Assert.AreEqual(originalTabCount + 2, tabs.Items.Count);
-
-            TestContext.WriteLine("Closing export tab");
-            Button close = ((StackPanel)exportTab.Header).Children.OfType<Button>().Single();
-            close.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-            Assert.IsFalse(tabs.Items.Contains(exportTab));
-            Assert.IsNull(exportTab.Content);
-            Assert.IsNull(exportTab.Header);
-            Assert.IsNull(exportLoader.CurrentLoadedExport);
-            Assert.AreSame(import, importLoader.CurrentLoadedEntry);
+            Assert.AreSame(originalSelectedTab, tabs.SelectedItem);
+            Assert.AreEqual(originalTabCount, tabs.Items.Count);
+            CollectionAssert.AreEquivalent(new[] { window, exportWindow, importWindow },
+                package.Users.OfType<PackageEditorWindow>().ToArray());
 
             TestContext.WriteLine("Navigating from Names");
-            window.OpenEntryInNewTabCommand.Execute(target);
-            FlushPackageEditorDispatcher();
-            exportTab = (TabItem)tabs.SelectedItem;
-            exportLoader = (InterpreterExportLoader)exportTab.Content;
+            window.NavigateToEntryCommand.Execute(target);
+            FlushDispatcher();
             window.CurrentView = PackageEditorWindow.CurrentViewMode.Names;
-            exportLoader.NavigateToEntryCommand.Execute(source);
-            FlushPackageEditorDispatcher();
+            window.NavigateToEntryCommand.Execute(target);
+            FlushDispatcher();
             Assert.AreEqual(PackageEditorWindow.CurrentViewMode.Tree, window.CurrentView);
-            Assert.AreSame(source, window.SelectedItem.Entry);
+            Assert.AreSame(target, window.SelectedItem.Entry);
             Assert.AreSame(window.FindName("Interpreter_Tab"), tabs.SelectedItem,
                 "Navigating in the current instance must reveal its primary properties tab.");
-            Assert.AreSame(source, ((InterpreterExportLoader)((TabItem)tabs.SelectedItem).Content).CurrentLoadedExport,
+            Assert.AreSame(target, interpreter.CurrentLoadedExport,
                 "Returning from Names to the same selected object must reload its properties.");
             Assert.AreSame(target, exportLoader.CurrentLoadedExport,
-                "Changing the primary selection must preserve the reference tab's target.");
+                "Changing the source selection must preserve the new window's target.");
+            Assert.AreSame(import, importLoader.CurrentLoadedEntry);
 
-            TestContext.WriteLine("Switching package");
-            typeof(PackageEditorWindow).GetMethod("preloadPackage", BindingFlags.Instance | BindingFlags.NonPublic)!
-                .Invoke(window, new object[] { "Next", 0L, false });
-            SetUpPackageTree(window, nextPackage, nextSource);
+            TestContext.WriteLine("Switching the source package");
+            window.LoadPackage(nextPackage, nextSource.UIndex);
+            WaitForPackageEditor(window, () => !window.IsBusy && ReferenceEquals(nextSource, window.SelectedItem?.Entry));
             Assert.AreEqual(originalTabCount, tabs.Items.Count);
-            Assert.IsNull(exportTab.Content);
-            Assert.IsNull(importTab.Content);
-            Assert.IsNull(exportLoader.CurrentLoadedExport);
-            Assert.IsNull(importLoader.CurrentLoadedEntry);
-            Assert.IsFalse(window.OpenEntryInNewTabCommand.CanExecute(target),
-                "An entry from the previous package must not open in the new package's tabs.");
+            Assert.AreSame(target, exportWindow.SelectedItem.Entry);
+            Assert.AreSame(target, exportLoader.CurrentLoadedExport);
+            Assert.AreSame(import, importWindow.SelectedItem.Entry);
+            Assert.AreSame(import, importLoader.CurrentLoadedEntry);
+            Assert.IsFalse(window.OpenEntryInNewWindowCommand.CanExecute(target),
+                "A stale entry must not open from a source window that has switched packages.");
+
+            TestContext.WriteLine("Closing the source window");
+            typeof(UnrealPackageFile).GetProperty(nameof(IMEPackage.IsModified))!.SetValue(nextPackage, false);
+            window.Close();
+            Assert.IsTrue(exportWindow.IsVisible);
+            Assert.IsTrue(importWindow.IsVisible);
+            Assert.AreSame(package, exportWindow.Pcc);
+            Assert.AreSame(package, importWindow.Pcc);
+            Assert.AreSame(target, exportWindow.SelectedItem.Entry);
+            Assert.AreSame(import, importWindow.SelectedItem.Entry);
+            Assert.IsTrue(package.IsModified);
         }
         finally
         {
@@ -324,7 +340,11 @@ public class InterpreterObjectNavigationTests
             var modified = typeof(UnrealPackageFile).GetProperty(nameof(IMEPackage.IsModified))!;
             modified.SetValue(package, false);
             modified.SetValue(nextPackage, false);
-            window.Close();
+            foreach (PackageEditorWindow openedWindow in Application.Current.Windows.OfType<PackageEditorWindow>()
+                         .Where(candidate => !previousWindows.Contains(candidate)).ToArray())
+            {
+                openedWindow.Close();
+            }
             Settings.PackageEditor_LiveFiltering = previousLiveFiltering;
             settingsLoaded.SetValue(null, previousSettingsLoaded);
             LegendaryExplorerCoreLib.SetSynchronizationContext(previousScheduler);
@@ -332,39 +352,41 @@ public class InterpreterObjectNavigationTests
         }
     });
 
-    private static void SetUpPackageTree(PackageEditorWindow window, IMEPackage package, IEntry selectedEntry)
+    private static PackageEditorWindow OpenReferenceWindow(PackageEditorWindow sourceWindow, IEntry entry)
     {
-        // Build the fixture synchronously; package loading's background tree scan is tested elsewhere.
-        typeof(WPFBase).GetProperty(nameof(WPFBase.Pcc))!.SetValue(window, package);
-        var root = new TreeViewEntry(null, package.FilePath) { IsExpanded = true, PackageRef = package };
-        var nodes = package.Exports.Cast<IEntry>().Concat(package.Imports)
-            .ToDictionary(entry => entry.UIndex, entry => new TreeViewEntry(entry));
-        nodes.Add(0, root);
-        foreach (TreeViewEntry node in nodes.Values.Where(node => node.Entry is not null))
-        {
-            node.Parent = nodes[node.Entry.idxLink];
-            node.Parent.Sublinks.Add(node);
-        }
-        window.AllTreeViewNodesX.Add(root);
-        typeof(PackageEditorWindow).GetMethod("RefreshView", BindingFlags.Instance | BindingFlags.NonPublic)!
-            .Invoke(window, null);
-        typeof(PackageEditorWindow).GetField("IsLoadingFile", BindingFlags.Instance | BindingFlags.NonPublic)!
-            .SetValue(window, false);
-        window.IsBusy = false;
-        FlushPackageEditorDispatcher();
-        Assert.IsTrue(window.GoToNumber(selectedEntry.UIndex));
-        FlushPackageEditorDispatcher();
-        Assert.AreSame(selectedEntry, window.SelectedItem?.Entry);
+        var existingWindows = Application.Current.Windows.OfType<PackageEditorWindow>().ToHashSet();
+        sourceWindow.OpenEntryInNewWindowCommand.Execute(entry);
+        PackageEditorWindow window = Application.Current.Windows.OfType<PackageEditorWindow>()
+            .Single(candidate => !existingWindows.Contains(candidate));
+        window.ShowInTaskbar = false;
+        window.Left = -10000;
+        window.Top = -10000;
+        WaitForPackageEditor(window, () => !window.IsBusy && ReferenceEquals(entry, window.SelectedItem?.Entry));
+        return window;
     }
 
-    private static void FlushPackageEditorDispatcher()
+    private static void WaitForPackageEditor(PackageEditorWindow window, Func<bool> ready)
     {
-        var frame = new DispatcherFrame();
-        var timer = new DispatcherTimer(DispatcherPriority.Normal)
+        bool wasVisible = window.IsVisible;
+        if (wasVisible)
         {
-            Interval = TimeSpan.FromMilliseconds(100)
+            // Native preview controls can keep rendering while a shown editor loads.
+            window.Hide();
+        }
+        var frame = new DispatcherFrame();
+        DateTime deadline = DateTime.UtcNow.AddSeconds(10);
+        // Package loading waits synchronously for ApplicationIdle before navigating.
+        var timer = new DispatcherTimer(DispatcherPriority.ApplicationIdle)
+        {
+            Interval = TimeSpan.FromMilliseconds(25)
         };
-        timer.Tick += (_, _) => frame.Continue = false;
+        timer.Tick += (_, _) =>
+        {
+            if (ready() || DateTime.UtcNow >= deadline)
+            {
+                frame.Continue = false;
+            }
+        };
         timer.Start();
         try
         {
@@ -373,16 +395,21 @@ public class InterpreterObjectNavigationTests
         finally
         {
             timer.Stop();
+            if (wasVisible)
+            {
+                window.Show();
+            }
         }
+        Assert.IsTrue(ready(), "Package editor did not finish loading and selecting its target.");
     }
 
-    private static void Navigate(InterpreterExportLoader interpreter, UPropertyTreeViewEntry node, bool newTab)
+    private static void Navigate(InterpreterExportLoader interpreter, UPropertyTreeViewEntry node, bool newWindow)
     {
         MethodInfo method = typeof(InterpreterExportLoader).GetMethod("NavigateToObject",
             BindingFlags.Instance | BindingFlags.NonPublic, null,
             new[] { typeof(UPropertyTreeViewEntry), typeof(bool) }, null);
         Assert.IsNotNull(method);
-        method.Invoke(interpreter, new object[] { node, newTab });
+        method.Invoke(interpreter, new object[] { node, newWindow });
     }
 
     private static void InvokeButton(Button button)
@@ -422,7 +449,7 @@ public class InterpreterObjectNavigationTests
         private readonly Window window;
         public InterpreterExportLoader Interpreter { get; }
 
-        public InterpreterTestView(ExportEntry export, Action<object> navigate, Action<object> newTab = null,
+        public InterpreterTestView(ExportEntry export, Action<object> navigate, Action<object> newWindow = null,
             PropertyCollection properties = null)
         {
             InitializeApplicationResources();
@@ -430,7 +457,7 @@ public class InterpreterObjectNavigationTests
             {
                 ReloadPropertyDataAfterWrite = false,
                 NavigateToEntryCommand = new RelayCommand(navigate),
-                OpenEntryInNewTabCommand = newTab is null ? null : new RelayCommand(newTab)
+                OpenEntryInNewWindowCommand = newWindow is null ? null : new RelayCommand(newWindow)
             };
             window = new Window
             {

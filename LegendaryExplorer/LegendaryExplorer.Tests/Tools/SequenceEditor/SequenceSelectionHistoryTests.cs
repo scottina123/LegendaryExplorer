@@ -47,6 +47,7 @@ public class SequenceSelectionHistoryTests
 
         var settingsLoaded = typeof(Settings).GetField("Loaded", BindingFlags.Static | BindingFlags.NonPublic)!;
         object previousLoaded = settingsLoaded.GetValue(null);
+        bool previousUseSavedViews = Settings.SequenceEditor_UseSavedViews;
         settingsLoaded.SetValue(null, false);
         var window = new SequenceEditorWPF(enableRecents: false, loadCustomSources: false)
         {
@@ -127,6 +128,7 @@ public class SequenceSelectionHistoryTests
             window.DisposeEmbeddedContent();
             window.Close();
             Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
+            Settings.SequenceEditor_UseSavedViews = previousUseSavedViews;
             settingsLoaded.SetValue(null, previousLoaded);
         }
     }

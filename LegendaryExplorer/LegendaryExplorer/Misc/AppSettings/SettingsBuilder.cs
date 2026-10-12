@@ -107,6 +107,11 @@ namespace LegendaryExplorer.Misc.AppSettings
             get => _sequenceeditor_autosaveviewv2;
             set => SetProperty(ref _sequenceeditor_autosaveviewv2, value);
         }
+        private static bool _sequenceeditor_usesavedviews = true;
+        public static bool SequenceEditor_UseSavedViews {
+            get => _sequenceeditor_usesavedviews;
+            set => SetProperty(ref _sequenceeditor_usesavedviews, value);
+        }
         private static bool _sequenceeditor_showoutputnumbers = false;
         public static bool SequenceEditor_ShowOutputNumbers {
             get => _sequenceeditor_showoutputnumbers;
@@ -667,6 +672,7 @@ namespace LegendaryExplorer.Misc.AppSettings
             SequenceEditor_MaxVarStringLength = TryGetSetting(settingsJson, "sequenceeditor_maxvarstringlength", 40);
             SequenceEditor_ShowParsedInfo = TryGetSetting(settingsJson, "sequenceeditor_showparsedinfo", true);
             SequenceEditor_AutoSaveViewV2 = TryGetSetting(settingsJson, "sequenceeditor_autosaveviewv2", true);
+            SequenceEditor_UseSavedViews = TryGetSetting(settingsJson, "sequenceeditor_usesavedviews", true);
             SequenceEditor_ShowOutputNumbers = TryGetSetting(settingsJson, "sequenceeditor_showoutputnumbers", false);
             SequenceEditor_BackgroundColor = TryGetSetting(settingsJson, "sequenceeditor_backgroundcolor", -8355840);
             SequenceEditor_BoxFillColor = TryGetSetting(settingsJson, "sequenceeditor_boxfillcolor", -7892495);
@@ -799,6 +805,7 @@ namespace LegendaryExplorer.Misc.AppSettings
             settingsJson["sequenceeditor_maxvarstringlength"] = SequenceEditor_MaxVarStringLength.ToString();
             settingsJson["sequenceeditor_showparsedinfo"] = SequenceEditor_ShowParsedInfo.ToString();
             settingsJson["sequenceeditor_autosaveviewv2"] = SequenceEditor_AutoSaveViewV2.ToString();
+            settingsJson["sequenceeditor_usesavedviews"] = SequenceEditor_UseSavedViews.ToString();
             settingsJson["sequenceeditor_showoutputnumbers"] = SequenceEditor_ShowOutputNumbers.ToString();
             settingsJson["sequenceeditor_backgroundcolor"] = SequenceEditor_BackgroundColor.ToString();
             settingsJson["sequenceeditor_boxfillcolor"] = SequenceEditor_BoxFillColor.ToString();

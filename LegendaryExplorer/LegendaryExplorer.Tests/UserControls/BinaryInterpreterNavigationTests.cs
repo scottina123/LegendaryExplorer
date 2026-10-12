@@ -242,7 +242,7 @@ public class BinaryInterpreterNavigationTests
     });
 
     [TestMethod]
-    public void ShiftNavigationUsesNewTabsAndNeverFallsBackToTheCurrentEditor() => RunOnSta(() =>
+    public void ShiftNavigationUsesNewWindowsAndNeverFallsBackToTheCurrentEditor() => RunOnSta(() =>
     {
         using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("BinaryNavigationShift.pcc", MEGame.LE3);
         ExportEntry source = package.CreateExport("Source", "Object", indexed: false);
@@ -252,24 +252,24 @@ public class BinaryInterpreterNavigationTests
         var exportNode = new BinInterpNode(0, "Export", BinaryInterpreterWPF.NodeType.StructLeafObject);
         var importNode = new BinInterpNode(4, "Import", BinaryInterpreterWPF.NodeType.ArrayLeafObject);
         var currentEditor = new List<IEntry>();
-        var newTabs = new List<IEntry>();
-        using var view = new BinaryTestView(source, entry => currentEditor.Add((IEntry)entry), entry => newTabs.Add((IEntry)entry));
+        var newWindows = new List<IEntry>();
+        using var view = new BinaryTestView(source, entry => currentEditor.Add((IEntry)entry), entry => newWindows.Add((IEntry)entry));
 
         Navigate(view.Interpreter, exportNode, false);
         Navigate(view.Interpreter, exportNode, true);
         Navigate(view.Interpreter, importNode, true);
         CollectionAssert.AreEqual(new IEntry[] { target }, currentEditor);
-        CollectionAssert.AreEqual(new IEntry[] { target, import }, newTabs);
+        CollectionAssert.AreEqual(new IEntry[] { target, import }, newWindows);
 
-        view.Interpreter.OpenEntryInNewTabCommand = new RelayCommand(_ => Assert.Fail("Disabled new-tab callback executed."), _ => false);
+        view.Interpreter.OpenEntryInNewWindowCommand = new RelayCommand(_ => Assert.Fail("Disabled new-window callback executed."), _ => false);
         Navigate(view.Interpreter, exportNode, true);
-        view.Interpreter.OpenEntryInNewTabCommand = null;
+        view.Interpreter.OpenEntryInNewWindowCommand = null;
         Navigate(view.Interpreter, exportNode, true);
         view.Interpreter.NavigateToEntryCommand = new RelayCommand(_ => Assert.Fail("Disabled current-editor callback executed."), _ => false);
         Navigate(view.Interpreter, exportNode, false);
         Assert.IsFalse(view.Interpreter.GoToReferenceCommand.CanExecute(exportNode));
         CollectionAssert.AreEqual(new IEntry[] { target }, currentEditor);
-        CollectionAssert.AreEqual(new IEntry[] { target, import }, newTabs);
+        CollectionAssert.AreEqual(new IEntry[] { target, import }, newWindows);
     });
 
     [TestMethod]
@@ -396,10 +396,10 @@ public class BinaryInterpreterNavigationTests
         typeof(ExportLoaderControl).GetProperty(nameof(ExportLoaderControl.CurrentLoadedExport))!
             .SetValue(interpreter, export);
 
-    private static void Navigate(BinaryInterpreterWPF interpreter, object node, bool newTab) =>
+    private static void Navigate(BinaryInterpreterWPF interpreter, object node, bool newWindow) =>
         typeof(BinaryInterpreterWPF).GetMethod("NavigateToReference", BindingFlags.Instance | BindingFlags.NonPublic,
                 null, [typeof(object), typeof(bool)], null)!
-            .Invoke(interpreter, [node, newTab]);
+            .Invoke(interpreter, [node, newWindow]);
 
     private static void InvokeButton(Button button)
     {
@@ -440,7 +440,7 @@ public class BinaryInterpreterNavigationTests
         public BinaryInterpreterWPF Interpreter { get; }
         public TreeView Tree => (TreeView)Interpreter.FindName("BinaryInterpreter_TreeView");
 
-        public BinaryTestView(ExportEntry export, Action<object> navigate, Action<object> newTab = null,
+        public BinaryTestView(ExportEntry export, Action<object> navigate, Action<object> newWindow = null,
             ITreeItem[] items = null)
         {
             InitializeApplicationResources();
@@ -448,7 +448,7 @@ public class BinaryInterpreterNavigationTests
             {
                 HideHexBox = true,
                 NavigateToEntryCommand = new RelayCommand(navigate),
-                OpenEntryInNewTabCommand = newTab is null ? null : new RelayCommand(newTab)
+                OpenEntryInNewWindowCommand = newWindow is null ? null : new RelayCommand(newWindow)
             };
             // Supply the export synchronously so the fixture exercises the real control without starting an async scan.
             SetLoadedExport(Interpreter, export);

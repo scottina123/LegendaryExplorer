@@ -44,6 +44,7 @@
            friendlyName="Show parsed information in comments"/>
   <setting name="SequenceEditor_AutoSaveViewV2" type="bool" defaultvalue="true" category="Sequence Editor"
            friendlyName="Auto-save View"/>
+  <setting name="SequenceEditor_UseSavedViews" type="bool" defaultvalue="true"/>
   <setting name="SequenceEditor_ShowOutputNumbers" type="bool" defaultvalue="false" category="Sequence Editor"
            friendlyName="Show Output Numbers"/>
   <setting name="SequenceEditor_BackgroundColor" type="int" defaultvalue="-8355840" category="Sequence Editor"
