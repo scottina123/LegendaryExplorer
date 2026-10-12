@@ -55,11 +55,6 @@ namespace LegendaryExplorer.MainWindow
             }
         }
 
-        
-        protected void Button_MouseRightButtonDown(object sender, MouseButtonEventArgs e)
-        {
-        }
-
         protected virtual void Button_MouseEnter(object sender, MouseEventArgs e)
         {
             if (sender is Button b)

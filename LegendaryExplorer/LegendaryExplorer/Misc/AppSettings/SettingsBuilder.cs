@@ -27,6 +27,11 @@ namespace LegendaryExplorer.Misc.AppSettings
             get => _mainwindow_favorites;
             set => SetProperty(ref _mainwindow_favorites, value);
         }
+        private static string _mainwindow_taskbarpins = "";
+        public static string MainWindow_TaskbarPins {
+            get => _mainwindow_taskbarpins;
+            set => SetProperty(ref _mainwindow_taskbarpins, value);
+        }
         private static bool _mainwindow_completedinitialsetup = false;
         public static bool MainWindow_CompletedInitialSetup {
             get => _mainwindow_completedinitialsetup;
@@ -656,6 +661,7 @@ namespace LegendaryExplorer.Misc.AppSettings
 
             MainWindow_DisableTransparencyAndAnimations = TryGetSetting(settingsJson, "mainwindow_disabletransparencyandanimations", false);
             MainWindow_Favorites = TryGetSetting(settingsJson, "mainwindow_favorites", "");
+            MainWindow_TaskbarPins = TryGetSetting(settingsJson, "mainwindow_taskbarpins", "");
             MainWindow_CompletedInitialSetup = TryGetSetting(settingsJson, "mainwindow_completedinitialsetup", false);
             GestureAnimationImporter_FavoriteTracks = TryGetSetting(settingsJson, "gestureanimationimporter_favoritetracks", "");
             PackageEditor_LiveFiltering = TryGetSetting(settingsJson, "packageeditor_livefiltering", false);
@@ -789,6 +795,7 @@ namespace LegendaryExplorer.Misc.AppSettings
             var settingsJson = new Dictionary<string,object>();
             settingsJson["mainwindow_disabletransparencyandanimations"] = MainWindow_DisableTransparencyAndAnimations.ToString();
             settingsJson["mainwindow_favorites"] = MainWindow_Favorites.ToString();
+            settingsJson["mainwindow_taskbarpins"] = MainWindow_TaskbarPins.ToString();
             settingsJson["mainwindow_completedinitialsetup"] = MainWindow_CompletedInitialSetup.ToString();
             settingsJson["gestureanimationimporter_favoritetracks"] = GestureAnimationImporter_FavoriteTracks.ToString();
             settingsJson["packageeditor_livefiltering"] = PackageEditor_LiveFiltering.ToString();

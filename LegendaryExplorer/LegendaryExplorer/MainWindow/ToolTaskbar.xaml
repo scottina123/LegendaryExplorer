@@ -1,0 +1,72 @@
+<mainWindow:ToolListControl x:Class="LegendaryExplorer.MainWindow.ToolTaskbar"
+                           xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                           xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                           xmlns:fa5="http://schemas.fontawesome.com/icons/"
+                           xmlns:mainWindow="clr-namespace:LegendaryExplorer.MainWindow"
+                           Height="40" SizeChanged="Taskbar_SizeChanged" AllowDrop="True"
+                           PreviewDragOver="Taskbar_DragOver" PreviewDrop="Taskbar_Drop" DragLeave="Taskbar_DragLeave">
+    <mainWindow:ToolListControl.Resources>
+        <Style x:Key="TaskbarScrollButton" TargetType="Button" BasedOn="{StaticResource BorderlessButton}">
+            <Setter Property="Width" Value="18"/>
+            <Setter Property="Height" Value="40"/>
+            <Setter Property="Margin" Value="0"/>
+            <Setter Property="Foreground" Value="#BFBFBF"/>
+            <Setter Property="FocusVisualStyle" Value="{DynamicResource MainWindowFocusVisualStyle}"/>
+            <Style.Triggers>
+                <Trigger Property="IsEnabled" Value="False">
+                    <Setter Property="Opacity" Value="0.3"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+    </mainWindow:ToolListControl.Resources>
+    <Grid Background="Transparent">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="Auto"/>
+        </Grid.ColumnDefinitions>
+        <Button x:Name="ScrollLeftButton" Grid.Column="0" Style="{StaticResource TaskbarScrollButton}"
+                Visibility="Collapsed" Click="ScrollLeft_Click" ToolTip="Scroll pinned tools left"
+                AutomationProperties.Name="Scroll pinned tools left">
+            <fa5:ImageAwesome Icon="Solid_ChevronLeft" Width="10" Height="10"
+                              Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
+        </Button>
+        <ScrollViewer x:Name="TaskbarScrollViewer" Grid.Column="1" HorizontalScrollBarVisibility="Hidden"
+                      VerticalScrollBarVisibility="Disabled" PanningMode="HorizontalOnly"
+                      ScrollChanged="TaskbarScrollViewer_ScrollChanged" PreviewMouseWheel="TaskbarScrollViewer_PreviewMouseWheel">
+            <ItemsControl x:Name="PinnedToolList" AutomationProperties.Name="Pinned tools">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <StackPanel Orientation="Horizontal"/>
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <Button Width="40" Height="40" Margin="1,0" Padding="4"
+                                Style="{StaticResource BorderlessButton}"
+                                FocusVisualStyle="{DynamicResource MainWindowFocusVisualStyle}"
+                                Click="Button_Click" MouseEnter="Button_MouseEnter" MouseLeave="Button_MouseLeave"
+                                PreviewMouseLeftButtonDown="Shortcut_MouseLeftButtonDown" PreviewMouseMove="Shortcut_MouseMove"
+                                LostMouseCapture="Shortcut_LostMouseCapture"
+                                ToolTip="{Binding name}" AutomationProperties.Name="{Binding name}">
+                            <Button.ContextMenu>
+                                <mainWindow:ToolContextMenu/>
+                            </Button.ContextMenu>
+                            <Image x:Name="toolIcon" Source="{Binding icon}" Width="32" Height="32"
+                                   Opacity="0.85" RenderOptions.BitmapScalingMode="HighQuality"/>
+                        </Button>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </ScrollViewer>
+        <Rectangle x:Name="DropIndicator" Grid.Column="1" Width="2" Height="34" Fill="#E1E1E1"
+                   HorizontalAlignment="Left" VerticalAlignment="Center" Visibility="Collapsed"
+                   IsHitTestVisible="False"/>
+        <Button x:Name="ScrollRightButton" Grid.Column="2" Style="{StaticResource TaskbarScrollButton}"
+                Visibility="Collapsed" Click="ScrollRight_Click" ToolTip="Scroll pinned tools right"
+                AutomationProperties.Name="Scroll pinned tools right">
+            <fa5:ImageAwesome Icon="Solid_ChevronRight" Width="10" Height="10"
+                              Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
+        </Button>
+    </Grid>
+</mainWindow:ToolListControl>

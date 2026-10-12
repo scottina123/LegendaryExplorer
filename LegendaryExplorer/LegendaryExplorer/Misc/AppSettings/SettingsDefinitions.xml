@@ -10,6 +10,7 @@
   <setting name="MainWindow_DisableTransparencyAndAnimations" type="bool" defaultvalue="false" category="General"
            friendlyName="Main Window: Disable Transparency and Animations (requires restart)"/>
   <setting name="MainWindow_Favorites" type="string" defaultvalue=""/>
+  <setting name="MainWindow_TaskbarPins" type="string" defaultvalue=""/>
   <setting name="MainWindow_CompletedInitialSetup" type="bool" defaultvalue="false"/>
 
   <!-- Gesture Animation Importer specific settings -->

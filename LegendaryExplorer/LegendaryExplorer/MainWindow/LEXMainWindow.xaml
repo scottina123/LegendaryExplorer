@@ -104,7 +104,7 @@
                             <ContextMenu x:Name="CategoriesMenu" Placement="Top">
                                 <MenuItem x:Name="FavoritesMenuItem" Header="Favorites" IsCheckable="True"
                                           Click="CategoryMenuItem_Click"
-                                          ToolTip="Shift-click on a tool to add to favorites"/>
+                                          ToolTip="Right-click on a tool to favorite or unfavorite it"/>
                                 <Separator/>
                                 <MenuItem x:Name="CoreEditorsMenuItem" Header="Core Editors" Tag="Core Editors"
                                           IsCheckable="True" Click="CategoryMenuItem_Click"
@@ -132,6 +132,10 @@
                     </Button>
 
                     <Grid Grid.Column="1" Margin="0,0,8,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
                         <Button x:Name="SearchButton" Style="{StaticResource BottomBarButton}" HorizontalAlignment="Left"
                                 Click="SearchButton_Click" TabIndex="3" ToolTip="Search tools"
                                 AutomationProperties.Name="Search tools">
@@ -139,7 +143,7 @@
                                               Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
                         </Button>
                         <Border x:Name="SearchBorder" BorderBrush="#FF292E36" BorderThickness="1"
-                                Background="#FF15181D" CornerRadius="6" Visibility="Collapsed">
+                                Background="#FF15181D" CornerRadius="6" Width="210" Visibility="Collapsed">
                             <TextBox x:Name="SearchBox" FontFamily="{StaticResource BioMass-Light}"
                                      TabIndex="3" FontSize="17" Background="Transparent" BorderThickness="0"
                                      BorderBrush="{x:Null}" Foreground="#FFDADFE6" VerticalContentAlignment="Center"
@@ -147,6 +151,7 @@
                                      AutomationProperties.Name="Search tools" ToolTip="Search tools"
                                      TextChanged="SearchBox_TextChanged"/>
                         </Border>
+                        <mainWindow:ToolTaskbar x:Name="pinnedToolTaskbar" Grid.Column="1" Margin="4,0,0,0"/>
                     </Grid>
 
                     <Button Grid.Column="2" Style="{StaticResource BottomBarButton}" Click="Settings_Click"
@@ -330,7 +335,7 @@
                 
                 <TextBlock x:Name="favoritesHint" HorizontalAlignment="Left" VerticalAlignment="Top" Visibility="Collapsed" Margin="15, 15"
                            Foreground="{StaticResource ForegroundBrush}" FontSize="20" FontFamily="{StaticResource Exo-Regular}">
-                    You have no favorites set! Shift-click on a tool to save it as a favorite.
+                    You have no favorites set! Right-click on a tool and choose Favorite.
                 </TextBlock>
 
             </Grid>

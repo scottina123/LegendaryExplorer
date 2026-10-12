@@ -69,6 +69,19 @@ public class Tool : DependencyObject
     {
         ToolSet.saveFavorites();
     }
+
+    public bool IsPinnedToTaskbar
+    {
+        get => (bool)GetValue(IsPinnedToTaskbarProperty);
+        set => SetValue(IsPinnedToTaskbarProperty, value);
+    }
+
+    public static readonly DependencyProperty IsPinnedToTaskbarProperty =
+        DependencyProperty.Register(nameof(IsPinnedToTaskbar), typeof(bool), typeof(Tool),
+            new PropertyMetadata(false, OnIsPinnedToTaskbarChanged));
+
+    private static void OnIsPinnedToTaskbarChanged(DependencyObject d, DependencyPropertyChangedEventArgs e) =>
+        ToolSet.SaveTaskbarPins((Tool)d);
 }
 
 public static class ToolSet
@@ -77,10 +90,15 @@ public static class ToolSet
 
     private static HashSet<Tool> items;
     private static bool synchronizingFavorites;
+    private static bool synchronizingTaskbarPins;
+    private static readonly List<Tool> taskbarPins = new();
+    private static readonly IReadOnlyList<Tool> pinnedToolsView = taskbarPins.AsReadOnly();
 
     public static event EventHandler FavoritesChanged;
+    public static event EventHandler TaskbarPinsChanged;
 
     public static IReadOnlyCollection<Tool> Items => items;
+    public static IReadOnlyList<Tool> PinnedTools => pinnedToolsView;
 
     public static void Initialize()
     {
@@ -816,6 +834,7 @@ public static class ToolSet
         Settings.StaticPropertyChanged -= Settings_StaticPropertyChanged;
         Settings.StaticPropertyChanged += Settings_StaticPropertyChanged;
         loadFavorites();
+        LoadTaskbarPins();
     }
 
     private static void ThemeManager_OnThemeChanged(object sender, bool isDarkMode) =>
@@ -868,6 +887,96 @@ public static class ToolSet
         {
             loadFavorites();
         }
+        else if (e.PropertyName == nameof(Settings.MainWindow_TaskbarPins) && !synchronizingTaskbarPins)
+        {
+            LoadTaskbarPins();
+        }
+    }
+
+    private static void LoadTaskbarPins()
+    {
+        if (items == null) return;
+
+        synchronizingTaskbarPins = true;
+        try
+        {
+            taskbarPins.Clear();
+            foreach (var tool in items)
+            {
+                tool.IsPinnedToTaskbar = false;
+            }
+
+            var toolsByName = items.Where(tool => tool.open != null)
+                .ToDictionary(tool => tool.name, StringComparer.Ordinal);
+            foreach (string name in (Settings.MainWindow_TaskbarPins ?? string.Empty).Split(';'))
+            {
+                if (toolsByName.TryGetValue(name, out var tool) && !tool.IsPinnedToTaskbar)
+                {
+                    tool.IsPinnedToTaskbar = true;
+                    taskbarPins.Add(tool);
+                }
+            }
+        }
+        finally
+        {
+            synchronizingTaskbarPins = false;
+        }
+
+        TaskbarPinsChanged?.Invoke(null, EventArgs.Empty);
+    }
+
+    internal static void SaveTaskbarPins(Tool changedTool)
+    {
+        if (items == null || synchronizingTaskbarPins || !items.Contains(changedTool)) return;
+
+        synchronizingTaskbarPins = true;
+        try
+        {
+            taskbarPins.RemoveAll(tool => !tool.IsPinnedToTaskbar || tool.open == null);
+            if (changedTool.IsPinnedToTaskbar && changedTool.open != null && !taskbarPins.Contains(changedTool))
+            {
+                taskbarPins.Add(changedTool);
+            }
+            Settings.MainWindow_TaskbarPins = string.Join(';', taskbarPins.Select(tool => tool.name));
+        }
+        finally
+        {
+            synchronizingTaskbarPins = false;
+        }
+
+        TaskbarPinsChanged?.Invoke(null, EventArgs.Empty);
+    }
+
+    /// <summary>
+    /// Moves a pinned tool to a gap in the current list, from zero through Count.
+    /// The gap is measured before removing the tool being moved.
+    /// </summary>
+    public static bool MovePinnedTool(Tool tool, int insertionIndex)
+    {
+        if (tool == null || items == null || synchronizingTaskbarPins || !items.Contains(tool)
+            || !tool.IsPinnedToTaskbar || tool.open == null) return false;
+
+        int sourceIndex = taskbarPins.IndexOf(tool);
+        if (sourceIndex < 0) return false;
+
+        int destinationIndex = Math.Clamp(insertionIndex > sourceIndex ? insertionIndex - 1 : insertionIndex,
+            0, taskbarPins.Count - 1);
+        if (destinationIndex == sourceIndex) return false;
+
+        synchronizingTaskbarPins = true;
+        try
+        {
+            taskbarPins.RemoveAt(sourceIndex);
+            taskbarPins.Insert(destinationIndex, tool);
+            Settings.MainWindow_TaskbarPins = string.Join(';', taskbarPins.Select(pin => pin.name));
+        }
+        finally
+        {
+            synchronizingTaskbarPins = false;
+        }
+
+        TaskbarPinsChanged?.Invoke(null, EventArgs.Empty);
+        return true;
     }
 
     public static void saveFavorites()

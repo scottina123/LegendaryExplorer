@@ -60,7 +60,10 @@ namespace LegendaryExplorer.MainWindow
                 selectedCategory = CoreEditorsMenuItem;
             }
             RefreshToolList();
+            RefreshTaskbarPins();
             ToolSet.FavoritesChanged += ToolSet_FavoritesChanged;
+            ToolSet.TaskbarPinsChanged += ToolSet_TaskbarPinsChanged;
+            Closed += MainWindow_Closed;
             // Keep the tool description panel available, but disable showing it on hover.
             // mainToolPanel.ToolMouseOver += Tool_MouseOver;
 
@@ -90,6 +93,16 @@ namespace LegendaryExplorer.MainWindow
             {
                 RefreshToolList();
             }
+        }
+
+        private void ToolSet_TaskbarPinsChanged(object sender, EventArgs e) => RefreshTaskbarPins();
+
+        private void RefreshTaskbarPins() => pinnedToolTaskbar.setToolList(ToolSet.PinnedTools);
+
+        private void MainWindow_Closed(object sender, EventArgs e)
+        {
+            ToolSet.FavoritesChanged -= ToolSet_FavoritesChanged;
+            ToolSet.TaskbarPinsChanged -= ToolSet_TaskbarPinsChanged;
         }
 
         private void Tool_MouseOver(object sender, Tool t)
@@ -143,9 +156,11 @@ namespace LegendaryExplorer.MainWindow
 
         private void MainWindow_PreviewMouseDown(object sender, MouseButtonEventArgs e)
         {
-            if (SearchBorder.Visibility == Visibility.Visible && !SearchBorder.IsMouseOver)
+            if (SearchBorder.Visibility == Visibility.Visible && !SearchBorder.IsMouseOver
+                && !pinnedToolTaskbar.IsMouseOver)
             {
                 // Keep the results in place so this click can still open the tool under the pointer.
+                // Taskbar interactions retain the search field so its shortcuts do not move before release.
                 CollapseSearch();
             }
         }
@@ -162,7 +177,7 @@ namespace LegendaryExplorer.MainWindow
 
         private void MainWindow_Deactivated(object sender, EventArgs e)
         {
-            CollapseSearch();
+            if (!pinnedToolTaskbar.IsDragging) CollapseSearch();
         }
 
         private void CategoriesButton_Click(object sender, RoutedEventArgs e)
