@@ -635,7 +635,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 OnPropertyChanged(nameof(Bink2PlaybackStatus));
                 OnPropertyChanged(nameof(CanSeekBink2));
                 CommandManager.InvalidateRequerySuggested();
-                _embeddedBinkPlayer.Start(BinkPlayerLauncher.CreateEmbeddedStartInfo(RADExecutableLocation, moviePath));
+                _embeddedBinkPlayer.Start(BinkPlayerLauncher.CreateEmbeddedStartInfo(RADExecutableLocation, moviePath), moviePath);
             }
             catch (Exception ex)
             {

@@ -121,6 +121,10 @@ internal static class BinkPlayerLauncher
         // RAD's /I2 mode creates a client-only player window. LEX also strips window styles
         // after launch, but requesting the native borderless mode avoids a one-pixel light rim.
         startInfo.ArgumentList.Add("/I2");
+        // Bink can show its window despite a hidden startup request. Start offscreen as well
+        // so it stays out of view until the host attaches and positions it in the viewport.
+        startInfo.ArgumentList.Add("/X-32000");
+        startInfo.ArgumentList.Add("/Y-32000");
         return startInfo;
     }
 

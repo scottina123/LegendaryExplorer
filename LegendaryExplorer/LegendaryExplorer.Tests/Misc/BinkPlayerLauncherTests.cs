@@ -62,14 +62,14 @@ public class BinkPlayerLauncherTests
     }
 
     [TestMethod]
-    public void CreateEmbeddedStartInfo_RequestsNativeBorderlessWindow()
+    public void CreateEmbeddedStartInfo_RequestsNativeBorderlessWindowOffscreen()
     {
         var startInfo = BinkPlayerLauncher.CreateEmbeddedStartInfo(
             @"C:\Tools\Bink2ForUnreal.exe",
             @"C:\Movies\intro movie.bik");
 
         CollectionAssert.AreEqual(
-            new[] { "BinkPlay", @"C:\Movies\intro movie.bik", "/I2" },
+            new[] { "BinkPlay", @"C:\Movies\intro movie.bik", "/I2", "/X-32000", "/Y-32000" },
             startInfo.ArgumentList.ToArray());
     }
 

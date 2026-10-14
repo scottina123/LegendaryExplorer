@@ -1,6 +1,10 @@
 using System;
+using System.Buffers.Binary;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Drawing;
+using System.IO;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -10,7 +14,7 @@ namespace LegendaryExplorer.Misc;
 
 /// <summary>
 /// Hosts the native window created by the Bink player inside a WinForms viewport.
-/// The player remains a separate process because RAD's decoder cannot be redistributed with LEX.
+/// The player runs in a separate process, with its window attached to the viewport.
 /// </summary>
 internal sealed partial class EmbeddedBinkPlayerHost : IDisposable
 {
@@ -21,11 +25,15 @@ internal sealed partial class EmbeddedBinkPlayerHost : IDisposable
     private static readonly nint TopLevelWindowStyles = unchecked((nint)0xA1CF0000);
     private static readonly nint TopLevelExtendedStyles = unchecked((nint)0x00000301);
     private const uint SwpNoZOrder = 0x0004;
+    private const uint SwpNoActivate = 0x0010;
     private const uint SwpFrameChanged = 0x0020;
-    private const uint SwpShowWindow = 0x0040;
-    private const int SwRestore = 9;
+    private const int RgnDiff = 4;
+    private const int SwHide = 0;
+    private const int SwShowNoActivate = 8;
+    private const uint GwOwner = 4;
     private const uint WmKeyDown = 0x0100;
     private const uint WmKeyUp = 0x0101;
+    private const uint WmMouseMove = 0x0200;
     private const uint WmLButtonDown = 0x0201;
     private const uint WmLButtonUp = 0x0202;
     private const int VkSpace = 0x20;
@@ -34,6 +42,7 @@ internal sealed partial class EmbeddedBinkPlayerHost : IDisposable
     private CancellationTokenSource _windowSearchCancellation;
     private Process _process;
     private nint _playerWindow;
+    private Size _movieSize;
     private bool _disposed;
 
     public event EventHandler PlayerAttached;
@@ -63,10 +72,11 @@ internal sealed partial class EmbeddedBinkPlayerHost : IDisposable
         _viewport.Resize += Viewport_Resize;
     }
 
-    public void Start(ProcessStartInfo startInfo)
+    public void Start(ProcessStartInfo startInfo, string moviePath)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(startInfo);
+        ArgumentException.ThrowIfNullOrWhiteSpace(moviePath);
 
         if (IsRunning)
         {
@@ -75,19 +85,20 @@ internal sealed partial class EmbeddedBinkPlayerHost : IDisposable
         }
 
         StopProcess();
+        _movieSize = ReadMovieSize(moviePath);
         if (!_viewport.IsHandleCreated)
         {
             _viewport.CreateControl();
         }
-        // MainWindowHandle ignores a window started with SW_HIDE. Minimized keeps it discoverable
-        // while reducing the brief top-level flash before LEX re-parents it into the viewport.
-        startInfo.WindowStyle = ProcessWindowStyle.Minimized;
+        // Discover the native HWND directly so the player can stay hidden until it is a child
+        // of the viewport. Process.MainWindowHandle deliberately excludes hidden windows.
+        startInfo.WindowStyle = ProcessWindowStyle.Hidden;
 
         Process process = Process.Start(startInfo)
                           ?? throw new InvalidOperationException("The Bink player did not start.");
         _process = process;
-        process.EnableRaisingEvents = true;
         process.Exited += Process_Exited;
+        process.EnableRaisingEvents = true;
         _windowSearchCancellation = new CancellationTokenSource();
         _ = AttachPlayerWindowAsync(process, _windowSearchCancellation.Token);
     }
@@ -127,33 +138,38 @@ internal sealed partial class EmbeddedBinkPlayerHost : IDisposable
             return false;
         }
 
-        int x = Math.Clamp((int)Math.Round((clientRect.Right - 1) * position), 0, Math.Max(0, clientRect.Right - 1));
-        int y = Math.Max(0, clientRect.Bottom - 2);
-        var seekPoint = new NativePoint { X = x, Y = y };
-        if (!ClientToScreen(_playerWindow, ref seekPoint) || !GetCursorPos(out NativePoint originalCursor))
+        var clientSize = new Size(clientRect.Right, clientRect.Bottom);
+        Rectangle video = BinkPlayerViewport.CalculateVideoBounds(clientSize, _movieSize);
+        if (video.IsEmpty)
         {
             return false;
         }
 
-        try
-        {
-            // RAD reads the cursor position while handling its private bottom-edge slider.
-            // Supplying the matching screen position and window messages activates that native
-            // seek path without generating a real desktop mouse click.
-            if (!SetCursorPos(seekPoint.X, seekPoint.Y))
-            {
-                return false;
-            }
+        Point seekPoint = BinkPlayerViewport.CalculateSeekPoint(clientSize, _movieSize, position);
+        // Refresh RAD's mouse-active seek control even though its drawing strip is clipped.
+        // Native window messages reach that control without moving the user's desktop cursor.
+        nint point = MakeLParam(seekPoint.X, seekPoint.Y);
+        SendMessage(_playerWindow, WmMouseMove, 0, point);
+        SendMessage(_playerWindow, WmLButtonDown, 1, point);
+        SendMessage(_playerWindow, WmLButtonUp, 0, point);
+        return true;
+    }
 
-            nint point = MakeLParam(x, y);
-            SendMessage(_playerWindow, WmLButtonDown, 1, point);
-            SendMessage(_playerWindow, WmLButtonUp, 0, point);
-            return true;
-        }
-        finally
+    private static Size ReadMovieSize(string moviePath)
+    {
+        using FileStream movie = File.OpenRead(moviePath);
+        Span<byte> header = stackalloc byte[28];
+        movie.ReadExactly(header);
+        bool isBink = header[0] == 'B' && header[1] == 'I' && header[2] == 'K'
+                      || header[0] == 'K' && header[1] == 'B' && header[2] == '2';
+        uint width = BinaryPrimitives.ReadUInt32LittleEndian(header[20..24]);
+        uint height = BinaryPrimitives.ReadUInt32LittleEndian(header[24..28]);
+        if (!isBink || width == 0 || height == 0 || width > int.MaxValue || height > int.MaxValue)
         {
-            SetCursorPos(originalCursor.X, originalCursor.Y);
+            throw new InvalidDataException("The movie does not contain valid Bink dimensions.");
         }
+
+        return new Size((int)width, (int)height);
     }
 
     public void StopPlayback()
@@ -184,8 +200,7 @@ internal sealed partial class EmbeddedBinkPlayerHost : IDisposable
                     return;
                 }
 
-                process.Refresh();
-                window = process.MainWindowHandle;
+                window = FindPlayerWindow(process.Id);
                 if (window == 0)
                 {
                     await Task.Delay(50, cancellationToken).ConfigureAwait(false);
@@ -219,6 +234,55 @@ internal sealed partial class EmbeddedBinkPlayerHost : IDisposable
         }
     }
 
+    private static unsafe nint FindPlayerWindow(int processId)
+    {
+        Rectangle desktop = SystemInformation.VirtualScreen;
+        var search = new PlayerWindowSearch
+        {
+            ProcessId = (uint)processId,
+            DesktopLeft = desktop.Left,
+            DesktopTop = desktop.Top
+        };
+        EnumWindows(&FindPlayerWindowCallback, (nint)(&search));
+        return search.Window;
+    }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
+    private static unsafe int FindPlayerWindowCallback(nint window, nint parameter)
+    {
+        var search = (PlayerWindowSearch*)parameter;
+        GetWindowThreadProcessId(window, out uint processId);
+        if (processId != search->ProcessId || GetWindow(window, GwOwner) != 0)
+        {
+            return 1;
+        }
+
+        // RAD creates a BinkWin for playback. Ignore its hidden helper windows, including IME
+        // windows, rather than relying on visibility to identify the movie window.
+        Span<char> className = stackalloc char[64];
+        fixed (char* classNamePointer = className)
+        {
+            int length = GetClassName(window, classNamePointer, className.Length);
+            if (!className[..length].SequenceEqual("BinkWin")
+                || !GetClientRect(window, out NativeRect clientRect)
+                || clientRect.Right <= 0 || clientRect.Bottom <= 0)
+            {
+                return 1;
+            }
+        }
+
+        // RAD first creates a placeholder window, then applies /X and /Y after initializing
+        // the movie. Attaching before that step would let it move the child off-screen later.
+        if (!GetWindowRect(window, out NativeRect windowRect)
+            || windowRect.Right > search->DesktopLeft || windowRect.Bottom > search->DesktopTop)
+        {
+            return 1;
+        }
+
+        search->Window = window;
+        return 0;
+    }
+
     private void HandleEmbeddingFailure(Process process, Exception exception)
     {
         if (ReferenceEquals(_process, process))
@@ -235,8 +299,15 @@ internal sealed partial class EmbeddedBinkPlayerHost : IDisposable
             return;
         }
 
+        GetWindowThreadProcessId(window, out uint processId);
+        if (processId != (uint)process.Id)
+        {
+            throw new InvalidOperationException("The Bink player window closed before it could be embedded.");
+        }
+
+        ShowWindow(window, SwHide);
         nint style = GetWindowLongPtr(window, GwlStyle);
-        nint childStyle = (style & ~TopLevelWindowStyles) | WsChild | WsVisible;
+        nint childStyle = (style & ~TopLevelWindowStyles & ~WsVisible) | WsChild;
         SetWindowLongPtr(window, GwlStyle, childStyle);
         nint extendedStyle = GetWindowLongPtr(window, GwlExStyle);
         SetWindowLongPtr(window, GwlExStyle, extendedStyle & ~TopLevelExtendedStyles);
@@ -244,14 +315,14 @@ internal sealed partial class EmbeddedBinkPlayerHost : IDisposable
         Marshal.SetLastPInvokeError(0);
         SetParent(window, _viewport.Handle);
         int error = Marshal.GetLastPInvokeError();
-        if (error != 0)
+        if (error != 0 || GetParent(window) != _viewport.Handle)
         {
             throw new Win32Exception(error, "The Bink player window could not be attached to the LEX viewport.");
         }
 
         _playerWindow = window;
-        ShowWindow(window, SwRestore);
-        ResizePlayer();
+        ResizePlayer(showWindow: false);
+        ShowWindow(window, SwShowNoActivate);
         PlayerAttached?.Invoke(this, EventArgs.Empty);
     }
 
@@ -274,16 +345,78 @@ internal sealed partial class EmbeddedBinkPlayerHost : IDisposable
         });
     }
 
-    private void Viewport_Resize(object sender, EventArgs e) => ResizePlayer();
+    private void Viewport_Resize(object sender, EventArgs e)
+    {
+        Process process = _process;
+        try
+        {
+            ResizePlayer();
+        }
+        catch (Exception exception) when (exception is Win32Exception or InvalidOperationException)
+        {
+            if (process != null && ReferenceEquals(_process, process))
+            {
+                if (process.HasExited)
+                {
+                    return; // The queued exit event will clear the viewport.
+                }
+                HandleEmbeddingFailure(process, exception);
+            }
+        }
+    }
 
-    private void ResizePlayer()
+    private void ResizePlayer(bool showWindow = true)
     {
         if (_playerWindow != 0 && _viewport.IsHandleCreated)
         {
-            SetWindowPos(_playerWindow, 0, 0, 0,
+            if (!SetWindowPos(_playerWindow, 0, 0, 0,
                 Math.Max(1, _viewport.ClientSize.Width),
                 Math.Max(1, _viewport.ClientSize.Height),
-                SwpNoZOrder | SwpFrameChanged | SwpShowWindow);
+                SwpNoZOrder | SwpNoActivate | SwpFrameChanged))
+            {
+                throw new Win32Exception(Marshal.GetLastPInvokeError(), "The Bink player window could not be resized.");
+            }
+            HideNativeSlider();
+            if (showWindow)
+            {
+                ShowWindow(_playerWindow, SwShowNoActivate);
+            }
+        }
+    }
+
+    private void HideNativeSlider()
+    {
+        if (!GetClientRect(_playerWindow, out NativeRect clientRect))
+        {
+            throw new Win32Exception(Marshal.GetLastPInvokeError(), "The Bink player viewport could not be measured.");
+        }
+
+        Rectangle slider = BinkPlayerViewport.CalculateSliderBounds(
+            new Size(clientRect.Right, clientRect.Bottom), _movieSize);
+        nint region = CreateRectRgn(0, 0, clientRect.Right, clientRect.Bottom);
+        nint sliderRegion = CreateRectRgn(slider.Left, slider.Top, slider.Right, slider.Bottom);
+        try
+        {
+            // The native slider is painted into the video, including when it is letterboxed.
+            // Clip only that strip; /U8 would also disable the seek input used by LEX.
+            if (region == 0 || sliderRegion == 0 || CombineRgn(region, region, sliderRegion, RgnDiff) == 0
+                || SetWindowRgn(_playerWindow, region, true) == 0)
+            {
+                throw new InvalidOperationException("The Bink player's native slider could not be hidden.");
+            }
+
+            region = 0; // Windows owns the region after SetWindowRgn succeeds.
+        }
+        finally
+        {
+            if (region != 0)
+            {
+                DeleteObject(region);
+            }
+            if (sliderRegion != 0)
+            {
+                DeleteObject(sliderRegion);
+            }
         }
     }
 
@@ -382,6 +515,21 @@ internal sealed partial class EmbeddedBinkPlayerHost : IDisposable
     [LibraryImport("user32.dll", SetLastError = true)]
     private static partial nint SetParent(nint childWindow, nint newParentWindow);
 
+    [LibraryImport("user32.dll")]
+    private static partial nint GetParent(nint window);
+
+    [LibraryImport("user32.dll")]
+    private static unsafe partial int EnumWindows(delegate* unmanaged[Stdcall]<nint, nint, int> callback, nint parameter);
+
+    [LibraryImport("user32.dll")]
+    private static partial uint GetWindowThreadProcessId(nint window, out uint processId);
+
+    [LibraryImport("user32.dll")]
+    private static partial nint GetWindow(nint window, uint command);
+
+    [LibraryImport("user32.dll", EntryPoint = "GetClassNameW")]
+    private static unsafe partial int GetClassName(nint window, char* className, int maximumCount);
+
     [LibraryImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool SetWindowPos(nint window, nint insertAfter, int x, int y, int width, int height, uint flags);
@@ -400,21 +548,35 @@ internal sealed partial class EmbeddedBinkPlayerHost : IDisposable
     [LibraryImport("user32.dll", EntryPoint = "SendMessageW")]
     private static partial nint SendMessage(nint window, uint message, nint wParam, nint lParam);
 
-    [LibraryImport("user32.dll")]
+    [LibraryImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool GetClientRect(nint window, out NativeRect rect);
 
     [LibraryImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
-    private static partial bool ClientToScreen(nint window, ref NativePoint point);
+    private static partial bool GetWindowRect(nint window, out NativeRect rect);
+
+    [LibraryImport("gdi32.dll")]
+    private static partial nint CreateRectRgn(int left, int top, int right, int bottom);
+
+    [LibraryImport("gdi32.dll")]
+    private static partial int CombineRgn(nint destination, nint first, nint second, int mode);
 
     [LibraryImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static partial bool GetCursorPos(out NativePoint point);
+    private static partial int SetWindowRgn(nint window, nint region, [MarshalAs(UnmanagedType.Bool)] bool redraw);
 
-    [LibraryImport("user32.dll")]
+    [LibraryImport("gdi32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
-    private static partial bool SetCursorPos(int x, int y);
+    private static partial bool DeleteObject(nint handle);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct PlayerWindowSearch
+    {
+        public uint ProcessId;
+        public int DesktopLeft;
+        public int DesktopTop;
+        public nint Window;
+    }
 
     [StructLayout(LayoutKind.Sequential)]
     private struct NativeRect
@@ -425,10 +587,4 @@ internal sealed partial class EmbeddedBinkPlayerHost : IDisposable
         public int Bottom;
     }
 
-    [StructLayout(LayoutKind.Sequential)]
-    private struct NativePoint
-    {
-        public int X;
-        public int Y;
-    }
 }

@@ -164,7 +164,7 @@ public partial class MoviePickerDialog : Window
         try
         {
             PreviewStatusTextBlock.Text = "Starting looping preview...";
-            _previewPlayer.Start(BinkPlayerLauncher.CreateEmbeddedStartInfo(_playerExecutable, _previewPath));
+            _previewPlayer.Start(BinkPlayerLauncher.CreateEmbeddedStartInfo(_playerExecutable, _previewPath), _previewPath);
         }
         catch (Exception exception)
         {
