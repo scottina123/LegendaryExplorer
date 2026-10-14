@@ -1111,7 +1111,13 @@
                             </Grid.ColumnDefinitions>
                             <TextBlock Text="Textures" Style="{StaticResource ColumnHeaderStyle}" ToolTip="All the textures in the game (Grey is DLC only)" Grid.Row="0" Grid.Column="0"/>
                             <DockPanel Grid.Row="1" Grid.ColumnSpan="3" Margin="4,2" LastChildFill="False">
-                                <TextBlock Text="Type:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                <TextBlock Text="Category:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                <ComboBox Width="170" Margin="0,0,12,0"
+                                          HorizontalAlignment="Left"
+                                          ItemsSource="{Binding TextureCategoryFilters}"
+                                          SelectedItem="{Binding SelectedTextureCategoryFilter, Mode=TwoWay}"
+                                          IsTextSearchEnabled="True"/>
+                                <TextBlock Text="Format:" VerticalAlignment="Center" Margin="0,0,6,0"/>
                                 <ComboBox Width="170" Margin="0,0,12,0"
                                           HorizontalAlignment="Left"
                                           ItemsSource="{Binding TextureTypeFilters}"

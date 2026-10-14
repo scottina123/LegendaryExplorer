@@ -52,6 +52,7 @@ using LegendaryExplorerCore.PlotDatabase;
 using Microsoft.WindowsAPICodePack.Dialogs;
 using TerraFX.Interop.Windows;
 using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
+using TextureFilter = LegendaryExplorer.Tools.AssetDatabase.Filters.TextureFilter;
 
 namespace LegendaryExplorer.Tools.AssetDatabase
 {
@@ -474,6 +475,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         public ObservableCollectionExtended<string> MaterialUsageFilters { get; } = new();
         public ObservableCollectionExtended<string> MaterialTextureTypeFilters { get; } = new();
         public ObservableCollectionExtended<MaterialTextureFilterCriterion> MaterialTextureCriteria { get; } = new();
+        public IReadOnlyList<string> TextureCategoryFilters { get; } = TextureFilter.Categories;
         public ObservableCollectionExtended<string> TextureTypeFilters { get; } = new();
         public ObservableCollectionExtended<string> TextureSizeFilters { get; } = new();
         public ObservableCollectionExtended<string> SequenceEventTypeFilters { get; } = new()
@@ -785,6 +787,20 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             {
                 if (SetProperty(ref _selectedVfxTypeFilter, value))
                 {
+                    Filter();
+                }
+            }
+        }
+
+        private string _selectedTextureCategoryFilter = TextureFilter.AllCategory;
+        public string SelectedTextureCategoryFilter
+        {
+            get => _selectedTextureCategoryFilter;
+            set
+            {
+                if (SetProperty(ref _selectedTextureCategoryFilter, value))
+                {
+                    RefreshTextureDropdownFilters(resetCategory: false);
                     Filter();
                 }
             }
@@ -1243,11 +1259,15 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             if (currentView == 2) Filter();
         }
 
+        private bool _isClosing;
+
         private void AssetDB_Closing(object sender, CancelEventArgs e)
         {
-            if (e.Cancel)
+            if (e.Cancel || _isClosing)
                 return;
 
+            _isClosing = true;
+            _lineSearchDebounceTimer?.Stop();
             ScottinaPreset.Applied -= OnScottinaPresetApplied;
             // An already-open database can keep its current session without replacing
             // the restored defaults when LEX closes. Subsequent user changes still save.
@@ -1257,6 +1277,11 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                 Settings.AssetDBGame = CurrentGame.ToString();
             if (sessionPreferencesBeforePreset is not { } previousAmbPerf || previousAmbPerf.AmbPerfPath != AmbPerfMasterPccPath)
                 Settings.AssetDB_AmbPerfMasterPccPath = AmbPerfMasterPccPath ?? "";
+
+            // Clearing the database refreshes selections. Do that while preview controls
+            // are alive, after stopping movie playback and preventing preview reloads.
+            BIKExternalExportLoaderTab_BIKExternalExportLoader?.UnloadExport();
+            ClearDataBase();
 
             MeshRendererTab_MeshRenderer?.Dispose();
             UnloadMorphPreview();
@@ -1294,7 +1319,6 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             dbworker.DoWork -= GetLineStrings;
             dbworker.RunWorkerCompleted -= dbworker_LineWorkCompleted;
 
-            ClearDataBase();
             MorphPreviewControl?.Dispose();
         }
 
@@ -2571,20 +2595,29 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             };
         }
 
-        private void RefreshTextureDropdownFilters()
+        private void RefreshTextureDropdownFilters(bool resetCategory = true)
         {
+            if (resetCategory)
+            {
+                _selectedTextureCategoryFilter = TextureFilter.AllCategory;
+                OnPropertyChanged(nameof(SelectedTextureCategoryFilter));
+            }
+
+            var textures = CurrentDataBase.Textures
+                .Where(texture => TextureFilter.MatchesCategory(texture, SelectedTextureCategoryFilter))
+                .ToList();
             TextureTypeFilters.ClearEx();
             TextureSizeFilters.ClearEx();
 
             TextureTypeFilters.Add(AllTextureFilterOption);
-            TextureTypeFilters.AddRange(CurrentDataBase.Textures
+            TextureTypeFilters.AddRange(textures
                 .Select(t => t.CFormat)
                 .Where(t => !string.IsNullOrWhiteSpace(t))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .OrderBy(t => t, StringComparer.OrdinalIgnoreCase));
 
             TextureSizeFilters.Add(AllTextureFilterOption);
-            TextureSizeFilters.AddRange(CurrentDataBase.Textures
+            TextureSizeFilters.AddRange(textures
                 .Select(t => new { t.SizeX, t.SizeY, Display = $"{t.SizeX}x{t.SizeY}" })
                 .GroupBy(t => t.Display, StringComparer.OrdinalIgnoreCase)
                 .OrderBy(g => g.First().SizeX)
@@ -2602,7 +2635,8 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                 return false;
             }
 
-            if (!AssetFilters.TextureFilter.Filter(textureRecord))
+            if (!AssetFilters.TextureFilter.Filter(textureRecord)
+                || !TextureFilter.MatchesCategory(textureRecord, SelectedTextureCategoryFilter))
             {
                 return false;
             }
@@ -3894,7 +3928,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         private void lstbx_Textures_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             e.Handled = true;
-            if (currentView == 4 && lstbx_Textures.SelectedIndex >= 0)
+            if (currentView == 4)
             {
                 ToggleRenderTexture();
             }
@@ -5563,10 +5597,14 @@ namespace LegendaryExplorer.Tools.AssetDatabase
 
         private void ToggleRenderTexture()
         {
-            bool showText = btn_TextRenderToggle.IsChecked == true && lstbx_Textures.SelectedIndex >= 0 && CurrentDataBase.Textures[lstbx_Textures.SelectedIndex].Usages.Count > 0 && currentView == 4;
+            if (_isClosing)
+            {
+                return;
+            }
 
-            var selecteditem = (TextureRecord)lstbx_Textures.SelectedItem;
-            if (!showText || selecteditem.CFormat == "TextureCube")
+            var selecteditem = lstbx_Textures.SelectedItem as TextureRecord;
+            bool showText = btn_TextRenderToggle.IsChecked == true && selecteditem?.Usages.Count > 0 && currentView == 4;
+            if (!showText || TextureFilter.MatchesCategory(selecteditem, TextureFilter.TextureCubesCategory))
             {
                 EmbeddedTextureViewerTab_EmbeddedTextureViewer.UnloadExport();
                 BIKExternalExportLoaderTab_BIKExternalExportLoader.UnloadExport();
@@ -5623,7 +5661,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                     string indexedName = $"{textExp.ObjectNameString}_{textExp.indexValue - 1}";
                     if (textExp.ClassName.StartsWith("Texture") && (textExp.ObjectNameString == selecteditem.TextureName || selecteditem.TextureName == indexedName || (cubemapParent != null && textExp.ObjectNameString == cubemapParent)))
                     {
-                        if (selecteditem.CFormat == "TextureMovie")
+                        if (TextureFilter.MatchesCategory(selecteditem, TextureFilter.TextureMoviesCategory))
                         {
                             BIKExternalExportLoaderTab_BIKExternalExportLoader.LoadExport(textExp);
                             BIKExternalExportLoaderTab_BIKExternalExportLoader.Visibility = Visibility.Visible;

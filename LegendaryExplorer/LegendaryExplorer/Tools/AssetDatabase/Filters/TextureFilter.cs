@@ -6,6 +6,14 @@ namespace LegendaryExplorer.Tools.AssetDatabase.Filters
 {
     public class TextureFilter : GenericAssetFilter<TextureRecord>
     {
+        public const string AllCategory = "All";
+        public const string TexturesCategory = "Textures";
+        public const string TextureCubesCategory = "TextureCubes";
+        public const string TextureMoviesCategory = "TextureMovies";
+
+        public static IReadOnlyList<string> Categories { get; } =
+            [AllCategory, TexturesCategory, TextureCubesCategory, TextureMoviesCategory];
+
         private static readonly Dictionary<string, string[]> NameBasedTextureTypeAliases = new()
         {
             ["tint"] = ["tint", "tnt"],
@@ -86,6 +94,19 @@ namespace LegendaryExplorer.Tools.AssetDatabase.Filters
         protected override IEnumerable<IAssetSpecification<TextureRecord>> GetAdditionalSpecifications()
         {
             return [new OrSpecification<TextureRecord>(GeneratedLodFilters)];
+        }
+
+        public static bool MatchesCategory(TextureRecord record, string category)
+        {
+            bool isMovie = string.Equals(record.CFormat, "TextureMovie", System.StringComparison.OrdinalIgnoreCase);
+            bool isCube = string.Equals(record.CFormat, "TextureCube", System.StringComparison.OrdinalIgnoreCase);
+            return category switch
+            {
+                TexturesCategory => !isMovie && !isCube,
+                TextureCubesCategory => isCube,
+                TextureMoviesCategory => isMovie,
+                _ => true
+            };
         }
 
         public static bool TextureSearch((string search, TextureRecord record) t)

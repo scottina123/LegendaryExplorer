@@ -38,6 +38,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         private bool _radIsInstalled;
         public LibVLC libvlc;
         public MediaPlayer mediaPlayer;
+        private volatile bool _disposed;
+        private volatile int _loadVersion;
         public ICommand OpenFileInRADCommand { get; private set; }
         public ICommand ImportBikFileCommand { get; private set; }
         public ICommand PlayBikCommand { get; private set; }
@@ -261,24 +263,54 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         private void OnEncounteredError(object sender, EventArgs e)
         {
-            Console.Error.Write("An error occurred");
-            IsVLCPlaying = false;
+            QueueVlcUpdate(() =>
+            {
+                Console.Error.Write("An error occurred");
+                IsVLCPlaying = false;
+            });
         }
 
         private void OnStopped(object sender, EventArgs e)
         {
-            IsVLCPlaying = false;
-            Debug.WriteLine("BikMoviePlayer Stopped");
+            QueueVlcUpdate(() =>
+            {
+                IsVLCPlaying = false;
+                Debug.WriteLine("BikMoviePlayer Stopped");
+            });
         }
 
         private void OnPlaying(object sender, EventArgs e)
         {
-            IsVLCPlaying = true;
-            Debug.WriteLine("BikMoviePlayer Started");
+            QueueVlcUpdate(() =>
+            {
+                IsVLCPlaying = true;
+                Debug.WriteLine("BikMoviePlayer Started");
+            });
+        }
+
+        private void QueueVlcUpdate(Action update)
+        {
+            if (_disposed || Dispatcher.HasShutdownStarted)
+            {
+                return;
+            }
+
+            int loadVersion = _loadVersion;
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                if (!_disposed && loadVersion == _loadVersion)
+                {
+                    update();
+                }
+            }));
         }
 
         private void EmbeddedBinkPlayer_PlayerAttached(object sender, EventArgs e)
         {
+            if (_disposed)
+            {
+                return;
+            }
             _embeddedPlayerIsRunning = true;
             _bink2PlaybackError = null;
             OnPropertyChanged(nameof(CanSeekBink2));
@@ -289,6 +321,10 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         private void EmbeddedBinkPlayer_PlayerExited(object sender, EventArgs e)
         {
+            if (_disposed)
+            {
+                return;
+            }
             _embeddedPlayerIsRunning = false;
             ResetBink2Timeline(clearDuration: false);
             OnPropertyChanged(nameof(CanSeekBink2));
@@ -298,6 +334,10 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         private void EmbeddedBinkPlayer_EmbeddingFailed(Exception exception)
         {
+            if (_disposed)
+            {
+                return;
+            }
             _embeddedPlayerIsRunning = false;
             ResetBink2Timeline(clearDuration: false);
             _bink2PlaybackError = "The Bink player could not be embedded in the LEX viewport: " + exception.Message;
@@ -349,11 +389,20 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         private void VideoView_Loaded(object sender, RoutedEventArgs e)
         {
-            vlcVideoView.MediaPlayer = mediaPlayer;
+            if (!_disposed)
+            {
+                vlcVideoView.MediaPlayer = mediaPlayer;
+            }
         }
 
         public override void LoadExport(ExportEntry exportEntry)
         {
+            if (_disposed)
+            {
+                return;
+            }
+
+            int loadVersion = ++_loadVersion;
             if (!ReferenceEquals(CurrentLoadedExport, exportEntry))
             {
                 ClearEmbeddedBinkPlayback();
@@ -385,46 +434,50 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 try
                 {
                     var movieBytes = GetMovieBytes();
-                    if (movieBytes != null)
+                    if (movieBytes is { Length: > 0 })
                     {
-                        MovieCRC = TextureCRC.Compute(movieBytes);
-                        IsBink1 = movieBytes[0] == 'B';
-                    }
-                    else
-                    {
-                        Warning_text.Visibility = Visibility.Visible;
+                        return (Available: true, CRC: TextureCRC.Compute(movieBytes), IsBink1: movieBytes[0] == 'B');
                     }
                 }
                 catch
                 {
                     //
                 }
+                return (Available: false, CRC: 0u, IsBink1: false);
             }).ContinueWithOnUIThread(prevTask =>
             {
-                Loading_text.Visibility = Visibility.Collapsed;
-                mediaPlayer.Stop();
-                var bik = mediaPlayer.Media;
-                if (bik != null)
+                if (_disposed || loadVersion != _loadVersion)
                 {
-                    mediaPlayer.Media = null;
-                    bik.Dispose();
+                    return;
                 }
+
+                var movie = prevTask.Result;
+                MovieCRC = movie.CRC;
+                IsBink1 = movie.IsBink1;
+                Warning_text.Visibility = movie.Available ? Visibility.Collapsed : Visibility.Visible;
+                Loading_text.Visibility = Visibility.Collapsed;
+                StopAndReleaseVlcMedia();
                 video_Panel.IsEnabled = IsBink1 || ExternalPlayerSupportsBink2;
                 Unsupported_Text.Visibility = IsBink1 ? Visibility.Collapsed : Visibility.Visible;
             });
         }
         public override void UnloadExport()
         {
+            if (_disposed)
+            {
+                return;
+            }
+
+            UnloadExportCore();
+        }
+
+        private void UnloadExportCore()
+        {
+            ++_loadVersion;
             ClearEmbeddedBinkPlayback();
             MovieCRC = 0;
             IsBink1 = false;
-            mediaPlayer.Stop();
-            var bik = mediaPlayer.Media;
-            if (bik != null)
-            {
-                mediaPlayer.Media = null;
-                bik.Dispose();
-            }
+            StopAndReleaseVlcMedia();
             CurrentLoadedExport = null;
             Warning_text.Visibility = Visibility.Collapsed;
             Unsupported_Text.Visibility = Visibility.Collapsed;
@@ -444,14 +497,13 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         public override void Dispose()
         {
-            UnloadExport();
-
-            if (_bink2TimelineTimer != null)
+            if (_disposed)
             {
-                _bink2TimelineTimer.Stop();
-                _bink2TimelineTimer.Tick -= Bink2TimelineTimer_Tick;
-                _bink2TimelineTimer = null;
+                return;
             }
+
+            // Native events and pending export loads must stop updating this control before teardown.
+            _disposed = true;
 
             vlcVideoView.Loaded -= VideoView_Loaded;
             TextureCacheComboBox.SelectionChanged -= TextureCacheComboBox_SelectionChanged;
@@ -465,11 +517,41 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 _embeddedBinkPlayer.PlayerAttached -= EmbeddedBinkPlayer_PlayerAttached;
                 _embeddedBinkPlayer.PlayerExited -= EmbeddedBinkPlayer_PlayerExited;
                 _embeddedBinkPlayer.EmbeddingFailed -= EmbeddedBinkPlayer_EmbeddingFailed;
+            }
+
+            if (_bink2TimelineTimer != null)
+            {
+                _bink2TimelineTimer.Stop();
+                _bink2TimelineTimer.Tick -= Bink2TimelineTimer_Tick;
+                _bink2TimelineTimer = null;
+            }
+
+            UnloadExportCore();
+            vlcVideoView.MediaPlayer = null;
+
+            if (_embeddedBinkPlayer != null)
+            {
                 _embeddedBinkPlayer.Dispose();
                 _embeddedBinkPlayer = null;
             }
             mediaPlayer?.Dispose();
+            mediaPlayer = null;
             libvlc?.Dispose();
+            libvlc = null;
+        }
+
+        private void StopAndReleaseVlcMedia()
+        {
+            if (mediaPlayer == null)
+            {
+                return;
+            }
+
+            mediaPlayer.Stop();
+            var bik = mediaPlayer.Media;
+            mediaPlayer.Media = null;
+            bik?.Dispose();
+            IsVLCPlaying = false;
         }
 
         private void GetBikProps()
@@ -798,13 +880,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 return;
             }
 
-            mediaPlayer.Stop();
-            var bik = mediaPlayer.Media;
-            if (bik != null)
-            {
-                mediaPlayer.Media = null;
-                bik.Dispose();
-            }
+            StopAndReleaseVlcMedia();
         }
 
         private void ConfigureBink2Timeline(string moviePath)
@@ -821,7 +897,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         private void Bink2TimelineTimer_Tick(object sender, EventArgs e)
         {
-            if (!_embeddedPlayerIsRunning || _bink2IsPaused || _bink2ScrubberIsChanging || _bink2Duration <= TimeSpan.Zero)
+            if (_disposed || !_embeddedPlayerIsRunning || _bink2IsPaused || _bink2ScrubberIsChanging || _bink2Duration <= TimeSpan.Zero)
             {
                 return;
             }
@@ -1014,12 +1090,14 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             return null;
         }
 
-        public async void MediaEndReached(object sender, EventArgs args)
+        public void MediaEndReached(object sender, EventArgs args)
         {
-            Debug.WriteLine("Reached End");
-            var mediaplayer = sender as MediaPlayer;
-            await Task.Run(() => mediaPlayer.Position = 0);
-            IsVLCPlaying = false;
+            QueueVlcUpdate(() =>
+            {
+                Debug.WriteLine("Reached End");
+                mediaPlayer.Position = 0;
+                IsVLCPlaying = false;
+            });
         }
 
         #endregion

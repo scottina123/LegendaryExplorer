@@ -70,6 +70,8 @@ internal sealed partial class EmbeddedBinkPlayerHost : IDisposable
     {
         _viewport = viewport ?? throw new ArgumentNullException(nameof(viewport));
         _viewport.Resize += Viewport_Resize;
+        _viewport.HandleDestroyed += Viewport_HandleDestroyed;
+        _viewport.Disposed += Viewport_Disposed;
     }
 
     public void Start(ProcessStartInfo startInfo, string moviePath)
@@ -89,6 +91,7 @@ internal sealed partial class EmbeddedBinkPlayerHost : IDisposable
         if (!_viewport.IsHandleCreated)
         {
             _viewport.CreateControl();
+            _ = _viewport.Handle;
         }
         // Discover the native HWND directly so the player can stay hidden until it is a child
         // of the viewport. Process.MainWindowHandle deliberately excludes hidden windows.
@@ -464,7 +467,7 @@ internal sealed partial class EmbeddedBinkPlayerHost : IDisposable
 
     private void ClearViewport()
     {
-        if (!_viewport.IsDisposed)
+        if (!_viewport.IsDisposed && !_viewport.Disposing && _viewport.IsHandleCreated)
         {
             _viewport.Invalidate();
         }
@@ -472,20 +475,29 @@ internal sealed partial class EmbeddedBinkPlayerHost : IDisposable
 
     private void RunOnViewportThread(Action action)
     {
-        if (_disposed || _viewport.IsDisposed)
+        if (_disposed || _viewport.IsDisposed || _viewport.Disposing || !_viewport.IsHandleCreated)
         {
             return;
         }
 
         try
         {
+            void InvokeIfAlive()
+            {
+                // BeginInvoke may have been queued before the owner closed the viewport.
+                if (!_disposed && !_viewport.IsDisposed && !_viewport.Disposing && _viewport.IsHandleCreated)
+                {
+                    action();
+                }
+            }
+
             if (_viewport.InvokeRequired)
             {
-                _viewport.BeginInvoke(action);
+                _viewport.BeginInvoke((Action)InvokeIfAlive);
             }
             else
             {
-                action();
+                InvokeIfAlive();
             }
         }
         catch (InvalidOperationException)
@@ -494,6 +506,13 @@ internal sealed partial class EmbeddedBinkPlayerHost : IDisposable
         }
     }
 
+    private void Viewport_HandleDestroyed(object sender, EventArgs e)
+    {
+        StopProcess();
+    }
+
+    private void Viewport_Disposed(object sender, EventArgs e) => Dispose();
+
     public void Dispose()
     {
         if (_disposed)
@@ -501,9 +520,12 @@ internal sealed partial class EmbeddedBinkPlayerHost : IDisposable
             return;
         }
 
-        Stop();
         _disposed = true;
         _viewport.Resize -= Viewport_Resize;
+        _viewport.HandleDestroyed -= Viewport_HandleDestroyed;
+        _viewport.Disposed -= Viewport_Disposed;
+        StopProcess();
+        ClearViewport();
     }
 
     [LibraryImport("user32.dll", EntryPoint = "GetWindowLongPtrW", SetLastError = true)]

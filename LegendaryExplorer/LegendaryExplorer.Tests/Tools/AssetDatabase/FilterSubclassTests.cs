@@ -1,5 +1,7 @@
 ﻿using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using BinaryPack;
 using LegendaryExplorer.Tools.AssetDatabase;
 using LegendaryExplorer.Tools.AssetDatabase.Filters;
 using LegendaryExplorerCore.Packages;
@@ -57,6 +59,72 @@ namespace LegendaryExplorer.Tests.Tools.AssetDatabase
 
             Assert.IsTrue(TextureFilter.TextureSearch(("size: 512x1024", r2)));
             Assert.IsFalse(TextureFilter.TextureSearch(("size: 1024x512", r2)));
+        }
+
+        [TestMethod]
+        [DataRow("TextureMovie_Diffuse", "DXT5", true, false, false)]
+        [DataRow("TextureCube_Diffuse", "BC7", true, false, false)]
+        [DataRow("Screen", "TextureMovie", false, false, true)]
+        [DataRow("Screen", "texturemovie", false, false, true)]
+        [DataRow("Environment", "TextureCube", false, true, false)]
+        [DataRow("Screen", "TextureMoviePreview", true, false, false)]
+        [DataRow("Unknown", "n/a", true, false, false)]
+        public void TextureCategoriesUseExactStoredFormat(string textureName, string format,
+            bool isTexture, bool isCube, bool isMovie)
+        {
+            var record = new TextureRecord(textureName, "Package", false, false,
+                format, "n/a", 512, 512, "n/a");
+
+            Assert.IsTrue(TextureFilter.MatchesCategory(record, TextureFilter.AllCategory));
+            Assert.AreEqual(isTexture, TextureFilter.MatchesCategory(record, TextureFilter.TexturesCategory));
+            Assert.AreEqual(isCube, TextureFilter.MatchesCategory(record, TextureFilter.TextureCubesCategory));
+            Assert.AreEqual(isMovie, TextureFilter.MatchesCategory(record, TextureFilter.TextureMoviesCategory));
+        }
+
+        [TestMethod]
+        public void TextureMovieCategoryReadsExistingSavedRecords()
+        {
+            var source = new AssetDB { DatabaseVersion = "19.0" };
+            source.Textures.Add(new TextureRecord("Diffuse", "Package", false, false,
+                "DXT5", "UI", 512, 512, "12345"));
+            var movie = new TextureRecord("Screen", "Package", false, false,
+                "TextureMovie", "n/a", 1280, 720, "n/a");
+            movie.Usages.Add(new TextureUsage(3, 42, false, false));
+            source.Textures.Add(movie);
+
+            using var stream = new MemoryStream();
+            BinaryConverter.Serialize(source, stream);
+            var restored = BinaryConverter.Deserialize<AssetDB>(stream.ToArray());
+            var movies = restored.Textures
+                .Where(record => TextureFilter.MatchesCategory(record, TextureFilter.TextureMoviesCategory))
+                .ToList();
+
+            Assert.HasCount(1, movies);
+            Assert.AreEqual("Screen", movies[0].TextureName);
+            Assert.AreEqual(1280, movies[0].SizeX);
+            Assert.AreEqual(720, movies[0].SizeY);
+            Assert.HasCount(1, movies[0].Usages);
+            Assert.AreEqual(new TextureUsage(3, 42, false, false), movies[0].Usages[0]);
+        }
+
+        [TestMethod]
+        public void TextureMovieCategoryCombinesWithTextureSearch()
+        {
+            var filter = new TextureFilter(new FileListSpecification());
+            filter.Search.SearchText = "Citadel";
+            var movie = new TextureRecord("CitadelScreen", "Package", false, false,
+                "TextureMovie", "n/a", 1280, 720, "n/a");
+            TextureRecord[] records =
+            [
+                movie,
+                new("NormandyScreen", "Package", false, false, "TextureMovie", "n/a", 1280, 720, "n/a"),
+                new("Citadel_TextureMovie_Diffuse", "Package", false, false, "DXT5", "UI", 512, 512, "12345")
+            ];
+
+            var matches = records.Where(record => filter.Filter(record)
+                && TextureFilter.MatchesCategory(record, TextureFilter.TextureMoviesCategory)).ToArray();
+
+            CollectionAssert.AreEqual(new[] { movie }, matches);
         }
 
         [TestMethod]
