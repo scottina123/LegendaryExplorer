@@ -427,11 +427,6 @@ namespace LegendaryExplorer.Misc.AppSettings
             get => _interpreter_hidetopselector;
             set => SetProperty(ref _interpreter_hidetopselector, value);
         }
-        private static string _bikexternal_binkplayerpath = "";
-        public static string BIKExternal_BinkPlayerPath {
-            get => _bikexternal_binkplayerpath;
-            set => SetProperty(ref _bikexternal_binkplayerpath, value);
-        }
         private static bool _soundpanel_loopaudio = false;
         public static bool Soundpanel_LoopAudio {
             get => _soundpanel_loopaudio;
@@ -739,7 +734,6 @@ namespace LegendaryExplorer.Misc.AppSettings
             Interpreter_Colorize = TryGetSetting(settingsJson, "interpreter_colorize", true);
             Interpreter_ShowLinearColorWheel = TryGetSetting(settingsJson, "interpreter_showlinearcolorwheel", false);
             Interpreter_HideTopSelector = TryGetSetting(settingsJson, "interpreter_hidetopselector", false);
-            BIKExternal_BinkPlayerPath = TryGetSetting(settingsJson, "bikexternal_binkplayerpath", "");
             Soundpanel_LoopAudio = TryGetSetting(settingsJson, "soundpanel_loopaudio", false);
             Wwise_3773Path = TryGetSetting(settingsJson, "wwise_3773path", "");
             Wwise_7110Path = TryGetSetting(settingsJson, "wwise_7110path", "");
@@ -871,7 +865,6 @@ namespace LegendaryExplorer.Misc.AppSettings
             settingsJson["interpreter_colorize"] = Interpreter_Colorize.ToString();
             settingsJson["interpreter_showlinearcolorwheel"] = Interpreter_ShowLinearColorWheel.ToString();
             settingsJson["interpreter_hidetopselector"] = Interpreter_HideTopSelector.ToString();
-            settingsJson["bikexternal_binkplayerpath"] = BIKExternal_BinkPlayerPath.ToString();
             settingsJson["soundpanel_loopaudio"] = Soundpanel_LoopAudio.ToString();
             settingsJson["wwise_3773path"] = Wwise_3773Path.ToString();
             settingsJson["wwise_7110path"] = Wwise_7110Path.ToString();

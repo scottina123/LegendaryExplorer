@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Linq;
 using LegendaryExplorer.Misc;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -8,6 +9,16 @@ namespace LegendaryExplorer.Tests.Misc;
 [TestClass]
 public class BinkPlayerLauncherTests
 {
+    [TestMethod]
+    public void FindExecutable_UsesBundledBink2Player()
+    {
+        string bundledPath = Path.Combine(AppContext.BaseDirectory, "Bik 2", "Bink2ForUnreal.exe");
+
+        Assert.IsTrue(File.Exists(bundledPath), "The Bink 2 player must ship with the application.");
+        Assert.AreEqual(bundledPath, BinkPlayerLauncher.FindExecutable());
+        Assert.IsTrue(BinkPlayerLauncher.SupportsBink2(bundledPath));
+    }
+
     [TestMethod]
     public void CreateStartInfo_AddsBinkPlayCommandForCombinedRadExecutables()
     {

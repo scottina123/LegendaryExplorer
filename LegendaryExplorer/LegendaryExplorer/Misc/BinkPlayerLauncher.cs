@@ -29,11 +29,12 @@ internal static class BinkPlayerLauncher
         "BinkPlay.exe"
     ];
 
-    public static string FindExecutable(string configuredPath)
+    public static string FindExecutable()
     {
-        if (IsSupportedExecutable(configuredPath))
+        string bundledPath = Path.Combine(AppContext.BaseDirectory, "Bik 2", "Bink2ForUnreal.exe");
+        if (IsSupportedExecutable(bundledPath))
         {
-            return Path.GetFullPath(configuredPath);
+            return bundledPath;
         }
 
         foreach (string installDirectory in GetRadVideoInstallDirectories())

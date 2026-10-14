@@ -186,6 +186,10 @@
 	</ItemGroup>
 
 	<ItemGroup>
+		<None Update="Bik 2\Bink2ForUnreal.exe">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+			<CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+		</None>
 		<None Update="WwiseTestData\LE3Morphs.pcc">
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 			<CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>

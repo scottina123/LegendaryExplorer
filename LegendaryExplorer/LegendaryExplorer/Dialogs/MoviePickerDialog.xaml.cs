@@ -10,7 +10,6 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Threading;
 using LegendaryExplorer.Misc;
-using LegendaryExplorer.Misc.AppSettings;
 using LegendaryExplorer.SharedUI;
 using LegendaryExplorerCore.Packages;
 using Forms = System.Windows.Forms;
@@ -55,7 +54,7 @@ public partial class MoviePickerDialog : Window
 
         try
         {
-            string playerExecutable = BinkPlayerLauncher.FindExecutable(Settings.BIKExternal_BinkPlayerPath);
+            string playerExecutable = BinkPlayerLauncher.FindExecutable();
             if (BinkPlayerLauncher.SupportsBink2(playerExecutable))
             {
                 _playerExecutable = playerExecutable;
@@ -72,7 +71,7 @@ public partial class MoviePickerDialog : Window
         SearchTextBox.IsEnabled = false;
         CatalogStatusTextBlock.Text = $"Finding {_game} movies...";
         PreviewStatusTextBlock.Text = _playerExecutable is null
-            ? "A Bink 2-capable RAD player was not found. Configure Bink2ForUnreal.exe or a current RAD Video Tools player in Settings > Export Loaders to enable previews."
+            ? "The bundled Bink2ForUnreal player is unavailable. Reinstall Legendary Explorer to restore movie previews."
             : "Select a movie to preview it.";
 
         try
@@ -146,7 +145,7 @@ public partial class MoviePickerDialog : Window
 
         if (_playerExecutable is null)
         {
-            PreviewStatusTextBlock.Text = "Preview unavailable: configure Bink2ForUnreal.exe or a current RAD Video Tools player in Settings > Export Loaders.";
+            PreviewStatusTextBlock.Text = "The bundled Bink2ForUnreal player is unavailable. Reinstall Legendary Explorer to restore movie previews.";
             return;
         }
 

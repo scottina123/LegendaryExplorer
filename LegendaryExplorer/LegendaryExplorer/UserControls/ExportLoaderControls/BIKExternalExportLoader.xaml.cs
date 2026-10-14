@@ -10,7 +10,6 @@ using System.Windows.Input;
 using System.Windows.Threading;
 using LegendaryExplorer.Dialogs;
 using LegendaryExplorer.Misc;
-using LegendaryExplorer.Misc.AppSettings;
 using LegendaryExplorer.SharedUI;
 using LegendaryExplorer.SharedUI.Controls;
 using LegendaryExplorerCore.GameFilesystem;
@@ -101,7 +100,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             {
                 if (!ExternalPlayerSupportsBink2)
                 {
-                    return "Bink 2 playback requires a current RAD Video Tools player. Configure RADVideo64.exe or Bink2ForUnreal.exe in Settings > Export Loaders.";
+                    return "The bundled Bink2ForUnreal player is unavailable. Reinstall Legendary Explorer to restore Bink 2 playback.";
                 }
 
                 if (_bink2PlaybackError != null)
@@ -324,7 +323,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         {
             try
             {
-                RADExecutableLocation = BinkPlayerLauncher.FindExecutable(Settings.BIKExternal_BinkPlayerPath);
+                RADExecutableLocation = BinkPlayerLauncher.FindExecutable();
                 RADIsInstalled = RADExecutableLocation != null;
                 ExternalPlayerSupportsBink2 = BinkPlayerLauncher.SupportsBink2(RADExecutableLocation);
             }

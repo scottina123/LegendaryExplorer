@@ -9,7 +9,7 @@ using System.Windows.Forms;
 namespace LegendaryExplorer.Misc;
 
 /// <summary>
-/// Hosts the native window created by a user-installed Bink player inside a WinForms viewport.
+/// Hosts the native window created by the Bink player inside a WinForms viewport.
 /// The player remains a separate process because RAD's decoder cannot be redistributed with LEX.
 /// </summary>
 internal sealed partial class EmbeddedBinkPlayerHost : IDisposable
