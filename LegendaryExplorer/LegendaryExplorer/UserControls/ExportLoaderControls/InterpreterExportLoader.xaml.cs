@@ -242,6 +242,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             Interpreter_TreeView.PreviewMouseDown += PropertyTree_UserInput;
             Interpreter_TreeView.PreviewMouseWheel += PropertyTree_UserInput;
             Interpreter_TreeView.PreviewKeyDown += PropertyTree_UserInput;
+            Unloaded += InterpreterVoAudio_Unloaded;
             HideTopSelector = Settings.Interpreter_HideTopSelector;
             Settings.StaticPropertyChanged += SettingChanged;
             EditorSetElements.Add(Value_TextBox); //str, strref, int, float, obj
@@ -463,6 +464,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             GoToFemaleVoEventCommand = CreateVoTrackNavigationCommand(isFemale: true, stream: false);
             GoToMaleVoStreamCommand = CreateVoTrackNavigationCommand(isFemale: false, stream: true);
             GoToFemaleVoStreamCommand = CreateVoTrackNavigationCommand(isFemale: true, stream: true);
+            LoadVoAudioPlaybackCommands();
             OpenInPackageEditorCommand = new GenericCommand(OpenInPackageEditor, ObjectPropertyExportIsSelected);
             AttemptOpenImportDefinitionCommand = new GenericCommand(AttemptOpenImport, ObjectPropertyImportIsSelected);
             OpenPlotElementCommand = new GenericCommand(OpenPlotElement, CanOpenPlotElement);
@@ -1829,6 +1831,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         /// </summary>
         public override void UnloadExport()
         {
+            ClearVoAudioPreview();
             pendingPropertyDataReload?.Abort();
             pendingPropertyDataReload = null;
             CancelPendingPropertyTreeRestores();
@@ -1863,6 +1866,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         private void LoadExportInternal(ExportEntry export, PropertyCollection overrideProperties)
         {
+            ClearVoAudioPreview();
             pendingPropertyDataReload?.Abort();
             pendingPropertyDataReload = null;
             CancelPendingPropertyTreeRestores();
@@ -6160,6 +6164,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         public override void Dispose()
         {
+            DisposeVoAudioPreview();
             pendingPropertyDataReload?.Abort();
             pendingPropertyDataReload = null;
             CancelPendingPropertyTreeRestores();
@@ -7018,8 +7023,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         private bool IsObjectProperty => Property is ObjectProperty;
         private bool IsEnumProperty => Property is EnumProperty;
         public bool IsStringRefProperty => InterpreterExportLoader.IsTlkStringRefProperty(Property, UPParent?.Property);
-        public bool ShowVoTrackAudioNavigation => UPParent?.Property == null
-                                                  && VoTrackAudioNavigation.IsTrackStringRef(AttachedExport, Property);
+        public bool ShowVoTrackAudioNavigation => VoTrackAudioNavigation.IsTrackStringRef(AttachedExport, Property, UPParent?.Property)
+                                                  && (AttachedExport.ClassName != "BioEvtSysTrackVOElements" || UPParent?.Property == null);
 
         public bool IsInlineEditable => Property is FloatProperty or IntProperty or StringRefProperty or StrProperty or NameProperty or EnumProperty;
         public bool IsGuidProperty => Property is StructProperty { IsImmutable: true, StructType: "Guid" };

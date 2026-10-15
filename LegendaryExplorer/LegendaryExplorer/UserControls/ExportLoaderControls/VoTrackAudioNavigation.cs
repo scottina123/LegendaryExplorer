@@ -4,15 +4,18 @@ using System.Linq;
 using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.Sound.Wwise;
 using LegendaryExplorerCore.Unreal;
+using LegendaryExplorerCore.Unreal.ObjectInfo;
 
 namespace LegendaryExplorer.UserControls.ExportLoaderControls;
 
 internal static class VoTrackAudioNavigation
 {
-    internal static bool IsTrackStringRef(ExportEntry export, Property property) =>
+    internal static bool IsTrackStringRef(ExportEntry export, Property property, Property parentProperty = null) =>
         IsWwiseVoTrack(export)
         && property is IntProperty or StringRefProperty
-        && property.Name.Name == "m_nStrRefID";
+        && (export.ClassName == "BioEvtSysTrackVOElements" && property.Name.Name == "m_nStrRefID"
+            || IsFaceOnlyVoTrack(export) && property.Name.Name == "nLineStrRef"
+            && parentProperty is StructProperty { StructType: "BioFOVOTrackData" });
 
     /// <summary>
     /// Resolves a gendered dialogue play event or audio stream in the track's package.
@@ -67,8 +70,11 @@ internal static class VoTrackAudioNavigation
     }
 
     private static bool IsWwiseVoTrack(ExportEntry export) =>
-        export?.ClassName == "BioEvtSysTrackVOElements"
-        && export.Game is MEGame.ME2 or MEGame.ME3 or MEGame.LE2 or MEGame.LE3;
+        export != null
+        && export.Game is MEGame.ME2 or MEGame.ME3 or MEGame.LE2 or MEGame.LE3
+        && (export.ClassName == "BioEvtSysTrackVOElements" || IsFaceOnlyVoTrack(export));
+
+    private static bool IsFaceOnlyVoTrack(ExportEntry export) => export.IsA("SFXInterpTrackPlayFaceOnlyVO");
 
     private static bool MatchesPlayEventName(string name, int stringRef, bool isFemale)
     {

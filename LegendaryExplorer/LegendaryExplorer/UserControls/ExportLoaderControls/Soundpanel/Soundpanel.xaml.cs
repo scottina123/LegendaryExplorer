@@ -507,7 +507,10 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     return;
                 }
 
-                PopulateNavigationTargets(requestedExport, exportEntry);
+                if (!MiniPlayerMode)
+                {
+                    PopulateNavigationTargets(requestedExport, exportEntry);
+                }
 
                 if (exportEntry.ClassName == "WwiseStream")
                 {
@@ -802,6 +805,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             waveformImage.Source = null;
             ClearNavigationTargets();
             HircWwiseStreamPlaybackSource = null;
+            CachedStreamSource = null;
+            wwiseStream = null;
             CurrentLoadedExport = null;
         }
 

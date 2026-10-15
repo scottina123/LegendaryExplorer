@@ -143,6 +143,9 @@ public class InterpreterVoTrackNavigationTests
         view.RefreshLayout();
 
         Assert.IsFalse(node.ShowVoTrackAudioNavigation);
+        Assert.AreEqual(0, view.PlayButtons(node).Length);
+        Assert.IsFalse(view.Interpreter.PlayMaleVoAudioCommand.CanExecute(node));
+        Assert.IsFalse(view.Interpreter.PlayFemaleVoAudioCommand.CanExecute(node));
         foreach ((RelayCommand command, _, bool isFemale, bool isStream) in Actions(view.Interpreter))
         {
             Assert.IsFalse(command.CanExecute(node));
@@ -219,6 +222,171 @@ public class InterpreterVoTrackNavigationTests
         CollectionAssert.AreEqual(targets.Cast<IEntry>().Concat(targets).ToArray(), newWindows);
     });
 
+    [TestMethod]
+    public void PlayAudioMenuUsesTheClickedRowsCommittedStringRefAndGenderCommands() => RunOnSta(() =>
+    {
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("InterpreterVoTrackPlayback.pcc", MEGame.LE3);
+        ExportEntry track = CreateTrack(package);
+        ExportEntry[] audio = CreateAudio(package);
+        byte[] originalData = track.Data.ToArray();
+        InitializeApplicationResources();
+        var previewedAudio = new List<IEntry>();
+        var interpreter = new InterpreterExportLoader
+        {
+            VoAudioPreviewCommand = new RelayCommand(audio => previewedAudio.Add((IEntry)audio))
+        };
+        using var view = new InterpreterTestView(track, _ => Assert.Fail("Playback must not navigate."), interpreter: interpreter);
+        UPropertyTreeViewEntry node = view.Node("m_nStrRefID");
+        view.Interpreter.TreeSelectedItem = view.Node("UnrelatedSelection");
+        view.Interpreter.SelectedItem = view.Node("UnrelatedSelection");
+        view.RefreshLayout();
+        TextBox valueEditor = FindVisualDescendants<TextBox>(interpreter)
+            .Single(textBox => ReferenceEquals(textBox.Tag, node) && textBox.MinWidth == 80);
+
+        foreach (string stagedValue in new[] { "12345678", "invalid" })
+        {
+            valueEditor.Text = stagedValue;
+            view.RefreshLayout();
+            InvokePlayMenu(view, node);
+            Assert.AreEqual(StringRef, ((IntProperty)node.Property).Value);
+            Assert.AreEqual(StringRef, track.GetProperty<IntProperty>("m_nStrRefID").Value);
+            CollectionAssert.AreEqual(originalData, track.Data);
+        }
+
+        CollectionAssert.AreEqual(new IEntry[] { audio[2], audio[3], audio[2], audio[3] }, previewedAudio);
+    });
+
+    [DataTestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public void SingleOrSharedVoicePlaysImmediatelyAndMissingVoicesDisablePlayback(bool sharedVoice) => RunOnSta(() =>
+    {
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("InterpreterSingleVoTrackPlayback.pcc", MEGame.LE3);
+        ExportEntry track = CreateTrack(package);
+        ExportEntry stream = package.CreateExport($"scene_{StringRef}_m_wav", "WwiseStream", indexed: false);
+        CreateEvent(package, $"VO_{StringRef}_m_Play", stream);
+        if (sharedVoice)
+        {
+            CreateEvent(package, $"VO_{StringRef}_f_Play", stream);
+        }
+        ExportEntry missingTrack = package.CreateExport("MissingTrack", "BioEvtSysTrackVOElements", indexed: false);
+        missingTrack.WriteProperty(new IntProperty(99999999, "m_nStrRefID"));
+        InitializeApplicationResources();
+        var previewedAudio = new List<IEntry>();
+        var interpreter = new InterpreterExportLoader
+        {
+            VoAudioPreviewCommand = new RelayCommand(audio => previewedAudio.Add((IEntry)audio))
+        };
+        using var view = new InterpreterTestView(track, _ => Assert.Fail("Playback must not navigate."), interpreter: interpreter);
+        UPropertyTreeViewEntry node = view.Node("m_nStrRefID");
+        view.Interpreter.TreeSelectedItem = view.Node("UnrelatedSelection");
+        view.RefreshLayout();
+        Button play = view.PlayButtons(node).Single();
+
+        Assert.AreEqual("Play audio", play.Content);
+        Assert.IsTrue(play.IsEnabled);
+        Assert.IsTrue(interpreter.PlayMaleVoAudioCommand.CanExecute(node));
+        Assert.AreEqual(sharedVoice, interpreter.PlayFemaleVoAudioCommand.CanExecute(node));
+        InvokeButton(play);
+        CollectionAssert.AreEqual(new IEntry[] { stream }, previewedAudio);
+        Assert.IsTrue(play.ContextMenu is null || !play.ContextMenu.IsOpen);
+
+        interpreter.LoadExport(missingTrack);
+        view.ExpandAll();
+        UPropertyTreeViewEntry missing = view.Node("m_nStrRefID");
+        interpreter.TreeSelectedItem = null;
+        interpreter.SelectedItem = null;
+        view.RefreshLayout();
+        Button disabledPlay = view.PlayButtons(missing).Single();
+        Assert.IsFalse(disabledPlay.IsEnabled);
+        Assert.IsFalse(interpreter.PlayMaleVoAudioCommand.CanExecute(missing));
+        Assert.IsFalse(interpreter.PlayFemaleVoAudioCommand.CanExecute(missing));
+        interpreter.PlayVoAudioCommand.Execute(disabledPlay);
+        interpreter.PlayMaleVoAudioCommand.Execute(missing);
+        interpreter.PlayFemaleVoAudioCommand.Execute(missing);
+        // Reusing a row from a previously loaded export must not play its old voice.
+        Assert.IsFalse(interpreter.PlayMaleVoAudioCommand.CanExecute(node));
+        Assert.IsFalse(interpreter.PlayFemaleVoAudioCommand.CanExecute(node));
+        interpreter.PlayMaleVoAudioCommand.Execute(node);
+        interpreter.PlayFemaleVoAudioCommand.Execute(node);
+        CollectionAssert.AreEqual(new IEntry[] { stream }, previewedAudio);
+    });
+
+    [TestMethod]
+    public void FaceOnlyVoLinesExposeNavigationAndPlaybackForEachRowsOwnStringRef() => RunOnSta(() =>
+    {
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("InterpreterFaceOnlyVoPlayback.pcc", MEGame.LE3);
+        ExportEntry track = package.CreateExport("Track", "SFXInterpTrackPlayFaceOnlyVO", indexed: false);
+        var properties = new PropertyCollection
+        {
+            new ArrayProperty<StructProperty>("m_aFOVOKeys")
+            {
+                CreateFaceOnlyVoKey(StringRef),
+                CreateFaceOnlyVoKey(StringRef + 1)
+            },
+            new IntProperty(42, "UnrelatedSelection")
+        };
+        track.WriteProperties(properties);
+        ExportEntry[][] targets = [CreateAudio(package), CreateAudio(package, StringRef + 1)];
+        byte[] originalData = track.Data.ToArray();
+        var navigated = new List<IEntry>();
+        InitializeApplicationResources();
+        var previewedAudio = new List<IEntry>();
+        var interpreter = new InterpreterExportLoader
+        {
+            VoAudioPreviewCommand = new RelayCommand(audio => previewedAudio.Add((IEntry)audio))
+        };
+        using var view = new InterpreterTestView(track, entry => navigated.Add((IEntry)entry),
+            interpreter: interpreter, properties: properties);
+        interpreter.TreeSelectedItem = view.Node("UnrelatedSelection");
+        interpreter.SelectedItem = view.Node("UnrelatedSelection");
+        view.ExpandAll();
+        UPropertyTreeViewEntry[] lines = view.AllNodes().Where(node => node.Property?.Name.Name == "nLineStrRef").ToArray();
+        Assert.AreEqual(2, lines.Length);
+
+        for (int i = 0; i < lines.Length; i++)
+        {
+            UPropertyTreeViewEntry node = lines[i];
+            Assert.IsTrue(node.ShowVoTrackAudioNavigation);
+            TextBox valueEditor = FindVisualDescendants<TextBox>(interpreter)
+                .Single(textBox => ReferenceEquals(textBox.Tag, node) && textBox.MinWidth == 80);
+            valueEditor.Text = "12345678";
+            view.RefreshLayout();
+            foreach ((RelayCommand command, string label, _, _) in Actions(interpreter))
+            {
+                Button button = view.AudioButtons(node, command).Single();
+                Assert.AreEqual(label, button.Content);
+                Assert.IsTrue(button.IsEnabled);
+                InvokeButton(button);
+            }
+            InvokePlayMenu(view, node);
+            Assert.AreEqual(StringRef + i, ((IntProperty)node.Property).Value);
+        }
+
+        foreach (UPropertyTreeViewEntry node in view.AllNodes().Where(node =>
+                     node.Property?.Name.Name is "srActorNameOverride" or "pConversation"))
+        {
+            Assert.IsFalse(node.ShowVoTrackAudioNavigation);
+            Assert.AreEqual(0, view.PlayButtons(node).Length);
+            foreach ((RelayCommand command, _, _, _) in Actions(interpreter))
+            {
+                Assert.AreEqual(0, view.AudioButtons(node, command).Length);
+            }
+            Assert.IsFalse(interpreter.PlayMaleVoAudioCommand.CanExecute(node));
+            Assert.IsFalse(interpreter.PlayFemaleVoAudioCommand.CanExecute(node));
+        }
+        CollectionAssert.AreEqual(targets.SelectMany(entries => entries.Cast<IEntry>()).ToArray(), navigated);
+        CollectionAssert.AreEqual(targets.SelectMany(entries => entries.Skip(2).Cast<IEntry>()).ToArray(), previewedAudio);
+        CollectionAssert.AreEqual(originalData, track.Data);
+    });
+
+    private static StructProperty CreateFaceOnlyVoKey(int stringRef) => new("BioFOVOTrackData", new PropertyCollection
+    {
+        new IntProperty(stringRef, "nLineStrRef"),
+        new StringRefProperty(StringRef, "srActorNameOverride"),
+        new ObjectProperty(0, "pConversation")
+    });
+
     private static ExportEntry CreateTrack(IMEPackage package)
     {
         ExportEntry track = package.CreateExport("Track", "BioEvtSysTrackVOElements", indexed: false);
@@ -230,12 +398,12 @@ public class InterpreterVoTrackNavigationTests
         return track;
     }
 
-    private static ExportEntry[] CreateAudio(IMEPackage package)
+    private static ExportEntry[] CreateAudio(IMEPackage package, int stringRef = StringRef)
     {
-        ExportEntry maleStream = package.CreateExport($"scene_{StringRef}_m_wav", "WwiseStream", indexed: false);
-        ExportEntry femaleStream = package.CreateExport($"scene_{StringRef}_f_wav", "WwiseStream", indexed: false);
-        ExportEntry maleEvent = CreateEvent(package, $"VO_{StringRef}_m_Play", maleStream);
-        ExportEntry femaleEvent = CreateEvent(package, $"VO_{StringRef}_f_Play", femaleStream);
+        ExportEntry maleStream = package.CreateExport($"scene_{stringRef}_m_wav", "WwiseStream", indexed: false);
+        ExportEntry femaleStream = package.CreateExport($"scene_{stringRef}_f_wav", "WwiseStream", indexed: false);
+        ExportEntry maleEvent = CreateEvent(package, $"VO_{stringRef}_m_Play", maleStream);
+        ExportEntry femaleEvent = CreateEvent(package, $"VO_{stringRef}_f_Play", femaleStream);
         return [maleEvent, femaleEvent, maleStream, femaleStream];
     }
 
@@ -314,6 +482,37 @@ public class InterpreterVoTrackNavigationTests
         FlushDispatcher();
     }
 
+    private static void InvokePlayMenu(InterpreterTestView view, UPropertyTreeViewEntry node)
+    {
+        Button button = view.PlayButtons(node).Single();
+        Assert.AreEqual("Play audio", button.Content);
+        Assert.IsTrue(button.IsEnabled);
+        Assert.AreSame(button, button.CommandParameter);
+        InvokeButton(button);
+        ContextMenu menu = button.ContextMenu;
+        Assert.IsNotNull(menu);
+        try
+        {
+            Assert.IsTrue(menu.IsOpen);
+            MenuItem[] items = menu.Items.OfType<MenuItem>().ToArray();
+            Assert.AreEqual(2, items.Length);
+            CollectionAssert.AreEqual(new[] { "Play male audio", "Play female audio" },
+                items.Select(item => (string)item.Header).ToArray());
+            CollectionAssert.AreEqual(new[] { view.Interpreter.PlayMaleVoAudioCommand, view.Interpreter.PlayFemaleVoAudioCommand },
+                items.Select(item => item.Command).ToArray());
+            foreach (MenuItem item in items)
+            {
+                Assert.AreSame(node, item.CommandParameter);
+                Assert.IsTrue(item.Command.CanExecute(item.CommandParameter));
+                item.Command.Execute(item.CommandParameter);
+            }
+        }
+        finally
+        {
+            menu.IsOpen = false;
+        }
+    }
+
     private static void FlushDispatcher() => Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
 
     private sealed class InterpreterTestView : IDisposable
@@ -321,22 +520,21 @@ public class InterpreterVoTrackNavigationTests
         private readonly Window window;
         public InterpreterExportLoader Interpreter { get; }
 
-        public InterpreterTestView(ExportEntry export, Action<object> navigate, Action<object> newWindow = null)
+        public InterpreterTestView(ExportEntry export, Action<object> navigate, Action<object> newWindow = null,
+            InterpreterExportLoader interpreter = null, PropertyCollection properties = null)
         {
             InitializeApplicationResources();
-            Interpreter = new InterpreterExportLoader
-            {
-                ReloadPropertyDataAfterWrite = false,
-                NavigateToEntryCommand = navigate is null ? null : new RelayCommand(navigate),
-                OpenEntryInNewWindowCommand = newWindow is null ? null : new RelayCommand(newWindow)
-            };
+            Interpreter = interpreter ?? new InterpreterExportLoader();
+            Interpreter.ReloadPropertyDataAfterWrite = false;
+            Interpreter.NavigateToEntryCommand = navigate is null ? null : new RelayCommand(navigate);
+            Interpreter.OpenEntryInNewWindowCommand = newWindow is null ? null : new RelayCommand(newWindow);
             window = new Window
             {
                 Content = Interpreter, Width = 1500, Height = 700,
                 ShowActivated = false, ShowInTaskbar = false, Left = -10000, Top = -10000
             };
             window.Show();
-            Interpreter.LoadExport(export);
+            Interpreter.LoadExport(export, properties);
             Interpreter.PropertyNodes[0].IsExpanded = true;
             RefreshLayout();
         }
@@ -348,6 +546,26 @@ public class InterpreterVoTrackNavigationTests
             .Where(button => button.IsVisible && ReferenceEquals(button.Command, command)
                 && ReferenceEquals(button.CommandParameter, node)).ToArray();
 
+        public Button[] PlayButtons(UPropertyTreeViewEntry node) => FindVisualDescendants<Button>(Interpreter)
+            .Where(button => button.IsVisible && ReferenceEquals(button.Command, Interpreter.PlayVoAudioCommand)
+                && ReferenceEquals(button.DataContext, node)).ToArray();
+
+        public IEnumerable<UPropertyTreeViewEntry> AllNodes() => Interpreter.PropertyNodes.SelectMany(DescendantsAndSelf);
+
+        private static IEnumerable<UPropertyTreeViewEntry> DescendantsAndSelf(UPropertyTreeViewEntry node)
+        {
+            yield return node;
+            foreach (UPropertyTreeViewEntry child in node.ChildrenProperties.SelectMany(DescendantsAndSelf))
+                yield return child;
+        }
+
+        public void ExpandAll()
+        {
+            foreach (UPropertyTreeViewEntry node in AllNodes())
+                node.IsExpanded = true;
+            RefreshLayout();
+        }
+
         public void RefreshLayout()
         {
             FlushDispatcher();
@@ -356,6 +574,11 @@ public class InterpreterVoTrackNavigationTests
 
         public void Dispose()
         {
+            foreach (Button button in FindVisualDescendants<Button>(Interpreter))
+            {
+                if (button.ContextMenu is { } menu)
+                    menu.IsOpen = false;
+            }
             window.Close();
             Interpreter.Dispose();
         }

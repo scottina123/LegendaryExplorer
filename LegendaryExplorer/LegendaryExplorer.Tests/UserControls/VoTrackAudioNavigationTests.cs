@@ -31,10 +31,56 @@ public class VoTrackAudioNavigationTests
         Assert.AreEqual(supported, VoTrackAudioNavigation.IsTrackStringRef(track, new IntProperty(42, "m_nStrRefID")));
         Assert.AreEqual(supported, VoTrackAudioNavigation.IsTrackStringRef(track, new StringRefProperty(42, "m_nStrRefID")));
         Assert.IsFalse(VoTrackAudioNavigation.IsTrackStringRef(track, new IntProperty(42, "OtherStringRef")));
+        Assert.IsFalse(VoTrackAudioNavigation.IsTrackStringRef(track, new IntProperty(42, "nLineStrRef"),
+            new StructProperty("BioFOVOTrackData", new PropertyCollection(), "TrackData")));
         Assert.IsFalse(VoTrackAudioNavigation.IsTrackStringRef(track, new FloatProperty(42, "m_nStrRefID")));
         Assert.IsFalse(VoTrackAudioNavigation.IsTrackStringRef(other, new IntProperty(42, "m_nStrRefID")));
         Assert.IsFalse(VoTrackAudioNavigation.IsTrackStringRef(null, new IntProperty(42, "m_nStrRefID")));
         Assert.IsFalse(VoTrackAudioNavigation.IsTrackStringRef(track, null));
+    }
+
+    [TestMethod]
+    [DataRow(MEGame.ME1, false)]
+    [DataRow(MEGame.ME2, true)]
+    [DataRow(MEGame.ME3, true)]
+    [DataRow(MEGame.LE1, false)]
+    [DataRow(MEGame.LE2, true)]
+    [DataRow(MEGame.LE3, true)]
+    public void FaceOnlyVoActionsRequireLineStringReferenceInsideTrackData(MEGame game, bool supported)
+    {
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("FaceOnlyVoScope.pcc", game);
+        ExportEntry track = package.CreateExport("Track", "SFXInterpTrackPlayFaceOnlyVO", indexed: false);
+        var trackData = new StructProperty("BioFOVOTrackData", new PropertyCollection(), "TrackData");
+        var wrongStruct = new StructProperty("OtherTrackData", new PropertyCollection(), "TrackData");
+
+        Assert.AreEqual(supported, VoTrackAudioNavigation.IsTrackStringRef(track, new IntProperty(42, "nLineStrRef"), trackData));
+        Assert.AreEqual(supported, VoTrackAudioNavigation.IsTrackStringRef(track, new StringRefProperty(42, "nLineStrRef"), trackData));
+        Assert.IsFalse(VoTrackAudioNavigation.IsTrackStringRef(track, new IntProperty(42, "nLineStrRef")));
+        Assert.IsFalse(VoTrackAudioNavigation.IsTrackStringRef(track, new IntProperty(42, "nLineStrRef"), wrongStruct));
+        Assert.IsFalse(VoTrackAudioNavigation.IsTrackStringRef(track, new IntProperty(42, "nLineStrRef"), new IntProperty(0, "TrackData")));
+        Assert.IsFalse(VoTrackAudioNavigation.IsTrackStringRef(track, new StringRefProperty(42, "srActorNameOverride"), trackData));
+        Assert.IsFalse(VoTrackAudioNavigation.IsTrackStringRef(track, new IntProperty(42, "m_nStrRefID"), trackData));
+        Assert.IsFalse(VoTrackAudioNavigation.IsTrackStringRef(track, new FloatProperty(42, "nLineStrRef"), trackData));
+    }
+
+    [TestMethod]
+    [DataRow(MEGame.ME2, false)]
+    [DataRow(MEGame.ME3, false)]
+    [DataRow(MEGame.LE2, true)]
+    [DataRow(MEGame.LE3, true)]
+    public void FaceOnlyVoTrackResolvesGenderedEventAndStream(MEGame game, bool female)
+    {
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("FaceOnlyVoNavigation.pcc", game);
+        ExportEntry track = package.CreateExport("Track", "SFXInterpTrackPlayFaceOnlyVO", indexed: false);
+        string gender = female ? "f" : "m";
+        ExportEntry stream = package.CreateExport($"player_00000042_{gender}_wav", "WwiseStream", indexed: false);
+        ExportEntry wwiseEvent = package.CreateExport($"VO_42_{gender}_Play", "WwiseEvent", indexed: false);
+        WriteBinaryReferences(wwiseEvent, stream);
+
+        Assert.AreSame(wwiseEvent, VoTrackAudioNavigation.FindAudioEntry(track, 42, female, stream: false));
+        Assert.AreSame(stream, VoTrackAudioNavigation.FindAudioEntry(track, 42, female, stream: true));
+        Assert.IsNull(VoTrackAudioNavigation.FindAudioEntry(track, 42, !female, stream: false));
+        Assert.IsNull(VoTrackAudioNavigation.FindAudioEntry(track, 42, !female, stream: true));
     }
 
     [TestMethod]
@@ -241,11 +287,14 @@ public class VoTrackAudioNavigationTests
     {
         using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("VoTrackUnsupportedGame.pcc", game);
         ExportEntry track = CreateTrack(package);
+        ExportEntry faceOnlyTrack = package.CreateExport("FaceOnlyTrack", "SFXInterpTrackPlayFaceOnlyVO", indexed: false);
         CreateImport(package, "VO_42_m_Play", "WwiseEvent");
         CreateImport(package, "player_00000042_m_wav", "WwiseStream");
 
         Assert.IsNull(VoTrackAudioNavigation.FindAudioEntry(track, 42, isFemale: false, stream: false));
         Assert.IsNull(VoTrackAudioNavigation.FindAudioEntry(track, 42, isFemale: false, stream: true));
+        Assert.IsNull(VoTrackAudioNavigation.FindAudioEntry(faceOnlyTrack, 42, isFemale: false, stream: false));
+        Assert.IsNull(VoTrackAudioNavigation.FindAudioEntry(faceOnlyTrack, 42, isFemale: false, stream: true));
     }
 
     [TestMethod]

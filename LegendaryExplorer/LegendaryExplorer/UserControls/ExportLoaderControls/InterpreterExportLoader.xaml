@@ -34,6 +34,9 @@
         </DataTemplate>
         <DataTemplate x:Key="VoTrackAudioActionsTemplate">
             <StackPanel Orientation="Horizontal" Visibility="{Binding ShowVoTrackAudioNavigation, Converter={StaticResource BoolToVisibilityConverter}, FallbackValue=Collapsed}">
+                <Button Margin="5,0,0,0" Padding="8,0" Content="Play audio" CommandParameter="{Binding RelativeSource={RelativeSource Self}}"
+                        Command="{Binding PlayVoAudioCommand, RelativeSource={RelativeSource AncestorType=global:InterpreterExportLoader}}"
+                        ToolTip="Play this line without leaving the track. Choose male or female audio when both are available." ToolTipService.ShowOnDisabled="True"/>
                 <Button Margin="5,0,0,0" Padding="8,0" Content="Male event" CommandParameter="{Binding}"
                         Command="{Binding GoToMaleVoEventCommand, RelativeSource={RelativeSource AncestorType=global:InterpreterExportLoader}}"
                         ToolTip="Go to this line's male WwiseEvent in this package. Shift-click opens a new Package Editor. Disabled when no unique match is available." ToolTipService.ShowOnDisabled="True"/>
@@ -266,6 +269,17 @@
                 <TextBlock Name="StatusBar_LeftMostText" Text="Nothing selected"/>
             </StatusBarItem>
         </StatusBar>
+        <Border x:Name="VoAudioPreviewBorder" DockPanel.Dock="Bottom" Visibility="Collapsed" Padding="6"
+                BorderThickness="0,1,0,0" BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}">
+            <DockPanel>
+                <DockPanel DockPanel.Dock="Top">
+                    <Button DockPanel.Dock="Right" Content="Close preview" Padding="8,0" Margin="5,0,0,0" Command="{Binding StopVoAudioPreviewCommand}"/>
+                    <TextBlock x:Name="VoAudioPreviewDescription" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                </DockPanel>
+                <TextBlock x:Name="VoAudioPreviewStatus" DockPanel.Dock="Top" Margin="0,3,0,0" TextWrapping="Wrap" Visibility="Collapsed"/>
+                <ContentControl x:Name="VoAudioPreviewHost"/>
+            </DockPanel>
+        </Border>
         <Grid Margin="0,1,0,-1">
             <Grid.RowDefinitions>
                 <RowDefinition Height="*"/>
