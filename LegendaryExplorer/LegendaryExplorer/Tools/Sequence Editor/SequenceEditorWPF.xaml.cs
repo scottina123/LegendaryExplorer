@@ -270,7 +270,6 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
 
         private SavedViewData SavedView;
         private PointF? backgroundContextMenuGraphLocation;
-        private PointF? pendingNewObjectPosition;
         private List<CopiedInputConnection> copiedInputConnections;
         private string copiedInputConnectionsSourceFilePath;
         private List<CopiedOutputConnection> copiedOutputConnections;
@@ -1273,14 +1272,14 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             }
         }
 
-        private async void CreateNewObject(ClassInfo info)
+        private void CreateNewObject(ClassInfo info) => CreateNewObject(info, GetNewObjectPosition());
+
+        private async void CreateNewObject(ClassInfo info, PointF creationPosition)
         {
             if (SelectedSequence == null)
             {
                 return;
             }
-
-            PointF creationPosition = ConsumePendingNewObjectPosition();
 
             int? randomSwitchLinkCount = null;
             if (info.ClassName == "SeqAct_RandomSwitch")
@@ -2491,6 +2490,12 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
 
                 foreach (SObj obj in CurrentObjects)
                 {
+                    if (customSaveData.TryGetValue(obj.UIndex, out PointF creationPosition))
+                    {
+                        obj.Layout(creationPosition.X, creationPosition.Y);
+                        continue;
+                    }
+
                     if (!forceAutoLayout && UseSavedViews)
                     {
                         if (SavedView.Positions.TryGetValue(obj.UIndex, out PointF savedInfo))
@@ -2750,18 +2755,19 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                 return;
             }
 
+            PointF creationPosition = backgroundContextMenuGraphLocation ?? GetNewObjectPosition();
             contextMenu.Items.Clear();
-            contextMenu.Items.Add(CreateBackContextMenuItem("Add Existing Object", AddObject_Clicked,
+            contextMenu.Items.Add(CreateBackContextMenuItem("Add Existing Object", (_, _) => AddExistingObject(creationPosition),
                 "Add existing Sequence Object to this Sequence"));
-            contextMenu.Items.Add(CreateBackContextMenuItem("Create Empty Subsequence", CreateEmptySubsequence_Clicked,
+            contextMenu.Items.Add(CreateBackContextMenuItem("Create Empty Subsequence", (menuSender, _) => CreateEmptySubsequence(menuSender, creationPosition),
                 "Create a new empty child sequence under the current sequence"));
             contextMenu.Items.Add(new Separator());
-            contextMenu.Items.Add(CreateQuickCreateMenu("Events", QuickCreateEventEntries));
-            contextMenu.Items.Add(CreateQuickCreateMenu("Actions", QuickCreateActionEntries));
-            contextMenu.Items.Add(CreateQuickCreateMenu("Conversation Actions", QuickCreateConversationActionEntries));
-            contextMenu.Items.Add(CreateQuickCreateMenu("Plot Actions", QuickCreatePlotActionEntries));
-            contextMenu.Items.Add(CreateQuickCreateMenu("Conditionals", QuickCreateConditionalEntries));
-            contextMenu.Items.Add(CreateQuickCreateMenu("Variables", QuickCreateVariableEntries));
+            contextMenu.Items.Add(CreateQuickCreateMenu("Events", QuickCreateEventEntries, creationPosition));
+            contextMenu.Items.Add(CreateQuickCreateMenu("Actions", QuickCreateActionEntries, creationPosition));
+            contextMenu.Items.Add(CreateQuickCreateMenu("Conversation Actions", QuickCreateConversationActionEntries, creationPosition));
+            contextMenu.Items.Add(CreateQuickCreateMenu("Plot Actions", QuickCreatePlotActionEntries, creationPosition));
+            contextMenu.Items.Add(CreateQuickCreateMenu("Conditionals", QuickCreateConditionalEntries, creationPosition));
+            contextMenu.Items.Add(CreateQuickCreateMenu("Variables", QuickCreateVariableEntries, creationPosition));
             contextMenu.Items.Add(new Separator());
             contextMenu.Items.Add(CreateBackContextMenuItem("Open floating toolbox", OpenFloatingToolbox_Click,
                 "Open the sequence toolbox in a separate floating window at the clicked viewport location"));
@@ -2853,7 +2859,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             return null;
         }
 
-        private MenuItem CreateQuickCreateMenu(string header, IEnumerable<QuickCreateMenuEntry> entries)
+        private MenuItem CreateQuickCreateMenu(string header, IEnumerable<QuickCreateMenuEntry> entries, PointF creationPosition)
         {
             var menuItem = new MenuItem { Header = header };
             var availableEntries = entries
@@ -2874,17 +2880,14 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
 
             foreach (var item in availableEntries)
             {
-                menuItem.Items.Add(new MenuItem
+                var child = new MenuItem
                 {
                     Header = item.Entry.Header,
                     Tag = item.Info,
                     StaysOpenOnClick = true
-                });
-            }
-
-            foreach (MenuItem child in menuItem.Items)
-            {
-                child.Click += QuickCreateFromBackgroundMenu_Click;
+                };
+                child.Click += (_, _) => CreateNewObject(item.Info, creationPosition);
+                menuItem.Items.Add(child);
             }
 
             return menuItem;
@@ -2899,17 +2902,6 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             };
             menuItem.Click += clickHandler;
             return menuItem;
-        }
-
-        private void QuickCreateFromBackgroundMenu_Click(object sender, RoutedEventArgs e)
-        {
-            if (sender is not MenuItem { Tag: ClassInfo info })
-            {
-                return;
-            }
-
-            pendingNewObjectPosition = backgroundContextMenuGraphLocation;
-            CreateNewObject(info);
         }
 
         private void OpenFloatingToolbox()
@@ -3708,6 +3700,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             }
         }
 
+        // Explicit placements remain valid for this sequence session even when saved views are disabled.
         private readonly Dictionary<int, PointF> customSaveData = new();
         private bool panToSelection = true;
         private IMEPackage PackageQueuedForLoad;
@@ -3902,7 +3895,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
 
         private void saveView(bool toFile = true)
         {
-            if (CurrentObjects.Count == 0)
+            if (CurrentObjects.Count == 0 && customSaveData.Count == 0)
                 return;
             SavedView = new(new(), graphEditor.Camera.ViewBounds);
             foreach (SObj obj in CurrentObjects)
@@ -3910,6 +3903,10 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                 if (obj.Pickable)
                 {
                     SavedView.Positions[obj.UIndex] = new PointF(obj.X + obj.Offset.X, obj.Y + obj.Offset.Y);
+                    if (customSaveData.ContainsKey(obj.UIndex))
+                    {
+                        customSaveData[obj.UIndex] = SavedView.Positions[obj.UIndex];
+                    }
                 }
             }
 
@@ -3917,8 +3914,6 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             {
                 SavedView.Positions[key] = value;
             }
-
-            customSaveData.Clear();
 
             if (toFile)
             {
@@ -6869,20 +6864,12 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             }
         }
 
-        private PointF ConsumePendingNewObjectPosition()
-        {
-            if (pendingNewObjectPosition is { } pendingPosition)
-            {
-                pendingNewObjectPosition = null;
-                return pendingPosition;
-            }
-
-            return new PointF(graphEditor.Camera.ViewCenterX, graphEditor.Camera.ViewCenterY);
-        }
+        private PointF GetNewObjectPosition() =>
+            new PointF(graphEditor.Camera.ViewCenterX, graphEditor.Camera.ViewCenterY);
 
         private void addObject(ExportEntry exportToAdd, bool removeLinks = true, PointF? preferredPosition = null)
         {
-            customSaveData[exportToAdd.UIndex] = preferredPosition ?? ConsumePendingNewObjectPosition();
+            customSaveData[exportToAdd.UIndex] = preferredPosition ?? GetNewObjectPosition();
             if (SelectedSequence.IsA("SFXSceneShopGameData"))
             {
                 if (!TryAddSceneShopGroupToParentInterpData(exportToAdd))
@@ -6947,7 +6934,9 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             }
         }
 
-        private void AddObject_Clicked(object sender, RoutedEventArgs e)
+        private void AddObject_Clicked(object sender, RoutedEventArgs e) => AddExistingObject(GetNewObjectPosition());
+
+        private void AddExistingObject(PointF creationPosition)
         {
             if (EntrySelector.GetEntry<ExportEntry>(this, Pcc,
                     "Select an existing sequence or sequence object",
@@ -6967,11 +6956,14 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                     return;
                 }
 
-                addObject(exportToAdd);
+                addObject(exportToAdd, preferredPosition: creationPosition);
             }
         }
 
-        private void CreateEmptySubsequence_Clicked(object sender, RoutedEventArgs e)
+        private void CreateEmptySubsequence_Clicked(object sender, RoutedEventArgs e) =>
+            CreateEmptySubsequence(sender);
+
+        private void CreateEmptySubsequence(object sender, PointF? preferredPosition = null)
         {
             // A tree context menu belongs to the clicked row, which may differ from the viewport.
             var parentSequence = sender is MenuItem
@@ -7001,6 +6993,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                 GoToExport(parentSequence);
             }
 
+            PointF creationPosition = preferredPosition ?? GetNewObjectPosition();
             var sequenceName = PromptDialog.Prompt(this, "Enter a name for the new subsequence.",
                 "Create Empty Subsequence", "Sequence", true);
             if (string.IsNullOrWhiteSpace(sequenceName))
@@ -7009,8 +7002,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             }
 
             var newSequence = SequenceObjectCreator.CreateSequence(parentSequence, sequenceName.Trim());
-            customSaveData[newSequence.UIndex] =
-                new PointF(graphEditor.Camera.ViewCenterX, graphEditor.Camera.ViewCenterY);
+            customSaveData[newSequence.UIndex] = creationPosition;
 
             var currentSequence = parentSequence;
             SequenceExports.ClearEx();

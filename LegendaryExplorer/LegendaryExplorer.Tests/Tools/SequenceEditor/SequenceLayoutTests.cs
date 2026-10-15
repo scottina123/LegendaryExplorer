@@ -18,6 +18,9 @@ using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.Unreal;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Newtonsoft.Json;
+using Piccolo;
+using Piccolo.Event;
+using Piccolo.Util;
 
 namespace LegendaryExplorer.Tests.Tools.SequenceEditor;
 
@@ -93,6 +96,85 @@ public class SequenceLayoutTests
         }
         finally
         {
+            temporaryDirectory.Delete(recursive: true);
+        }
+    }
+
+    [STATestMethod]
+    [DataRow(true, false)]
+    [DataRow(false, false)]
+    [DataRow(true, true)]
+    [DataRow(false, true)]
+    public void ViewportQuickCreateKeepsClickedPositionAfterMenuClosesAndViewRefreshes(bool useSavedViews, bool emptySequence)
+    {
+        InitializeApplication();
+        using var settingsPersistence = new SettingsPersistenceScope();
+        using var package = MEPackageHandler.CreateMemoryEmptyPackage("ViewportCreation.pcc", MEGame.LE3);
+        var sequence = CreateSequence(package, "Main");
+        var otherSequence = CreateSequence(package, "Other");
+        var existingNode = emptySequence ? null : CreateNode(sequence, "Existing", 15000, -22000);
+        // A local class import keeps quick creation independent of installed game files.
+        package.CreateImport("Class", "SeqVar_Int");
+        var temporaryDirectory = Directory.CreateTempSubdirectory("SequenceLayoutTests-");
+        var window = CreateWindow(package, Path.Combine(temporaryDirectory.FullName, "ViewportCreation.pcc"));
+        try
+        {
+            SelectSequence(window, sequence);
+            window.UseSavedViews = useSavedViews;
+            var existingPosition = existingNode == null ? PointF.Empty : Position(window, existingNode);
+            var graph = (SequenceGraphEditor)typeof(SequenceEditorWPF)
+                .GetField("graphEditor", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(window)!;
+            graph.Camera.ViewScale = 2;
+            graph.Camera.SetViewOffset(-4000, 8000);
+            var canvasPosition = new PointF(240, 360);
+            var clickedPosition = graph.Camera.LocalToView(canvasPosition);
+            Assert.AreNotEqual(canvasPosition, clickedPosition, "The test must exercise graph-coordinate conversion.");
+            Assert.AreNotEqual(new PointF(graph.Camera.ViewCenterX, graph.Camera.ViewCenterY), clickedPosition);
+
+            var contextMenu = OpenViewportContextMenu(window, graph.Camera, canvasPosition);
+            var variableMenu = contextMenu.Items.OfType<MenuItem>().Single(item => Equals(item.Header, "Variables"));
+            var createItem = variableMenu.Items.OfType<MenuItem>().Single(item => Equals(item.Header, "SeqVarInt"));
+            contextMenu.IsOpen = false;
+            FlushDispatcher();
+            Assert.IsNull(typeof(SequenceEditorWPF)
+                .GetField("backgroundContextMenuGraphLocation", BindingFlags.Instance | BindingFlags.NonPublic)!
+                .GetValue(window), "Closing the menu must release its transient mouse position.");
+
+            // WPF may close a context menu before dispatching its item click. Moving the camera also
+            // makes a fallback to the current view center observably different from the original click.
+            graph.Camera.SetViewOffset(12000, -16000);
+            ClickMenu(createItem);
+            var createdNode = package.Exports.Single(export => export.ClassName == "SeqVar_Int");
+            for (int refresh = 0; refresh < 3; refresh++)
+            {
+                window.RefreshView();
+                AssertPosition(window, createdNode, clickedPosition);
+            }
+
+            var movedPosition = new PointF(clickedPosition.X + 500, clickedPosition.Y - 750);
+            Node(window, createdNode).SetOffset(movedPosition.X, movedPosition.Y);
+            if (existingNode != null) Node(window, existingNode).SetOffset(42000, -43000);
+            window.RefreshView();
+            AssertPosition(window, createdNode, movedPosition);
+            window.RefreshView();
+            AssertPosition(window, createdNode, movedPosition);
+            if (existingNode != null)
+            {
+                AssertPosition(window, existingNode, useSavedViews ? new PointF(42000, -43000) : existingPosition);
+            }
+            Assert.IsNull(createdNode.GetProperty<IntProperty>("ObjPosX"));
+            Assert.IsNull(createdNode.GetProperty<IntProperty>("ObjPosY"));
+            if (!useSavedViews)
+            {
+                SelectSequence(window, otherSequence);
+                SelectSequence(window, sequence);
+                Assert.AreNotEqual(movedPosition, Position(window, createdNode),
+                    "Returning to the sequence with saved views disabled must restore automatic layout.");
+            }
+        }
+        finally
+        {
+            CloseWindow(window);
             temporaryDirectory.Delete(recursive: true);
         }
     }
@@ -247,6 +329,25 @@ public class SequenceLayoutTests
     {
         typeof(MenuItem).GetMethod("OnClick", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(menu, null);
         FlushDispatcher();
+    }
+
+    private static ContextMenu OpenViewportContextMenu(SequenceEditorWPF window, PCamera camera, PointF canvasPosition)
+    {
+        var inputManager = new PInputManager();
+        typeof(PInputManager).GetField("currentCanvasPosition", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .SetValue(inputManager, canvasPosition);
+        var path = new PPickPath(camera, new RectangleF(canvasPosition, new SizeF(1, 1)));
+        path.PushNode(camera);
+        path.PushMatrix(camera.MatrixReference);
+        var mouseEvent = new System.Windows.Forms.MouseEventArgs(System.Windows.Forms.MouseButtons.Right,
+            1, (int)canvasPosition.X, (int)canvasPosition.Y, 0);
+        var inputEvent = new PInputEventArgs(inputManager, mouseEvent, PInputType.MouseDown) { Path = path };
+        typeof(SequenceEditorWPF).GetMethod("backMouseDown_Handler", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .Invoke(window, new object[] { camera, inputEvent });
+        FlushDispatcher();
+        var contextMenu = (ContextMenu)window.FindResource("backContextMenu");
+        Assert.IsTrue(contextMenu.IsOpen);
+        return contextMenu;
     }
 
     private static SObj Node(SequenceEditorWPF window, ExportEntry export) =>
