@@ -131,7 +131,6 @@
 		<ProjectReference Include="..\submodules\WwiseParser\WwiseParserLib\WwiseParserLib.csproj" />
 		<ProjectReference Include="..\submodules\Wwiser.NET\ME3Tweaks.Wwiser\ME3Tweaks.Wwiser.csproj" />
 		<ProjectReference Include="..\submodules\Wwiser.NET\BinarySerializer\BinarySerializer\BinarySerializer.csproj" />
-		<ProjectReference Include="..\submodules\WwiseTools\WwiseTools_DotNet6\WwiseTools_DotNet6.csproj" />
 		<ProjectReference Include="..\WaveFormRendererLib\WaveFormRendererLib.csproj" />
 		<ProjectReference Include="..\Xceed.Wpf.Toolkit\DotNetProjects.Wpf.Extended.Toolkit.csproj" />
 		<ProjectReference Include="..\..\SharedProjects\Piccolo\Piccolo.csproj" />
@@ -389,10 +388,6 @@
 			<SubType>Designer</SubType>
 		</Page>
 		<Page Update="Dialogs\SavedDialogueNodeLibraryDialog.xaml">
-			<XamlRuntime>$(DefaultXamlRuntime)</XamlRuntime>
-			<SubType>Designer</SubType>
-		</Page>
-		<Page Update="Dialogs\SetWwisePathDialog.xaml">
 			<XamlRuntime>$(DefaultXamlRuntime)</XamlRuntime>
 			<SubType>Designer</SubType>
 		</Page>

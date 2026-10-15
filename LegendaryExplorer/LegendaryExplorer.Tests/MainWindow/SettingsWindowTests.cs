@@ -79,14 +79,14 @@ public class SettingsWindowTests
             Assert.AreEqual(1, ((StackPanel)((ScrollViewer)general.Content).Content).Children
                 .Cast<FrameworkElement>().Count(element => element.Visibility == Visibility.Visible));
 
-            search.Text = "v7110";
-            Assert.AreEqual("Audio", ((TabItem)tabs.SelectedItem).Header);
-            var pathRow = (StackPanel)((TextBox)window.FindName("Wwise_7110Path")).Parent;
-            var audioPanel = (StackPanel)pathRow.Parent;
-            var pathLabel = (TextBlock)audioPanel.Children[audioPanel.Children.IndexOf(pathRow) - 1];
+            search.Text = "Mass Effect 3";
+            Assert.AreSame(general, tabs.SelectedItem);
+            var pathRow = (StackPanel)((TextBox)window.FindName("Global_ME3Directory")).Parent;
+            var generalPanel = (StackPanel)pathRow.Parent;
+            var pathLabel = (TextBlock)generalPanel.Children[generalPanel.Children.IndexOf(pathRow) - 1];
             Assert.AreEqual(Visibility.Visible, pathRow.Visibility);
             Assert.AreEqual(Visibility.Visible, pathLabel.Visibility, "Path labels and editor rows must filter together.");
-            search.Text = "v3773";
+            search.Text = "Mass Effect 2";
             Assert.AreEqual(Visibility.Collapsed, pathRow.Visibility);
             Assert.AreEqual(Visibility.Collapsed, pathLabel.Visibility);
 

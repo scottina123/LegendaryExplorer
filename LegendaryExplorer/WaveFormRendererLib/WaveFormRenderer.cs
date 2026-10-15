@@ -13,11 +13,14 @@ namespace NAudio.WaveFormRenderer
 
         public Image Render(WaveStream waveStream, IPeakProvider peakProvider, WaveFormRendererSettings settings)
         {
-            int bytesPerSample = (waveStream.WaveFormat.BitsPerSample / 8);
-            var samples = waveStream.Length / (bytesPerSample);
-            var samplesPerPixel = (int)(samples / settings.Width);
             var stepSize = settings.PixelsPerPeak + settings.SpacerPixels;
-            peakProvider.Init(waveStream.ToSampleProvider(), samplesPerPixel * stepSize);
+            var peakCount = (settings.Width - 1) / stepSize + 1;
+            var frames = waveStream.Length / waveStream.WaveFormat.BlockAlign;
+            // Sample providers read interleaved channels, and the underlying WAV reader requires
+            // complete frames. Also keep one frame per peak when the clip is shorter than the image.
+            var framesPerPeak = Math.Max(1L, (frames + peakCount - 1) / peakCount);
+            var samplesPerPeak = checked((int)(framesPerPeak * waveStream.WaveFormat.Channels));
+            peakProvider.Init(waveStream.ToSampleProvider(), samplesPerPeak);
             return Render(peakProvider, settings);
         }
 

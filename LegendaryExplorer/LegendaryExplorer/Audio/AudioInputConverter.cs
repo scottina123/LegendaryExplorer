@@ -5,7 +5,7 @@ using NAudio.Wave;
 namespace LegendaryExplorer.Audio
 {
     /// <summary>
-    /// Normalizes user-supplied audio into the 16-bit PCM WAV input expected by LEX's Wwise workflows.
+    /// Reads user-supplied audio and normalizes it to 16-bit PCM WAV when needed.
     /// </summary>
     public static class AudioInputConverter
     {

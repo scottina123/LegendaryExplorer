@@ -2023,8 +2023,6 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             {
                 if (sourceFile == null)
                 {
-                    var correctPaths = WwiseCliHandler.CheckWwisePathForGame(CurrentLoadedExport.FileRef.Game);
-                    if (!correctPaths) return;
                     OpenFileDialog d = new OpenFileDialog
                     {
                         Filter = AudioInputConverter.OpenFileDialogFilter,
@@ -2056,7 +2054,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
                 try
                 {
-                    var convertedFile = await WwiseCliHandler.RunWwiseConversion(Pcc.Game, sourceFile, conversionSettings);
+                    var convertedFile = await WwiseAudioConversion.ConvertAsync(Pcc.Game, sourceFile, conversionSettings);
                     ReplaceEmbeddedWEMFromWwiseEncodedFile(convertedFile, wemToReplace);
                 }
                 catch (Exception exception)
@@ -2092,33 +2090,20 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 }
             }
             StopPlaying();
-            MemoryStream convertedStream = new MemoryStream();
-            using (var fileStream = new FileStream(oggPath, FileMode.Open))
-            {
-                if (Pcc.Game is MEGame.ME3)
-                {
-                    //Convert wwiseoggstream
-                    AudioStreamHelper.ConvertWwiseOggToME3Ogg(fileStream);
-                }
-                else
-                {
-                    fileStream.CopyToEx(convertedStream, (int)fileStream.Length);
-                }
-            }
+            byte[] replacementAudio = AudioStreamHelper.ReadAudioForImport(oggPath, Pcc.Game);
 
             //Update the EmbeddedWEMFile. As this is an object it will be updated in the references.
             if (wem.HasBeenFixed)
             {
-                wem.OriginalWemData = convertedStream.ToArray();
+                wem.OriginalWemData = replacementAudio;
             }
             else
             {
-                wem.WemData = convertedStream.ToArray();
+                wem.WemData = replacementAudio;
             }
             CurrentLoadedWwisebank.EmbeddedFiles.Empty(AllWems.Count);
             CurrentLoadedWwisebank.EmbeddedFiles.AddRange(AllWems.Select(w => new KeyValuePair<uint, byte[]>(w.Id, w.HasBeenFixed ? w.OriginalWemData : w.WemData)));
             CurrentLoadedExport.WriteBinary(CurrentLoadedWwisebank);
-            File.Delete(oggPath);
             UpdateAudioStream();
         }
 
@@ -2132,13 +2117,12 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
             if (sourceFile == null)
             {
-                var correctPaths = WwiseCliHandler.CheckWwisePathForGame(Pcc.Game);
                 OpenFileDialog d = new OpenFileDialog
                 {
                     Filter = AudioInputConverter.OpenFileDialogFilter,
                     CustomPlaces = AppDirectories.GameCustomPlaces
                 };
-                if (correctPaths && DirectoryMemory.ShowDialog(d) == true)
+                if (DirectoryMemory.ShowDialog(d) == true)
                 {
                     sourceFile = d.FileName;
                 }
@@ -2173,7 +2157,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             {
                 bulkReplaceResult = await Task.Run(async () =>
                 {
-                    var conversion = await WwiseCliHandler.RunWwiseConversion(Pcc.Game, sourceFile, conversionSettings);
+                    var conversion = await WwiseAudioConversion.ConvertAsync(Pcc.Game, sourceFile, conversionSettings);
                     if (conversionSettings.BulkReplaceSameExportName)
                     {
                         return BulkReplaceAudioFromWwiseEncodedFile(conversion, exportToReplace, conversionSettings.UpdateReferencedEvents, conversionSettings.DestinationAFCFile, conversionSettings.BulkReplaceFolder);
@@ -3142,26 +3126,26 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 return;
             if (!GenerateWaveformGraph)
                 return;
-            waveStream.Position = 0;
-            var audioFileReader = new WaveFileReader(waveStream);
-
-            // 1. Configure Providers
-            MaxPeakProvider maxPeakProvider = new MaxPeakProvider();
-            RmsPeakProvider rmsPeakProvider = new RmsPeakProvider(200); // e.g. 200
-            SamplingPeakProvider samplingPeakProvider = new SamplingPeakProvider(200); // e.g. 200
-            AveragePeakProvider averagePeakProvider = new AveragePeakProvider(4); // e.g. 4
-
-            // 2. Configure the style of the audio wave image
-            StandardWaveFormRendererSettings myRendererSettings = new StandardWaveFormRendererSettings();
-            myRendererSettings.Width = 1200;
-            myRendererSettings.TopHeight = 32;
-            myRendererSettings.BottomHeight = 32;
-            myRendererSettings.BackgroundColor = Color.Transparent;
-
-            // 3. Define the audio file from which the audio wave will be created and define the providers and settings
-            WaveFormRenderer renderer = new WaveFormRenderer();
-            var image = renderer.Render(audioFileReader, averagePeakProvider, myRendererSettings);
-            waveformImage.Source = image.ToBitmapImage(ImageFormat.Png);
+            long originalPosition = waveStream.Position;
+            try
+            {
+                waveStream.Position = 0;
+                // The stream constructor leaves the caller's playback stream open.
+                using var audioFileReader = new WaveFileReader(waveStream);
+                var settings = new StandardWaveFormRendererSettings
+                {
+                    Width = 1200,
+                    TopHeight = 32,
+                    BottomHeight = 32,
+                    BackgroundColor = Color.Transparent
+                };
+                using var image = new WaveFormRenderer().Render(audioFileReader, new AveragePeakProvider(4), settings);
+                waveformImage.Source = image.ToBitmapImage(ImageFormat.Png);
+            }
+            finally
+            {
+                waveStream.Position = originalPosition;
+            }
         }
 
         #endregion

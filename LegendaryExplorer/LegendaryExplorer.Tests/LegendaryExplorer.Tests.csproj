@@ -31,6 +31,10 @@
               Link="exec\Default.png" CopyToOutputDirectory="PreserveNewest" />
         <None Include="..\LegendaryExplorer\Resources\exec\ME3AnimViewer.pcc"
               Link="exec\ME3AnimViewer.pcc" CopyToOutputDirectory="PreserveNewest" />
+        <None Include="..\LegendaryExplorer\Resources\exec\packed_codebooks*.bin"
+              Link="exec\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+        <None Include="..\LegendaryExplorer\Resources\exec\vgmstream\**\*"
+              Link="exec\vgmstream\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     </ItemGroup>
 
     <ItemGroup>

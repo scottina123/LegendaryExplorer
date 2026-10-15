@@ -432,16 +432,6 @@ namespace LegendaryExplorer.Misc.AppSettings
             get => _soundpanel_loopaudio;
             set => SetProperty(ref _soundpanel_loopaudio, value);
         }
-        private static string _wwise_3773path = "";
-        public static string Wwise_3773Path {
-            get => _wwise_3773path;
-            set => SetProperty(ref _wwise_3773path, value);
-        }
-        private static string _wwise_7110path = "";
-        public static string Wwise_7110Path {
-            get => _wwise_7110path;
-            set => SetProperty(ref _wwise_7110path, value);
-        }
         private static string _tfccompactor_laststagingpath = "";
         public static string TFCCompactor_LastStagingPath {
             get => _tfccompactor_laststagingpath;
@@ -735,8 +725,6 @@ namespace LegendaryExplorer.Misc.AppSettings
             Interpreter_ShowLinearColorWheel = TryGetSetting(settingsJson, "interpreter_showlinearcolorwheel", false);
             Interpreter_HideTopSelector = TryGetSetting(settingsJson, "interpreter_hidetopselector", false);
             Soundpanel_LoopAudio = TryGetSetting(settingsJson, "soundpanel_loopaudio", false);
-            Wwise_3773Path = TryGetSetting(settingsJson, "wwise_3773path", "");
-            Wwise_7110Path = TryGetSetting(settingsJson, "wwise_7110path", "");
             TFCCompactor_LastStagingPath = TryGetSetting(settingsJson, "tfccompactor_laststagingpath", "");
             Global_PropertyParsing_ParseUnknownArrayTypeAsObject = TryGetSetting(settingsJson, "global_propertyparsing_parseunknownarraytypeasobject", false);
             Global_Analytics_Enabled = TryGetSetting(settingsJson, "global_analytics_enabled", true);
@@ -866,8 +854,6 @@ namespace LegendaryExplorer.Misc.AppSettings
             settingsJson["interpreter_showlinearcolorwheel"] = Interpreter_ShowLinearColorWheel.ToString();
             settingsJson["interpreter_hidetopselector"] = Interpreter_HideTopSelector.ToString();
             settingsJson["soundpanel_loopaudio"] = Soundpanel_LoopAudio.ToString();
-            settingsJson["wwise_3773path"] = Wwise_3773Path.ToString();
-            settingsJson["wwise_7110path"] = Wwise_7110Path.ToString();
             settingsJson["tfccompactor_laststagingpath"] = TFCCompactor_LastStagingPath.ToString();
             settingsJson["global_propertyparsing_parseunknownarraytypeasobject"] = Global_PropertyParsing_ParseUnknownArrayTypeAsObject.ToString();
             settingsJson["global_analytics_enabled"] = Global_Analytics_Enabled.ToString();

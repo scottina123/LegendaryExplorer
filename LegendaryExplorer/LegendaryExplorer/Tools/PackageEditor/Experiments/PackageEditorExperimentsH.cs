@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using System.Windows;
 using LegendaryExplorer.Dialogs;
@@ -189,15 +188,12 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             });
         }
 
-        [LibraryImport(@"C:\Program Files (x86)\Audiokinetic\Wwise 2019.1.6.7110\SDK\x64_vc140\Release\bin\AkSoundEngineDLL.dll", StringMarshalling = StringMarshalling.Utf8)]
-        private static partial uint GetIDFromString(string str);
-
         public static void GenerateWwiseId(PackageEditorWindow pew)
         {
-            if (pew.TryGetSelectedExport(out var exp) && File.Exists(Misc.AppSettings.Settings.Wwise_7110Path))
+            if (pew.TryGetSelectedExport(out var exp))
             {
                 string name = exp.ObjectName.Name;
-                MessageBox.Show(GetIDFromString(name).ToString());
+                MessageBox.Show(WwiseBankBuilder.GenerateId(name).ToString());
             }
         }
 

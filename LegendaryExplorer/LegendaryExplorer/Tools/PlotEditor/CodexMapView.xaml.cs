@@ -1,4 +1,5 @@
-﻿using System;
+﻿using LegendaryExplorer.Audio;
+using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
@@ -1352,11 +1353,6 @@ namespace LegendaryExplorer.Tools.PlotEditor
                     return;
                 }
 
-                if (!WwiseCliHandler.CheckWwisePathForGame(package.Game))
-                {
-                    return;
-                }
-
                 var openFileDialog = new OpenFileDialog
                 {
                     Filter = "Wave PCM|*.wav",
@@ -1377,7 +1373,7 @@ namespace LegendaryExplorer.Tools.PlotEditor
                 Mouse.OverrideCursor = Cursors.Wait;
                 try
                 {
-                    var convertedFile = await WwiseCliHandler.RunWwiseConversion(package.Game, openFileDialog.FileName, replaceDialog.ChosenSettings);
+                    var convertedFile = await WwiseAudioConversion.ConvertAsync(package.Game, openFileDialog.FileName, replaceDialog.ChosenSettings);
                     ReplaceCodexPageAudioFromEncodedFile(wwiseStreamExport, convertedFile, replaceDialog.ChosenSettings);
                 }
                 finally

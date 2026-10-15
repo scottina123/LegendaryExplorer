@@ -1,17 +1,22 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Reflection;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Media.Imaging;
 using LegendaryExplorer.Dialogs;
+using LegendaryExplorer.UserControls.ExportLoaderControls;
 using LegendaryExplorerCore;
 using LegendaryExplorerCore.Packages;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using NAudio.Wave;
 
 namespace LegendaryExplorer.Tests.Dialogs;
 
 [TestClass]
+[DoNotParallelize]
 public class EntrySelectorAudioPreviewTests
 {
     [ClassInitialize]
@@ -29,6 +34,70 @@ public class EntrySelectorAudioPreviewTests
             AudioOnlyListStartsWithAudioPreviewVisible(audioClass);
             AudioPreviewTracksSelectionAndPreservesUserResizedWindow(audioClass);
         }
+        AudioPreviewRendersStereoWaveformsWithoutConsumingThePlaybackStream();
+    }
+
+    private static void AudioPreviewRendersStereoWaveformsWithoutConsumingThePlaybackStream()
+    {
+        using var package = MEPackageHandler.CreateMemoryEmptyPackage("AudioWaveformPreview.pcc", MEGame.LE3);
+        var audio = package.CreateExport("TestAudio", "WwiseStream", indexed: false);
+        using var selector = CreateSelector([audio]);
+        try
+        {
+            var player = (Soundpanel)typeof(EntrySelector)
+                .GetField("AudioPreviewPlayer", BindingFlags.Instance | BindingFlags.NonPublic)!
+                .GetValue(selector);
+            Assert.IsNotNull(player);
+            Assert.IsTrue(player.GenerateWaveformGraph);
+            var image = (Image)player.FindName("waveformImage");
+            var generateWaveform = typeof(Soundpanel)
+                .GetMethod("GenerateWaveform", BindingFlags.Instance | BindingFlags.NonPublic)!;
+
+            // 22,200 stereo frames previously produced an odd 37-sample read (74 bytes),
+            // violating the four-byte PCM frame size. Short/empty clips also reach EOF
+            // before the graph is filled. Exercise the selector's real preview control
+            // without depending on an installed audio output device.
+            foreach (int frames in new[] { 22_200, 37, 0 })
+            {
+                using var wave = CreateStereoWave(frames);
+                const int originalPosition = 17;
+                wave.Position = originalPosition;
+                image.Source = null;
+
+                generateWaveform.Invoke(player, [wave]);
+
+                var bitmap = image.Source as BitmapSource;
+                Assert.IsNotNull(bitmap, $"The {frames}-frame clip must render a waveform.");
+                Assert.AreEqual(1200, bitmap.PixelWidth);
+                Assert.AreEqual(64, bitmap.PixelHeight);
+                Assert.IsTrue(wave.CanRead, "Waveform rendering must leave the playback stream open.");
+                Assert.AreEqual(originalPosition, wave.Position,
+                    "Rendering the preview must preserve the caller's playback position.");
+
+                wave.Position = 0;
+                using var reader = new WaveFileReader(wave);
+                Assert.AreEqual(frames * reader.WaveFormat.BlockAlign, reader.Length);
+            }
+        }
+        finally
+        {
+            selector.Close();
+        }
+    }
+
+    private static MemoryStream CreateStereoWave(int frames)
+    {
+        using var encoded = new MemoryStream();
+        using (var writer = new WaveFileWriter(encoded, new WaveFormat(44_100, 16, 2)))
+        {
+            for (int frame = 0; frame < frames; frame++)
+            {
+                float sample = (float)(0.5 * Math.Sin(2 * Math.PI * 440 * frame / 44_100));
+                writer.WriteSample(sample);
+                writer.WriteSample(-sample);
+            }
+        }
+        return new MemoryStream(encoded.ToArray());
     }
 
     private static void MixedEntryListStartsWithoutAudioPreviewForNonAudioSelection()

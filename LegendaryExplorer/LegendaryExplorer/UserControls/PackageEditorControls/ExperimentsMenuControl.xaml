@@ -118,7 +118,6 @@ DataContext="{Binding RelativeSource={RelativeSource Self}}">
             <MenuItem Header="Find ME2 Powers" Click="FindAllME2PowerCustomAction_Click"/>
         </MenuItem>
         <MenuItem Header="Useful for nobody (probably)">
-            <MenuItem Header="Test WwiseSDK on WwiseBank" Click="WwiseBankToProject_Click"/>
             <MenuItem Header="Cram current LE3 BioP full of stuff that will take up lotsa memory" Click="CramLevelFullOfEverything_Click"/>
             <MenuItem Header="Find bad index location from appErrorF message (doesn't work)" Click="FindAppErrorFLocation_Click"/>
             <MenuItem Header="Check NeverStreams" Click="CheckNeverStream_Click"/>

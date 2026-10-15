@@ -1,6 +1,4 @@
 ﻿using System;
-using System.Diagnostics;
-using System.IO;
 using LegendaryExplorerCore.Packages;
 
 namespace LegendaryExplorerCore.Audio
@@ -42,25 +40,5 @@ namespace LegendaryExplorerCore.Audio
             _ => null
         };
 
-        /// <summary>
-        /// Checks if a WwiseCLI.exe file is of the correct version.
-        /// This method checks that the filename is WwiseCLI.exe, and that the Product Version is correct
-        /// </summary>
-        /// <remarks>This method returns false if file does not exist, or game does not use Wwise</remarks>
-        /// <param name="game">Game to check version against</param>
-        /// <param name="pathToWwiseExe">Path to a WwiseCLI.exe executable</param>
-        /// <returns>True if version is correct, false otherwise</returns>
-        public static bool IsCorrectWwiseVersion(MEGame game, string pathToWwiseExe)
-        {
-            if (File.Exists(pathToWwiseExe) && WwiseVersion(game) != null)
-            {
-                var fileInfo = new FileInfo(pathToWwiseExe);
-                var versionInfo = FileVersionInfo.GetVersionInfo(pathToWwiseExe);
-                string version = versionInfo.ProductVersion;
-                return version == WwiseFullVersion(game) && fileInfo.Name.Equals("WwiseCLI.exe", StringComparison.CurrentCultureIgnoreCase);
-            }
-
-            return false;
-        }
     }
 }

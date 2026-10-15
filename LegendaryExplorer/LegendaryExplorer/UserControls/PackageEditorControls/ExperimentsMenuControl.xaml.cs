@@ -815,11 +815,6 @@ namespace LegendaryExplorer.UserControls.PackageEditorControls
             PackageEditorExperimentsM.MapMaterialIDs(GetPEWindow());
         }
 
-        private void WwiseBankToProject_Click(object sender, RoutedEventArgs e)
-        {
-            PackageEditorExperimentsM.ConvertWwiseBankToProject(GetPEWindow());
-        }
-
         private void CoalesceBioActorTypesLE1_Click(object sender, RoutedEventArgs e)
         {
             PackageEditorExperimentsM.CoalesceBioActorTypes(GetPEWindow());

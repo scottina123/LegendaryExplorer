@@ -72,8 +72,6 @@
     "interpreter_showlinearcolorwheel": "True",
     "interpreter_hidetopselector": "False",
     "soundpanel_loopaudio": "False",
-    "wwise_3773path": "C:\\Program Files (x86)\\Audiokinetic\\Wwise v2010.3.3 build 3773\\Authoring\\x64\\Release\\bin\\WwiseCLI.exe",
-    "wwise_7110path": "C:\\Program Files (x86)\\Audiokinetic\\Wwise 2019.1.6.7110\\Authoring\\x64\\Release\\bin\\WwiseCLI.exe",
     "global_propertyparsing_parseunknownarraytypeasobject": "True",
     "global_analytics_enabled": "False",
     "global_theme": "Dark",

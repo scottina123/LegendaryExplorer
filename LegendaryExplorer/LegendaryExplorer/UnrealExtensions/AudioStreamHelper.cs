@@ -176,8 +176,20 @@ namespace LegendaryExplorer.UnrealExtensions
             //            return Path.Combine(Directory.GetParent(riffPath).FullName, Path.GetFileNameWithoutExtension(riffPath)) + ".ogg";
         }
 
+        /// <summary>Reads replacement media in the container layout expected by the game.</summary>
+        internal static byte[] ReadAudioForImport(string filePath, MEGame game)
+        {
+            if (game != MEGame.ME3)
+            {
+                return File.ReadAllBytes(filePath);
+            }
+            using var input = File.OpenRead(filePath);
+            using var converted = ConvertWwiseOggToME3Ogg(input);
+            return converted.ToArray();
+        }
+
         /// <summary>
-        /// Converts a Wwise-genreated ogg to the format usable by ME3.
+        /// Converts encoded audio to the format usable by ME3. Game-ready media is preserved.
         /// This effectively replaces the need for afc_creator.exe
         /// </summary>
         /// <param name="stream">Stream containing wwiseogg</param>
@@ -186,6 +198,21 @@ namespace LegendaryExplorer.UnrealExtensions
         {
             stream.Position = 0;
             MemoryStream convertedStream = new MemoryStream();
+            // Extracted ME3 audio already has the combined fmt/vorb layout. Applying the
+            // authoring-media transformation twice would remove eight bytes of audio data.
+            if (stream.Length >= 20)
+            {
+                stream.Position = 16;
+                Span<byte> formatSize = stackalloc byte[4];
+                stream.ReadExactly(formatSize);
+                stream.Position = 0;
+                if (BitConverter.ToUInt32(formatSize) == 66)
+                {
+                    stream.CopyTo(convertedStream);
+                    convertedStream.Position = 0;
+                    return convertedStream;
+                }
+            }
             stream.CopyToEx(convertedStream, 4);
             convertedStream.Write(BitConverter.GetBytes((int)stream.Length - 16), 0, 4);
             stream.Position += 4; //skip over size
@@ -214,6 +241,42 @@ namespace LegendaryExplorer.UnrealExtensions
         /// <returns></returns>
         public static MemoryStream ConvertRIFFToWaveVGMStream(string inputfile)
         {
+            // This helper consumes and deletes its temporary input. The bundled
+            // vgmstream needs a readable lookahead byte after the final Wwise
+            // packet for some very short clips. Keep that byte outside the RIFF
+            // and data sizes: game-ready media must never include this padding.
+            using (var input = File.Open(inputfile, FileMode.Open, FileAccess.ReadWrite, FileShare.Read))
+            {
+                Span<byte> header = stackalloc byte[22];
+                if (input.Length >= header.Length)
+                {
+                    input.ReadExactly(header);
+                    if (header[..4].SequenceEqual("RIFF"u8) && header.Slice(8, 8).SequenceEqual("WAVEfmt "u8) &&
+                        BitConverter.ToUInt16(header[20..]) == ushort.MaxValue)
+                    {
+                        Span<byte> chunk = stackalloc byte[8];
+                        long offset = 12;
+                        while (offset <= input.Length - chunk.Length)
+                        {
+                            input.Position = offset;
+                            input.ReadExactly(chunk);
+                            uint size = BitConverter.ToUInt32(chunk[4..]);
+                            long end = offset + chunk.Length + size;
+                            if (chunk[..4].SequenceEqual("data"u8))
+                            {
+                                if (end == input.Length)
+                                {
+                                    input.Position = input.Length;
+                                    input.WriteByte(0);
+                                }
+                                break;
+                            }
+                            offset = end + (size & 1);
+                        }
+                    }
+                }
+            }
+
             //convert ISB Codec 1/4 to WAV
             MemoryStream outputData = new MemoryStream();
 

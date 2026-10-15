@@ -22,6 +22,7 @@ using ME3Tweaks.Wwiser.Model.ParameterNode;
 using ME3Tweaks.Wwiser.Model.ParameterNode.Positioning;
 using ME3Tweaks.Wwiser.Model.RTPC;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using NAudio.Wave;
 
 namespace LegendaryExplorer.Tests.Dialogs;
 
@@ -82,6 +83,204 @@ public class BulkAudioImportDialogTests
 
     [ClassInitialize]
     public static void Initialize(TestContext _) => LegendaryExplorerCoreLib.InitLib(TaskScheduler.Default);
+
+    [TestMethod]
+    public void NativeIdsMatchAsciiCaseFoldingAndUtf8ByteHashing()
+    {
+        Assert.AreEqual(0x61E95268u, WwiseBankBuilder.GenerateId("Play_Voice"));
+        Assert.AreEqual(WwiseBankBuilder.GenerateId("Play_Voice"), WwiseBankBuilder.GenerateId("PLAY_VOICE"));
+        Assert.AreEqual(0x1C904F2Bu, WwiseBankBuilder.GenerateId("V\u00D6ICE"));
+        Assert.AreEqual(0xB78B4ECBu, WwiseBankBuilder.GenerateId("v\u00F6ice"));
+    }
+
+    [TestMethod]
+    public void NativeBankPreservesStreamedGenderedAudioAndStopActionsAfterSerialization()
+    {
+        const string sourcePath = @"C:\Audio\VO_123_m.wav";
+        foreach (MEGame game in new[] { MEGame.LE2, MEGame.LE3 })
+        {
+            var bank = WwiseBankBuilder.Build(game, "TestBank",
+                BuildActorMixerXml(game, [sourcePath], generateGenderedEvents: true, loopAudio: true),
+                BuildEventsXml([sourcePath], generateGenderedEvents: true, createSharedStopEvent: true,
+                    new HashSet<string>(StringComparer.OrdinalIgnoreCase) { sourcePath }, game),
+                new Dictionary<string, uint>(StringComparer.OrdinalIgnoreCase) { ["VO_123_m"] = 1234 });
+            using var serialized = new MemoryStream();
+            WwiseBankParser.Serialize(bank, serialized);
+            serialized.Position = 0;
+            var actual = WwiseBankParser.Deserialize(serialized);
+
+            Assert.AreEqual(134u, actual.BKHD.BankGeneratorVersion);
+            Assert.AreEqual(WwiseBankBuilder.GenerateId("TestBank"), actual.BKHD.SoundBankId);
+            Assert.AreEqual(0, actual.EmbeddedFiles.Count);
+            var mixer = actual.HIRC.Items.Select(item => item.Item).OfType<ActorMixer>().Single();
+            Assert.AreEqual(WwiseBankBuilder.GenerateId("Conversation"), mixer.NodeBaseParameters.OverrideBusId);
+            var sounds = actual.HIRC.Items.Select(item => item.Item).OfType<Sound>().ToList();
+            Assert.AreEqual(game == MEGame.LE2 ? 1 : 2, sounds.Count);
+            CollectionAssert.AreEquivalent(sounds.Select(sound => sound.Id).ToArray(),
+                mixer.Children.ChildrenValues.ToArray());
+            foreach (var sound in sounds)
+            {
+                Assert.AreEqual(mixer.Id, sound.NodeBaseParameters.DirectParentId);
+                Assert.AreEqual(0u, sound.NodeBaseParameters.OverrideBusId);
+                Assert.AreEqual(0x00040001u, sound.BankSourceData.Plugin.PluginId);
+                Assert.AreEqual(StreamType.StreamTypeInner.Streaming, sound.BankSourceData.StreamType.Value);
+                Assert.AreEqual(1234u, sound.BankSourceData.MediaInformation.SourceId);
+                Assert.AreEqual(0u, sound.BankSourceData.MediaInformation.InMemoryMediaSize);
+                Assert.IsTrue(sound.NodeBaseParameters.InitialParams62.ParameterIds.Any(id => id.PropValue == PropId.Loop));
+            }
+            var allIds = actual.HIRC.Items.Select(container => container.Item.Id).ToList();
+            Assert.AreEqual(allIds.Count, allIds.Distinct().Count());
+            var stop = actual.HIRC.Items.Select(item => item.Item).OfType<HircEvent>()
+                .Single(item => item.Id == WwiseBankBuilder.GenerateId("Stop"));
+            Assert.AreEqual(sounds.Count, stop.ActionIds.Count);
+            foreach (uint actionId in stop.ActionIds)
+            {
+                var action = actual.HIRC.Items.Select(item => item.Item).OfType<HircAction>()
+                    .Single(item => item.Id == actionId);
+                Assert.AreEqual(ME3Tweaks.Wwiser.Model.Action.ActionTypeValue.Stop, action.Type.Value);
+                Assert.IsTrue(sounds.Any(sound => sound.Id == action.TargetId));
+            }
+            foreach (var action in actual.HIRC.Items.Select(item => item.Item).OfType<HircAction>()
+                         .Where(action => action.Type.Value == ME3Tweaks.Wwiser.Model.Action.ActionTypeValue.Play))
+            {
+                Assert.AreEqual(actual.BKHD.SoundBankId, action.BankData.BankId);
+            }
+        }
+    }
+
+    [TestMethod]
+    public void NativeLe2BankSupportsEventStyleInputNamesAndMatchingBankNames()
+    {
+        const string input = @"C:\Audio\VO_123_m_Play.wav";
+        var bank = WwiseBankBuilder.Build(MEGame.LE2, "VO_123_m_Play",
+            BuildActorMixerXml(MEGame.LE2, [input], generateGenderedEvents: true),
+            BuildEventsXml([input], generateGenderedEvents: true, createSharedStopEvent: true,
+                [], MEGame.LE2), new Dictionary<string, uint> { ["VO_123_m_Play"] = 123 });
+        var ids = bank.HIRC.Items.Select(item => item.Item.Id).ToList();
+        Assert.AreEqual(ids.Count, ids.Distinct().Count());
+        var sound = bank.HIRC.Items.Select(item => item.Item).OfType<Sound>().Single();
+        Assert.AreEqual(WwiseBankBuilder.GenerateSoundId(MEGame.LE2, "VO_123_m_Play"), sound.Id);
+        Assert.AreNotEqual(WwiseBankBuilder.GenerateId("VO_123_m_Play"), sound.Id);
+        var maleEvent = bank.HIRC.Items.Select(item => item.Item).OfType<HircEvent>()
+            .Single(item => item.Id == WwiseBankBuilder.GenerateId("VO_123_m_Play"));
+        var playAction = bank.HIRC.Items.Select(item => item.Item).OfType<HircAction>()
+            .Single(item => item.Id == maleEvent.ActionIds.Single());
+        Assert.AreEqual(sound.Id, playAction.TargetId);
+    }
+
+    [TestMethod]
+    [DataRow(MEGame.LE2)]
+    [DataRow(MEGame.LE3)]
+    public void NativeBankSerializesChildSoundsBeforeTheirActorMixer(MEGame game)
+    {
+        List<string> inputs = [@"C:\Audio\VO_123_m.wav", @"C:\Audio\VO_124_m.wav"];
+        var bank = WwiseBankBuilder.Build(game, "TestBank",
+            BuildActorMixerXml(game, inputs, generateGenderedEvents: true),
+            BuildEventsXml(inputs, generateGenderedEvents: true, createSharedStopEvent: true, [], game),
+            new Dictionary<string, uint> { ["VO_123_m"] = 123, ["VO_124_m"] = 124 });
+        List<string> existingInputs = [@"C:\Audio\VO_125_m.wav"];
+        var existingBank = WwiseBankBuilder.Build(game, "TestBank",
+            BuildActorMixerXml(game, existingInputs, generateGenderedEvents: true),
+            BuildEventsXml(existingInputs, generateGenderedEvents: true, createSharedStopEvent: false, [], game),
+            new Dictionary<string, uint> { ["VO_125_m"] = 125 });
+        Assert.IsTrue(BulkAudioImportDialog.ReassignCollidingRootActorMixerIds(existingBank, bank));
+        bank = BulkAudioImportDialog.MergeGeneratedBank(existingBank, bank);
+        using var serialized = new MemoryStream();
+        WwiseBankParser.Serialize(bank, serialized);
+        serialized.Position = 0;
+        var actual = WwiseBankParser.Deserialize(serialized);
+        var indexes = actual.HIRC.Items.Select((container, index) => (container.Item.Id, index))
+            .ToDictionary(item => item.Id, item => item.index);
+
+        // Native LoadBank resolves each child immediately. The old parent-first bank
+        // loaded in LEX's parser but returned AK_IDNotFound in the native engine.
+        foreach (var mixer in actual.HIRC.Items.Select(container => container.Item).OfType<ActorMixer>())
+        {
+            Assert.IsNotEmpty(mixer.Children.ChildrenValues);
+            foreach (uint childId in mixer.Children.ChildrenValues)
+            {
+                Assert.IsTrue(indexes[childId] < indexes[mixer.Id],
+                    $"Sound {childId:X8} must be loaded before ActorMixer {mixer.Id:X8}.");
+            }
+        }
+    }
+
+    [TestMethod]
+    [DataRow(MEGame.LE2)]
+    [DataRow(MEGame.LE3)]
+    public void NativeBulkImportCreatesPlayableStreamsEventsAndEffectsWithoutAnAuthoringInstallation(MEGame game)
+    {
+        string testDirectory = Path.Combine(Path.GetTempPath(), $"LEX_NativeBankImport_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(testDirectory);
+        try
+        {
+            string input = Path.Combine(testDirectory, "VO_123_m.wav");
+            using (var writer = new WaveFileWriter(input, new WaveFormat(32000, 16, 1)))
+            {
+                for (int frame = 0; frame < 6400; frame++)
+                {
+                    writer.WriteSample((float)(0.5 * Math.Sin(2 * Math.PI * 440 * frame / 32000)));
+                }
+            }
+            string bankPath = BulkAudioImportDialog.GenerateNativeSoundBank(game, "TestBank", [input],
+                Path.Combine(testDirectory, "generated"), -7, "Conversation", generateGenderedEvents: true,
+                loopAudio: true, createSharedStopEvent: true,
+                new HashSet<string>(StringComparer.OrdinalIgnoreCase) { input });
+            var radioMethod = typeof(BulkAudioImportDialog).GetMethod(
+                "ApplyBioWareRadioEffectToBank", BindingFlags.NonPublic | BindingFlags.Static);
+            Assert.IsNotNull(radioMethod);
+            radioMethod.Invoke(null, [bankPath, game]);
+            var attenuationMethod = typeof(BulkAudioImportDialog).GetMethod(
+                "ApplyStandardAttenuationToBank", BindingFlags.NonPublic | BindingFlags.Static);
+            Assert.IsNotNull(attenuationMethod);
+            attenuationMethod.Invoke(null, [bankPath, 1.5d, game]);
+
+            using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage(
+                Path.Combine(testDirectory, "NativeAudio.pcc"), game);
+            Assert.IsNull(WwiseBankImport.ImportBank(bankPath, true, package, afcName: "NativeAudio"));
+            var streamExport = package.Exports.Single(export => export.ClassName == "WwiseStream");
+            Assert.AreEqual("VO_123_m", streamExport.ObjectNameString);
+            Assert.AreEqual(4, package.Exports.Count(export => export.ClassName == "WwiseEvent"));
+            var stream = streamExport.GetBinaryData<LegendaryExplorerCore.Unreal.BinaryConverters.WwiseStream>();
+            var info = stream.GetAudioInfo();
+            Assert.IsNotNull(info);
+            Assert.AreEqual(0.2, info.GetLength().TotalSeconds, 0.001);
+            Assert.AreEqual(32000u, info.SampleRate);
+
+            var bankExport = package.Exports.Single(export => export.ClassName == "WwiseBank");
+            using var bankData = new MemoryStream(bankExport
+                .GetBinaryData<LegendaryExplorerCore.Unreal.BinaryConverters.WwiseBank>().BnkFile);
+            var importedBank = WwiseBankParser.Deserialize(bankData);
+            var mixer = importedBank.HIRC.Items.Select(item => item.Item).OfType<ActorMixer>().Single();
+            Assert.AreEqual(2, mixer.NodeBaseParameters.FxParams.FxChunks.Count);
+            Assert.IsTrue(importedBank.HIRC.Items.Any(item => item.Item is Attenuation));
+            var initialParams = mixer.NodeBaseParameters.InitialParams62;
+            int volumeIndex = initialParams.ParameterIds.FindIndex(id => id.PropValue == PropId.Volume);
+            Assert.IsTrue(volumeIndex >= 0);
+            Assert.AreEqual(-7f, initialParams.ParameterValues[volumeIndex].Float, 0.001f);
+
+            string decodeInput = Path.Combine(testDirectory, "imported.wem");
+            using (var afc = File.OpenRead(Path.Combine(testDirectory, "NativeAudio.afc")))
+            {
+                afc.Position = stream.DataOffset;
+                byte[] media = new byte[stream.DataSize];
+                afc.ReadExactly(media);
+                File.WriteAllBytes(decodeInput, media);
+            }
+            using var decoded = AudioStreamHelper.ConvertRIFFToWaveVGMStream(decodeInput);
+            decoded.Position = 0;
+            using var reader = new WaveFileReader(decoded);
+            Assert.AreEqual(0.2, reader.TotalTime.TotalSeconds, 0.001);
+            var samples = new float[6400];
+            int count = reader.ToSampleProvider().Read(samples, 0, samples.Length);
+            Assert.IsTrue(samples.Take(count).Average(sample => sample * sample) > 0.005);
+            Assert.IsTrue(File.Exists(input));
+        }
+        finally
+        {
+            Directory.Delete(testDirectory, true);
+        }
+    }
 
     [TestMethod]
     public void ConversationOutputBusDefaultsToHelmetEffectForLe2AndLe3()
@@ -1556,11 +1755,14 @@ public class BulkAudioImportDialogTests
     {
         for (var directory = new DirectoryInfo(AppContext.BaseDirectory); directory != null; directory = directory.Parent)
         {
-            var candidate = Path.Combine(directory.FullName, "submodules", "Wwiser.NET",
-                "ME3Tweaks.Wwiser.Tests", "TestData", "WholeBanks", fileName);
-            if (File.Exists(candidate))
+            foreach (string root in new[] { directory.FullName, Path.Combine(directory.FullName, "LegendaryExplorer") })
             {
-                return candidate;
+                var candidate = Path.Combine(root, "submodules", "Wwiser.NET",
+                    "ME3Tweaks.Wwiser.Tests", "TestData", "WholeBanks", fileName);
+                if (File.Exists(candidate))
+                {
+                    return candidate;
+                }
             }
         }
 
@@ -1572,11 +1774,13 @@ public class BulkAudioImportDialogTests
     {
         for (var directory = new DirectoryInfo(AppContext.BaseDirectory); directory != null; directory = directory.Parent)
         {
-            var candidate = Path.Combine(
-                [directory.FullName, "LegendaryExplorer", "WwiseTestData", .. relativePath]);
-            if (File.Exists(candidate))
+            foreach (string root in new[] { directory.FullName, Path.Combine(directory.FullName, "LegendaryExplorer") })
             {
-                return candidate;
+                var candidate = Path.Combine([root, "LegendaryExplorer", "WwiseTestData", .. relativePath]);
+                if (File.Exists(candidate))
+                {
+                    return candidate;
+                }
             }
         }
 

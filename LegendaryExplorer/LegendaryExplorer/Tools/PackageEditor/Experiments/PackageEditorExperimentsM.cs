@@ -14,7 +14,6 @@ using LegendaryExplorer.Dialogs;
 using LegendaryExplorer.Misc;
 using LegendaryExplorer.Packages;
 using LegendaryExplorer.Tools.AssetDatabase;
-using LegendaryExplorer.Tools.WwiseEditor;
 using LegendaryExplorerCore;
 using LegendaryExplorerCore.Audio;
 using LegendaryExplorerCore.GameFilesystem;
@@ -4438,35 +4437,6 @@ defaultproperties
 
                 MessageBox.Show(searchResult);
             }
-        }
-
-        /// <summary>
-        /// Converts a WwiseBank to a basic Wwise project with events.
-        /// </summary>
-        /// <exception cref="NotImplementedException"></exception>
-        public static void ConvertWwiseBankToProject(PackageEditorWindow peWindow)
-        {
-            // This is just experimental version for now
-            var pcc = peWindow.Pcc;
-            if (pcc == null || (pcc.Game != MEGame.LE2 && pcc.Game != MEGame.LE3))
-            {
-                MessageBox.Show("Unsupported game - only can support LE2/LE3");
-                return;
-            }
-
-            //if (!peWindow.TryGetSelectedExport(out var exp) || (exp.IsDefaultObject || exp.ClassName != "WwiseBank"))
-            //{
-            //    MessageBox.Show("Unsupported export - must select a WwiseBank");
-            //    return;
-            //}
-
-            //var dlg = new CommonOpenFileDialog("Select directory to output project to") { IsFolderPicker = true };
-            //if (dlg.ShowDialog(peWindow) != CommonFileDialogResult.Ok) { return; }
-
-            // Debug: Just do first bank (in our BankTest.pcc) file
-            var exp = pcc.Exports.FirstOrDefault(x => x.ClassName == "WwiseBank");
-            var outDir = Path.Combine(@"B:\Documents\WwiseExports", exp.ObjectName);
-            WwiseIO.ExportBankToProject(exp, Directory.CreateDirectory(outDir).FullName);
         }
 
         public static void StripLightmap(PackageEditorWindow peWindow)

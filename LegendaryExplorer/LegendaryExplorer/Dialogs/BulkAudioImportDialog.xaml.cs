@@ -4,7 +4,6 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
-using System.IO.Compression;
 using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
@@ -159,8 +158,8 @@ namespace LegendaryExplorer.Dialogs
         public event PropertyChangedEventHandler PropertyChanged;
 
         /// <summary>
-        /// Output buses for the package's game. Non-master buses are injected into the temporary
-        /// Wwise project so the generated ActorMixer receives the game bus's name-derived ShortID.
+        /// Output buses for the package's game. The generated ActorMixer uses the selected
+        /// game bus's name-derived ShortID.
         /// </summary>
         public List<string> OutputBuses { get; } = [];
         public ICollectionView OutputBusesView { get; }
@@ -744,7 +743,7 @@ namespace LegendaryExplorer.Dialogs
                 foreach (var targetSoundName in GetGeneratedSoundNamesForInput(soundName, pairedGenderBases,
                              game, generateGenderedEvents))
                 {
-                    uint targetSoundId = GenerateShortId(targetSoundName);
+                    uint targetSoundId = WwiseBankBuilder.GenerateSoundId(game, targetSoundName);
                     if (targets.TryGetValue(targetSoundId, out var existingPreset) &&
                         existingPreset != item.EffectPreset)
                     {
@@ -775,7 +774,7 @@ namespace LegendaryExplorer.Dialogs
                 foreach (var targetSoundName in GetGeneratedSoundNamesForInput(soundName, pairedGenderBases,
                              game, generateGenderedEvents))
                 {
-                    uint targetSoundId = GenerateShortId(targetSoundName);
+                    uint targetSoundId = WwiseBankBuilder.GenerateSoundId(game, targetSoundName);
                     if (!targets.TryGetValue(targetSoundId, out var settings))
                     {
                         settings = new IndividualAudioSettings();
@@ -914,11 +913,6 @@ namespace LegendaryExplorer.Dialogs
                 return;
             }
 
-            if (!WwiseCliHandler.CheckWwisePathForGame(_package.Game))
-            {
-                return;
-            }
-
             if (!double.TryParse(VolumeTextBox.Text.Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var volume))
             {
                 MessageBox.Show("Please enter a valid number for volume (e.g. -10).", "Invalid volume", MessageBoxButton.OK, MessageBoxImage.Warning);
@@ -983,7 +977,7 @@ namespace LegendaryExplorer.Dialogs
             ImportButton.IsEnabled = false;
             AddFilesButton.IsEnabled = false;
             CancelButton.IsEnabled = false;
-            StatusTextBlock.Text = "Setting up Wwise project...";
+            StatusTextBlock.Text = "Preparing audio import...";
 
             try
             {
@@ -1049,122 +1043,13 @@ namespace LegendaryExplorer.Dialogs
             var individualAudioSettingTargets = BuildIndividualAudioSettingTargets(audioImportItems,
                 _package.Game, generateGenderedEvents);
 
-            // 1. Extract template project
-            string templateZip = WwiseCliHandler.GetWwiseTemplateProject(_package.Game);
             string tempDir = Path.Combine(Path.GetTempPath(), $"LEX_BulkAudio_{Guid.NewGuid():N}");
-            string projectDir = Path.Combine(tempDir, "TemplateProject");
-
             try
             {
-                ZipFile.ExtractToDirectory(templateZip, tempDir);
-
-                // 2. Normalize inputs into the project's Originals/SFX folder.
-                // WwiseCLI only receives 16-bit PCM WAV, even when the user selected MP3 files.
-                string originalsDir = Path.Combine(projectDir, "Originals", "SFX");
-                Directory.CreateDirectory(originalsDir);
-                foreach (var audioPath in wavFiles)
-                {
-                    var projectWavePath = Path.Combine(originalsDir,
-                        Path.GetFileNameWithoutExtension(audioPath) + ".wav");
-                    AudioInputConverter.ConvertToPcmWave(audioPath, projectWavePath);
-                }
-
-                // 3. Read existing WorkUnit IDs from the template
-                string actorMixerPath = Path.Combine(projectDir, "Actor-Mixer Hierarchy", "Default Work Unit.wwu");
-                string eventsPath = Path.Combine(projectDir, "Events", "Default Work Unit.wwu");
-                string soundBanksPath = Path.Combine(projectDir, "SoundBanks", "Default Work Unit.wwu");
-                string masterMixerPath = Path.Combine(projectDir, "Master-Mixer Hierarchy", "Default Work Unit.wwu");
-
-                var actorMixerDoc = XDocument.Load(actorMixerPath);
-                var eventsDoc = XDocument.Load(eventsPath);
-                var soundBanksDoc = XDocument.Load(soundBanksPath);
-                var masterMixerDoc = XDocument.Load(masterMixerPath);
-
-                var actorMixerWuId = actorMixerDoc.Root.Attribute("ID")?.Value;
-                var eventsWuId = eventsDoc.Root.Attribute("ID")?.Value;
-                var masterMixerWuId = masterMixerDoc.Root.Attribute("ID")?.Value;
-                var conversion = GetConversionReference(projectDir, _package.Game);
-
-                // Master Audio Bus is always present in the template
-                const string masterBusId = "{1514A4D8-1DA6-412A-A17E-75CA0C2149F3}";
-
-                // Determine the output bus ID/name for the ActorMixer
-                string outputBusId = masterBusId;
-                string outputBusWuId = masterMixerWuId;
-
-                if (outputBusName != "Master Audio Bus")
-                {
-                    // Inject the custom bus into the Master-Mixer Hierarchy as a child of Master Audio Bus
-                    outputBusId = $"{{{Guid.NewGuid()}}}";
-                    InjectBusIntoMasterMixer(masterMixerDoc, masterBusId, outputBusName, outputBusId);
-                    masterMixerDoc.Save(masterMixerPath);
-                }
-
-                // 4. Build Actor-Mixer Hierarchy XML
-                var actorMixerId = $"{{{Guid.NewGuid()}}}";
-                var actorMixerXml = BuildActorMixerXml(_package.Game, actorMixerWuId, bankName, actorMixerId,
-                    wavFiles, volume, outputBusName, outputBusId, outputBusWuId, conversion,
-                    generateGenderedEvents, loopAudio);
-                File.WriteAllText(actorMixerPath, actorMixerXml);
-
-                // 5. Build Events XML
-                var eventsXml = BuildEventsXml(_package.Game, eventsWuId, actorMixerWuId, wavFiles,
-                    generateGenderedEvents, createSharedStopEvent, perAudioStopEventFiles);
-                File.WriteAllText(eventsPath, eventsXml);
-
-                // 6. Build SoundBanks XML
-                var soundBanksXml = BuildSoundBanksXml(soundBanksDoc.Root.Attribute("ID")?.Value,
-                    bankName, actorMixerWuId, eventsWuId);
-                File.WriteAllText(soundBanksPath, soundBanksXml);
-
-                Dispatcher.Invoke(() => StatusTextBlock.Text = "Running WwiseCLI to generate soundbank...");
-
-                // 7. Enable required project settings:
-                //    - estimated duration data in SoundbanksInfo.xml
-                //    - the bank definition TXT used to map streamed media IDs to object names
-                //    - no external-source list (these Sounds reference Originals/SFX directly)
-                string projFile = Path.Combine(projectDir, "TemplateProject.wproj");
-                EnableProjectSettings(projFile);
-
-                // 8. Run WwiseCLI to generate soundbanks
-                string wwiseCLIPath = WwiseCliHandler.GetWwiseCliPath(_package.Game);
-
-                var process = new Process
-                {
-                    StartInfo =
-                    {
-                        FileName = wwiseCLIPath,
-                        Arguments = $"\"{projFile}\" -GenerateSoundbanks",
-                        RedirectStandardOutput = true,
-                        RedirectStandardError = true,
-                        UseShellExecute = false,
-                        CreateNoWindow = true
-                    }
-                };
-                process.Start();
-                var stdout = process.StandardOutput.ReadToEnd();
-                var stderr = process.StandardError.ReadToEnd();
-                process.WaitForExit();
-
-                Debug.WriteLine($"WwiseCLI stdout: {stdout}");
-                if (!string.IsNullOrWhiteSpace(stderr))
-                {
-                    Debug.WriteLine($"WwiseCLI stderr: {stderr}");
-                }
-
-                // 9. Find the generated .bnk file
-                string generatedDir = Path.Combine(projectDir, "GeneratedSoundBanks", "Windows");
-                if (!Directory.Exists(generatedDir))
-                {
-                    return $"WwiseCLI did not produce output. Check that Wwise CLI is configured correctly.\nStdout: {stdout}\nStderr: {stderr}";
-                }
-
-                string bnkPath = Path.Combine(generatedDir, $"{bankName}.bnk");
-                if (!File.Exists(bnkPath))
-                {
-                    var availableFiles = string.Join(", ", Directory.GetFiles(generatedDir).Select(Path.GetFileName));
-                    return $"Generated bank '{bankName}.bnk' not found in output. Available files: {availableFiles}";
-                }
+                Dispatcher.Invoke(() => StatusTextBlock.Text = "Converting audio and building soundbank...");
+                string bnkPath = GenerateNativeSoundBank(_package.Game, bankName, wavFiles, tempDir,
+                    volume, outputBusName, generateGenderedEvents, loopAudio, createSharedStopEvent,
+                    perAudioStopEventFiles);
 
                 if (_targetBankExport != null)
                 {
@@ -1276,10 +1161,77 @@ namespace LegendaryExplorer.Dialogs
         }
 
         /// <summary>
+        /// Converts the inputs and builds a streamed soundbank plus the metadata consumed by
+        /// WwiseBankImport. The hierarchy uses the established naming and gender rules.
+        /// </summary>
+        internal static string GenerateNativeSoundBank(MEGame game, string bankName,
+            List<string> audioFiles, string outputDirectory, double volume, string outputBusName,
+            bool generateGenderedEvents, bool loopAudio, bool createSharedStopEvent,
+            HashSet<string> perAudioStopEventFiles)
+        {
+            var duplicateName = audioFiles.GroupBy(Path.GetFileNameWithoutExtension,
+                    StringComparer.OrdinalIgnoreCase).FirstOrDefault(group => group.Count() > 1);
+            if (duplicateName != null)
+            {
+                throw new InvalidOperationException(
+                    $"Multiple input files have the name '{duplicateName.Key}'. Rename one of those files and try again.");
+            }
+            var sourceIds = audioFiles.ToDictionary(Path.GetFileNameWithoutExtension,
+                audioPath => GenerateShortId(Path.GetFileNameWithoutExtension(audioPath) + "_src"),
+                StringComparer.OrdinalIgnoreCase);
+            if (sourceIds.Values.Distinct().Count() != sourceIds.Count)
+            {
+                throw new InvalidOperationException("Two input filenames produce the same media ID. Rename one of those files and try again.");
+            }
+
+            string workUnitId = "{11111111-1111-1111-1111-111111111111}";
+            var actorMixerDocument = XDocument.Parse(BuildActorMixerXml(game, workUnitId, bankName,
+                "{22222222-2222-2222-2222-222222222222}", audioFiles, volume, outputBusName,
+                workUnitId, workUnitId, ("Vorbis", workUnitId, workUnitId), generateGenderedEvents,
+                loopAudio));
+            var eventsDocument = XDocument.Parse(BuildEventsXml(game, workUnitId, workUnitId,
+                audioFiles, generateGenderedEvents, createSharedStopEvent, perAudioStopEventFiles));
+            var bank = WwiseBankBuilder.Build(game, bankName, actorMixerDocument, eventsDocument, sourceIds);
+
+            Directory.CreateDirectory(outputDirectory);
+            foreach (string audioPath in audioFiles)
+            {
+                uint sourceId = sourceIds[Path.GetFileNameWithoutExtension(audioPath)];
+                WwiseAudioEncoder.ConvertAudioFile(game, audioPath,
+                    Path.Combine(outputDirectory, $"{sourceId}.wem"), sampleRate: 0);
+            }
+            string bankPath = Path.Combine(outputDirectory, bankName + ".bnk");
+            using (var output = File.Create(bankPath))
+            {
+                WwiseBankParser.Serialize(bank, output);
+            }
+
+            var streamedFiles = sourceIds.Select(source => new XElement("File",
+                new XAttribute("Id", source.Value), new XAttribute("Language", "SFX"),
+                new XElement("ShortName", source.Key + ".wav"),
+                new XElement("Path", source.Value + ".wem"))).ToList();
+            var bankInfo = new XElement("SoundBank", new XAttribute("Id", bank.BKHD.SoundBankId),
+                new XAttribute("Language", "SFX"), new XElement("ShortName", bankName),
+                new XElement("Path", bankName + ".bnk"),
+                new XElement("IncludedEvents", eventsDocument.Descendants("Event").Select(element =>
+                    new XElement("Event", new XAttribute("Id", GenerateShortId(element.Attribute("Name").Value)),
+                        new XAttribute("Name", element.Attribute("Name").Value)))),
+                new XElement("ReferencedStreamedFiles", sourceIds.Values.Select(id =>
+                    new XElement("File", new XAttribute("Id", id)))));
+            new XDocument(new XElement("SoundBanksInfo",
+                new XElement("StreamedFiles", streamedFiles), new XElement("SoundBanks", bankInfo)))
+                .Save(Path.Combine(outputDirectory, "SoundbanksInfo.xml"));
+            File.WriteAllLines(Path.Combine(outputDirectory, bankName + ".txt"),
+                new[] { "Streamed Audio\tID\tName" }.Concat(sourceIds.Select(source =>
+                    $"\t{source.Value}\t{source.Key}")));
+            return bankPath;
+        }
+
+        /// <summary>
         /// Adds the two ShareSets used by Admiral Hackett's QEC dialogue in
         /// BioD_Nor_204CallHackett_LOC_INT and applies them to the generated root ActorMixer.
         /// The McDSP FutzBox authoring plug-in is not available in Wwise 2019, so the exact
-        /// version-134 HIRC data is injected after WwiseCLI has generated the bank.
+        /// version-134 HIRC data is injected into the generated bank.
         /// </summary>
         private static void ApplyQecEffectToBank(string bnkPath)
         {
@@ -1345,12 +1297,12 @@ namespace LegendaryExplorer.Dialogs
             {
                 throw new InvalidOperationException(
                     $"Individual effects require a version-{WwiseBankEffectPresets.BankVersion} {game} Wwise bank, " +
-                    $"but WwiseCLI generated version {bank.BKHD.BankGeneratorVersion}.");
+                    $"but the bank has version {bank.BKHD.BankGeneratorVersion}.");
             }
 
             if (bank.HIRC == null)
             {
-                throw new InvalidOperationException("WwiseCLI generated a bank without an audio hierarchy.");
+                throw new InvalidOperationException("The generated bank has no an audio hierarchy.");
             }
 
             if (individualEffectTargets.Values.Any(preset => preset == AudioEffectPreset.BankWide))
@@ -1432,12 +1384,12 @@ namespace LegendaryExplorer.Dialogs
             {
                 throw new InvalidOperationException(
                     $"Individual audio settings require a version-{WwiseBankEffectPresets.BankVersion} {game} Wwise bank, " +
-                    $"but WwiseCLI generated version {bank.BKHD.BankGeneratorVersion}.");
+                    $"but the bank has version {bank.BKHD.BankGeneratorVersion}.");
             }
 
             if (bank.HIRC == null)
             {
-                throw new InvalidOperationException("WwiseCLI generated a bank without an audio hierarchy.");
+                throw new InvalidOperationException("The generated bank has no an audio hierarchy.");
             }
 
             var soundsById = bank.HIRC.Items
@@ -1584,12 +1536,12 @@ namespace LegendaryExplorer.Dialogs
             {
                 throw new InvalidOperationException(
                     $"Music ducking requires a version-{WwiseBankEffectPresets.BankVersion} {game} Wwise bank, " +
-                    $"but WwiseCLI generated version {bank.BKHD.BankGeneratorVersion}.");
+                    $"but the bank has version {bank.BKHD.BankGeneratorVersion}.");
             }
 
             if (bank.HIRC == null)
             {
-                throw new InvalidOperationException("WwiseCLI generated a bank without an audio hierarchy.");
+                throw new InvalidOperationException("The generated bank has no an audio hierarchy.");
             }
 
             var actorMixers = bank.HIRC.Items
@@ -1603,7 +1555,7 @@ namespace LegendaryExplorer.Dialogs
                 .ToList();
             if (rootActorMixers.Count == 0)
             {
-                throw new InvalidOperationException("WwiseCLI generated a bank without a root ActorMixer.");
+                throw new InvalidOperationException("The generated bank has no a root ActorMixer.");
             }
 
             if (game == MEGame.LE2)
@@ -1636,68 +1588,6 @@ namespace LegendaryExplorer.Dialogs
             File.WriteAllBytes(bnkPath, output.ToArray());
         }
 
-        private static (string Name, string Id, string WorkUnitId) GetConversionReference(string projectDir,
-            MEGame game)
-        {
-            if (game != MEGame.LE2)
-            {
-                // Factory "Vorbis Quality High" conversion used by the established LE3 path.
-                return ("Vorbis Quality High", "{53A9DE0F-3F4F-4B59-8614-3F9E3C7358FC}",
-                    "{F6B2880C-85E5-47FA-A126-645B5DFD9ACC}");
-            }
-
-            // LEX Test LE2 uses the project's Default Conversion Settings. Its WorkUnit ID is
-            // project-local, so resolve it from the extracted template instead of hard-coding it.
-            string conversionPath = Path.Combine(projectDir, "Conversion Settings", "Default Work Unit.wwu");
-            var conversionDoc = XDocument.Load(conversionPath);
-            var conversionElement = conversionDoc.Descendants("Conversion")
-                .FirstOrDefault(element => string.Equals(element.Attribute("Name")?.Value,
-                    "Default Conversion Settings", StringComparison.Ordinal));
-            string conversionId = conversionElement?.Attribute("ID")?.Value;
-            string conversionWuId = conversionDoc.Root?.Attribute("ID")?.Value;
-            if (string.IsNullOrWhiteSpace(conversionId) || string.IsNullOrWhiteSpace(conversionWuId))
-            {
-                throw new InvalidDataException(
-                    "The Wwise template does not contain the LE2 Default Conversion Settings reference.");
-            }
-
-            // Match the conversion authored in LEX Test LE2: Vorbis with channel count and sample
-            // rate inherited from the source. The shared LE2/LE3 template otherwise forces 24 kHz
-            // and enables two processing flags which are absent from the LE2 reference project.
-            var conversionProperties = conversionElement.Element("PropertyList");
-            if (conversionProperties != null)
-            {
-                var referenceValues = new Dictionary<string, string>(StringComparer.Ordinal)
-                {
-                    ["Channels"] = "4",
-                    ["LRMix"] = "0",
-                    ["MaxSampleRate"] = "0",
-                    ["MinSampleRate"] = "0",
-                    ["SampleRate"] = "0",
-                };
-
-                foreach (var property in conversionProperties.Elements("Property").ToList())
-                {
-                    string name = property.Attribute("Name")?.Value;
-                    if (name is "RemoveDCOffset" or "UseDither")
-                    {
-                        property.Remove();
-                    }
-                    else if (name != null && referenceValues.TryGetValue(name, out string value))
-                    {
-                        foreach (var valueElement in property.Descendants("Value"))
-                        {
-                            valueElement.Value = value;
-                        }
-                    }
-                }
-            }
-
-            conversionDoc.Save(conversionPath);
-
-            return ("Default Conversion Settings", conversionId, conversionWuId);
-        }
-
         /// <summary>
         /// Adds the target game's shipped dialogue attenuation. LE2 uses the five-curve profile
         /// from BioD_JnkKgA_100Landing_LOC_INT; LE3 retains the four-curve KroGar profile.
@@ -1721,12 +1611,12 @@ namespace LegendaryExplorer.Dialogs
             {
                 throw new InvalidOperationException(
                     $"Standard attenuation requires a version-{WwiseBankEffectPresets.BankVersion} {game} Wwise bank, " +
-                    $"but WwiseCLI generated version {bank.BKHD.BankGeneratorVersion}.");
+                    $"but the bank has version {bank.BKHD.BankGeneratorVersion}.");
             }
 
             if (bank.HIRC == null)
             {
-                throw new InvalidOperationException("WwiseCLI generated a bank without an audio hierarchy.");
+                throw new InvalidOperationException("The generated bank has no an audio hierarchy.");
             }
 
             if (!WwiseBankEffectPresets.EnsureStandardAttenuationData(bank, game,
@@ -1747,7 +1637,7 @@ namespace LegendaryExplorer.Dialogs
                 .ToList();
             if (rootActorMixers.Count == 0)
             {
-                throw new InvalidOperationException("WwiseCLI generated a bank without a root ActorMixer.");
+                throw new InvalidOperationException("The generated bank has no a root ActorMixer.");
             }
 
             WwiseBankEffectPresets.SetStandardAttenuationOnScopes(rootActorMixers, attenuationId, true,
@@ -1772,12 +1662,12 @@ namespace LegendaryExplorer.Dialogs
             {
                 throw new InvalidOperationException(
                     $"The {effectName} effect requires a version-{WwiseBankEffectPresets.BankVersion} {game} Wwise bank, " +
-                    $"but WwiseCLI generated version {bank.BKHD.BankGeneratorVersion}.");
+                    $"but the bank has version {bank.BKHD.BankGeneratorVersion}.");
             }
 
             if (bank.HIRC == null)
             {
-                throw new InvalidOperationException("WwiseCLI generated a bank without an audio hierarchy.");
+                throw new InvalidOperationException("The generated bank has no an audio hierarchy.");
             }
 
             if (!WwiseBankEffectPresets.EnsureEffectData(bank, effectChain))
@@ -1797,7 +1687,7 @@ namespace LegendaryExplorer.Dialogs
                 .ToList();
             if (rootActorMixers.Count == 0)
             {
-                throw new InvalidOperationException("WwiseCLI generated a bank without a root ActorMixer.");
+                throw new InvalidOperationException("The generated bank has no a root ActorMixer.");
             }
 
             foreach (var actorMixer in rootActorMixers)
@@ -1928,7 +1818,7 @@ namespace LegendaryExplorer.Dialogs
             var soundId = $"{{{GenerateDeterministicGuid(soundName)}}}";
             var sourceId = $"{{{Guid.NewGuid()}}}";
 
-            sb.AppendLine($"\t\t\t\t\t\t<Sound Name=\"{soundName}\" ID=\"{soundId}\" ShortID=\"{GenerateShortId(soundName)}\">");
+            sb.AppendLine($"\t\t\t\t\t\t<Sound Name=\"{soundName}\" ID=\"{soundId}\" ShortID=\"{WwiseBankBuilder.GenerateSoundId(game, soundName)}\">");
             if (game is MEGame.LE2 or MEGame.LE3 || loopAudio)
             {
                 sb.AppendLine("\t\t\t\t\t\t\t<PropertyList>");
@@ -2195,110 +2085,6 @@ namespace LegendaryExplorer.Dialogs
 
             genderSuffix = null;
             return false;
-        }
-
-        /// <summary>
-        /// Builds the SoundBanks XML with a single bank that includes both the Actor-Mixer and Events work units.
-        /// </summary>
-        private static string BuildSoundBanksXml(string workUnitId, string bankName,
-            string actorMixerWuId, string eventsWuId)
-        {
-            var soundBankId = $"{{{Guid.NewGuid()}}}";
-
-            var xml = new System.Text.StringBuilder();
-            xml.AppendLine("<?xml version=\"1.0\" encoding=\"utf-8\"?>");
-            xml.AppendLine($"<WwiseDocument Type=\"WorkUnit\" ID=\"{workUnitId}\" SchemaVersion=\"94\">");
-            xml.AppendLine("\t<SoundBanks>");
-            xml.AppendLine($"\t\t<WorkUnit Name=\"Default Work Unit\" ID=\"{workUnitId}\" PersistMode=\"Standalone\">");
-            xml.AppendLine("\t\t\t<ChildrenList>");
-            xml.AppendLine($"\t\t\t\t<SoundBank Name=\"{bankName}\" ID=\"{soundBankId}\">");
-            xml.AppendLine("\t\t\t\t\t<ObjectInclusionList>");
-            xml.AppendLine($"\t\t\t\t\t\t<ObjectRef Name=\"Default Work Unit\" ID=\"{actorMixerWuId}\" WorkUnitID=\"{actorMixerWuId}\" Filter=\"7\" Origin=\"Manual\"/>");
-            xml.AppendLine($"\t\t\t\t\t\t<ObjectRef Name=\"Default Work Unit\" ID=\"{eventsWuId}\" WorkUnitID=\"{eventsWuId}\" Filter=\"7\" Origin=\"Manual\"/>");
-            xml.AppendLine("\t\t\t\t\t</ObjectInclusionList>");
-            xml.AppendLine("\t\t\t\t\t<ObjectExclusionList/>");
-            xml.AppendLine("\t\t\t\t\t<GameSyncExclusionList/>");
-            xml.AppendLine("\t\t\t\t</SoundBank>");
-            xml.AppendLine("\t\t\t</ChildrenList>");
-            xml.AppendLine("\t\t</WorkUnit>");
-            xml.AppendLine("\t</SoundBanks>");
-            xml.AppendLine("</WwiseDocument>");
-            return xml.ToString();
-        }
-
-        /// <summary>
-        /// Injects a custom bus as a child of "Master Audio Bus" in the template's Master-Mixer Hierarchy.
-        /// This is necessary because the template only defines "Master Audio Bus", but the game uses
-        /// many sub-buses for audio routing (e.g. Env-VO-Conversation). Without adding the bus to the
-        /// project, WwiseCLI would fail to resolve the bus reference in the Actor-Mixer XML.
-        /// </summary>
-        private static void InjectBusIntoMasterMixer(XDocument masterMixerDoc, string masterBusId, string busName, string busId)
-        {
-            // Find the Master Audio Bus element by its ID attribute
-            var masterBusElement = masterMixerDoc.Descendants("Bus")
-                .FirstOrDefault(e => e.Attribute("ID")?.Value == masterBusId);
-
-            if (masterBusElement == null)
-                return;
-
-            // Add or get the ChildrenList under Master Audio Bus
-            var childrenList = masterBusElement.Element("ChildrenList");
-            if (childrenList == null)
-            {
-                childrenList = new XElement("ChildrenList");
-                masterBusElement.Add(childrenList);
-            }
-
-            // Add the custom bus
-            var busElement = new XElement("Bus",
-                new XAttribute("Name", busName),
-                new XAttribute("ID", busId));
-            childrenList.Add(busElement);
-        }
-
-        /// <summary>
-        /// Enables the SoundBank metadata used by the importer and clears the external-source
-        /// input path. The template uses that path for standalone conversion jobs, but bulk bank
-        /// import references Originals/SFX directly and Wwise rejects a missing .wsources file.
-        /// </summary>
-        private static void EnableProjectSettings(string wprojPath)
-        {
-            var doc = XDocument.Load(wprojPath);
-
-            foreach (var property in doc.Descendants("Property"))
-            {
-                string propertyName = property.Attribute("Name")?.Value;
-                if (propertyName is "SoundBankGenerateEstimatedDuration" or "SoundBankGenerateDefinitionFile")
-                {
-                    var values = property.Descendants("Value").ToList();
-                    if (values.Count == 0)
-                    {
-                        property.SetAttributeValue("Value", "True");
-                    }
-                    else
-                    {
-                        foreach (var value in values)
-                        {
-                            value.Value = "True";
-                        }
-                    }
-                }
-            }
-
-            var projectPropertyList = doc.Descendants("Project").FirstOrDefault()?.Element("PropertyList");
-            var externalSourcesInput = projectPropertyList?.Elements("Property")
-                .FirstOrDefault(property => property.Attribute("Name")?.Value == "ExternalSourcesInputPath");
-            if (externalSourcesInput != null)
-            {
-                foreach (var value in externalSourcesInput.Descendants("Value"))
-                {
-                    value.Value = string.Empty;
-                }
-
-                externalSourcesInput.SetAttributeValue("Value", null);
-            }
-
-            doc.Save(wprojPath);
         }
 
         /// <summary>
@@ -2902,14 +2688,7 @@ namespace LegendaryExplorer.Dialogs
         /// </summary>
         private static uint GenerateShortId(string name)
         {
-            // FNV-1 hash, matching Wwise's ID generation for names
-            uint hash = 2166136261;
-            foreach (char c in name.ToLowerInvariant())
-            {
-                hash *= 16777619;
-                hash ^= c;
-            }
-            return hash;
+            return WwiseBankBuilder.GenerateId(name);
         }
 
         private void CancelButton_Click(object sender, RoutedEventArgs e)

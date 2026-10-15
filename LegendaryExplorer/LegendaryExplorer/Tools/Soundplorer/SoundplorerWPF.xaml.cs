@@ -986,18 +986,12 @@ namespace LegendaryExplorer.Tools.Soundplorer
         }
 
         /// <summary>
-        /// Convert WAV or MP3 files to Wwise-encoded audio. Requires Wwise to be installed.
+        /// Convert WAV or MP3 files to game audio with the built-in encoder.
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>
         private async void ConvertFolderToWwise_Clicked(object sender, RoutedEventArgs e)
         {
-            WwiseCliHandler.DeleteTemplateProjectDirectory();
-
-            // Shows wwise path dialog if no paths are set
-            var pathCorrect = WwiseCliHandler.CheckWwisePathForGame(Pcc?.Game ?? MEGame.ME3);
-            if (!pathCorrect) return;
-
             var dlg = new CommonOpenFileDialog("Select folder containing WAV or MP3 files") { IsFolderPicker = true };
             if (DirectoryMemory.ShowDialog(dlg, this) != CommonFileDialogResult.Ok) { return; }
 
@@ -1013,17 +1007,9 @@ namespace LegendaryExplorer.Tools.Soundplorer
             SoundReplaceOptionsDialog srod = new (showUpdateEvents: false);
             if (!srod.ShowDialog().Value) return;
 
-            //Verify Wwise is installed with the correct version
-            string wwisePath = WwiseCliHandler.GetWwiseCliPath(srod.ChosenSettings.TargetGame);
-            if (wwisePath == null)
-            {
-                MessageBox.Show("Wwise path not set for specified game.");
-                return; //abort. getpath is not silent so it will show dialogs before this is reached.
-            }
-            
             try
             {
-                string convertedFolder = await WwiseCliHandler.RunWwiseConversion(srod.ChosenSettings.TargetGame, dlg.FileName, srod.ChosenSettings);
+                string convertedFolder = await WwiseAudioConversion.ConvertAsync(srod.ChosenSettings.TargetGame, dlg.FileName, srod.ChosenSettings);
                 MessageBox.Show("Done. Converted files have been placed into:\n" + convertedFolder);
             }
             catch (Exception exception)
@@ -1031,12 +1017,6 @@ namespace LegendaryExplorer.Tools.Soundplorer
                 MessageBox.Show($"Audio conversion failed:\n{exception.Message}", "Audio conversion failed",
                     MessageBoxButton.OK, MessageBoxImage.Error);
             }
-        }
-
-        private void SetWwisePaths_Clicked(object sender, RoutedEventArgs e)
-        {
-            SetWwisePathDialog swpd = new ();
-            swpd.ShowDialog();
         }
 
         public void ReloadLoadedISB() => LoadISB();
