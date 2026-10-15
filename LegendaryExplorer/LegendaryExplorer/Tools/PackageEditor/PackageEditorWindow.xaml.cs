@@ -2059,11 +2059,16 @@ namespace LegendaryExplorer.Tools.PackageEditor
         {
             if (TryGetSelectedExport(out ExportEntry exp) && exp.IsA("InterpGroup"))
             {
-                if (ClassPickerDlg.GetClass(this, MatineeHelper.GetInterpTracks(Pcc.Game), "Choose Track to Add", "Add") is ClassInfo info)
-                {
-                    ExportEntry trackExport = MatineeHelper.AddNewTrackToGroup(exp, info.ClassName);
-                    MatineeHelper.AddDefaultPropertiesToTrack(trackExport);
-                }
+                AddInterpTrackTo(exp);
+            }
+        }
+
+        private void AddInterpTrackTo(ExportEntry group)
+        {
+            if (ClassPickerDlg.GetClass(this, MatineeHelper.GetInterpTracks(group.Game), "Choose Track to Add", "Add") is ClassInfo info)
+            {
+                ExportEntry trackExport = MatineeHelper.AddNewTrackToGroup(group, info.ClassName);
+                MatineeHelper.AddDefaultPropertiesToTrack(trackExport);
             }
         }
 
@@ -2074,16 +2079,39 @@ namespace LegendaryExplorer.Tools.PackageEditor
                 return;
             }
 
-            if (obj is "Director")
+            AddInterpGroupTo(exp, obj);
+        }
+
+        private void AddInterpGroupTo(ExportEntry interpData, object groupType)
+        {
+            if (groupType is "Director")
             {
-                MatineeHelper.AddNewGroupDirectorToInterpData(exp);
+                MatineeHelper.AddNewGroupDirectorToInterpData(interpData);
                 return;
             }
 
             if (PromptDialog.Prompt(this, "Name of InterpGroup:") is string groupName)
             {
-                MatineeHelper.AddNewGroupToInterpData(exp, groupName);
+                MatineeHelper.AddNewGroupToInterpData(interpData, groupName);
             }
+        }
+
+        private void AddRowInterpChild_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is FrameworkElement { DataContext: TreeViewEntry { Entry: ExportEntry export } node }
+                && ReferenceEquals(export.FileRef, Pcc) && node.CanAddInterpChild)
+            {
+                if (export.ClassName == "InterpData")
+                {
+                    AddInterpGroupTo(export, null);
+                }
+                else
+                {
+                    AddInterpTrackTo(export);
+                }
+            }
+
+            e.Handled = true;
         }
 
         private bool CanAdjustSelectedInterpTimeOffsets()

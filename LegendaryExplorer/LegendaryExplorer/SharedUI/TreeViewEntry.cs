@@ -174,6 +174,12 @@ namespace LegendaryExplorer.SharedUI
 
         public bool HasArchetype => Entry is ExportEntry { HasArchetype: true };
 
+        public bool CanAddInterpChild => Entry is ExportEntry export
+                                         && (export.ClassName == "InterpData" || export.IsA("InterpGroup"));
+
+        public string AddInterpChildToolTip => Entry?.ClassName == "InterpData"
+            ? "Add InterpGroup to InterpData" : "Add InterpTrack to group";
+
         /// <summary>
         /// Only used on the root node - used to tell what package this entry represent the root for
         /// </summary>
@@ -210,6 +216,8 @@ namespace LegendaryExplorer.SharedUI
             if (e.PropertyName == nameof(ExportEntry.HeaderChanged))
             {
                 OnPropertyChanged(nameof(HasArchetype));
+                OnPropertyChanged(nameof(CanAddInterpChild));
+                OnPropertyChanged(nameof(AddInterpChildToolTip));
             }
 
             if (_alwaysShowSubText || Settings.PackageEditor_ShowTreeEntrySubText)
