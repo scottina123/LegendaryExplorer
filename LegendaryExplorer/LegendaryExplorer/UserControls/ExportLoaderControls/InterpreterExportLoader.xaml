@@ -32,6 +32,22 @@
         <DataTemplate x:Key="MaterialParameterNameTemplate">
             <TextBlock Text="{Binding Instanced}"/>
         </DataTemplate>
+        <DataTemplate x:Key="VoTrackAudioActionsTemplate">
+            <StackPanel Orientation="Horizontal" Visibility="{Binding ShowVoTrackAudioNavigation, Converter={StaticResource BoolToVisibilityConverter}, FallbackValue=Collapsed}">
+                <Button Margin="5,0,0,0" Padding="8,0" Content="Male event" CommandParameter="{Binding}"
+                        Command="{Binding GoToMaleVoEventCommand, RelativeSource={RelativeSource AncestorType=global:InterpreterExportLoader}}"
+                        ToolTip="Go to this line's male WwiseEvent in this package. Shift-click opens a new Package Editor. Disabled when no unique match is available." ToolTipService.ShowOnDisabled="True"/>
+                <Button Margin="5,0,0,0" Padding="8,0" Content="Female event" CommandParameter="{Binding}"
+                        Command="{Binding GoToFemaleVoEventCommand, RelativeSource={RelativeSource AncestorType=global:InterpreterExportLoader}}"
+                        ToolTip="Go to this line's female WwiseEvent in this package. Shift-click opens a new Package Editor. Disabled when no unique match is available." ToolTipService.ShowOnDisabled="True"/>
+                <Button Margin="5,0,0,0" Padding="8,0" Content="Male stream" CommandParameter="{Binding}"
+                        Command="{Binding GoToMaleVoStreamCommand, RelativeSource={RelativeSource AncestorType=global:InterpreterExportLoader}}"
+                        ToolTip="Go to this line's male WwiseStream in this package. Shift-click opens a new Package Editor. Disabled when no unique match is available." ToolTipService.ShowOnDisabled="True"/>
+                <Button Margin="5,0,0,0" Padding="8,0" Content="Female stream" CommandParameter="{Binding}"
+                        Command="{Binding GoToFemaleVoStreamCommand, RelativeSource={RelativeSource AncestorType=global:InterpreterExportLoader}}"
+                        ToolTip="Go to this line's female WwiseStream in this package. Shift-click opens a new Package Editor. Disabled when no unique match is available." ToolTipService.ShowOnDisabled="True"/>
+            </StackPanel>
+        </DataTemplate>
         <Style x:Key="InlineEditorContextMenuStyle" TargetType="{x:Type ContextMenu}">
             <Setter Property="OverridesDefaultStyle" Value="True"/>
             <Setter Property="SnapsToDevicePixels" Value="True"/>
@@ -202,6 +218,7 @@
                         Click="StringRefTextLookupButton_Click" VerticalAlignment="Stretch" Padding="10,0" Margin="5,0,0,0"
                         Visibility="{Binding IsStringRefSelected, Converter={StaticResource BoolToVisibilityConverter}}"
                         Style="{StaticResource {x:Type Button}}" ToolBar.OverflowMode="Never"/>
+                <ContentControl Content="{Binding TreeSelectedItem}" ContentTemplate="{StaticResource VoTrackAudioActionsTemplate}" ToolBar.OverflowMode="Never"/>
                 <TextBox Name="Value_ObjectDisplay_TextBox"
                      MinWidth="320" VerticalAlignment="Center" VerticalContentAlignment="Center" ToolTip="Currently selected object reference. Double-click to pick a new one."
                      MouseDoubleClick="Value_ObjectDisplay_TextBox_MouseDoubleClick"
@@ -315,6 +332,7 @@
                                             <Button Margin="5,0,0,0" Padding="8,0" Content="Choose movie..." ToolTip="Search basegame and DLC Movies folders and preview a movie" Tag="{Binding}"
                                                     Click="MoviePickerButton_Click" Visibility="{Binding ShowMoviePicker, Converter={StaticResource BoolToVisibilityConverter}}"/>
                                             <Button Margin="5,0,0,0" Padding="6,0" Content="✓" Tag="{Binding}" Click="InlineEditorConfirmButton_Click"/>
+                                            <ContentControl Content="{Binding}" ContentTemplate="{StaticResource VoTrackAudioActionsTemplate}"/>
                                             <ContentControl Content="{Binding}" ContentTemplate="{StaticResource InlineArrayElementActionsTemplate}"/>
                                         </StackPanel>
                                         <StackPanel x:Name="PropertyItem_ObjectInlineEditor" Orientation="Horizontal" Margin="5,0,0,0" VerticalAlignment="Top"

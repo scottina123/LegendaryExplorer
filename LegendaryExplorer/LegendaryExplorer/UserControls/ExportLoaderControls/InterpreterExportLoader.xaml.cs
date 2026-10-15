@@ -106,6 +106,10 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             nameof(OpenEntryInNewWindowCommand), typeof(RelayCommand), typeof(InterpreterExportLoader), new PropertyMetadata(null));
 
         public RelayCommand GoToObjectCommand { get; private set; }
+        public RelayCommand GoToMaleVoEventCommand { get; private set; }
+        public RelayCommand GoToFemaleVoEventCommand { get; private set; }
+        public RelayCommand GoToMaleVoStreamCommand { get; private set; }
+        public RelayCommand GoToFemaleVoStreamCommand { get; private set; }
 
         public bool HideHexBox
         {
@@ -455,6 +459,10 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             GenerateGUIDCommand = new GenericCommand(GenerateNewGUID, IsItemGUIDImmutable);
             NavigateToEntryCommandInternal = new GenericCommand(FireNavigateCallback, CanFireNavigateCallback);
             GoToObjectCommand = new RelayCommand(NavigateToObject, CanNavigateToObject);
+            GoToMaleVoEventCommand = CreateVoTrackNavigationCommand(isFemale: false, stream: false);
+            GoToFemaleVoEventCommand = CreateVoTrackNavigationCommand(isFemale: true, stream: false);
+            GoToMaleVoStreamCommand = CreateVoTrackNavigationCommand(isFemale: false, stream: true);
+            GoToFemaleVoStreamCommand = CreateVoTrackNavigationCommand(isFemale: true, stream: true);
             OpenInPackageEditorCommand = new GenericCommand(OpenInPackageEditor, ObjectPropertyExportIsSelected);
             AttemptOpenImportDefinitionCommand = new GenericCommand(AttemptOpenImport, ObjectPropertyImportIsSelected);
             OpenPlotElementCommand = new GenericCommand(OpenPlotElement, CanOpenPlotElement);
@@ -1118,6 +1126,43 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         {
             var command = InterpreterEntryNavigation.GetCommand(NavigateToEntryCommand, OpenEntryInNewWindowCommand, openInNewWindow);
             if (GetObjectNavigationEntry(node) is { } entry && command?.CanExecute(entry) == true)
+            {
+                command.Execute(entry);
+            }
+        }
+
+        private IEntry GetVoTrackAudioNavigationEntry(UPropertyTreeViewEntry node, bool isFemale, bool stream)
+        {
+            if (CurrentLoadedExport == null || node?.AttachedExport != CurrentLoadedExport || !node.ShowVoTrackAudioNavigation)
+            {
+                return null;
+            }
+
+            // Navigation uses the confirmed reference, just like object-property Go to buttons.
+            int stringRef = node.Property switch
+            {
+                IntProperty intProperty => intProperty.Value,
+                StringRefProperty stringRefProperty => stringRefProperty.Value,
+                _ => 0
+            };
+            return VoTrackAudioNavigation.FindAudioEntry(CurrentLoadedExport, stringRef, isFemale, stream);
+        }
+
+        private RelayCommand CreateVoTrackNavigationCommand(bool isFemale, bool stream) => new(
+            parameter => NavigateToVoTrackAudio(parameter as UPropertyTreeViewEntry, isFemale, stream,
+                Keyboard.Modifiers.HasFlag(ModifierKeys.Shift)),
+            parameter =>
+            {
+                var command = InterpreterEntryNavigation.GetCommand(NavigateToEntryCommand, OpenEntryInNewWindowCommand,
+                    Keyboard.Modifiers.HasFlag(ModifierKeys.Shift));
+                return GetVoTrackAudioNavigationEntry(parameter as UPropertyTreeViewEntry, isFemale, stream) is { } entry
+                       && command?.CanExecute(entry) == true;
+            });
+
+        private void NavigateToVoTrackAudio(UPropertyTreeViewEntry node, bool isFemale, bool stream, bool openInNewWindow)
+        {
+            var command = InterpreterEntryNavigation.GetCommand(NavigateToEntryCommand, OpenEntryInNewWindowCommand, openInNewWindow);
+            if (GetVoTrackAudioNavigationEntry(node, isFemale, stream) is { } entry && command?.CanExecute(entry) == true)
             {
                 command.Execute(entry);
             }
@@ -6973,6 +7018,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         private bool IsObjectProperty => Property is ObjectProperty;
         private bool IsEnumProperty => Property is EnumProperty;
         public bool IsStringRefProperty => InterpreterExportLoader.IsTlkStringRefProperty(Property, UPParent?.Property);
+        public bool ShowVoTrackAudioNavigation => UPParent?.Property == null
+                                                  && VoTrackAudioNavigation.IsTrackStringRef(AttachedExport, Property);
 
         public bool IsInlineEditable => Property is FloatProperty or IntProperty or StringRefProperty or StrProperty or NameProperty or EnumProperty;
         public bool IsGuidProperty => Property is StructProperty { IsImmutable: true, StructType: "Guid" };
