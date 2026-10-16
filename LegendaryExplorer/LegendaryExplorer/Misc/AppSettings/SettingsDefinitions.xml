@@ -73,6 +73,9 @@
   <setting name="Meshplorer_ViewRotating" type="bool" defaultvalue="false"/>
   <setting name="Meshplorer_View_SolidEnabled" type="bool" defaultvalue="true"/>
   <setting name="Meshplorer_ViewWireframeEnabled" type="bool" defaultvalue="false"/>
+
+  <!-- Morph Editor specific settings -->
+  <setting name="MorphEditor_ShowRegionLabels" type="bool" defaultvalue="true"/>
     
   <!-- Pathfinding Editor specific settings-->
   <setting name="PathfindingEditor_ShowNodeSizes" type="bool" defaultvalue="false"/>

@@ -232,6 +232,11 @@ namespace LegendaryExplorer.Misc.AppSettings
             get => _meshplorer_viewwireframeenabled;
             set => SetProperty(ref _meshplorer_viewwireframeenabled, value);
         }
+        private static bool _morpheditor_showregionlabels = true;
+        public static bool MorphEditor_ShowRegionLabels {
+            get => _morpheditor_showregionlabels;
+            set => SetProperty(ref _morpheditor_showregionlabels, value);
+        }
         private static bool _pathfindingeditor_shownodesizes = false;
         public static bool PathfindingEditor_ShowNodeSizes {
             get => _pathfindingeditor_shownodesizes;
@@ -687,6 +692,7 @@ namespace LegendaryExplorer.Misc.AppSettings
             Meshplorer_ViewRotating = TryGetSetting(settingsJson, "meshplorer_viewrotating", false);
             Meshplorer_View_SolidEnabled = TryGetSetting(settingsJson, "meshplorer_view_solidenabled", true);
             Meshplorer_ViewWireframeEnabled = TryGetSetting(settingsJson, "meshplorer_viewwireframeenabled", false);
+            MorphEditor_ShowRegionLabels = TryGetSetting(settingsJson, "morpheditor_showregionlabels", true);
             PathfindingEditor_ShowNodeSizes = TryGetSetting(settingsJson, "pathfindingeditor_shownodesizes", false);
             PathfindingEditor_ShowPathfindingNodesLayer = TryGetSetting(settingsJson, "pathfindingeditor_showpathfindingnodeslayer", true);
             PathfindingEditor_ShowActorsLayer = TryGetSetting(settingsJson, "pathfindingeditor_showactorslayer", false);
@@ -817,6 +823,7 @@ namespace LegendaryExplorer.Misc.AppSettings
             settingsJson["meshplorer_viewrotating"] = Meshplorer_ViewRotating.ToString();
             settingsJson["meshplorer_view_solidenabled"] = Meshplorer_View_SolidEnabled.ToString();
             settingsJson["meshplorer_viewwireframeenabled"] = Meshplorer_ViewWireframeEnabled.ToString();
+            settingsJson["morpheditor_showregionlabels"] = MorphEditor_ShowRegionLabels.ToString();
             settingsJson["pathfindingeditor_shownodesizes"] = PathfindingEditor_ShowNodeSizes.ToString();
             settingsJson["pathfindingeditor_showpathfindingnodeslayer"] = PathfindingEditor_ShowPathfindingNodesLayer.ToString();
             settingsJson["pathfindingeditor_showactorslayer"] = PathfindingEditor_ShowActorsLayer.ToString();

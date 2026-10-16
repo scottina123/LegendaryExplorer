@@ -11,6 +11,7 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
+using LegendaryExplorer.Misc.AppSettings;
 using LegendaryExplorer.UserControls.ExportLoaderControls;
 using LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D;
 using LegendaryExplorerCore.Unreal.BinaryConverters;
@@ -22,9 +23,61 @@ using SharpDX.Mathematics.Interop;
 namespace LegendaryExplorer.Tests.UserControls;
 
 [TestClass]
+[DoNotParallelize]
 public class MorphViewportRegionTests
 {
     public TestContext TestContext { get; set; }
+
+    private bool previousShowRegionLabels;
+    private object previousDeferSaving;
+    private static readonly FieldInfo DeferSavingField = typeof(Settings)
+        .GetField("_deferSaving", BindingFlags.Static | BindingFlags.NonPublic)!;
+
+    [TestInitialize]
+    public void InitializeLabelPreference()
+    {
+        previousDeferSaving = DeferSavingField.GetValue(null);
+        previousShowRegionLabels = Settings.MorphEditor_ShowRegionLabels;
+        DeferSavingField.SetValue(null, true);
+        Settings.MorphEditor_ShowRegionLabels = true;
+    }
+
+    [TestCleanup]
+    public void RestoreLabelPreference()
+    {
+        try
+        {
+            Settings.MorphEditor_ShowRegionLabels = previousShowRegionLabels;
+        }
+        finally
+        {
+            DeferSavingField.SetValue(null, previousDeferSaving);
+        }
+    }
+
+    [STATestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public void RegionLabelPreferenceSurvivesReopeningTheEditor(bool showLabels)
+    {
+        typeof(Application).GetField("_resourceAssembly", BindingFlags.Static | BindingFlags.NonPublic)!
+            .SetValue(null, typeof(BioMorphFaceEditor).Assembly);
+        Settings.MorphEditor_ShowRegionLabels = !showLabels;
+        using (var editor = new BioMorphFaceEditor())
+        {
+            Assert.AreEqual(!showLabels, editor.MorphRegionLabelsCheckbox.IsChecked);
+            editor.MorphRegionLabelsCheckbox.IsChecked = showLabels;
+            Assert.AreEqual(showLabels, editor.ShowMorphRegionLabels);
+            Assert.AreEqual(showLabels, Settings.MorphEditor_ShowRegionLabels);
+            Assert.IsFalse(editor.HasUnsavedMorphChanges);
+        }
+
+        using var reopened = new BioMorphFaceEditor();
+        Assert.AreEqual(showLabels, reopened.ShowMorphRegionLabels);
+        Assert.AreEqual(showLabels, reopened.MorphRegionLabelsCheckbox.IsChecked);
+        Assert.AreEqual(showLabels ? Visibility.Visible : Visibility.Collapsed, reopened.MorphRegionCalloutCanvas.Visibility);
+        Assert.IsFalse(reopened.HasUnsavedMorphChanges);
+    }
 
     [TestMethod]
     public void FeatureCoverageUsesVertexDeltasAndInheritedBoneMovement()

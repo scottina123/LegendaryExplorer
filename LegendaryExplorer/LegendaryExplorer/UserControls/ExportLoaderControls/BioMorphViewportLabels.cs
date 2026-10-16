@@ -5,6 +5,7 @@ using System.Numerics;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using LegendaryExplorer.Misc.AppSettings;
 using LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D;
 using LegendaryExplorerCore.Misc;
 using LegendaryExplorerCore.Unreal.BinaryConverters;
@@ -30,7 +31,7 @@ public sealed class MorphViewportRegion
 
 public partial class MeshRenderer
 {
-    private bool showMorphRegionLabels = true;
+    private bool showMorphRegionLabels = Settings.MorphEditor_ShowRegionLabels;
     private object morphRegionHeadSource, morphRegionHairSource;
     private int morphRegionLod = -1;
     private string morphRegionFeatureNames;
@@ -50,6 +51,7 @@ public partial class MeshRenderer
         set
         {
             if (!SetProperty(ref showMorphRegionLabels, value)) return;
+            Settings.MorphEditor_ShowRegionLabels = value;
             OnPropertyChanged(nameof(ShowMorphSelectedRegionLabel));
             UpdateMorphRegionCallouts();
         }
