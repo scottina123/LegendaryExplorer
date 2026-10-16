@@ -1,0 +1,95 @@
+<UserControl x:Class="LegendaryExplorer.UserControls.ExportLoaderControls.Scaleform.ScaleformVisualEditor"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="clr-namespace:LegendaryExplorer.UserControls.ExportLoaderControls.Scaleform"
+    Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"
+    Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}">
+    <UserControl.Resources>
+        <HierarchicalDataTemplate x:Key="LayerTemplate" ItemsSource="{Binding Children}">
+            <StackPanel Margin="2,4">
+                <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis"/>
+                <TextBlock Text="{Binding Kind}" FontSize="10" Opacity="0.5"/>
+            </StackPanel>
+        </HierarchicalDataTemplate>
+    </UserControl.Resources>
+    <Grid>
+        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+        <WrapPanel Margin="0,5,0,9">
+            <Button Content="Undo" Padding="10,5" Margin="0,0,5,0" Click="Undo_Click" ToolTip="Undo (Ctrl+Z)"/>
+            <Button Content="Redo" Padding="10,5" Margin="0,0,16,0" Click="Redo_Click" ToolTip="Redo (Ctrl+Y)"/>
+            <Button Content="Fit canvas" Padding="10,5" Margin="0,0,5,0" Click="Fit_Click"/>
+            <Button Content="100%" Padding="10,5" Margin="0,0,16,0" Click="ActualSize_Click"/>
+            <Button Content="← Movie" Padding="10,5" Margin="0,0,8,0" Click="Root_Click"/>
+            <TextBlock x:Name="ScopeLabel" Text="Movie canvas" VerticalAlignment="Center" FontWeight="SemiBold" Margin="0,0,16,0"/>
+            <CheckBox x:Name="OutlineToggle" Content="Element outlines" VerticalAlignment="Center" Checked="Outlines_Changed" Unchecked="Outlines_Changed"/>
+        </WrapPanel>
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="220" MinWidth="140"/><ColumnDefinition Width="5"/>
+                <ColumnDefinition Width="*" MinWidth="180"/><ColumnDefinition Width="5"/>
+                <ColumnDefinition Width="230" MinWidth="175"/>
+            </Grid.ColumnDefinitions>
+            <TabControl>
+                <TabItem Header="Layers">
+                    <TreeView x:Name="LayersTree" BorderThickness="0" ItemTemplate="{StaticResource LayerTemplate}"
+                        SelectedItemChanged="Layer_Selected" MouseDoubleClick="Layer_DoubleClick"/>
+                </TabItem>
+                <TabItem Header="Library">
+                    <DockPanel Margin="5">
+                        <StackPanel DockPanel.Dock="Top">
+                            <TextBlock Text="Drag artwork onto the canvas" Opacity="0.7" TextWrapping="Wrap" Margin="0,3,0,7"/>
+                            <TextBox x:Name="LibrarySearch" Padding="5" TextChanged="LibrarySearch_Changed" ToolTip="Find artwork or a group" Margin="0,0,0,7"/>
+                        </StackPanel>
+                        <ListBox x:Name="LibraryList" BorderThickness="0" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                            PreviewMouseLeftButtonDown="Library_MouseDown" MouseMove="Library_MouseMove" MouseDoubleClick="Library_DoubleClick">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Margin="3,4" Width="160">
+                                        <Border Background="#152A3E" Padding="6" Height="74"><Image Source="{Binding Thumbnail}" Stretch="Uniform"/></Border>
+                                        <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" Margin="0,5,0,0"/>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </DockPanel>
+                </TabItem>
+            </TabControl>
+            <GridSplitter Grid.Column="1" Width="4" HorizontalAlignment="Center"/>
+            <local:ScaleformDesignSurface x:Name="CanvasViewport" Grid.Column="2" Focusable="True" AllowDrop="True"
+                Drop="Canvas_Drop" DragOver="Canvas_DragOver"/>
+            <GridSplitter Grid.Column="3" Width="4" HorizontalAlignment="Center"/>
+            <ScrollViewer Grid.Column="4" VerticalScrollBarVisibility="Auto">
+                <StackPanel Margin="14,8,5,12">
+                    <TextBlock x:Name="ElementName" Text="Select an element" FontSize="17" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                    <TextBlock x:Name="ElementInfo" Text="Click an item on the canvas or in Layers." Opacity="0.65" TextWrapping="Wrap" Margin="0,7,0,16"/>
+                    <StackPanel x:Name="PropertiesPanel" IsEnabled="False">
+                        <TextBlock Text="Position" FontWeight="SemiBold" Margin="0,0,0,7"/>
+                        <UniformGrid Columns="2">
+                            <StackPanel Margin="0,0,7,7"><TextBlock Text="X" Opacity="0.65"/><TextBox x:Name="PositionX" Padding="6" LostKeyboardFocus="Transform_Commit" KeyDown="Transform_KeyDown"/></StackPanel>
+                            <StackPanel Margin="0,0,0,7"><TextBlock Text="Y" Opacity="0.65"/><TextBox x:Name="PositionY" Padding="6" LostKeyboardFocus="Transform_Commit" KeyDown="Transform_KeyDown"/></StackPanel>
+                        </UniformGrid>
+                        <TextBlock Text="Size" FontWeight="SemiBold" Margin="0,10,0,7"/>
+                        <UniformGrid Columns="2">
+                            <StackPanel Margin="0,0,7,7"><TextBlock Text="Width" Opacity="0.65"/><TextBox x:Name="ElementWidth" Padding="6" LostKeyboardFocus="Transform_Commit" KeyDown="Transform_KeyDown"/></StackPanel>
+                            <StackPanel Margin="0,0,0,7"><TextBlock Text="Height" Opacity="0.65"/><TextBox x:Name="ElementHeight" Padding="6" LostKeyboardFocus="Transform_Commit" KeyDown="Transform_KeyDown"/></StackPanel>
+                        </UniformGrid>
+                        <TextBlock Text="Rotation (degrees)" Opacity="0.65" Margin="0,10,0,4"/>
+                        <TextBox x:Name="Rotation" Padding="6" LostKeyboardFocus="Transform_Commit" KeyDown="Transform_KeyDown"/>
+                        <StackPanel x:Name="TextPanel" Visibility="Collapsed" Margin="0,17,0,0">
+                            <TextBlock Text="Text" FontWeight="SemiBold" Margin="0,0,0,7"/>
+                            <TextBox x:Name="VisualText" MinHeight="85" AcceptsReturn="True" TextWrapping="Wrap" Padding="7" TextChanged="VisualText_Changed"/>
+                        </StackPanel>
+                        <Button x:Name="EditGroupButton" Content="Edit group contents" Padding="8" Margin="0,18,0,7" Click="EditGroup_Click"/>
+                        <Button Content="Remove from this frame" Padding="8" Click="Remove_Click"/>
+                    </StackPanel>
+                    <TextBlock Text="Drag to move. Drag the corner handle to resize. Double-click a group to edit inside it. Mouse wheel zooms; middle-drag pans." TextWrapping="Wrap" Opacity="0.6" Margin="0,24,0,0"/>
+                </StackPanel>
+            </ScrollViewer>
+        </Grid>
+        <DockPanel Grid.Row="2" Margin="0,10,0,0">
+            <TextBlock x:Name="FrameLabel" Text="Frame 1" DockPanel.Dock="Left" VerticalAlignment="Center" Width="100"/>
+            <TextBlock x:Name="ZoomLabel" DockPanel.Dock="Right" VerticalAlignment="Center" Margin="12,0,0,0" Text="Fit"/>
+            <Slider x:Name="FrameSlider" Minimum="1" Maximum="1" Value="1" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="Frame_Changed" ToolTip="Choose the animation frame to edit"/>
+        </DockPanel>
+    </Grid>
+</UserControl>

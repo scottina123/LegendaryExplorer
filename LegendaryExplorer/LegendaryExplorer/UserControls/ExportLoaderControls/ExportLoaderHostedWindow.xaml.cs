@@ -388,6 +388,17 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             }));
         }
 
+        protected override void OnClosing(CancelEventArgs e)
+        {
+            if (HostedControl?.CanClose() == false)
+            {
+                e.Cancel = true;
+                LegendaryExplorer.MainWindow.LEXMainWindow.IsAllowedToClose = false;
+                return;
+            }
+            base.OnClosing(e);
+        }
+
         private void Window_Closing(object sender, System.ComponentModel.CancelEventArgs e)
         {
             if (!e.Cancel)

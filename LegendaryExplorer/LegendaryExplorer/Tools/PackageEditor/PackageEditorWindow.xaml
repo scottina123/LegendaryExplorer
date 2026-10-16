@@ -811,9 +811,9 @@
                     </TabItem>
                     <TabItem Name="JPEXLauncher_Tab" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}">
                         <TabItem.Header>
-                            <TextBlock Text="Scaleform" ToolTip="Launch embedded files in external tools"/>
+                            <TextBlock Text="Scaleform" ToolTip="Inspect, edit, and compile embedded Scaleform movies"/>
                         </TabItem.Header>
-                        <exportLoaderControls:JPEXExternalExportLoader x:Name="JPEXLauncherTab_JPEXLauncher"/>
+                        <exportLoaderControls:NativeScaleformExportLoader x:Name="JPEXLauncherTab_JPEXLauncher"/>
                     </TabItem>
                     <TabItem Name="TlkEditor_Tab" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}">
                         <TabItem.Header>

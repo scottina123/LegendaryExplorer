@@ -6212,6 +6212,8 @@ namespace LegendaryExplorer.Tools.PackageEditor
         public void LoadPackage(IMEPackage package, int goToIndex = 0, string goToEntry = null,
             bool preserveExistingTreeUntilLoaded = false)
         {
+            if (JPEXLauncherTab_JPEXLauncher?.CanClose() == false) return;
+            JPEXLauncherTab_JPEXLauncher?.ClearPackageDrafts();
             // Todo: Maybe prompt if there are pending changes to the current package?
             var packageFilePath = package.FilePath;
             try
@@ -6244,6 +6246,8 @@ namespace LegendaryExplorer.Tools.PackageEditor
 
         public void LoadFile(string s, int goToIndex = 0, string goToEntry = null)
         {
+            if (JPEXLauncherTab_JPEXLauncher?.CanClose() == false) return;
+            JPEXLauncherTab_JPEXLauncher?.ClearPackageDrafts();
             // Todo: Maybe prompt if there are pending changes to the current package?
             try
             {
@@ -8484,6 +8488,18 @@ namespace LegendaryExplorer.Tools.PackageEditor
             {
                 AllTreeViewNodesX[0].FlattenTree().ForEach(x => x.RefreshDisplayName());
             }
+        }
+
+        protected override void OnClosing(CancelEventArgs e)
+        {
+            // Draft checks precede WPFBase's Closing handlers, which remove bindings.
+            if (ExportLoaders.Keys.Any(loader => !loader.CanClose()))
+            {
+                e.Cancel = true;
+                LegendaryExplorer.MainWindow.LEXMainWindow.IsAllowedToClose = false;
+                return;
+            }
+            base.OnClosing(e);
         }
 
         private void PackageEditorWPF_Closing(object sender, CancelEventArgs e)

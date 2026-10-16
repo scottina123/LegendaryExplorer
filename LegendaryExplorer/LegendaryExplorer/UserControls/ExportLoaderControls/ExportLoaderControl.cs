@@ -88,6 +88,9 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         {
         }
 
+        /// <summary>Check pending editor drafts before a host starts disposing controls.</summary>
+        public virtual bool CanClose() => true;
+
         /// <summary>
         /// Creates a new ExportLoaderHostedWindow to pop open with a new instance of the export loader
         /// pointing to the current export
