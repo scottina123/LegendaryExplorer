@@ -6,13 +6,16 @@ Package Editor now opens Scaleform movies in a native C#/WPF visual designer, wi
 
 1. Open a package and select a non-default `GFxMovieInfo` or `BioSWF` export, then open its **Scaleform** tab.
 2. Use the default **Design** tab. Select an element on the canvas or in **Layers**, then drag it to move it. Drag the bottom-right corner handle to resize it. The inspector provides **X**, **Y**, **Width**, **Height**, and **Rotation** fields for exact changes; press Enter or leave a field to commit it.
-3. Select editable text and type in the inspector's **Text** box. Open **Library** to search the movie's existing artwork, then drag an item onto the canvas to create another instance. **Remove from this frame** or Delete removes an instance from the selected frame onward while retaining its reusable artwork.
+3. Select editable text and type in the inspector's **Text** box. Open **Library** to reuse movie artwork. **Add UI** creates panels, editable text, buttons and images: choose a package **Texture2D** or PNG/JPG/BMP image, then drag the creation card onto the canvas or choose **Add to canvas**. Images are embedded copies with transparency; the source Texture2D is retained. Text reuses an available opening-frame movie font. Buttons with no available font have a background without a label. Names identify new elements in behavior selectors and are automatically made unique.
 4. Double-click a group or choose **Edit group contents** to work inside it. **← Movie** returns to the main canvas. Groups are reusable symbols: changing their contents affects every instance of that group.
 5. Scrub the frame slider to choose the animation frame to edit. If an opening frame is intentionally blank, the designer initially chooses a visible authoring pose; every original frame remains available on the slider. An edit to an inherited pose adds a transform keyframe at the chosen frame, preserving earlier frames.
 6. Use **Undo** and **Redo** to revise draft edits. The mouse wheel zooms, middle-drag pans, and **Fit canvas** frames the canvas. Movie drafts remain separate when navigating between exports.
-7. Choose **Apply changes**. This compiles and reopens the movie before replacing its embedded `RawData` or `Data` property in the package held in memory. Use Package Editor **Save** or **Save As** to persist the package, then test the changed interface in the target game.
+7. Open **Behaviors** to give UI elements actions without writing code. Choose **+ Button click**, select the named button, and drag actions such as **Show element**, **Change text**, or **Move element** onto the graph. New actions automatically connect after the selected action. Click an output circle followed by an input circle to change a connection. **Check a value** has Yes/No branches. **+ Reusable function** creates a named action sequence, which **Call function** runs from another behavior. **Movie opens** runs a sequence at a selected frame. The click event's installation frame defaults to the current design frame; the button must exist then. Existing game scripts are retained.
+8. Choose **Apply changes**. This compiles and reopens artwork and authored AVM1 behaviors before replacing its embedded `RawData` or `Data` property in the package held in memory. Use Package Editor **Save** or **Save As** to persist the package, then test the changed interface in the target game.
 
 **Advanced resources & scripts** retains the searchable tag tree, supported string/background edits, and AVM1 bytecode assembly. Frame rate and package references are under **Movie settings**. **Export movie…** writes compiled movie bytes separately; **Export tag bytes…** exports the selected payload. **External editor** retains the existing JPEXS workflow for operations not implemented natively. The native parser, compiler, and controls do not require Java or WebView2.
+
+Select a named button or group in Design and choose **Add click action** to open its event directly. When the same button name occurs in multiple groups, the shortcut retains the selected element's full location. Newly created elements use a color picker and accept ordinary names with spaces; runtime names are prepared automatically.
 
 ## Implemented capabilities
 
@@ -20,6 +23,9 @@ Package Editor now opens Scaleform movies in a native C#/WPF visual designer, wi
 - Evaluate root and nested sprite display lists, navigate frames and groups, and select instances by viewport or layers. Move, resize and rotate instances through their serialized placement matrices. Undo and redo retain separate drafts per movie.
 - Preview supported vector artwork, embedded and referenced images, text, sprites, clipping masks, and supported color/visibility transforms with native WPF drawing. The preview uses movie data without executing ActionScript; unsupported artwork produces preview notices.
 - Create additional instances of existing visual symbols from Library, and remove instances by adding timeline removal records. Existing symbol definitions, original placement records, scripts, and unknown trailing placement data remain preserved. Recursive group insertion is rejected.
+- Create native rectangle artwork, editable text, panel/button movie clips, and embedded lossless images. Imported image pixels use premultiplied ARGB in `DefineBitsLossless2`, with bitmap-filled vector shapes. New artwork IDs are retained across draft rebuilding and removal of other additions; imported/shared IDs are reserved. Existing fonts and original definitions remain intact.
+- Author visual AVM1 event/function graphs with connected actions and conditional branches. Compile click events, frame events, reusable functions, visibility, text, position, timeline playback, frame navigation, stored values and function calls to actual action records. Graph metadata is stored inside the owned action records so saved files reopen for visual editing. Unowned action records remain byte-identical. Click handlers install once per runtime instance and call an existing dynamic handler before authored actions.
+- Cache movie dictionary indexes, timeline scenes, drawings and unchanged static artwork; defer external texture decoding until used. Frame/group navigation retains the working document, selection reuses the drawing, and drag/keyframe edits retain static resources. Texture preview decodes pixels directly instead of encoding then decoding PNG files.
 - Browse nested sprites and tags, search resource names/categories/IDs/text, inspect payloads, and inspect package reference information.
 - Edit frame rate, background RGB, frame labels, metadata, and supported `DefineEditText` initial strings while retaining surrounding data.
 - Disassemble, edit, validate, and assemble AVM1 bytecode in `DoAction` and `DoInitAction`. Symbolic branch labels are relocated; nested action containers and unknown opcode bytes are retained. This is bytecode assembly, not an ActionScript source decompiler or source compiler.
@@ -34,7 +40,28 @@ The canvas is an authoring preview, not the Scaleform runtime. It does not run A
 
 Rendering coverage is still incomplete. Complex fonts and glyph layout, rich-text formatting, morphs, filters, blend modes, gradient details, imported symbols, and externally supplied assets require further fidelity work. Available package textures and supported shared artwork can be previewed; unresolved resources remain reported approximations. Editing a text field supports its initial string and basic formatting, rather than a complete rich-text or font authoring workflow.
 
-Library reuses artwork already defined in the movie. Shape/morph drawing, font and glyph replacement, general image/audio/video import and replacement, button logic authoring, and ActionScript source compilation remain unfinished. Applying a draft verifies the supported binary changes and preserves unrelated records; it cannot establish crash-free runtime behavior.
+Library reuses artwork already defined in the movie; Add UI also creates the element types above. General path/morph drawing, font and glyph creation/replacement, audio/video authoring and a full ActionScript source compiler remain unfinished. Visual behaviors compile AVM1 (ActionScript 1/2), not AS3 or arbitrary Unreal/game callbacks. One click flow controls each named target; add more actions or call reusable functions in that flow. Execution loops and recursive function calls are rejected. Game scripts can later override an authored handler, and script-driven runtime content can differ from the preview. Applying a draft verifies the supported binary changes and preserves unrelated records; it cannot establish crash-free runtime behavior.
+
+## Responsiveness verification
+
+The read-only WPF probe measured the actual AreaMap package before and after the cache changes, including layout and drawing. The baseline uses one process; final values are medians of three fresh processes. Timing starts after the package is open:
+
+| Interaction | Previous build | Updated build |
+|---|---:|---:|
+| Open and first layout | 6,949 ms | 1,894 ms |
+| Select Close button | 1,259 ms | 16 ms |
+| Move selected element | 1,234 ms | 21 ms |
+| Undo move | 1,236 ms | 25 ms |
+| Change frame | 348–953 ms | 15–17 ms |
+| Revisit an already viewed movie | — | 19 ms |
+
+A 24-update continuous drag averaged **1.57 ms** per update (worst observed **2.24 ms** across the three runs), including WPF layout/render. All **29** referenced Texture2D previews matched the earlier PNG-based decoder pixel for pixel in all three runs. These timings describe this machine and fixture, not every movie or hardware configuration. Local evidence: [results](../Build/scaleform-ui-preview/performance-results.json), [before](../Build/scaleform-ui-preview/performance-before.log), [final run](../Build/scaleform-ui-preview/performance-complete3.log).
+
+## UI creation and visual behavior verification
+
+The updated focused suites pass **52 core tests and 13 WPF tests**. These include an independent AVM1 stack interpreter executing emitted functions, click handlers, condition branches, text/position/visibility changes and timeline calls; graph save/reopen/edit/remove; invalid targets and installation frames; duplicate click events; handler preservation; generated-artwork ID stability; new UI and behavior drafts navigating between movies and applying together; and pixel checks for embedded image transparency, shape bounds and solid colors. Local logs: [core](../Build/scaleform-authoring-core-tests.log), [WPF](../Build/scaleform-authoring-ui-tests.log).
+
+A real AreaMap package-copy check imports the existing `GUI_SF_ME2_AreaMap.ME2_AreaMap_G9` Texture2D as new embedded artwork, adds a panel and button at the authoring frame, authors a click event calling a reusable show-panel function, applies the draft and saves/reopens a compressed package copy. All three new elements and both authored flows survive. All **3,269 original movie leaf payloads** and **13,096 other exports** remain identical; the source package hash is unchanged. The copy is [AreaMapNewUiAndBehavior.pcc](../Build/scaleform-authoring-probe/AreaMapNewUiAndBehavior.pcc); [result.json](../Build/scaleform-authoring-probe/result.json) records the check. No game runtime test was performed.
 
 ## Read-only corpus verification
 
@@ -81,7 +108,7 @@ Run the checked-in regression tests from the repository root:
 
 ```powershell
 dotnet test LegendaryExplorer/LegendaryExplorerCore.Tests/LegendaryExplorerCore.Tests.csproj -c WinDebug -p:Platform=x64 --no-restore --filter "FullyQualifiedName~Scaleform"
-dotnet test LegendaryExplorer/LegendaryExplorer.Tests/LegendaryExplorer.Tests.csproj -c WinDebug --no-restore --filter "FullyQualifiedName~NativeScaleformEditorTests|FullyQualifiedName~ScaleformVisualEditorTests|FullyQualifiedName~ScaleformArtworkTests"
+dotnet test LegendaryExplorer/LegendaryExplorer.Tests/LegendaryExplorer.Tests.csproj -c WinDebug --no-restore --filter "FullyQualifiedName~NativeScaleformEditorTests|FullyQualifiedName~ScaleformVisualEditorTests|FullyQualifiedName~ScaleformArtworkTests|FullyQualifiedName~ScaleformBehaviorEditorTests|FullyQualifiedName~ScaleformElementArtworkTests"
 ```
 
 The local corpus probe can be rerun while its ignored project and the original local game paths remain available:

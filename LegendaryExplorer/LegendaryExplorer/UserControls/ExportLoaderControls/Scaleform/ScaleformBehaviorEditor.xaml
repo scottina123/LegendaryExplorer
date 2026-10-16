@@ -1,0 +1,100 @@
+<UserControl x:Class="LegendaryExplorer.UserControls.ExportLoaderControls.Scaleform.ScaleformBehaviorEditor"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"
+    Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"
+    PreviewKeyDown="Editor_KeyDown">
+    <Grid>
+        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+        <WrapPanel Margin="0,5,0,9">
+            <Button Content="+ Button click" Padding="11,6" Margin="0,0,6,0" Click="NewButton_Click"/>
+            <Button Content="+ Reusable function" Padding="11,6" Margin="0,0,18,0" Click="NewFunction_Click"/>
+            <Button Content="Undo" Padding="10,6" Margin="0,0,6,0" Click="Undo_Click"/>
+            <Button Content="Redo" Padding="10,6" Margin="0,0,18,0" Click="Redo_Click"/>
+            <TextBlock Text="Behavior" VerticalAlignment="Center" Margin="0,0,7,0"/>
+            <ComboBox x:Name="FlowPicker" Width="225" DisplayMemberPath="Name" SelectionChanged="Flow_Changed" VerticalContentAlignment="Center"/>
+            <Button Content="Arrange" Padding="10,6" Margin="10,0,0,0" Click="Arrange_Click" ToolTip="Lay out the selected behavior from left to right"/>
+        </WrapPanel>
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="215" MinWidth="150"/><ColumnDefinition Width="5"/><ColumnDefinition Width="*" MinWidth="180"/><ColumnDefinition Width="5"/><ColumnDefinition Width="240" MinWidth="180"/></Grid.ColumnDefinitions>
+            <DockPanel Margin="0,0,5,0">
+                <StackPanel DockPanel.Dock="Top" Margin="7,7,5,8">
+                    <TextBlock Text="Events &amp; actions" FontSize="16" FontWeight="SemiBold"/>
+                    <TextBlock Text="Double-click or drag onto the graph." TextWrapping="Wrap" Opacity="0.65" Margin="0,5,0,10"/>
+                    <TextBox x:Name="PaletteSearch" Padding="6" ToolTip="Search events and actions" TextChanged="Search_Changed"/>
+                </StackPanel>
+                <ListBox x:Name="Palette" BorderThickness="0" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                    PreviewMouseLeftButtonDown="Palette_MouseDown" MouseMove="Palette_MouseMove" MouseDoubleClick="Palette_DoubleClick">
+                    <ListBox.ItemTemplate><DataTemplate><StackPanel Margin="4,6" Width="170">
+                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold"/>
+                        <TextBlock Text="{Binding Description}" FontSize="11" TextWrapping="Wrap" Opacity="0.65" Margin="0,4,0,0"/>
+                    </StackPanel></DataTemplate></ListBox.ItemTemplate>
+                </ListBox>
+            </DockPanel>
+            <GridSplitter Grid.Column="1" Width="4" HorizontalAlignment="Center"/>
+            <Border Grid.Column="2" Background="#151C24" BorderBrush="#384351" BorderThickness="1">
+                <Grid>
+                    <ScrollViewer x:Name="GraphScroll" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"
+                        PanningMode="Both" PreviewMouseWheel="Graph_MouseWheel" PreviewMouseDown="Graph_MouseDown" PreviewMouseMove="Graph_MouseMove" PreviewMouseUp="Graph_MouseUp">
+                        <Canvas x:Name="GraphCanvas" Width="1400" Height="800" Background="Transparent" Focusable="True" AllowDrop="True" Drop="Graph_Drop" DragOver="Graph_DragOver" MouseLeftButtonDown="Canvas_MouseDown"/>
+                    </ScrollViewer>
+                    <StackPanel x:Name="EmptyHint" HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="390" Margin="28" IsHitTestVisible="False">
+                        <TextBlock Text="Make your interface respond" FontSize="21" Foreground="#EDF3FA" FontWeight="SemiBold" TextAlignment="Center" TextWrapping="Wrap"/>
+                        <TextBlock Text="Start with Button click or Movie opens. Add actions such as Show element or Change text, then choose the element each action controls." Margin="0,12,0,0" TextWrapping="Wrap" TextAlignment="Center" Foreground="#AEBAC9"/>
+                    </StackPanel>
+                </Grid>
+            </Border>
+            <GridSplitter Grid.Column="3" Width="4" HorizontalAlignment="Center"/>
+            <ScrollViewer Grid.Column="4" VerticalScrollBarVisibility="Auto">
+                <StackPanel Margin="14,8,5,14">
+                    <TextBlock x:Name="InspectorTitle" Text="Select an event or action" FontSize="17" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                    <TextBlock x:Name="InspectorDescription" Text="Choose a node to change what it does." Margin="0,7,0,16" Opacity="0.65" TextWrapping="Wrap"/>
+                    <StackPanel x:Name="EventProperties" Visibility="Collapsed">
+                        <TextBlock Text="Behavior name" Margin="0,0,0,5"/>
+                        <TextBox x:Name="BehaviorName" Padding="6" LostKeyboardFocus="Field_Commit" KeyDown="Field_KeyDown"/>
+                        <StackPanel x:Name="EventTargetPanel" Margin="0,15,0,0">
+                            <TextBlock Text="When this element is clicked" Margin="0,0,0,5"/>
+                            <ComboBox x:Name="EventTarget" IsEditable="True" IsTextSearchEnabled="True" DisplayMemberPath="Label" SelectedValuePath="Path" LostKeyboardFocus="Field_Commit"/>
+                        </StackPanel>
+                        <StackPanel x:Name="FunctionPanel" Margin="0,15,0,0">
+                            <TextBlock Text="Function name" Margin="0,0,0,5"/>
+                            <TextBox x:Name="FunctionName" Padding="6" ToolTip="Use a short name without spaces, such as OpenMenu" LostKeyboardFocus="Field_Commit" KeyDown="Field_KeyDown"/>
+                            <TextBlock Text="Use Call function in another behavior to run these actions." Opacity="0.65" TextWrapping="Wrap" Margin="0,7,0,0"/>
+                        </StackPanel>
+                        <StackPanel x:Name="FramePanel" Margin="0,15,0,0">
+                            <TextBlock x:Name="EventFrameLabel" Text="When the movie reaches frame" Margin="0,0,0,5"/>
+                            <TextBox x:Name="EventFrame" Padding="6" LostKeyboardFocus="Field_Commit" KeyDown="Field_KeyDown"/>
+                        </StackPanel>
+                    </StackPanel>
+                    <StackPanel x:Name="ActionProperties" Visibility="Collapsed">
+                        <StackPanel x:Name="TargetPanel">
+                            <TextBlock x:Name="TargetLabel" Text="Element" Margin="0,0,0,5"/>
+                            <ComboBox x:Name="ActionTarget" IsEditable="True" IsTextSearchEnabled="True" LostKeyboardFocus="Field_Commit"/>
+                        </StackPanel>
+                        <StackPanel x:Name="ValuePanel" Margin="0,15,0,0">
+                            <TextBlock x:Name="ValueLabel" Text="Text" Margin="0,0,0,5"/>
+                            <TextBox x:Name="ActionValue" Padding="6" MinHeight="65" AcceptsReturn="True" TextWrapping="Wrap" LostKeyboardFocus="Field_Commit"/>
+                        </StackPanel>
+                        <StackPanel x:Name="NumberPanel" Margin="0,15,0,0">
+                            <TextBlock x:Name="NumberLabel" Text="X position" Margin="0,0,0,5"/>
+                            <TextBox x:Name="ActionNumber" Padding="6" LostKeyboardFocus="Field_Commit" KeyDown="Field_KeyDown"/>
+                        </StackPanel>
+                        <StackPanel x:Name="Number2Panel" Margin="0,12,0,0">
+                            <TextBlock Text="Y position" Margin="0,0,0,5"/>
+                            <TextBox x:Name="ActionNumber2" Padding="6" LostKeyboardFocus="Field_Commit" KeyDown="Field_KeyDown"/>
+                        </StackPanel>
+                        <StackPanel x:Name="PlaybackPanel" Margin="0,15,0,0">
+                            <CheckBox x:Name="PlayAfterJump" Content="Keep playing after the jump" Checked="Playback_Commit" Unchecked="Playback_Commit"/>
+                        </StackPanel>
+                    </StackPanel>
+                    <StackPanel x:Name="SelectionButtons" Visibility="Collapsed" Margin="0,22,0,0">
+                        <Button Content="Disconnect outgoing links" Padding="8" Click="Disconnect_Click" Margin="0,0,0,7"/>
+                        <Button Content="Remove selected" Padding="8" Click="Remove_Click"/>
+                    </StackPanel>
+                    <TextBlock Text="Actions run along the connected lines. Click an output circle, then an input circle to connect them. Drag a node by its title. Ctrl + wheel zooms; middle-drag pans." Opacity="0.6" TextWrapping="Wrap" Margin="0,25,0,0"/>
+                </StackPanel>
+            </ScrollViewer>
+        </Grid>
+        <TextBlock x:Name="GraphStatus" Grid.Row="2" Text="Add an event to begin. Existing game scripts stay intact." Opacity="0.75" TextWrapping="Wrap" Margin="6,9,6,0"/>
+    </Grid>
+</UserControl>

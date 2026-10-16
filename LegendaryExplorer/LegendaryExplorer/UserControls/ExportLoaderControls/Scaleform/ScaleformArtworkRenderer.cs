@@ -25,28 +25,35 @@ public sealed class ScaleformArtworkRenderer
     private const int MaximumEdges = 250_000;
     private const int MaximumImagePixels = 32 * 1024 * 1024;
     private readonly ScaleformDocument document;
+    private ScaleformSceneIndex sceneIndex;
     private readonly Func<string, ImageSource> externalImageResolver;
     private readonly Func<string, string, int, Drawing> externalSymbolResolver;
     private readonly Dictionary<ushort, (string Movie, string Symbol)> imports = [];
     private readonly Dictionary<ushort, ScaleformTag> definitions;
     private readonly Dictionary<ushort, ImageData> images = [];
     private readonly Dictionary<ushort, ImageData> gradientImages = [];
+    private readonly Dictionary<ushort, ExternalImage> externalImages = [];
+    private readonly Dictionary<ushort, ExternalImage> externalGradients = [];
     private readonly Dictionary<(ushort, int), Drawing> drawings = [];
+    private readonly Dictionary<(ushort?, int), Drawing> timelines = [];
+    private readonly Dictionary<(ushort?, int), ScaleformScene> scenes = [];
     private readonly Dictionary<ushort, Rect> bounds = [];
     private readonly Dictionary<ushort, FontData> fonts = [];
     private readonly Dictionary<(ImageSource, ScaleformColorTransform), ImageSource> colorImages = [];
+    private readonly Dictionary<(Drawing, ScaleformColorTransform), Drawing> colorDrawings = [];
     private readonly HashSet<ushort> rendering = [];
     private readonly List<string> warnings = [];
     private readonly HashSet<string> warningSet = [];
     public IReadOnlyList<string> Warnings => warnings;
 
     public ScaleformArtworkRenderer(ScaleformDocument document, Func<string, ImageSource> externalImageResolver = null,
-        Func<string, string, int, Drawing> externalSymbolResolver = null)
+        Func<string, string, int, Drawing> externalSymbolResolver = null, ScaleformArtworkRenderer previousArtwork = null)
     {
         this.document = document ?? throw new ArgumentNullException(nameof(document));
         this.externalImageResolver = externalImageResolver;
         this.externalSymbolResolver = externalSymbolResolver;
-        definitions = ScaleformScene.Build(document).Definitions.ToDictionary(p => p.Key, p => p.Value);
+        sceneIndex = new ScaleformSceneIndex(document);
+        definitions = sceneIndex.Build().Definitions.ToDictionary(p => p.Key, p => p.Value);
         foreach (var tag in Flatten(document.Tags))
         {
             if (tag.Code is 1001 or 1003 or 1009)
@@ -66,26 +73,115 @@ public sealed class ScaleformArtworkRenderer
                 catch (Exception e) when (IsArtworkError(e)) { Warn($"{tag.Name}: {e.Message}"); }
             }
         }
+        if (previousArtwork != null) ReuseArtwork(previousArtwork);
+    }
+
+    private void ReuseArtwork(ScaleformArtworkRenderer previous)
+    {
+        bool Unchanged(ushort id) => definitions.TryGetValue(id, out var tag) && tag.Code is not (39 or 7 or 34) &&
+            previous.definitions.TryGetValue(id, out var old) && tag.Code == old.Code && tag.Payload.Span.SequenceEqual(old.Payload.Span);
+        bool Resource(ScaleformTag tag) => tag.Code is 6 or 8 or 10 or 20 or 21 or 35 or 36 or 48 or 75 or 90 or 1001 or 1005 or 1008 or 1009;
+        bool resourcesUnchanged = definitions.Where(pair => Resource(pair.Value)).Select(pair => pair.Key)
+            .Union(previous.definitions.Where(pair => Resource(pair.Value)).Select(pair => pair.Key)).All(Unchanged);
+        foreach (var pair in previous.images)
+            if (Unchanged(pair.Key) || externalImages.TryGetValue(pair.Key, out var external) && previous.externalImages.GetValueOrDefault(pair.Key) == external)
+                images[pair.Key] = pair.Value;
+        foreach (var pair in previous.drawings)
+            if (resourcesUnchanged && Unchanged(pair.Key.Item1)) drawings[pair.Key] = pair.Value;
+        foreach (var pair in previous.bounds)
+            if (Unchanged(pair.Key)) bounds[pair.Key] = pair.Value;
+        foreach (var pair in previous.fonts)
+            if (Unchanged(pair.Key)) fonts[pair.Key] = pair.Value;
+        foreach (var pair in previous.colorImages) colorImages[pair.Key] = pair.Value;
+        if (resourcesUnchanged)
+        {
+            var retained = new HashSet<Drawing>();
+            void Keep(Drawing drawing)
+            {
+                if (!retained.Add(drawing)) return;
+                if (drawing is DrawingGroup group) foreach (Drawing child in group.Children) Keep(child);
+            }
+            foreach (Drawing drawing in drawings.Values) Keep(drawing);
+            foreach (var pair in previous.colorDrawings)
+                if (retained.Contains(pair.Key.Item1)) colorDrawings[pair.Key] = pair.Value;
+        }
     }
 
     /// <summary>Refreshes placement-dependent artwork after a visual edit, retaining parsed static resources.</summary>
     public void InvalidateScene()
     {
+        scenes.Clear(); timelines.Clear();
         foreach (var key in drawings.Keys.Where(key => definitions.TryGetValue(key.Item1, out var tag) && tag.Code is 39 or 7 or 34).ToArray()) drawings.Remove(key);
         foreach (ushort key in bounds.Keys.Where(key => definitions.TryGetValue(key, out var tag) && tag.Code is 39 or 7 or 34).ToArray()) bounds.Remove(key);
+    }
+
+    /// <summary>A placement move changes its owning timeline and ancestors, not every symbol's artwork.</summary>
+    public void InvalidatePlacement(ushort? ownerSpriteId)
+    {
+        scenes.Clear(); timelines.Clear();
+        if (!ownerSpriteId.HasValue) return;
+        var affected = new HashSet<ushort> { ownerSpriteId.Value };
+        foreach (var pair in definitions.Where(pair => pair.Value.Code is 7 or 34)) affected.Add(pair.Key);
+        bool added;
+        do
+        {
+            added = false;
+            foreach (var pair in definitions.Where(pair => pair.Value.Code == 39 && !affected.Contains(pair.Key)))
+                if (pair.Value.Children.Where(tag => tag.Code is 4 or 26 or 70).Any(tag => DependsOnAffected(tag, affected)))
+                    added |= affected.Add(pair.Key);
+        } while (added);
+        var removed = drawings.Where(pair => affected.Contains(pair.Key.Item1) ||
+            definitions.TryGetValue(pair.Key.Item1, out var tag) && tag.Code is 7 or 34).Select(pair => pair.Key).ToArray();
+        foreach (var key in removed)
+        {
+            Drawing old = drawings[key]; drawings.Remove(key);
+            foreach (var color in colorDrawings.Keys.Where(key => ReferenceEquals(key.Item1, old)).ToArray()) colorDrawings.Remove(color);
+        }
+        foreach (ushort id in affected) bounds.Remove(id);
+    }
+
+    private static bool DependsOnAffected(ScaleformTag tag, HashSet<ushort> affected)
+    {
+        try { return ScaleformPlacement.Read(tag).CharacterId is ushort child && affected.Contains(child); }
+        catch (InvalidDataException) { return false; }
+    }
+
+    public void InvalidateCharacter(ushort characterId)
+    {
+        foreach (var key in drawings.Keys.Where(key => key.Item1 == characterId).ToArray()) drawings.Remove(key);
+        bounds.Remove(characterId);
+        InvalidateScene();
+    }
+
+    /// <summary>Updates paths after inserting timeline records, retaining immutable artwork and decoded images.</summary>
+    public void RefreshTimelineIndex(ushort? ownerSpriteId = null)
+    {
+        sceneIndex = new ScaleformSceneIndex(document);
+        InvalidatePlacement(ownerSpriteId);
+    }
+
+    public ScaleformScene GetScene(ushort? spriteId = null, int frame = 1)
+    {
+        if (scenes.TryGetValue((spriteId, frame), out var cached)) return cached;
+        return scenes[(spriteId, frame)] = sceneIndex.Build(spriteId, frame);
     }
 
     /// <summary>Draws a root or symbol timeline in its own pixel coordinates, without executing scripts.</summary>
     public Drawing RenderTimeline(ushort? spriteId = null, int frame = 1)
     {
+        if (spriteId.HasValue) return RenderCharacter(spriteId.Value, frame);
+        frame = Math.Clamp(frame, 1, Math.Max(1, (int)document.FrameCount));
+        if (timelines.TryGetValue((spriteId, frame), out var cached)) return cached;
         Drawing drawing = ReadTimeline(spriteId, Math.Max(1, frame));
         if (drawing.CanFreeze) drawing.Freeze();
-        return drawing;
+        return timelines[(spriteId, frame)] = drawing;
     }
 
     public Drawing RenderCharacter(ushort characterId, int frame = 1)
     {
         frame = Math.Max(1, frame);
+        if (definitions.TryGetValue(characterId, out var definition))
+            frame = definition.Code == 39 ? Math.Clamp(frame, 1, Math.Max(1, (int)definition.SpriteFrameCount)) : 1;
         if (drawings.TryGetValue((characterId, frame), out var cached)) return cached;
         if (rendering.Count >= 48 || !rendering.Add(characterId))
         {
@@ -108,7 +204,7 @@ public sealed class ScaleformArtworkRenderer
                     _ => Unsupported(characterId, tag.Name)
                 };
             }
-            else if (images.ContainsKey(characterId)) drawing = DrawImage(characterId);
+            else if (images.ContainsKey(characterId) || externalImages.ContainsKey(characterId)) drawing = DrawImage(characterId);
             else if (imports.TryGetValue(characterId, out var import) && externalSymbolResolver != null)
                 drawing = externalSymbolResolver(import.Movie, import.Symbol, frame) ?? Unsupported(characterId, $"shared symbol '{import.Symbol}' from '{import.Movie}'");
             else drawing = Unsupported(characterId, "missing definition");
@@ -143,6 +239,7 @@ public sealed class ScaleformArtworkRenderer
     private Rect GetStoredBounds(ushort id)
     {
         if (images.TryGetValue(id, out var image) && image != null) return new Rect(0, 0, image.Width, image.Height);
+        if (externalImages.TryGetValue(id, out var external)) return new Rect(0, 0, external.Width, external.Height);
         if (!definitions.TryGetValue(id, out var tag)) return Rect.Empty;
         try
         {
@@ -352,9 +449,9 @@ public sealed class ScaleformArtworkRenderer
     private Drawing ReadTimeline(ushort? id, int frame)
     {
         int count = id.HasValue && definitions.TryGetValue(id.Value, out var sprite) && sprite.Code == 39
-            ? BinaryPrimitives.ReadUInt16LittleEndian(sprite.Payload.Span[2..]) : document.FrameCount;
+            ? sprite.SpriteFrameCount : document.FrameCount;
         frame = Math.Clamp(frame, 1, Math.Max(1, count));
-        var scene = ScaleformScene.Build(document, id, frame);
+        var scene = GetScene(id, frame);
         foreach (string warning in scene.Warnings) Warn(warning);
         var result = new DrawingGroup();
         var masks = new List<(ushort End, Geometry Geometry)>();
@@ -389,6 +486,15 @@ public sealed class ScaleformArtworkRenderer
 
     private Drawing ApplyColorTransform(Drawing drawing, ScaleformColorTransform color)
     {
+        if (colorDrawings.TryGetValue((drawing, color), out var cached)) return cached;
+        Drawing result = TransformDrawing(drawing, color);
+        if (result.CanFreeze) result.Freeze();
+        if (colorDrawings.Count >= 8192) colorDrawings.Clear();
+        return colorDrawings[(drawing, color)] = result;
+    }
+
+    private Drawing TransformDrawing(Drawing drawing, ScaleformColorTransform color)
+    {
         bool alphaOnly = color.RedMultiplier == 1 && color.GreenMultiplier == 1 && color.BlueMultiplier == 1 &&
                          color.RedOffset == 0 && color.GreenOffset == 0 && color.BlueOffset == 0 && color.AlphaOffset == 0 &&
                          color.AlphaMultiplier is >= 0 and <= 1;
@@ -405,7 +511,13 @@ public sealed class ScaleformArtworkRenderer
         if (drawing is GlyphRunDrawing glyph) return new GlyphRunDrawing(TransformBrush(glyph.ForegroundBrush, color), glyph.GlyphRun);
         if (drawing is DrawingGroup group)
         {
-            var result = group.Clone(); result.Children.Clear();
+            // Clone() recursively copies the entire frozen subtree before it is thrown
+            // away. Retain immutable layout resources and transform each child once.
+            var result = new DrawingGroup
+            {
+                Transform = group.Transform, ClipGeometry = group.ClipGeometry, Opacity = group.Opacity,
+                OpacityMask = group.OpacityMask, GuidelineSet = group.GuidelineSet
+            };
             foreach (Drawing child in group.Children) result.Children.Add(ApplyColorTransform(child, color));
             return result;
         }
@@ -615,19 +727,30 @@ public sealed class ScaleformArtworkRenderer
         // GFX image IDs carry resource-type bits above the low 16-bit SWF character ID.
         if (imageId > ushort.MaxValue) { Warn($"External image {imageId} uses an indirect resource ID; it is not previewed as a character."); return; }
         if (width == 0 || height == 0) throw new InvalidDataException("An external image has zero dimensions.");
-        ImageSource source = externalImageResolver?.Invoke(filename);
-        if (source == null && !string.IsNullOrWhiteSpace(exportName)) source = externalImageResolver?.Invoke(exportName);
-        if (tag.Code == 1003) gradientImages[(ushort)imageId] = new ImageData(source, width, height);
-        else images[(ushort)imageId] = new ImageData(source, width, height);
-        // Gradient colors remain present in ordinary gradient styles; the extracted image is an optional cache.
-        if (source == null && tag.Code != 1003) Warn($"External image '{filename}' is not available in this package; its artwork is omitted.");
+        var external = new ExternalImage(filename, exportName, width, height);
+        if (tag.Code == 1003) externalGradients[(ushort)imageId] = external;
+        else externalImages[(ushort)imageId] = external;
+    }
+
+    private ImageData ResolveExternalImage(ExternalImage external, bool gradient)
+    {
+        ImageSource source = externalImageResolver?.Invoke(external.Filename);
+        if (source == null && !string.IsNullOrWhiteSpace(external.ExportName)) source = externalImageResolver?.Invoke(external.ExportName);
+        if (source == null && !gradient) Warn($"External image '{external.Filename}' is not available in this package; its artwork is omitted.");
+        return new ImageData(source, external.Width, external.Height);
     }
 
     private ImageData GetImage(ushort id)
     {
         if (images.TryGetValue(id, out var cached)) return cached;
+        if (externalImages.TryGetValue(id, out var external)) return images[id] = ResolveExternalImage(external, false);
         images[id] = null;
-        if (!definitions.TryGetValue(id, out var tag)) { images[id] = gradientImages.GetValueOrDefault(id); return images[id]; }
+        if (!definitions.TryGetValue(id, out var tag))
+        {
+            if (!gradientImages.TryGetValue(id, out var gradient) && externalGradients.TryGetValue(id, out var externalGradient))
+                gradientImages[id] = gradient = ResolveExternalImage(externalGradient, true);
+            return images[id] = gradient;
+        }
         if (tag.Code is not (6 or 20 or 21 or 35 or 36 or 90 or 1008)) return null;
         try
         {
@@ -748,5 +871,6 @@ public sealed class ScaleformArtworkRenderer
     }
     private readonly record struct Edge(Point Start, Point End, Point Control, bool Curved) { public Edge Reverse() => new(End, Start, Control, Curved); }
     private sealed record ImageData(ImageSource Source, int Width, int Height);
+    private sealed record ExternalImage(string Filename, string ExportName, int Width, int Height);
     private sealed class FontData { public string Name; public bool IsFont3; public List<Geometry> Glyphs = []; }
 }

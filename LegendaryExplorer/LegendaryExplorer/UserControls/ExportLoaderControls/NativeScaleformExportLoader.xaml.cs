@@ -4,6 +4,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
 using LegendaryExplorerCore.Packages;
@@ -25,6 +26,8 @@ public partial class NativeScaleformExportLoader : ExportLoaderControl
     private string displayedDraftText;
     private Window owner;
     private bool initialized;
+    private bool designerNeedsRefresh;
+    private MovieDraft behaviorViewDraft;
 
     public bool HasMovie => draft != null;
     public bool HasSelection => selection != null;
@@ -42,6 +45,23 @@ public partial class NativeScaleformExportLoader : ExportLoaderControl
         DataContext = this;
         Designer.StatusChanged += SetStatus;
         Designer.DraftChanged += (_, _) => SetStatus("Design changed. Apply changes, then save the package.");
+        Behaviors.StatusChanged += SetStatus;
+        Behaviors.DraftChanged += (_, _) =>
+        {
+            if (draft == null) return;
+            draft.BehaviorsTouched = true;
+            SetStatus("Behavior changed. Apply changes, then save the package.");
+        };
+        Designer.Creator.ElementRequested += spec =>
+        {
+            if (draft == null) return;
+            try
+            {
+                var center = Designer.Viewport.ToWorld(new Point(Designer.Viewport.ActualWidth / 2, Designer.Viewport.ActualHeight / 2));
+                Designer.AddNewElement(spec, center.X, center.Y);
+            }
+            catch (Exception ex) { SetStatus("Could not add the element: " + ex.Message); }
+        };
         initialized = true;
     }
 
@@ -50,6 +70,7 @@ public partial class NativeScaleformExportLoader : ExportLoaderControl
 
     public override void LoadExport(ExportEntry exportEntry)
     {
+        if (ReferenceEquals(CurrentLoadedExport, exportEntry) && draft != null && !draft.Session.HasExternalChanges) return;
         bool previousFieldsValid = CaptureDraft();
         CurrentLoadedExport = exportEntry;
         ExternalEditor.LoadExport(exportEntry);
@@ -62,7 +83,7 @@ public partial class NativeScaleformExportLoader : ExportLoaderControl
             }
             else if (!draft.IsDirty && draft.Session.HasExternalChanges)
             {
-                draft.Shared.Dispose();
+                draft.DisposePreview();
                 draft = new MovieDraft(new ScaleformExportSession(exportEntry));
                 drafts[exportEntry] = draft;
             }
@@ -112,6 +133,11 @@ public partial class NativeScaleformExportLoader : ExportLoaderControl
         SelectionTitle = "Browse the movie";
         SelectionHelp = "Choose a tag to inspect it. Supported fields and AVM1 scripts can be edited here.";
         Designer.LoadMovie(document, draft.Textures.Resolve, draft.Visual, draft.Edits, draft.Shared.Resolve);
+        Designer.Creator.LoadMovie(draft.Session.Export, document);
+        designerNeedsRefresh = false;
+        behaviorViewDraft = null;
+        Behaviors.ClearMovie();
+        if (EditingTabs.SelectedItem == BehaviorsTab) ShowBehaviors();
         UpdateFilter();
         NotifyView();
     }
@@ -122,6 +148,8 @@ public partial class NativeScaleformExportLoader : ExportLoaderControl
         originalEditorText = null;
         displayedDraftText = null;
         Designer.ClearMovie();
+        Behaviors.ClearMovie();
+        behaviorViewDraft = null;
         VisibleTags = Array.Empty<TagNode>();
         PayloadEditor.Text = string.Empty;
         PayloadEditor.IsReadOnly = true;
@@ -143,12 +171,14 @@ public partial class NativeScaleformExportLoader : ExportLoaderControl
     {
         if (draft == null) return true;
         bool fieldsValid = Designer.CommitPendingFields();
+        if (behaviorViewDraft == draft) fieldsValid &= Behaviors.CommitPendingFields();
         draft.FrameRate = FrameRateEditor.Text;
         if (selection != null && !PayloadEditor.IsReadOnly && PayloadEditor.Text != displayedDraftText)
         {
             if (PayloadEditor.Text == originalEditorText) draft.Edits.Remove(selection.Path);
             else draft.Edits[selection.Path] = PayloadEditor.Text;
             displayedDraftText = PayloadEditor.Text;
+            designerNeedsRefresh = true;
         }
         return fieldsValid;
     }
@@ -233,7 +263,11 @@ public partial class NativeScaleformExportLoader : ExportLoaderControl
         target.StagedTags = tags;
         foreach ((string path, string text) in target.Edits)
         {
-            var tag = tags[path];
+            if (!tags.TryGetValue(path, out var tag))
+            {
+                if (path.StartsWith('+')) continue; // New UI definitions are created below.
+                throw new InvalidDataException("An edited resource no longer exists. Reload this movie before applying.");
+            }
             if (tag.CanEditText) tag.SetText(text);
             else if (tag.Code == 9)
             {
@@ -250,7 +284,8 @@ public partial class NativeScaleformExportLoader : ExportLoaderControl
             }
             else throw new InvalidOperationException($"Editing {tag.Name} is not supported.");
         }
-        ScaleformVisualEditor.ApplyDraft(target.Session.Document, target.Visual);
+        ScaleformVisualEditor.ApplyDraft(target.Session.Document, target.Visual, target.Edits);
+        if (target.BehaviorsTouched) ScaleformBehaviorCompiler.Apply(target.Session.Document, target.BehaviorGraph);
     }
 
     private void CompileApply_Click(object sender, RoutedEventArgs e)
@@ -263,6 +298,7 @@ public partial class NativeScaleformExportLoader : ExportLoaderControl
             bool applied = draft.Session.Apply();
             draft.Edits.Clear();
             draft.Visual.ClearEdits();
+            draft.ResetBehaviors();
             draft.FrameRate = draft.Session.Document.FrameRate.ToString(CultureInfo.InvariantCulture);
             draft.OriginalFrameRate = draft.FrameRate;
             ShowDraft();
@@ -332,7 +368,7 @@ public partial class NativeScaleformExportLoader : ExportLoaderControl
         if (!CaptureDraft()) return;
         if (draft?.IsDirty == true && MessageBox.Show(owner, "Discard this movie’s unapplied draft and reload from the package?", "Reload movie", MessageBoxButton.YesNo) != MessageBoxResult.Yes) return;
         var export = CurrentLoadedExport;
-        draft?.Shared.Dispose();
+        draft?.DisposePreview();
         drafts.Remove(export);
         draft = null;
         LoadExport(export);
@@ -348,11 +384,97 @@ public partial class NativeScaleformExportLoader : ExportLoaderControl
     {
         if (!initialized || e.Source != EditingTabs || draft == null) return;
         CaptureDraft();
-        if (EditingTabs.SelectedIndex == 0)
+        if (EditingTabs.SelectedIndex == 0 && designerNeedsRefresh)
         {
             draft.Session.ResetDraft();
             Designer.LoadMovie(draft.Session.Document, draft.Textures.Resolve, draft.Visual, draft.Edits, draft.Shared.Resolve);
+            designerNeedsRefresh = false;
         }
+        else if (EditingTabs.SelectedItem == BehaviorsTab) ShowBehaviors();
+    }
+
+    private void ShowBehaviors()
+    {
+        if (draft == null) return;
+        var document = Designer.PreviewDocument ?? draft.Session.Document;
+        // Loading the same graph retains selection and undo while refreshing the current
+        // preview document and event installation frame after design edits.
+        Behaviors.LoadMovie(document, draft.BehaviorGraph, DiscoverNamedTargets(document), Designer.Draft?.Frame ?? 1);
+        behaviorViewDraft = draft;
+    }
+
+    private void AddClickAction_Click(object sender, RoutedEventArgs e)
+    {
+        var selected = Designer.SelectedElement;
+        string name = selected?.Item.InstanceName;
+        if (string.IsNullOrEmpty(name) || selected.Item.Definition?.Code is not (null or 7 or 34 or 39))
+        {
+            SetStatus("Select a named button or group, or create a Button in Design → Add UI.");
+            return;
+        }
+        if (!CaptureDraft()) return;
+        string selectedPath = Designer.Draft.SpriteId.HasValue ? null : FindSelectedPath(Designer.VisibleElements, selected, "");
+        var matches = DiscoverNamedTargets(Designer.PreviewDocument).Where(t => t == name || t.EndsWith("." + name, StringComparison.Ordinal)).ToArray();
+        EditingTabs.SelectedItem = BehaviorsTab;
+        string target = selectedPath ?? (matches.Length == 1 ? matches[0] : "");
+        var flow = Behaviors.AddBehavior(ScaleformBehaviorTrigger.ButtonClick, target);
+        if (flow != null && Designer.Draft.SpriteId.HasValue && !string.IsNullOrEmpty(target))
+        {
+            // A group's frame number is local; install its click handler on a root frame
+            // where the containing instance exists, rather than copying the local frame.
+            string rootName = (target.StartsWith("_root.", StringComparison.Ordinal) ? target[6..] : target).Split('.')[0];
+            var index = new ScaleformSceneIndex(Designer.PreviewDocument);
+            if (!index.Build(frame: flow.Frame).Items.Any(i => i.InstanceName == rootName))
+                for (int frame = 1; frame <= Math.Min(4096, (int)Designer.PreviewDocument.FrameCount); frame++)
+                    if (index.Build(frame: frame).Items.Any(i => i.InstanceName == rootName))
+                    {
+                        flow.Frame = frame; ShowBehaviors(); break;
+                    }
+        }
+        if (selectedPath == null && matches.Length != 1) SetStatus("Choose the button's full location in the event's button selector. It appears in more than one group.");
+    }
+
+    private static string FindSelectedPath(IEnumerable<ScaleformVisualEditor.VisualElement> elements, ScaleformVisualEditor.VisualElement selected, string prefix)
+    {
+        foreach (var element in elements)
+        {
+            string name = element.Item.InstanceName;
+            string path = prefix == null || string.IsNullOrEmpty(name) ? null : prefix + name;
+            if (ReferenceEquals(element, selected)) return path;
+            string childPath = FindSelectedPath(element.Children, selected, path == null ? null : path + ".");
+            if (childPath != null) return childPath;
+        }
+        return null;
+    }
+
+    private static IEnumerable<string> DiscoverNamedTargets(ScaleformDocument document)
+    {
+        var found = new HashSet<string>(StringComparer.Ordinal);
+        var definitions = ScaleformScene.Build(document).Definitions;
+        var placements = new Dictionary<int, List<(string Name, ushort Character)>>();
+        void Visit(ushort? sprite, string prefix, HashSet<ushort> seen, int depth)
+        {
+            if (depth > 20 || found.Count > 2000) return;
+            int key = sprite.HasValue ? sprite.Value : -1;
+            if (!placements.TryGetValue(key, out var names))
+            {
+                names = new(); placements[key] = names;
+                var timeline = sprite.HasValue ? definitions[sprite.Value].Children : document.Tags;
+                foreach (var tag in timeline.Where(t => t.Code is 4 or 26 or 70))
+                {
+                    var item = ScaleformPlacement.Read(tag);
+                    if (!string.IsNullOrEmpty(item.InstanceName) && item.CharacterId.HasValue) names.Add((item.InstanceName, item.CharacterId.Value));
+                }
+            }
+            foreach (var item in names)
+            {
+                string path = prefix + item.Name;
+                if (!found.Add(path) || !definitions.TryGetValue(item.Character, out var symbol) || symbol.Code != 39 || seen.Contains(item.Character)) continue;
+                Visit(item.Character, path + ".", new HashSet<ushort>(seen) { item.Character }, depth + 1);
+            }
+        }
+        Visit(null, "", new HashSet<ushort>(), 0);
+        return found.OrderBy(n => n).ToArray();
     }
 
     private void UpdateFilter()
@@ -409,7 +531,7 @@ public partial class NativeScaleformExportLoader : ExportLoaderControl
     public void ClearPackageDrafts()
     {
         UnloadExport();
-        foreach (var cached in drafts.Values) cached.Shared.Dispose();
+        foreach (var cached in drafts.Values) cached.DisposePreview();
         drafts.Clear();
     }
 
@@ -426,10 +548,11 @@ public partial class NativeScaleformExportLoader : ExportLoaderControl
     public override void Dispose()
     {
         owner = null;
-        foreach (var cached in drafts.Values) cached.Shared.Dispose();
+        foreach (var cached in drafts.Values) cached.DisposePreview();
         drafts.Clear();
         draft = null;
         Designer.ClearMovie();
+        Behaviors.ClearMovie();
         ExternalEditor.Dispose();
     }
 
@@ -462,8 +585,26 @@ public partial class NativeScaleformExportLoader : ExportLoaderControl
         public ScaleformTextureResolver Textures { get; } = new(session.Export);
         private ScaleformSharedAssetResolver shared;
         public ScaleformSharedAssetResolver Shared => shared ??= new ScaleformSharedAssetResolver(session.Export, Textures.Resolve);
+        public void DisposePreview() => shared?.Dispose();
+        private ScaleformBehaviorGraph behaviorGraph;
+        private string originalBehaviors;
+        public bool BehaviorsTouched { get; set; }
+        public ScaleformBehaviorGraph BehaviorGraph
+        {
+            get
+            {
+                if (behaviorGraph == null)
+                {
+                    behaviorGraph = ScaleformBehaviorCompiler.Read(Session.Document);
+                    originalBehaviors = JsonSerializer.Serialize(behaviorGraph);
+                }
+                return behaviorGraph;
+            }
+        }
+        public void ResetBehaviors() { behaviorGraph = null; originalBehaviors = null; BehaviorsTouched = false; }
         public string OriginalFrameRate { get; set; } = session.Document.FrameRate.ToString(CultureInfo.InvariantCulture);
         public string FrameRate { get; set; } = session.Document.FrameRate.ToString(CultureInfo.InvariantCulture);
-        public bool IsDirty => Visual.IsModified || Edits.Count > 0 || FrameRate != OriginalFrameRate;
+        public bool IsDirty => Visual.IsModified || Edits.Count > 0 || FrameRate != OriginalFrameRate ||
+            BehaviorsTouched && JsonSerializer.Serialize(BehaviorGraph) != originalBehaviors;
     }
 }

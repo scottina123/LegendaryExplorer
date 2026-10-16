@@ -49,7 +49,41 @@ public class ScaleformVisualEditorTests
         AssertPendingInspectorFieldsCommitBeforeApplyAndNavigation();
         AssertLiteralTextAndHtmlLineBreaksSurviveVisualEditing();
         AssertNewInstancesKeepEarlierFramesWhenMovedOrRemovedLater();
+        AssertAuthoredLibraryCopiesSurviveDeletingTheirFirstInstanceAndUndoingAnOpenGroup();
         AssertFailedApplyKeepsVisualDraftAndExternalPackageChange();
+    }
+
+    private static void AssertAuthoredLibraryCopiesSurviveDeletingTheirFirstInstanceAndUndoingAnOpenGroup()
+    {
+        var source = ScaleformDocument.Parse(Movie());
+        var draft = new ScaleformVisualDraft();
+        var texts = new Dictionary<string, string>();
+        var editor = new ScaleformVisualEditor();
+        editor.LoadMovie(source, _ => null, draft, texts);
+        editor.SetFrame(1);
+        editor.AddNewElement(new ScaleformElementSpec { Kind = ScaleformElementKind.Button, Name = "newButton" }, 30, 40);
+        string firstIdentity = editor.SelectedElement.Identity;
+        ushort character = editor.SelectedElement.CharacterId;
+        editor.AddSymbolAt(character, 100, 100);
+        string copyIdentity = editor.SelectedElement.Identity;
+        editor.SelectElement(firstIdentity); editor.RemoveSelected();
+        Assert.IsFalse(editor.VisibleElements.Any(element => element.Identity == firstIdentity));
+        Assert.IsTrue(editor.VisibleElements.Any(element => element.Identity == copyIdentity && element.Item.Definition?.Code == 39));
+        var compiled = ScaleformDocument.Parse(source.Compile());
+        ScaleformVisualEditor.ApplyDraft(compiled, draft, texts);
+        var reloaded = ScaleformDocument.Parse(compiled.Compile());
+        var copy = ScaleformScene.Build(reloaded).Items.Single(element => element.CharacterId == character);
+        Assert.IsNotNull(copy.Definition, "Deleting an authored symbol's first instance must retain artwork used by its Library copies.");
+        Assert.IsFalse(string.IsNullOrEmpty(copy.InstanceName));
+
+        editor = new ScaleformVisualEditor(); draft = new ScaleformVisualDraft();
+        editor.LoadMovie(source, _ => null, draft, new Dictionary<string, string>());
+        editor.AddNewElement(new ScaleformElementSpec { Kind = ScaleformElementKind.Panel, Name = "temporaryGroup" }, 0, 0);
+        editor.EnterGroup(editor.SelectedElement.CharacterId);
+        editor.Undo();
+        Assert.IsNull(draft.SpriteId, "Undoing an open group's creation must return to the movie canvas.");
+        Assert.IsFalse(draft.IsModified);
+        Assert.IsTrue(editor.VisibleElements.Any(element => element.Name == "Title"));
     }
 
     private static void AssertMoveResizeAndUndoLeaveTheSourceUntouched()

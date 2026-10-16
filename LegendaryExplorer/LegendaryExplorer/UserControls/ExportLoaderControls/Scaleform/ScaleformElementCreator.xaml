@@ -1,0 +1,37 @@
+<UserControl x:Class="LegendaryExplorer.UserControls.ExportLoaderControls.Scaleform.ScaleformElementCreator"
+ xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:xctk="http://schemas.xceed.com/wpf/xaml/toolkit">
+ <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+  <StackPanel Margin="8">
+   <TextBlock Text="Create UI" FontSize="16" FontWeight="SemiBold"/>
+   <TextBlock Text="Choose an element, then drag it onto the canvas or press Add." TextWrapping="Wrap" Opacity="0.7" Margin="0,6,0,12"/>
+   <ComboBox x:Name="KindBox" SelectedIndex="0" SelectionChanged="Kind_Changed" Padding="5">
+    <ComboBoxItem Content="Panel / rectangle"/><ComboBoxItem Content="Text"/><ComboBoxItem Content="Image / Texture2D"/><ComboBoxItem Content="Button"/>
+   </ComboBox>
+   <TextBlock Text="Name" Margin="0,10,0,3"/><TextBox x:Name="NameBox" Text="newPanel" MaxLength="80" Padding="5" ToolTip="A name lets you find this element in Behaviors."/>
+   <UniformGrid Columns="2" Margin="0,8,0,0">
+    <StackPanel Margin="0,0,5,0"><TextBlock Text="Width"/><TextBox x:Name="WidthBox" Text="240" Padding="5"/></StackPanel>
+    <StackPanel><TextBlock Text="Height"/><TextBox x:Name="HeightBox" Text="80" Padding="5"/></StackPanel>
+   </UniformGrid>
+   <StackPanel x:Name="ColorPanel"><TextBlock Text="Color" Margin="0,10,0,3"/><xctk:ColorPicker x:Name="ElementColor" SelectedColor="#FF153D60" ShowAvailableColors="True" ShowStandardColors="True"/></StackPanel>
+   <StackPanel x:Name="TextOptions" Visibility="Collapsed">
+    <TextBlock Text="Text" Margin="0,10,0,3"/><TextBox x:Name="TextBox" Text="New text" AcceptsReturn="True" MinHeight="60" TextWrapping="Wrap" Padding="5"/>
+    <TextBlock Text="Movie font" Margin="0,10,0,3"/><ComboBox x:Name="FontBox" DisplayMemberPath="Name" Padding="4"/>
+    <TextBlock Text="Font size" Margin="0,10,0,3"/><TextBox x:Name="FontSizeBox" Text="24" Padding="5"/>
+    <TextBlock x:Name="FontHelp" Opacity="0.6" TextWrapping="Wrap" Margin="0,5,0,0"/>
+   </StackPanel>
+   <StackPanel x:Name="ImageOptions" Visibility="Collapsed">
+    <TextBlock Text="Package Texture2D" Margin="0,10,0,3"/>
+    <TextBox x:Name="TextureSearch" TextChanged="TextureSearch_Changed" Padding="5" ToolTip="Search textures in this package"/>
+    <ListBox x:Name="TextureList" DisplayMemberPath="Label" SelectionChanged="Texture_Selected" Height="170" Margin="0,5,0,5" ScrollViewer.HorizontalScrollBarVisibility="Disabled"/>
+    <Button Content="Choose PNG / JPG…" Click="ImageFile_Click" Padding="5"/>
+    <Image x:Name="ImagePreview" MaxHeight="100" Margin="0,8,0,0" Stretch="Uniform"/>
+    <TextBlock x:Name="ImageInfo" TextWrapping="Wrap" FontSize="11" Opacity="0.65" Margin="0,5,0,0"/>
+   </StackPanel>
+   <Border x:Name="DragCard" Background="#254C65" Padding="10" Margin="0,15,0,5" Cursor="Hand" MouseLeftButtonDown="Card_Down" MouseMove="Card_Move">
+    <TextBlock Text="Drag new element to canvas" TextWrapping="Wrap" HorizontalAlignment="Center"/>
+   </Border>
+   <Button Content="Add to canvas" Click="Add_Click" Padding="7"/>
+   <TextBlock x:Name="Feedback" TextWrapping="Wrap" Opacity="0.75" Margin="0,10,0,0"/>
+  </StackPanel>
+ </ScrollViewer>
+</UserControl>

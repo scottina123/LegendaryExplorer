@@ -40,6 +40,8 @@ public sealed class ScaleformPlacement
     internal bool HasOtherEffects { get; private init; }
     private int MatrixOffset { get; init; }
     private int MatrixLength { get; init; }
+    private int NameOffset { get; init; }
+    private int NameLength { get; init; }
 
     /// <summary>Returns null for a non-placement tag; malformed supported placements throw.</summary>
     public static ScaleformPlacement Read(ScaleformTag tag)
@@ -77,6 +79,7 @@ public sealed class ScaleformPlacement
             matrix = ReadMatrix(data, ref offset);
         int matrixLength = offset - matrixOffset;
         string name = null;
+        int nameOffset = offset, nameLength = 0;
         ushort? clipDepth = null;
         ScaleformColorTransform? color = null;
         bool? visible = null;
@@ -88,8 +91,10 @@ public sealed class ScaleformPlacement
                 color = ReadColorTransform(data, ref offset, true);
             if ((flags & 16) != 0)
                 _ = UInt16(data, ref offset); // Morph ratio.
+            nameOffset = offset;
             if ((flags & 32) != 0)
                 name = CString(data, ref offset);
+            nameLength = offset - nameOffset;
             if ((flags & 64) != 0)
                 clipDepth = UInt16(data, ref offset);
             if ((flags2 & 32) != 0)
@@ -107,8 +112,23 @@ public sealed class ScaleformPlacement
             Matrix = matrix, ColorTransform = color, IsMove = tag.Code != 4 && (flags & 1) != 0,
             ClipDepth = clipDepth, HasEffects = color.HasValue && color != ScaleformColorTransform.Identity || (flags2 & 3) != 0,
             Visible = visible, HasColorTransform = color.HasValue, HasOtherEffects = (flags2 & 3) != 0,
-            MatrixOffset = matrixOffset, MatrixLength = matrixLength
+            MatrixOffset = matrixOffset, MatrixLength = matrixLength, NameOffset = nameOffset, NameLength = nameLength
         };
+    }
+
+    internal static byte[] WithName(ScaleformTag tag, ReadOnlySpan<byte> data, string name)
+    {
+        if (tag.Code is not (26 or 70)) throw new InvalidOperationException("Only PlaceObject2/3 instances can have names.");
+        if (name == null || name.Contains('\0') || name.Length > 1024) throw new ArgumentException("Choose an instance name without null characters (at most 1024 characters).", nameof(name));
+        var placement = Read(tag, data);
+        if (placement.InstanceName == name) return data.ToArray();
+        byte[] encoded = Encoding.UTF8.GetBytes(name + "\0");
+        byte[] result = new byte[data.Length - placement.NameLength + encoded.Length];
+        data[..placement.NameOffset].CopyTo(result);
+        encoded.CopyTo(result, placement.NameOffset);
+        data[(placement.NameOffset + placement.NameLength)..].CopyTo(result.AsSpan(placement.NameOffset + encoded.Length));
+        result[0] |= 32;
+        return result;
     }
 
     internal static byte[] WithMatrix(ScaleformTag tag, ReadOnlySpan<byte> original, ScaleformMatrix matrix)

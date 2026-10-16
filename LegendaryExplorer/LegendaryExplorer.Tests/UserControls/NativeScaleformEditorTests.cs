@@ -13,6 +13,7 @@ using LegendaryExplorer.MainWindow;
 using LegendaryExplorer.Misc.AppSettings;
 using LegendaryExplorer.Tools.PackageEditor;
 using LegendaryExplorer.UserControls.ExportLoaderControls;
+using LegendaryExplorer.UserControls.ExportLoaderControls.Scaleform;
 using LegendaryExplorer.UserControls.ExportLoaderControls.ScriptEditor.IDE;
 using LegendaryExplorerCore;
 using LegendaryExplorerCore.Packages;
@@ -50,6 +51,94 @@ public class NativeScaleformEditorTests
         AssertRepeatedUnloadAndDisposeAreSafe();
         AssertHostedCloseVetoPreservesTheEditor();
         AssertPackageCloseVetoPreservesTheEditor();
+        AssertNewUiAndBehaviorDraftsCompileTogetherAndSurviveNavigation();
+        AssertClickShortcutUsesCurrentFrameAndSelectedHierarchy();
+    }
+
+    private static void AssertNewUiAndBehaviorDraftsCompileTogetherAndSurviveNavigation()
+    {
+        using var fixture = new Fixture();
+        using var editor = new NativeScaleformExportLoader();
+        editor.LoadExport(fixture.First);
+        var designer = (ScaleformVisualEditor)editor.FindName("Designer");
+        designer.AddNewElement(new() { Kind = ScaleformElementKind.Button, Name = "OpenButton", Width = 120, Height = 40 }, 20, 30);
+        designer.AddNewElement(new() { Kind = ScaleformElementKind.Panel, Name = "NewPanel", Width = 320, Height = 180 }, 200, 100);
+        var createdButton = designer.VisibleElements.Single(i => i.Item.InstanceName == "OpenButton");
+        Assert.IsTrue(designer.SelectElement(createdButton.Identity));
+        typeof(NativeScaleformExportLoader).GetMethod("AddClickAction_Click", BindingFlags.NonPublic | BindingFlags.Instance)!
+            .Invoke(editor, [editor, new RoutedEventArgs()]);
+        var behaviors = (ScaleformBehaviorEditor)editor.FindName("Behaviors");
+        Assert.IsTrue(behaviors.Targets.Any(t => t.EndsWith("OpenButton", StringComparison.Ordinal)), "New UI elements must be available without applying the package first.");
+        Assert.AreEqual("OpenButton", behaviors.SelectedFlow.Target, "The selected button opens directly in its click behavior.");
+        var action = behaviors.AddAction(ScaleformBehaviorNodeKind.Show);
+        ((ComboBox)behaviors.FindName("ActionTarget")).Text = "NewPanel";
+        Assert.IsTrue(behaviors.CommitPendingFields());
+        Assert.AreEqual("NewPanel", action.Target);
+        editor.LoadExport(fixture.Second);
+        editor.LoadExport(fixture.First);
+        Assert.AreEqual(1, behaviors.Graph.Flows.Count, "The visual script draft must survive navigation.");
+        Assert.AreEqual(2, designer.Draft.Additions.Count);
+        Compile(editor);
+        StringAssert.Contains(editor.Status, "Compiled");
+        var saved = ScaleformDocument.Parse(MovieBytes(fixture.First));
+        Assert.AreEqual(2, ScaleformScene.Build(saved).Items.Count);
+        var graph = ScaleformBehaviorCompiler.Read(saved);
+        Assert.AreEqual(1, graph.Flows.Count);
+        Assert.AreEqual("NewPanel", graph.Flows[0].Nodes.Single().Target);
+        Assert.AreEqual(0, designer.Draft.Additions.Count, "Applying establishes a fresh visual baseline.");
+        byte[] applied = fixture.First.Data;
+        Compile(editor);
+        CollectionAssert.AreEqual(applied, fixture.First.Data, "An unchanged behavior and UI must compile to identical bytes.");
+    }
+
+    private static void AssertClickShortcutUsesCurrentFrameAndSelectedHierarchy()
+    {
+        using var fixture = new Fixture();
+        byte[] source = BuildMovie();
+        byte[] twoFrames = Join(source[..^2], new byte[] { 0x40, 0 }, source[^2..]);
+        BinaryPrimitives.WriteUInt32LittleEndian(twoFrames.AsSpan(4), (uint)twoFrames.Length);
+        BinaryPrimitives.WriteUInt16LittleEndian(twoFrames.AsSpan(12), 2);
+        fixture.First.WriteProperty(new ImmutableByteArrayProperty(twoFrames, "RawData"));
+        using var editor = new NativeScaleformExportLoader(); editor.LoadExport(fixture.First);
+        var designer = (ScaleformVisualEditor)editor.FindName("Designer");
+        var tabs = (TabControl)editor.FindName("EditingTabs");
+        tabs.SelectedItem = editor.FindName("BehaviorsTab"); // First visit is frame one.
+        tabs.SelectedIndex = 0;
+        designer.SetFrame(2);
+        designer.AddNewElement(new() { Kind = ScaleformElementKind.Button, Name = "Late Button" }, 0, 0);
+        typeof(NativeScaleformExportLoader).GetMethod("AddClickAction_Click", BindingFlags.NonPublic | BindingFlags.Instance)!
+            .Invoke(editor, [editor, new RoutedEventArgs()]);
+        var behaviors = (ScaleformBehaviorEditor)editor.FindName("Behaviors");
+        Assert.AreEqual(2, behaviors.SelectedFlow.Frame, "Returning to Behaviors must use the latest design frame.");
+        Assert.AreEqual("Late_Button", behaviors.SelectedFlow.Target, "Ordinary names with spaces must work without writing identifiers.");
+        Compile(editor); StringAssert.Contains(editor.Status, "Compiled");
+
+        tabs.SelectedIndex = 0; designer.SetFrame(2);
+        designer.AddNewElement(new() { Kind = ScaleformElementKind.Panel, Name = "LateMenu" }, 10, 10);
+        designer.EnterGroup(designer.SelectedElement.CharacterId);
+        designer.AddNewElement(new() { Kind = ScaleformElementKind.Button, Name = "UniqueClose" }, 0, 0);
+        typeof(NativeScaleformExportLoader).GetMethod("AddClickAction_Click", BindingFlags.NonPublic | BindingFlags.Instance)!
+            .Invoke(editor, [editor, new RoutedEventArgs()]);
+        Assert.AreEqual("LateMenu.UniqueClose", behaviors.SelectedFlow.Target);
+        Assert.AreEqual(2, behaviors.SelectedFlow.Frame, "A local group frame must not replace the root installation frame.");
+        Compile(editor); StringAssert.Contains(editor.Status, "Compiled");
+
+        tabs.SelectedIndex = 0; designer.EnterGroup(null); designer.SetFrame(1);
+        foreach (string parentName in new[] { "MenuA", "MenuB" })
+        {
+            designer.AddNewElement(new() { Kind = ScaleformElementKind.Panel, Name = parentName }, 10, 10);
+            ushort parentId = designer.SelectedElement.CharacterId;
+            designer.EnterGroup(parentId);
+            designer.AddNewElement(new() { Kind = ScaleformElementKind.Button, Name = "Close" }, 10, 10);
+            designer.EnterGroup(null);
+        }
+        var menuB = designer.VisibleElements.Single(i => i.Item.InstanceName == "MenuB");
+        var selectedClose = menuB.Children.Single(i => i.Item.InstanceName == "Close");
+        Assert.IsTrue(designer.SelectElement(selectedClose.Identity));
+        typeof(NativeScaleformExportLoader).GetMethod("AddClickAction_Click", BindingFlags.NonPublic | BindingFlags.Instance)!
+            .Invoke(editor, [editor, new RoutedEventArgs()]);
+        Assert.AreEqual("MenuB.Close", behaviors.SelectedFlow.Target, "Duplicate leaf names must retain the selected instance's ancestor path.");
+        Compile(editor); StringAssert.Contains(editor.Status, "Compiled");
     }
 
     private static void AssertNavigationPreservesSeparateDrafts()

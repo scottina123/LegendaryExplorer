@@ -30,7 +30,6 @@ internal sealed class ScaleformSharedAssetResolver : IDisposable
     private readonly HashSet<(string Movie, string Symbol, int Frame)> resolving = new();
     private readonly HashSet<string> warningSet = new(StringComparer.Ordinal);
     private readonly List<string> warnings = new();
-    private string[] loadedFiles;
     private long movieBytes;
     private bool disposed;
 
@@ -155,17 +154,21 @@ internal sealed class ScaleformSharedAssetResolver : IDisposable
         packages[packageName] = null;
         try
         {
-            loadedFiles ??= MELoadedFiles.GetAllFiles(source.Game).ToArray();
-            string path = loadedFiles.FirstOrDefault(file => string.Equals(Path.GetFileName(file), packageName, StringComparison.OrdinalIgnoreCase));
-            if (path == null)
+            if (!MELoadedFiles.GetFilesLoadedInGame(source.Game, forceUseCached: true).TryGetValue(packageName, out string path))
             {
                 Warn($"Shared UI package {packageName} was not found for {source.Game}.");
                 return null;
             }
-            // Register one package use, released in Dispose. The source package belongs to its editor.
+            // Preview only needs a few shared movies and their visible textures. Loading
+            // every export in Startup synchronously makes merely selecting a movie stall.
             if (string.Equals(Path.GetFullPath(path), Path.GetFullPath(source.FileRef.FilePath), StringComparison.OrdinalIgnoreCase))
                 return source.FileRef;
-            var package = MEPackageHandler.OpenMEPackage(path);
+            // Keep a read-only snapshot for lazy export reads without holding a game
+            // package's file handle open while another Package Editor saves it.
+            var snapshot = MEPackageHandler.ReadAllFileBytesIntoMemoryStream(path);
+            ILazyLoadPackage package;
+            try { package = MEPackageHandler.UnsafeLazyLoadFromStream(snapshot, path); }
+            catch { snapshot.Dispose(); throw; }
             packages[packageName] = package;
             return package;
         }
@@ -196,9 +199,12 @@ internal sealed class ScaleformSharedAssetResolver : IDisposable
 
     private static ExportEntry FindMovie(IMEPackage package, string movieName)
     {
-        foreach (var export in package.Exports.Where(export => !export.IsDefaultObject && export.ClassName is "GFxMovieInfo" or "BioSWF"))
+        var exports = package.Exports.Where(export => !export.IsDefaultObject && export.ClassName is "GFxMovieInfo" or "BioSWF").ToArray();
+        var exact = exports.FirstOrDefault(export => string.Equals(NormalizeMovieName(export.ObjectName.Name), movieName, StringComparison.OrdinalIgnoreCase));
+        if (exact != null) return package is ILazyLoadPackage lazyExact ? lazyExact.LoadExport(exact.UIndex) : exact;
+        foreach (var export in exports)
         {
-            if (string.Equals(NormalizeMovieName(export.ObjectName.Name), movieName, StringComparison.OrdinalIgnoreCase)) return export;
+            if (package is ILazyLoadPackage lazy) lazy.LoadExport(export.UIndex);
             string sourcePath = export.GetProperty<StrProperty>("SourceFilePath")?.Value;
             if (!string.IsNullOrEmpty(sourcePath) && string.Equals(NormalizeMovieName(sourcePath), movieName, StringComparison.OrdinalIgnoreCase)) return export;
         }
@@ -227,7 +233,7 @@ internal sealed class ScaleformSharedAssetResolver : IDisposable
         disposed = true;
         drawings.Clear(); resolving.Clear(); movies.Clear();
         foreach (var package in packages.Values.Where(package => package != null).Distinct()) package.Dispose();
-        packages.Clear(); loadedFiles = null;
+        packages.Clear();
     }
 
     private sealed record MovieAsset(string Name, Dictionary<string, ushort> Symbols,

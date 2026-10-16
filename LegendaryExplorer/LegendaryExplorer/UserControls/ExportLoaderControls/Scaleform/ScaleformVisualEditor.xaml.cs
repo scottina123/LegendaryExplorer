@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Net;
+using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Controls;
@@ -16,6 +17,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls.Scaleform;
 public partial class ScaleformVisualEditor : UserControl
 {
     private ScaleformDocument source;
+    private byte[] sourceBytes;
     private ScaleformDocument working;
     private ScaleformArtworkRenderer renderer;
     private ScaleformScene scene;
@@ -25,6 +27,7 @@ public partial class ScaleformVisualEditor : UserControl
     private Func<string, string, int, Drawing> resolveSymbol;
     private readonly Dictionary<ScaleformTag, string> identities = new();
     private readonly Dictionary<string, ScaleformTag> tags = new();
+    private readonly ConditionalWeakTable<ScaleformVisualDraft, ArtworkSnapshot> artworkSnapshots = new();
     private List<LibrarySymbol> library = new();
     private bool updating;
     private Point libraryDragStart;
@@ -41,6 +44,8 @@ public partial class ScaleformVisualEditor : UserControl
     public VisualElement SelectedElement { get; private set; }
     public ScaleformVisualDraft Draft => draft;
     public ScaleformDesignSurface Viewport => CanvasViewport;
+    public ScaleformDocument PreviewDocument => working;
+    public ScaleformElementCreator Creator => ElementCreator;
 
     public ScaleformVisualEditor()
     {
@@ -52,14 +57,16 @@ public partial class ScaleformVisualEditor : UserControl
         ScaleformVisualDraft visualDraft, IDictionary<string, string> pendingTextEdits,
         Func<string, string, int, Drawing> externalSymbolResolver = null)
     {
-        source = document; resolveImage = externalResolver; draft = visualDraft; textEdits = pendingTextEdits; resolveSymbol = externalSymbolResolver;
+        source = document; sourceBytes = document.Compile(); resolveImage = externalResolver; draft = visualDraft; textEdits = pendingTextEdits; resolveSymbol = externalSymbolResolver;
+        renderer = artworkSnapshots.TryGetValue(visualDraft, out var savedArtwork) && savedArtwork.SourceBytes.AsSpan().SequenceEqual(sourceBytes)
+            ? savedArtwork.Renderer : null;
         RebuildWorking();
         CanvasViewport.Fit();
     }
 
     public void ClearMovie()
     {
-        source = working = null; renderer = null; draft = null;
+        source = working = null; sourceBytes = null; renderer = null; draft = null;
         SelectedElement = null; VisibleElements = Array.Empty<VisualElement>();
         identities.Clear(); tags.Clear(); library.Clear();
         LayersTree.ItemsSource = null; LibraryList.ItemsSource = null;
@@ -68,12 +75,20 @@ public partial class ScaleformVisualEditor : UserControl
 
     // Original index paths are resolved before inserting records, so adding an instance
     // cannot redirect an existing edit to the next tag in the file.
-    public static void ApplyDraft(ScaleformDocument document, ScaleformVisualDraft visualDraft)
+    public static void ApplyDraft(ScaleformDocument document, ScaleformVisualDraft visualDraft, IDictionary<string, string> pendingTextEdits = null)
     {
-        foreach (var edit in visualDraft.Matrices) ScaleformScene.FindTag(document, edit.Key).SetPlacementMatrix(edit.Value);
+        foreach (var edit in visualDraft.Matrices.Where(edit => !edit.Key.StartsWith('+'))) ScaleformScene.FindTag(document, edit.Key).SetPlacementMatrix(edit.Value);
         foreach (var add in visualDraft.Additions)
         {
+            if (add.NewElement != null)
+            {
+                var created = document.AddElementDefinition(add.NewElement, add.SpriteId); add.CharacterId = created.CharacterId;
+                foreach (var generated in GeneratedTags(created.Definition, add.Id + "/definition"))
+                    if (visualDraft.Matrices.TryGetValue(generated.Path, out var matrix)) generated.Tag.SetPlacementMatrix(matrix);
+                if (created.ContentTag.CanEditText && pendingTextEdits?.TryGetValue(add.Id + "/content", out var text) == true) created.ContentTag.SetText(text);
+            }
             var tag = document.AddPlacement(add.CharacterId, add.Matrix, add.SpriteId, add.Frame, add.Depth);
+            if (!string.IsNullOrEmpty(add.Name)) tag.SetPlacementName(add.Name);
             add.Depth ??= ScaleformPlacement.Read(tag).Depth;
         }
         foreach (var key in visualDraft.Keyframes) document.AddTransformKeyframe(key.Depth, key.Matrix, key.SpriteId, key.Frame);
@@ -86,15 +101,28 @@ public partial class ScaleformVisualEditor : UserControl
         string previous = SelectedElement?.Identity;
         var previousScope = SelectedElement?.OwnerSpriteId;
         ushort? previousDepth = SelectedElement?.Depth;
-        working = ScaleformDocument.Parse(source.Compile());
+        working = ScaleformDocument.Parse(sourceBytes);
         identities.Clear(); tags.Clear();
         Index(working.Tags, "");
         foreach (var edit in textEdits)
             if (tags.TryGetValue(edit.Key, out var tag) && tag.CanEditText) tag.SetText(edit.Value);
-        foreach (var edit in draft.Matrices) tags[edit.Key].SetPlacementMatrix(edit.Value);
+        foreach (var edit in draft.Matrices.Where(edit => !edit.Key.StartsWith('+'))) tags[edit.Key].SetPlacementMatrix(edit.Value);
         foreach (var add in draft.Additions)
         {
+            if (add.NewElement != null)
+            {
+                var created = working.AddElementDefinition(add.NewElement, add.SpriteId); add.CharacterId = created.CharacterId;
+                foreach (var generated in GeneratedTags(created.Definition, add.Id + "/definition"))
+                {
+                    identities[generated.Tag] = generated.Path; tags[generated.Path] = generated.Tag;
+                    if (draft.Matrices.TryGetValue(generated.Path, out var matrix)) generated.Tag.SetPlacementMatrix(matrix);
+                }
+                string contentPath = add.Id + "/content";
+                identities[created.ContentTag] = contentPath; tags[contentPath] = created.ContentTag;
+                if (created.ContentTag.CanEditText && textEdits.TryGetValue(contentPath, out var text)) created.ContentTag.SetText(text);
+            }
             var tag = working.AddPlacement(add.CharacterId, add.Matrix, add.SpriteId, add.Frame, add.Depth);
+            if (!string.IsNullOrEmpty(add.Name)) tag.SetPlacementName(add.Name);
             add.Depth ??= ScaleformPlacement.Read(tag).Depth;
             identities[tag] = add.Id; tags[add.Id] = tag;
         }
@@ -104,15 +132,36 @@ public partial class ScaleformVisualEditor : UserControl
             identities[tag] = key.Id; tags[key.Id] = tag;
         }
         foreach (var remove in draft.Removals) working.RemovePlacement(remove.Depth, remove.SpriteId, remove.Frame);
-        renderer = new ScaleformArtworkRenderer(working, resolveImage, resolveSymbol);
+        renderer = new ScaleformArtworkRenderer(working, resolveImage, resolveSymbol, renderer);
+        var snapshot = artworkSnapshots.GetValue(draft, _ => new ArtworkSnapshot());
+        snapshot.SourceBytes = sourceBytes; snapshot.Renderer = renderer;
+        RefreshView(previous, previousScope, previousDepth, true);
+    }
+
+    public void ReloadDraft() => RebuildWorking();
+
+    private static IEnumerable<(string Path, ScaleformTag Tag)> GeneratedTags(ScaleformTag definition, string path)
+    {
+        yield return (path, definition);
+        for (int i = 0; i < definition.Children.Count; i++)
+            foreach (var child in GeneratedTags(definition.Children[i], path + "/" + i)) yield return child;
+    }
+
+    private void RefreshView(string previous = null, ushort? previousScope = null, ushort? previousDepth = null, bool rebuildLibrary = false)
+    {
+        if (draft.SpriteId.HasValue && (!renderer.GetScene().Definitions.TryGetValue(draft.SpriteId.Value, out var scope) || scope.Code != 39))
+        {
+            // Undoing creation while inside that group returns to the movie canvas.
+            draft.SpriteId = null; draft.Frame = 1; draft.InitialFrameChosen = false;
+        }
         if (!draft.InitialFrameChosen)
         {
             if (draft.Frame == 1) draft.Frame = ChooseAuthoringFrame(working, draft.SpriteId);
             draft.InitialFrameChosen = true;
         }
-        var overview = ScaleformScene.Build(working, draft.SpriteId);
+        var overview = renderer.GetScene(draft.SpriteId);
         draft.Frame = Math.Clamp(draft.Frame, 1, overview.FrameCount);
-        scene = ScaleformScene.Build(working, draft.SpriteId, draft.Frame);
+        scene = renderer.GetScene(draft.SpriteId, draft.Frame);
         VisibleElements = BuildElements(scene, Matrix.Identity, draft.SpriteId, draft.Frame, new HashSet<ushort>(), 0);
         SelectedElement = AllElements(VisibleElements).FirstOrDefault(e => e.Identity == previous)
             ?? (previousDepth.HasValue ? AllElements(VisibleElements).FirstOrDefault(e => e.OwnerSpriteId == previousScope && e.Depth == previousDepth) : null);
@@ -122,12 +171,16 @@ public partial class ScaleformVisualEditor : UserControl
         FrameLabel.Text = $"Frame {draft.Frame} / {scene.FrameCount}";
         ScopeLabel.Text = draft.SpriteId.HasValue ? "Inside " + GetSymbolName(draft.SpriteId.Value, overview) : "Movie canvas";
         updating = false;
-        var libraryArtwork = renderer;
-        var libraryDocument = working;
-        library = overview.Definitions.Where(p => p.Value.Code is 2 or 6 or 7 or 11 or 20 or 21 or 22 or 32 or 33 or 34 or 35 or 36 or 37 or 39 or 83 or 90 or 1001 or 1009)
-            .Select(p => new LibrarySymbol(p.Key, GetSymbolName(p.Key, overview), () => libraryArtwork.RenderCharacter(p.Key,
-                p.Value.Code == 39 ? ChooseAuthoringFrame(libraryDocument, p.Key, libraryArtwork) : 1))).OrderBy(p => p.Name).ToList();
-        FilterLibrary(); UpdateProperties(); CanvasViewport.InvalidateVisual();
+        if (rebuildLibrary)
+        {
+            var libraryArtwork = renderer;
+            var libraryDocument = working;
+            library = overview.Definitions.Where(p => p.Value.Code is 2 or 6 or 7 or 11 or 20 or 21 or 22 or 32 or 33 or 34 or 35 or 36 or 37 or 39 or 83 or 90 or 1001 or 1009)
+                .Select(p => new LibrarySymbol(p.Key, GetSymbolName(p.Key, overview), () => libraryArtwork.RenderCharacter(p.Key,
+                    p.Value.Code == 39 ? ChooseAuthoringFrame(libraryDocument, p.Key, libraryArtwork) : 1))).OrderBy(p => p.Name).ToList();
+            FilterLibrary();
+        }
+        UpdateProperties(); CanvasViewport.InvalidateVisual();
         if (SelectedElement != null) SelectLayerContainer(LayersTree, VisibleElements, SelectedElement);
     }
 
@@ -153,10 +206,10 @@ public partial class ScaleformVisualEditor : UserControl
             element.WorldBounds = TransformBounds(element.LocalBounds, world);
             if (item.Definition?.Code == 39 && !ancestors.Contains(item.CharacterId))
             {
-                var nested = ScaleformScene.Build(working, item.CharacterId);
+                var nested = renderer.GetScene(item.CharacterId);
                 int nestedFrame = Math.Min(frame, nested.FrameCount);
                 var nextAncestors = new HashSet<ushort>(ancestors) { item.CharacterId };
-                element.Children = BuildElements(ScaleformScene.Build(working, item.CharacterId, nestedFrame), world, item.CharacterId, nestedFrame, nextAncestors, depth + 1);
+                element.Children = BuildElements(renderer.GetScene(item.CharacterId, nestedFrame), world, item.CharacterId, nestedFrame, nextAncestors, depth + 1);
             }
             result.Add(element);
         }
@@ -230,29 +283,37 @@ public partial class ScaleformVisualEditor : UserControl
     {
         if (SelectedElement == null || SelectedElement.Matrix == value) return;
         var selected = SelectedElement;
-        // Validate the real writer before changing the visual draft.
-        selected.Item.PlacementTag.SetPlacementMatrix(value);
         var addition = draft.Additions.FirstOrDefault(a => a.Id == selected.Identity);
         var keyframe = draft.Keyframes.FirstOrDefault(k => k.Id == selected.Identity);
         if (selected.Item.PlacementFrame < selected.Frame && keyframe == null)
         {
             var key = new ScaleformVisualKeyframe { Depth = selected.Depth, Frame = selected.Frame, SpriteId = selected.OwnerSpriteId, Matrix = value };
+            // Insert a real keyframe directly into the isolated preview. Re-index paths
+            // without discarding already decoded artwork when dragging starts.
+            var tag = working.AddTransformKeyframe(key.Depth, value, key.SpriteId, key.Frame);
+            identities[tag] = key.Id; tags[key.Id] = tag;
             draft.Keyframes.Add(key);
             if (record) draft.Record(() => draft.Keyframes.Remove(key), () => draft.Keyframes.Add(key));
-            RebuildWorking();
+            renderer.RefreshTimelineIndex(key.SpriteId);
+            RefreshView(key.Id, key.SpriteId, key.Depth);
+            DraftChanged?.Invoke(this, EventArgs.Empty);
+            return;
         }
         else if (addition != null)
         {
+            selected.Item.PlacementTag.SetPlacementMatrix(value);
             var old = addition.Matrix; addition.Matrix = value;
             if (record) draft.Record(() => addition.Matrix = old, () => addition.Matrix = value);
         }
         else if (keyframe != null)
         {
+            selected.Item.PlacementTag.SetPlacementMatrix(value);
             var old = keyframe.Matrix; keyframe.Matrix = value;
             if (record) draft.Record(() => keyframe.Matrix = old, () => keyframe.Matrix = value);
         }
         else
         {
+            selected.Item.PlacementTag.SetPlacementMatrix(value);
             bool existed = draft.Matrices.TryGetValue(selected.Identity, out var old);
             draft.Matrices[selected.Identity] = value;
             if (record) draft.Record(() => { if (existed) draft.Matrices[selected.Identity] = old; else draft.Matrices.Remove(selected.Identity); },
@@ -263,8 +324,9 @@ public partial class ScaleformVisualEditor : UserControl
             SelectedElement.Matrix = value;
             UpdateElementBounds(SelectedElement);
         }
-        if (record) RebuildWorking();
-        else { renderer.InvalidateScene(); UpdateProperties(); CanvasViewport.InvalidateVisual(); }
+        renderer.InvalidatePlacement(selected.OwnerSpriteId);
+        if (record) RefreshView(SelectedElement?.Identity, SelectedElement?.OwnerSpriteId, SelectedElement?.Depth);
+        else { UpdateProperties(); CanvasViewport.InvalidateVisual(); }
         DraftChanged?.Invoke(this, EventArgs.Empty);
     }
 
@@ -317,7 +379,10 @@ public partial class ScaleformVisualEditor : UserControl
         else if (SelectedElement.Identity != gestureIdentity)
         {
             var unusedKeyframe = draft.Keyframes.FirstOrDefault(k => k.Id == SelectedElement.Identity);
-            if (unusedKeyframe != null) draft.Keyframes.Remove(unusedKeyframe);
+            if (unusedKeyframe != null)
+            {
+                draft.Keyframes.Remove(unusedKeyframe); gestureOriginal = null; RebuildWorking(); return;
+            }
         }
         else if (!SelectedElement.Identity.StartsWith('+') && !SelectedElement.Identity.StartsWith('~'))
         {
@@ -325,13 +390,13 @@ public partial class ScaleformVisualEditor : UserControl
             else draft.Matrices.Remove(gestureIdentity);
         }
         gestureOriginal = null;
-        RebuildWorking();
+        RefreshView(SelectedElement?.Identity, SelectedElement?.OwnerSpriteId, SelectedElement?.Depth);
     }
 
     public void AddSymbolAt(ushort characterId, double x, double y)
     {
         if (working == null) return;
-        var addition = new ScaleformVisualAddition { CharacterId = characterId, SpriteId = draft.SpriteId, Frame = draft.Frame,
+        var addition = new ScaleformVisualAddition { CharacterId = characterId, Name = NextElementName("element"), SpriteId = draft.SpriteId, Frame = draft.Frame,
             Matrix = ScaleformMatrix.Identity with { OffsetX = x, OffsetY = y } };
         // Reject invalid placements (including recursive groups) without retaining a broken draft.
         var check = ScaleformDocument.Parse(working.Compile());
@@ -341,12 +406,41 @@ public partial class ScaleformVisualEditor : UserControl
         RebuildWorking(); SelectElement(addition.Id); DraftChanged?.Invoke(this, EventArgs.Empty);
     }
 
+    public void AddNewElement(ScaleformElementSpec spec, double x, double y)
+    {
+        if (working == null) return;
+        ArgumentNullException.ThrowIfNull(spec);
+        spec = new ScaleformElementSpec { Kind = spec.Kind, Name = spec.Name, Width = spec.Width, Height = spec.Height, Color = spec.Color,
+            Text = spec.Text, FontId = spec.FontId, FontSize = spec.FontSize, Pixels = spec.Pixels, PixelWidth = spec.PixelWidth, PixelHeight = spec.PixelHeight };
+        spec.Name = NextElementName(spec.Name);
+        var addition = new ScaleformVisualAddition { NewElement = spec, Name = NextElementName(spec.Name), SpriteId = draft.SpriteId, Frame = draft.Frame,
+            Matrix = ScaleformMatrix.Identity with { OffsetX = x, OffsetY = y } };
+        var check = ScaleformDocument.Parse(working.Compile());
+        var created = check.AddElementDefinition(spec, addition.SpriteId);
+        check.AddPlacement(created.CharacterId, addition.Matrix, addition.SpriteId, addition.Frame).SetPlacementName(addition.Name);
+        draft.Additions.Add(addition);
+        draft.Record(() => draft.Additions.Remove(addition), () => draft.Additions.Add(addition));
+        RebuildWorking(); SelectElement(addition.Id); DraftChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private string NextElementName(string preferred)
+    {
+        preferred = Regex.Replace(preferred ?? "element", "[^A-Za-z0-9_]", "_");
+        if (preferred.Length > 90) preferred = preferred[..90];
+        if (preferred.Length == 0 || !char.IsLetter(preferred[0]) && preferred[0] != '_') preferred = "element" + preferred;
+        var used = scene.Items.Select(item => item.InstanceName).ToHashSet(StringComparer.Ordinal);
+        if (!used.Contains(preferred)) return preferred;
+        for (int i = 2; ; i++) if (!used.Contains(preferred + i)) return preferred + i;
+    }
+
     public void RemoveSelected()
     {
         if (SelectedElement == null) return;
         var selected = SelectedElement;
         var addition = draft.Additions.FirstOrDefault(a => a.Id == selected.Identity);
-        if (addition != null && selected.Frame == addition.Frame &&
+        // Authored symbols remain available in Library even when their first instance
+        // is removed. Other instances and edits inside the symbol may still use it.
+        if (addition is { NewElement: null } && selected.Frame == addition.Frame &&
             !draft.Keyframes.Any(k => k.Depth == addition.Depth && k.SpriteId == addition.SpriteId) &&
             !draft.Removals.Any(r => r.Depth == addition.Depth && r.SpriteId == addition.SpriteId))
         {
@@ -373,7 +467,8 @@ public partial class ScaleformVisualEditor : UserControl
         definition.SetText(encoded);
         textEdits[path] = encoded;
         draft.Record(() => { if (existed) textEdits[path] = old; else textEdits.Remove(path); }, () => textEdits[path] = encoded);
-        RebuildWorking(); DraftChanged?.Invoke(this, EventArgs.Empty);
+        renderer.InvalidateCharacter(SelectedElement.CharacterId);
+        RefreshView(SelectedElement.Identity, SelectedElement.OwnerSpriteId, SelectedElement.Depth); DraftChanged?.Invoke(this, EventArgs.Empty);
     }
 
     public void Undo()
@@ -393,13 +488,14 @@ public partial class ScaleformVisualEditor : UserControl
     public void SetFrame(int frame)
     {
         if (draft == null) return;
-        draft.Frame = frame; SelectedElement = null; RebuildWorking();
+        if (draft.Frame == frame) return;
+        draft.Frame = frame; SelectedElement = null; RefreshView();
     }
 
     public void EnterGroup(ushort? spriteId)
     {
         if (draft == null) return;
-        draft.SpriteId = spriteId; draft.Frame = ChooseAuthoringFrame(working, spriteId); SelectedElement = null; RebuildWorking(); CanvasViewport.Fit();
+        draft.SpriteId = spriteId; draft.Frame = ChooseAuthoringFrame(working, spriteId); SelectedElement = null; RefreshView(); CanvasViewport.Fit();
     }
 
     // Intro/outro frames can intentionally have zero opacity. Open a visible authoring
@@ -407,7 +503,7 @@ public partial class ScaleformVisualEditor : UserControl
     private int ChooseAuthoringFrame(ScaleformDocument document, ushort? spriteId, ScaleformArtworkRenderer artwork = null)
     {
         artwork ??= renderer;
-        var initial = ScaleformScene.Build(document, spriteId);
+        var initial = artwork.GetScene(spriteId);
         if (initial.FrameCount == 1) return 1;
         double initialScore = VisibleInkScore(artwork.RenderTimeline(spriteId, 1));
         int chosen = 1; double best = initialScore;
@@ -536,10 +632,16 @@ public partial class ScaleformVisualEditor : UserControl
         var center = CanvasViewport.ToWorld(new Point(CanvasViewport.ActualWidth / 2, CanvasViewport.ActualHeight / 2));
         TryAdd(symbol.CharacterId, center);
     }
-    private void Canvas_DragOver(object sender, DragEventArgs e) { e.Effects = e.Data.GetDataPresent("LegendaryExplorer.ScaleformSymbol") ? DragDropEffects.Copy : DragDropEffects.None; e.Handled = true; }
+    private void Canvas_DragOver(object sender, DragEventArgs e) { e.Effects = e.Data.GetDataPresent("LegendaryExplorer.ScaleformSymbol") || e.Data.GetDataPresent("LegendaryExplorer.ScaleformNewElement") ? DragDropEffects.Copy : DragDropEffects.None; e.Handled = true; }
     private void Canvas_Drop(object sender, DragEventArgs e)
     {
         if (e.Data.GetData("LegendaryExplorer.ScaleformSymbol") is ushort id) TryAdd(id, CanvasViewport.ToWorld(e.GetPosition(CanvasViewport)));
+        else if (e.Data.GetData("LegendaryExplorer.ScaleformNewElement") is ScaleformElementSpec spec)
+        {
+            var point = CanvasViewport.ToWorld(e.GetPosition(CanvasViewport));
+            try { AddNewElement(spec, point.X, point.Y); }
+            catch (Exception ex) { StatusChanged?.Invoke("Could not create this element: " + ex.Message); }
+        }
         e.Handled = true;
     }
     private void TryAdd(ushort id, Point point) { try { AddSymbolAt(id, point.X, point.Y); } catch (Exception ex) { StatusChanged?.Invoke("Could not add this artwork here: " + ex.Message); } }
@@ -591,5 +693,11 @@ public partial class ScaleformVisualEditor : UserControl
         public string Name { get; } = name;
         private ImageSource thumbnail;
         public ImageSource Thumbnail => thumbnail ??= new DrawingImage(artwork());
+    }
+
+    private sealed class ArtworkSnapshot
+    {
+        public byte[] SourceBytes;
+        public ScaleformArtworkRenderer Renderer;
     }
 }

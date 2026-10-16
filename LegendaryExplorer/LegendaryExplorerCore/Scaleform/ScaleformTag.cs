@@ -22,6 +22,7 @@ public sealed class ScaleformTag
     private int textByteLength;
     private bool hasInitialText;
     private int editTextFlagsOffset;
+    private string editedInstanceName;
 
     public ushort Code { get; }
     public string Name => GetName(Code);
@@ -43,6 +44,9 @@ public sealed class ScaleformTag
     public ReadOnlyMemory<byte> Payload => Code == 39 && IsModified
         ? BuildSpritePayload()
         : replacement == null ? originalPayload : replacement;
+    /// <summary>The fixed sprite header, read without compiling its child timeline.</summary>
+    public ushort SpriteCharacterId => Code == 39 ? BinaryPrimitives.ReadUInt16LittleEndian(originalPayload.Span) : throw new InvalidOperationException("This record is not a sprite.");
+    public ushort SpriteFrameCount => Code == 39 ? BinaryPrimitives.ReadUInt16LittleEndian(originalPayload.Span[2..]) : throw new InvalidOperationException("This record is not a sprite.");
     /// <summary>Offset in the uncompressed file, including the eight-byte file header.</summary>
     public int OriginalOffset { get; }
     public IReadOnlyList<ScaleformTag> Children { get; } = Array.Empty<ScaleformTag>();
@@ -126,6 +130,17 @@ public sealed class ScaleformTag
     public void SetPlacementMatrix(ScaleformMatrix matrix)
     {
         byte[] edited = ScaleformPlacement.WithMatrix(this, originalPayload.Span, matrix);
+        if (editedInstanceName != null) edited = ScaleformPlacement.WithName(this, edited, editedInstanceName);
+        replacement = edited.AsSpan().SequenceEqual(originalPayload.Span) ? null : edited;
+    }
+
+    /// <summary>Names an instance for visual behavior targets while retaining its transform and opaque suffix.</summary>
+    public void SetPlacementName(string name)
+    {
+        if (version < 6 && name != null && name.Any(c => c > 127))
+            throw new NotSupportedException("Non-ASCII instance names require SWF 6 or later.");
+        byte[] edited = ScaleformPlacement.WithName(this, Payload.Span, name);
+        editedInstanceName = ScaleformPlacement.Read(this)?.InstanceName == name && replacement == null ? null : name;
         replacement = edited.AsSpan().SequenceEqual(originalPayload.Span) ? null : edited;
     }
 
@@ -134,6 +149,12 @@ public sealed class ScaleformTag
         if (Code != 39) throw new InvalidOperationException("Only a movie clip has a child timeline.");
         childTags.Insert(index, tag);
         childrenModified = true;
+    }
+
+    internal void RemoveTimelineRecord(ScaleformTag tag)
+    {
+        if (Code != 39) throw new InvalidOperationException("Only a movie clip has a child timeline.");
+        if (childTags.Remove(tag)) childrenModified = true;
     }
 
     /// <summary>

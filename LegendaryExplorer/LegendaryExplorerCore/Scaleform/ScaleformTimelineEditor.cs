@@ -19,11 +19,16 @@ public sealed partial class ScaleformDocument
         if (!scene.Definitions.TryGetValue(characterId, out var definition) || !IsVisualSymbol(definition.Code))
             throw new ArgumentException("Choose an existing visual symbol from this movie.", nameof(characterId));
         var (timeline, sprite, insertion) = FindInsertion(scene, spriteId, frame);
-        // Root-timeline definitions must be encountered before their first use.
-        if (!spriteId.HasValue && definition.OriginalOffset > timeline[insertion].OriginalOffset)
-            throw new InvalidOperationException("This symbol is defined after the selected frame. Choose a later frame.");
         if (spriteId.HasValue && ReferencesSymbol(characterId, spriteId.Value, scene.Definitions, new HashSet<ushort>()))
             throw new InvalidOperationException("A movie clip cannot contain itself, directly or through another clip.");
+        // Use current record order, including newly authored records with offset -1.
+        // SWF v19 chapter 13 forbids forward dictionary references inside a sprite,
+        // even when the referenced symbol is available by that sprite's playback frame.
+        int declaration = FindRootRecordIndex(definition);
+        if (sprite != null && declaration >= FindRootRecordIndex(sprite))
+            throw new InvalidOperationException("This artwork is declared after the containing movie clip. Choose earlier artwork or create new UI inside this group.");
+        if (sprite == null && declaration >= insertion)
+            throw new InvalidOperationException("This symbol is defined after the selected frame. Choose a later frame.");
         int highestDepth = 0;
         var usedDepths = new HashSet<ushort>();
         foreach (var tag in timeline.Where(t => t.Code is 4 or 26 or 70))
@@ -125,6 +130,15 @@ public sealed partial class ScaleformDocument
     }
 
     private static int CountRecords(IReadOnlyList<ScaleformTag> tags) => tags.Sum(tag => 1 + CountRecords(tag.Children));
+
+    private int FindRootRecordIndex(ScaleformTag record)
+    {
+        for (int i = 0; i < timelineTags.Count; i++)
+            if (Contains(timelineTags[i], record)) return i;
+        throw new InvalidDataException("The artwork declaration is not part of this movie.");
+
+        static bool Contains(ScaleformTag ancestor, ScaleformTag target) => ReferenceEquals(ancestor, target) || ancestor.Children.Any(child => Contains(child, target));
+    }
 
     private static bool IsVisualSymbol(ushort code) => code is 2 or 6 or 7 or 11 or 20 or 21 or 22 or 32 or 33 or 34
         or 35 or 36 or 37 or 39 or 46 or 60 or 83 or 84 or 90 or 1001 or 1008 or 1009;

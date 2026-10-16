@@ -32,6 +32,8 @@
             <TabControl>
                 <TabItem Header="Layers">
                     <TreeView x:Name="LayersTree" BorderThickness="0" ItemTemplate="{StaticResource LayerTemplate}"
+                        VirtualizingStackPanel.IsVirtualizing="True" VirtualizingStackPanel.VirtualizationMode="Recycling"
+                        ScrollViewer.CanContentScroll="True"
                         SelectedItemChanged="Layer_Selected" MouseDoubleClick="Layer_DoubleClick"/>
                 </TabItem>
                 <TabItem Header="Library">
@@ -41,6 +43,7 @@
                             <TextBox x:Name="LibrarySearch" Padding="5" TextChanged="LibrarySearch_Changed" ToolTip="Find artwork or a group" Margin="0,0,0,7"/>
                         </StackPanel>
                         <ListBox x:Name="LibraryList" BorderThickness="0" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                            VirtualizingStackPanel.IsVirtualizing="True" VirtualizingStackPanel.VirtualizationMode="Recycling" ScrollViewer.CanContentScroll="True"
                             PreviewMouseLeftButtonDown="Library_MouseDown" MouseMove="Library_MouseMove" MouseDoubleClick="Library_DoubleClick">
                             <ListBox.ItemTemplate>
                                 <DataTemplate>
@@ -53,6 +56,7 @@
                         </ListBox>
                     </DockPanel>
                 </TabItem>
+                <TabItem Header="Add UI"><local:ScaleformElementCreator x:Name="ElementCreator"/></TabItem>
             </TabControl>
             <GridSplitter Grid.Column="1" Width="4" HorizontalAlignment="Center"/>
             <local:ScaleformDesignSurface x:Name="CanvasViewport" Grid.Column="2" Focusable="True" AllowDrop="True"

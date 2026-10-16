@@ -36,7 +36,9 @@ public sealed class ScaleformVisualDraft
 public sealed class ScaleformVisualAddition
 {
     public string Id { get; } = "+" + Guid.NewGuid().ToString("N");
-    public ushort CharacterId { get; init; }
+    public ushort CharacterId { get; set; }
+    public ScaleformElementSpec NewElement { get; init; }
+    public string Name { get; init; }
     public ushort? SpriteId { get; init; }
     public int Frame { get; init; }
     public ushort? Depth { get; set; }

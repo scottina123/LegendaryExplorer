@@ -2,11 +2,13 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.Unreal;
 using LegendaryExplorerCore.Unreal.Classes;
+using TextureImage = LegendaryExplorerCore.Textures.Image;
 
 namespace LegendaryExplorer.UserControls.ExportLoaderControls.Scaleform;
 
@@ -42,11 +44,15 @@ internal sealed class ScaleformTextureResolver
         {
             try
             {
-                using var stream = new MemoryStream();
-                new Texture2D(texture).ExportToPNG(outStream: stream);
-                stream.Position = 0;
-                var bitmap = new BitmapImage();
-                bitmap.BeginInit(); bitmap.CacheOption = BitmapCacheOption.OnLoad; bitmap.StreamSource = stream; bitmap.EndInit();
+                if (texture.FileRef is ILazyLoadPackage lazy) lazy.LoadExport(texture.UIndex);
+                var unreal = new Texture2D(texture);
+                var requested = unreal.Mips.FirstOrDefault(mip => mip.storageType != StorageTypes.empty)
+                    ?? throw new InvalidDataException("The texture has no available mip.");
+                byte[] encoded = unreal.GetImageBytesForMip(requested, texture.Game, true, out var used);
+                int width = used.width, height = used.height;
+                byte[] pixels = TextureImage.convertRawToARGB(encoded, ref width, ref height, TextureImage.getPixelFormatType(unreal.TextureFormat));
+                BitmapSource bitmap = BitmapSource.Create(width, height, 96, 96, PixelFormats.Bgra32, null, pixels, checked(width * 4));
+                if (width != used.width || height != used.height) bitmap = new CroppedBitmap(bitmap, new Int32Rect(0, 0, used.width, used.height));
                 bitmap.Freeze(); image = bitmap;
             }
             catch (Exception ex) { Warnings.Add($"Could not preview {key}: {ex.Message}"); }

@@ -52,18 +52,47 @@ public class ScaleformArtworkTests
     }
 
     [STATestMethod]
+    public void PreviewLoadsOnlyVisibleImagesAndReusesDrawingsUntilAnEdit()
+    {
+        byte[] image = Join(BitConverter.GetBytes((uint)9), BitConverter.GetBytes((ushort)13), BitConverter.GetBytes((ushort)40), BitConverter.GetBytes((ushort)20), [0], Sized("unused.tga"), [0]);
+        var document = ScaleformDocument.Parse(Movie(Tag(1009, image), Shape(1, Colors.Red, 20, 20), Place(1, 1)));
+        int imageRequests = 0;
+        var renderer = new ScaleformArtworkRenderer(document, _ => { imageRequests++; return null; });
+        Assert.AreEqual(0, imageRequests, "Indexing a movie must not decode unused package textures.");
+        Assert.AreEqual(new Rect(0, 0, 40, 20), renderer.GetCharacterBounds(9));
+        Assert.AreEqual(0, imageRequests, "Image dimensions are available without decoding pixels.");
+        Drawing first = renderer.RenderTimeline();
+        Assert.AreSame(first, renderer.RenderTimeline(), "Selecting or panning must reuse the rendered frame.");
+        Assert.AreSame(renderer.RenderCharacter(1, 1), renderer.RenderCharacter(1, 99), "Static artwork must not be reparsed for every timeline frame.");
+        var placement = renderer.GetScene().Items.Single().PlacementTag;
+        placement.SetPlacementMatrix(ScaleformMatrix.Identity with { OffsetX = 30 });
+        renderer.InvalidateScene();
+        Drawing moved = renderer.RenderTimeline();
+        Assert.AreNotSame(first, moved);
+        Assert.AreEqual((byte)0, Pixel(Pixels(moved), 5, 5).A);
+        Assert.AreEqual(Colors.Red, Pixel(Pixels(moved), 35, 5));
+        Assert.AreEqual(0, imageRequests);
+        renderer.RenderCharacter(9); renderer.RenderCharacter(9);
+        Assert.AreEqual(1, imageRequests, "Demanded images, including missing images, should be resolved once.");
+    }
+
+    [STATestMethod]
     public void NestedSpriteMasksAndTransformInvalidationUseRealPlacementData()
     {
         byte[] sprite = Join(BitConverter.GetBytes((ushort)3), BitConverter.GetBytes((ushort)1),
             Place(1, 1, clipDepth: 2), Place(2, 2), Tag(1, []), Tag(0, []));
         var document = ScaleformDocument.Parse(Movie(Shape(1, Colors.Red, 50, 50), Shape(2, Colors.Blue, 100, 100), Tag(39, sprite)));
         var renderer = new ScaleformArtworkRenderer(document);
-        var pixels = Pixels(renderer.RenderCharacter(3));
+        var originalDrawing = renderer.RenderCharacter(3);
+        var pixels = Pixels(originalDrawing);
         Assert.AreEqual(Colors.Blue, Pixel(pixels, 25, 25));
         Assert.AreEqual((byte)0, Pixel(pixels, 75, 25).A, "ClipDepth must constrain following depths.");
+        renderer.InvalidatePlacement(null);
+        Assert.AreSame(originalDrawing, renderer.RenderCharacter(3), "Moving a root instance must retain the symbol's cached artwork.");
         var content = ScaleformScene.Build(document, 3).Items.Single(item => item.Depth == 2);
         content.PlacementTag.SetPlacementMatrix(new ScaleformMatrix(1, 0, 0, 1, 30, 0));
-        renderer.InvalidateScene();
+        renderer.InvalidatePlacement(3);
+        Assert.AreNotSame(originalDrawing, renderer.RenderCharacter(3), "Editing inside a clip must refresh that clip's artwork.");
         pixels = Pixels(renderer.RenderCharacter(3));
         Assert.AreEqual((byte)0, Pixel(pixels, 25, 25).A);
         Assert.AreEqual(Colors.Blue, Pixel(pixels, 35, 25));

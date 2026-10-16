@@ -30,10 +30,14 @@
             <Button Content="Export movie…" Click="ExportMovie_Click" Padding="10,6" Margin="0,0,6,0" IsEnabled="{Binding HasMovie}"/>
             <Button Content="Reload movie" Click="Reload_Click" Padding="10,6" Margin="0,0,6,0" IsEnabled="{Binding HasMovie}"/>
             <Button Content="Pop out" Click="PopOut_Click" Padding="10,6" Margin="0,0,6,0" IsEnabled="{Binding HasMovie}"/>
+            <Button Content="Add click action" Click="AddClickAction_Click" Padding="10,6" Margin="12,0,0,0" IsEnabled="{Binding HasMovie}" ToolTip="Give the selected button or group a visual behavior"/>
         </WrapPanel>
         <TabControl Grid.Row="2" x:Name="EditingTabs" SelectionChanged="EditingTabs_Changed">
             <TabItem Header="Design">
                 <scaleform:ScaleformVisualEditor x:Name="Designer"/>
+            </TabItem>
+            <TabItem Header="Behaviors" x:Name="BehaviorsTab">
+                <scaleform:ScaleformBehaviorEditor x:Name="Behaviors"/>
             </TabItem>
             <TabItem Header="Advanced resources &amp; scripts">
                 <Grid Margin="0,10,0,0">
@@ -75,7 +79,7 @@
                         <TextBlock Text="Package references" FontSize="19" FontWeight="SemiBold"/>
                         <TextBlock Text="{Binding DependencySummary}" FontFamily="Consolas" TextWrapping="Wrap" Margin="0,10,0,18"/>
                         <TextBlock Text="Editing coverage" FontSize="19" FontWeight="SemiBold"/>
-                        <TextBlock Text="Use Design to move, resize, rotate, add and remove elements, edit text, and work inside groups. The timeline selects the frame being edited. Advanced resources and scripts remain available for technical work." TextWrapping="Wrap" Margin="0,10,0,12"/>
+                        <TextBlock Text="Use Design to move, resize, rotate and create UI elements. Add UI creates panels, text, buttons and images from Texture2D assets or image files. Behaviors connects button events and reusable functions to actions with nodes and wires. Advanced resources and scripts remain available for technical work." TextWrapping="Wrap" Margin="0,10,0,12"/>
                         <TextBlock Text="Compile checks the movie structure and supported edited bytecode, then reopens the output. Game behavior still requires an in-game test. Apply updates the package in memory; use the package editor’s Save or Save As afterward." TextWrapping="Wrap" Opacity="0.75"/>
                     </StackPanel>
                 </ScrollViewer>

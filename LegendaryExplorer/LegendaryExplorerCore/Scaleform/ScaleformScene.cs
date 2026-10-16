@@ -13,6 +13,7 @@ public sealed record ScaleformSceneItem(ushort CharacterId, ushort Depth, string
     ScaleformTag PlacementTag, string PlacementPath, ScaleformTag Definition, ushort? ClipDepth, bool HasEffects)
 {
     public int PlacementFrame { get; init; }
+    public string InstanceName { get; init; }
     public ScaleformColorTransform ColorTransform { get; init; } = ScaleformColorTransform.Identity;
     public bool Visible { get; init; } = true;
 }
@@ -23,21 +24,61 @@ public sealed record ScaleformSceneItem(ushort CharacterId, ushort Depth, string
 /// </summary>
 public sealed class ScaleformScene
 {
-    public IReadOnlyList<ScaleformSceneItem> Items { get; private init; }
-    public IReadOnlyDictionary<ushort, ScaleformTag> Definitions { get; private init; }
-    public IReadOnlyDictionary<ushort, string> SymbolNames { get; private init; }
-    public IReadOnlyList<string> Warnings { get; private init; }
-    public int FrameCount { get; private init; }
-    public int Frame { get; private init; }
+    public IReadOnlyList<ScaleformSceneItem> Items { get; internal init; }
+    public IReadOnlyDictionary<ushort, ScaleformTag> Definitions { get; internal init; }
+    public IReadOnlyDictionary<ushort, string> SymbolNames { get; internal init; }
+    public IReadOnlyList<string> Warnings { get; internal init; }
+    public int FrameCount { get; internal init; }
+    public int Frame { get; internal init; }
 
     public static ScaleformScene Build(ScaleformDocument document, ushort? spriteId = null, int frame = 1)
+        => new ScaleformSceneIndex(document).Build(spriteId, frame);
+
+    /// <summary>Resolves the stable index path used by a scene item, including nested sprite records.</summary>
+    public static ScaleformTag FindTag(ScaleformDocument document, string path)
     {
         ArgumentNullException.ThrowIfNull(document);
-        var definitions = new Dictionary<ushort, ScaleformTag>();
-        var paths = new Dictionary<ScaleformTag, string>();
-        var names = new Dictionary<ushort, string>();
-        var warnings = new List<string>();
-        Index(document.Tags, string.Empty, definitions, paths, names, warnings);
+        ArgumentNullException.ThrowIfNull(path);
+        IReadOnlyList<ScaleformTag> tags = document.Tags;
+        ScaleformTag result = null;
+        foreach (string part in path.Split('/'))
+        {
+            if (!int.TryParse(part, out int index) || index < 0 || index >= tags.Count)
+                throw new ArgumentException("The tag path does not exist in this movie.", nameof(path));
+            result = tags[index];
+            tags = result.Children;
+        }
+        return result;
+    }
+}
+
+/// <summary>
+/// Reusable dictionary and source-path index for repeated timeline evaluation. Placement
+/// payloads are read afresh, so transforms and text can change without rebuilding the
+/// dictionary. Create a new index after inserting or removing records or definitions.
+/// </summary>
+public sealed class ScaleformSceneIndex
+{
+    private readonly ScaleformDocument document;
+    private readonly Dictionary<ushort, ScaleformTag> definitions = new();
+    private readonly Dictionary<ScaleformTag, string> paths = new();
+    private readonly Dictionary<ushort, string> names = new();
+    private readonly List<string> indexWarnings = new();
+    private readonly IReadOnlyDictionary<ushort, ScaleformTag> readOnlyDefinitions;
+    private readonly IReadOnlyDictionary<ushort, string> readOnlyNames;
+
+    public ScaleformSceneIndex(ScaleformDocument document)
+    {
+        ArgumentNullException.ThrowIfNull(document);
+        this.document = document;
+        Index(document.Tags, string.Empty, definitions, paths, names, indexWarnings);
+        readOnlyDefinitions = new ReadOnlyDictionary<ushort, ScaleformTag>(definitions);
+        readOnlyNames = new ReadOnlyDictionary<ushort, string>(names);
+    }
+
+    public ScaleformScene Build(ushort? spriteId = null, int frame = 1)
+    {
+        var warnings = new List<string>(indexWarnings);
         IReadOnlyList<ScaleformTag> timeline = document.Tags;
         int frameCount = Math.Max(1, (int)document.FrameCount);
         if (spriteId.HasValue)
@@ -45,7 +86,7 @@ public sealed class ScaleformScene
             if (!definitions.TryGetValue(spriteId.Value, out var sprite) || sprite.Code != 39)
                 throw new ArgumentException($"Character {spriteId} is not a movie clip.", nameof(spriteId));
             timeline = sprite.Children;
-            frameCount = Math.Max(1, (int)BinaryPrimitives.ReadUInt16LittleEndian(sprite.Payload.Span[2..]));
+            frameCount = Math.Max(1, (int)sprite.SpriteFrameCount);
         }
         if (frame < 1 || frame > frameCount)
             throw new ArgumentOutOfRangeException(nameof(frame), $"The frame must be between 1 and {frameCount}.");
@@ -91,7 +132,8 @@ public sealed class ScaleformScene
                 continue;
             }
             definitions.TryGetValue(character.Value, out var definition);
-            string name = placement.InstanceName ?? previous?.Name;
+            string instanceName = placement.InstanceName ?? previous?.InstanceName;
+            string name = instanceName;
             if (string.IsNullOrEmpty(name))
                 name = names.GetValueOrDefault(character.Value) ?? $"{definition?.Name ?? "Character"} #{character.Value}";
             ushort? clipDepth = placement.ClipDepth ?? previous?.ClipDepth;
@@ -102,32 +144,15 @@ public sealed class ScaleformScene
                 placement.Matrix ?? previous?.Matrix ?? ScaleformMatrix.Identity, tag, paths[tag], definition,
                 clipDepth, color != ScaleformColorTransform.Identity || placement.HasOtherEffects || previous?.HasEffects == true)
             {
-                PlacementFrame = currentFrame, ColorTransform = color, Visible = placement.Visible ?? previous?.Visible ?? true
+                PlacementFrame = currentFrame, InstanceName = instanceName, ColorTransform = color, Visible = placement.Visible ?? previous?.Visible ?? true
             };
         }
         return new ScaleformScene
         {
-            Items = display.Values.ToList().AsReadOnly(), Definitions = new ReadOnlyDictionary<ushort, ScaleformTag>(definitions),
-            SymbolNames = new ReadOnlyDictionary<ushort, string>(names), Warnings = warnings.AsReadOnly(),
+            Items = display.Values.ToList().AsReadOnly(), Definitions = readOnlyDefinitions,
+            SymbolNames = readOnlyNames, Warnings = warnings.AsReadOnly(),
             Frame = frame, FrameCount = frameCount
         };
-    }
-
-    /// <summary>Resolves the stable index path used by a scene item, including nested sprite records.</summary>
-    public static ScaleformTag FindTag(ScaleformDocument document, string path)
-    {
-        ArgumentNullException.ThrowIfNull(document);
-        ArgumentNullException.ThrowIfNull(path);
-        IReadOnlyList<ScaleformTag> tags = document.Tags;
-        ScaleformTag result = null;
-        foreach (string part in path.Split('/'))
-        {
-            if (!int.TryParse(part, out int index) || index < 0 || index >= tags.Count)
-                throw new ArgumentException("The tag path does not exist in this movie.", nameof(path));
-            result = tags[index];
-            tags = result.Children;
-        }
-        return result;
     }
 
     private static void Index(IReadOnlyList<ScaleformTag> tags, string prefix,
@@ -139,7 +164,9 @@ public sealed class ScaleformScene
             var tag = tags[i];
             string path = prefix + i;
             paths.Add(tag, path);
-            if (IsDefinition(tag.Code) && tag.Payload.Length >= 2)
+            if (tag.Code == 39)
+                definitions.TryAdd(tag.SpriteCharacterId, tag);
+            else if (IsDefinition(tag.Code) && tag.Payload.Length >= 2)
             {
                 ushort id = BinaryPrimitives.ReadUInt16LittleEndian(tag.Payload.Span);
                 definitions.TryAdd(id, tag);

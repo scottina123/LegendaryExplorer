@@ -14,6 +14,22 @@ namespace LegendaryExplorerCore.Tests;
 public class ScaleformSceneTests
 {
     [TestMethod]
+    public void ReusableSceneIndexReadsEditedPlacementsAndPreservesExplicitNamesAcrossMoves()
+    {
+        byte[] first = Place(26, 6 | 32, 1, 1, Matrix(65536, 65536, 0, 0, 0, 0), CString("button"));
+        var document = ScaleformDocument.Parse(Movie("FWS", 2, Shape(1), first, Tag(1), Place(26, 1, 1, null, null), Tag(1), Tag(0)));
+        var index = new ScaleformSceneIndex(document);
+        Assert.AreEqual("button", index.Build(frame: 2).Items.Single().InstanceName);
+        var initial = index.Build().Items.Single();
+        initial.PlacementTag.SetPlacementMatrix(ScaleformMatrix.Identity with { OffsetX = 43.5 });
+        Assert.AreEqual(43.5, index.Build(frame: 2).Items.Single().Matrix.OffsetX);
+        Assert.AreSame(initial.Definition, index.Build().Definitions[1]);
+        var reloaded = ScaleformDocument.Parse(document.Compile());
+        Assert.AreEqual("button", ScaleformScene.Build(reloaded, frame: 2).Items.Single().InstanceName);
+        Assert.AreEqual(43.5, ScaleformScene.Build(reloaded, frame: 2).Items.Single().Matrix.OffsetX);
+    }
+
+    [TestMethod]
     public void DisplayListFramesInheritPlacementFieldsAndApplyRemovals()
     {
         byte[] first = Place(26, 6 | 32 | 64, 4, 1, Matrix(65536, 65536, 0, 0, 200, -400), Join(CString("map"), U16(6)));
