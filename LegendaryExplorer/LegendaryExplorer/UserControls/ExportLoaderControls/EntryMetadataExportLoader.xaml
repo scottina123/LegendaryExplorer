@@ -79,15 +79,39 @@
         </Grid.ColumnDefinitions>
         <Grid.Resources>
             <Style x:Key="MetadataTextboxStyle" TargetType="{x:Type TextBox}">
+                <Setter Property="BorderThickness" Value="0"/>
                 <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"/>
                 <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}"/>
+                <Setter Property="CaretBrush" Value="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}"/>
+                <Setter Property="SelectionBrush" Value="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}"/>
                 <Setter Property="ContextMenu" Value="{DynamicResource DarkTextBoxContextMenu}"/>
+                <Setter Property="Padding" Value="3,1"/>
+                <Setter Property="VerticalContentAlignment" Value="Center"/>
+                <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="{x:Type TextBox}">
+                            <Border Background="{TemplateBinding Background}"
+                                    CornerRadius="2"
+                                    SnapsToDevicePixels="True">
+                                <ScrollViewer x:Name="PART_ContentHost"
+                                              Focusable="False"
+                                              HorizontalScrollBarVisibility="Hidden"
+                                              VerticalScrollBarVisibility="Hidden"/>
+                            </Border>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
                 <Style.Triggers>
-                    <Trigger Property="IsReadOnly" Value="True">
-                        <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" />
-                        <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}" />
+                    <Trigger Property="IsEnabled" Value="False">
+                        <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}"/>
                     </Trigger>
                 </Style.Triggers>
+            </Style>
+            <Style TargetType="{x:Type controls:FlagsComboBox}">
+                <Style.Resources>
+                    <SolidColorBrush x:Key="{x:Static SystemColors.ActiveBorderBrushKey}" Color="Transparent"/>
+                </Style.Resources>
             </Style>
             <ItemsPanelTemplate x:Key="VSP">
                 <VirtualizingStackPanel/>
