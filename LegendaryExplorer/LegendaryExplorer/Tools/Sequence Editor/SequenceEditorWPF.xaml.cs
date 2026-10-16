@@ -6960,19 +6960,27 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             }
         }
 
-        private void CreateEmptySubsequence_Clicked(object sender, RoutedEventArgs e) =>
+        private void CreateEmptySubsequence_Clicked(object sender, RoutedEventArgs e)
+        {
+            e.Handled = true;
             CreateEmptySubsequence(sender);
+        }
 
         private void CreateEmptySubsequence(object sender, PointF? preferredPosition = null)
         {
-            // A tree context menu belongs to the clicked row, which may differ from the viewport.
-            var parentSequence = sender is MenuItem
+            // Tree actions belong to the clicked row, which may differ from the viewport.
+            var parentSequence = sender switch
             {
-                Parent: ContextMenu
+                MenuItem
                 {
-                    PlacementTarget: TreeViewItem { DataContext: TreeViewEntry { Entry: ExportEntry treeSequence } }
-                }
-            } ? treeSequence : SelectedSequence;
+                    Parent: ContextMenu
+                    {
+                        PlacementTarget: TreeViewItem { DataContext: TreeViewEntry { Entry: ExportEntry treeSequence } }
+                    }
+                } => treeSequence,
+                Button { DataContext: TreeViewEntry { Entry: ExportEntry treeSequence } } => treeSequence,
+                _ => SelectedSequence
+            };
             if (parentSequence == null)
             {
                 return;
@@ -6983,7 +6991,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                 MessageBox.Show(this, "Subsequences can only be created under Sequence exports.");
                 return;
             }
-            if (!CanEditSequence(parentSequence))
+            if (!CanEditSequence(parentSequence) || !EndInlineSequenceNameEdit(commit: true))
             {
                 return;
             }
@@ -7016,6 +7024,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                 if (currentTreeNode != null)
                 {
                     currentTreeNode.ExpandParents();
+                    currentTreeNode.IsExpanded = true;
                     currentTreeNode.IsSelected = true;
                     _selectedItem = currentTreeNode;
                 }

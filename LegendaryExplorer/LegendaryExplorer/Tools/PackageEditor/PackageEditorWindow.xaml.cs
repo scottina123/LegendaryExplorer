@@ -2096,6 +2096,24 @@ namespace LegendaryExplorer.Tools.PackageEditor
             }
         }
 
+        private void CreateRowEmptySubsequence_Click(object sender, RoutedEventArgs e)
+        {
+            e.Handled = true;
+            if (sender is not FrameworkElement { DataContext: TreeViewEntry { Entry: ExportEntry parentSequence } node }
+                || !ReferenceEquals(parentSequence.FileRef, Pcc) || !node.CanCreateSubsequence)
+            {
+                return;
+            }
+
+            var sequenceName = PromptDialog.Prompt(this, "Enter a name for the new subsequence.",
+                "Create Empty Subsequence", "Sequence", true);
+            if (!string.IsNullOrWhiteSpace(sequenceName))
+            {
+                SequenceObjectCreator.CreateSequence(parentSequence, sequenceName.Trim());
+                node.IsExpanded = true;
+            }
+        }
+
         private void AddRowInterpChild_Click(object sender, RoutedEventArgs e)
         {
             if (sender is FrameworkElement { DataContext: TreeViewEntry { Entry: ExportEntry export } node }

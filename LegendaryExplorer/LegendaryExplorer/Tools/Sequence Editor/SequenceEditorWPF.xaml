@@ -19,6 +19,7 @@
         xmlns:exportLoaderControls="clr-namespace:LegendaryExplorer.UserControls.ExportLoaderControls"
         xmlns:sequenceEditor="clr-namespace:LegendaryExplorer.Tools.Sequence_Editor"
         xmlns:controls="clr-namespace:LegendaryExplorer.SharedUI.Controls"
+        xmlns:fa5="http://schemas.fontawesome.com/icons/"
         mc:Ignorable="d"
         d:DataContext="{Binding RelativeSource={RelativeSource Self}}"
         Icon="pack://application:,,,/Tools/Icons/16x16/SequenceEditor_Icon_16.ico"
@@ -34,6 +35,23 @@
         <converters:InverseVisibilityConverter x:Key="InverseVisibilityConverter"/>
         <converters:GameTypeConverter x:Key="GameTypeConverter"/>
         <sequenceEditor:SequencePanelFilterVisibilityConverter x:Key="SequencePanelFilterVisibilityConverter"/>
+        <Style x:Key="InlineSequenceTreeActionButtonStyle" TargetType="Button" BasedOn="{StaticResource BorderedButton}">
+            <Setter Property="Width" Value="18"/>
+            <Setter Property="Height" Value="18"/>
+            <Setter Property="MinHeight" Value="0"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Margin" Value="4,0,0,0"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}"/>
+            <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding DataContext.IsBusy, RelativeSource={RelativeSource AncestorType=TreeView}}" Value="True">
+                    <Setter Property="IsEnabled" Value="False"/>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
         <Style x:Key="EmbeddedMenuContentStyle" TargetType="{x:Type MenuItem}">
             <Setter Property="Focusable" Value="False"/>
             <Setter Property="Template">
@@ -556,6 +574,15 @@
                                                      PreviewKeyDown="SequenceNameEditor_PreviewKeyDown"
                                                      LostKeyboardFocus="SequenceNameEditor_LostKeyboardFocus" />
                                         </StackPanel>
+                                        <Button x:Name="CreateSubsequenceButton" Style="{StaticResource InlineSequenceTreeActionButtonStyle}"
+                                                dd:DragDrop.DragSourceIgnore="True"
+                                                Visibility="{Binding CanCreateSubsequence, Converter={StaticResource BoolToVisibilityConverter}}"
+                                                Click="CreateEmptySubsequence_Clicked"
+                                                ToolTip="Create a new empty child sequence under this sequence"
+                                                AutomationProperties.Name="Create Empty Subsequence">
+                                            <fa5:FontAwesome Icon="Solid_Plus" Width="11" Height="11"
+                                                             Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
+                                        </Button>
                                         <b:Interaction.Triggers>
                                             <b:EventTrigger EventName="PreviewMouseRightButtonDown">
                                                 <b:ChangePropertyAction PropertyName="IsSelected" Value="true"

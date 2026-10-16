@@ -174,6 +174,9 @@ namespace LegendaryExplorer.SharedUI
 
         public bool HasArchetype => Entry is ExportEntry { HasArchetype: true };
 
+        public bool CanCreateSubsequence => Entry is ExportEntry { IsDefaultObject: false } export
+                                            && export.IsA("Sequence");
+
         public bool CanAddInterpChild => Entry is ExportEntry export
                                          && (export.ClassName == "InterpData" || export.IsA("InterpGroup"));
 
@@ -216,6 +219,7 @@ namespace LegendaryExplorer.SharedUI
             if (e.PropertyName == nameof(ExportEntry.HeaderChanged))
             {
                 OnPropertyChanged(nameof(HasArchetype));
+                OnPropertyChanged(nameof(CanCreateSubsequence));
                 OnPropertyChanged(nameof(CanAddInterpChild));
                 OnPropertyChanged(nameof(AddInterpChildToolTip));
             }

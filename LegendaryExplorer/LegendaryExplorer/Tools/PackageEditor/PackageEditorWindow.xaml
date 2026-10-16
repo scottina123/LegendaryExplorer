@@ -662,6 +662,13 @@
                                             <fa5:FontAwesome Icon="Solid_Plus" Width="11" Height="11"
                                                              Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
                                         </Button>
+                                        <Button x:Name="CreateEmptySubsequenceButton" Style="{StaticResource InlineTreeActionButtonStyle}"
+                                                Visibility="{Binding CanCreateSubsequence, Converter={StaticResource BoolToVisibilityConverter}}"
+                                                Click="CreateRowEmptySubsequence_Click" ToolTip="Create empty subsequence"
+                                                AutomationProperties.Name="Create empty subsequence">
+                                            <fa5:FontAwesome Icon="Solid_Plus" Width="11" Height="11"
+                                                             Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
+                                        </Button>
                                         <StackPanel x:Name="ObjectNameEditorPanel" Visibility="Collapsed" Orientation="Horizontal" LostKeyboardFocus="ObjectNameEditor_LostKeyboardFocus">
                                             <TextBox x:Name="ObjectNameEditor" MinWidth="120" VerticalContentAlignment="Center" PreviewKeyDown="ObjectNameEditor_PreviewKeyDown"/>
                                             <TextBlock Margin="4,0" VerticalAlignment="Center" Text="_"/>
