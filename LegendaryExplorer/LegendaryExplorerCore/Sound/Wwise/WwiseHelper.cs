@@ -66,28 +66,34 @@ namespace LegendaryExplorerCore.Sound.Wwise
         /// <summary>
         /// Gets the local WwiseStream exports referenced by a WwiseEvent.
         /// </summary>
+        public static IReadOnlyList<ExportEntry> GetReferencedWwiseStreams(ExportEntry wwiseEventExport) =>
+            GetReferencedWwiseStreamEntries(wwiseEventExport).OfType<ExportEntry>().ToList();
+
+        /// <summary>
+        /// Gets the WwiseStream imports and exports referenced by a WwiseEvent, without resolving imports.
+        /// </summary>
         /// <remarks>
         /// ME2/ME3/LE3 store stream references in the event binary, while LE2 stores them in the
         /// References property. Both locations are checked so this also handles converted events.
         /// </remarks>
-        public static IReadOnlyList<ExportEntry> GetReferencedWwiseStreams(ExportEntry wwiseEventExport)
+        public static IReadOnlyList<IEntry> GetReferencedWwiseStreamEntries(ExportEntry wwiseEventExport)
         {
             if (wwiseEventExport?.ClassName != "WwiseEvent")
             {
                 return [];
             }
 
-            var streams = new List<ExportEntry>();
+            var streams = new List<IEntry>();
             var seenStreams = new HashSet<int>();
 
             void AddStream(int uIndex)
             {
-                if (!wwiseEventExport.FileRef.IsUExport(uIndex) || !seenStreams.Add(uIndex))
+                if (!wwiseEventExport.FileRef.IsEntry(uIndex) || !seenStreams.Add(uIndex))
                 {
                     return;
                 }
 
-                ExportEntry stream = wwiseEventExport.FileRef.GetUExport(uIndex);
+                IEntry stream = wwiseEventExport.FileRef.GetEntry(uIndex);
                 if (stream.ClassName == "WwiseStream")
                 {
                     streams.Add(stream);

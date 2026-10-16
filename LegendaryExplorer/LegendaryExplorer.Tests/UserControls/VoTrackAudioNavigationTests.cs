@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using LegendaryExplorer.UserControls.ExportLoaderControls;
@@ -64,6 +65,307 @@ public class VoTrackAudioNavigationTests
     }
 
     [TestMethod]
+    [DataRow(MEGame.ME1, false)]
+    [DataRow(MEGame.ME2, true)]
+    [DataRow(MEGame.ME3, true)]
+    [DataRow(MEGame.LE1, false)]
+    [DataRow(MEGame.LE2, true)]
+    [DataRow(MEGame.LE3, true)]
+    public void SubtitleActionsRequireStringReferenceInsideSubtitleTrackData(MEGame game, bool supported)
+    {
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("SubtitleTrackScope.pcc", game);
+        ExportEntry track = package.CreateExport("Track", "BioEvtSysTrackSubtitles", indexed: false);
+        ExportEntry voTrack = CreateTrack(package);
+        var trackData = new StructProperty("BioSubtitleTrackData", new PropertyCollection(), "m_aSubtitleData");
+
+        foreach (Property property in new Property[] { new IntProperty(42, "nStrRefID"), new StringRefProperty(42, "nStrRefID") })
+        {
+            Assert.AreEqual(supported, VoTrackAudioNavigation.IsTrackStringRef(track, property, trackData));
+            Assert.AreEqual(supported, VoTrackAudioNavigation.IsTrackAudioProperty(track, property, trackData));
+            Assert.IsFalse(VoTrackAudioNavigation.IsTrackAudioProperty(track, property));
+            Assert.IsFalse(VoTrackAudioNavigation.IsTrackAudioProperty(track, property,
+                new StructProperty("BioFOVOTrackData", new PropertyCollection(), "TrackData")));
+            Assert.IsFalse(VoTrackAudioNavigation.IsTrackAudioProperty(voTrack, property, trackData));
+        }
+
+        Assert.IsFalse(VoTrackAudioNavigation.IsTrackAudioProperty(track, new IntProperty(42, "m_nStrRefID"), trackData));
+        Assert.IsFalse(VoTrackAudioNavigation.IsTrackAudioProperty(track, new FloatProperty(42, "nStrRefID"), trackData));
+    }
+
+    [TestMethod]
+    [DataRow(MEGame.ME1, false)]
+    [DataRow(MEGame.ME2, true)]
+    [DataRow(MEGame.ME3, true)]
+    [DataRow(MEGame.LE1, false)]
+    [DataRow(MEGame.LE2, true)]
+    [DataRow(MEGame.LE3, true)]
+    public void WwiseTrackActionsRequireEventObjectInsideWwiseEventTrackKey(MEGame game, bool supported)
+    {
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("WwiseTrackScope.pcc", game);
+        ExportEntry track = package.CreateExport("Track", "InterpTrackWwiseEvent", indexed: false);
+        var key = new StructProperty("WwiseEventTrackKey", new PropertyCollection(), "WwiseEvents");
+        var property = new ObjectProperty(1, "Event");
+
+        Assert.AreEqual(supported, VoTrackAudioNavigation.IsTrackAudioProperty(track, property, key));
+        Assert.IsFalse(VoTrackAudioNavigation.IsTrackStringRef(track, property, key));
+        Assert.IsFalse(VoTrackAudioNavigation.IsTrackAudioProperty(track, property));
+        Assert.IsFalse(VoTrackAudioNavigation.IsTrackAudioProperty(track, property,
+            new StructProperty("OtherTrackKey", new PropertyCollection(), "WwiseEvents")));
+        Assert.IsFalse(VoTrackAudioNavigation.IsTrackAudioProperty(track, property, new IntProperty(0, "WwiseEvents")));
+        Assert.IsFalse(VoTrackAudioNavigation.IsTrackAudioProperty(track, new IntProperty(1, "Event"), key));
+        Assert.IsFalse(VoTrackAudioNavigation.IsTrackAudioProperty(track, new ObjectProperty(1, "OtherEvent"), key));
+        Assert.IsFalse(VoTrackAudioNavigation.IsTrackAudioProperty(CreateTrack(package), property, key));
+        Assert.IsFalse(VoTrackAudioNavigation.IsTrackAudioProperty(null, property, key));
+        Assert.IsFalse(VoTrackAudioNavigation.IsTrackAudioProperty(track, null, key));
+    }
+
+    [TestMethod]
+    [DataRow(MEGame.ME2)]
+    [DataRow(MEGame.ME3)]
+    [DataRow(MEGame.LE2)]
+    [DataRow(MEGame.LE3)]
+    public void SubtitlePropertiesResolveGenderedEventsAndNamedStreams(MEGame game)
+    {
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("SubtitleTrackAudio.pcc", game);
+        ExportEntry track = package.CreateExport("Track", "BioEvtSysTrackSubtitles", indexed: false);
+        var trackData = new StructProperty("BioSubtitleTrackData", new PropertyCollection(), "m_aSubtitleData");
+        ExportEntry male = package.CreateExport("VO_42_m_Play", "WwiseEvent", indexed: false);
+        ExportEntry female = package.CreateExport("Play_VO_42_f", "WwiseEvent", indexed: false);
+        ExportEntry maleStream = package.CreateExport("player_00000042_m_wav", "WwiseStream", indexed: false);
+        ExportEntry femaleStream = package.CreateExport("player_00000042_f_wav", "WwiseStream", indexed: false);
+
+        foreach (Property property in new Property[] { new IntProperty(42, "nStrRefID"), new StringRefProperty(42, "nStrRefID") })
+        {
+            Assert.AreSame(male, VoTrackAudioNavigation.FindAudioEntry(track, property, trackData, false, stream: false));
+            Assert.AreSame(female, VoTrackAudioNavigation.FindAudioEntry(track, property, trackData, true, stream: false));
+            Assert.AreSame(maleStream, VoTrackAudioNavigation.FindAudioEntry(track, property, trackData, false, stream: true));
+            Assert.AreSame(femaleStream, VoTrackAudioNavigation.FindAudioEntry(track, property, trackData, true, stream: true));
+            Assert.IsNull(VoTrackAudioNavigation.FindAudioEntry(track, property, null, false, stream: false));
+        }
+
+        foreach (int invalidId in new[] { 0, -42 })
+        {
+            Assert.IsNull(VoTrackAudioNavigation.FindAudioEntry(track, new IntProperty(invalidId, "nStrRefID"),
+                trackData, false, stream: false));
+            Assert.IsNull(VoTrackAudioNavigation.FindAudioEntry(track, new StringRefProperty(invalidId, "nStrRefID"),
+                trackData, false, stream: true));
+        }
+    }
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public void ExplicitWwiseEventReferenceOverridesDuplicateNamesAndUsesItsStream(bool female)
+    {
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("WwiseTrackDirectEvent.pcc", MEGame.LE3);
+        ExportEntry track = package.CreateExport("Track", "InterpTrackWwiseEvent", indexed: false);
+        var key = new StructProperty("WwiseEventTrackKey", new PropertyCollection(), "WwiseEvents");
+        string name = $"VO_42_{(female ? "f" : "m")}_Play";
+        ExportEntry decoy = package.CreateExport(name, "WwiseEvent", indexed: false);
+        ExportEntry target = package.CreateExport(name, "WwiseEvent", indexed: false);
+        CreateImport(package, name, "WwiseEvent");
+        ExportEntry decoyStream = package.CreateExport("DecoyAudio", "WwiseStream", indexed: false);
+        ExportEntry targetStream = package.CreateExport("ActualAudio", "WwiseStream", indexed: false);
+        package.CreateExport($"player_42_{(female ? "f" : "m")}_wav", "WwiseStream", indexed: false);
+        WriteBinaryReferences(decoy, decoyStream);
+        WriteBinaryReferences(target, targetStream);
+        var eventRef = new ObjectProperty(target.UIndex, "Event");
+
+        Assert.IsNull(VoTrackAudioNavigation.FindAudioEntry(track, 42, female, stream: false));
+        Assert.AreSame(target, VoTrackAudioNavigation.FindAudioEntry(track, eventRef, key, female, stream: false));
+        Assert.AreSame(targetStream, VoTrackAudioNavigation.FindAudioEntry(track, eventRef, key, female, stream: true));
+    }
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public void ImportedWwiseEventReferenceUsesNamedStreamAndFindsOppositeGender(bool female)
+    {
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("WwiseTrackImportedEvent.pcc", MEGame.LE3);
+        ExportEntry track = package.CreateExport("Track", "InterpTrackWwiseEvent", indexed: false);
+        var key = new StructProperty("WwiseEventTrackKey", new PropertyCollection(), "WwiseEvents");
+        string gender = female ? "f" : "m";
+        string oppositeGender = female ? "m" : "f";
+        ImportEntry target = CreateImport(package, $"Play_VO_00000042_{gender}", "WwiseEvent");
+        ImportEntry stream = CreateImport(package, $"player_42_{gender}_wav", "WwiseStream");
+        ImportEntry counterpart = CreateImport(package, $"VO_42_{oppositeGender}_Play", "WwiseEvent");
+        ImportEntry counterpartStream = CreateImport(package, $"player_42_{oppositeGender}_wav", "WwiseStream");
+        var eventRef = new ObjectProperty(target.UIndex, "Event");
+
+        Assert.AreSame(target, VoTrackAudioNavigation.FindAudioEntry(track, eventRef, key, female, stream: false));
+        Assert.AreSame(stream, VoTrackAudioNavigation.FindAudioEntry(track, eventRef, key, female, stream: true));
+        Assert.AreSame(counterpart, VoTrackAudioNavigation.FindAudioEntry(track, eventRef, key, !female, stream: false));
+        Assert.AreSame(counterpartStream, VoTrackAudioNavigation.FindAudioEntry(track, eventRef, key, !female, stream: true));
+    }
+
+    [TestMethod]
+    public void ExportedEventCanReferenceAnArbitrarilyNamedImportedStream()
+    {
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("WwiseImportedStreamReference.pcc", MEGame.LE3);
+        ExportEntry track = package.CreateExport("Track", "InterpTrackWwiseEvent", indexed: false);
+        ExportEntry wwiseEvent = package.CreateExport("VO_42_m_Play", "WwiseEvent", indexed: false);
+        ImportEntry audioPackage = CreateImport(package, "DialogueAudio", "Package");
+        ImportEntry audioGroup = CreateImport(package, "Audio", "Package", audioPackage);
+        ImportEntry target = CreateImport(package, "OpaqueSharedNpcAudio", "WwiseStream", audioGroup);
+        package.CreateExport("player_42_m_wav", "WwiseStream", indexed: false);
+        WriteBinaryReferences(wwiseEvent, target);
+        var key = new StructProperty("WwiseEventTrackKey", new PropertyCollection(), "WwiseEvents");
+
+        Assert.AreSame(target, VoTrackAudioNavigation.FindAudioEntry(track, 42, false, stream: true));
+        Assert.AreSame(target, VoTrackAudioNavigation.FindAudioEntry(track,
+            new ObjectProperty(wwiseEvent.UIndex, "Event"), key, false, stream: true));
+    }
+
+    [TestMethod]
+    [DataRow(false, false)]
+    [DataRow(false, true)]
+    [DataRow(true, false)]
+    [DataRow(true, true)]
+    public void ResolvedImportedEventUsesReferencedStreamAndPrefersMatchingLocalImport(bool importedStream, bool localStream)
+    {
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("WwiseResolvedEventTrack.pcc", MEGame.LE3);
+        using IMEPackage externalPackage = MEPackageHandler.CreateMemoryEmptyPackage("DialogueAudio.pcc", MEGame.LE3);
+        ExportEntry track = package.CreateExport("Track", "InterpTrackWwiseEvent", indexed: false);
+        ExportEntry externalRoot = externalPackage.CreateExport("DialogueAudio", "Package", indexed: false);
+        ExportEntry externalAudio = externalPackage.CreateExport("Audio", "Package", externalRoot, indexed: false);
+        ExportEntry externalEvent = externalPackage.CreateExport("VO_42_m_Play", "WwiseEvent", externalAudio, indexed: false);
+        ImportEntry localRoot = CreateImport(package, "DialogueAudio", "Package");
+        ImportEntry localAudio = CreateImport(package, "Audio", "Package", localRoot);
+        ImportEntry eventRef = CreateImport(package, "VO_42_m_Play", "WwiseEvent", localAudio);
+        IEntry externalStream;
+        IEntry localStreamParent = localAudio;
+        if (importedStream)
+        {
+            ImportEntry streamRoot = CreateImport(externalPackage, "StreamAudio", "Package");
+            ImportEntry streamAudio = CreateImport(externalPackage, "Audio", "Package", streamRoot);
+            externalStream = CreateImport(externalPackage, "OpaqueAudio", "WwiseStream", streamAudio);
+            ImportEntry localStreamRoot = CreateImport(package, "StreamAudio", "Package");
+            localStreamParent = CreateImport(package, "Audio", "Package", localStreamRoot);
+        }
+        else
+        {
+            externalStream = externalPackage.CreateExport("OpaqueAudio", "WwiseStream", externalAudio, indexed: false);
+            ExportEntry localExportRoot = package.CreateExport("DialogueAudio", "Package", indexed: false);
+            ExportEntry localExportAudio = package.CreateExport("Audio", "Package", localExportRoot, indexed: false);
+            ExportEntry unrelatedLocalExport = package.CreateExport("OpaqueAudio", "WwiseStream", localExportAudio, indexed: false);
+            Assert.AreEqual(externalStream.InstancedFullPath, unrelatedLocalExport.InstancedFullPath);
+        }
+
+        WriteBinaryReferences(externalEvent, externalStream);
+        CreateImport(package, "OpaqueAudio", "Object", localStreamParent);
+        CreateImport(package, "OpaqueAudio", "WwiseStream");
+        IEntry expected = externalStream;
+        if (localStream)
+        {
+            expected = CreateImport(package, "OpaqueAudio", "WwiseStream", localStreamParent);
+            Assert.AreEqual(externalStream.InstancedFullPath, expected.InstancedFullPath);
+        }
+
+        var resolutions = new Dictionary<ImportEntry, ExportEntry> { [eventRef] = externalEvent };
+        var key = new StructProperty("WwiseEventTrackKey", new PropertyCollection(), "WwiseEvents");
+
+        Assert.IsNull(VoTrackAudioNavigation.FindAudioEntry(track, 42, false, stream: true));
+        Assert.AreSame(expected, VoTrackAudioNavigation.FindAudioEntry(track, 42, false, stream: true,
+            resolveImport: import => resolutions.GetValueOrDefault(import)));
+        Assert.AreSame(expected, VoTrackAudioNavigation.FindAudioEntry(track,
+            new ObjectProperty(eventRef.UIndex, "Event"), key, false, stream: true,
+            resolveImport: import => resolutions.GetValueOrDefault(import)));
+    }
+
+    [TestMethod]
+    public void NativeExternalStreamMapsToImportWithSourcePackageFilenamePrefix()
+    {
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("WwiseNativeStreamTrack.pcc", MEGame.LE3);
+        using IMEPackage externalPackage = MEPackageHandler.CreateMemoryEmptyPackage("DialogueAudio.pcc", MEGame.LE3);
+        ExportEntry track = CreateTrack(package);
+        ImportEntry eventRef = CreateImport(package, "VO_42_m_Play", "WwiseEvent");
+        ExportEntry externalAudio = externalPackage.CreateExport("Audio", "Package", indexed: false);
+        ExportEntry externalEvent = externalPackage.CreateExport("VO_42_m_Play", "WwiseEvent", externalAudio, indexed: false);
+        ExportEntry externalStream = externalPackage.CreateExport("OpaqueAudio", "WwiseStream", externalAudio, indexed: false);
+        WriteBinaryReferences(externalEvent, externalStream);
+        ImportEntry localRoot = CreateImport(package, "DialogueAudio", "Package");
+        ImportEntry localAudio = CreateImport(package, "Audio", "Package", localRoot);
+        ImportEntry target = CreateImport(package, "OpaqueAudio", "WwiseStream", localAudio);
+        ExportEntry decoyAudio = package.CreateExport("Audio", "Package", indexed: false);
+        ExportEntry decoy = package.CreateExport("OpaqueAudio", "WwiseStream", decoyAudio, indexed: false);
+        var resolutions = new Dictionary<ImportEntry, ExportEntry> { [eventRef] = externalEvent };
+
+        Assert.IsFalse(externalStream.IsForcedExport);
+        Assert.AreEqual("Audio.OpaqueAudio", externalStream.InstancedFullPath);
+        Assert.AreEqual("DialogueAudio.Audio.OpaqueAudio", target.InstancedFullPath);
+        Assert.AreEqual(externalStream.InstancedFullPath, decoy.InstancedFullPath);
+        Assert.AreSame(target, VoTrackAudioNavigation.FindAudioEntry(track, 42, false, stream: true,
+            resolveImport: import => resolutions.GetValueOrDefault(import)));
+    }
+
+    [TestMethod]
+    public void ResolverFollowsOppositeGenderEventAndRejectsAmbiguousCounterparts()
+    {
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("WwiseResolvedCounterpart.pcc", MEGame.LE3);
+        using IMEPackage externalPackage = MEPackageHandler.CreateMemoryEmptyPackage("DialogueAudio.pcc", MEGame.LE3);
+        ExportEntry track = package.CreateExport("Track", "InterpTrackWwiseEvent", indexed: false);
+        ImportEntry maleRef = CreateImport(package, "VO_42_m_Play", "WwiseEvent");
+        ImportEntry femaleRef = CreateImport(package, "VO_42_f_Play", "WwiseEvent");
+        ExportEntry maleEvent = externalPackage.CreateExport("VO_42_m_Play", "WwiseEvent", indexed: false);
+        ExportEntry femaleEvent = externalPackage.CreateExport("VO_42_f_Play", "WwiseEvent", indexed: false);
+        ExportEntry maleStream = externalPackage.CreateExport("OpaqueMaleAudio", "WwiseStream", indexed: false);
+        ImportEntry femaleStream = CreateImport(externalPackage, "OpaqueFemaleAudio", "WwiseStream");
+        WriteBinaryReferences(maleEvent, maleStream);
+        WriteBinaryReferences(femaleEvent, femaleStream);
+        var resolutions = new Dictionary<ImportEntry, ExportEntry> { [maleRef] = maleEvent, [femaleRef] = femaleEvent };
+        var key = new StructProperty("WwiseEventTrackKey", new PropertyCollection(), "WwiseEvents");
+        var eventProperty = new ObjectProperty(maleRef.UIndex, "Event");
+
+        Assert.AreSame(maleStream, VoTrackAudioNavigation.FindAudioEntry(track, eventProperty, key, false, stream: true,
+            resolveImport: import => resolutions.GetValueOrDefault(import)));
+        Assert.AreSame(femaleStream, VoTrackAudioNavigation.FindAudioEntry(track, eventProperty, key, true, stream: true,
+            resolveImport: import => resolutions.GetValueOrDefault(import)));
+
+        CreateImport(package, "Play_VO_00000042_f", "WwiseEvent");
+        Assert.IsNull(VoTrackAudioNavigation.FindAudioEntry(track, eventProperty, key, true, stream: true,
+            resolveImport: import => resolutions.GetValueOrDefault(import)));
+        Assert.AreSame(maleStream, VoTrackAudioNavigation.FindAudioEntry(track, eventProperty, key, false, stream: true,
+            resolveImport: import => resolutions.GetValueOrDefault(import)));
+    }
+
+    [TestMethod]
+    public void ResolvedEventWithAmbiguousReferencedStreamsDoesNotSelectTheFirstImport()
+    {
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("WwiseResolvedAmbiguousStreams.pcc", MEGame.LE3);
+        using IMEPackage externalPackage = MEPackageHandler.CreateMemoryEmptyPackage("DialogueAudio.pcc", MEGame.LE3);
+        ExportEntry track = CreateTrack(package);
+        ImportEntry eventRef = CreateImport(package, "VO_42_m_Play", "WwiseEvent");
+        ExportEntry externalEvent = externalPackage.CreateExport("VO_42_m_Play", "WwiseEvent", indexed: false);
+        ImportEntry first = CreateImport(externalPackage, "first_42_m_wav", "WwiseStream");
+        ImportEntry second = CreateImport(externalPackage, "second_00000042_m_wav", "WwiseStream");
+        WriteBinaryReferences(externalEvent, first, second);
+        var resolutions = new Dictionary<ImportEntry, ExportEntry> { [eventRef] = externalEvent };
+
+        Assert.IsNull(VoTrackAudioNavigation.FindAudioEntry(track, 42, false, stream: true,
+            resolveImport: import => resolutions.GetValueOrDefault(import)));
+    }
+
+    [TestMethod]
+    public void InvalidWwiseEventReferencesDoNotFallBackToOtherDialogueAudio()
+    {
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("WwiseTrackInvalidEvent.pcc", MEGame.LE3);
+        ExportEntry track = package.CreateExport("Track", "InterpTrackWwiseEvent", indexed: false);
+        var key = new StructProperty("WwiseEventTrackKey", new PropertyCollection(), "WwiseEvents");
+        package.CreateExport("VO_42_m_Play", "WwiseEvent", indexed: false);
+        package.CreateExport("player_42_m_wav", "WwiseStream", indexed: false);
+        ExportEntry nonVo = package.CreateExport("Ambient_Play", "WwiseEvent", indexed: false);
+        ExportEntry stop = package.CreateExport("VO_42_m_Stop", "WwiseEvent", indexed: false);
+        ImportEntry wrongClass = CreateImport(package, "Play_VO_42_m", "Object");
+
+        foreach (int reference in new[] { 0, int.MaxValue, int.MinValue, nonVo.UIndex, stop.UIndex, wrongClass.UIndex })
+        {
+            var eventRef = new ObjectProperty(reference, "Event");
+            Assert.IsNull(VoTrackAudioNavigation.FindAudioEntry(track, eventRef, key, false, stream: false));
+            Assert.IsNull(VoTrackAudioNavigation.FindAudioEntry(track, eventRef, key, false, stream: true));
+        }
+    }
+
+    [TestMethod]
     [DataRow(MEGame.ME2, false)]
     [DataRow(MEGame.ME3, false)]
     [DataRow(MEGame.LE2, true)]
@@ -96,8 +398,31 @@ public class VoTrackAudioNavigationTests
         package.CreateExport("VO_42_m_Stop", "WwiseEvent", indexed: false);
         package.CreateExport("VO_42_f_Stop", "WwiseEvent", indexed: false);
 
+        Assert.IsTrue(VoTrackAudioNavigation.TryGetPlayEventStringRef(name, out int stringRef));
+        Assert.AreEqual(42, stringRef);
+        Assert.IsTrue(VoTrackAudioNavigation.TryGetPlayEventInfo(name, out stringRef, out bool parsedFemale));
+        Assert.AreEqual(42, stringRef);
+        Assert.AreEqual(female, parsedFemale);
         Assert.AreSame(target, VoTrackAudioNavigation.FindAudioEntry(track, 42, female, stream: false));
         Assert.IsNull(VoTrackAudioNavigation.FindAudioEntry(track, 42, !female, stream: false));
+    }
+
+    [TestMethod]
+    [DataRow(null)]
+    [DataRow("")]
+    [DataRow("VO_0_m_Play")]
+    [DataRow("VO_-42_m_Play")]
+    [DataRow("VO_+42_m_Play")]
+    [DataRow("VO_ 42_m_Play")]
+    [DataRow("VO_42 _m_Play")]
+    [DataRow("VO_2147483648_m_Play")]
+    [DataRow("Play_VO_42_male")]
+    [DataRow("VO_42_m_Stop")]
+    [DataRow("VO_42_m_Play_Extra")]
+    public void PlayEventParserRejectsInvalidIdsGenderAndNameShape(string name)
+    {
+        Assert.IsFalse(VoTrackAudioNavigation.TryGetPlayEventStringRef(name, out _));
+        Assert.IsFalse(VoTrackAudioNavigation.TryGetPlayEventInfo(name, out _, out _));
     }
 
     [TestMethod]
@@ -288,13 +613,22 @@ public class VoTrackAudioNavigationTests
         using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("VoTrackUnsupportedGame.pcc", game);
         ExportEntry track = CreateTrack(package);
         ExportEntry faceOnlyTrack = package.CreateExport("FaceOnlyTrack", "SFXInterpTrackPlayFaceOnlyVO", indexed: false);
-        CreateImport(package, "VO_42_m_Play", "WwiseEvent");
+        ExportEntry subtitleTrack = package.CreateExport("SubtitleTrack", "BioEvtSysTrackSubtitles", indexed: false);
+        ExportEntry wwiseTrack = package.CreateExport("WwiseTrack", "InterpTrackWwiseEvent", indexed: false);
+        ImportEntry wwiseEvent = CreateImport(package, "VO_42_m_Play", "WwiseEvent");
         CreateImport(package, "player_00000042_m_wav", "WwiseStream");
 
         Assert.IsNull(VoTrackAudioNavigation.FindAudioEntry(track, 42, isFemale: false, stream: false));
         Assert.IsNull(VoTrackAudioNavigation.FindAudioEntry(track, 42, isFemale: false, stream: true));
         Assert.IsNull(VoTrackAudioNavigation.FindAudioEntry(faceOnlyTrack, 42, isFemale: false, stream: false));
         Assert.IsNull(VoTrackAudioNavigation.FindAudioEntry(faceOnlyTrack, 42, isFemale: false, stream: true));
+        foreach (bool stream in new[] { false, true })
+        {
+            Assert.IsNull(VoTrackAudioNavigation.FindAudioEntry(subtitleTrack, new IntProperty(42, "nStrRefID"),
+                new StructProperty("BioSubtitleTrackData", new PropertyCollection(), "m_aSubtitleData"), false, stream));
+            Assert.IsNull(VoTrackAudioNavigation.FindAudioEntry(wwiseTrack, new ObjectProperty(wwiseEvent.UIndex, "Event"),
+                new StructProperty("WwiseEventTrackKey", new PropertyCollection(), "WwiseEvents"), false, stream));
+        }
     }
 
     [TestMethod]
@@ -318,14 +652,17 @@ public class VoTrackAudioNavigationTests
     private static ExportEntry CreateTrack(IMEPackage package) =>
         package.CreateExport("Track", "BioEvtSysTrackVOElements", indexed: false);
 
-    private static ImportEntry CreateImport(IMEPackage package, string name, string className)
+    private static ImportEntry CreateImport(IMEPackage package, string name, string className, IEntry parent = null)
     {
-        var entry = new ImportEntry(package) { ObjectName = name, ClassName = className, PackageFile = "WwiseAudio" };
+        var entry = new ImportEntry(package)
+        {
+            ObjectName = name, ClassName = className, PackageFile = "WwiseAudio", idxLink = parent?.UIndex ?? 0
+        };
         package.AddImport(entry);
         return entry;
     }
 
-    private static void WriteBinaryReferences(ExportEntry wwiseEvent, params ExportEntry[] streams) =>
+    private static void WriteBinaryReferences(ExportEntry wwiseEvent, params IEntry[] streams) =>
         wwiseEvent.WritePropertiesAndBinary(new PropertyCollection(), new WwiseEvent
         {
             Links = [new WwiseEvent.WwiseEventLink { WwiseBanks = [], WwiseStreams = streams.Select(stream => stream.UIndex).ToList() }]

@@ -1141,13 +1141,16 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             }
 
             // Navigation uses the confirmed reference, just like object-property Go to buttons.
-            int stringRef = node.Property switch
-            {
-                IntProperty intProperty => intProperty.Value,
-                StringRefProperty stringRefProperty => stringRefProperty.Value,
-                _ => 0
-            };
-            return VoTrackAudioNavigation.FindAudioEntry(CurrentLoadedExport, stringRef, isFemale, stream);
+            return VoTrackAudioNavigation.FindAudioEntry(CurrentLoadedExport, node.Property, node.UPParent?.Property, isFemale, stream,
+                ResolveVoTrackAudioImport);
+        }
+
+        private RelayCommand GetVoTrackNavigationCommand(IEntry entry, bool newWindow)
+        {
+            var command = InterpreterEntryNavigation.GetCommand(NavigateToEntryCommand, OpenEntryInNewWindowCommand, newWindow);
+            return entry != null && !ReferenceEquals(entry.FileRef, CurrentLoadedExport?.FileRef) && command?.CanExecute(entry) != true
+                ? InterpreterEntryNavigation.GetCommand(null, null, true)
+                : command;
         }
 
         private RelayCommand CreateVoTrackNavigationCommand(bool isFemale, bool stream) => new(
@@ -1155,16 +1158,14 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 Keyboard.Modifiers.HasFlag(ModifierKeys.Shift)),
             parameter =>
             {
-                var command = InterpreterEntryNavigation.GetCommand(NavigateToEntryCommand, OpenEntryInNewWindowCommand,
-                    Keyboard.Modifiers.HasFlag(ModifierKeys.Shift));
                 return GetVoTrackAudioNavigationEntry(parameter as UPropertyTreeViewEntry, isFemale, stream) is { } entry
-                       && command?.CanExecute(entry) == true;
+                       && GetVoTrackNavigationCommand(entry, Keyboard.Modifiers.HasFlag(ModifierKeys.Shift))?.CanExecute(entry) == true;
             });
 
         private void NavigateToVoTrackAudio(UPropertyTreeViewEntry node, bool isFemale, bool stream, bool openInNewWindow)
         {
-            var command = InterpreterEntryNavigation.GetCommand(NavigateToEntryCommand, OpenEntryInNewWindowCommand, openInNewWindow);
-            if (GetVoTrackAudioNavigationEntry(node, isFemale, stream) is { } entry && command?.CanExecute(entry) == true)
+            if (GetVoTrackAudioNavigationEntry(node, isFemale, stream) is { } entry
+                && GetVoTrackNavigationCommand(entry, openInNewWindow) is { } command && command.CanExecute(entry))
             {
                 command.Execute(entry);
             }
@@ -1831,7 +1832,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         /// </summary>
         public override void UnloadExport()
         {
-            ClearVoAudioPreview();
+            ClearVoTrackAudio();
             pendingPropertyDataReload?.Abort();
             pendingPropertyDataReload = null;
             CancelPendingPropertyTreeRestores();
@@ -1866,7 +1867,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         private void LoadExportInternal(ExportEntry export, PropertyCollection overrideProperties)
         {
-            ClearVoAudioPreview();
+            ClearVoTrackAudio();
             pendingPropertyDataReload?.Abort();
             pendingPropertyDataReload = null;
             CancelPendingPropertyTreeRestores();
@@ -2557,6 +2558,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             bool isExpanded = false;
             string editableValue = ""; //editable value
             string parsedValue = ""; //human formatted item. Will most times be blank
+            string voTrackSubtitle = "";
             switch (prop)
             {
                 case ObjectProperty op:
@@ -2576,20 +2578,16 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                             {
                                 editableValue = $"{index} {ExportToString(referencedExport)}";
                             }
-                            if (entry.ClassName == "WwiseEvent" && entry.ObjectName.Name.StartsWith("VO_"))
+                            if (entry.ClassName == "WwiseEvent"
+                                && VoTrackAudioNavigation.TryGetPlayEventStringRef(entry.ObjectName.Name, out int tlkId))
                             {
-                                var voStr = entry.ObjectName.Name.Substring(3);
-                                var underscoreIdx = voStr.IndexOf("_");
-                                if (underscoreIdx > 0)
+                                var tlkStr = TLKManagerWPF.GlobalFindStrRefbyID(tlkId, parsingExport.FileRef);
+                                if (tlkStr != "No Data")
                                 {
-                                    voStr = voStr.Substring(0, underscoreIdx);
-                                }
-                                if (int.TryParse(voStr, out var tlkId))
-                                {
-                                    var tlkStr = TLKManagerWPF.GlobalFindStrRefbyID(tlkId, parsingExport.FileRef);
-                                    if (tlkStr != "No Data")
+                                    parsedValue += $"\n{tlkStr}";
+                                    if (VoTrackAudioNavigation.IsTrackAudioProperty(parsingExport, prop, parent?.Property))
                                     {
-                                        parsedValue += $"\n{tlkStr}";
+                                        voTrackSubtitle = tlkStr;
                                     }
                                 }
                             }
@@ -3048,6 +3046,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 Property = prop,
                 EditableValue = editableValue,
                 ParsedValue = parsedValue,
+                VoTrackSubtitle = voTrackSubtitle,
                 DisplayName = displayName,
                 UPParent = parent,
                 AttachedExport = parsingExport,
@@ -7023,8 +7022,9 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         private bool IsObjectProperty => Property is ObjectProperty;
         private bool IsEnumProperty => Property is EnumProperty;
         public bool IsStringRefProperty => InterpreterExportLoader.IsTlkStringRefProperty(Property, UPParent?.Property);
-        public bool ShowVoTrackAudioNavigation => VoTrackAudioNavigation.IsTrackStringRef(AttachedExport, Property, UPParent?.Property)
+        public bool ShowVoTrackAudioNavigation => VoTrackAudioNavigation.IsTrackAudioProperty(AttachedExport, Property, UPParent?.Property)
                                                   && (AttachedExport.ClassName != "BioEvtSysTrackVOElements" || UPParent?.Property == null);
+        public string VoTrackSubtitle { get; set; } = "";
 
         public bool IsInlineEditable => Property is FloatProperty or IntProperty or StringRefProperty or StrProperty or NameProperty or EnumProperty;
         public bool IsGuidProperty => Property is StructProperty { IsImmutable: true, StructType: "Guid" };

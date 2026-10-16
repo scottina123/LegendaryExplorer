@@ -13,6 +13,8 @@ using LegendaryExplorer.SharedUI;
 using LegendaryExplorer.UserControls.ExportLoaderControls;
 using LegendaryExplorerCore;
 using LegendaryExplorerCore.Packages;
+using LegendaryExplorerCore.TLK;
+using LegendaryExplorerCore.TLK.ME2ME3;
 using LegendaryExplorerCore.Unreal;
 using LegendaryExplorerCore.Unreal.BinaryConverters;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -380,6 +382,136 @@ public class InterpreterVoTrackNavigationTests
         CollectionAssert.AreEqual(originalData, track.Data);
     });
 
+    [DataTestMethod]
+    [DataRow("BioEvtSysTrackSubtitles")]
+    [DataRow("InterpTrackWwiseEvent")]
+    public void SubtitleAndWwiseEventRowsUseTheirOwnCommittedValuesForNavigationAndPlayback(string className) => RunOnSta(() =>
+    {
+        using var subtitles = new LoadedTestSubtitles();
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("InterpreterSubtitleAndEventTracks.pcc", MEGame.LE3);
+        ExportEntry track = package.CreateExport("Track", className, indexed: false);
+        ExportEntry[][] targets = [CreateAudio(package), CreateAudio(package, StringRef + 1)];
+        targets[1][1].ObjectName = $"Play_VO_{StringRef + 1}_f";
+        bool subtitleTrack = className == "BioEvtSysTrackSubtitles";
+        string structType = subtitleTrack ? "BioSubtitleTrackData" : "WwiseEventTrackKey";
+        string propertyName = subtitleTrack ? "nStrRefID" : "Event";
+        ExportEntry[] referencedEvents = [targets[0][0], targets[1][1]];
+        var keys = new ArrayProperty<StructProperty>(subtitleTrack ? "m_aSubtitleData" : "WwiseEvents");
+        for (int i = 0; i < targets.Length; i++)
+        {
+            keys.Add(new StructProperty(structType, subtitleTrack
+                ? new PropertyCollection
+                {
+                    new IntProperty(StringRef + i, propertyName),
+                    new FloatProperty(3, "fLength"),
+                    new BoolProperty(false, "bShowAtTop")
+                }
+                : new PropertyCollection
+                {
+                    new ObjectProperty(referencedEvents[i], propertyName),
+                    new FloatProperty(i, "Time"),
+                    new ObjectProperty(referencedEvents[i], "OtherEvent")
+                }));
+            if (!subtitleTrack)
+            {
+                // The row's explicit reference must disambiguate identical event names.
+                ExportEntry decoyStream = package.CreateExport($"DecoyAudio{i}", "WwiseStream", indexed: false);
+                CreateEvent(package, referencedEvents[i].ObjectName.Name, decoyStream);
+            }
+        }
+        var properties = new PropertyCollection
+        {
+            keys,
+            new IntProperty(42, "UnrelatedSelection"),
+            subtitleTrack
+                ? new IntProperty(StringRef, propertyName)
+                : new ObjectProperty(referencedEvents[0], propertyName)
+        };
+        track.WriteProperties(properties);
+        byte[] originalData = track.Data.ToArray();
+        var navigated = new List<IEntry>();
+        var expectedNavigation = new List<IEntry>();
+        var previewedAudio = new List<IEntry>();
+        var expectedPlayback = new List<IEntry>();
+        InitializeApplicationResources();
+        var interpreter = new InterpreterExportLoader
+        {
+            VoAudioPreviewCommand = new RelayCommand(audio => previewedAudio.Add((IEntry)audio))
+        };
+        using var view = new InterpreterTestView(track, entry => navigated.Add((IEntry)entry),
+            interpreter: interpreter, properties: properties);
+        interpreter.TreeSelectedItem = view.Node("UnrelatedSelection");
+        interpreter.SelectedItem = view.Node("UnrelatedSelection");
+        view.ExpandAll();
+        UPropertyTreeViewEntry[] lines = view.AllNodes().Where(node => node.Property?.Name.Name == propertyName
+            && (node.UPParent?.Property as StructProperty)?.StructType == structType).ToArray();
+        Assert.AreEqual(2, lines.Length);
+
+        for (int i = 0; i < lines.Length; i++)
+        {
+            UPropertyTreeViewEntry node = lines[i];
+            Assert.IsTrue(node.ShowVoTrackAudioNavigation);
+            string expectedSubtitle = $"\"Track subtitle {i}\"";
+            Assert.IsTrue(FindVisualDescendants<TextBlock>(interpreter).Any(textBlock => textBlock.IsVisible
+                && ReferenceEquals(textBlock.DataContext, node) && textBlock.Text == expectedSubtitle));
+            TextBox valueEditor = FindVisualDescendants<TextBox>(interpreter)
+                .Single(textBox => ReferenceEquals(textBox.Tag, node)
+                    && (subtitleTrack ? textBox.MinWidth == 80 : !textBox.IsReadOnly && textBox.Width == 60));
+            string stagedReference = subtitleTrack ? "12345678" : referencedEvents[1 - i].UIndex.ToString();
+            foreach (string stagedValue in new[] { stagedReference, "invalid" })
+            {
+                valueEditor.Text = stagedValue;
+                view.RefreshLayout();
+                foreach ((RelayCommand command, string label, _, _) in Actions(interpreter))
+                {
+                    Button button = view.AudioButtons(node, command).Single();
+                    Assert.AreEqual(label, button.Content);
+                    Assert.IsTrue(button.IsEnabled, label);
+                    InvokeButton(button);
+                }
+                InvokePlayMenu(view, node);
+                expectedNavigation.AddRange(targets[i]);
+                expectedPlayback.AddRange(targets[i].Skip(2));
+                Assert.AreEqual(subtitleTrack ? StringRef + i : referencedEvents[i].UIndex,
+                    node.Property is IntProperty stringRef ? stringRef.Value : ((ObjectProperty)node.Property).Value);
+                CollectionAssert.AreEqual(originalData, track.Data);
+            }
+        }
+
+        interpreter.TreeSelectedItem = lines[0];
+        interpreter.SelectedItem = lines[0];
+        view.RefreshLayout();
+        Assert.AreEqual(2, view.PlayButtons(lines[0]).Length);
+        if (!subtitleTrack)
+        {
+            Assert.AreEqual(2, FindVisualDescendants<TextBlock>(interpreter).Count(textBlock => textBlock.IsVisible
+                && ReferenceEquals(textBlock.DataContext, lines[0]) && textBlock.Text == "\"Track subtitle 0\""),
+                "The referenced event's subtitle must appear inline and in the selected-property editor.");
+        }
+        foreach ((RelayCommand command, string label, _, _) in Actions(interpreter))
+        {
+            Button[] buttons = view.AudioButtons(lines[0], command);
+            Assert.AreEqual(2, buttons.Length, $"{label} must appear in the row and selected-property editor.");
+            Assert.IsTrue(buttons.All(button => button.IsEnabled), label);
+        }
+
+        foreach (UPropertyTreeViewEntry node in view.AllNodes().Except(lines))
+        {
+            Assert.IsFalse(node.ShowVoTrackAudioNavigation, node.DisplayName);
+            Assert.AreEqual(0, view.PlayButtons(node).Length);
+            Assert.IsFalse(interpreter.PlayMaleVoAudioCommand.CanExecute(node));
+            Assert.IsFalse(interpreter.PlayFemaleVoAudioCommand.CanExecute(node));
+            foreach ((RelayCommand command, _, _, _) in Actions(interpreter))
+            {
+                Assert.IsFalse(command.CanExecute(node));
+                Assert.AreEqual(0, view.AudioButtons(node, command).Length);
+            }
+        }
+        CollectionAssert.AreEqual(expectedNavigation, navigated);
+        CollectionAssert.AreEqual(expectedPlayback, previewedAudio);
+        CollectionAssert.AreEqual(originalData, track.Data);
+    });
+
     private static StructProperty CreateFaceOnlyVoKey(int stringRef) => new("BioFOVOTrackData", new PropertyCollection
     {
         new IntProperty(stringRef, "nLineStrRef"),
@@ -514,6 +646,23 @@ public class InterpreterVoTrackNavigationTests
     }
 
     private static void FlushDispatcher() => Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
+
+    private sealed class LoadedTestSubtitles : IDisposable
+    {
+        private readonly ME2ME3LazyTLK talkFile = new();
+
+        public LoadedTestSubtitles()
+        {
+            using var stream = HuffmanCompression.SaveToTlkStream([
+                new TLKStringRef(StringRef, "Track subtitle 0"),
+                new TLKStringRef(StringRef + 1, "Track subtitle 1")]);
+            stream.Position = 0;
+            talkFile.LoadTlkDataFromStream(stream);
+            LE3TalkFiles.LoadedTlks.Add(talkFile);
+        }
+
+        public void Dispose() => LE3TalkFiles.LoadedTlks.Remove(talkFile);
+    }
 
     private sealed class InterpreterTestView : IDisposable
     {

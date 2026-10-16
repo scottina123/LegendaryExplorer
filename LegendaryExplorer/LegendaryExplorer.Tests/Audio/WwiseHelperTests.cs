@@ -132,6 +132,91 @@ public class WwiseHelperTests
         CollectionAssert.AreEqual(new[] { singleStreamEvent }, WwiseHelper.GetMatchingWwiseEvents(firstStream).ToArray());
     }
 
+    [DataTestMethod]
+    [DataRow(MEGame.ME2)]
+    [DataRow(MEGame.ME3)]
+    [DataRow(MEGame.LE3)]
+    public void GetsReferencedWwiseStreamImportsAndExportsFromBinary(MEGame game)
+    {
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("WwiseImportedStreamsTest.pcc", game);
+        ExportEntry localStream = package.CreateExport("LocalStream", "WwiseStream", indexed: false);
+        ExportEntry localBank = package.CreateExport("LocalBank", "WwiseBank", indexed: false);
+        ImportEntry importedStream = CreateWwiseImport(package, "ImportedStream", "WwiseStream");
+        ImportEntry importedBank = CreateWwiseImport(package, "ImportedBank", "WwiseBank");
+        ExportEntry wwiseEvent = package.CreateExport("Play", "WwiseEvent", indexed: false);
+        wwiseEvent.WritePropertiesAndBinary(new PropertyCollection(), new WwiseEvent
+        {
+            WwiseEventID = 123,
+            Links =
+            [
+                new WwiseEvent.WwiseEventLink
+                {
+                    WwiseBanks = [],
+                    WwiseStreams =
+                    [
+                        importedStream.UIndex, localStream.UIndex, importedStream.UIndex,
+                        localStream.UIndex, importedBank.UIndex, localBank.UIndex, 0, 99999, -99999
+                    ]
+                }
+            ]
+        });
+
+        CollectionAssert.AreEqual(new IEntry[] { importedStream, localStream },
+            WwiseHelper.GetReferencedWwiseStreamEntries(wwiseEvent).ToArray());
+        CollectionAssert.AreEqual(new[] { localStream }, WwiseHelper.GetReferencedWwiseStreams(wwiseEvent).ToArray());
+        Assert.AreSame(localStream, WwiseHelper.GetMatchingReferencedWwiseStream(wwiseEvent));
+    }
+
+    [TestMethod]
+    public void GetsReferencedWwiseStreamImportsAndExportsFromLe2Properties()
+    {
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("WwiseImportedStreamsTest.pcc", MEGame.LE2);
+        ExportEntry localStream = package.CreateExport("LocalStream", "WwiseStream", indexed: false);
+        ExportEntry localBank = package.CreateExport("LocalBank", "WwiseBank", indexed: false);
+        ImportEntry importedStream = CreateWwiseImport(package, "ImportedStream", "WwiseStream");
+        ImportEntry importedBank = CreateWwiseImport(package, "ImportedBank", "WwiseBank");
+        ExportEntry wwiseEvent = package.CreateExport("Play", "WwiseEvent", indexed: false);
+        wwiseEvent.WritePropertiesAndBinary(new PropertyCollection
+        {
+            new ArrayProperty<StructProperty>("References")
+            {
+                new("WwisePlatformRelationships", false,
+                    new StructProperty("WwiseRelationships", false,
+                        new ArrayProperty<ObjectProperty>(
+                        [
+                            new ObjectProperty(importedStream), new ObjectProperty(localStream),
+                            new ObjectProperty(importedBank), new ObjectProperty(localBank),
+                            new ObjectProperty(0), new ObjectProperty(99999), new ObjectProperty(-99999)
+                        ], "Streams")) { Name = "Relationships" }),
+                new("WwisePlatformRelationships", false,
+                    new StructProperty("WwiseRelationships", false,
+                        new ArrayProperty<ObjectProperty>(
+                            [new ObjectProperty(importedStream), new ObjectProperty(localStream)], "Streams"))
+                    { Name = "Relationships" }),
+                new("WwisePlatformRelationships", false),
+                new("WwisePlatformRelationships", false,
+                    new StructProperty("WwiseRelationships", false) { Name = "Relationships" })
+            }
+        }, new WwiseEvent { WwiseEventID = 123, Links = [] });
+
+        CollectionAssert.AreEqual(new IEntry[] { importedStream, localStream },
+            WwiseHelper.GetReferencedWwiseStreamEntries(wwiseEvent).ToArray());
+        CollectionAssert.AreEqual(new[] { localStream }, WwiseHelper.GetReferencedWwiseStreams(wwiseEvent).ToArray());
+        Assert.AreSame(localStream, WwiseHelper.GetMatchingReferencedWwiseStream(wwiseEvent));
+    }
+
+    [TestMethod]
+    public void IgnoresInvalidWwiseEventInputsWhenGettingStreamEntries()
+    {
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("WwiseImportedStreamsTest.pcc", MEGame.LE3);
+        ExportEntry stream = package.CreateExport("LocalStream", "WwiseStream", indexed: false);
+
+        Assert.AreEqual(0, WwiseHelper.GetReferencedWwiseStreamEntries(null).Count);
+        Assert.AreEqual(0, WwiseHelper.GetReferencedWwiseStreamEntries(stream).Count);
+        Assert.AreEqual(0, WwiseHelper.GetReferencedWwiseStreams(null).Count);
+        Assert.AreEqual(0, WwiseHelper.GetReferencedWwiseStreams(stream).Count);
+    }
+
     [TestMethod]
     public void ResolvesPlayableSoundFromHircEvent()
     {
@@ -357,6 +442,13 @@ public class WwiseHelperTests
             ID = eventId,
             EventActions = [actionId]
         }, MEGame.LE3);
+
+    private static ImportEntry CreateWwiseImport(IMEPackage package, string name, string className)
+    {
+        var import = new ImportEntry(package) { ObjectName = name, ClassName = className, PackageFile = "WwiseAudio" };
+        package.AddImport(import);
+        return import;
+    }
 
     private static HIRCDisplayObject CreateActionDisplay(int index, uint actionId, uint targetId) =>
         new(index, new WwiseBankParsed.EventAction

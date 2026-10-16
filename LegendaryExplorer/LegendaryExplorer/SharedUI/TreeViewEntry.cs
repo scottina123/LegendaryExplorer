@@ -434,66 +434,13 @@ namespace LegendaryExplorer.SharedUI
                                 }
                                 break;
                             case "BioEvtSysTrackSubtitles":
-                                {
-                                    var subtitleData = ee.GetProperty<ArrayProperty<StructProperty>>("m_aSubtitleData");
-                                    if (subtitleData != null)
-                                    {
-                                        var lines = new List<string>();
-                                        foreach (var subtitle in subtitleData)
-                                        {
-                                            int strRef = subtitle.GetProp<IntProperty>("nStrRefID");
-                                            if (strRef != 0)
-                                            {
-                                                var tlkStr = TLKManagerWPF.GlobalFindStrRefbyID(strRef, ee.FileRef);
-                                                if (tlkStr != "No Data")
-                                                {
-                                                    lines.Add(tlkStr);
-                                                }
-                                            }
-                                        }
-                                        if (lines.Count > 0)
-                                        {
-                                            _subtext = string.Join("\n", lines);
-                                        }
-                                    }
-                                }
-                                break;
                             case "InterpTrackWwiseEvent":
                                 {
-                                    var wwiseEvents = ee.GetProperty<ArrayProperty<StructProperty>>("WwiseEvents");
-                                    if (wwiseEvents != null)
-                                    {
-                                        var lines = new List<string>();
-                                        foreach (var wwiseEvent in wwiseEvents)
-                                        {
-                                            var eventRef = wwiseEvent.GetProp<ObjectProperty>("Event");
-                                            if (eventRef != null && ee.FileRef.TryGetEntry(eventRef.Value, out var eventEntry))
-                                            {
-                                                string name = eventEntry.ObjectName.Name;
-                                                if (name.StartsWith("VO_"))
-                                                {
-                                                    var parsing = name.Substring(3);
-                                                    var nextUnderScore = parsing.IndexOf("_");
-                                                    if (nextUnderScore > 0)
-                                                    {
-                                                        parsing = parsing.Substring(0, nextUnderScore);
-                                                    }
-                                                    if (int.TryParse(parsing, out var parsedInt))
-                                                    {
-                                                        var tlkStr = TLKManagerWPF.GlobalFindStrRefbyID(parsedInt, ee.FileRef);
-                                                        if (tlkStr != "No Data")
-                                                        {
-                                                            lines.Add(tlkStr);
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                        if (lines.Count > 0)
-                                        {
-                                            _subtext = string.Join("\n", lines.Distinct());
-                                        }
-                                    }
+                                    var lines = new List<string>();
+                                    AddInterpTrackSubtitleLines(ee, lines);
+                                    _subtext = lines.Count > 0
+                                        ? string.Join("\n", ee.ClassName == "InterpTrackWwiseEvent" ? lines.Distinct() : lines)
+                                        : null;
                                 }
                                 break;
                             case "SFXInterpTrackPlayFaceOnlyVO":
@@ -1094,15 +1041,50 @@ namespace LegendaryExplorer.SharedUI
 
         private void AddInterpTrackSubtitleLines(ExportEntry track, List<string> lines)
         {
-            if (!string.Equals(track.ClassName, "BioEvtSysTrackVOElements", StringComparison.Ordinal))
+            foreach (int stringRef in EnumerateInterpTrackStringRefs(track))
             {
-                return;
+                string resolved = ResolveDisplayNameStringRef(track, stringRef);
+                if (!string.IsNullOrWhiteSpace(resolved))
+                {
+                    lines.Add(resolved);
+                }
             }
+        }
 
-            string resolved = ResolveDisplayNameStringRef(track, track.GetProperty<IntProperty>("m_nStrRefID")?.Value ?? 0);
-            if (!string.IsNullOrWhiteSpace(resolved))
+        private static IEnumerable<int> EnumerateInterpTrackStringRefs(ExportEntry track)
+        {
+            switch (track.ClassName)
             {
-                lines.Add(resolved);
+                case "BioEvtSysTrackVOElements":
+                    yield return track.GetProperty<IntProperty>("m_nStrRefID")?.Value ?? 0;
+                    break;
+                case "BioEvtSysTrackSubtitles":
+                    var subtitleData = track.GetProperty<ArrayProperty<StructProperty>>("m_aSubtitleData");
+                    if (subtitleData != null)
+                    {
+                        foreach (var subtitle in subtitleData)
+                        {
+                            yield return subtitle.GetProp<IntProperty>("nStrRefID")?.Value ?? 0;
+                        }
+                    }
+                    break;
+                case "InterpTrackWwiseEvent":
+                    var wwiseEvents = track.GetProperty<ArrayProperty<StructProperty>>("WwiseEvents");
+                    if (wwiseEvents != null)
+                    {
+                        foreach (var wwiseEvent in wwiseEvents)
+                        {
+                            var eventRef = wwiseEvent.GetProp<ObjectProperty>("Event");
+                            if (eventRef != null
+                                && track.FileRef.TryGetEntry(eventRef.Value, out var eventEntry)
+                                && eventEntry.ClassName == "WwiseEvent"
+                                && VoTrackAudioNavigation.TryGetPlayEventStringRef(eventEntry.ObjectName.Name, out int stringRef))
+                            {
+                                yield return stringRef;
+                            }
+                        }
+                    }
+                    break;
             }
         }
 

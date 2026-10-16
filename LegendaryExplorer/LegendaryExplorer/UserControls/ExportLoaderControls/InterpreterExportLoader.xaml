@@ -45,10 +45,12 @@
                         ToolTip="Go to this line's female WwiseEvent in this package. Shift-click opens a new Package Editor. Disabled when no unique match is available." ToolTipService.ShowOnDisabled="True"/>
                 <Button Margin="5,0,0,0" Padding="8,0" Content="Male stream" CommandParameter="{Binding}"
                         Command="{Binding GoToMaleVoStreamCommand, RelativeSource={RelativeSource AncestorType=global:InterpreterExportLoader}}"
-                        ToolTip="Go to this line's male WwiseStream in this package. Shift-click opens a new Package Editor. Disabled when no unique match is available." ToolTipService.ShowOnDisabled="True"/>
+                        ToolTip="Go to this line's male WwiseStream, including imports. Streams in another package and Shift-click open a new Package Editor. Disabled when no unique match is available." ToolTipService.ShowOnDisabled="True"/>
                 <Button Margin="5,0,0,0" Padding="8,0" Content="Female stream" CommandParameter="{Binding}"
                         Command="{Binding GoToFemaleVoStreamCommand, RelativeSource={RelativeSource AncestorType=global:InterpreterExportLoader}}"
-                        ToolTip="Go to this line's female WwiseStream in this package. Shift-click opens a new Package Editor. Disabled when no unique match is available." ToolTipService.ShowOnDisabled="True"/>
+                        ToolTip="Go to this line's female WwiseStream, including imports. Streams in another package and Shift-click open a new Package Editor. Disabled when no unique match is available." ToolTipService.ShowOnDisabled="True"/>
+                <TextBlock Margin="5,0,0,0" VerticalAlignment="Center" FontStyle="Italic" Text="{Binding VoTrackSubtitle}"
+                           Visibility="{Binding VoTrackSubtitle, Converter={StaticResource NullOrEmptyStringVisibilityConverter}}"/>
             </StackPanel>
         </DataTemplate>
         <Style x:Key="InlineEditorContextMenuStyle" TargetType="{x:Type ContextMenu}">
@@ -357,6 +359,7 @@
                                             <Button Margin="5,0,0,0" Padding="8,0" Content="Go to" Tag="{Binding}" CommandParameter="{Binding}"
                                                     Command="{Binding GoToObjectCommand, RelativeSource={RelativeSource AncestorType=global:InterpreterExportLoader}}"
                                                     ToolTip="Open the referenced object in Package Editor. Outside Package Editor or with Shift-click, open a new window."/>
+                                            <ContentControl Content="{Binding}" ContentTemplate="{StaticResource VoTrackAudioActionsTemplate}"/>
                                             <StackPanel Orientation="Horizontal"
                                                         Visibility="{Binding ShowTextureFileActions, Converter={StaticResource BoolToVisibilityConverter}}"
                                                         IsEnabled="{Binding IsTextureFileActionIdle, RelativeSource={RelativeSource AncestorType=global:InterpreterExportLoader}}">

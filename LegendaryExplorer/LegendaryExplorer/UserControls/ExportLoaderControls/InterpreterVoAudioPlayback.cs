@@ -26,6 +26,7 @@ public partial class InterpreterExportLoader
 
     private Soundpanel voAudioPreviewPlayer;
     private PackageCache voAudioPreviewPackageCache;
+    private VoTrackAudioImportResolver voTrackAudioImportResolver;
     private ContextMenu voAudioMenu;
 
     private void LoadVoAudioPlaybackCommands()
@@ -176,12 +177,22 @@ public partial class InterpreterExportLoader
         VoAudioPreviewStatus.Visibility = Visibility.Collapsed;
     }
 
-    private void InterpreterVoAudio_Unloaded(object sender, RoutedEventArgs e) => ClearVoAudioPreview();
+    private ExportEntry ResolveVoTrackAudioImport(ImportEntry import) =>
+        (voTrackAudioImportResolver ??= new VoTrackAudioImportResolver()).Resolve(import);
+
+    private void ClearVoTrackAudio()
+    {
+        ClearVoAudioPreview();
+        voTrackAudioImportResolver?.Dispose();
+        voTrackAudioImportResolver = null;
+    }
+
+    private void InterpreterVoAudio_Unloaded(object sender, RoutedEventArgs e) => ClearVoTrackAudio();
 
     private void DisposeVoAudioPreview()
     {
         Unloaded -= InterpreterVoAudio_Unloaded;
-        ClearVoAudioPreview();
+        ClearVoTrackAudio();
         voAudioPreviewPlayer?.Dispose();
         voAudioPreviewPlayer = null;
         VoAudioPreviewHost.Content = null;
