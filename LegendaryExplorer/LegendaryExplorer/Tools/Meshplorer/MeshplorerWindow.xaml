@@ -111,8 +111,17 @@
                     <controls:SearchBox x:Name="MeshSearchBox" DockPanel.Dock="Top" Margin="5,0,5,5"
                                         WatermarkText="Search meshes"
                                         TextChanged="MeshSearchBox_OnTextChanged"/>
+                    <UniformGrid DockPanel.Dock="Bottom" Columns="2" Margin="5">
+                        <Button x:Name="ImportMeshFromUdkButton" Content="Import from UDK" Margin="0,0,3,0" Padding="4,3"
+                                Command="{Binding ImportFromUDKCommand}"
+                                ToolTip="Import a new mesh from a UDK (.upk) file into this package."/>
+                        <Button x:Name="ImportMeshFromGltfButton" Content="Import from glTF" Margin="3,0,0,0" Padding="4,3"
+                                Command="{Binding ImportNewFromGltfCommand}"
+                                ToolTip="Import new mesh(es) from a glTF (.gltf or .glb) file into this package (experimental)."/>
+                    </UniformGrid>
                     <ListBox  ItemsSource="{Binding MeshExports}" Name="MeshExportsList" SelectedItem="{Binding CurrentExport}" 
                               HorizontalContentAlignment="Stretch"
+                              ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                               PreviewMouseLeftButtonDown="MeshExportsList_PreviewMouseLeftButtonDown"
                               PreviewMouseLeftButtonUp="MeshExportsList_PreviewMouseLeftButtonUp"
                               MouseMove="MeshExportsList_MouseMove" LostMouseCapture="MeshExportsList_LostMouseCapture"
@@ -127,31 +136,59 @@
                         </ListBox.ContextMenu>
                         <ListBox.Resources>
                             <DataTemplate DataType="{x:Type packages:ExportEntry}">
-                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Stretch" Margin="0" x:Name="ExportContainer">
-
+                                <Grid HorizontalAlignment="Stretch" Margin="0" x:Name="ExportContainer">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
                                     <fa:ImageAwesome x:Name="FAImageIcon" Width="18" Height="18" Margin="2,0,4,0"/>
-                                    <StackPanel>
-                                        <StackPanel Orientation="Horizontal">
-                                            <TextBlock Text="{Binding UIndex}" VerticalAlignment="Center" Margin="0,0,5,0" FontWeight="Bold" ToolTip="Export index"/>
+                                    <StackPanel Grid.Column="1">
+                                        <DockPanel>
+                                            <TextBlock DockPanel.Dock="Left" Text="{Binding UIndex}" VerticalAlignment="Center" Margin="0,0,5,0" FontWeight="Bold" ToolTip="Export index"/>
                                             <Grid>
-                                                <TextBlock x:Name="MeshNameDisplay" Text="{Binding ObjectName.Instanced}" VerticalAlignment="Center"/>
-                                                <StackPanel x:Name="MeshNameEditorPanel" Visibility="Collapsed" Orientation="Horizontal"
+                                                <TextBlock x:Name="MeshNameDisplay" Text="{Binding ObjectName.Instanced}" VerticalAlignment="Center"
+                                                           TextTrimming="CharacterEllipsis" ToolTip="{Binding ObjectName.Instanced}"/>
+                                                <StackPanel x:Name="MeshNameEditorPanel" Visibility="Collapsed"
                                                             PreviewKeyDown="MeshNameEditor_PreviewKeyDown"
                                                             LostKeyboardFocus="MeshNameEditor_LostKeyboardFocus"
                                                             Unloaded="MeshNameEditor_Unloaded">
                                                     <TextBox x:Name="MeshNameEditor" MinWidth="100" VerticalAlignment="Center" Padding="2,0"
                                                              ToolTip="Edit the mesh name. Enter to apply, Escape to cancel."/>
-                                                    <TextBlock Text="Index:" Margin="4,0" VerticalAlignment="Center"/>
-                                                    <xctk:IntegerUpDown x:Name="MeshNameIndexEditor" Width="70" Minimum="0" Maximum="2147483647"
+                                                    <StackPanel Orientation="Horizontal">
+                                                        <TextBlock Text="Index:" Margin="0,0,4,0" VerticalAlignment="Center"/>
+                                                        <xctk:IntegerUpDown x:Name="MeshNameIndexEditor" Width="70" Minimum="0" Maximum="2147483647"
                                                                        DefaultValue="0" DisplayDefaultValueOnEmptyText="True" VerticalAlignment="Center"
                                                                        ToolTip="Object index, matching Package Editor. 0 means no suffix; 1 displays _0; 2 displays _1. Enter to apply, Escape to cancel."/>
+                                                    </StackPanel>
                                                 </StackPanel>
                                             </Grid>
-                                        </StackPanel>
-                                        <TextBlock Text="{Binding ParentFullPath}" VerticalAlignment="Center" Foreground="Gray"/>
+                                        </DockPanel>
+                                        <TextBlock Text="{Binding ParentFullPath}" VerticalAlignment="Center" Foreground="Gray"
+                                                   TextTrimming="CharacterEllipsis" ToolTip="{Binding ParentFullPath}"/>
                                     </StackPanel>
-                                </StackPanel>
+                                    <StackPanel x:Name="MeshRowActions" Grid.Column="2" Orientation="Horizontal" Margin="4,0,2,0" VerticalAlignment="Center">
+                                        <Button x:Name="ImportMeshLodButton" Width="24" Height="24" Padding="3" Margin="0,0,2,0"
+                                                Command="{Binding ReplaceLODFromUDKCommand, RelativeSource={RelativeSource AncestorType={x:Type local:MeshplorerWindow}}}"
+                                                CommandParameter="{Binding}"
+                                                ToolTip="Import mesh as a single LOD from a UDK (.upk) file into this skeletal mesh."
+                                                ToolTipService.ShowOnDisabled="True"
+                                                AutomationProperties.Name="{Binding ObjectName.Instanced, StringFormat=Import a single LOD for {0}}">
+                                            <fa:ImageAwesome Icon="Solid_FileImport" Width="16" Height="16" Foreground="{DynamicResource IconForegroundBrush}"/>
+                                        </Button>
+                                        <Button x:Name="OpenMeshInPackageEditorButton" Width="24" Height="24" Padding="3"
+                                                Command="{Binding OpenMeshInPackageEditorCommand, RelativeSource={RelativeSource AncestorType={x:Type local:MeshplorerWindow}}}"
+                                                CommandParameter="{Binding}"
+                                                ToolTip="Open this mesh in Package Editor."
+                                                AutomationProperties.Name="{Binding ObjectName.Instanced, StringFormat=Open {0} in Package Editor}">
+                                            <Image Source="{StaticResource iconPackageEditor16}" Width="16" Height="16"/>
+                                        </Button>
+                                    </StackPanel>
+                                </Grid>
                                 <DataTemplate.Triggers>
+                                    <Trigger SourceName="MeshNameEditorPanel" Property="Visibility" Value="Visible">
+                                        <Setter TargetName="MeshRowActions" Property="Visibility" Value="Collapsed"/>
+                                    </Trigger>
                                     <DataTrigger Binding="{Binding Path=EntryHasPendingChanges}" Value="true">
                                         <Setter Property="Background" Value="#50D4A020" TargetName="ExportContainer"/>
                                     </DataTrigger>
@@ -172,7 +209,8 @@
                                 <MenuItem Header="Clone Tree" ToolTip="Clone this mesh and all children" Click="CloneMeshTree_Click"/>
                                 <MenuItem Header="Trash entry and children" ToolTip="Convert this mesh and its children into empty data" Click="TrashMeshTree_Click"/>
                                 <Separator/>
-                                <MenuItem Icon="{StaticResource PackageEditorMenuIcon}" Header="Open in Package Editor" ToolTip="Opens this mesh in Package Editor" Click="OpenInPackageEditor_Clicked"/>
+                                <MenuItem Icon="{StaticResource PackageEditorMenuIcon}" Header="Open in Package Editor" ToolTip="Opens this mesh in Package Editor"
+                                          Command="{Binding Source={StaticResource bindingProxy}, Path=Data.OpenMeshInPackageEditorCommand}" CommandParameter="{Binding}"/>
                                 <MenuItem Header="Replace Mesh from UDK" Command="{Binding Source={StaticResource bindingProxy}, Path=Data.ReplaceFromUDKCommand}" Icon="{StaticResource UDKMenuIcon}"/>
                                 <MenuItem Header="Replace single LOD from UDK" Command="{Binding Source={StaticResource bindingProxy}, Path=Data.ReplaceLODFromUDKCommand}"
                                           ToolTip="Replaces a single LOD from UDK (.upk file). Use this if full replacement is wonky" Icon="{StaticResource UDKMenuIcon}"/>
@@ -207,12 +245,15 @@
                 </Grid>
                 <GridSplitter Grid.Column="3" Width="5" HorizontalAlignment="Stretch"  Visibility="{Binding Pcc, Converter={StaticResource NullVisibilityConverter}, FallbackValue=Collapsed}"/>
                 <DockPanel Grid.Column="4" Visibility="{Binding Pcc, Converter={StaticResource NullVisibilityConverter}}">
-                    <Button x:Name="OpenAnimationPreviewButton" DockPanel.Dock="Bottom" Margin="5" HorizontalAlignment="Left"
-                            Content="Open animation preview..." Click="OpenAnimationPreview_Click" Padding="6,2"
-                            IsEnabled="{Binding IsRendererBusy, Converter={StaticResource BoolEnabledConverter}, ConverterParameter=Not}"
-                            Visibility="{Binding IsSkeletalMesh, ElementName=Mesh3DViewer, Converter={StaticResource BoolToVisibilityConverter}}"
-                            ToolTip="Browse and preview animations from this game's Asset Database"/>
-                    <exportLoaderControls:MeshRenderer x:Name="Mesh3DViewer"/>
+                    <exportLoaderControls:MeshRenderer x:Name="Mesh3DViewer">
+                        <exportLoaderControls:MeshRenderer.AdditionalToolbarContent>
+                            <Button AutomationProperties.AutomationId="OpenAnimationPreviewButton" Margin="2,0" VerticalAlignment="Center"
+                                    Content="Open animation preview..." Click="OpenAnimationPreview_Click" Padding="6,2"
+                                    IsEnabled="{Binding IsBusy, RelativeSource={RelativeSource AncestorType={x:Type exportLoaderControls:MeshRenderer}}, Converter={StaticResource BoolEnabledConverter}, ConverterParameter=Not}"
+                                    Visibility="{Binding IsSkeletalMesh, RelativeSource={RelativeSource AncestorType={x:Type exportLoaderControls:MeshRenderer}}, Converter={StaticResource BoolToVisibilityConverter}}"
+                                    ToolTip="Browse and preview animations from this game's Asset Database"/>
+                        </exportLoaderControls:MeshRenderer.AdditionalToolbarContent>
+                    </exportLoaderControls:MeshRenderer>
                 </DockPanel>
             </Grid>
         </DockPanel>

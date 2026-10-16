@@ -17,11 +17,20 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
         <!-- Row 0: 3D viewport -->
         <scene3D:LegacySceneRenderControl x:Name="SceneViewer" Grid.Row="0" />
-        <!-- Row 1: Playback controls -->
-        <WrapPanel Grid.Row="1" Margin="2" Visibility="{Binding ShowPlaybackControls, Converter={StaticResource PlaybackVisibilityConverter}}">
+        <WrapPanel Grid.Row="1" Margin="2,4,2,2">
+            <CheckBox x:Name="WireframeCheckbox" Content="Wireframe" IsChecked="{Binding RenderWireframe}" Margin="0,0,10,0" VerticalAlignment="Center"/>
+            <CheckBox x:Name="SkeletonCheckbox" Content="Skeleton" IsChecked="{Binding ShowSkeleton}" Margin="0,0,10,0" VerticalAlignment="Center"/>
+            <CheckBox x:Name="InGameShaderCheckbox" Content="In-Game Shader (Experimental)" IsChecked="{Binding RenderGameShader}"
+                      IsEnabled="{Binding CanUseGameShaders}" Margin="0,0,10,0" VerticalAlignment="Center"
+                      ToolTip="Preview the mesh with its in-game material shaders."/>
+            <TextBlock Text="{Binding GameShaderStatus}" VerticalAlignment="Center" TextWrapping="Wrap"/>
+        </WrapPanel>
+        <!-- Playback controls -->
+        <WrapPanel Grid.Row="2" Margin="2" Visibility="{Binding ShowPlaybackControls, Converter={StaticResource PlaybackVisibilityConverter}}">
             <Button Command="{Binding PlayPauseCommand}" Padding="6,4" Margin="0,0,5,0"
                     Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"
                     BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"

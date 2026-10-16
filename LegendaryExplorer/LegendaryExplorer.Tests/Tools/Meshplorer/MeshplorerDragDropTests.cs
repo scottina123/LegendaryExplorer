@@ -6,7 +6,9 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media;
 using System.Windows.Threading;
+using FontAwesome5;
 using LegendaryExplorer.SharedUI.Bases;
 using LegendaryExplorer.Tools.Meshplorer;
 using LegendaryExplorer.UserControls.ExportLoaderControls;
@@ -95,14 +97,126 @@ public class MeshplorerDragDropTests
     }
 
     [STATestMethod]
+    public void InlineMeshActionButtonsBindToTheirRowAndDoNotStartListSelectionOrDragging()
+    {
+        InitializeResources();
+        using var package = MEPackageHandler.CreateMemoryEmptyPackage("InlineLodImport.pcc", MEGame.LE3);
+        using var foreignPackage = MEPackageHandler.CreateMemoryEmptyPackage("ForeignMesh.pcc", MEGame.LE3);
+        var selectedMesh = package.CreateExport("Selected", "StaticMesh", indexed: false);
+        var rowMesh = package.CreateExport("HMM_ARM_CTHd_MDL_Remaster_WithAnEspeciallyLongMeshName", "SkeletalMesh", indexed: false);
+        var foreignMesh = foreignPackage.CreateExport("Foreign", "SkeletalMesh", indexed: false);
+        var window = CreateWindow(package);
+        try
+        {
+            window.MeshExports.Add(selectedMesh);
+            window.MeshExports.Add(rowMesh);
+            window.CurrentExport = selectedMesh;
+            var list = (ListBox)window.FindName("MeshExportsList");
+            list.Measure(new Size(280, 400));
+            list.Arrange(new Rect(0, 0, 280, 400));
+            list.UpdateLayout();
+            Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
+            var row = (ListBoxItem)list.ItemContainerGenerator.ContainerFromItem(rowMesh);
+            var button = FindControl<Button>(row, "ImportMeshLodButton");
+            Assert.IsNotNull(button);
+            Assert.IsInstanceOfType<ImageAwesome>(button.Content);
+            var importIcon = (ImageAwesome)button.Content;
+            Assert.AreEqual(EFontAwesomeIcon.Solid_FileImport, importIcon.Icon);
+            Assert.AreSame(window.ReplaceLODFromUDKCommand, button.Command);
+            Assert.AreSame(rowMesh, button.CommandParameter);
+            Assert.IsTrue(button.IsEnabled, "The skeletal row must be available while another mesh is selected.");
+
+            var packageButton = FindControl<Button>(row, "OpenMeshInPackageEditorButton");
+            Assert.IsNotNull(packageButton);
+            Assert.AreSame(window.OpenMeshInPackageEditorCommand, packageButton.Command);
+            Assert.AreSame(rowMesh, packageButton.CommandParameter);
+            Assert.IsTrue(packageButton.IsEnabled);
+            Assert.IsInstanceOfType<Image>(packageButton.Content);
+            var packageIcon = (Image)packageButton.Content;
+            Assert.AreSame(window.FindResource("iconPackageEditor16"), packageIcon.Source,
+                "The inline action must use Package Editor's existing bitmap icon.");
+
+            var buttonBounds = button.TransformToAncestor(list).TransformBounds(new Rect(button.RenderSize));
+            var packageButtonBounds = packageButton.TransformToAncestor(list).TransformBounds(new Rect(packageButton.RenderSize));
+            foreach (var bounds in new[] { buttonBounds, packageButtonBounds })
+            {
+                Assert.IsTrue(bounds.Left >= 0 && bounds.Right <= list.ActualWidth,
+                    "Long mesh names must leave both action buttons inside the 280-pixel column.");
+            }
+            Assert.IsTrue(buttonBounds.Right <= packageButtonBounds.Left, "The row action icons must not overlap.");
+            var nameDisplay = FindControl<TextBlock>(row, "MeshNameDisplay");
+            Assert.IsNotNull(nameDisplay);
+            Assert.IsTrue(nameDisplay.ActualWidth > 0);
+            Assert.IsTrue(nameDisplay.TransformToAncestor(list).TransformBounds(new Rect(nameDisplay.RenderSize)).Right <= buttonBounds.Left,
+                "The mesh label must stay within its space beside the import button.");
+
+            var selectedRow = (ListBoxItem)list.ItemContainerGenerator.ContainerFromItem(selectedMesh);
+            var staticButton = FindControl<Button>(selectedRow, "ImportMeshLodButton");
+            Assert.IsNotNull(staticButton, "Each mesh row must expose the inline operation.");
+            Assert.AreSame(selectedMesh, staticButton.CommandParameter);
+            Assert.IsFalse(staticButton.IsEnabled, "Single LOD UDK import only supports skeletal meshes.");
+
+            var staticPackageButton = FindControl<Button>(selectedRow, "OpenMeshInPackageEditorButton");
+            Assert.IsNotNull(staticPackageButton);
+            Assert.AreSame(selectedMesh, staticPackageButton.CommandParameter);
+            Assert.IsTrue(staticPackageButton.IsEnabled, "Package Editor must be available for static meshes too.");
+            Assert.IsFalse(packageButton.Command.CanExecute(null), "Opening Package Editor requires an explicit row.");
+            Assert.IsFalse(packageButton.Command.CanExecute(foreignMesh));
+            Assert.IsFalse(packageButton.Command.CanExecute(rowMesh.Clone()));
+            window.IsBusy = true;
+            Assert.IsFalse(packageButton.Command.CanExecute(rowMesh));
+            window.IsBusy = false;
+            Assert.IsTrue(packageButton.Command.CanExecute(rowMesh));
+
+            button.ApplyTemplate();
+            packageButton.ApplyTemplate();
+            foreach (var source in new UIElement[] { button, importIcon, packageButton, packageIcon })
+            {
+                var down = new MouseButtonEventArgs(Mouse.PrimaryDevice, 0, MouseButton.Left)
+                {
+                    RoutedEvent = Mouse.PreviewMouseDownEvent
+                };
+                source.RaiseEvent(down);
+                Assert.IsFalse(down.Handled, "The list must leave the button's mouse input available for its command.");
+                Assert.IsNull(typeof(MeshplorerWindow).GetField("_meshDragCandidate", BindingFlags.Instance | BindingFlags.NonPublic)!
+                    .GetValue(window), "Button presses must not become mesh drag candidates.");
+                Assert.AreNotSame(list, Mouse.Captured);
+
+                source.RaiseEvent(new MouseButtonEventArgs(Mouse.PrimaryDevice, 0, MouseButton.Left)
+                {
+                    RoutedEvent = Mouse.PreviewMouseUpEvent
+                });
+                Assert.AreSame(selectedMesh, list.SelectedItem);
+                Assert.AreSame(selectedMesh, window.CurrentExport, "Using a row button must not load a different mesh preview.");
+            }
+
+            row.ContextMenu.PlacementTarget = row;
+            row.ContextMenu.Items.OfType<MenuItem>().Single(item => Equals(item.Header, "Rename"))
+                .RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+            list.UpdateLayout();
+            var rowActions = FindControl<StackPanel>(row, "MeshRowActions");
+            Assert.IsNotNull(rowActions);
+            Assert.AreEqual(Visibility.Collapsed, rowActions.Visibility, "Renaming must have room for both name and index fields.");
+            var indexEditor = FindControl<Xceed.Wpf.Toolkit.IntegerUpDown>(row, "MeshNameIndexEditor");
+            var indexBounds = indexEditor.TransformToAncestor(list).TransformBounds(new Rect(indexEditor.RenderSize));
+            Assert.IsTrue(indexBounds.Left >= 0 && indexBounds.Right <= list.ActualWidth,
+                "The index editor must fit inside the default column width.");
+            typeof(MeshplorerWindow).GetMethod("EndInlineMeshNameEdit", BindingFlags.Instance | BindingFlags.NonPublic)!
+                .Invoke(window, [false]);
+        }
+        finally
+        {
+            SetPackage(window, null);
+            window.CurrentExport = null;
+            Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
+            GC.KeepAlive(window);
+        }
+    }
+
+    [STATestMethod]
     public void RoutedDropCopiesIntoEmptyListAndKeepsClickAndFileDropBehavior()
     {
-        typeof(Application).GetField("_resourceAssembly", BindingFlags.Static | BindingFlags.NonPublic)!
-            .SetValue(null, typeof(MeshplorerWindow).Assembly);
-        _ = Application.Current ?? new Application();
-        Application.Current.ShutdownMode = ShutdownMode.OnExplicitShutdown;
-        Application.Current.Resources = (ResourceDictionary)Application.LoadComponent(
-            new Uri("/LegendaryExplorer;component/AppResources.xaml", UriKind.Relative));
+        InitializeResources();
 
         using var source = MEPackageHandler.CreateMemoryEmptyPackage("DragSource.pcc", MEGame.LE3);
         using var destination = MEPackageHandler.CreateMemoryEmptyPackage("DropTarget.pcc", MEGame.LE3);
@@ -191,6 +305,29 @@ public class MeshplorerDragDropTests
             GC.KeepAlive(from);
             GC.KeepAlive(to);
         }
+    }
+
+    private static void InitializeResources()
+    {
+        typeof(Application).GetField("_resourceAssembly", BindingFlags.Static | BindingFlags.NonPublic)!
+            .SetValue(null, typeof(MeshplorerWindow).Assembly);
+        _ = Application.Current ?? new Application();
+        Application.Current.ShutdownMode = ShutdownMode.OnExplicitShutdown;
+        Application.Current.Resources = (ResourceDictionary)Application.LoadComponent(
+            new Uri("/LegendaryExplorer;component/AppResources.xaml", UriKind.Relative));
+    }
+
+    private static T FindControl<T>(DependencyObject parent, string name = null) where T : FrameworkElement
+    {
+        for (int i = 0; i < VisualTreeHelper.GetChildrenCount(parent); i++)
+        {
+            var child = VisualTreeHelper.GetChild(parent, i);
+            if (child is T element && (name == null || element.Name == name))
+                return element;
+            if (FindControl<T>(child, name) is { } match)
+                return match;
+        }
+        return null;
     }
 
     private static DragEventArgs RaiseDrag(ListBox list, IDataObject data, RoutedEvent routedEvent,

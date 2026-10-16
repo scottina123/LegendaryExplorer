@@ -31,9 +31,15 @@ public partial class AnimationPreviewControl : NotifyPropertyChangedControlBase,
     private sealed class PreviewMeshComponent : IDisposable
     {
         public LegacyScene3D.ModelPreview<LegacyScene3D.WorldVertex> Preview { get; init; }
+        public LegacyScene3D.ModelPreview<LegacyScene3D.LEVertex> GameShaderPreview { get; set; }
+        public SkeletalMesh Mesh { get; init; }
         public LegacySkinnedMeshRenderer Renderer { get; init; }
 
-        public void Dispose() => Preview?.Dispose();
+        public void Dispose()
+        {
+            GameShaderPreview?.Dispose();
+            Preview?.Dispose();
+        }
     }
 
     public sealed class AnimationTimelineClip
@@ -303,7 +309,8 @@ public partial class AnimationPreviewControl : NotifyPropertyChangedControlBase,
 
         _meshContext = new LegacyScene3D.MeshRenderContext
         {
-            BackgroundColor = _backgroundColor
+            BackgroundColor = _backgroundColor,
+            UseSrgbColorManagement = true
         };
         _meshContext.CurrentTextureViewFlags |= TextureRenderContext.TextureViewFlags.AlphaAsBlack;
         SceneViewer.Context = _meshContext;
@@ -351,6 +358,7 @@ public partial class AnimationPreviewControl : NotifyPropertyChangedControlBase,
             return;
         }
 
+        ResetRenderingMesh();
         _meshPreview?.Dispose();
         _meshPreview = null;
         _skinnedRenderer = null;
@@ -358,6 +366,7 @@ public partial class AnimationPreviewControl : NotifyPropertyChangedControlBase,
         var oldTime = AnimSliderValue;
         _animPlayer = null;
         _skm = null;
+        OnPropertyChanged(nameof(CanUseGameShaders));
 
         try
         {
@@ -373,6 +382,7 @@ public partial class AnimationPreviewControl : NotifyPropertyChangedControlBase,
             _skinnedRenderer.BuildFromSkeletalMesh(skeletalMeshExport.FileRef.Game, skm.LODModels[0]);
 
             _skm = skm;
+            OnPropertyChanged(nameof(CanUseGameShaders));
 
             var mesh = _meshPreview.LODs[0].Mesh;
             // Center camera on mesh
@@ -396,6 +406,8 @@ public partial class AnimationPreviewControl : NotifyPropertyChangedControlBase,
             {
                 LoadFaceFxAnimation(_lastFxActor, _lastFxAnimSet, _lastFxLine);
             }
+            UpdateSkeletonPreview();
+            QueueGameShaderPreview();
         }
         catch (Exception ex)
         {
@@ -426,9 +438,11 @@ public partial class AnimationPreviewControl : NotifyPropertyChangedControlBase,
             _additionalMeshComponents[component] = new PreviewMeshComponent
             {
                 Preview = preview,
+                Mesh = skeletalMesh,
                 Renderer = renderer
             };
             UpdateSkinningOneShot();
+            QueueGameShaderPreview();
             _meshContext.ErrorText = null;
         }
         catch (Exception ex)
@@ -698,6 +712,7 @@ public partial class AnimationPreviewControl : NotifyPropertyChangedControlBase,
 
     public void Clear()
     {
+        ResetRenderingMesh();
         _lastAnimExport = null;
         _lastFxActor = null;
         _lastFxAnimSet = null;
@@ -713,6 +728,7 @@ public partial class AnimationPreviewControl : NotifyPropertyChangedControlBase,
         _skinnedRenderer = null;
         _animPlayer = null;
         _skm = null;
+        OnPropertyChanged(nameof(CanUseGameShaders));
         IsTimeMode = false;
         AnimSliderMin = 0;
         AnimSliderMax = 0;
@@ -747,6 +763,8 @@ public partial class AnimationPreviewControl : NotifyPropertyChangedControlBase,
 
     public void Dispose()
     {
+        _renderingDisposed = true;
+        ResetRenderingMesh();
         ThemeManager.ThemeChanged -= OnThemeChanged;
         if (_previewInitialized)
         {
@@ -773,14 +791,20 @@ public partial class AnimationPreviewControl : NotifyPropertyChangedControlBase,
         if (!_meshContext.IsReady || _meshPreview.LODs.Count == 0) return;
 
         _skinnedRenderer.UpdateSkinning(_meshContext.ImmediateContext, _meshPreview.LODs[0].Mesh, _animPlayer);
+        if (_gameShaderPreview is { LODs.Count: > 0 })
+            _skinnedRenderer.UpdateSkinning(_meshContext.ImmediateContext, _gameShaderPreview.LODs[0].Mesh, _animPlayer, _skm.Export.Game);
         foreach (PreviewMeshComponent meshComponent in _additionalMeshComponents.Values)
         {
             if (meshComponent.Preview is { LODs.Count: > 0 })
             {
                 meshComponent.Renderer.UpdateSkinning(_meshContext.ImmediateContext,
                     meshComponent.Preview.LODs[0].Mesh, _animPlayer);
+                if (meshComponent.GameShaderPreview is { LODs.Count: > 0 })
+                    meshComponent.Renderer.UpdateSkinning(_meshContext.ImmediateContext,
+                        meshComponent.GameShaderPreview.LODs[0].Mesh, _animPlayer, meshComponent.Mesh.Export.Game);
             }
         }
+        UpdateSkeletonPreview();
     }
 
     private void OnUpdateScene(object sender, float timestep)
@@ -809,15 +833,7 @@ public partial class AnimationPreviewControl : NotifyPropertyChangedControlBase,
             //FaceFx must be re-calced every frame, even when not playing, so that preview works properly in the editor
             if (isPlaying || _animPlayer is FaceFxPlayer)
             {
-                _skinnedRenderer.UpdateSkinning(_meshContext.ImmediateContext, _meshPreview.LODs[0].Mesh, _animPlayer);
-                foreach (PreviewMeshComponent meshComponent in _additionalMeshComponents.Values)
-                {
-                    if (meshComponent.Preview is { LODs.Count: > 0 })
-                    {
-                        meshComponent.Renderer.UpdateSkinning(_meshContext.ImmediateContext,
-                            meshComponent.Preview.LODs[0].Mesh, _animPlayer);
-                    }
-                }
+                UpdateSkinningOneShot();
             }
 
             if (isPlaying)
@@ -863,14 +879,25 @@ public partial class AnimationPreviewControl : NotifyPropertyChangedControlBase,
         {
             _meshContext.Camera.Position = _meshPreview.LODs[0].Mesh.AABBCenter;
         }
-        foreach (LegacyScene3D.RenderPass renderPass in Enum.GetValues<LegacyScene3D.RenderPass>())
+        _meshContext.Wireframe = false;
+        try
         {
-            _meshPreview.Render(renderPass, _meshContext, 0, Matrix4x4.Identity);
-            foreach (PreviewMeshComponent meshComponent in _additionalMeshComponents.Values)
-            {
-                meshComponent.Preview.Render(renderPass, _meshContext, 0, Matrix4x4.Identity);
-            }
+            RenderMaterialPreviews();
         }
+        catch (Exception ex) when (RenderGameShader)
+        {
+            ReportGameShaderFailure(ex);
+            RenderMaterialPreviews();
+        }
+        if (RenderWireframe)
+        {
+            RenderWireframePreview(_meshPreview);
+            foreach (PreviewMeshComponent component in _additionalMeshComponents.Values)
+                RenderWireframePreview(component.Preview);
+        }
+        if (ShowSkeleton)
+            RenderSkeletonPreview();
+        _meshContext.Wireframe = false;
     }
 
     #endregion

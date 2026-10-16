@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using LegendaryExplorer.Dialogs;
@@ -25,6 +26,13 @@ public partial class MeshplorerWindow
     private void MeshExportsList_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         ResetMeshDrag();
+        // Inline actions must receive their own clicks without starting a row drag or preview load.
+        for (DependencyObject buttonSource = e.OriginalSource as Visual; buttonSource != null && buttonSource != sender; buttonSource = VisualTreeHelper.GetParent(buttonSource))
+        {
+            if (buttonSource is ButtonBase)
+                return;
+        }
+
         if (IsBusy || IsRendererBusy || e.OriginalSource is not DependencyObject source
             || source is Visual visual && _inlineMeshNameEditorPanel?.IsAncestorOf(visual) == true
             || ItemsControl.ContainerFromElement(MeshExportsList, source) is not ListBoxItem { DataContext: ExportEntry mesh })

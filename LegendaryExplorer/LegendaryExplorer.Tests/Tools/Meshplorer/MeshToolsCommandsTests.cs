@@ -10,6 +10,7 @@ using LegendaryExplorer.SharedUI.Bases;
 using LegendaryExplorer.UserControls.ExportLoaderControls;
 using LegendaryExplorerCore;
 using LegendaryExplorerCore.Packages;
+using LegendaryExplorerCore.Unreal;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace LegendaryExplorer.Tests.Tools.Meshplorer;
@@ -90,6 +91,49 @@ public class MeshToolsCommandsTests
             SelectExport(gameRenderer, gamePackage.CreateExport("Mesh", "SkeletalMesh", indexed: false));
             Assert.AreEqual(canConvert, gameRenderer.MeshTools.ConvertToStaticMeshCommand.CanExecute(null), game.ToString());
         }
+    }
+
+    [STATestMethod]
+    public void SingleLodImportEvaluatesItsRowInsteadOfTheCurrentSelection()
+    {
+        InitializeResources();
+        using var package = MEPackageHandler.CreateMemoryEmptyPackage("MeshRows.pcc", MEGame.LE3);
+        using var otherPackage = MEPackageHandler.CreateMemoryEmptyPackage("OtherRows.pcc", MEGame.LE3);
+        var rowMesh = package.CreateExport("Row", "SkeletalMesh", indexed: false);
+        var selectedMesh = package.CreateExport("Selected", "SkeletalMesh", indexed: false);
+        var staticMesh = package.CreateExport("Static", "StaticMesh", indexed: false);
+        var defaultMesh = package.CreateExport("Default", "SkeletalMesh", indexed: false);
+        defaultMesh.ObjectFlags |= UnrealFlags.EObjectFlags.ClassDefaultObject;
+        var externalMesh = otherPackage.CreateExport("External", "SkeletalMesh", indexed: false);
+        var detachedMesh = rowMesh.Clone();
+        using var renderer = new MeshRenderer();
+        using var host = new TestHost(package) { Content = renderer };
+        var command = renderer.MeshTools.ReplaceLODFromUDKCommand;
+
+        foreach (var selection in new[] { null, staticMesh, selectedMesh })
+        {
+            SelectExport(renderer, selection);
+            Assert.IsTrue(command.CanExecute(rowMesh), "A row must remain importable independently of the selected mesh.");
+        }
+
+        Assert.IsTrue(command.CanExecute(null), "Menu actions must still use the selected skeletal mesh.");
+        foreach (var invalidTarget in new object[] { staticMesh, defaultMesh, externalMesh, detachedMesh, new object() })
+        {
+            Assert.IsFalse(command.CanExecute(invalidTarget), "An invalid row must not fall back to the eligible selection.");
+        }
+
+        SelectExport(renderer, staticMesh);
+        Assert.IsFalse(command.CanExecute(null));
+        SelectExport(renderer, null);
+        Assert.IsFalse(command.CanExecute(null));
+
+        renderer.IsBusy = true;
+        Assert.IsFalse(command.CanExecute(rowMesh));
+        renderer.IsBusy = false;
+        host.IsBusy = true;
+        Assert.IsFalse(command.CanExecute(rowMesh));
+        host.IsBusy = false;
+        Assert.IsTrue(command.CanExecute(rowMesh));
     }
 
     private static void InitializeResources()

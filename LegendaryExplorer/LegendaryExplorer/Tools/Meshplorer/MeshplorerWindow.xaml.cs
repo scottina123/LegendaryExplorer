@@ -192,6 +192,7 @@ namespace LegendaryExplorer.Tools.Meshplorer
         public ICommand ReplaceFromGltfCommand => MeshTools.ReplaceFromGltfCommand;
         public ICommand ImportNewFromGltfCommand => MeshTools.ImportNewFromGltfCommand;
         public ICommand ImportFromAssetDatabaseCommand { get; set; }
+        public ICommand OpenMeshInPackageEditorCommand { get; private set; }
         private void LoadCommands()
         {
             MeshTools = new MeshToolsCommands(() => this, () => CurrentExport, () => Mesh3DViewer);
@@ -201,6 +202,7 @@ namespace LegendaryExplorer.Tools.Meshplorer
             //FindCommand = new GenericCommand(FocusSearch, PackageIsLoaded);
             //GotoCommand = new GenericCommand(FocusGoto, PackageIsLoaded);
             ImportFromAssetDatabaseCommand = new GenericCommand(OpenMeshAssetImporter, CanImportMeshAssets);
+            OpenMeshInPackageEditorCommand = new RelayCommand(OpenMeshInPackageEditor, CanOpenMeshInPackageEditor);
         }
 
         private bool PackageIsLoaded() => Pcc != null;
@@ -391,15 +393,19 @@ namespace LegendaryExplorer.Tools.Meshplorer
             MeshExports.Clear();
         }
 
-        private void OpenInPackageEditor_Clicked(object sender, RoutedEventArgs e)
+        private bool CanOpenMeshInPackageEditor(object parameter) => parameter is ExportEntry export
+            && !IsBusy && !IsRendererBusy && export.FileRef == Pcc && Pcc.GetEntry(export.UIndex) == export;
+
+        private void OpenMeshInPackageEditor(object parameter)
         {
-            if (MeshExportsList.SelectedItem is ExportEntry export)
-            {
-                var p = new PackageEditor.PackageEditorWindow();
-                p.Show();
-                p.LoadFile(export.FileRef.FilePath, export.UIndex);
-                p.Activate(); //bring to front
-            }
+            if (!CanOpenMeshInPackageEditor(parameter) || !EndInlineMeshNameEdit(commit: true))
+                return;
+
+            var export = (ExportEntry)parameter;
+            var editor = new PackageEditor.PackageEditorWindow();
+            editor.Show();
+            editor.LoadPackage(export.FileRef, export.UIndex);
+            editor.Activate();
         }
 
         private void MeshSearchBox_OnTextChanged(SearchBox sender, string newText)

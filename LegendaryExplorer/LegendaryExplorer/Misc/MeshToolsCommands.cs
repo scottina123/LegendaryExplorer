@@ -54,7 +54,7 @@ namespace LegendaryExplorer.Misc
             ImportFromUDKCommand = new GenericCommand(ImportFromUDK, CanUseTools);
             ReplaceFromUDKCommand = new GenericCommand(ReplaceFromUDK, IsMeshSelected);
             ExportToUDKCommand = new GenericCommand(ExportToUDK, IsMeshSelected);
-            ReplaceLODFromUDKCommand = new GenericCommand(ImportLODFromUDK, IsSkeletalMeshSelected);
+            ReplaceLODFromUDKCommand = new RelayCommand(ImportLODFromUDK, CanImportLODFromUDK);
             ExportToPSKUModelCommand = new GenericCommand(() => getRenderer().EnsureUModelAndExport(), IsMeshSelected);
             ExportToPSKCommand = new GenericCommand(ExportToPSK, IsSkeletalMeshSelected);
             ExportToGltfCommand = new GenericCommand(() => ExportToGltf(GLTF.MaterialExportLevel.NameOnly), IsMeshSelected);
@@ -65,8 +65,10 @@ namespace LegendaryExplorer.Misc
 
         private bool CanUseTools() => Owner is { Pcc: not null, IsBusy: false } && getRenderer()?.IsBusy != true;
 
-        private bool HasSelectedExport() => CanUseTools() && CurrentExport is { IsDefaultObject: false } export
+        private bool HasEditableExport(ExportEntry export) => CanUseTools() && export is { IsDefaultObject: false }
             && export.FileRef == Pcc && Pcc.GetEntry(export.UIndex) == export;
+
+        private bool HasSelectedExport() => HasEditableExport(CurrentExport);
 
         private bool CanReplaceFromGltf() => HasSelectedExport() && CurrentExport.ClassName is "StaticMesh" or "SkeletalMesh";
 
@@ -110,9 +112,16 @@ namespace LegendaryExplorer.Misc
             }
         }
 
-        private void ImportLODFromUDK()
+        private bool CanImportLODFromUDK(object parameter)
         {
-            ReplaceFromUDK(true);
+            var export = parameter == null ? CurrentExport : parameter as ExportEntry;
+            return HasEditableExport(export) && export.ClassName == "SkeletalMesh";
+        }
+
+        private void ImportLODFromUDK(object parameter)
+        {
+            if (CanImportLODFromUDK(parameter))
+                ReplaceFromUDK(true, parameter == null ? CurrentExport : (ExportEntry)parameter);
         }
 
         private void ExportToUDK()
@@ -161,10 +170,10 @@ namespace LegendaryExplorer.Misc
 
         private void ReplaceFromUDK()
         {
-            ReplaceFromUDK(false);
+            ReplaceFromUDK(false, CurrentExport);
         }
 
-        private void ReplaceFromUDK(bool lodOnly)
+        private void ReplaceFromUDK(bool lodOnly, ExportEntry targetExport)
         {
             var d = new OpenFileDialog
             {
@@ -176,7 +185,7 @@ namespace LegendaryExplorer.Misc
                 try
                 {
                     using IMEPackage udk = MEPackageHandler.OpenUDKPackage(d.FileName);
-                    string className = CurrentExport.ClassName;
+                    string className = targetExport.ClassName;
                     if (EntrySelector.GetEntry<ExportEntry>(Owner, udk, $"Select {className} to import:", exp => exp.ClassName == className) is ExportEntry meshExport)
                     {
                         if (className == "SkeletalMesh")
@@ -186,7 +195,7 @@ namespace LegendaryExplorer.Misc
                             {
                                 return;
                             }
-                            SkeletalMesh originalMesh = ObjectBinary.From<SkeletalMesh>(CurrentExport);
+                            SkeletalMesh originalMesh = ObjectBinary.From<SkeletalMesh>(targetExport);
 
                             if (newMesh.RefSkeleton.Length != originalMesh.RefSkeleton.Length)
                             {
@@ -225,10 +234,10 @@ namespace LegendaryExplorer.Misc
 
                             newMesh.Materials = originalMesh.Materials.ArrayClone();
 
-                            var lods = CurrentExport.GetProperty<ArrayProperty<StructProperty>>("LODInfo");
+                            var lods = targetExport.GetProperty<ArrayProperty<StructProperty>>("LODInfo");
                             if (!lodOnly)
                             {
-                                CurrentExport.WriteBinary(newMesh);
+                                targetExport.WriteBinary(newMesh);
 
                                 //Check LODs count
                                 if (lods != null)
@@ -245,7 +254,7 @@ namespace LegendaryExplorer.Misc
                                     var newlods = lods.Take(newMesh.LODModels.Length).ToList();
                                     lods.Clear();
                                     lods.AddRange(newlods);
-                                    CurrentExport.WriteProperty(lods);
+                                    targetExport.WriteProperty(lods);
                                 }
 
                                 if (newMesh.LODModels.Length > originalMesh.LODModels.Length)
@@ -295,14 +304,14 @@ namespace LegendaryExplorer.Misc
                                 originalMesh.LODModels = new[] { incomingLOD };
 
                                 //write it out
-                                CurrentExport.WriteBinary(originalMesh); //used to be NEW MESH
+                                targetExport.WriteBinary(originalMesh); //used to be NEW MESH
                                 if (lods.Count > 1)
                                 {
                                     // we need to update the LOD models
                                     var newlods = lods.Take(1).ToList();
                                     lods.Clear();
                                     lods.AddRange(newlods);
-                                    CurrentExport.WriteProperty(lods);
+                                    targetExport.WriteProperty(lods);
                                 }
                             }
                         }
@@ -313,12 +322,12 @@ namespace LegendaryExplorer.Misc
                             if (className == "FracturedStaticMesh")
                             {
                                 newMesh = ObjectBinary.From<FracturedStaticMesh>(meshExport);
-                                originalMesh = ObjectBinary.From<FracturedStaticMesh>(CurrentExport);
+                                originalMesh = ObjectBinary.From<FracturedStaticMesh>(targetExport);
                             }
                             else
                             {
                                 newMesh = ObjectBinary.From<StaticMesh>(meshExport);
-                                originalMesh = ObjectBinary.From<StaticMesh>(CurrentExport);
+                                originalMesh = ObjectBinary.From<StaticMesh>(targetExport);
                             }
 
                             if (!GltfHelper.PrepareMeshForImport(Owner, newMesh, meshExport.ObjectName.Instanced))
@@ -343,7 +352,7 @@ namespace LegendaryExplorer.Misc
                                     }
                                 }
                             }
-                            CurrentExport.WriteBinary(newMesh);
+                            targetExport.WriteBinary(newMesh);
                         }
                         MessageBox.Show(Owner, "Done!");
                     }

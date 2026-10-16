@@ -50,6 +50,15 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
     {
         private static readonly string[] parsableClasses = ["SkeletalMesh", "StaticMesh", "FracturedStaticMesh", "BioSocketSupermodel", "ModelComponent", "Model"];
 
+        public static readonly DependencyProperty AdditionalToolbarContentProperty = DependencyProperty.Register(
+            nameof(AdditionalToolbarContent), typeof(object), typeof(MeshRenderer));
+
+        public object AdditionalToolbarContent
+        {
+            get => GetValue(AdditionalToolbarContentProperty);
+            set => SetValue(AdditionalToolbarContentProperty, value);
+        }
+
         #region 3D
 
         public MeshRenderContext MeshContext { get; }

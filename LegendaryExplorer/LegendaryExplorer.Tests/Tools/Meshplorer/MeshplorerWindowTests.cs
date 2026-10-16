@@ -6,9 +6,11 @@ using LegendaryExplorerCore;
 using LegendaryExplorerCore.Packages;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using System;
+using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Controls;
 
 namespace LegendaryExplorer.Tests.Tools.Meshplorer;
 
@@ -37,6 +39,9 @@ public class MeshplorerWindowTests
         };
         var recents = (RecentsControl)window.FindName("RecentsController");
         var renderer = (MeshRenderer)window.FindName("Mesh3DViewer");
+        var animationButton = (Button)renderer.AdditionalToolbarContent;
+        var toolbarPresenter = (ContentPresenter)renderer.FindName("AdditionalToolbarContentPresenter");
+        var toolbarScroll = (ScrollViewer)renderer.FindName("MeshToolbarScrollViewer");
         var content = (FrameworkElement)window.Content;
         try
         {
@@ -53,9 +58,44 @@ public class MeshplorerWindowTests
             Assert.AreEqual(Visibility.Collapsed, recents.Visibility,
                 "Recents must disappear instead of overlapping the renderer and animation controls.");
             Assert.AreEqual(Visibility.Visible, ((FrameworkElement)renderer.Parent).Visibility);
+            Assert.AreSame(animationButton, renderer.AdditionalToolbarContent);
+            Assert.AreSame(animationButton, toolbarPresenter.Content);
+            Assert.IsTrue(toolbarPresenter.IsAncestorOf(animationButton), "The preview action must be hosted in the renderer toolbar.");
+            var toolbarRow = (StackPanel)toolbarPresenter.Parent;
+            var gltfButton = toolbarRow.Children.OfType<Button>().Single(button => button.Command == renderer.GltfExportCommand);
+            Assert.AreEqual(Orientation.Horizontal, toolbarRow.Orientation);
+            Assert.AreEqual(toolbarRow.Children.IndexOf(gltfButton) + 1, toolbarRow.Children.IndexOf(toolbarPresenter),
+                "The preview action must sit directly after glTF in the existing controls row.");
+            Assert.AreEqual(Visibility.Visible, animationButton.Visibility);
+            Assert.IsTrue(animationButton.IsEnabled);
+
+            renderer.IsSkeletalMesh = false;
+            Layout(new Size(1200, 550));
+            Assert.AreEqual(Visibility.Collapsed, animationButton.Visibility);
+            renderer.IsSkeletalMesh = true;
+            renderer.IsBusy = true;
+            Layout(new Size(1200, 550));
+            Assert.IsFalse(animationButton.IsEnabled, "Animation preview must be unavailable while the renderer is busy.");
+            renderer.IsBusy = false;
 
             Layout(new Size(1600, 900));
             Assert.AreEqual(Visibility.Collapsed, recents.Visibility);
+            Assert.IsTrue(animationButton.IsEnabled);
+            var animationBounds = animationButton.TransformToAncestor(renderer).TransformBounds(new Rect(animationButton.RenderSize));
+            var gltfBounds = gltfButton.TransformToAncestor(renderer).TransformBounds(new Rect(gltfButton.RenderSize));
+            Assert.IsTrue(gltfBounds.Right <= animationBounds.Left);
+            Assert.AreEqual(gltfBounds.Top + gltfBounds.Height / 2, animationBounds.Top + animationBounds.Height / 2, 1,
+                "Animation preview must share the glTF controls row instead of occupying a separate row below it.");
+
+            Layout(new Size(1200, 550));
+            if (toolbarScroll.ScrollableWidth > 0)
+            {
+                toolbarScroll.ScrollToRightEnd();
+                toolbarScroll.UpdateLayout();
+            }
+            var visibleBounds = animationButton.TransformToAncestor(toolbarScroll).TransformBounds(new Rect(animationButton.RenderSize));
+            Assert.IsTrue(visibleBounds.Left >= 0 && visibleBounds.Right <= toolbarScroll.ActualWidth,
+                "The toolbar must allow the preview action to be revealed at the default window width.");
 
             Assert.IsNull(window.CurrentExport);
             window.HandleUpdate([new PackageUpdate(PackageChange.ExportData, nonMeshExport.UIndex)]);

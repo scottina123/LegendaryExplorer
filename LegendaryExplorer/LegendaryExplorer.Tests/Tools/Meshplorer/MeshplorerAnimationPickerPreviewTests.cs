@@ -5,6 +5,7 @@ using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Threading;
 using FontAwesome5;
 using LegendaryExplorer.Tools.AssetDatabase;
@@ -39,10 +40,13 @@ public class MeshplorerAnimationPickerPreviewTests
 
     private static void SelectionBeforeViewportLoadsAnimatesTheIntactSelectedMesh()
     {
+        using var synchronization = new DispatcherSynchronizationScope();
         using var meshPackage = MEPackageHandler.CreateMemoryEmptyPackage("PickerSelectedMesh.pcc", MEGame.LE3);
         ExportEntry mesh = CreateMesh(meshPackage);
         byte[] originalMesh = mesh.Data.ToArray();
         using var source = new AnimationSource("Walk");
+        var originalSourceEntries = source.Loaded.Sequence.Export.FileRef.Exports
+            .Select(export => (Export: export, Header: export.Header.ToArray(), Data: export.Data.ToArray())).ToArray();
         using var picker = new MeshplorerAnimationPickerPreview((_, _) => Task.FromResult(source.Loaded), mesh);
 
         picker.SelectAnimation(source.Entry);
@@ -59,19 +63,68 @@ public class MeshplorerAnimationPickerPreviewTests
         Assert.AreEqual(1d, picker.Preview.AnimSliderMax);
         Assert.AreEqual(EFontAwesomeIcon.Solid_Pause, picker.Preview.PlayPauseIcon);
 
+        var wireframe = (CheckBox)picker.Preview.FindName("WireframeCheckbox");
+        var skeleton = (CheckBox)picker.Preview.FindName("SkeletonCheckbox");
+        var gameShader = (CheckBox)picker.Preview.FindName("InGameShaderCheckbox");
+        Assert.IsNotNull(wireframe);
+        Assert.IsNotNull(skeleton);
+        Assert.IsNotNull(gameShader);
+        Assert.IsTrue(picker.Preview.CanUseGameShaders);
+        Assert.IsTrue(gameShader.IsEnabled);
+        wireframe.IsChecked = true;
+        skeleton.IsChecked = true;
+        gameShader.IsChecked = true;
+        PumpUntilCompleted(picker.Preview.GameShaderLoadingTask);
+        Assert.IsTrue(picker.Preview.RenderWireframe);
+        Assert.IsTrue(picker.Preview.ShowSkeleton);
+        Assert.IsTrue(picker.Preview.RenderGameShader);
+        Assert.IsFalse(picker.Preview.IsGameShaderLoading);
+        Assert.IsNull(PreviewContext(picker).ErrorText, PreviewContext(picker).ErrorText);
+        Assert.IsNotNull(GameShaderPreviewModel(picker).LODs[0].Mesh.VertexBuffer);
+        Assert.IsNotNull(typeof(AnimationPreviewControl).GetField("_skeletonVertexBuffer", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .GetValue(picker.Preview), "The skeleton option must create actual viewport line buffers.");
+
         Vector3 referencePosition = PreviewModel(picker).LODs[0].Mesh.Vertices[0].Position;
+        Vector3[] referenceSkeleton = SkeletonPositions(picker);
+        Assert.IsTrue(referenceSkeleton.Length >= 2, "The child bone must produce a visible skeleton segment.");
+        Assert.AreEqual(referencePosition, GameShaderPreviewModel(picker).LODs[0].Mesh.Vertices[0].Position);
         picker.Preview.SceneViewer.Context.Update(0.5f);
         Vector3 animatedPosition = PreviewModel(picker).LODs[0].Mesh.Vertices[0].Position;
         Assert.IsGreaterThan(0.1f, Vector3.Distance(referencePosition, animatedPosition),
             "The selected animation must update actual preview mesh buffers, not only the playback labels.");
+        Assert.AreEqual(animatedPosition, GameShaderPreviewModel(picker).LODs[0].Mesh.Vertices[0].Position,
+            "In-game shader geometry must follow the same animated pose as the textured preview.");
+        Assert.IsTrue(referenceSkeleton.Zip(SkeletonPositions(picker)).Any(pair => Vector3.Distance(pair.First, pair.Second) > 0.1f),
+            "Skeleton lines must follow the current animation instead of showing the reference pose.");
+
+        picker.Preview.Pause();
+        picker.Preview.AnimSliderValue = 1;
+        Vector3 scrubbedPosition = PreviewModel(picker).LODs[0].Mesh.Vertices[0].Position;
+        Assert.IsGreaterThan(0.1f, Vector3.Distance(animatedPosition, scrubbedPosition));
+        Assert.AreEqual(scrubbedPosition, GameShaderPreviewModel(picker).LODs[0].Mesh.Vertices[0].Position);
+        Assert.IsTrue(referenceSkeleton.Zip(SkeletonPositions(picker)).Any(pair => Vector3.Distance(pair.First, pair.Second) > 0.1f));
+        picker.Preview.AnimSliderValue = 0;
+        Assert.AreEqual(referencePosition, GameShaderPreviewModel(picker).LODs[0].Mesh.Vertices[0].Position);
+        CollectionAssert.AreEqual(referenceSkeleton, SkeletonPositions(picker), "Scrubbing to the first frame must reset the skeleton pose.");
+        picker.Preview.AnimSliderValue = 1;
+
         CollectionAssert.AreEqual(originalMesh, mesh.Data,
             "Preview skinning must not edit the selected mesh's geometry, UVs, or skin weights.");
-        CollectionAssert.AreEqual(source.OriginalExport, source.Loaded.Sequence.Export.Data);
+        foreach (var snapshot in originalSourceEntries)
+        {
+            CollectionAssert.AreEqual(snapshot.Header, snapshot.Export.Header);
+            CollectionAssert.AreEqual(snapshot.Data, snapshot.Export.Data,
+                "Viewport render options and playback must not edit the animation source package.");
+        }
         Assert.AreEqual(0, source.ReleaseCount);
 
         picker.SelectAnimation(null);
         Assert.AreEqual(referencePosition, PreviewModel(picker).LODs[0].Mesh.Vertices[0].Position,
             "Clearing the selection must restore the reference pose rather than freeze the previous animation frame.");
+        Assert.AreEqual(referencePosition, GameShaderPreviewModel(picker).LODs[0].Mesh.Vertices[0].Position,
+            "Clearing the selection must reset the shader preview too.");
+        CollectionAssert.AreEqual(referenceSkeleton, SkeletonPositions(picker));
+        CollectionAssert.AreEqual(originalMesh, mesh.Data);
         Assert.AreEqual(EFontAwesomeIcon.Solid_Play, picker.Preview.PlayPauseIcon);
         Assert.IsNull(LastAnimationExport(picker));
         Assert.AreEqual("Select an animation to preview.", picker.StatusText);
@@ -212,7 +265,11 @@ public class MeshplorerAnimationPickerPreviewTests
             UV = new Vector2(0.25f, 0.75f),
         };
         var binary = SkeletalMesh.Create();
-        binary.RefSkeleton = [new MeshBone { Name = "root", Orientation = Quaternion.Identity, ParentIndex = 0 }];
+        binary.RefSkeleton =
+        [
+            new MeshBone { Name = "root", Orientation = Quaternion.Identity, ParentIndex = 0, NumChildren = 1 },
+            new MeshBone { Name = "child", Position = Vector3.UnitX, Orientation = Quaternion.Identity, ParentIndex = 0 },
+        ];
         binary.LODModels = [new StaticLODModel
         {
             Sections = [],
@@ -261,6 +318,15 @@ public class MeshplorerAnimationPickerPreviewTests
     private static ModelPreview<WorldVertex> PreviewModel(MeshplorerAnimationPickerPreview picker) =>
         (ModelPreview<WorldVertex>)typeof(AnimationPreviewControl)
             .GetField("_meshPreview", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(picker.Preview);
+
+    private static ModelPreview<LEVertex> GameShaderPreviewModel(MeshplorerAnimationPickerPreview picker) =>
+        (ModelPreview<LEVertex>)typeof(AnimationPreviewControl)
+            .GetField("_gameShaderPreview", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(picker.Preview);
+
+    private static Vector3[] SkeletonPositions(MeshplorerAnimationPickerPreview picker) =>
+        ((WorldVertex[])typeof(AnimationPreviewControl)
+            .GetField("_skeletonVertices", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(picker.Preview))
+        .Select(vertex => vertex.Position).ToArray();
 
     private static void PumpUntilCompleted(Task task)
     {
