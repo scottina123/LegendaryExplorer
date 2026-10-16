@@ -62,6 +62,7 @@ public partial class ActorPreviewControl : ExportLoaderControl, IActorEditorCont
     }
 
     public ObservableCollectionExtended<LiveMaterialEditorMaterial> LiveMaterials { get; } = [];
+    public LiveMaterialTintRandomization TintRandomization { get; } = new();
 
     private LiveMaterialEditorMaterial _selectedLiveMaterial;
     public LiveMaterialEditorMaterial SelectedLiveMaterial
@@ -957,17 +958,15 @@ public partial class ActorPreviewControl : ExportLoaderControl, IActorEditorCont
         OnPropertyChanged(nameof(ParentMaterialSaveHelpText));
     }
 
-    private void RandomizeActorMaterialTints_Click(object sender, RoutedEventArgs e)
+    private async void RandomizeActorMaterialTints_Click(object sender, RoutedEventArgs e)
     {
         if (!CanRandomizeSelectedLiveMaterialTints || SelectedLiveMaterial is not { } material)
         {
             return;
         }
 
-        foreach (LiveVectorMaterialParameter parameter in material.VectorParameters.Where(IsTintParameter))
-        {
-            parameter.SetValue(Random.Shared.NextSingle(), Random.Shared.NextSingle(), Random.Shared.NextSingle(), parameter.A);
-        }
+        await TintRandomization.RandomizeAsync(material,
+            () => ReferenceEquals(SelectedLiveMaterial, material) && LiveMaterials.Contains(material));
     }
 
     private static bool IsTintParameter(LiveVectorMaterialParameter parameter) =>

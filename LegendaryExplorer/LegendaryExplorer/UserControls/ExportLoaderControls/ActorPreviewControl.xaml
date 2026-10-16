@@ -105,10 +105,17 @@
                         </Grid>
                         <TextBlock Text="Changes update the actor immediately. Choose whether saves target the component MIC or its parent material."
                                    TextWrapping="Wrap" Margin="0,2,0,6"/>
-                        <Button Content="Randomize tints" Padding="5,3" Margin="0,0,0,7"
-                                IsEnabled="{Binding CanRandomizeSelectedLiveMaterialTints}"
-                                Click="RandomizeActorMaterialTints_Click"
-                                ToolTip="Randomize RGB for every vector parameter beginning with TNT_. Alpha is preserved."/>
+                        <StackPanel IsEnabled="{Binding TintRandomization.IsIdle}" Margin="0,0,0,7">
+                            <Button Content="Randomize tints" Padding="5,3" Margin="0,0,0,4"
+                                    IsEnabled="{Binding CanRandomizeSelectedLiveMaterialTints}"
+                                    Click="RandomizeActorMaterialTints_Click"
+                                    ToolTip="Randomize RGB for every vector parameter beginning with TNT_. Alpha is preserved."/>
+                            <CheckBox Content="Use vanilla BioWare tints"
+                                      IsChecked="{Binding TintRandomization.UseBioWareTintValues, Mode=TwoWay}"
+                                      ToolTip="Use compatible vanilla tint profiles from the current game's Asset Database. RGB values are applied to TNT_ parameters; alpha is preserved."/>
+                            <TextBlock Text="{Binding TintRandomization.Status}" TextWrapping="Wrap"
+                                       FontSize="11" Opacity="0.7" Margin="0,3,0,0"/>
+                        </StackPanel>
                         <TextBlock Text="Component material" FontWeight="SemiBold"/>
                         <ComboBox ItemsSource="{Binding LiveMaterials}" SelectedItem="{Binding SelectedLiveMaterial}"
                                   DisplayMemberPath="DisplayName" Margin="0,2,0,4"/>

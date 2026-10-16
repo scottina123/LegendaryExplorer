@@ -334,6 +334,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 ? SelectedLiveMaterial.SourceEntry is not null
                 : SelectedLiveMaterial.CanCreateNew);
 
+        public LiveMaterialTintRandomization TintRandomization { get; } = new();
+
         private bool _showLiveMaterialTintRandomizationControl;
         public bool ShowLiveMaterialTintRandomizationControl
         {
@@ -2257,21 +2259,15 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             }
         }
 
-        private void RandomizeLiveMaterialTints_Click(object sender, RoutedEventArgs e)
+        private async void RandomizeLiveMaterialTints_Click(object sender, RoutedEventArgs e)
         {
             if (SelectedLiveMaterial is not { } material || !CanRandomizeSelectedLiveMaterialTints)
             {
                 return;
             }
 
-            foreach (LiveVectorMaterialParameter parameter in material.VectorParameters.Where(IsTintParameter))
-            {
-                parameter.SetValue(
-                    Random.Shared.NextSingle(),
-                    Random.Shared.NextSingle(),
-                    Random.Shared.NextSingle(),
-                    parameter.A);
-            }
+            await TintRandomization.RandomizeAsync(material,
+                () => ReferenceEquals(SelectedLiveMaterial, material) && LiveMaterials.Contains(material));
         }
 
         private static bool IsTintParameter(LiveVectorMaterialParameter parameter) =>

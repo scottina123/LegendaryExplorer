@@ -510,11 +510,18 @@
                         <StackPanel DockPanel.Dock="Top">
                             <TextBlock Text="Live Material Editor" FontWeight="Bold" FontSize="15"/>
                             <TextBlock Margin="0,2,0,6" Text="Changes update the in-game shader preview immediately. Click a mesh region to detect and focus the vector parameter affecting that pixel." TextWrapping="Wrap"/>
-                            <Button Content="Randomize tints" Margin="0,0,0,7" Padding="5,3"
-                                    Visibility="{Binding ShowLiveMaterialTintRandomizationControl, Converter={StaticResource BoolToVisibilityConverter}}"
-                                    IsEnabled="{Binding CanRandomizeSelectedLiveMaterialTints}"
-                                    Click="RandomizeLiveMaterialTints_Click"
-                                    ToolTip="Randomize the RGB values of every vector parameter whose name starts with TNT_. Alpha values are preserved."/>
+                            <StackPanel Margin="0,0,0,7" IsEnabled="{Binding TintRandomization.IsIdle}"
+                                        Visibility="{Binding ShowLiveMaterialTintRandomizationControl, Converter={StaticResource BoolToVisibilityConverter}}">
+                                <Button Content="Randomize tints" Margin="0,0,0,4" Padding="5,3"
+                                        IsEnabled="{Binding CanRandomizeSelectedLiveMaterialTints}"
+                                        Click="RandomizeLiveMaterialTints_Click"
+                                        ToolTip="Randomize the RGB values of every vector parameter whose name starts with TNT_. Alpha values are preserved."/>
+                                <CheckBox Content="Use vanilla BioWare tints"
+                                          IsChecked="{Binding TintRandomization.UseBioWareTintValues, Mode=TwoWay}"
+                                          ToolTip="Use compatible vanilla tint profiles from the current game's Asset Database. RGB values are applied to TNT_ parameters; alpha is preserved."/>
+                                <TextBlock Text="{Binding TintRandomization.Status}" TextWrapping="Wrap"
+                                           FontSize="11" Opacity="0.7" Margin="0,3,0,0"/>
+                            </StackPanel>
                             <UniformGrid Rows="1" Columns="2" Margin="0,0,0,7"
                                          Visibility="{Binding ShowLiveMaterialRandomizationControls, Converter={StaticResource BoolToVisibilityConverter}}">
                                 <Button Content="Randomize scalars" Margin="0,0,3,0" Padding="5,3"
