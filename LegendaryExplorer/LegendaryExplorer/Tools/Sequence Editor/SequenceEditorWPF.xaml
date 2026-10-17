@@ -345,7 +345,7 @@
                                 ToolTip="Attempt to layout sequence objects in a comprehensible fashion" />
                     <MenuItem Name="UseSavedViews_MenuItem" Header="Use saved views" IsCheckable="True"
                               IsChecked="{Binding UseSavedViews, Mode=TwoWay}"
-                              ToolTip="Use saved Sequence Editor views and object positions stored in the package. Objects without saved positions use automatic layout. Turning this off always uses automatic layout." />
+                              ToolTip="Use saved Sequence Editor views and object positions stored in the package. Objects without saved positions use automatic layout. Turning this off uses automatic layout when opening a sequence; edits keep the current layout." />
                 </MenuItem>
                 <MenuItem Header="Designer" Padding="4">
                     <MenuItem Header="Create new activation input" Command="{Binding DesignerCreateInputCommand}"

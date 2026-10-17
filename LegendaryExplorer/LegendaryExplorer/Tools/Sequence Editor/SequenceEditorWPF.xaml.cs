@@ -1589,7 +1589,14 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                     if (value.Entry is ExportEntry exportEntry)
                     {
                         value.IsSelected = true;
-                        LoadSequence(exportEntry);
+                        if (exportEntry == SelectedSequence)
+                        {
+                            RefreshView();
+                        }
+                        else
+                        {
+                            LoadSequence(exportEntry);
+                        }
                     }
                     else
                     {
@@ -2125,7 +2132,8 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             SelectedSequence = seqExport;
             SetupJSON(SelectedSequence);
             var selectedExports = SelectedObjects.Select(o => o.Export).ToList();
-            bool forceAutoLayout = !UseSavedViews;
+            // Only navigation reloads the layout. Edits refresh the graph using its current positions.
+            bool forceAutoLayout = fromFile && !UseSavedViews;
             if (fromFile)
             {
                 if (!isReadOnlyPreview)
@@ -2496,14 +2504,14 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                         continue;
                     }
 
+                    if (!forceAutoLayout && SavedView.Positions.TryGetValue(obj.UIndex, out PointF savedInfo))
+                    {
+                        obj.Layout(savedInfo.X, savedInfo.Y);
+                        continue;
+                    }
+
                     if (!forceAutoLayout && UseSavedViews)
                     {
-                        if (SavedView.Positions.TryGetValue(obj.UIndex, out PointF savedInfo))
-                        {
-                            obj.Layout(savedInfo.X, savedInfo.Y);
-                            continue;
-                        }
-
                         var props = obj.Export.GetProperties();
                         IntProperty xPos = props.GetProp<IntProperty>("ObjPosX");
                         IntProperty yPos = props.GetProp<IntProperty>("ObjPosY");
