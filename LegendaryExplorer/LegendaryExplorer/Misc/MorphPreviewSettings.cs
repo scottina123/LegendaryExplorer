@@ -5,7 +5,7 @@ namespace LegendaryExplorer.Misc;
 
 /// <summary>
 /// Shared display settings for Morph Editor and Actor Preview. Color textures are decoded to linear,
-/// lit with a neutral skylight, and encoded to sRGB once by the preview pixel shader.
+/// lit by the preview's key and sky lights, and encoded to sRGB once by the preview pixel shader.
 /// </summary>
 internal static class MorphPreviewSettings
 {

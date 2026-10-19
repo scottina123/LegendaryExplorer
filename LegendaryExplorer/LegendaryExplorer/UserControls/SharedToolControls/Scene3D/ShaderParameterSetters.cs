@@ -19,6 +19,55 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
         //for many of the params, we assume the mesh's LocalToWorld matrix is the Identity matrix
         //if ever we did something more complex than display one mesh at a time, this assumption would obviously no longer be valid
 
+        public static void WriteBasePassVertexShaderValues(Shader shader, Span<byte> buffer,
+            MeshRenderContext context, Mesh<LEVertex> mesh, MaterialRenderProxy material)
+        {
+            switch (shader)
+            {
+                case TBasePassVertexShader<FNullPolicy, FNullPolicy> noLightMapShader:
+                    noLightMapShader.WriteValues(buffer, context, mesh, material);
+                    break;
+                case TBasePassVertexShader<FDirectionalLightPolicy.VertexParametersType, FNullPolicy> directionalShader:
+                    directionalShader.WriteValues(buffer, context, mesh, material);
+                    buffer.WriteVal(directionalShader.LightMapVertexParams.LightDirection,
+                        new Vector4(GetPreviewLightDirection(context.Camera), 1));
+                    break;
+                case null:
+                    break;
+                default:
+                    throw new NotSupportedException($"{shader.ShaderType} is not supported by the renderer");
+            }
+        }
+
+        public static void WriteBasePassPixelShaderValues(Shader shader, Span<byte> buffer,
+            MeshRenderContext context, Mesh<LEVertex> mesh, MaterialRenderProxy material)
+        {
+            switch (shader)
+            {
+                case TBasePassPixelShader<FNullPolicy> noLightMapShader:
+                    noLightMapShader.WriteValues(buffer, context, mesh, material);
+                    break;
+                case TBasePassPixelShader<FDirectionalLightLightMapPolicy.PixelParametersType> directionalShader:
+                    directionalShader.WriteValues(buffer, context, mesh, material);
+                    buffer.WriteVal(directionalShader.PixelParams.LightColorAndFalloffExponent,
+                        new Vector4(new Vector3(1f, 0.97f, 0.92f) * context.GameShaderLightScale, 0));
+                    buffer.WriteVal(directionalShader.PixelParams.bReceiveDynamicShadows, 0);
+                    break;
+                case null:
+                    break;
+                default:
+                    throw new NotSupportedException($"{shader.ShaderType} is not supported by the renderer");
+            }
+        }
+
+        internal static Vector3 GetPreviewLightDirection(SceneCamera camera)
+        {
+            Matrix4x4.Invert(camera.ViewMatrix, out Matrix4x4 inverseView);
+            // A key light above and to the left of the camera keeps skin normals and specular
+            // textures visible while orbiting the preview. Translation does not affect a direction.
+            return Vector3.Normalize(Vector3.TransformNormal(new Vector3(-1, 1, -1), inverseView));
+        }
+
         public static void WriteValues<LightMapPolicy, DensityPolicy>(this TBasePassVertexShader<LightMapPolicy, DensityPolicy> shader, 
             Span<byte> buffer, MeshRenderContext context, Mesh<LEVertex> mesh, MaterialRenderProxy mat) 
             where LightMapPolicy : struct, IVertexParametersType where DensityPolicy : struct, IVertexShaderParametersType
@@ -49,8 +98,8 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
             Vector3 lowerSkyColor = Vector3.Zero;
             if (skylight)
             {
-                upperSkyColor = new Vector3(lightScale);
-                lowerSkyColor = new Vector3(lightScale);
+                upperSkyColor = (mat.UsesDirectionalPreview ? new Vector3(0.26f, 0.28f, 0.32f) : Vector3.One) * lightScale;
+                lowerSkyColor = (mat.UsesDirectionalPreview ? new Vector3(0.08f, 0.07f, 0.06f) : Vector3.One) * lightScale;
             }
             buffer.WriteVal(shader.UpperSkyColor, upperSkyColor);
             buffer.WriteVal(shader.LowerSkyColor, lowerSkyColor);
@@ -157,7 +206,7 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
             }
             if (p.WrapLightingParameters.IsBound())
             {
-                //Debugger.Break();
+                buffer.WriteVal(p.WrapLightingParameters, new Vector4(0.33f, 0.05f, 0, 0));
             }
         }
 

@@ -439,8 +439,9 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
             // layout. Keep it off the shared effect buffers so it cannot corrupt the HMF eye shader
             // on the following frame.
             LEEffect effect = material.IsHumanLashMaterial ? context.HumanLashEffect : context.LEEffect;
-            PixelShader ps = context.GetCachedPixelShader(material.PixelShader.Guid, material.PixelShader.ShaderByteCode);
-            (VertexShader vs, InputLayout inputLayout) = context.GetCachedVertexShader(material.VertexShader.Guid, material.VertexShader.ShaderByteCode);
+            var (previewVertexShader, previewPixelShader) = material.GetPreviewShaders();
+            PixelShader ps = context.GetCachedPixelShader(previewPixelShader.Guid, previewPixelShader.ShaderByteCode);
+            (VertexShader vs, InputLayout inputLayout) = context.GetCachedVertexShader(previewVertexShader.Guid, previewVertexShader.ShaderByteCode);
             effect.PrepDraw(context.ImmediateContext, vs, ps, inputLayout, context.GetCachedBlendState(BlendDescription));
 
             Matrix4x4 viewMatrix = camera.ViewMatrix;

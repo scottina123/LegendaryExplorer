@@ -125,7 +125,7 @@ public class MeshRenderContext : LegacyRenderContext
     public bool Zooming { get; private set; }
     public float CameraSpeed { get; set; } = 50.0f; // Units per second
     /// <summary>
-    /// Multiplier for the in-game shader preview's skylight. This affects rendered materials only,
+    /// Multiplier for the in-game shader preview's key and sky lights. This affects rendered materials only,
     /// leaving the viewport clear color unchanged.
     /// </summary>
     public float GameShaderLightScale { get; set; } = 1f;
@@ -554,6 +554,7 @@ public class MeshRenderContext : LegacyRenderContext
         if (!PixelShaderCache.TryGetValue(id, out PixelShader shader))
         {
             string code = HLSLDecompiler.DecompileShader(shaderBytecode, false);
+            code = PreviewShaderInputSignature.Restore(code, shaderBytecode);
             //HACK: LE shaders seem to always output pixels with no alpha (Maybe it's inverted? Investigate transparent mats) 
             code = code.Replace("o0.w = 0;", "o0.w = 1;", StringComparison.Ordinal);
             //3DMigoto outputs "inf" for the infinity constant, but that's not valid HLSL

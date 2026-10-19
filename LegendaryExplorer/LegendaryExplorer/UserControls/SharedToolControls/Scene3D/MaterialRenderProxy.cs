@@ -17,16 +17,17 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
     //update the name strings too
     using VertexShaderType = TBasePassVertexShader<FNullPolicy, FNullPolicy>;
     using PixelShaderType = TBasePassPixelShader<FNullPolicy>;
-    public class MaterialRenderProxy(ExportEntry export, PackageCache assetCache = null)
-        : MaterialInstanceConstant(export, assetCache, true), ILiveMaterialRenderProxy
+    public class MaterialRenderProxy : MaterialInstanceConstant, ILiveMaterialRenderProxy
     {
         private const string VERTEX_SHADER_TYPE_NAME = "TBasePassVertexShaderFNoLightMapPolicyFNoDensityPolicy";
         private const string LIT_PIXEL_SHADER_TYPE_NAME = "TBasePassPixelShaderFNoLightMapPolicySkyLight";
         private const string UNLIT_PIXEL_SHADER_TYPE_NAME = "TBasePassPixelShaderFNoLightMapPolicyNoSkyLight";
+        private const string DIRECTIONAL_VERTEX_SHADER_TYPE_NAME = "TBasePassVertexShaderFDirectionalLightLightMapPolicyFNoDensityPolicy";
+        private const string DIRECTIONAL_PIXEL_SHADER_TYPE_NAME = "TBasePassPixelShaderFDirectionalLightLightMapPolicySkyLight";
         private const string HUMAN_LASH_MASTER_MATERIAL_NAME = "HMN_HED_LASH_Unlit_MASTER_MAT";
         private const string HUMAN_LASH_OPACITY_PARAMETER_NAME = "HED_Lash_Diff";
 
-        public MEGame Game = export.Game;
+        public MEGame Game;
         public EBlendMode BlendMode;
         public bool UseHairPass;
         public bool IsUnlit;
@@ -42,6 +43,10 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
         private readonly List<string> Uniform2DTextureExpressions = [];
         public Dictionary<string, PreviewTextureCache.TextureEntry> TextureMap;
         private MaterialShaderMap ShaderMap;
+        // The first static MIC (or base material) owns both the shader map and its indexed texture table.
+        // An empty table is valid and must not cause a parent permutation to replace that owner.
+        private bool FoundShaderMapOwner;
+        private readonly PackageCache AssetCache;
         private MaterialUniformExpression[] PixelVectorExpressions = [];
         private MaterialUniformExpression[] PixelScalarExpressions = [];
         private MaterialUniformExpressionTexture[] Pixel2DTextureExpressions = [];
@@ -59,6 +64,30 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
 
         public VertexShaderType VertexShader;
         public PixelShaderType PixelShader;
+        private Shader DirectionalVertexShader;
+        private Shader DirectionalPixelShader;
+
+        internal bool UsesDirectionalPreview => !IsUnlit && DirectionalVertexShader is not null && DirectionalPixelShader is not null;
+
+        internal (Shader vertexShader, Shader pixelShader) GetPreviewShaders() => UsesDirectionalPreview
+            ? (DirectionalVertexShader, DirectionalPixelShader)
+            : (VertexShader, PixelShader);
+
+        public MaterialRenderProxy(ExportEntry export, PackageCache assetCache = null)
+            : base(export, assetCache, true)
+        {
+            Game = export.Game;
+            AssetCache = assetCache;
+            // Parent MIC values are read after a child's shader resource. Add compiled defaults only
+            // after the entire chain so those defaults cannot mask an inherited parameter override.
+            foreach (MaterialUniformExpression expression in VertexScalarExpressions
+                         .Concat(VertexVectorExpressions)
+                         .Concat(PixelScalarExpressions)
+                         .Concat(PixelVectorExpressions))
+            {
+                AddUniformExpressionParameters(expression);
+            }
+        }
 
         public ExportEntry MaterialExport => Export;
 
@@ -127,7 +156,8 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
                 : (false, default));
             if (string.IsNullOrEmpty(texturePath) || texture is null)
             {
-                TextureParameterValues.Remove(parameterName);
+                // Keep an explicit None distinct from a missing parameter, which uses the cooked default.
+                TextureParameterValues[parameterName] = null;
             }
             else
             {
@@ -180,9 +210,10 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
             var props = mat.GetProperties(packageCache: assetCache);
             Enum.TryParse(props.GetProp<EnumProperty>("BlendMode")?.Value ?? "BLEND_Opaque", out BlendMode);
 
-            //if the MIC had a StaticPermutationResource, this is already set
-            if (Uniform2DTextureExpressions.IsEmpty())
+            bool isShaderMapOwner = !FoundShaderMapOwner;
+            if (isShaderMapOwner)
             {
+                FoundShaderMapOwner = true;
                 foreach (int uIndex in parsedMaterial.SM3MaterialResource.UniformExpressionTextures)
                 {
                     Uniform2DTextureExpressions.Add(mat.FileRef.GetEntry(uIndex)?.InstancedFullPath);
@@ -230,8 +261,7 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
                 }
             }
 
-            //if the MIC had a StaticPermutationResource, this is already set
-            if (ShaderMap is null)
+            if (isShaderMapOwner)
             {
                 LoadShaders(mat, parsedMaterial.SM3MaterialResource);
             }
@@ -239,7 +269,9 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
 
         private void LoadShaders(ExportEntry mat, MaterialResource legacyMaterialResource)
         {
-            (ShaderMap, Shader[] shaders) = ShaderCacheManipulator.GetMaterialShaderMapAndShaders(mat, VERTEX_SHADER_TYPE_NAME, LIT_PIXEL_SHADER_TYPE_NAME, UNLIT_PIXEL_SHADER_TYPE_NAME);
+            (ShaderMap, Shader[] shaders) = ShaderCacheManipulator.GetMaterialShaderMapAndShaders(mat,
+                VERTEX_SHADER_TYPE_NAME, LIT_PIXEL_SHADER_TYPE_NAME, UNLIT_PIXEL_SHADER_TYPE_NAME,
+                DIRECTIONAL_VERTEX_SHADER_TYPE_NAME, DIRECTIONAL_PIXEL_SHADER_TYPE_NAME);
 
             if (mat.Game < MEGame.ME3)
             {
@@ -263,16 +295,10 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
                 VertexScalarExpressions = ShaderMap.UniformVertexScalarExpressions ?? [];
             }
 
-            foreach (MaterialUniformExpression expression in VertexScalarExpressions
-                         .Concat(VertexVectorExpressions)
-                         .Concat(PixelScalarExpressions)
-                         .Concat(PixelVectorExpressions))
-            {
-                AddUniformExpressionParameters(expression);
-            }
-
             VertexShader = (VertexShaderType)shaders[0];
             PixelShader = (PixelShaderType)(shaders[1] ?? shaders[2]);
+            DirectionalVertexShader = shaders[3];
+            DirectionalPixelShader = shaders[4];
         }
 
         private void AddUniformExpressionParameters(MaterialUniformExpression expression)
@@ -342,12 +368,19 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
                 }
             }
 
-            if (props.GetProp<BoolProperty>("bHasStaticPermutationResource") is { Value: true }
+            if (!FoundShaderMapOwner
+                && props.GetProp<BoolProperty>("bHasStaticPermutationResource") is { Value: true }
                 && ObjectBinary.From(matInst) is MaterialInstance binary)
             {
+                FoundShaderMapOwner = true;
                 foreach (int uIndex in binary.SM3StaticPermutationResource.UniformExpressionTextures)
                 {
-                    Uniform2DTextureExpressions.Add(matInst.FileRef.GetEntry(uIndex)?.InstancedFullPath);
+                    IEntry textureEntry = matInst.FileRef.GetEntry(uIndex);
+                    Uniform2DTextureExpressions.Add(textureEntry?.InstancedFullPath);
+                    if (textureEntry is not null)
+                    {
+                        Textures.Add(textureEntry);
+                    }
                 }
                 LoadShaders(matInst, binary.SM3StaticPermutationResource);
             }
@@ -355,8 +388,9 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
 
         public void UpdateShaderParams(Span<byte> vertexConstantBuffer, Span<byte> pixelConstantBuffer, MeshRenderContext context, Mesh<LEVertex> mesh)
         {
-            VertexShader?.WriteValues(vertexConstantBuffer, context, mesh, this);
-            PixelShader?.WriteValues(pixelConstantBuffer, context, mesh, this);
+            (Shader vertexShader, Shader pixelShader) = GetPreviewShaders();
+            ShaderParameterSetters.WriteBasePassVertexShaderValues(vertexShader, vertexConstantBuffer, context, mesh, this);
+            ShaderParameterSetters.WriteBasePassPixelShaderValues(pixelShader, pixelConstantBuffer, context, mesh, this);
         }
 
         public (List<Vector4> scalar, List<Vector4> vector) GetCachedVertexParameters(MeshRenderContext context)
@@ -440,19 +474,27 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
                 switch (texExpression)
                 {
                     case MaterialUniformExpressionTextureParameter texParamExpression:
-                        texture = ResolveTextureParameter(texParamExpression.ParameterName.Instanced, context);
+                        string parameterName = texParamExpression.ParameterName.Instanced;
+                        texture = TextureParameterValues.ContainsKey(parameterName)
+                            ? ResolveTextureParameter(parameterName, context)
+                            : ResolveDefaultTexture(texParamExpression.TextureIndex, context);
                         break;
                     default:
-                        if ((uint)texExpression.TextureIndex < Uniform2DTextureExpressions.Count
-                            && Uniform2DTextureExpressions[texExpression.TextureIndex] is {} texifp)
-                        {
-                            texture = ResolveDefaultTextureOverride(texifp, context);
-                            texture ??= TextureMap.GetValueOrDefault(texifp);
-                        }
+                        texture = ResolveDefaultTexture(texExpression.TextureIndex, context);
                         break;
                 }
                 textureCache.Add(texture);
             }
+        }
+
+        private PreviewTextureCache.TextureEntry ResolveDefaultTexture(int textureIndex, MeshRenderContext context)
+        {
+            if ((uint)textureIndex >= Uniform2DTextureExpressions.Count
+                || Uniform2DTextureExpressions[textureIndex] is not { } texturePath)
+            {
+                return null;
+            }
+            return ResolveDefaultTextureOverride(texturePath, context) ?? TextureMap.GetValueOrDefault(texturePath);
         }
 
         public bool HasRequiredTextures(MeshRenderContext context)
@@ -535,7 +577,7 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
             ExportEntry textureExport = textureEntry as ExportEntry;
             if (textureEntry is ImportEntry textureImport)
             {
-                textureExport = EntryImporter.ResolveImport(textureImport, assetCache);
+                textureExport = EntryImporter.ResolveImport(textureImport, AssetCache);
             }
             if (textureExport is null)
             {

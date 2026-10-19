@@ -43,6 +43,10 @@ public unsafe class LEEffect : IDisposable
     /// </summary>
     public void PrepDraw(DeviceContext context, VertexShader vs, PixelShader ps, InputLayout inputLayout, BlendState blendState)
     {
+        // Materials use different constant layouts. Unwritten parameters must not inherit bytes
+        // from another material (or uninitialized native memory) on this draw.
+        VertexShaderConstantBuffer.Clear();
+        PixelShaderConstantBuffer.Clear();
         context.OutputMerger.SetBlendState(blendState);
         context.InputAssembler.InputLayout = inputLayout;
         context.VertexShader.Set(vs);
