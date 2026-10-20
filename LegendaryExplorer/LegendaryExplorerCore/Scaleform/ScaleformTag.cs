@@ -8,7 +8,7 @@ using System.Text;
 namespace LegendaryExplorerCore.Scaleform;
 
 /// <summary>A SWF record whose opaque bytes remain authoritative until explicitly edited.</summary>
-public sealed class ScaleformTag
+public sealed partial class ScaleformTag
 {
     private static readonly UTF8Encoding StrictUtf8 = new(false, true);
     private readonly ReadOnlyMemory<byte> originalPayload;
@@ -56,7 +56,7 @@ public sealed class ScaleformTag
     {
         get
         {
-            if (!CanEditText || (Code == 37 && !hasInitialText && replacement == null))
+            if (!CanEditText || (Code == 37 && !hasInitialText))
                 return string.Empty;
             var payload = Payload.Span;
             int end = payload[textOffset..].IndexOf((byte)0);
@@ -88,11 +88,18 @@ public sealed class ScaleformTag
     }
 
     /// <summary>Replaces a string without modifying its surrounding flags, IDs, styles or references.</summary>
-    public void SetText(string value)
+    public void SetText(string value) => SetTextValue(value, html: false);
+
+    /// <summary>Stores raw Flash HTML markup and enables HTML interpretation on a supported text field.</summary>
+    public void SetHtmlText(string value) => SetTextValue(value, html: true);
+
+    private void SetTextValue(string value, bool html)
     {
         ArgumentNullException.ThrowIfNull(value);
         if (!CanEditText)
             throw new InvalidOperationException($"{Name} does not contain a supported editable string.");
+        if (html && !CanEditTextFormat)
+            throw new InvalidOperationException("Only a supported DefineEditText field can store HTML text.");
         if (value.Contains('\0'))
             throw new ArgumentException("SWF strings cannot contain a null character.", nameof(value));
         byte[] encoded;
@@ -106,16 +113,21 @@ public sealed class ScaleformTag
         {
             encoded = StrictUtf8.GetBytes(value);
         }
-        // Always build from the original payload, so repeated edits and reverting are stable.
-        byte[] edited = new byte[checked(originalPayload.Length - textByteLength + encoded.Length + (hasInitialText ? 0 : Code == 37 ? 1 : 0))];
-        originalPayload.Span[..textOffset].CopyTo(edited);
+        // Use the current payload so a string edit retains any text-format changes.
+        var current = Payload.Span;
+        byte[] edited = new byte[checked(current.Length - textByteLength + encoded.Length + (hasInitialText ? 0 : Code == 37 ? 1 : 0))];
+        current[..textOffset].CopyTo(edited);
         encoded.CopyTo(edited, textOffset);
         edited[textOffset + encoded.Length] = 0;
         int oldEnd = textOffset + textByteLength + (Code == 37 && !hasInitialText ? 0 : 1);
-        originalPayload.Span[oldEnd..].CopyTo(edited.AsSpan(textOffset + encoded.Length + 1));
+        current[oldEnd..].CopyTo(edited.AsSpan(textOffset + encoded.Length + 1));
         if (Code == 37)
+        {
             edited[editTextFlagsOffset] |= 0x80; // HasText is the first high-order flag bit.
+            if (html) edited[editTextFlagsOffset + 1] |= 2;
+        }
         replacement = edited.AsSpan().SequenceEqual(originalPayload.Span) ? null : edited;
+        LocateEditableText();
     }
 
     public void SetBackgroundColor(byte r, byte g, byte b)
@@ -205,7 +217,8 @@ public sealed class ScaleformTag
 
     private void LocateEditableText()
     {
-        var payload = originalPayload.Span;
+        var payload = Payload.Span;
+        textOffset = -1;
         int offset = 0;
         try
         {

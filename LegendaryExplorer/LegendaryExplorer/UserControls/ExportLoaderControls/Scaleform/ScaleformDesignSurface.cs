@@ -203,6 +203,7 @@ public sealed class ScaleformDesignSurface : FrameworkElement
             if (control && e.Key == Key.Z) Editor.Undo();
             else if (control && e.Key == Key.Y) Editor.Redo();
             else if (e.Key == Key.Delete) Editor.RemoveSelected();
+            else if (e.Key == Key.Up && Keyboard.Modifiers.HasFlag(ModifierKeys.Alt)) Editor.ExitGroup();
             else if (e.Key == Key.Left) Editor.MoveSelectedBy(-step, 0);
             else if (e.Key == Key.Right) Editor.MoveSelectedBy(step, 0);
             else if (e.Key == Key.Up) Editor.MoveSelectedBy(0, -step);

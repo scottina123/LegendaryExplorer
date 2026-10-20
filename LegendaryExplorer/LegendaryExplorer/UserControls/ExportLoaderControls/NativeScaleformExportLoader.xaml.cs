@@ -268,7 +268,11 @@ public partial class NativeScaleformExportLoader : ExportLoaderControl
                 if (path.StartsWith('+')) continue; // New UI definitions are created below.
                 throw new InvalidDataException("An edited resource no longer exists. Reload this movie before applying.");
             }
-            if (tag.CanEditText) tag.SetText(text);
+            if (tag.CanEditText)
+            {
+                // Formatting establishes the HTML flag before its saved text is restored.
+                if (!target.Visual.TextFormats.ContainsKey(path)) tag.SetText(text);
+            }
             else if (tag.Code == 9)
             {
                 string hex = text.Trim().TrimStart('#');

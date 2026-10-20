@@ -135,6 +135,25 @@ public class ScaleformElementTests
         Assert.AreEqual(1, ScaleformScene.Build(ScaleformDocument.Parse(importedEarly.Compile()), 50).Items.Count);
     }
 
+    [TestMethod]
+    public void ExistingTextFontChoicesExcludeLaterLocalAndSharedFontDeclarations()
+    {
+        var document = Movie(Font(20),
+            Tag(57, Join(CString("early.gfx"), U16(1), U16(21), CString("$EarlyFont"))),
+            Tag(37, Join(U16(30), [8, 0, 0x80, 0], CString("caption"), CString("Text"))),
+            Font(22), Tag(57, Join(CString("late.gfx"), U16(1), U16(23), CString("$LateFont"))));
+        var text = document.Tags.Single(tag => tag.Code == 37);
+        byte[] before = document.Compile();
+        CollectionAssert.AreEquivalent(new ushort[] { 20, 21, 22, 23 }, document.GetElementFonts().Select(font => font.Id).ToArray());
+        CollectionAssert.AreEquivalent(new ushort[] { 20, 21 }, document.GetTextFonts(text).Select(font => font.Id).ToArray());
+        Assert.IsFalse(document.GetTextFonts(text).Any(font => font.Id is 22 or 23),
+            "Formatting must not introduce forward references to local or imported fonts.");
+        CollectionAssert.AreEqual(before, document.Compile());
+
+        var otherDocument = ScaleformDocument.Parse(before);
+        Assert.ThrowsExactly<InvalidDataException>(() => otherDocument.GetTextFonts(text), "Font choices must belong to the text's own movie.");
+    }
+
     private static byte[] Font(ushort id) => Tag(48, Join(U16(id), [0, 0, 4], Encoding.UTF8.GetBytes("Test"), U16(0), U16(0)));
     private static byte[] Clip(ushort id) => Tag(39, Join(U16(id), U16(1), Tag(1), Tag(0)));
 

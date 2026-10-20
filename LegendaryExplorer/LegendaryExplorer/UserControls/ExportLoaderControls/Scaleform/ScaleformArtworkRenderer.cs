@@ -24,6 +24,7 @@ public sealed class ScaleformArtworkRenderer
 {
     private const int MaximumEdges = 250_000;
     private const int MaximumImagePixels = 32 * 1024 * 1024;
+    private const int MaximumPreviewTextLength = 16_384;
     private readonly ScaleformDocument document;
     private ScaleformSceneIndex sceneIndex;
     private readonly Func<string, ImageSource> externalImageResolver;
@@ -39,6 +40,7 @@ public sealed class ScaleformArtworkRenderer
     private readonly Dictionary<(ushort?, int), ScaleformScene> scenes = [];
     private readonly Dictionary<ushort, Rect> bounds = [];
     private readonly Dictionary<ushort, FontData> fonts = [];
+    private Dictionary<ushort, string> fontNames;
     private readonly Dictionary<(ImageSource, ScaleformColorTransform), ImageSource> colorImages = [];
     private readonly Dictionary<(Drawing, ScaleformColorTransform), Drawing> colorDrawings = [];
     private readonly HashSet<ushort> rendering = [];
@@ -615,28 +617,134 @@ public sealed class ScaleformArtworkRenderer
         if ((f2 & 2) != 0)
         {
             text = Regex.Replace(text, @"<(br\s*/?|/p)\s*>", "\n", RegexOptions.IgnoreCase, TimeSpan.FromSeconds(1));
-            text = WebUtility.HtmlDecode(Regex.Replace(text, "<[^>]*>", "", RegexOptions.None, TimeSpan.FromSeconds(1)));
+            text = WebUtility.HtmlDecode(Regex.Replace(text, @"<!--[\s\S]*?-->|<(?:""[^""]*""|'[^']*'|[^'"">])*>", "", RegexOptions.None, TimeSpan.FromSeconds(1)));
+        }
+        if (text.Length > MaximumPreviewTextLength)
+        {
+            // Cap layout work, including the per-grapheme tracking preview. The movie text is untouched.
+            int length = MaximumPreviewTextLength;
+            if (char.IsHighSurrogate(text[length - 1])) length--;
+            text = text[..length];
+            Warn($"Text field {id} exceeds the preview text limit; only its first {length} characters are shown.");
+        }
+        double letterSpacing = 0;
+        string formattedFontName = null;
+        if (tag.CanEditTextFormat)
+        {
+            var format = tag.GetTextFormat();
+            fontId = format.FontId ?? fontId;
+            height = format.FontSize;
+            color = Color.FromArgb((byte)format.Color, (byte)(format.Color >> 24), (byte)(format.Color >> 16), (byte)(format.Color >> 8));
+            alignment = (int)format.Alignment;
+            letterSpacing = format.LetterSpacing;
+            formattedFontName = format.FontName;
         }
         var font = GetFont(fontId);
-        string fontName = font?.Name ?? fontClass;
+        string fontName = !string.IsNullOrWhiteSpace(formattedFontName) ? formattedFontName : font?.Name ?? fontClass;
+        if (string.IsNullOrWhiteSpace(fontName) && fontId != 0)
+        {
+            fontNames ??= document.GetElementFonts().ToDictionary(candidate => candidate.Id, candidate => candidate.Name);
+            fontName = fontNames.GetValueOrDefault(fontId);
+        }
         var typeface = new Typeface(new FontFamily(string.IsNullOrWhiteSpace(fontName) ? "Segoe UI" : fontName), FontStyles.Normal, FontWeights.Normal, FontStretches.Normal);
         if (!double.IsFinite(height) || height <= 0) height = 12;
-        var formatted = new FormattedText(text, CultureInfo.InvariantCulture, FlowDirection.LeftToRight, typeface, height, new SolidColorBrush(color), 1)
-        {
-            MaxTextWidth = Math.Max(1, rectangle.Width - left - right), MaxTextHeight = Math.Max(1, rectangle.Height),
-            TextAlignment = alignment switch { 1 => TextAlignment.Right, 2 => TextAlignment.Center, 3 => TextAlignment.Justify, _ => TextAlignment.Left },
-            Trimming = TextTrimming.None
-        };
-        if (leading > -height && height + leading > 0) formatted.LineHeight = height + leading;
+        height = Math.Min(height, ushort.MaxValue / 20.0);
+        double width = Math.Max(1, rectangle.Width - left - right);
+        var brush = new SolidColorBrush(color);
         var result = new DrawingGroup();
         using (var dc = result.Open())
         {
             dc.PushClip(new RectangleGeometry(rectangle));
-            dc.DrawText(formatted, new Point(rectangle.X + left + indent + 2, rectangle.Y + 2));
+            var origin = new Point(rectangle.X + left + indent + 2, rectangle.Y + 2);
+            if (double.IsFinite(letterSpacing) && letterSpacing != 0)
+                DrawTrackedText(dc, text, typeface, height, brush, Math.Clamp(letterSpacing, -512, 512), width, rectangle.Bottom, origin, alignment, leading);
+            else
+            {
+                var formatted = new FormattedText(text, CultureInfo.InvariantCulture, FlowDirection.LeftToRight, typeface, height, brush, 1)
+                {
+                    MaxTextWidth = width, MaxTextHeight = Math.Max(1, rectangle.Height),
+                    TextAlignment = alignment switch { 1 => TextAlignment.Right, 2 => TextAlignment.Center, 3 => TextAlignment.Justify, _ => TextAlignment.Left },
+                    Trimming = TextTrimming.None
+                };
+                if (leading > -height && height + leading > 0) formatted.LineHeight = height + leading;
+                dc.DrawText(formatted, origin);
+            }
             dc.Pop();
         }
-        Warn($"Text field {id} uses an approximate system-font preview; in-game font substitution, HTML formatting and script-provided text may differ.");
+        Warn($"Text field {id} uses an approximate system-font preview; in-game font substitution, mixed HTML styles and script-provided text may differ.");
         return result;
+    }
+
+    private static void DrawTrackedText(DrawingContext dc, string text, Typeface typeface, double height, Brush brush,
+        double spacing, double width, double bottom, Point origin, int alignment, double leading)
+    {
+        // Tracking is added between complete Unicode text elements, preserving surrogate pairs and
+        // combining marks. Drawing individual elements changes advances without stretching glyphs.
+        var cache = new Dictionary<string, FormattedText>();
+        var glyphs = new List<(FormattedText Text, bool Space, bool Newline)>();
+        var elements = StringInfo.GetTextElementEnumerator(text.Replace("\r\n", "\n").Replace('\r', '\n'));
+        while (elements.MoveNext())
+        {
+            string value = elements.GetTextElement();
+            if (value == "\n") { glyphs.Add((null, false, true)); continue; }
+            if (!cache.TryGetValue(value, out var formatted))
+            {
+                formatted = new FormattedText(value, CultureInfo.InvariantCulture, FlowDirection.LeftToRight, typeface, height, brush, 1);
+                cache[value] = formatted;
+            }
+            glyphs.Add((formatted, string.IsNullOrWhiteSpace(value), false));
+        }
+        double lineHeight = height + leading > 0 ? height + leading : height;
+        int start = 0;
+        double y = origin.Y;
+        while (start < glyphs.Count && y < bottom)
+        {
+            int end = start, next, breakNext = -1, breakEnd = start, contentEnd = start;
+            double pen = 0, lineWidth = 0, contentWidth = 0, breakWidth = 0;
+            bool wrapped = false;
+            while (end < glyphs.Count && !glyphs[end].Newline)
+            {
+                var glyph = glyphs[end];
+                double candidate = Math.Max(lineWidth, pen + glyph.Text.WidthIncludingTrailingWhitespace);
+                if (candidate > width && end > start)
+                {
+                    wrapped = true;
+                    break;
+                }
+                lineWidth = candidate;
+                pen += Math.Max(0, glyph.Text.WidthIncludingTrailingWhitespace + spacing);
+                end++;
+                if (glyph.Space)
+                {
+                    breakNext = end; breakEnd = contentEnd; breakWidth = contentWidth;
+                }
+                else { contentEnd = end; contentWidth = lineWidth; }
+            }
+            if (wrapped && breakNext > start)
+            {
+                next = breakNext; end = breakEnd; lineWidth = breakWidth;
+            }
+            else
+            {
+                next = end;
+                if (!wrapped && next < glyphs.Count && glyphs[next].Newline) next++;
+                end = contentEnd; lineWidth = contentWidth;
+            }
+            if (wrapped) while (next < glyphs.Count && glyphs[next].Space) next++;
+            double x = origin.X + (alignment switch { 1 => width - lineWidth, 2 => (width - lineWidth) / 2, _ => 0 });
+            int spaces = 0;
+            if (alignment == 3 && wrapped)
+                for (int i = start; i < end; i++) if (glyphs[i].Space) spaces++;
+            double extra = spaces > 0 ? Math.Max(0, width - lineWidth) / spaces : 0;
+            for (int i = start; i < end; i++)
+            {
+                dc.DrawText(glyphs[i].Text, new Point(x, y));
+                x += Math.Max(0, glyphs[i].Text.WidthIncludingTrailingWhitespace + spacing);
+                if (glyphs[i].Space) x += extra;
+            }
+            start = next;
+            y += lineHeight;
+        }
     }
 
     private Drawing ReadStaticText(ScaleformTag tag)
@@ -864,7 +972,7 @@ public sealed class ScaleformArtworkRenderer
         if (warnings.Count < 250) warnings.Add(warning);
         else if (warnings.Count == 250) warnings.Add("Additional artwork warnings were omitted.");
     }
-    private static bool IsArtworkError(Exception e) => e is InvalidDataException or IOException or ArgumentException or NotSupportedException or OverflowException or FormatException or InvalidOperationException;
+    private static bool IsArtworkError(Exception e) => e is InvalidDataException or IOException or ArgumentException or NotSupportedException or OverflowException or FormatException or InvalidOperationException or RegexMatchTimeoutException;
     private static IEnumerable<ScaleformTag> Flatten(IEnumerable<ScaleformTag> tags)
     {
         foreach (var tag in tags) { yield return tag; foreach (var child in Flatten(tag.Children)) yield return child; }

@@ -8,19 +8,22 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls.Scaleform;
 public sealed class ScaleformVisualDraft
 {
     public Dictionary<string, ScaleformMatrix> Matrices { get; } = new();
+    public Dictionary<string, ScaleformTextFormat> TextFormats { get; } = new();
+    public HashSet<string> HtmlTextFormats { get; } = new();
     public List<ScaleformVisualAddition> Additions { get; } = new();
     public List<ScaleformVisualRemoval> Removals { get; } = new();
     public List<ScaleformVisualKeyframe> Keyframes { get; } = new();
     public ushort? SpriteId { get; set; }
     public int Frame { get; set; } = 1;
     internal bool InitialFrameChosen { get; set; }
+    internal Stack<GroupNavigationLocation> GroupNavigationHistory { get; } = new();
     internal Stack<VisualChange> UndoHistory { get; } = new();
     internal Stack<VisualChange> RedoHistory { get; } = new();
-    public bool IsModified => Matrices.Count > 0 || Additions.Count > 0 || Removals.Count > 0 || Keyframes.Count > 0;
+    public bool IsModified => Matrices.Count > 0 || TextFormats.Count > 0 || Additions.Count > 0 || Removals.Count > 0 || Keyframes.Count > 0;
 
     public void ClearEdits()
     {
-        Matrices.Clear(); Additions.Clear(); Removals.Clear(); Keyframes.Clear();
+        Matrices.Clear(); TextFormats.Clear(); HtmlTextFormats.Clear(); Additions.Clear(); Removals.Clear(); Keyframes.Clear();
         UndoHistory.Clear(); RedoHistory.Clear();
     }
 
@@ -31,6 +34,8 @@ public sealed class ScaleformVisualDraft
     }
 
     internal sealed record VisualChange(Action Undo, Action Redo);
+    internal sealed record GroupNavigationLocation(ushort? SpriteId, int Frame, string SelectionIdentity,
+        ushort? SelectionOwnerSpriteId, ushort? SelectionDepth);
 }
 
 public sealed class ScaleformVisualAddition

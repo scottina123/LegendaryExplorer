@@ -151,6 +151,15 @@ public sealed partial class ScaleformDocument
         return fonts.DistinctBy(p => p.Item1).ToArray();
     }
 
+    /// <summary>Font choices already declared when this editable text definition is introduced.</summary>
+    public IReadOnlyList<(ushort Id, string Name)> GetTextFonts(ScaleformTag text)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+        if (!text.CanEditTextFormat) throw new ArgumentException("Choose an editable text definition from this movie.", nameof(text));
+        int declaration = FindRootRecordIndex(text);
+        return GetElementFonts().Where(font => ElementFontDeclaredBefore(font.Id, declaration)).ToArray();
+    }
+
     private bool ElementFontDeclaredBefore(ushort id, int insertion)
     {
         for (int i = 0; i < insertion; i++)

@@ -70,6 +70,7 @@ public partial class ScaleformVisualEditor : UserControl
         SelectedElement = null; VisibleElements = Array.Empty<VisualElement>();
         identities.Clear(); tags.Clear(); library.Clear();
         LayersTree.ItemsSource = null; LibraryList.ItemsSource = null;
+        UpdateGroupNavigation();
         UpdateProperties(); CanvasViewport.InvalidateVisual();
     }
 
@@ -77,6 +78,12 @@ public partial class ScaleformVisualEditor : UserControl
     // cannot redirect an existing edit to the next tag in the file.
     public static void ApplyDraft(ScaleformDocument document, ScaleformVisualDraft visualDraft, IDictionary<string, string> pendingTextEdits = null)
     {
+        foreach (var edit in visualDraft.TextFormats.Where(edit => !edit.Key.StartsWith('+')))
+        {
+            var tag = ScaleformScene.FindTag(document, edit.Key);
+            tag.SetTextFormat(edit.Value);
+            if (pendingTextEdits?.TryGetValue(edit.Key, out var text) == true) RestoreDraftText(tag, edit.Key, visualDraft, text);
+        }
         foreach (var edit in visualDraft.Matrices.Where(edit => !edit.Key.StartsWith('+'))) ScaleformScene.FindTag(document, edit.Key).SetPlacementMatrix(edit.Value);
         foreach (var add in visualDraft.Additions)
         {
@@ -85,7 +92,9 @@ public partial class ScaleformVisualEditor : UserControl
                 var created = document.AddElementDefinition(add.NewElement, add.SpriteId); add.CharacterId = created.CharacterId;
                 foreach (var generated in GeneratedTags(created.Definition, add.Id + "/definition"))
                     if (visualDraft.Matrices.TryGetValue(generated.Path, out var matrix)) generated.Tag.SetPlacementMatrix(matrix);
-                if (created.ContentTag.CanEditText && pendingTextEdits?.TryGetValue(add.Id + "/content", out var text) == true) created.ContentTag.SetText(text);
+                string contentPath = add.Id + "/content";
+                if (visualDraft.TextFormats.TryGetValue(contentPath, out var format)) created.ContentTag.SetTextFormat(format);
+                if (created.ContentTag.CanEditText && pendingTextEdits?.TryGetValue(contentPath, out var text) == true) RestoreDraftText(created.ContentTag, contentPath, visualDraft, text);
             }
             var tag = document.AddPlacement(add.CharacterId, add.Matrix, add.SpriteId, add.Frame, add.Depth);
             if (!string.IsNullOrEmpty(add.Name)) tag.SetPlacementName(add.Name);
@@ -104,8 +113,10 @@ public partial class ScaleformVisualEditor : UserControl
         working = ScaleformDocument.Parse(sourceBytes);
         identities.Clear(); tags.Clear();
         Index(working.Tags, "");
+        foreach (var edit in draft.TextFormats.Where(edit => !edit.Key.StartsWith('+')))
+            tags[edit.Key].SetTextFormat(edit.Value);
         foreach (var edit in textEdits)
-            if (tags.TryGetValue(edit.Key, out var tag) && tag.CanEditText) tag.SetText(edit.Value);
+            if (tags.TryGetValue(edit.Key, out var tag) && tag.CanEditText) RestoreDraftText(tag, edit.Key, draft, edit.Value);
         foreach (var edit in draft.Matrices.Where(edit => !edit.Key.StartsWith('+'))) tags[edit.Key].SetPlacementMatrix(edit.Value);
         foreach (var add in draft.Additions)
         {
@@ -119,7 +130,8 @@ public partial class ScaleformVisualEditor : UserControl
                 }
                 string contentPath = add.Id + "/content";
                 identities[created.ContentTag] = contentPath; tags[contentPath] = created.ContentTag;
-                if (created.ContentTag.CanEditText && textEdits.TryGetValue(contentPath, out var text)) created.ContentTag.SetText(text);
+                if (draft.TextFormats.TryGetValue(contentPath, out var format)) created.ContentTag.SetTextFormat(format);
+                if (created.ContentTag.CanEditText && textEdits.TryGetValue(contentPath, out var text)) RestoreDraftText(created.ContentTag, contentPath, draft, text);
             }
             var tag = working.AddPlacement(add.CharacterId, add.Matrix, add.SpriteId, add.Frame, add.Depth);
             if (!string.IsNullOrEmpty(add.Name)) tag.SetPlacementName(add.Name);
@@ -140,6 +152,12 @@ public partial class ScaleformVisualEditor : UserControl
 
     public void ReloadDraft() => RebuildWorking();
 
+    private static void RestoreDraftText(ScaleformTag tag, string path, ScaleformVisualDraft visualDraft, string text)
+    {
+        if (visualDraft.HtmlTextFormats.Contains(path)) tag.SetHtmlText(text);
+        else tag.SetText(text);
+    }
+
     private static IEnumerable<(string Path, ScaleformTag Tag)> GeneratedTags(ScaleformTag definition, string path)
     {
         yield return (path, definition);
@@ -152,7 +170,7 @@ public partial class ScaleformVisualEditor : UserControl
         if (draft.SpriteId.HasValue && (!renderer.GetScene().Definitions.TryGetValue(draft.SpriteId.Value, out var scope) || scope.Code != 39))
         {
             // Undoing creation while inside that group returns to the movie canvas.
-            draft.SpriteId = null; draft.Frame = 1; draft.InitialFrameChosen = false;
+            ResetInvalidGroupNavigation();
         }
         if (!draft.InitialFrameChosen)
         {
@@ -170,9 +188,11 @@ public partial class ScaleformVisualEditor : UserControl
         FrameSlider.Maximum = scene.FrameCount; FrameSlider.Value = draft.Frame;
         FrameLabel.Text = $"Frame {draft.Frame} / {scene.FrameCount}";
         ScopeLabel.Text = draft.SpriteId.HasValue ? "Inside " + GetSymbolName(draft.SpriteId.Value, overview) : "Movie canvas";
+        UpdateGroupNavigation();
         updating = false;
         if (rebuildLibrary)
         {
+            RebuildTextFonts();
             var libraryArtwork = renderer;
             var libraryDocument = working;
             library = overview.Definitions.Where(p => p.Value.Code is 2 or 6 or 7 or 11 or 20 or 21 or 22 or 32 or 33 or 34 or 35 or 36 or 37 or 39 or 83 or 90 or 1001 or 1009)
@@ -489,13 +509,8 @@ public partial class ScaleformVisualEditor : UserControl
     {
         if (draft == null) return;
         if (draft.Frame == frame) return;
+        if (!CommitPendingFields()) return;
         draft.Frame = frame; SelectedElement = null; RefreshView();
-    }
-
-    public void EnterGroup(ushort? spriteId)
-    {
-        if (draft == null) return;
-        draft.SpriteId = spriteId; draft.Frame = ChooseAuthoringFrame(working, spriteId); SelectedElement = null; RefreshView(); CanvasViewport.Fit();
     }
 
     // Intro/outro frames can intentionally have zero opacity. Open a visible authoring
@@ -558,6 +573,7 @@ public partial class ScaleformVisualEditor : UserControl
         bool hasText = element?.Item.Definition?.CanEditText == true;
         TextPanel.Visibility = hasText ? Visibility.Visible : Visibility.Collapsed;
         VisualText.Text = hasText ? PlainText(element.Item.Definition.TextValue, IsHtmlText(element.Item.Definition)) : string.Empty;
+        UpdateTextFormatProperties();
         propertySnapshot = new[] { PositionX.Text, PositionY.Text, ElementWidth.Text, ElementHeight.Text, Rotation.Text };
         updating = false;
     }
@@ -601,8 +617,18 @@ public partial class ScaleformVisualEditor : UserControl
     /// <summary>Hosts flush focused number fields before navigation, apply, or close.</summary>
     public bool CommitPendingFields()
     {
+        // A transform refreshes the inspector, so capture pending formatting first.
+        ScaleformTextFormat pendingFormat;
+        try { pendingFormat = PendingTextFormat(); }
+        catch (Exception ex) { StatusChanged?.Invoke("Could not format this text: " + ex.Message); return false; }
         Transform_Commit(this, new RoutedEventArgs());
-        return fieldCommitSucceeded;
+        if (!fieldCommitSucceeded) return false;
+        try
+        {
+            if (pendingFormat != null && pendingFormat != textFormatSnapshot) ApplySelectedTextFormat(pendingFormat);
+            return true;
+        }
+        catch (Exception ex) { StatusChanged?.Invoke("Could not format this text: " + ex.Message); return false; }
     }
 
     private void Transform_KeyDown(object sender, KeyEventArgs e) { if (e.Key == Key.Enter) { Transform_Commit(sender, e); e.Handled = true; CanvasViewport.Focus(); } }
@@ -611,7 +637,14 @@ public partial class ScaleformVisualEditor : UserControl
     private void Layer_DoubleClick(object sender, MouseButtonEventArgs e) => EditGroup_Click(sender, e);
     private void EditGroup_Click(object sender, RoutedEventArgs e) { if (SelectedElement?.Item.Definition?.Code == 39) EnterGroup(SelectedElement.CharacterId); }
     private void Root_Click(object sender, RoutedEventArgs e) => EnterGroup(null);
-    private void Frame_Changed(object sender, RoutedPropertyChangedEventArgs<double> e) { if (!updating && draft != null) SetFrame((int)Math.Round(e.NewValue)); }
+    private void ParentGroup_Click(object sender, RoutedEventArgs e) => ExitGroup();
+    private void Frame_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (updating || draft == null) return;
+        SetFrame((int)Math.Round(e.NewValue));
+        // A rejected pending field keeps the current frame; keep the slider in sync.
+        updating = true; FrameSlider.Value = draft.Frame; updating = false;
+    }
     private void Fit_Click(object sender, RoutedEventArgs e) => CanvasViewport.Fit();
     private void ActualSize_Click(object sender, RoutedEventArgs e) => CanvasViewport.ActualSize();
     private void Undo_Click(object sender, RoutedEventArgs e) => Undo();
@@ -655,13 +688,13 @@ public partial class ScaleformVisualEditor : UserControl
         return flags + 1 < tag.Payload.Length && (tag.Payload.Span[flags + 1] & 2) != 0;
     }
     private static string PlainText(string text, bool html) => !html ? text : WebUtility.HtmlDecode(
-        Regex.Replace(Regex.Replace(text, @"(?i)<br\s*/?>|</p\s*>", "\n"), "<[^>]*>", string.Empty)).TrimEnd('\r', '\n');
+        Regex.Replace(Regex.Replace(text, @"(?i)<br\s*/?>|</p\s*>", "\n"), @"<!--[\s\S]*?-->|<(?:""[^""]*""|'[^']*'|[^'"">])*>", string.Empty)).TrimEnd('\r', '\n');
     private static string PreserveTextFormatting(string original, string text, bool html)
     {
         if (!html) return text;
         string encoded = WebUtility.HtmlEncode(text).Replace("\r\n", "\n").Replace("\n", "<br/>");
         if (!original.TrimStart().StartsWith('<')) return encoded;
-        var opening = Regex.Match(original, @"^(?:\s*<[^/!][^>]*>)+");
+        var opening = Regex.Match(original, @"^(?:\s*<(?![/!])(?:""[^""]*""|'[^']*'|[^'"">])*>)+");
         var closing = Regex.Match(original, @"(?:</[^>]+>\s*)+$");
         return opening.Success && closing.Success ? opening.Value + encoded + closing.Value : encoded;
     }

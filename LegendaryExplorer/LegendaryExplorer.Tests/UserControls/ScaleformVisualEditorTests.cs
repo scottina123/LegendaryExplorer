@@ -48,9 +48,124 @@ public class ScaleformVisualEditorTests
         AssertEditingAnInheritedFrameDoesNotMoveAnEarlierFrame();
         AssertPendingInspectorFieldsCommitBeforeApplyAndNavigation();
         AssertLiteralTextAndHtmlLineBreaksSurviveVisualEditing();
+        AssertTextFormattingSurvivesUndoNavigationAndPackageApply();
+        AssertTextFormattingInspectorCommitsAndFormatsNewArtwork();
+        AssertFormattingBackToDefaultsRetainsHtmlState();
         AssertNewInstancesKeepEarlierFramesWhenMovedOrRemovedLater();
         AssertAuthoredLibraryCopiesSurviveDeletingTheirFirstInstanceAndUndoingAnOpenGroup();
         AssertFailedApplyKeepsVisualDraftAndExternalPackageChange();
+    }
+
+    private static void AssertFormattingBackToDefaultsRetainsHtmlState()
+    {
+        using (var fixture = new Fixture(caption: "Literal <caption> & text"))
+        using (var host = new NativeScaleformExportLoader())
+        {
+            host.LoadExport(fixture.First);
+            var editor = Designer(host); SelectTitle(editor);
+            var original = editor.SelectedElement.Item.Definition.GetTextFormat();
+            editor.ApplySelectedTextFormat(original with { FontSize = 22, LetterSpacing = 2 });
+            editor.ApplySelectedTextFormat(original);
+            editor.ReloadDraft(); SelectTitle(editor);
+            Assert.AreEqual("Literal <caption> & text", ((TextBox)editor.FindName("VisualText")).Text);
+            Assert.AreEqual(original, editor.SelectedElement.Item.Definition.GetTextFormat());
+            Compile(host); SelectTitle(editor);
+            Assert.AreEqual("Literal <caption> & text", ((TextBox)editor.FindName("VisualText")).Text,
+                "Restoring default formatting must preserve the HTML flag associated with the canonical escaped string.");
+        }
+        using (var fixture = new Fixture(caption: "<p data-x='>'><font size='16'>Caption</font></p>", html: true))
+        using (var host = new NativeScaleformExportLoader())
+        {
+            host.LoadExport(fixture.First);
+            var editor = Designer(host); SelectTitle(editor);
+            Assert.AreEqual("Caption", ((TextBox)editor.FindName("VisualText")).Text);
+            editor.ApplySelectedText("Updated");
+            Assert.AreEqual("Updated", ((TextBox)editor.FindName("VisualText")).Text);
+            StringAssert.Contains(editor.SelectedElement.Item.Definition.TextValue, "data-x='>'");
+        }
+    }
+
+    private static void AssertTextFormattingSurvivesUndoNavigationAndPackageApply()
+    {
+        using var fixture = new Fixture(caption: "Literal <title> & text");
+        using var host = new NativeScaleformExportLoader();
+        host.LoadExport(fixture.First);
+        var editor = Designer(host);
+        SelectTitle(editor);
+        var originalFormat = editor.SelectedElement.Item.Definition.GetTextFormat();
+        var desired = originalFormat with { FontSize = 22.5, Color = 0xE04080FF, LetterSpacing = 2.25, Alignment = ScaleformTextAlignment.Center };
+        byte[] original = MovieBytes(fixture.First);
+        editor.ApplySelectedTextFormat(desired);
+        Assert.AreEqual(desired, editor.SelectedElement.Item.Definition.GetTextFormat());
+        Assert.AreEqual("Literal <title> & text", ((TextBox)editor.FindName("VisualText")).Text);
+        Assert.HasCount(1, editor.Draft.TextFormats);
+        editor.ApplySelectedText("Updated <caption>\nSecond line");
+        host.LoadExport(fixture.Second);
+        Assert.IsFalse(editor.Draft.IsModified, "Another movie must not inherit text formatting.");
+        host.LoadExport(fixture.First);
+        SelectTitle(editor);
+        Assert.AreEqual(desired, editor.SelectedElement.Item.Definition.GetTextFormat());
+        Assert.AreEqual("Updated <caption>\nSecond line", ((TextBox)editor.FindName("VisualText")).Text);
+        CollectionAssert.AreEqual(original, MovieBytes(fixture.First), "Formatting stays in the draft until apply.");
+        editor.Undo();
+        Assert.AreEqual("Literal <title> & text", ((TextBox)editor.FindName("VisualText")).Text);
+        editor.Undo();
+        Assert.IsFalse(editor.Draft.IsModified);
+        Assert.AreEqual(originalFormat, editor.SelectedElement.Item.Definition.GetTextFormat());
+        editor.Redo(); editor.Redo();
+        Compile(host);
+        var reopened = ScaleformDocument.Parse(MovieBytes(fixture.First));
+        var field = ScaleformScene.Build(reopened).Definitions[1];
+        Assert.AreEqual(desired, field.GetTextFormat());
+        StringAssert.Contains(field.TextValue, "Updated &lt;caption&gt;<br/>");
+        Assert.IsFalse(editor.Draft.IsModified);
+        CollectionAssert.AreEqual(new byte[] { 0xFA, 0xCE, 0xDE, 0xAD }, reopened.Tags.Single(t => t.Code == 999).Payload.ToArray());
+        CollectionAssert.AreEqual(Movie(caption: "Literal <title> & text"), MovieBytes(fixture.Second));
+    }
+
+    private static void AssertTextFormattingInspectorCommitsAndFormatsNewArtwork()
+    {
+        var document = ScaleformDocument.Parse(Movie(includeFonts: true));
+        var originalField = document.Tags.Single(t => t.Code == 37);
+        originalField.SetTextFormat(originalField.GetTextFormat() with { FontId = 3, FontName = "UnknownSharedFont" });
+        var draft = new ScaleformVisualDraft();
+        var texts = new Dictionary<string, string>();
+        var editor = new ScaleformVisualEditor();
+        editor.LoadMovie(document, _ => null, draft, texts);
+        SelectTitle(editor);
+        var font = (ComboBox)editor.FindName("TextFont");
+        Assert.AreEqual("UnknownSharedFont", ((ScaleformVisualEditor.TextFontChoice)font.SelectedItem).Name,
+            "The inspector must show an HTML face override even when its binary font ID names a different movie font.");
+        font.SelectedItem = font.Items.Cast<ScaleformVisualEditor.TextFontChoice>().Single(f => f.Id == 3 && f.Name == "$FontA");
+        Assert.AreEqual((ushort)3, editor.SelectedElement.Item.Definition.GetTextFormat().FontId);
+        ((TextBox)editor.FindName("TextFontSize")).Text = "28";
+        ((TextBox)editor.FindName("TextLetterSpacing")).Text = "1.5";
+        ((TextBox)editor.FindName("PositionX")).Text = "73";
+        Assert.IsTrue(editor.CommitPendingFields());
+        Assert.AreEqual(73, editor.SelectedElement.Matrix.OffsetX, "Transform and formatting fields must commit together without refreshing away pending input.");
+        var format = editor.SelectedElement.Item.Definition.GetTextFormat();
+        Assert.AreEqual(28, format.FontSize);
+        Assert.AreEqual(1.5, format.LetterSpacing);
+        ((TextBox)editor.FindName("TextFontSize")).Text = "NaN";
+        Assert.IsFalse(editor.CommitPendingFields(), "Invalid pending formatting must block apply/navigation.");
+        Assert.AreEqual(format, editor.SelectedElement.Item.Definition.GetTextFormat());
+        int frame = draft.Frame;
+        var slider = (Slider)editor.FindName("FrameSlider");
+        slider.Value = frame == 1 ? 2 : 1;
+        Assert.AreEqual(frame, draft.Frame);
+        Assert.AreEqual(frame, slider.Value, "A rejected frame change must restore the slider thumb.");
+        ((TextBox)editor.FindName("TextFontSize")).Text = "28";
+        Assert.IsTrue(editor.CommitPendingFields());
+        editor.AddNewElement(new ScaleformElementSpec { Kind = ScaleformElementKind.Text, Name = "newCaption", FontId = 4 }, 0, 0);
+        var createdFormat = editor.SelectedElement.Item.Definition.GetTextFormat() with { Color = 0x10A050FF, FontSize = 19, LetterSpacing = 3, Alignment = ScaleformTextAlignment.Right };
+        editor.ApplySelectedTextFormat(createdFormat);
+        editor.ApplySelectedText("New <field>");
+        var compiled = ScaleformDocument.Parse(document.Compile());
+        ScaleformVisualEditor.ApplyDraft(compiled, draft, texts);
+        var reloaded = ScaleformDocument.Parse(compiled.Compile());
+        var field = ScaleformScene.Build(reloaded).Items.Single(i => i.InstanceName == "newCaption").Definition;
+        Assert.AreEqual(createdFormat, field.GetTextFormat());
+        StringAssert.Contains(field.TextValue, "New &lt;field&gt;");
     }
 
     private static void AssertAuthoredLibraryCopiesSurviveDeletingTheirFirstInstanceAndUndoingAnOpenGroup()
@@ -459,11 +574,12 @@ public class ScaleformVisualEditorTests
         public void Dispose() => package.Dispose();
     }
 
-    private static byte[] Movie(bool includeSecondFrameUpdate = true, string caption = "Original caption", bool html = false)
+    private static byte[] Movie(bool includeSecondFrameUpdate = true, string caption = "Original caption", bool html = false, bool includeFonts = false)
     {
         byte[] text = Join(BitConverter.GetBytes((ushort)1), Rectangle(0, 2400, 0, 800), [0x80, html ? (byte)2 : (byte)0], CString("caption"), CString(caption));
         byte[] sprite = Join(BitConverter.GetBytes((ushort)2), BitConverter.GetBytes((ushort)1), Placement(1, 1, 5, 10, "Inside"), Tag(1, []), Tag(0, []));
         byte[] body = Join(Rectangle(0, 8000, 0, 6000), [0, 24, 2, 0],
+            includeFonts ? Tag(71, Join(CString("sharedfonts.swf"), [1, 0, 2, 0, 3, 0], CString("$FontA"), [4, 0], CString("$FontB"))) : [],
             Tag(37, text), Tag(39, sprite), Tag(9, [10, 20, 30]),
             Placement(1, 1, 20, 40, "Title"), Placement(2, 2, 150, 80, "Group", scale: 2),
             Tag(999, [0xFA, 0xCE, 0xDE, 0xAD]), Tag(1, []),

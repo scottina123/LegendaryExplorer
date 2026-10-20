@@ -2,6 +2,7 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:local="clr-namespace:LegendaryExplorer.UserControls.ExportLoaderControls.Scaleform"
+    xmlns:xctk="http://schemas.xceed.com/wpf/xaml/toolkit"
     Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"
     Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}">
     <UserControl.Resources>
@@ -20,6 +21,7 @@
             <Button Content="Fit canvas" Padding="10,5" Margin="0,0,5,0" Click="Fit_Click"/>
             <Button Content="100%" Padding="10,5" Margin="0,0,16,0" Click="ActualSize_Click"/>
             <Button Content="← Movie" Padding="10,5" Margin="0,0,8,0" Click="Root_Click"/>
+            <Button x:Name="ParentGroupButton" Content="↑ Up one group" Padding="10,5" Margin="0,0,8,0" Click="ParentGroup_Click" IsEnabled="False" ToolTip="Return to the containing group (Alt+Up on the canvas)"/>
             <TextBlock x:Name="ScopeLabel" Text="Movie canvas" VerticalAlignment="Center" FontWeight="SemiBold" Margin="0,0,16,0"/>
             <CheckBox x:Name="OutlineToggle" Content="Element outlines" VerticalAlignment="Center" Checked="Outlines_Changed" Unchecked="Outlines_Changed"/>
         </WrapPanel>
@@ -82,6 +84,21 @@
                         <StackPanel x:Name="TextPanel" Visibility="Collapsed" Margin="0,17,0,0">
                             <TextBlock Text="Text" FontWeight="SemiBold" Margin="0,0,0,7"/>
                             <TextBox x:Name="VisualText" MinHeight="85" AcceptsReturn="True" TextWrapping="Wrap" Padding="7" TextChanged="VisualText_Changed"/>
+                            <StackPanel x:Name="TextFormatPanel" Margin="0,10,0,0">
+                                <TextBlock Text="Colour" Opacity="0.65" Margin="0,0,0,4"/>
+                                <xctk:ColorPicker x:Name="TextColour" ShowAvailableColors="True" ShowStandardColors="True" SelectedColorChanged="TextFormat_Changed"/>
+                                <TextBlock Text="Movie font" Opacity="0.65" Margin="0,10,0,4"/>
+                                <ComboBox x:Name="TextFont" DisplayMemberPath="Name" Padding="4" SelectionChanged="TextFormat_Changed" ToolTip="Reuse an embedded or shared font from this movie"/>
+                                <UniformGrid Columns="2" Margin="0,10,0,0">
+                                    <StackPanel Margin="0,0,7,0"><TextBlock Text="Font size (px)" Opacity="0.65"/><TextBox x:Name="TextFontSize" Padding="6" LostKeyboardFocus="TextFormat_Commit" KeyDown="TextFormat_KeyDown"/></StackPanel>
+                                    <StackPanel><TextBlock Text="Letter spacing (px)" Opacity="0.65"/><TextBox x:Name="TextLetterSpacing" Padding="6" LostKeyboardFocus="TextFormat_Commit" KeyDown="TextFormat_KeyDown"/></StackPanel>
+                                </UniformGrid>
+                                <TextBlock Text="Align" Opacity="0.65" Margin="0,10,0,4"/>
+                                <ComboBox x:Name="TextAlignmentBox" Padding="4" SelectionChanged="TextFormat_Changed">
+                                    <ComboBoxItem Content="Left"/><ComboBoxItem Content="Right"/><ComboBoxItem Content="Centre"/><ComboBoxItem Content="Justify"/>
+                                </ComboBox>
+                                <TextBlock Text="Formatting applies to the whole text field. Shared text artwork updates every instance." Opacity="0.6" TextWrapping="Wrap" Margin="0,7,0,0"/>
+                            </StackPanel>
                         </StackPanel>
                         <Button x:Name="EditGroupButton" Content="Edit group contents" Padding="8" Margin="0,18,0,7" Click="EditGroup_Click"/>
                         <Button Content="Remove from this frame" Padding="8" Click="Remove_Click"/>
