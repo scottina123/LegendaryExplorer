@@ -272,6 +272,11 @@ namespace LegendaryExplorer.Misc.AppSettings
             get => _pathfindingeditor_backgroundcolor;
             set => SetProperty(ref _pathfindingeditor_backgroundcolor, value);
         }
+        private static bool _leveleditor_showstatsoverlay = true;
+        public static bool LevelEditor_ShowStatsOverlay {
+            get => _leveleditor_showstatsoverlay;
+            set => SetProperty(ref _leveleditor_showstatsoverlay, value);
+        }
         private static bool _leveleditor_showcollision = false;
         public static bool LevelEditor_ShowCollision {
             get => _leveleditor_showcollision;
@@ -705,6 +710,7 @@ namespace LegendaryExplorer.Misc.AppSettings
             PathfindingEditor_ShowSplinesLayer = TryGetSetting(settingsJson, "pathfindingeditor_showsplineslayer", false);
             PathfindingEditor_ShowEverythingElseLayer = TryGetSetting(settingsJson, "pathfindingeditor_showeverythingelselayer", false);
             PathfindingEditor_BackgroundColor = TryGetSetting(settingsJson, "pathfindingeditor_backgroundcolor", -8224126);
+            LevelEditor_ShowStatsOverlay = TryGetSetting(settingsJson, "leveleditor_showstatsoverlay", true);
             LevelEditor_ShowCollision = TryGetSetting(settingsJson, "leveleditor_showcollision", false);
             LevelEditor_ShowSelectedLightWireframe = TryGetSetting(settingsJson, "leveleditor_showselectedlightwireframe", true);
             LevelEditor_ShowLightIcons = TryGetSetting(settingsJson, "leveleditor_showlighticons", true);
@@ -837,6 +843,7 @@ namespace LegendaryExplorer.Misc.AppSettings
             settingsJson["pathfindingeditor_showsplineslayer"] = PathfindingEditor_ShowSplinesLayer.ToString();
             settingsJson["pathfindingeditor_showeverythingelselayer"] = PathfindingEditor_ShowEverythingElseLayer.ToString();
             settingsJson["pathfindingeditor_backgroundcolor"] = PathfindingEditor_BackgroundColor.ToString();
+            settingsJson["leveleditor_showstatsoverlay"] = LevelEditor_ShowStatsOverlay.ToString();
             settingsJson["leveleditor_showcollision"] = LevelEditor_ShowCollision.ToString();
             settingsJson["leveleditor_showselectedlightwireframe"] = LevelEditor_ShowSelectedLightWireframe.ToString();
             settingsJson["leveleditor_showlighticons"] = LevelEditor_ShowLightIcons.ToString();

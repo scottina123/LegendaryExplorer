@@ -314,6 +314,9 @@
                                         Command="{Binding CopyViewportIssuesCommand}"
                                         ToolTip="Copy viewport errors, exception details, and the current actor or navigation issues to the clipboard."/>
                                 <Separator Margin="0,4,0,4"/>
+                                <CheckBox Content="Show FPS and location" Margin="4,1,4,5"
+                                          IsChecked="{Binding ShowStatsOverlay}"
+                                          ToolTip="Show the FPS counter and camera location in the viewport. Clear to hide both."/>
                                 <scene3D:SceneControlOptionsControl/>
                                 <Separator Margin="0,4,0,4"/>
                                 <CheckBox Content="Use in-game mesh shaders" Margin="4,1,4,5"

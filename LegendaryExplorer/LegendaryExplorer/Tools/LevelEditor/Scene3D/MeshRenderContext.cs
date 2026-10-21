@@ -368,6 +368,7 @@ public class MeshRenderContext : RenderContext
     private float FPS;
     private long fpsWindowStartTimestamp;
     private uint fpsWindowStartFrame;
+    public bool ShowStatsOverlay { get; set; } = true;
     public bool ShowCameraPositionInStatsOverlay { get; set; } = true;
     public string ErrorText;
 
@@ -1551,7 +1552,7 @@ public class MeshRenderContext : RenderContext
             //render D2D overlay
             RenderTarget2D.BeginDraw();
             {
-                if (App.IsDebug)
+                if (App.IsDebug && ShowStatsOverlay)
                 {
                     var size = RenderTarget2D.Size;
                     statsTextBrush.Color = GetStatsTextColor();

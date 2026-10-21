@@ -363,6 +363,21 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
 
     public sealed record LightmassBackendChoice(StaticLightingBakeBackend Backend, string DisplayName);
 
+    private bool _showStatsOverlay = Settings.LevelEditor_ShowStatsOverlay;
+    public bool ShowStatsOverlay
+    {
+        get => _showStatsOverlay;
+        set
+        {
+            if (SetProperty(ref _showStatsOverlay, value))
+            {
+                Settings.LevelEditor_ShowStatsOverlay = value;
+                RenderContext.ShowStatsOverlay = value;
+                SceneViewer?.MarkRenderDirty();
+            }
+        }
+    }
+
     private bool _showSelectedLightWireframe = Settings.LevelEditor_ShowSelectedLightWireframe;
     public bool ShowSelectedLightWireframe
     {
@@ -827,6 +842,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         RenderContext = new LevelEditorRenderContext
         {
             UseGameShaders = _useGameMeshShaders,
+            ShowStatsOverlay = _showStatsOverlay,
             UseGameShaderMeshPreviews = true,
             LightingMode = _unlit ? ViewportLightingMode.Unlit : ViewportLightingMode.Level,
         };
