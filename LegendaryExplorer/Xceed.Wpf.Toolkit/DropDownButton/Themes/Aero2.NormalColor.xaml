@@ -109,19 +109,12 @@
                    StaysOpen="False"
                    Placement="{TemplateBinding DropDownPosition}"
                    Focusable="False"
-                   IsOpen="{Binding IsChecked, ElementName=PART_DropDownButton}"
-                   ToolTip="{x:Static sys:String.Empty}">
-              <Popup.Resources>
-                <Style TargetType="ToolTip">
-                  <Style.Triggers>
-                    <Trigger Property="Content"
-                             Value="{x:Static sys:String.Empty}">
-                      <Setter Property="Visibility"
-                              Value="Collapsed" />
-                    </Trigger>
-                  </Style.Triggers>
-                </Style>
-              </Popup.Resources>
+                   IsOpen="{Binding IsChecked, ElementName=PART_DropDownButton}">
+              <!-- Suppress the popup's own tooltip without overriding tooltip styles
+                   for every control inside the dropdown. -->
+              <Popup.ToolTip>
+                <ToolTip Visibility="Collapsed" />
+              </Popup.ToolTip>
               <Border BorderThickness="1"
                       Background="{TemplateBinding DropDownContentBackground}"
                       BorderBrush="{TemplateBinding BorderBrush}"
