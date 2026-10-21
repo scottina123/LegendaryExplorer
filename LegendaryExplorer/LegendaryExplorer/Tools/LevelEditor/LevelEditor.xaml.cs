@@ -423,6 +423,22 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         }
     }
 
+    private bool _showEmitters = Settings.LevelEditor_ShowEmitters;
+    public bool ShowEmitters
+    {
+        get => _showEmitters;
+        set
+        {
+            if (SetProperty(ref _showEmitters, value))
+            {
+                Settings.LevelEditor_ShowEmitters = value;
+                RenderContext.ShowEmitters = value;
+                RenderContext.SetShowEmitterVfx(value && _showEmitterVfx);
+                SceneViewer?.MarkRenderDirty();
+            }
+        }
+    }
+
     private bool _showEmitterVfx = Settings.LevelEditor_ShowEmitterVfx;
     public bool ShowEmitterVfx
     {
@@ -432,7 +448,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
             if (SetProperty(ref _showEmitterVfx, value))
             {
                 Settings.LevelEditor_ShowEmitterVfx = value;
-                RenderContext.SetShowEmitterVfx(value);
+                RenderContext.SetShowEmitterVfx(_showEmitters && value);
                 SceneViewer?.MarkRenderDirty();
             }
         }
@@ -816,7 +832,8 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         };
         RenderContext.ShowSelectedLightWireframe = _showSelectedLightWireframe;
         RenderContext.ShowLightIcons = _showLightIcons;
-        RenderContext.SetShowEmitterVfx(_showEmitterVfx);
+        RenderContext.ShowEmitters = _showEmitters;
+        RenderContext.SetShowEmitterVfx(_showEmitters && _showEmitterVfx);
         RenderContext.TransformWidget.OnDragComplete = OnWidgetDragComplete;
         _backgroundColor = GetThemeDefaultBackgroundColor();
         RenderContext.BackgroundColor = _backgroundColor;

@@ -406,6 +406,11 @@ public sealed class EmitterIconOverlay : UIElement
 
     private static bool DrawIcon(LevelEditorRenderContext context, ActorProxy actor)
     {
+        if (!context.IsActorVisible(actor))
+        {
+            return false;
+        }
+
         Vector3 basePosition = GetIconPosition(actor);
         Vector4 screenPosition = context.WorldToScreen(basePosition);
         if (screenPosition.W <= 0f)

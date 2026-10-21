@@ -322,9 +322,13 @@
                                 <CheckBox Content="Show selected light wireframe" Margin="4,1"
                                           IsChecked="{Binding ShowSelectedLightWireframe}"
                                           ToolTip="Show the radius or cone for the selected light, and direction arrows for a selected directional light."/>
-                                <CheckBox Content="Show emitter VFX" Margin="4,1,4,5"
+                                <CheckBox Content="Show emitters" Margin="4,1"
+                                          IsChecked="{Binding ShowEmitters}"
+                                          ToolTip="Show emitter effects and their selection icons in the viewport. Clear to hide both."/>
+                                <CheckBox Content="Show emitter VFX" Margin="18,1,4,5"
                                           IsChecked="{Binding ShowEmitterVfx}"
-                                          ToolTip="Render placed emitters with their in-game shaders. Lightweight emitter icons remain visible for selection."/>
+                                          IsEnabled="{Binding ShowEmitters}"
+                                          ToolTip="Render placed emitters with their in-game shaders. Clear to show only their selection icons while Show emitters is enabled."/>
                                 <CheckBox Content="Show decal actors" Margin="4,1"
                                           IsChecked="{Binding ShowDecalActors}"
                                           ToolTip="Render DecalActor receiver geometry with its in-game material shaders."/>

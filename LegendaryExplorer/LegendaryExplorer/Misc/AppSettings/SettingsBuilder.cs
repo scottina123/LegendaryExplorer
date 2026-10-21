@@ -292,6 +292,11 @@ namespace LegendaryExplorer.Misc.AppSettings
             get => _leveleditor_usegamemeshshaders;
             set => SetProperty(ref _leveleditor_usegamemeshshaders, value);
         }
+        private static bool _leveleditor_showemitters = true;
+        public static bool LevelEditor_ShowEmitters {
+            get => _leveleditor_showemitters;
+            set => SetProperty(ref _leveleditor_showemitters, value);
+        }
         private static bool _leveleditor_showemittervfx = false;
         public static bool LevelEditor_ShowEmitterVfx {
             get => _leveleditor_showemittervfx;
@@ -704,6 +709,7 @@ namespace LegendaryExplorer.Misc.AppSettings
             LevelEditor_ShowSelectedLightWireframe = TryGetSetting(settingsJson, "leveleditor_showselectedlightwireframe", true);
             LevelEditor_ShowLightIcons = TryGetSetting(settingsJson, "leveleditor_showlighticons", true);
             LevelEditor_UseGameMeshShaders = TryGetSetting(settingsJson, "leveleditor_usegamemeshshaders", true);
+            LevelEditor_ShowEmitters = TryGetSetting(settingsJson, "leveleditor_showemitters", true);
             LevelEditor_ShowEmitterVfx = TryGetSetting(settingsJson, "leveleditor_showemittervfx", false);
             LevelEditor_ShowVolumes = TryGetSetting(settingsJson, "leveleditor_showvolumes", false);
             LevelEditor_ShowVolumetrics = TryGetSetting(settingsJson, "leveleditor_showvolumetrics", false);
@@ -835,6 +841,7 @@ namespace LegendaryExplorer.Misc.AppSettings
             settingsJson["leveleditor_showselectedlightwireframe"] = LevelEditor_ShowSelectedLightWireframe.ToString();
             settingsJson["leveleditor_showlighticons"] = LevelEditor_ShowLightIcons.ToString();
             settingsJson["leveleditor_usegamemeshshaders"] = LevelEditor_UseGameMeshShaders.ToString();
+            settingsJson["leveleditor_showemitters"] = LevelEditor_ShowEmitters.ToString();
             settingsJson["leveleditor_showemittervfx"] = LevelEditor_ShowEmitterVfx.ToString();
             settingsJson["leveleditor_showvolumes"] = LevelEditor_ShowVolumes.ToString();
             settingsJson["leveleditor_showvolumetrics"] = LevelEditor_ShowVolumetrics.ToString();

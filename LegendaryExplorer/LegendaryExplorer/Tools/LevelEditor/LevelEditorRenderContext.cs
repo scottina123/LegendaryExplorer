@@ -304,6 +304,7 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
 
     public bool ShowSelectedLightWireframe = true;
     public bool ShowLightIcons = true;
+    public bool ShowEmitters = true;
     public bool ShowEmitterVfx { get; private set; }
     public bool ShowEmitterIcons = true;
     public bool ShowDecalActors = true;
@@ -316,6 +317,7 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
     public override bool IsActorVisible(ActorProxy actor) => actor is not null
         && (!actor.IsVolume || ShowVolumes)
         && (!actor.IsVolumetricMesh || ShowVolumetrics)
+        && (actor is not EmitterActorProxy || ShowEmitters)
         && (actor is not DecalActorProxy || ShowDecalActors)
         && (actor is not SFXPointOfInterestProxy || ShowPointsOfInterest)
         && (!actor.IsHidden || ShowHidden);
