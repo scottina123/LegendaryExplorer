@@ -307,6 +307,7 @@ public class LevelEditorRenderContext : MeshRenderContext, IVfxDepthStateProvide
     public bool ShowEmitters = true;
     public bool ShowEmitterVfx { get; private set; }
     public bool ShowEmitterIcons = true;
+    public bool ShowLensFlareIcons = true;
     public bool ShowDecalActors = true;
     public bool ShowPointsOfInterest = true;
     public bool ShowVolumes;

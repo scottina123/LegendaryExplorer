@@ -406,7 +406,7 @@ public sealed class EmitterIconOverlay : UIElement
 
     private static bool DrawIcon(LevelEditorRenderContext context, ActorProxy actor)
     {
-        if (!context.IsActorVisible(actor))
+        if ((actor is LensFlareSourceProxy && !context.ShowLensFlareIcons) || !context.IsActorVisible(actor))
         {
             return false;
         }

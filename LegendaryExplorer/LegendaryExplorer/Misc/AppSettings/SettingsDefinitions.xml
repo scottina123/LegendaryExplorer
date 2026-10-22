@@ -91,6 +91,7 @@
   <setting name="LevelEditor_ShowStatsOverlay" type="bool" defaultvalue="true"/>
   <setting name="LevelEditor_ShowCollision" type="bool" defaultvalue="false"/>
   <setting name="LevelEditor_ShowLightIcons" type="bool" defaultvalue="true"/>
+  <setting name="LevelEditor_ShowLensFlareIcons" type="bool" defaultvalue="true"/>
   <setting name="LevelEditor_UseGameMeshShaders" type="bool" defaultvalue="true"/>
   <setting name="LevelEditor_ShowVolumes" type="bool" defaultvalue="false"/>
   <setting name="LevelEditor_ShowVolumetrics" type="bool" defaultvalue="false"/>

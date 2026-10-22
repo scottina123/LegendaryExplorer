@@ -335,6 +335,9 @@
                                 <CheckBox Content="Show decal actors" Margin="4,1"
                                           IsChecked="{Binding ShowDecalActors}"
                                           ToolTip="Render DecalActor receiver geometry with its in-game material shaders."/>
+                                <CheckBox Content="Show lens flare icons" Margin="4,1"
+                                          IsChecked="{Binding ShowLensFlareIcons}"
+                                          ToolTip="Show selection icons for lens flare sources. Clear to hide the icons while keeping the flare effects visible."/>
                                 <CheckBox Content="Show points of interest" Margin="4,1,4,5"
                                           IsChecked="{Binding ShowPointsOfInterest}">
                                     <CheckBox.ToolTip>

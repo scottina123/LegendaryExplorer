@@ -469,6 +469,21 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         }
     }
 
+    private bool _showLensFlareIcons = Settings.LevelEditor_ShowLensFlareIcons;
+    public bool ShowLensFlareIcons
+    {
+        get => _showLensFlareIcons;
+        set
+        {
+            if (SetProperty(ref _showLensFlareIcons, value))
+            {
+                Settings.LevelEditor_ShowLensFlareIcons = value;
+                RenderContext.ShowLensFlareIcons = value;
+                SceneViewer?.MarkRenderDirty();
+            }
+        }
+    }
+
     private bool _showDecalActors = true;
     public bool ShowDecalActors
     {
@@ -848,6 +863,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         };
         RenderContext.ShowSelectedLightWireframe = _showSelectedLightWireframe;
         RenderContext.ShowLightIcons = _showLightIcons;
+        RenderContext.ShowLensFlareIcons = _showLensFlareIcons;
         RenderContext.ShowEmitters = _showEmitters;
         RenderContext.SetShowEmitterVfx(_showEmitters && _showEmitterVfx);
         RenderContext.TransformWidget.OnDragComplete = OnWidgetDragComplete;
