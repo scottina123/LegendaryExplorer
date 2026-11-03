@@ -13183,19 +13183,19 @@ namespace LegendaryExplorer.DialogueEditor
                 case "SoundP_Bank":
                     if (SelectedConv.WwiseBank != null)
                     {
-                        OpenInToolkit("SoundplorerWPF", SelectedConv.WwiseBank.UIndex);
+                        ShowWindowAtFront(new SoundplorerWPF(SelectedConv.WwiseBank));
                     }
                     break;
                 case "SoundP_StreamM":
                     if (SelectedDialogueNode.WwiseStream_Male != null)
                     {
-                        OpenInToolkit("SoundplorerWPF", SelectedDialogueNode.WwiseStream_Male.UIndex);
+                        ShowWindowAtFront(new SoundplorerWPF(SelectedDialogueNode.WwiseStream_Male));
                     }
                     break;
                 case "SoundP_StreamF":
                     if (SelectedDialogueNode.WwiseStream_Female != null)
                     {
-                        OpenInToolkit("SoundplorerWPF", SelectedDialogueNode.WwiseStream_Female.UIndex);
+                        ShowWindowAtFront(new SoundplorerWPF(SelectedDialogueNode.WwiseStream_Female));
                     }
                     break;
                 case "InterpEdLine":

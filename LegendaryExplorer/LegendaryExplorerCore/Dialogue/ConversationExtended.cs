@@ -400,7 +400,12 @@ namespace LegendaryExplorerCore.Dialogue
             {
                 if (Export.FileRef.Game is not (MEGame.LE1 or MEGame.ME1))
                 {
-                    Dictionary<string, ExportEntry> streams = Export.FileRef.Exports.Where(x => x.ClassName == "WwiseStream").ToDictionary(x => $"{x.ObjectName.Name.ToLower()}_{x.UIndex}");
+                    var audioPackages = WwiseBank == null || WwiseBank.FileRef == Export.FileRef
+                        ? new[] { Export.FileRef }
+                        : new[] { Export.FileRef, WwiseBank.FileRef };
+                    Dictionary<string, ExportEntry> streams = audioPackages.SelectMany(package => package.Exports)
+                        .Where(x => x.ClassName == "WwiseStream")
+                        .ToDictionary(x => $"{x.ObjectName.Name.ToLower()}_{x.FileRef.FilePath}_{x.UIndex}");
 
                     foreach (var node in EntryList)
                     {
@@ -677,73 +682,63 @@ namespace LegendaryExplorerCore.Dialogue
         /// <summary>
         /// Sets this object's <see cref="WwiseBank"/> property based on the contents of the export
         /// </summary>
-        public void ParseWwiseBank()
+        public void ParseWwiseBank() => ParseWwiseBank(null);
+
+        public void ParseWwiseBank(PackageCache packageCache)
         {
             WwiseBank = null;
             if (!Export.FileRef.Game.IsGame1())
             {
                 try
                 {
-                    ArrayProperty<ObjectProperty> wwevents;
-                    IEntry ffxo = GetFaceFX(-1, true); //find owner animset
+                    using var ownedCache = packageCache == null ? new PackageCache { AlwaysOpenFromDisk = false } : null;
+                    packageCache ??= ownedCache;
 
-                    if (ffxo == null) //if no facefx then maybe soundobject conversation
+                    ExportEntry Resolve(IEntry entry) => entry switch
                     {
-                        wwevents = Export.GetProperty<ArrayProperty<ObjectProperty>>("m_aMaleSoundObjects");
+                        ExportEntry export => export,
+                        ImportEntry import => EntryImporter.ResolveImport(import, packageCache),
+                        _ => null
+                    };
+
+                    var eventSources = new List<(IMEPackage Package, ArrayProperty<ObjectProperty> Events)>();
+                    foreach (int speaker in new[] { -1, -2, 0 })
+                    {
+                        var faceFX = Resolve(GetFaceFX(speaker, true));
+                        if (faceFX != null)
+                            eventSources.Add((faceFX.FileRef, faceFX.GetProperty<ArrayProperty<ObjectProperty>>("ReferencedSoundCues")));
                     }
-                    else
-                    {
-                        ExportEntry ffxoExport = (ExportEntry)ffxo;
+                    eventSources.Add((Export.FileRef, Export.GetProperty<ArrayProperty<ObjectProperty>>("m_aMaleSoundObjects")));
 
-                        wwevents = ffxoExport.GetProperty<ArrayProperty<ObjectProperty>>("ReferencedSoundCues"); //pull an owner wwiseevent array
-                        if (wwevents == null || wwevents.Count == 0 || wwevents[0].Value == 0)
+                    foreach (var (package, events) in eventSources)
+                    {
+                        if (events == null)
+                            continue;
+                        foreach (var eventRef in events)
                         {
-                            IEntry ffxp = GetFaceFX(-2, true); //find player as alternative
-                            if (!Export.FileRef.IsUExport(ffxp.UIndex))
-                                return;
-                            ExportEntry ffxpExport = (ExportEntry)ffxp;
-                            wwevents = ffxpExport.GetProperty<ArrayProperty<ObjectProperty>>("ReferencedSoundCues");
-                        }
-                        if (wwevents == null || wwevents.Count == 0 || wwevents[0].Value == 0)
-                        {
-                            IEntry ffxS = GetFaceFX(0, true); //find speaker 1 as alternative
-                            if (ffxS == null || !Export.FileRef.IsUExport(ffxS.UIndex))
-                                return;
-                            ExportEntry ffxSExport = (ExportEntry)ffxS;
-                            wwevents = ffxSExport.GetProperty<ArrayProperty<ObjectProperty>>("ReferencedSoundCues");
-                        }
-                    }
+                            var audioEvent = Resolve(package.GetEntry(eventRef.Value));
+                            if (audioEvent?.ClassName != "WwiseEvent")
+                                continue;
 
-                    if (wwevents == null || wwevents.Count == 0 || wwevents[0].Value == 0)
-                    {
-                        WwiseBank = null;
-                        return;
-                    }
+                            int bankIndex = 0;
+                            if (Export.Game.IsGame3())
+                                bankIndex = audioEvent.GetProperty<StructProperty>("Relationships")?.GetProp<ObjectProperty>("Bank")?.Value ?? 0;
+                            else if (Export.Game == MEGame.ME2)
+                                bankIndex = audioEvent.GetBinaryData<WwiseEvent>().Links
+                                    .SelectMany(link => link.WwiseBanks).FirstOrDefault(index => index != 0);
+                            else if (Export.Game == MEGame.LE2)
+                                bankIndex = audioEvent.GetProperty<ArrayProperty<StructProperty>>("References")?.FirstOrDefault()
+                                    ?.GetProp<StructProperty>("Relationships")?.GetProp<ObjectProperty>("Bank")?.Value ?? 0;
 
-                    if (Export.FileRef.Game.IsGame3())
-                    {
-                        StructProperty r = Export.FileRef.GetUExport(wwevents[0].Value).GetProperty<StructProperty>("Relationships"); //lookup bank
-                        var bank = r.GetProp<ObjectProperty>("Bank");
-                        WwiseBank = Export.FileRef.GetUExport(bank.Value);
-                    }
-                    else if (Export.FileRef.Game == MEGame.ME2) //Game is ME2.  Wwisebank ref in Binary.
-                    {
-                        var wwiseEvent = Export.FileRef.GetUExport(wwevents[0].Value).GetBinaryData<WwiseEvent>();
-                        foreach (var link in wwiseEvent.Links)
-                        {
-                            if (link.WwiseBanks.FirstOrDefault() is int bankIdx and > 0)
+                            // Indices belong to the resolved event's package, which may differ from
+                            // both the conversation and FaceFX packages. Banks can be imports too.
+                            var bank = Resolve(audioEvent.FileRef.GetEntry(bankIndex));
+                            if (bank?.ClassName == "WwiseBank")
                             {
-                                WwiseBank = Export.FileRef.GetUExport(bankIdx);
-                                break;
+                                WwiseBank = bank;
+                                return;
                             }
                         }
-                    }
-                    else if (Export.FileRef.Game is MEGame.LE2)
-                    {
-                        var r = Export.FileRef.GetUExport(wwevents[0].Value).GetProperty<ArrayProperty<StructProperty>>("References"); //lookup PlatformRelationships
-                        var wr = r[0].GetProp<StructProperty>("Relationships");
-                        var bank = wr.GetProp<ObjectProperty>("Bank");
-                        WwiseBank = Export.FileRef.GetUExport(bank.Value);
                     }
                 }
                 catch (Exception e)
