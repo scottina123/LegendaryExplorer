@@ -12,8 +12,8 @@
         MaxWidth="790"
         Title="Legendary Explorer" Height="670" Width="790" Opacity="0"
         WindowStyle="None" Foreground="{x:Null}" AllowsTransparency="True"
-        Background="#F015181D"  WindowStartupLocation="CenterScreen"  ResizeMode="CanMinimize"
-        BorderBrush="#15181D" BorderThickness="2"
+        Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}" WindowStartupLocation="CenterScreen" ResizeMode="CanMinimize"
+        BorderBrush="{DynamicResource {x:Static SystemColors.WindowBrushKey}}" BorderThickness="2"
         Closing="MainWindow_Closing" PreviewMouseDown="MainWindow_PreviewMouseDown"
         PreviewKeyDown="MainWindow_PreviewKeyDown" Deactivated="MainWindow_Deactivated">
     <Window.CommandBindings>
@@ -32,7 +32,7 @@
                 <Setter.Value>  
                     <ControlTemplate>  
                         <Rectangle StrokeThickness="1"  
-                                   Stroke="White"  
+                                   Stroke="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}"
                                    StrokeDashArray="1 2"  
                                    SnapsToDevicePixels="true"/>  
                     </ControlTemplate>  
@@ -56,10 +56,13 @@
             <Setter Property="FocusVisualStyle" Value="{StaticResource MainWindowFocusVisualStyle}"/>
             <Style.Triggers>
                 <Trigger Property="IsMouseOver" Value="True">
-                    <Setter Property="Foreground" Value="{StaticResource MouseOverBrush}"/>
+                    <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}"/>
+                </Trigger>
+                <Trigger Property="IsEnabled" Value="False">
+                    <Setter Property="Opacity" Value="0.3"/>
                 </Trigger>
                 <Trigger Property="IsKeyboardFocused" Value="True">
-                    <Setter Property="Foreground" Value="{StaticResource MouseOverBrush}"/>
+                    <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}"/>
                 </Trigger>
             </Style.Triggers>
         </Style>
@@ -68,7 +71,7 @@
 
     <Grid>
         <Rectangle MouseDown="BackgroundMouseDown" Fill="#00000000"/>
-        <DockPanel>
+        <DockPanel Background="Transparent">
             
             <!-- Window controls and drag area -->
             <Grid DockPanel.Dock="Top" Height="30" Background="Transparent" MouseDown="BackgroundMouseDown">
@@ -84,262 +87,77 @@
                 </StackPanel>
             </Grid>
 
-            <!-- Bottom toolbar -->
-            <Border DockPanel.Dock="Bottom" BorderBrush="#FF292E36" BorderThickness="0,1,0,0"
-                    Background="#FF20242B" Padding="4,7" Height="56">
+            <!-- Search, favorites and page navigation -->
+            <Border DockPanel.Dock="Bottom" BorderThickness="0"
+                    Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}" Padding="8,7" Height="56">
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
-
-                    <Button x:Name="CategoriesButton" Grid.Column="0" Style="{StaticResource BottomBarButton}"
-                            Click="CategoriesButton_Click" TabIndex="2" ToolTip="Tool categories and favorites"
-                            AutomationProperties.Name="Tool categories and favorites">
-                        <fa5:ImageAwesome Icon="Solid_Bars" Width="24" Height="24"
-                                          Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
-                        <Button.ContextMenu>
-                            <ContextMenu x:Name="CategoriesMenu" Placement="Top">
-                                <MenuItem x:Name="FavoritesMenuItem" Header="Favorites" IsCheckable="True"
-                                          Click="CategoryMenuItem_Click"
-                                          ToolTip="Right-click on a tool to favorite or unfavorite it"/>
-                                <Separator/>
-                                <MenuItem x:Name="CoreEditorsMenuItem" Header="Core Editors" Tag="Core Editors"
-                                          IsCheckable="True" Click="CategoryMenuItem_Click"
-                                          ToolTip="Core package editing tools"/>
-                                <MenuItem Header="Cinematic Tools" Tag="Cinematic Tools"
-                                          IsCheckable="True" Click="CategoryMenuItem_Click"
-                                          ToolTip="Tools related to conversation and cutscene editing"/>
-                                <MenuItem Header="Audio Tools" Tag="Audio Tools"
-                                          IsCheckable="True" Click="CategoryMenuItem_Click"
-                                          ToolTip="Audio modification tools"/>
-                                <MenuItem Header="Meshes &amp; Textures" Tag="Meshes + Textures"
-                                          IsCheckable="True" Click="CategoryMenuItem_Click"
-                                          ToolTip="Texture and mesh modding tools"/>
-                                <MenuItem Header="Extract &amp; Repack" Tag="Extractors + Repackers"
-                                          IsCheckable="True" Click="CategoryMenuItem_Click"
-                                          ToolTip="Tools for extracting data from game files"/>
-                                <MenuItem Header="Utilities" Tag="Utilities"
-                                          IsCheckable="True" Click="CategoryMenuItem_Click"
-                                          ToolTip="Assorted utilities to aid mod developers"/>
-                                <MenuItem x:Name="ToolsetDevsMenuItem" Header="Toolset Devs Only" Tag="Toolset Devs"
-                                          IsCheckable="True" Click="CategoryMenuItem_Click" Visibility="Collapsed"
-                                          ToolTip="Tools to aid in toolset development"/>
-                            </ContextMenu>
-                        </Button.ContextMenu>
-                    </Button>
-
-                    <Grid Grid.Column="1" Margin="0,0,8,0">
+                    <Grid Grid.Column="0" Margin="0,0,6,0">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
-                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
-                        <Button x:Name="SearchButton" Style="{StaticResource BottomBarButton}" HorizontalAlignment="Left"
-                                Click="SearchButton_Click" TabIndex="3" ToolTip="Search tools"
+                        <Button x:Name="SearchButton" Style="{StaticResource BottomBarButton}"
+                                Click="SearchButton_Click" TabIndex="2" ToolTip="Search tools (Ctrl+F)"
                                 AutomationProperties.Name="Search tools">
                             <fa5:ImageAwesome Icon="Solid_Search" Width="24" Height="24"
                                               Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
                         </Button>
-                        <Border x:Name="SearchBorder" BorderBrush="#FF292E36" BorderThickness="1"
-                                Background="#FF15181D" CornerRadius="6" Width="210" Visibility="Collapsed">
-                            <TextBox x:Name="SearchBox" FontFamily="{StaticResource BioMass-Light}"
-                                     TabIndex="3" FontSize="17" Background="Transparent" BorderThickness="0"
-                                     BorderBrush="{x:Null}" Foreground="#FFDADFE6" VerticalContentAlignment="Center"
-                                     CaretBrush="#FFDADFE6" Padding="10,0" FocusVisualStyle="{x:Null}"
-                                     AutomationProperties.Name="Search tools" ToolTip="Search tools"
+                        <Border x:Name="SearchBorder" BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}" BorderThickness="1"
+                                Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}" CornerRadius="6" Width="190" Visibility="Collapsed">
+                            <TextBox x:Name="SearchBox" FontFamily="{StaticResource AudemusUiFont}"
+                                     TabIndex="2" FontSize="15" Background="Transparent" BorderThickness="0"
+                                     Foreground="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}" VerticalContentAlignment="Center" CaretBrush="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}"
+                                     Padding="10,0" FocusVisualStyle="{x:Null}"
+                                     AutomationProperties.Name="Search tools" ToolTip="Search names or abbreviations"
                                      TextChanged="SearchBox_TextChanged"/>
                         </Border>
-                        <mainWindow:ToolTaskbar x:Name="pinnedToolTaskbar" Grid.Column="1" Margin="4,0,0,0"/>
+                        <Button x:Name="CloseSearchButton" Grid.Column="1" Width="28" Margin="2,0,0,0"
+                                Style="{StaticResource BottomBarButton}" Click="CloseSearch_Click"
+                                Visibility="{Binding Visibility, ElementName=SearchBorder}"
+                                ToolTip="Close search (Esc)" AutomationProperties.Name="Close search">
+                            <fa5:ImageAwesome Icon="Solid_Times" Width="14" Height="14"
+                                              Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
+                        </Button>
                     </Grid>
-
-                    <Button Grid.Column="2" Style="{StaticResource BottomBarButton}" Click="Settings_Click"
-                            TabIndex="4" ToolTip="Settings" AutomationProperties.Name="Settings">
-                        <Rectangle Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
-                                   Width="28" Height="28">
-                            <Rectangle.OpacityMask>
-                                <ImageBrush ImageSource="/Resources/Images/LEX_Toolbar_Settings.ico"/>
-                            </Rectangle.OpacityMask>
+                    <mainWindow:ToolTaskbar x:Name="pinnedToolTaskbar" Grid.Column="1" Margin="0,0,8,0"/>
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,8,0">
+                        <Button x:Name="PreviousPageButton" Style="{StaticResource BottomBarButton}" Width="30"
+                                Click="PreviousPage_Click" ToolTip="Previous page (Page Up)" AutomationProperties.Name="Previous tool page">
+                            <fa5:ImageAwesome Icon="Solid_ChevronLeft" Width="12" Height="16"
+                                              Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
+                        </Button>
+                        <TextBlock x:Name="PageStatus" Foreground="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}" FontSize="12" MinWidth="42"
+                                   TextAlignment="Center" VerticalAlignment="Center" AutomationProperties.Name="Tool page"/>
+                        <Button x:Name="NextPageButton" Style="{StaticResource BottomBarButton}" Width="30"
+                                Click="NextPage_Click" ToolTip="Next page (Page Down)" AutomationProperties.Name="Next tool page">
+                            <fa5:ImageAwesome Icon="Solid_ChevronRight" Width="12" Height="16"
+                                              Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
+                        </Button>
+                    </StackPanel>
+                    <Button Grid.Column="3" Style="{StaticResource BottomBarButton}" Click="Settings_Click"
+                            ToolTip="Settings" AutomationProperties.Name="Settings">
+                        <Rectangle Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" Width="28" Height="28">
+                            <Rectangle.OpacityMask><ImageBrush ImageSource="/Resources/Images/LEX_Toolbar_Settings.ico"/></Rectangle.OpacityMask>
                         </Rectangle>
                     </Button>
-                    <TextBlock Grid.Column="3" Text="{Binding Source={x:Static misc:AppVersion.MainMenuBuildDateTime}}"
-                               FontFamily="{StaticResource Exo-SemiBold}" FontWeight="Bold" FontSize="13"
-                               LineStackingStrategy="BlockLineHeight" LineHeight="17"
-                               Foreground="{StaticResource UncheckedBrush}" VerticalAlignment="Center"
-                               TextAlignment="Right" Margin="8,0,5,0" ToolTip="Build date and time"/>
+                    <TextBlock Grid.Column="4" Text="{Binding Source={x:Static misc:AppVersion.MainMenuBuildDateTime}}"
+                               FontFamily="{StaticResource AudemusUiFont}" FontWeight="Normal" FontSize="12"
+                               LineStackingStrategy="BlockLineHeight" LineHeight="16" Foreground="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}"
+                               VerticalAlignment="Center" TextAlignment="Right" Margin="8,0,5,0" ToolTip="Build date and time"/>
                 </Grid>
             </Border>
-
-            <!-- Tool info panel -->
-            <DockPanel x:Name="toolInfoPanel" DockPanel.Dock="Bottom" Height="80" Background="#FF304e75" Visibility="Collapsed">
-                <Border DockPanel.Dock="Left" BorderThickness="1" BorderBrush="{DynamicResource ForegroundBrush}" Margin="10,5" Height="60">
-                      <Image x:Name="toolInfoIcon" VerticalAlignment="Center" Width="60" Height="60" Opacity="0.85" RenderOptions.BitmapScalingMode="HighQuality"/>
-                 </Border>
-                <TextBlock x:Name="toolInfoText" Foreground="{StaticResource UncheckedBrush}" Margin="0,0,10,0" HorizontalAlignment="Stretch" VerticalAlignment="Center" FontSize="17" FontFamily="{StaticResource Exo-Regular}"
-                           TextWrapping="Wrap"/>
-            </DockPanel>
-            
-            <!--#region Tool Panel-->
-            <Grid>
-                <ScrollViewer x:Name="ToolScrollViewer" Background="#1A4b5568"
-                              HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto"
-                              ScrollChanged="ToolScrollViewer_ScrollChanged">
-
-                    <mainWindow:ToolPanel x:Name="mainToolPanel" ItemMargin="6,8,6,0">
-                        <mainWindow:ToolPanel.Style>
-                            <Style TargetType="{x:Type mainWindow:ToolPanel}">
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding IsChecked, ElementName=FavoritesMenuItem}" Value="True">
-                                        <Setter Property="MinimumRows" Value="4"/>
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </mainWindow:ToolPanel.Style>
-                    </mainWindow:ToolPanel>
-
-                    <!-- Fancy scrollbar -->
-                    <ScrollViewer.Resources>
-                        <Style x:Key="ScrollBarTrackThumb"
-                                TargetType="{x:Type Thumb}">
-                            <Setter Property="Template">
-                                <Setter.Value>
-                                    <ControlTemplate TargetType="{x:Type Thumb}">
-                                        <Grid x:Name="Grid">
-                                            <Rectangle HorizontalAlignment="Stretch"
-                                                        VerticalAlignment="Stretch"
-                                                        Width="Auto"
-                                                        Height="Auto"
-                                                        Fill="Transparent" />
-                                            <Border x:Name="CornerScrollBarRectangle"
-                                                    HorizontalAlignment="Stretch"
-                                                    VerticalAlignment="Stretch"
-                                                    Width="Auto"
-                                                    Height="Auto"
-                                                    Margin="0,1,0,1"
-                                                    Background="{TemplateBinding Background}" />
-                                        </Grid>
-                                        <ControlTemplate.Triggers>
-                                            <Trigger Property="Tag"
-                                                        Value="Horizontal">
-                                                <Setter TargetName="CornerScrollBarRectangle"
-                                                        Property="Width"
-                                                        Value="Auto" />
-                                                <Setter TargetName="CornerScrollBarRectangle"
-                                                        Property="Height"
-                                                        Value="6" />
-                                            </Trigger>
-                                        </ControlTemplate.Triggers>
-                                    </ControlTemplate>
-                                </Setter.Value>
-                            </Setter>
-                        </Style>
-                        <Style TargetType="{x:Type ScrollBar}">
-                            <Setter Property="Stylus.IsFlicksEnabled"
-                                    Value="false" />
-                            <Setter Property="Foreground"
-                                    Value="#A3FBFBFB" />
-                            <Setter Property="Background"
-                                    Value="Transparent" />
-                            <Setter Property="Width"
-                                    Value="7" />
-                            <Setter Property="Template">
-                                <Setter.Value>
-                                    <ControlTemplate TargetType="{x:Type ScrollBar}">
-                                        <Grid x:Name="GridRoot"
-                                                Width="7"
-                                                Background="{TemplateBinding Background}">
-                                            <Grid.RowDefinitions>
-                                                <RowDefinition Height="0.00001*" />
-                                            </Grid.RowDefinitions>
-                                            <Track x:Name="PART_Track"
-                                                    Grid.Row="0"
-                                                    IsDirectionReversed="true"
-                                                    Focusable="false">
-                                                <Track.Thumb>
-                                                    <Thumb x:Name="Thumb"
-                                                            Background="{TemplateBinding Foreground}"
-                                                            Style="{DynamicResource ScrollBarTrackThumb}" />
-                                                </Track.Thumb>
-                                                <Track.IncreaseRepeatButton>
-                                                    <RepeatButton x:Name="PageUp"
-                                                                    Command="ScrollBar.PageDownCommand"
-                                                                    Opacity="0"
-                                                                    Focusable="false" />
-                                                </Track.IncreaseRepeatButton>
-                                                <Track.DecreaseRepeatButton>
-                                                    <RepeatButton x:Name="PageDown"
-                                                                    Command="ScrollBar.PageUpCommand"
-                                                                    Opacity="0"
-                                                                    Focusable="false" />
-                                                </Track.DecreaseRepeatButton>
-                                            </Track>
-                                        </Grid>
-                                        <ControlTemplate.Triggers>
-                                            <Trigger SourceName="Thumb"
-                                                        Property="IsMouseOver"
-                                                        Value="true">
-                                                <Setter Value="{DynamicResource ButtonSelectBrush}"
-                                                        TargetName="Thumb"
-                                                        Property="Background" />
-                                            </Trigger>
-                                            <Trigger SourceName="Thumb"
-                                                        Property="IsDragging"
-                                                        Value="true">
-                                                <Setter Value="{DynamicResource DarkBrush}"
-                                                        TargetName="Thumb"
-                                                        Property="Background" />
-                                            </Trigger>
-
-                                            <Trigger Property="IsEnabled"
-                                                        Value="false">
-                                                <Setter TargetName="Thumb"
-                                                        Property="Visibility"
-                                                        Value="Collapsed" />
-                                            </Trigger>
-                                            <Trigger Property="Orientation"
-                                                        Value="Horizontal">
-                                                <Setter TargetName="GridRoot"
-                                                        Property="LayoutTransform">
-                                                    <Setter.Value>
-                                                        <RotateTransform Angle="-90" />
-                                                    </Setter.Value>
-                                                </Setter>
-                                                <Setter TargetName="PART_Track"
-                                                        Property="LayoutTransform">
-                                                    <Setter.Value>
-                                                        <RotateTransform Angle="-90" />
-                                                    </Setter.Value>
-                                                </Setter>
-                                                <Setter Property="Width"
-                                                        Value="Auto" />
-                                                <Setter Property="Height"
-                                                        Value="8" />
-                                                <Setter TargetName="Thumb"
-                                                        Property="Tag"
-                                                        Value="Horizontal" />
-                                                <Setter TargetName="PageDown"
-                                                        Property="Command"
-                                                        Value="ScrollBar.PageLeftCommand" />
-                                                <Setter TargetName="PageUp"
-                                                        Property="Command"
-                                                        Value="ScrollBar.PageRightCommand" />
-                                            </Trigger>
-                                        </ControlTemplate.Triggers>
-                                    </ControlTemplate>
-                                </Setter.Value>
-                            </Setter>
-                        </Style>
-                    </ScrollViewer.Resources>
-                </ScrollViewer> 
-                
-                <TextBlock x:Name="favoritesHint" HorizontalAlignment="Left" VerticalAlignment="Top" Visibility="Collapsed" Margin="15, 15"
-                           Foreground="{StaticResource ForegroundBrush}" FontSize="20" FontFamily="{StaticResource Exo-Regular}">
-                    You have no favorites set! Right-click on a tool and choose Favorite.
-                </TextBlock>
-
+            <Grid Background="Transparent" PreviewMouseWheel="ToolPanel_PreviewMouseWheel">
+                <mainWindow:ToolPanel x:Name="mainToolPanel"/>
+                <TextBlock x:Name="NoToolsHint" Text="No tools match your search." Visibility="Collapsed"
+                           Foreground="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}" FontSize="20" HorizontalAlignment="Center" VerticalAlignment="Center"/>
             </Grid>
-            <!--#endregion-->
         </DockPanel>
     </Grid>
 </Window>

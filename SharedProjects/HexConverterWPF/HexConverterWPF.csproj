@@ -37,6 +37,7 @@
     <CodeAnalysisRuleSet>MinimumRecommendedRules.ruleset</CodeAnalysisRuleSet>
   </PropertyGroup>
   <ItemGroup>
+    <Resource Include="..\..\LegendaryExplorer\LegendaryExplorer\Resources\Fonts\LexendDeca-Regular.ttf" Link="Resources\Fonts\LexendDeca-Regular.ttf" />
     <Resource Include="hexconverter_icon.ico" />
   </ItemGroup>
   <ItemGroup>

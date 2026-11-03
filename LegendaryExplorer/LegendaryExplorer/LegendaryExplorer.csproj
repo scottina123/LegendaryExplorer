@@ -103,6 +103,9 @@
 		</Page>
 	</ItemGroup>
 	<ItemGroup>
+		<Resource Include="Resources\Fonts\LexendDeca-Regular.ttf" />
+		<EmbeddedResource Include="Resources\Fonts\LexendDeca-Regular.ttf" LogicalName="LegendaryExplorer.LexendDeca-Regular.ttf" />
+		<Content Include="Resources\Fonts\LexendDeca-OFL.txt" CopyToOutputDirectory="PreserveNewest" />
 		<Resource Include="Resources\Fonts\Exo-Regular.ttf" />
 		<Resource Include="Resources\Fonts\Exo-SemiBold.ttf" />
 		<Resource Include="Resources\Fonts\Hack-Bold.ttf" />

@@ -4,7 +4,9 @@ using System.Reflection;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Threading;
+using System.Windows.Media;
 using LegendaryExplorer.MainWindow;
+using LegendaryExplorer.Misc;
 using LegendaryExplorer.Misc.AppSettings;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -26,6 +28,7 @@ public class SettingsWindowTests
         var loadedField = typeof(Settings).GetField("Loaded", BindingFlags.Static | BindingFlags.NonPublic)!;
         object previousLoaded = loadedField.GetValue(null);
         bool previousAutoSave = Settings.SequenceEditor_AutoSaveViewV2;
+        string previousTheme = Settings.Global_Theme;
         loadedField.SetValue(null, false); // Exercise editing without saving the user's preferences.
         SettingsWindow window = null;
         try
@@ -39,10 +42,13 @@ public class SettingsWindowTests
             var categories = tabs.Items.Cast<TabItem>().ToArray();
             var general = categories.Single(tab => Equals(tab.Header, "General"));
             tabs.SelectedItem = general;
+            VerifyThemeButtons(window);
 
             var presetButton = (Button)window.FindName("ApplyScottinaPresetButton");
             Assert.AreEqual("Apply Scottina's preset", presetButton.Content);
-            foreach (string presetSearch in new[] { "Scottina", "favorites" })
+            Assert.AreEqual(1, ((StackPanel)presetButton.Parent).Children.Count,
+                "The preset row must contain only the button, without a description.");
+            foreach (string presetSearch in new[] { "Scottina", "preset" })
             {
                 search.Text = presetSearch;
                 Assert.AreSame(general, tabs.SelectedItem);
@@ -75,7 +81,7 @@ public class SettingsWindowTests
                 ((FrameworkElement)((CheckBox)window.FindName("Soundplorer_AutoplayEntriesOnSelection")).Parent).Visibility);
 
             search.Text = "modern dark";
-            Assert.AreSame(general, tabs.SelectedItem, "Search must also match dropdown option labels.");
+            Assert.AreSame(general, tabs.SelectedItem, "Search must also match theme button labels.");
             Assert.AreEqual(1, ((StackPanel)((ScrollViewer)general.Content).Content).Children
                 .Cast<FrameworkElement>().Count(element => element.Visibility == Visibility.Visible));
 
@@ -117,7 +123,67 @@ public class SettingsWindowTests
         {
             window?.Close();
             Settings.SequenceEditor_AutoSaveViewV2 = previousAutoSave;
+            Settings.Global_Theme = previousTheme;
             loadedField.SetValue(null, previousLoaded);
+        }
+    }
+
+    private static void VerifyThemeButtons(SettingsWindow window)
+    {
+        var options = new[]
+        {
+            (Theme: "Light", Button: (RadioButton)window.FindName("LightThemeButton")),
+            (Theme: "Dark", Button: (RadioButton)window.FindName("DarkThemeButton")),
+            (Theme: "ModernDark", Button: (RadioButton)window.FindName("ModernDarkThemeButton"))
+        };
+        var row = (StackPanel)options[0].Button.Parent;
+        var tile = new ToolTile { IsFlat = true, DataContext = new Tool { Abbreviation = "pkg" } };
+        tile.Measure(new Size(96, 80));
+        tile.Arrange(new Rect(0, 0, 96, 80));
+        var tileHost = new Window
+        {
+            Content = tile, Width = 96, Height = 80, Left = -10000, Top = -10000,
+            ShowActivated = false, ShowInTaskbar = false, WindowStyle = WindowStyle.None
+        };
+        tileHost.Show();
+        try
+        {
+            Assert.AreEqual(Orientation.Horizontal, row.Orientation);
+            Assert.HasCount(3, row.Children.OfType<RadioButton>().ToArray());
+            foreach (var option in options)
+            {
+                option.Button.SetCurrentValue(RadioButton.IsCheckedProperty, true);
+                FlushDispatcher();
+                Assert.AreEqual(option.Theme, Settings.Global_Theme, "Theme buttons must update the saved setting.");
+                Assert.AreEqual(1, options.Count(item => item.Button.IsChecked == true));
+                ThemeManager.ApplyTheme(Enum.Parse<AppTheme>(option.Theme));
+                FlushDispatcher();
+                var label = Descendants<TextBlock>(tile).Single();
+                Color actual = ((SolidColorBrush)label.Foreground).Color;
+                Color expected = ((SolidColorBrush)Application.Current.FindResource(SystemColors.WindowTextBrushKey)).Color;
+                Assert.AreEqual(expected, actual, $"Flat menu labels must follow {option.Theme} text colors.");
+            }
+            Settings.Global_Theme = "Light";
+            FlushDispatcher();
+            Assert.IsTrue(options[0].Button.IsChecked, "External setting changes must update the selected button.");
+            Settings.Global_Theme = "Dark";
+            FlushDispatcher();
+            Assert.IsTrue(options[1].Button.IsChecked);
+            ThemeManager.ApplyTheme(AppTheme.Dark);
+        }
+        finally
+        {
+            tileHost.Close();
+        }
+    }
+
+    private static System.Collections.Generic.IEnumerable<T> Descendants<T>(DependencyObject parent) where T : DependencyObject
+    {
+        for (int i = 0; i < VisualTreeHelper.GetChildrenCount(parent); i++)
+        {
+            DependencyObject child = VisualTreeHelper.GetChild(parent, i);
+            if (child is T match) yield return match;
+            foreach (T descendant in Descendants<T>(child)) yield return descendant;
         }
     }
 

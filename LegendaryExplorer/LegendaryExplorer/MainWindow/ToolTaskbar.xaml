@@ -10,7 +10,7 @@
             <Setter Property="Width" Value="18"/>
             <Setter Property="Height" Value="40"/>
             <Setter Property="Margin" Value="0"/>
-            <Setter Property="Foreground" Value="#BFBFBF"/>
+            <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
             <Setter Property="FocusVisualStyle" Value="{DynamicResource MainWindowFocusVisualStyle}"/>
             <Style.Triggers>
                 <Trigger Property="IsEnabled" Value="False">
@@ -26,15 +26,15 @@
             <ColumnDefinition Width="Auto"/>
         </Grid.ColumnDefinitions>
         <Button x:Name="ScrollLeftButton" Grid.Column="0" Style="{StaticResource TaskbarScrollButton}"
-                Visibility="Collapsed" Click="ScrollLeft_Click" ToolTip="Scroll pinned tools left"
-                AutomationProperties.Name="Scroll pinned tools left">
+                Visibility="Collapsed" Click="ScrollLeft_Click" ToolTip="Scroll favorites left"
+                AutomationProperties.Name="Scroll favorites left">
             <fa5:ImageAwesome Icon="Solid_ChevronLeft" Width="10" Height="10"
                               Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
         </Button>
         <ScrollViewer x:Name="TaskbarScrollViewer" Grid.Column="1" HorizontalScrollBarVisibility="Hidden"
                       VerticalScrollBarVisibility="Disabled" PanningMode="HorizontalOnly"
                       ScrollChanged="TaskbarScrollViewer_ScrollChanged" PreviewMouseWheel="TaskbarScrollViewer_PreviewMouseWheel">
-            <ItemsControl x:Name="PinnedToolList" AutomationProperties.Name="Pinned tools">
+            <ItemsControl x:Name="PinnedToolList" AutomationProperties.Name="Favorite tools">
                 <ItemsControl.ItemsPanel>
                     <ItemsPanelTemplate>
                         <StackPanel Orientation="Horizontal"/>
@@ -42,29 +42,29 @@
                 </ItemsControl.ItemsPanel>
                 <ItemsControl.ItemTemplate>
                     <DataTemplate>
-                        <Button Width="40" Height="40" Margin="1,0" Padding="4"
+                        <Button Width="52" Height="40" Margin="2,0" Padding="0"
+                                HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"
                                 Style="{StaticResource BorderlessButton}"
                                 FocusVisualStyle="{DynamicResource MainWindowFocusVisualStyle}"
                                 Click="Button_Click" MouseEnter="Button_MouseEnter" MouseLeave="Button_MouseLeave"
                                 PreviewMouseLeftButtonDown="Shortcut_MouseLeftButtonDown" PreviewMouseMove="Shortcut_MouseMove"
                                 LostMouseCapture="Shortcut_LostMouseCapture"
-                                ToolTip="{Binding name}" AutomationProperties.Name="{Binding name}">
+                                ToolTip="{Binding DisplayName}" ToolTipService.InitialShowDelay="250" AutomationProperties.Name="{Binding DisplayName}">
                             <Button.ContextMenu>
                                 <mainWindow:ToolContextMenu/>
                             </Button.ContextMenu>
-                            <Image x:Name="toolIcon" Source="{Binding icon}" Width="32" Height="32"
-                                   Opacity="0.85" RenderOptions.BitmapScalingMode="HighQuality"/>
+                            <mainWindow:ToolTile IsFlat="True"/>
                         </Button>
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
         </ScrollViewer>
-        <Rectangle x:Name="DropIndicator" Grid.Column="1" Width="2" Height="34" Fill="#E1E1E1"
+        <Rectangle x:Name="DropIndicator" Grid.Column="1" Width="2" Height="34" Fill="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}"
                    HorizontalAlignment="Left" VerticalAlignment="Center" Visibility="Collapsed"
                    IsHitTestVisible="False"/>
         <Button x:Name="ScrollRightButton" Grid.Column="2" Style="{StaticResource TaskbarScrollButton}"
-                Visibility="Collapsed" Click="ScrollRight_Click" ToolTip="Scroll pinned tools right"
-                AutomationProperties.Name="Scroll pinned tools right">
+                Visibility="Collapsed" Click="ScrollRight_Click" ToolTip="Scroll favorites right"
+                AutomationProperties.Name="Scroll favorites right">
             <fa5:ImageAwesome Icon="Solid_ChevronRight" Width="10" Height="10"
                               Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
         </Button>

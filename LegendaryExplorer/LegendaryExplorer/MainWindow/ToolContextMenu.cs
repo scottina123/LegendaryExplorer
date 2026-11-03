@@ -6,15 +6,12 @@ namespace LegendaryExplorer.MainWindow;
 public sealed class ToolContextMenu : ContextMenu
 {
     private readonly MenuItem favoriteItem = new();
-    private readonly MenuItem taskbarPinItem = new();
 
     public ToolContextMenu()
     {
         SetResourceReference(StyleProperty, typeof(ContextMenu));
         Items.Add(favoriteItem);
-        Items.Add(taskbarPinItem);
         favoriteItem.Click += FavoriteItem_Click;
-        taskbarPinItem.Click += TaskbarPinItem_Click;
         Opened += (_, _) => RefreshTool();
         RefreshTool();
     }
@@ -26,28 +23,18 @@ public sealed class ToolContextMenu : ContextMenu
     {
         Tool tool = TargetTool;
         favoriteItem.Header = tool?.IsFavorited == true ? "Unfavorite" : "Favorite";
-        favoriteItem.IsEnabled = tool != null;
-        taskbarPinItem.Header = tool?.IsPinnedToTaskbar == true ? "Unpin from taskbar" : "Pin to taskbar";
-        taskbarPinItem.IsEnabled = tool?.open != null;
+        favoriteItem.IsEnabled = tool?.open != null;
+        favoriteItem.ToolTip = "Favorites appear in the taskbar. Shift-click a tool to toggle it.";
     }
 
     private void FavoriteItem_Click(object sender, RoutedEventArgs e)
     {
         e.Handled = true;
-        if (TargetTool is Tool tool)
+        if (TargetTool is Tool { open: not null } tool)
         {
             tool.IsFavorited = !tool.IsFavorited;
             RefreshTool();
         }
     }
 
-    private void TaskbarPinItem_Click(object sender, RoutedEventArgs e)
-    {
-        e.Handled = true;
-        if (TargetTool is Tool { open: not null } tool)
-        {
-            tool.IsPinnedToTaskbar = !tool.IsPinnedToTaskbar;
-            RefreshTool();
-        }
-    }
 }

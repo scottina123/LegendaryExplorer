@@ -9,8 +9,8 @@ using Newtonsoft.Json.Linq;
 namespace LegendaryExplorer.Misc.AppSettings;
 
 /// <summary>
-/// Scottina's saved preferences, captured on October 7, 2026. The embedded snapshot
-/// includes tool preferences and favorites, but excludes credentials and session history.
+/// Scottina's saved preferences, captured on November 2, 2026. The embedded snapshot
+/// includes tool preferences and taskbar favorites, but excludes credentials and session history.
 /// </summary>
 public static class ScottinaPreset
 {

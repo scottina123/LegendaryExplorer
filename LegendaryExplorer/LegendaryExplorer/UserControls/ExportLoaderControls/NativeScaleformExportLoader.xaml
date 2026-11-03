@@ -64,7 +64,7 @@
                         </Grid.RowDefinitions>
                         <TextBlock Text="{Binding SelectionTitle}" FontSize="19" FontWeight="SemiBold" TextWrapping="Wrap"/>
                         <TextBlock Grid.Row="1" Text="{Binding SelectionHelp}" Opacity="0.7" TextWrapping="Wrap" Margin="0,6,0,10"/>
-                        <TextBox Grid.Row="2" x:Name="PayloadEditor" FontFamily="Consolas" FontSize="13" AcceptsReturn="True" AcceptsTab="True" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto" TextWrapping="NoWrap" IsReadOnly="True" Padding="10"/>
+                        <TextBox Grid.Row="2" x:Name="PayloadEditor" FontFamily="{DynamicResource AudemusUiFont}" FontSize="13" AcceptsReturn="True" AcceptsTab="True" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto" TextWrapping="NoWrap" IsReadOnly="True" Padding="10"/>
                         <Button Grid.Row="3" Content="Export tag bytes…" Padding="10,6" HorizontalAlignment="Left" Margin="0,10,0,0" Click="ExportTag_Click" IsEnabled="{Binding HasSelection}"/>
                     </Grid>
                 </Grid>
@@ -77,7 +77,7 @@
                         <TextBox x:Name="FrameRateEditor" Width="140" HorizontalAlignment="Left" Padding="7"/>
                         <TextBlock Text="{Binding MovieDetails}" TextWrapping="Wrap" Margin="0,12,0,18"/>
                         <TextBlock Text="Package references" FontSize="19" FontWeight="SemiBold"/>
-                        <TextBlock Text="{Binding DependencySummary}" FontFamily="Consolas" TextWrapping="Wrap" Margin="0,10,0,18"/>
+                        <TextBlock Text="{Binding DependencySummary}" FontFamily="{DynamicResource AudemusUiFont}" TextWrapping="Wrap" Margin="0,10,0,18"/>
                         <TextBlock Text="Editing coverage" FontSize="19" FontWeight="SemiBold"/>
                         <TextBlock Text="Use Design to move, resize, rotate and create UI elements. Add UI creates panels, text, buttons and images from Texture2D assets or image files. Behaviors connects button events and reusable functions to actions with nodes and wires. Advanced resources and scripts remain available for technical work." TextWrapping="Wrap" Margin="0,10,0,12"/>
                         <TextBlock Text="Compile checks the movie structure and supported edited bytecode, then reopens the output. Game behavior still requires an in-game test. Apply updates the package in memory; use the package editor’s Save or Save As afterward." TextWrapping="Wrap" Opacity="0.75"/>

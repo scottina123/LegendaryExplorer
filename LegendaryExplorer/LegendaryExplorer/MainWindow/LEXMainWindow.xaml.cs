@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
@@ -35,7 +35,8 @@ namespace LegendaryExplorer.MainWindow
     /// </summary>
     public partial class LEXMainWindow : Window
     {
-        private MenuItem selectedCategory;
+        private ToolMenuPages toolPages;
+        private int pageIndex;
 
         public LEXMainWindow()
         {
@@ -51,26 +52,14 @@ namespace LegendaryExplorer.MainWindow
                 new InitialSetup().ShowDialog();
             }
 
-            if (ToolSet.Items.Any((t) => t.IsFavorited))
-            {
-                selectedCategory = FavoritesMenuItem;
-            }
-            else
-            {
-                selectedCategory = CoreEditorsMenuItem;
-            }
             RefreshToolList();
             RefreshTaskbarPins();
-            ToolSet.FavoritesChanged += ToolSet_FavoritesChanged;
             ToolSet.TaskbarPinsChanged += ToolSet_TaskbarPinsChanged;
             Closed += MainWindow_Closed;
-            // Keep the tool description panel available, but disable showing it on hover.
-            // mainToolPanel.ToolMouseOver += Tool_MouseOver;
 
 #if DEBUG
             MaxWidth = 915;
             Width = MaxWidth;
-            ToolsetDevsMenuItem.Visibility = Visibility.Visible;
 #endif
 
             Task.Run(TLKLoader.LoadSavedTlkList);
@@ -87,43 +76,13 @@ namespace LegendaryExplorer.MainWindow
             }
         }
 
-        private void ToolSet_FavoritesChanged(object sender, EventArgs e)
-        {
-            if (selectedCategory == FavoritesMenuItem)
-            {
-                RefreshToolList();
-            }
-        }
-
         private void ToolSet_TaskbarPinsChanged(object sender, EventArgs e) => RefreshTaskbarPins();
 
         private void RefreshTaskbarPins() => pinnedToolTaskbar.setToolList(ToolSet.PinnedTools);
 
         private void MainWindow_Closed(object sender, EventArgs e)
         {
-            ToolSet.FavoritesChanged -= ToolSet_FavoritesChanged;
             ToolSet.TaskbarPinsChanged -= ToolSet_TaskbarPinsChanged;
-        }
-
-        private void Tool_MouseOver(object sender, Tool t)
-        {
-            toolInfoPanel.Visibility = Visibility.Visible;
-            toolInfoIcon.Source = t.icon;
-            toolInfoText.Text = t.description;
-        }
-
-        private void ToolScrollViewer_ScrollChanged(object sender, ScrollChangedEventArgs e)
-        {
-            if (e.ViewportWidthChange == 0 && e.ViewportHeightChange == 0)
-            {
-                return;
-            }
-
-            // Fit six columns and four rows of square icons into the available tool area.
-            Thickness margin = mainToolPanel.ItemMargin;
-            double width = (ToolScrollViewer.ViewportWidth - 12) / 6 - margin.Left - margin.Right;
-            double height = (ToolScrollViewer.ViewportHeight - 10) / 4 - margin.Top - margin.Bottom - 5;
-            mainToolPanel.ItemSize = Math.Max(96, Math.Floor(Math.Min(width, height)));
         }
 
         private void Settings_Click(object sender, RoutedEventArgs e)
@@ -144,8 +103,17 @@ namespace LegendaryExplorer.MainWindow
             SearchBox.SelectAll();
         }
 
+        private void CloseSearch_Click(object sender, RoutedEventArgs e)
+        {
+            SearchBox.Clear();
+            CollapseSearch();
+            SearchButton.Focus();
+            e.Handled = true;
+        }
+
         private void CollapseSearch()
         {
+            if (!string.IsNullOrWhiteSpace(SearchBox.Text)) return;
             if (SearchBox.IsKeyboardFocusWithin)
             {
                 Keyboard.ClearFocus();
@@ -157,6 +125,7 @@ namespace LegendaryExplorer.MainWindow
         private void MainWindow_PreviewMouseDown(object sender, MouseButtonEventArgs e)
         {
             if (SearchBorder.Visibility == Visibility.Visible && !SearchBorder.IsMouseOver
+                && !CloseSearchButton.IsMouseOver
                 && !pinnedToolTaskbar.IsMouseOver)
             {
                 // Keep the results in place so this click can still open the tool under the pointer.
@@ -167,10 +136,18 @@ namespace LegendaryExplorer.MainWindow
 
         private void MainWindow_PreviewKeyDown(object sender, KeyEventArgs e)
         {
-            if (e.Key == Key.Escape && SearchBorder.Visibility == Visibility.Visible)
+            if (e.Key == Key.F && Keyboard.Modifiers == ModifierKeys.Control)
             {
-                CollapseSearch();
-                SearchButton.Focus();
+                SearchButton_Click(sender, e);
+                e.Handled = true;
+            }
+            else if (e.Key == Key.Escape && SearchBorder.Visibility == Visibility.Visible)
+            {
+                CloseSearch_Click(sender, e);
+            }
+            else if (!SearchBox.IsKeyboardFocusWithin && e.Key is Key.PageDown or Key.PageUp)
+            {
+                ShowPage(pageIndex + (e.Key == Key.PageDown ? 1 : -1));
                 e.Handled = true;
             }
         }
@@ -180,92 +157,32 @@ namespace LegendaryExplorer.MainWindow
             if (!pinnedToolTaskbar.IsDragging) CollapseSearch();
         }
 
-        private void CategoriesButton_Click(object sender, RoutedEventArgs e)
-        {
-            CollapseSearch();
-            CategoriesMenu.PlacementTarget = CategoriesButton;
-            CategoriesMenu.IsOpen = true;
-        }
-
-        private void CategoryMenuItem_Click(object sender, RoutedEventArgs e)
-        {
-            selectedCategory = (MenuItem)sender;
-            if (SearchBox.Text.Length > 0)
-            {
-                SearchBox.Clear();
-            }
-            else
-            {
-                RefreshToolList();
-            }
-        }
-
         private void RefreshToolList()
         {
-            if (selectedCategory == null)
-            {
-                return;
-            }
-
-            bool isSearching = !string.IsNullOrWhiteSpace(SearchBox.Text);
-            foreach (MenuItem item in CategoriesMenu.Items.OfType<MenuItem>())
-            {
-                item.IsChecked = !isSearching && item == selectedCategory;
-            }
-
-            if (isSearching)
-            {
-                ApplySearch();
-            }
-            else if (selectedCategory == FavoritesMenuItem)
-            {
-                SetToolListFromFavorites();
-            }
-            else
-            {
-                SetToolList((string)selectedCategory.Tag);
-            }
+            if (mainToolPanel == null || ToolSet.Items == null) return;
+            toolPages = new ToolMenuPages(ToolSet.Items, SearchBox.Text);
+            ShowPage(0);
         }
 
-        private void ApplySearch()
+        private void ShowPage(int index)
         {
-            var results = new List<Tool>();
-            string[] words = SearchBox.Text.ToLower().Split(' ');
-            foreach (Tool tool in ToolSet.Items)
-            {
-                if (tool.open != null)
-                {
-                    //for each word we've typed in
-                    if (words.Any(word => tool.tags.FuzzyMatch(word) || tool.name.ToLower().Contains(word) || tool.name.ToLower().Split(' ').FuzzyMatch(word)))
-                    {
-                        results.Add(tool);
-                    }
-                }
-            }
-
-            SetToolList(results);
+            if (toolPages == null) return;
+            pageIndex = Math.Clamp(index, 0, toolPages.PageCount - 1);
+            mainToolPanel.setToolList(toolPages.GetPage(pageIndex));
+            PageStatus.Text = $"{pageIndex + 1} / {toolPages.PageCount}";
+            PageStatus.ToolTip = $"{toolPages.Count} tools; {ToolMenuPages.PageSize} per page";
+            PreviousPageButton.IsEnabled = pageIndex > 0;
+            NextPageButton.IsEnabled = pageIndex < toolPages.PageCount - 1;
+            NoToolsHint.Visibility = toolPages.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         }
 
-        private void SetToolListFromFavorites()
-        {
-            var favorites = ToolSet.Items.Where(tool => tool.IsFavorited);
-            SetToolList(favorites);
-            if (!favorites.Any())
-            {
-                favoritesHint.Visibility = Visibility.Visible;
-            }
-        }
+        private void PreviousPage_Click(object sender, RoutedEventArgs e) => ShowPage(pageIndex - 1);
+        private void NextPage_Click(object sender, RoutedEventArgs e) => ShowPage(pageIndex + 1);
 
-        private void SetToolList(string category)
+        private void ToolPanel_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
         {
-            SetToolList(ToolSet.Items.Where((t) => t.category == category || t.category2 == category));
-        }
-
-        private void SetToolList(IEnumerable<Tool> tools)
-        {
-            mainToolPanel.setToolList(tools);
-            favoritesHint.Visibility = Visibility.Collapsed;
-            toolInfoPanel.Visibility = Visibility.Collapsed;
+            if (e.Delta != 0) ShowPage(pageIndex + (e.Delta < 0 ? 1 : -1));
+            e.Handled = true;
         }
 
         private void SystemCommand_CanExecute(object sender, CanExecuteRoutedEventArgs e)

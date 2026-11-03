@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
@@ -48,7 +48,12 @@ namespace LegendaryExplorer;
 public class Tool : DependencyObject
 {
     public string name { get; set; }
+    // Keep the saved tool identity and old search term while presenting the friendly name.
+    public string DisplayName => name == "SFXGalaxy Editor (LE2/LE3)" ? "Galaxy Map Editor (LE2/LE3)" : name;
     public ImageSource icon { get; set; }
+    public string Abbreviation { get; init; } = string.Empty;
+    private Brush mainMenuAccent;
+    public Brush MainMenuAccent => mainMenuAccent ??= MainWindow.ToolTileAppearance.CreateAccent(icon);
     public Action open { get; set; }
     public List<string> tags;
     public string category { get; set; }
@@ -67,7 +72,7 @@ public class Tool : DependencyObject
 
     private static void OnIsFavoritedChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
-        ToolSet.saveFavorites();
+        ((Tool)d).SetFavoriteMembership((bool)e.NewValue);
     }
 
     public bool IsPinnedToTaskbar
@@ -81,7 +86,25 @@ public class Tool : DependencyObject
             new PropertyMetadata(false, OnIsPinnedToTaskbarChanged));
 
     private static void OnIsPinnedToTaskbarChanged(DependencyObject d, DependencyPropertyChangedEventArgs e) =>
-        ToolSet.SaveTaskbarPins((Tool)d);
+        ((Tool)d).SetFavoriteMembership((bool)e.NewValue);
+
+    private bool synchronizingMembership;
+
+    private void SetFavoriteMembership(bool value)
+    {
+        if (synchronizingMembership) return;
+        synchronizingMembership = true;
+        try
+        {
+            IsFavorited = value;
+            IsPinnedToTaskbar = value;
+        }
+        finally
+        {
+            synchronizingMembership = false;
+        }
+        ToolSet.SaveTaskbarPins(this);
+    }
 }
 
 public static class ToolSet
@@ -89,7 +112,6 @@ public static class ToolSet
     private const string ICON_COMING_SOON_RES_NAME = "iconPlaceholder";
 
     private static HashSet<Tool> items;
-    private static bool synchronizingFavorites;
     private static bool synchronizingTaskbarPins;
     private static readonly List<Tool> taskbarPins = new();
     private static readonly IReadOnlyList<Tool> pinnedToolsView = taskbarPins.AsReadOnly();
@@ -116,6 +138,7 @@ public static class ToolSet
         set.Add(new Tool
         {
             name = "AutoTOC",
+            Abbreviation = "atoc",
             type = typeof(Tools.AutoTOC.AutoTOCWindow),
             icon = Application.Current.FindResource("iconAutoTOC") as ImageSource,
             open = () =>
@@ -130,6 +153,7 @@ public static class ToolSet
         set.Add(new Tool
         {
             name = "Memory Analyzer",
+            Abbreviation = "mem",
             type = typeof(MemoryAnalyzerUI),
             icon = Application.Current.FindResource("iconMemoryAnalyzer") as ImageSource,
             open = () =>
@@ -144,6 +168,7 @@ public static class ToolSet
         set.Add(new Tool
         {
             name = "File Hex Analyzer",
+            Abbreviation = "hex",
             type = typeof(FileHexViewer),
             icon = Application.Current.FindResource("iconFileHexAnalyzer") as ImageSource,
             open = () =>
@@ -158,6 +183,7 @@ public static class ToolSet
         set.Add(new Tool
         {
             name = "PSA Viewer",
+            Abbreviation = "psa",
             type = typeof(PSAViewerWindow),
             icon = Application.Current.FindResource("iconPlaceholder") as ImageSource,
             open = () =>
@@ -172,6 +198,7 @@ public static class ToolSet
         set.Add(new Tool
         {
             name = "SFAR Explorer",
+            Abbreviation = "sfar",
             type = typeof(Tools.SFARExplorer.SFARExplorerWindow),
             icon = Application.Current.FindResource("iconSFARExplorer") as ImageSource,
             open = () =>
@@ -186,6 +213,7 @@ public static class ToolSet
         set.Add(new Tool
         {
             name = "Shader Comparison",
+            Abbreviation = "shd",
             type = typeof(ToolsetDev.ShaderComparisonWindow),
             icon = Application.Current.FindResource("iconPlaceholder") as ImageSource,
             open = () =>
@@ -200,6 +228,7 @@ public static class ToolSet
         set.Add(new Tool
         {
             name = "Pathfinding Network Editor",
+            Abbreviation = "pne",
             type = typeof(PathfindingNetworkEditorWindow),
             icon = Application.Current.FindResource("iconPathfindingEditor") as ImageSource,
             open = () =>
@@ -217,6 +246,7 @@ public static class ToolSet
         set.Add(new Tool
         {
             name = "Animation Viewer",
+            Abbreviation = "aniv",
             type = typeof(Tools.AnimationViewer.AnimationViewerWindow),
             icon = Application.Current.FindResource("iconAnimViewer") as ImageSource,
             open = () =>
@@ -240,15 +270,19 @@ public static class ToolSet
         set.Add(new Tool
         {
             name = "Asset Viewer",
+            Abbreviation = "asv",
             type = typeof(AssetViewerWindow),
             icon = Application.Current.FindResource("iconAssetViewer") as ImageSource,
             open = () =>
             {
-                var gameStr = InputComboBoxWPF.GetValue(null, "Choose game you want to use Asset Viewer with.", "Asset Viewer game selector",
-                    new[] { "LE1", "LE2", "LE3" }, "LE3", getDefaultValueFunc: GameController.GetRunningMEGameStrDelegate(AssetViewerWindow.SupportedGames));
+                var gameDialog = new GameSelectionDialog(Application.Current.MainWindow, "Asset Viewer game selector",
+                    promptText: "Choose a game to use Asset Viewer with:", supportedGames: AssetViewerWindow.SupportedGames,
+                    defaultGame: GameController.GetRunningMEGame(AssetViewerWindow.SupportedGames) ?? MEGame.LE3,
+                    hideUnsupportedGames: true);
 
-                if (Enum.TryParse(gameStr, out MEGame game))
+                if (gameDialog.ShowDialog() == true)
                 {
+                    MEGame game = gameDialog.SelectedGame;
                     if (AssetViewerWindow.Instance(game) is { } instance)
                     {
                         instance.RestoreAndBringToFront();
@@ -268,6 +302,7 @@ public static class ToolSet
         set.Add(new Tool
         {
             name = "Object Instance Database Viewer",
+            Abbreviation = "obj",
             type = typeof(Tools.ObjectInstanceViewer.ObjectInstanceDBViewerWindow),
             icon = Application.Current.FindResource("iconObjectDBViewer") as ImageSource,
             open = () =>
@@ -287,6 +322,7 @@ public static class ToolSet
         set.Add(new Tool
         {
             name = "Class Hierarchy Viewer",
+            Abbreviation = "cls",
             type = typeof(Tools.ClassViewer.ClassViewerWindow),
             icon = Application.Current.FindResource("iconClassViewer") as ImageSource,
             open = () =>
@@ -306,6 +342,7 @@ public static class ToolSet
         set.Add(new Tool
         {
             name = "Live Level Editor",
+            Abbreviation = "lle",
             type = typeof(Tools.LiveLevelEditor.LELiveLevelEditorWindow),
             icon = Application.Current.FindResource("iconLiveLevelEditor") as ImageSource,
             open = () =>
@@ -350,6 +387,7 @@ public static class ToolSet
         set.Add(new Tool
         {
             name = "Script Debugger",
+            Abbreviation = "dbg",
             type = typeof(ScriptDebuggerWindow),
             icon = Application.Current.FindResource("iconScriptDebugger") as ImageSource,
             open = () =>
@@ -376,6 +414,7 @@ public static class ToolSet
         set.Add(new Tool
         {
             name = "AFC Compactor",
+            Abbreviation = "afc",
             type = typeof(AFCCompactorWindow),
             icon = Application.Current.FindResource("iconAFCCompactor") as ImageSource,
             open = () =>
@@ -403,6 +442,7 @@ public static class ToolSet
         set.Add(new Tool
         {
             name = "Audio Localizer",
+            Abbreviation = "aud",
             type = typeof(Tools.AudioLocalizer.AudioLocalizerWindow),
             icon = Application.Current.FindResource("iconAudioLocalizer") as ImageSource,
             open = () =>
@@ -430,6 +470,7 @@ public static class ToolSet
         set.Add(new Tool
         {
             name = "Coalesced Compiler",
+            Abbreviation = "csdc",
             type = typeof(Tools.CoalescedCompiler.CoalescedCompilerWindow),
             icon = Application.Current.FindResource("iconCoalescedCompiler") as ImageSource,
             open = () =>
@@ -444,6 +485,7 @@ public static class ToolSet
         set.Add(new Tool
         {
             name = "Coalesced Editor",
+            Abbreviation = "csde",
             type = typeof(Tools.CoalescedEditor.CoalescedEditorWindow),
             icon = Application.Current.FindResource("iconCoalescedEditor") as ImageSource,
             open = () =>
@@ -458,6 +500,7 @@ public static class ToolSet
         set.Add(new Tool
         {
             name = "DLC Unpacker",
+            Abbreviation = "dlc",
             type = typeof(Tools.DLCUnpacker.DLCUnpackerWindow),
             icon = Application.Current.FindResource("iconDLCUnpacker") as ImageSource,
             open = () =>
@@ -478,6 +521,7 @@ public static class ToolSet
         set.Add(new Tool
         {
             name = "Hex Converter",
+            Abbreviation = "hex",
             icon = Application.Current.FindResource("iconHexConverter") as ImageSource,
             open = () =>
             {
@@ -497,6 +541,7 @@ public static class ToolSet
         set.Add(new Tool
         {
             name = "Interp Editor",
+            Abbreviation = "intp",
             type = typeof(InterpEditorWindow),
             icon = Application.Current.FindResource("iconInterpEditor") as ImageSource,
             open = () =>
@@ -511,6 +556,7 @@ public static class ToolSet
         set.Add(new Tool
         {
             name = "LEX Custom Files Manager",
+            Abbreviation = "lex",
             type = typeof(Tools.CustomFilesManager.CustomFilesManagerWindow),
             icon = Application.Current.FindResource("iconLexCustomFileManager") as ImageSource,
             open = () =>
@@ -525,6 +571,7 @@ public static class ToolSet
         set.Add(new Tool
         {
             name = "Mesh Explorer",
+            Abbreviation = "msh",
             type = typeof(MeshplorerWindow),
             icon = Application.Current.FindResource("iconMeshplorer") as ImageSource,
             open = () =>
@@ -538,6 +585,7 @@ public static class ToolSet
         set.Add(new Tool
         {
             name = "Animation Importer/Exporter",
+            Abbreviation = "ani",
             type = typeof(AnimationImporterExporterWindow),
             icon = Application.Current.FindResource("iconAnimationImporter") as ImageSource,
             open = () =>
@@ -551,6 +599,7 @@ public static class ToolSet
         set.Add(new Tool
         {
             name = "TLK Editor",
+            Abbreviation = "tlk",
             type = typeof(TLKEditorExportLoader),
             icon = Application.Current.FindResource("iconTLKEditor") as ImageSource,
             open = () =>
@@ -569,6 +618,7 @@ public static class ToolSet
         set.Add(new Tool
         {
             name = "Package Dumper",
+            Abbreviation = "dmp",
             type = typeof(Tools.PackageDumper.PackageDumperWindow),
             icon = Application.Current.FindResource("iconPackageDumper") as ImageSource,
             open = () =>
@@ -583,6 +633,7 @@ public static class ToolSet
         set.Add(new Tool
         {
             name = "Dialogue Dumper",
+            Abbreviation = "dmp",
             type = typeof(Tools.DialogueDumper.DialogueDumperWindow),
             icon = Application.Current.FindResource("iconDialogueDumper") as ImageSource,
             open = () =>
@@ -597,6 +648,7 @@ public static class ToolSet
         set.Add(new Tool
         {
             name = "Asset Database",
+            Abbreviation = "adb",
             type = typeof(AssetDatabaseWindow),
             icon = Application.Current.FindResource("iconAssetDatabase") as ImageSource,
             open = () =>
@@ -610,6 +662,7 @@ public static class ToolSet
         set.Add(new Tool
         {
             name = "TFC Compactor",
+            Abbreviation = "tfc",
             type = typeof(TFCCompactorWindow),
             icon = Application.Current.FindResource("iconTFCCompactor") as ImageSource,
             open = () =>
@@ -627,6 +680,7 @@ public static class ToolSet
         set.Add(new Tool
         {
             name = "Conditionals Editor",
+            Abbreviation = "cnd",
             type = typeof(ConditionalsEditorWindow),
             icon = Application.Current.FindResource("iconConditionalsEditor") as ImageSource,
             open = () =>
@@ -640,6 +694,7 @@ public static class ToolSet
         set.Add(new Tool
         {
             name = "Dialogue Editor",
+            Abbreviation = "dlg",
             type = typeof(DialogueEditor.DialogueEditorWindow),
             icon = Application.Current.FindResource("iconDialogueEditor") as ImageSource,
             open = () =>
@@ -654,6 +709,7 @@ public static class ToolSet
         set.Add(new Tool
         {
             name = "FaceFX Editor",
+            Abbreviation = "ffx",
             type = typeof(FaceFXEditorWindow),
             icon = Application.Current.FindResource("iconFaceFXEditor") as ImageSource,
             open = () =>
@@ -668,6 +724,7 @@ public static class ToolSet
         set.Add(new Tool
         {
             name = "Mount Editor",
+            Abbreviation = "mnt",
             type = typeof(MountEditorWindow),
             icon = Application.Current.FindResource("iconMountEditor") as ImageSource,
             open = () =>
@@ -682,6 +739,7 @@ public static class ToolSet
         set.Add(new Tool
         {
             name = "TLK Manager",
+            Abbreviation = "tlk",
             type = typeof(TLKManagerWPF),
             icon = Application.Current.FindResource("iconTLKManager") as ImageSource,
             open = () =>
@@ -696,6 +754,7 @@ public static class ToolSet
         set.Add(new Tool
         {
             name = "Package Editor",
+            Abbreviation = "pkg",
             type = typeof(PackageEditorWindow),
             icon = Application.Current.FindResource("iconPackageEditor") as ImageSource,
             open = () =>
@@ -710,6 +769,7 @@ public static class ToolSet
         set.Add(new Tool
         {
             name = "Pathfinding Editor",
+            Abbreviation = "pth",
             type = typeof(PathfindingEditorWindow),
             icon = Application.Current.FindResource("iconPathfindingEditor") as ImageSource,
             open = () =>
@@ -723,6 +783,7 @@ public static class ToolSet
         set.Add(new Tool
         {
             name = "Plot Editor",
+            Abbreviation = "plt",
             type = typeof(Tools.PlotEditor.PlotEditorWindow),
             icon = Application.Current.FindResource("iconPlotEditor") as ImageSource,
             open = () =>
@@ -737,6 +798,7 @@ public static class ToolSet
         set.Add(new Tool
         {
             name = "Plot Database",
+            Abbreviation = "pdb",
             type = typeof(PlotManagerWindow),
             icon = Application.Current.FindResource("iconPlotDatabase") as ImageSource,
             open = () =>
@@ -751,6 +813,7 @@ public static class ToolSet
         set.Add(new Tool
         {
             name = "Sequence Editor",
+            Abbreviation = "seq",
             type = typeof(SequenceEditorWPF),
             icon = Application.Current.FindResource("iconSequenceEditor") as ImageSource,
             open = () =>
@@ -764,6 +827,7 @@ public static class ToolSet
         set.Add(new Tool
         {
             name = "Texture Studio",
+            Abbreviation = "tex",
             type = typeof(Tools.TextureStudio.TextureStudioWindow),
             icon = Application.Current.FindResource("iconTextureStudio") as ImageSource,
             open = () =>
@@ -777,6 +841,7 @@ public static class ToolSet
         set.Add(new Tool
         {
             name = "Sound Explorer",
+            Abbreviation = "snd",
             type = typeof(SoundplorerWPF),
             icon = Application.Current.FindResource("iconSoundplorer") as ImageSource,
             open = () =>
@@ -790,6 +855,7 @@ public static class ToolSet
         set.Add(new Tool
         {
             name = "Wwise Graph Editor",
+            Abbreviation = "wse",
             type = typeof(WwiseEditorWindow),
             icon = Application.Current.FindResource("iconWwiseGraphEditor") as ImageSource,
             open = () =>
@@ -804,6 +870,7 @@ public static class ToolSet
         set.Add(new Tool
         {
             name = "Level Editor",
+            Abbreviation = "lvl",
             type = typeof(LevelEditor),
             icon = Application.Current.FindResource("iconLevelEditor") as ImageSource,
             open = () =>
@@ -817,6 +884,7 @@ public static class ToolSet
         set.Add(new Tool
         {
             name = "SFXGalaxy Editor (LE2/LE3)",
+            Abbreviation = "gme",
             type = typeof(SFXGalaxyEditorWindow),
             icon = Application.Current.FindResource("iconSFXGalaxyEditor") as ImageSource,
             open = () =>
@@ -833,8 +901,7 @@ public static class ToolSet
 
         Settings.StaticPropertyChanged -= Settings_StaticPropertyChanged;
         Settings.StaticPropertyChanged += Settings_StaticPropertyChanged;
-        loadFavorites();
-        LoadTaskbarPins();
+        LoadTaskbarPins(includeLegacyFavorites: true);
     }
 
     private static void ThemeManager_OnThemeChanged(object sender, bool isDarkMode) =>
@@ -860,40 +927,27 @@ public static class ToolSet
         global::LE1GalaxyMapEditor.Theming.EditorThemeManager.ApplyTheme(theme);
     }
 
-    private static void loadFavorites()
+    private static void Settings_StaticPropertyChanged(object sender, PropertyChangedEventArgs e)
     {
-        if (items == null) return;
-
-        synchronizingFavorites = true;
+        if (synchronizingTaskbarPins) return;
+        bool favoritesChanged = e.PropertyName == nameof(Settings.MainWindow_Favorites);
+        if (!favoritesChanged && e.PropertyName != nameof(Settings.MainWindow_TaskbarPins)) return;
+        string names = (favoritesChanged ? Settings.MainWindow_Favorites : Settings.MainWindow_TaskbarPins) ?? string.Empty;
+        synchronizingTaskbarPins = true;
         try
         {
-            var favorites = new HashSet<string>((Settings.MainWindow_Favorites ?? string.Empty).Split(';'), StringComparer.Ordinal);
-            foreach (var tool in items)
-            {
-                tool.IsFavorited = favorites.Contains(tool.name);
-            }
+            // Presets and settings reloads must also see one favorites list.
+            if (favoritesChanged) Settings.MainWindow_TaskbarPins = names;
+            else Settings.MainWindow_Favorites = names;
         }
         finally
         {
-            synchronizingFavorites = false;
+            synchronizingTaskbarPins = false;
         }
-
-        FavoritesChanged?.Invoke(null, EventArgs.Empty);
+        LoadTaskbarPins(names);
     }
 
-    private static void Settings_StaticPropertyChanged(object sender, PropertyChangedEventArgs e)
-    {
-        if (e.PropertyName == nameof(Settings.MainWindow_Favorites) && !synchronizingFavorites)
-        {
-            loadFavorites();
-        }
-        else if (e.PropertyName == nameof(Settings.MainWindow_TaskbarPins) && !synchronizingTaskbarPins)
-        {
-            LoadTaskbarPins();
-        }
-    }
-
-    private static void LoadTaskbarPins()
+    private static void LoadTaskbarPins(string savedNames = null, bool includeLegacyFavorites = false)
     {
         if (items == null) return;
 
@@ -908,7 +962,15 @@ public static class ToolSet
 
             var toolsByName = items.Where(tool => tool.open != null)
                 .ToDictionary(tool => tool.name, StringComparer.Ordinal);
-            foreach (string name in (Settings.MainWindow_TaskbarPins ?? string.Empty).Split(';'))
+            // Existing taskbar order wins; append legacy favorites once at startup.
+            IEnumerable<string> names = (savedNames ?? Settings.MainWindow_TaskbarPins ?? string.Empty).Split(';');
+            if (includeLegacyFavorites)
+            {
+                var oldFavorites = (Settings.MainWindow_Favorites ?? string.Empty).Split(';').ToHashSet(StringComparer.Ordinal);
+                names = names.Concat(items.Where(tool => oldFavorites.Contains(tool.name))
+                    .OrderBy(tool => tool.DisplayName, StringComparer.CurrentCultureIgnoreCase).Select(tool => tool.name));
+            }
+            foreach (string name in names)
             {
                 if (toolsByName.TryGetValue(name, out var tool) && !tool.IsPinnedToTaskbar)
                 {
@@ -923,6 +985,7 @@ public static class ToolSet
         }
 
         TaskbarPinsChanged?.Invoke(null, EventArgs.Empty);
+        FavoritesChanged?.Invoke(null, EventArgs.Empty);
     }
 
     internal static void SaveTaskbarPins(Tool changedTool)
@@ -937,7 +1000,7 @@ public static class ToolSet
             {
                 taskbarPins.Add(changedTool);
             }
-            Settings.MainWindow_TaskbarPins = string.Join(';', taskbarPins.Select(tool => tool.name));
+            SaveFavoriteSettings();
         }
         finally
         {
@@ -945,6 +1008,7 @@ public static class ToolSet
         }
 
         TaskbarPinsChanged?.Invoke(null, EventArgs.Empty);
+        FavoritesChanged?.Invoke(null, EventArgs.Empty);
     }
 
     /// <summary>
@@ -968,7 +1032,7 @@ public static class ToolSet
         {
             taskbarPins.RemoveAt(sourceIndex);
             taskbarPins.Insert(destinationIndex, tool);
-            Settings.MainWindow_TaskbarPins = string.Join(';', taskbarPins.Select(pin => pin.name));
+            SaveFavoriteSettings();
         }
         finally
         {
@@ -979,33 +1043,11 @@ public static class ToolSet
         return true;
     }
 
-    public static void saveFavorites()
+    private static void SaveFavoriteSettings()
     {
-        if (items == null || synchronizingFavorites) return;
-
-        synchronizingFavorites = true;
-        try
-        {
-            var favorites = new StringBuilder();
-            foreach (var tool in items)
-            {
-                if (tool.IsFavorited)
-                {
-                    favorites.Append(tool.name + ";");
-                }
-            }
-            if (favorites.Length > 0) favorites.Remove(favorites.Length - 1, 1);
-            Settings.MainWindow_Favorites = favorites.ToString();
-        }
-        catch
-        {
-            return;
-        }
-        finally
-        {
-            synchronizingFavorites = false;
-        }
-
-        FavoritesChanged?.Invoke(null, EventArgs.Empty);
+        string names = string.Join(';', taskbarPins.Select(tool => tool.name));
+        // Keep the old setting compatible so removed favorites cannot return on restart.
+        Settings.MainWindow_TaskbarPins = names;
+        Settings.MainWindow_Favorites = names;
     }
 }

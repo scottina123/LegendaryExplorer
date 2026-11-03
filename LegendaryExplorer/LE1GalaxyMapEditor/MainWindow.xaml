@@ -707,7 +707,7 @@
                                     BorderThickness="1"
                                     CornerRadius="2">
                                 <TextBlock Text="{Binding TableViewer.Title}"
-                                           FontFamily="Consolas"
+                                           FontFamily="/LE1GalaxyMapEditor;component/Resources/Fonts/LexendDeca-Regular.ttf#Lexend Deca"
                                            FontSize="10"
                                            Foreground="{DynamicResource LE1GMEBrushBFD1DC}" />
                             </Border>

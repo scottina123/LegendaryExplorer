@@ -25,8 +25,10 @@ public sealed class CoordinateGridLayer : FrameworkElement
     private static readonly Pen MajorGridPen = CreatePen(Color.FromArgb(112, 144, 211, 232), 1);
     private static readonly Pen BorderPen = CreatePen(Color.FromArgb(185, 170, 229, 246), 1.5);
     private static readonly Pen CursorBorderPen = CreatePen(Color.FromArgb(185, 170, 229, 246), 1);
-    private static readonly Typeface AxisTypeface = new("Segoe UI");
-    private static readonly Typeface CursorTypeface = new("Consolas");
+    private static readonly Typeface AxisTypeface = new(new FontFamily(
+        new Uri("pack://application:,,,/LE1GalaxyMapEditor;component/"),
+        "./Resources/Fonts/LexendDeca-Regular.ttf#Lexend Deca"), FontStyles.Normal, FontWeights.Normal, FontStretches.Normal);
+    private static readonly Typeface CursorTypeface = AxisTypeface;
 
     private Point? _cursorPosition;
 

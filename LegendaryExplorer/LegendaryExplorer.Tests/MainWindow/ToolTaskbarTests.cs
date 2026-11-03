@@ -28,13 +28,13 @@ public class ToolTaskbarTests
     [DataTestMethod]
     [DataRow(-100.0, 4, 0)]
     [DataRow(0.0, 4, 0)]
-    [DataRow(20.9, 4, 0)]
-    [DataRow(21.0, 4, 1)]
-    [DataRow(42.0, 4, 1)]
-    [DataRow(104.9, 4, 2)]
-    [DataRow(105.0, 4, 3)]
-    [DataRow(146.9, 4, 3)]
-    [DataRow(147.0, 4, 4)]
+    [DataRow(27.9, 4, 0)]
+    [DataRow(28.0, 4, 1)]
+    [DataRow(56.0, 4, 1)]
+    [DataRow(139.9, 4, 2)]
+    [DataRow(140.0, 4, 3)]
+    [DataRow(195.9, 4, 3)]
+    [DataRow(196.0, 4, 4)]
     [DataRow(1000.0, 4, 4)]
     [DataRow(1000.0, 0, 0)]
     public void DropsChooseTheNearestGapAndClampToThePinList(double contentX, int count, int expectedGap)
@@ -65,8 +65,9 @@ public class ToolTaskbarTests
             menu.PlacementTarget = shortcut;
             menu.RefreshTool();
             Assert.AreEqual("Favorite", ((MenuItem)menu.Items[0]).Header);
-            Assert.AreEqual("Pin to taskbar", ((MenuItem)menu.Items[1]).Header);
-            Assert.IsTrue(((MenuItem)menu.Items[1]).IsEnabled);
+            Assert.HasCount(1, menu.Items);
+            Assert.IsTrue(((MenuItem)menu.Items[0]).IsEnabled);
+            Assert.IsInstanceOfType<ToolTile>(shortcut.Content);
         }
 
         var click = new RoutedEventArgs(Button.ClickEvent);
@@ -100,9 +101,9 @@ public class ToolTaskbarTests
 
         // Shrink while scrolled to the end, where a stale arrow width or offset can otherwise keep overflow visible.
         ScrollToEnd(host, host.RightArrow, tools.Length);
-        host.Taskbar.setToolList(tools.Take(5));
+        host.Taskbar.setToolList(tools.Take(3));
         host.FlushLayout();
-        Assert.AreEqual(5, host.Items.Items.Count);
+        Assert.AreEqual(3, host.Items.Items.Count);
         Assert.AreEqual(Visibility.Collapsed, host.LeftArrow.Visibility);
         Assert.AreEqual(Visibility.Collapsed, host.RightArrow.Visibility);
         Assert.AreEqual(0, host.Viewer.ScrollableWidth, 0.5);
@@ -124,7 +125,7 @@ public class ToolTaskbarTests
 
         shortcuts[0].BringIntoView();
         host.FlushLayout();
-        Assert.AreEqual(0, host.Viewer.HorizontalOffset, 1);
+        Assert.AreEqual(shortcuts[0].Margin.Left, host.Viewer.HorizontalOffset, 1);
         AssertVisibleInViewport(shortcuts[0], host.Viewer);
     }
 
@@ -149,9 +150,9 @@ public class ToolTaskbarTests
             var marker = (FrameworkElement)host.Taskbar.FindName("DropIndicator");
             foreach ((double pointerX, double markerX) in new[]
                      {
-                         (10.0, 0.0), (30.0, 42.0), // Before and after the first icon.
-                         (95.0, 84.0), (115.0, 126.0), // Before and after a middle icon.
-                         (135.0, 126.0), (155.0, 168.0) // Before and after the last icon.
+                         (10.0, 0.0), (40.0, 56.0), // Before and after the first icon.
+                         (125.0, 112.0), (155.0, 168.0), // Before and after a middle icon.
+                         (180.0, 168.0), (210.0, 224.0) // Before and after the last icon.
                      })
             {
                 position.SetValue(host.Taskbar, new Point(pointerX, 20));

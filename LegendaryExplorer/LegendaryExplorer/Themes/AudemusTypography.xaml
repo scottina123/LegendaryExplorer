@@ -3,13 +3,15 @@
                     xmlns:system="clr-namespace:System;assembly=System.Runtime">
     <!-- Typography is deliberately theme-independent. Colour themes consume these
          semantic resources without redefining them. -->
-    <FontFamily x:Key="AudemusUiFont">Segoe UI</FontFamily>
-    <FontFamily x:Key="AudemusDataFont">Lucida Console</FontFamily>
-    <FontFamily x:Key="AudemusGraphFont">Segoe UI Variable Text, Segoe UI</FontFamily>
+    <FontFamily x:Key="AudemusUiFont">/LegendaryExplorer;component/Resources/Fonts/LexendDeca-Regular.ttf#Lexend Deca</FontFamily>
+    <FontFamily x:Key="AudemusDataFont">/LegendaryExplorer;component/Resources/Fonts/LexendDeca-Regular.ttf#Lexend Deca</FontFamily>
+    <FontFamily x:Key="AudemusGraphFont">/LegendaryExplorer;component/Resources/Fonts/LexendDeca-Regular.ttf#Lexend Deca</FontFamily>
+
+    <!-- Preserve the script editor's established monospace face independently. -->
+    <FontFamily x:Key="AudemusScriptFont">Lucida Console</FontFamily>
 
     <system:Double x:Key="AudemusUiFontSize">12</system:Double>
-    <!-- Lucida Console renders materially smaller than the fonts it replaces at
-         the same WPF size. 12 preserves the established tool density and legibility. -->
+    <!-- Preserve the established tool density and sizes. -->
     <system:Double x:Key="AudemusDataFontSize">12</system:Double>
     <system:Double x:Key="AudemusGraphFontSize">14</system:Double>
 

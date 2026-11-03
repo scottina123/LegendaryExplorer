@@ -13,30 +13,46 @@ namespace LegendaryExplorer.Tests.MainWindow;
 public class ToolTaskbarPinTests
 {
     [STATestMethod]
-    public void PinsPersistIndependentlyFromFavoritesAndNotifyOnce()
+    public void FavoritesAndTaskbarMembershipAreOnePersistedListAndNotifyOnce()
     {
         using var scope = new TestToolSet();
-        scope.First.IsFavorited = true;
         int notifications = 0;
         ToolSet.TaskbarPinsChanged += (_, _) => notifications++;
-
-        scope.First.IsPinnedToTaskbar = true;
-
+        scope.First.IsFavorited = true;
+        Assert.IsTrue(scope.First.IsPinnedToTaskbar);
         Assert.AreEqual("First", Settings.MainWindow_TaskbarPins);
         Assert.AreEqual("First", Settings.MainWindow_Favorites);
-        Assert.IsTrue(scope.First.IsFavorited);
         Assert.AreEqual(1, notifications);
         CollectionAssert.AreEqual(new[] { scope.First }, ToolSet.PinnedTools.ToArray());
 
-        scope.First.IsFavorited = false;
-        Assert.IsTrue(scope.First.IsPinnedToTaskbar);
-        Assert.AreEqual("First", Settings.MainWindow_TaskbarPins);
-        Assert.AreEqual(1, notifications, "Changing a favorite must not refresh taskbar pins.");
-
         scope.First.IsPinnedToTaskbar = false;
+        Assert.IsFalse(scope.First.IsFavorited);
         Assert.AreEqual("", Settings.MainWindow_TaskbarPins);
-        Assert.AreEqual(0, ToolSet.PinnedTools.Count);
+        Assert.AreEqual("", Settings.MainWindow_Favorites);
         Assert.AreEqual(2, notifications);
+        Assert.HasCount(0, ToolSet.PinnedTools);
+    }
+
+    [STATestMethod]
+    public void LegacyFavoritesMergeAfterExistingPinsAndRemovedToolsStayRemovedOnReload()
+    {
+        using var scope = new TestToolSet();
+        // Simulate the two legacy values read from disk before ToolSet subscribes.
+        typeof(Settings).GetField("_mainwindow_taskbarpins", BindingFlags.Static | BindingFlags.NonPublic)!
+            .SetValue(null, "Second;First");
+        typeof(Settings).GetField("_mainwindow_favorites", BindingFlags.Static | BindingFlags.NonPublic)!
+            .SetValue(null, "First;Third;Missing;Third");
+        typeof(ToolSet).GetMethod("LoadTaskbarPins", BindingFlags.Static | BindingFlags.NonPublic)!
+            .Invoke(null, new object[] { null, true });
+        CollectionAssert.AreEqual(new[] { scope.Second, scope.First, scope.Third }, ToolSet.PinnedTools.ToArray());
+        Assert.IsTrue(scope.First.IsFavorited && scope.Second.IsFavorited && scope.Third.IsFavorited);
+        scope.First.IsFavorited = false;
+        Assert.AreEqual("Second;Third", Settings.MainWindow_TaskbarPins);
+        Assert.AreEqual(Settings.MainWindow_TaskbarPins, Settings.MainWindow_Favorites);
+        typeof(ToolSet).GetMethod("LoadTaskbarPins", BindingFlags.Static | BindingFlags.NonPublic)!
+            .Invoke(null, new object[] { null, true });
+        CollectionAssert.AreEqual(new[] { scope.Second, scope.Third }, ToolSet.PinnedTools.ToArray());
+        Assert.IsFalse(scope.First.IsFavorited);
     }
 
     [STATestMethod]
@@ -75,6 +91,7 @@ public class ToolTaskbarPinTests
         Assert.AreEqual(1, notifications);
 
         Settings.MainWindow_TaskbarPins = null;
+        Assert.AreEqual("", Settings.MainWindow_Favorites, "An external clear must not leave stale favorites to restore on restart.");
         Assert.AreEqual(0, ToolSet.PinnedTools.Count);
         Assert.IsFalse(scope.First.IsPinnedToTaskbar);
         Assert.IsFalse(scope.Second.IsPinnedToTaskbar);
@@ -182,7 +199,6 @@ public class ToolTaskbarPinTests
             RememberAndSet(typeof(Settings), nameof(Settings.StaticPropertyChanged), null);
             RememberAndSet(typeof(ToolSet), nameof(ToolSet.FavoritesChanged), null);
             RememberAndSet(typeof(ToolSet), nameof(ToolSet.TaskbarPinsChanged), null);
-            RememberAndSet(typeof(ToolSet), "synchronizingFavorites", false);
             RememberAndSet(typeof(ToolSet), "synchronizingTaskbarPins", false);
             RememberAndSet(typeof(ToolSet), "items", new HashSet<Tool> { First, Second, Third, Unavailable });
 

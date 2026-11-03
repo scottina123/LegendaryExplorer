@@ -42,6 +42,7 @@ namespace LegendaryExplorer.Startup
         /// </summary>
         public static void Startup(App app)
         {
+            AppTypography.Initialize();
             app.Resources = (ResourceDictionary)Application.LoadComponent(new Uri("/LegendaryExplorer;component/AppResources.xaml", UriKind.Relative));
 
             Arguments = new Queue<string[]>();

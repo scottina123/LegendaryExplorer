@@ -11,7 +11,7 @@ namespace LegendaryExplorer.MainWindow
 {
     public partial class ToolTaskbar : ToolListControl
     {
-        private const double ShortcutStride = 42;
+        internal const double ShortcutStride = 56;
         private const string DragDataFormat = "LegendaryExplorer.PinnedTool";
         private readonly DispatcherTimer dragScrollTimer;
         private Button dragSourceButton;

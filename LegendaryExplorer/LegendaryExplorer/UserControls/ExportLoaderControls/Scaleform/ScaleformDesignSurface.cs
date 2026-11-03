@@ -95,7 +95,7 @@ public sealed class ScaleformDesignSurface : FrameworkElement
     private void DrawHint(DrawingContext dc, string text, Point point)
     {
         var formatted = new FormattedText(text, CultureInfo.InvariantCulture, FlowDirection.LeftToRight,
-            new Typeface("Segoe UI"), 11, new SolidColorBrush(Color.FromRgb(140, 158, 173)), VisualTreeHelper.GetDpi(this).PixelsPerDip);
+            new Typeface(LegendaryExplorer.SharedUI.AppTypography.InterfaceWpfFont, FontStyles.Normal, FontWeights.Normal, FontStretches.Normal), 11, new SolidColorBrush(Color.FromRgb(140, 158, 173)), VisualTreeHelper.GetDpi(this).PixelsPerDip);
         formatted.MaxTextWidth = Math.Max(20, ActualWidth - 24);
         dc.DrawText(formatted, point);
     }

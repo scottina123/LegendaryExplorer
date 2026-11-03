@@ -18,7 +18,7 @@ namespace LegendaryExplorer.MainWindow
         public virtual void setToolList(IEnumerable<Tool> enumerable)
         {
             tools = enumerable.ToList();
-            tools.Sort((x, y) => x.name.CompareTo(y.name));
+            tools.Sort((x, y) => StringComparer.CurrentCultureIgnoreCase.Compare(x.DisplayName, y.DisplayName));
         }
 
         protected virtual void Button_Click(object sender, RoutedEventArgs e)

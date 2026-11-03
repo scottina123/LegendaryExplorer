@@ -1,4 +1,4 @@
-﻿<#@ template debug="false" hostspecific="true" language="C#" #>
+<#@ template debug="false" hostspecific="true" language="C#" #>
 <#@ assembly name="System.Core" #>
 <#@ assembly name="System.Xml" #>
 <#@ assembly name="System.Xml.Linq" #>
@@ -16,9 +16,45 @@
         xmlns:local="clr-namespace:LegendaryExplorer.MainWindow"
         xmlns:xctk="http://schemas.xceed.com/wpf/xaml/toolkit"
         xmlns:settings="clr-namespace:LegendaryExplorer.Misc.AppSettings"
+        xmlns:converters="clr-namespace:LegendaryExplorer.SharedUI.Converters"
         d:DataContext="{Binding RelativeSource={RelativeSource Self}}"
         mc:Ignorable="d"
         Title="Legendary Explorer Settings" Height="450" Width="550" PreviewKeyDown="Window_PreviewKeyDown">
+    <Window.Resources>
+        <converters:EnumComparisonConverter x:Key="ThemeComparisonConverter"/>
+        <Style x:Key="ThemeButtonStyle" TargetType="RadioButton">
+            <Setter Property="MinWidth" Value="70"/>
+            <Setter Property="Padding" Value="10,5"/>
+            <Setter Property="Margin" Value="0,0,4,0"/>
+            <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"/>
+            <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="4" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" RecognizesAccessKey="True"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.ControlLightBrushKey}}"/>
+                </Trigger>
+                <Trigger Property="IsChecked" Value="True">
+                    <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}"/>
+                    <Setter Property="BorderBrush" Value="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}"/>
+                    <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.HighlightTextBrushKey}}"/>
+                </Trigger>
+                <Trigger Property="IsKeyboardFocused" Value="True">
+                    <Setter Property="BorderBrush" Value="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+    </Window.Resources>
     <DockPanel>
         <TextBlock DockPanel.Dock="Top"  Padding="5" Margin="0,0,0,3"  Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" TextWrapping="Wrap" Text="Global settings for all tools. Settings will auto-update and auto-save on selection."/>
 
@@ -74,8 +110,6 @@
                         <StackPanel Margin="5,5,5,10">
                             <Button x:Name="ApplyScottinaPresetButton" HorizontalAlignment="Left" Padding="5,3"
                                     Click="ApplyScottinaPreset_Click">Apply Scottina's preset</Button>
-                            <TextBlock Margin="0,5,0,0" TextWrapping="Wrap"
-                                       Text="Restore Scottina's saved global and tool preferences, including main-menu favorites and directories. Reopen tools or restart LEX for settings that are read when tools launch."/>
                         </StackPanel>
                 <# } #>
 
@@ -89,7 +123,17 @@
                         </StackPanel>
                         <#      break;
                             case "string":
-                            if(setting.isDirectorySelect == "true" || !string.IsNullOrEmpty(setting.fileSelectExtension)){ // File/folder browse
+                            if(setting.name == "Global_Theme") { #>
+                        <StackPanel Orientation="Horizontal" Margin="5,5">
+                            <TextBlock VerticalAlignment="Center" Margin="0,0,8,0">Application theme:</TextBlock>
+                            <RadioButton x:Name="LightThemeButton" Content="Light" GroupName="ApplicationTheme" Style="{StaticResource ThemeButtonStyle}"
+                                         IsChecked="{Binding Path=(settings:Settings.Global_Theme), Mode=TwoWay, Converter={StaticResource ThemeComparisonConverter}, ConverterParameter=Light}"/>
+                            <RadioButton x:Name="DarkThemeButton" Content="Dark" GroupName="ApplicationTheme" Style="{StaticResource ThemeButtonStyle}"
+                                         IsChecked="{Binding Path=(settings:Settings.Global_Theme), Mode=TwoWay, Converter={StaticResource ThemeComparisonConverter}, ConverterParameter=Dark}"/>
+                            <RadioButton x:Name="ModernDarkThemeButton" Content="Modern Dark" GroupName="ApplicationTheme" Style="{StaticResource ThemeButtonStyle}"
+                                         IsChecked="{Binding Path=(settings:Settings.Global_Theme), Mode=TwoWay, Converter={StaticResource ThemeComparisonConverter}, ConverterParameter=ModernDark}"/>
+                        </StackPanel>
+                            <# } else if(setting.isDirectorySelect == "true" || !string.IsNullOrEmpty(setting.fileSelectExtension)){ // File/folder browse
                             #><TextBlock Margin="5,5,0,0"><#=setting.friendlyName ?? setting.name #>:</TextBlock>
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,5" Tag="<#=setting.name#>">
                             <TextBox Width="450" x:Name="<#=setting.name #>" Margin="5,0,0,0" TextChanged="Setting_OnTextChanged"
@@ -102,7 +146,7 @@
                             <TextBox Width="100" x:Name="<#=setting.name #>"
                                        Text="{Binding Path=(settings:Settings.<#=setting.name #>)}"/>
                             <#}#>
-                        </StackPanel>
+                        <# if(setting.name != "Global_Theme") { #></StackPanel><# } #>
                         <#      break;
                             case "int": #>
                             <StackPanel Orientation="Horizontal" Margin="0,5">

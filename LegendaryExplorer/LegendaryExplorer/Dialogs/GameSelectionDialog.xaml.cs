@@ -13,7 +13,8 @@ namespace LegendaryExplorer.Dialogs
         private readonly MEGame[] _supportedGames;
 
         public GameSelectionDialog(Window owner, string titleText, bool allowLocFile = false,
-            string promptText = "Choose a game to create the file for:", MEGame[] supportedGames = null, MEGame? defaultGame = null)
+            string promptText = "Choose a game to create the file for:", MEGame[] supportedGames = null, MEGame? defaultGame = null,
+            bool hideUnsupportedGames = false)
         {
             Owner = owner;
             TitleText = titleText;
@@ -29,6 +30,8 @@ namespace LegendaryExplorer.Dialogs
             {
                 var game = Enum.Parse<MEGame>((string)button.Tag);
                 button.IsEnabled = supportedGames == null || supportedGames.Contains(game);
+                if (hideUnsupportedGames && !button.IsEnabled)
+                    button.Visibility = Visibility.Collapsed;
                 if (!button.IsEnabled)
                 {
                     button.ToolTip = "This game is not supported by this tool.";
@@ -40,6 +43,17 @@ namespace LegendaryExplorer.Dialogs
                     button.IsDefault = true;
                     ContentRendered += (_, _) => button.Focus();
                 }
+            }
+
+            if (hideUnsupportedGames)
+            {
+                bool showLegendaryEdition = new[] { LE1Button, LE2Button, LE3Button }.Any(button => button.IsEnabled);
+                bool showOriginalTrilogy = new[] { ME1Button, ME2Button, ME3Button }.Any(button => button.IsEnabled);
+                LegendaryEditionPanel.Visibility = showLegendaryEdition ? Visibility.Visible : Visibility.Collapsed;
+                OriginalTrilogyPanel.Visibility = showOriginalTrilogy ? Visibility.Visible : Visibility.Collapsed;
+                GameButtonsGrid.ColumnDefinitions[0].Width = showLegendaryEdition ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
+                GameButtonsGrid.ColumnDefinitions[1].Width = showOriginalTrilogy ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
+                if (!showLegendaryEdition) OriginalTrilogyPanel.BorderThickness = new Thickness(0);
             }
 
             UpdateConversationNameValidation();

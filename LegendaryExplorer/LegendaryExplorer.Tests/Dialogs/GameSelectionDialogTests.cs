@@ -12,6 +12,48 @@ namespace LegendaryExplorer.Tests.Dialogs;
 public class GameSelectionDialogTests
 {
     [STATestMethod]
+    [DataRow(MEGame.LE1)]
+    [DataRow(MEGame.LE2)]
+    [DataRow(MEGame.LE3)]
+    public void LegendaryOnlySelectorShowsThreeButtonsAndAcceptsEachGame(MEGame game)
+    {
+        var dialog = CreateDialog([MEGame.LE1, MEGame.LE2, MEGame.LE3], allowLocFile: false,
+            hideUnsupportedGames: true, defaultGame: MEGame.LE3);
+        try
+        {
+            foreach (MEGame candidate in new[] { MEGame.LE1, MEGame.LE2, MEGame.LE3 })
+            {
+                Assert.IsTrue(FindGameButton(dialog, candidate).IsEnabled);
+                Assert.AreEqual(Visibility.Visible, FindGameButton(dialog, candidate).Visibility);
+            }
+            foreach (MEGame candidate in new[] { MEGame.ME1, MEGame.ME2, MEGame.ME3 })
+            {
+                Assert.IsFalse(FindGameButton(dialog, candidate).IsEnabled);
+                Assert.AreEqual(Visibility.Collapsed, FindGameButton(dialog, candidate).Visibility);
+            }
+            Assert.AreEqual(Visibility.Collapsed, ((FrameworkElement)dialog.FindName("OriginalTrilogyPanel")).Visibility);
+            Assert.AreEqual(0, ((Grid)dialog.FindName("GameButtonsGrid")).ColumnDefinitions[1].Width.Value);
+            Assert.AreEqual(Visibility.Collapsed, FindCheckBox(dialog, "CreateLocFileCheckBox").Visibility);
+            Assert.IsTrue(FindGameButton(dialog, MEGame.LE3).IsDefault);
+            Assert.IsTrue(SelectGame(dialog, game) == true);
+            Assert.AreEqual(game, dialog.SelectedGame);
+        }
+        finally
+        {
+            dialog.Close();
+        }
+    }
+
+    [STATestMethod]
+    public void ClosingLegendaryOnlySelectorDoesNotChooseAGame()
+    {
+        var dialog = CreateDialog([MEGame.LE1, MEGame.LE2, MEGame.LE3], allowLocFile: false, hideUnsupportedGames: true);
+        dialog.Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(dialog.Close));
+        Assert.IsFalse(dialog.ShowDialog() == true);
+        Assert.AreEqual(MEGame.Unknown, dialog.SelectedGame);
+    }
+
+    [STATestMethod]
     [DataRow(MEGame.ME1, false)]
     [DataRow(MEGame.ME2, false)]
     [DataRow(MEGame.ME3, true)]
@@ -269,8 +311,10 @@ public class GameSelectionDialogTests
         }
     }
 
-    private static GameSelectionDialog CreateDialog(MEGame[] supportedGames = null, bool allowLocFile = true) =>
-        new(null, "Create new level file", allowLocFile: allowLocFile, supportedGames: supportedGames)
+    private static GameSelectionDialog CreateDialog(MEGame[] supportedGames = null, bool allowLocFile = true,
+        bool hideUnsupportedGames = false, MEGame? defaultGame = null) =>
+        new(null, "Create new level file", allowLocFile: allowLocFile, supportedGames: supportedGames,
+            hideUnsupportedGames: hideUnsupportedGames, defaultGame: defaultGame)
         {
             WindowStartupLocation = WindowStartupLocation.Manual,
             Left = -32000,

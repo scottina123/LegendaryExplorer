@@ -65,10 +65,17 @@ public class ScottinaPresetTests
         JObject preset = ReadPreset();
         var settings = (JObject)preset["Settings"]!;
         string[] favorites = settings.Value<string>("mainwindow_favorites")!.Split(';');
-        CollectionAssert.Contains(favorites, "Animation Viewer");
-        CollectionAssert.Contains(favorites, "Mesh Explorer");
-        CollectionAssert.Contains(favorites, "TLK Editor");
-        CollectionAssert.Contains(favorites, "Wwise Graph Editor");
+        CollectionAssert.AreEqual(new[] { "Package Editor", "Sequence Editor", "Dialogue Editor", "Level Editor",
+            "Asset Database", "Conditionals Editor", "SFXGalaxy Editor (LE2/LE3)", "Mesh Explorer", "Plot Editor", "TLK Editor" }, favorites);
+        Assert.AreEqual(settings.Value<string>("mainwindow_favorites"), settings.Value<string>("mainwindow_taskbarpins"),
+            "Both compatible settings must restore the same ordered taskbar favorites.");
+        Assert.IsFalse(settings.Value<bool>("leveleditor_showemitters"));
+        Assert.IsFalse(settings.Value<bool>("leveleditor_showlensflareicons"));
+        Assert.IsFalse(settings.Value<bool>("leveleditor_showstatsoverlay"));
+        Assert.IsTrue(settings.Value<bool>("leveleditor_usegamemeshshaders"));
+        Assert.IsFalse(settings.Value<bool>("morpheditor_showregionlabels"));
+        Assert.IsFalse(settings.Value<bool>("sequenceeditor_usesavedviews"));
+        Assert.IsInstanceOfType<JObject>(settings["packageeditor_boundexperimentshortcuts"]);
         Assert.IsTrue(settings.Value<bool>("packageeditor_showexperiments"));
         Assert.IsTrue(settings.Value<bool>("interpreter_showlinearcolorwheel"));
         Assert.AreEqual("Dark", settings.Value<string>("global_theme"));
@@ -81,7 +88,7 @@ public class ScottinaPresetTests
                      "mainwindow_completedinitialsetup", "global_lastuseddirectories",
                      "experimentsbrowser_lastusedexperiments", "tlkeditor_opentabs", "tlkeditor_selectedtab",
                      "dialogueeditor_bulkcloneinterpreplacements", "dialogueeditor_bulkinterpreplacements",
-                     "coalescededitor_sourcepath", "coalescededitor_destinationpath"
+                     "coalescededitor_sourcepath", "coalescededitor_destinationpath", "tfccompactor_laststagingpath"
                  })
         {
             Assert.IsNull(settings[name], $"The preset must preserve the user's {name} state.");
@@ -112,7 +119,9 @@ public class ScottinaPresetTests
         Assert.IsTrue(elevenLabs.Value<bool>("RvcEnabled"));
         AssertContainsNoApiKeyProperties(ReadPreset());
         Assert.AreEqual("84.61", tools.Value<string>("CameraPresetDistanceScale.txt"));
-        StringAssert.Contains(tools.Value<string>("CameraPresetSelection.txt"), "Wide Arc Right");
+        Assert.AreEqual(2, tools.Value<string>("CameraPresetSelection.txt")!
+            .Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries).Length,
+            "The camera selection stores the saved category and preset name.");
 
         var sequenceSources = (JArray)tools["SequenceEditor/CustomSequenceObjectSources.json"]!;
         Assert.AreEqual(1, sequenceSources.Count);
@@ -323,15 +332,17 @@ public class ScottinaPresetTests
     }
 
     [STATestMethod]
-    public void ApplyingFavoritesRefreshesMainMenuFlagsWithoutOverwritingCapturedFavorites()
+    public void ApplyingFavoritesRestoresTaskbarMembershipWithoutPartialSaves()
     {
         Settings.MainWindow_Favorites = "Coalesced Compiler";
         var itemsField = typeof(ToolSet).GetField("items", BindingFlags.Static | BindingFlags.NonPublic)!;
         object originalItems = itemsField.GetValue(null);
-        var animation = new Tool { name = "Animation Viewer" };
-        var mesh = new Tool { name = "Mesh Explorer" };
+        var pins = (List<Tool>)typeof(ToolSet).GetField("taskbarPins", BindingFlags.Static | BindingFlags.NonPublic)!.GetValue(null)!;
+        Tool[] originalPins = pins.ToArray();
+        var package = new Tool { name = "Package Editor", open = () => { } };
+        var mesh = new Tool { name = "Mesh Explorer", open = () => { } };
         var other = new Tool { name = "Another tool" };
-        itemsField.SetValue(null, new HashSet<Tool> { animation, mesh, other });
+        itemsField.SetValue(null, new HashSet<Tool> { package, mesh, other });
         var settingsHandler = typeof(ToolSet)
             .GetMethod("Settings_StaticPropertyChanged", BindingFlags.Static | BindingFlags.NonPublic)!
             .CreateDelegate<PropertyChangedEventHandler>();
@@ -345,25 +356,27 @@ public class ScottinaPresetTests
 
             ApplySettings(new JObject { ["mainwindow_favorites"] = favorites });
 
-            Assert.IsTrue(animation.IsFavorited);
+            Assert.IsTrue(package.IsFavorited);
             Assert.IsTrue(mesh.IsFavorited);
+            Assert.IsTrue(package.IsPinnedToTaskbar && mesh.IsPinnedToTaskbar);
+            Assert.AreEqual(favorites, Settings.MainWindow_TaskbarPins);
             Assert.IsFalse(other.IsFavorited);
             Assert.AreEqual(favorites, Settings.MainWindow_Favorites,
                 "Dependency-property callbacks must not save a partially refreshed favorites list.");
-            Assert.AreEqual(1, favoritesChanged, "Refresh the open Favorites menu once after updating every flag.");
+            Assert.AreEqual(1, favoritesChanged, "Refresh taskbar favorites once after updating every flag.");
 
-            Settings.MainWindow_Favorites = "Animation Viewer";
-            Assert.IsTrue(animation.IsFavorited);
+            Settings.MainWindow_Favorites = "Package Editor";
+            Assert.IsTrue(package.IsFavorited);
             Assert.IsFalse(mesh.IsFavorited, "Subsequent settings changes must remove stale favorite flags.");
             Assert.IsFalse(other.IsFavorited);
-            Assert.AreEqual("Animation Viewer", Settings.MainWindow_Favorites);
+            Assert.AreEqual("Package Editor", Settings.MainWindow_Favorites);
             Assert.AreEqual(2, favoritesChanged);
 
             mesh.IsFavorited = true;
-            CollectionAssert.AreEquivalent(new[] { "Animation Viewer", "Mesh Explorer" },
-                Settings.MainWindow_Favorites.Split(';'), "Normal star toggles must still save favorites.");
+            CollectionAssert.AreEquivalent(new[] { "Package Editor", "Mesh Explorer" },
+                Settings.MainWindow_Favorites.Split(';'), "Normal favorite toggles must still save favorites.");
             Assert.AreEqual(3, favoritesChanged);
-            animation.IsFavorited = false;
+            package.IsFavorited = false;
             Assert.AreEqual("Mesh Explorer", Settings.MainWindow_Favorites);
             Assert.AreEqual(4, favoritesChanged);
             mesh.IsFavorited = false;
@@ -374,6 +387,8 @@ public class ScottinaPresetTests
         {
             ToolSet.FavoritesChanged -= favoritesHandler;
             Settings.StaticPropertyChanged -= settingsHandler;
+            pins.Clear();
+            pins.AddRange(originalPins);
             itemsField.SetValue(null, originalItems);
         }
     }

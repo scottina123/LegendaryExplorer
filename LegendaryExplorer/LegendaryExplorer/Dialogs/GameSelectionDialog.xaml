@@ -16,18 +16,18 @@
         <Border BorderBrush="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}"
                 BorderThickness="1"
                 CornerRadius="2">
-            <Grid>
+            <Grid x:Name="GameButtonsGrid">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
-                <StackPanel Grid.Column="0" Margin="10">
+                <StackPanel x:Name="LegendaryEditionPanel" Grid.Column="0" Margin="10">
                     <TextBlock Text="Legendary Edition" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,0,0,6"/>
                     <Button x:Name="LE1Button" Content="LE1" Tag="LE1" Click="GameButton_Click" Padding="12,7" Margin="0,2"/>
                     <Button x:Name="LE2Button" Content="LE2" Tag="LE2" Click="GameButton_Click" Padding="12,7" Margin="0,2"/>
                     <Button x:Name="LE3Button" Content="LE3" Tag="LE3" Click="GameButton_Click" Padding="12,7" Margin="0,2"/>
                 </StackPanel>
-                <Border Grid.Column="1" BorderBrush="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}" BorderThickness="1,0,0,0">
+                <Border x:Name="OriginalTrilogyPanel" Grid.Column="1" BorderBrush="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}" BorderThickness="1,0,0,0">
                     <StackPanel Margin="10">
                         <TextBlock Text="Original Trilogy" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,0,0,6"/>
                         <Button x:Name="ME1Button" Content="ME1" Tag="ME1" Click="GameButton_Click" Padding="12,7" Margin="0,2"/>

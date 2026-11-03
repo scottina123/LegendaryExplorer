@@ -1,0 +1,57 @@
+<UserControl x:Class="LegendaryExplorer.MainWindow.ToolTile" x:Name="TileRoot"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Focusable="False" IsHitTestVisible="False">
+    <Viewbox Stretch="Uniform">
+        <Border Width="96" Height="80" CornerRadius="11">
+            <Border.Style>
+                <Style TargetType="Border">
+                    <Setter Property="BorderBrush" Value="#303842"/>
+                    <Setter Property="BorderThickness" Value="1"/>
+                    <Setter Property="Background">
+                        <Setter.Value>
+                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                <GradientStop Color="#171A20" Offset="0"/>
+                                <GradientStop Color="#0E1116" Offset="1"/>
+                            </LinearGradientBrush>
+                        </Setter.Value>
+                    </Setter>
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding IsFlat, ElementName=TileRoot}" Value="True">
+                            <Setter Property="BorderThickness" Value="0"/>
+                            <Setter Property="Background" Value="Transparent"/>
+                        </DataTrigger>
+                        <DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=Button}}" Value="True">
+                            <Setter Property="BorderBrush" Value="#9BACBC"/>
+                        </DataTrigger>
+                        <DataTrigger Binding="{Binding IsKeyboardFocused, RelativeSource={RelativeSource AncestorType=Button}}" Value="True">
+                            <Setter Property="BorderBrush" Value="#9BACBC"/>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Border.Style>
+            <Grid Margin="10,0,8,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="6"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <Border Height="41" CornerRadius="3" Background="{Binding MainMenuAccent}"/>
+                <Viewbox Grid.Column="1" Margin="9,0,0,0" Stretch="Uniform" StretchDirection="DownOnly">
+                    <TextBlock Text="{Binding Abbreviation}" FontFamily="{StaticResource AudemusUiFont}"
+                               FontWeight="Normal" FontSize="29">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Foreground" Value="#F4F5F7"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsFlat, ElementName=TileRoot}" Value="True">
+                                        <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                </Viewbox>
+            </Grid>
+        </Border>
+    </Viewbox>
+</UserControl>
