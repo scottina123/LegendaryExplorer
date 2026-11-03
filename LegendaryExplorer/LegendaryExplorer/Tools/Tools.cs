@@ -599,7 +599,7 @@ public static class ToolSet
         set.Add(new Tool
         {
             name = "TLK Editor",
-            Abbreviation = "tlk",
+            Abbreviation = "tlke",
             type = typeof(TLKEditorExportLoader),
             icon = Application.Current.FindResource("iconTLKEditor") as ImageSource,
             open = () =>
@@ -739,7 +739,7 @@ public static class ToolSet
         set.Add(new Tool
         {
             name = "TLK Manager",
-            Abbreviation = "tlk",
+            Abbreviation = "tlkm",
             type = typeof(TLKManagerWPF),
             icon = Application.Current.FindResource("iconTLKManager") as ImageSource,
             open = () =>
