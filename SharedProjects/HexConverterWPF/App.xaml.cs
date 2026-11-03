@@ -4,6 +4,7 @@ using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Interop;
+using System.Windows.Media;
 
 namespace HexConverter
 {
@@ -23,6 +24,12 @@ namespace HexConverter
             };
 
             base.OnStartup(e);
+
+            // Create and theme the native window while it is still hidden, so its
+            // first visible frame already uses the selected palette.
+            MainWindow = new MainWindow();
+            new WindowInteropHelper(MainWindow).EnsureHandle();
+            MainWindow.Show();
         }
 
         private static string ResolveTheme(string[] args)
@@ -75,6 +82,12 @@ namespace HexConverter
             if (hwnd == IntPtr.Zero)
             {
                 return;
+            }
+
+            // WPF can display the HWND's clear colour before its first content frame.
+            if (window.Background is SolidColorBrush background && HwndSource.FromHwnd(hwnd)?.CompositionTarget is HwndTarget target)
+            {
+                target.BackgroundColor = background.Color;
             }
 
             int useDarkMode = _isDarkTheme ? 1 : 0;

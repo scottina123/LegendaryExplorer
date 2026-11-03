@@ -521,7 +521,7 @@ public static class ToolSet
         set.Add(new Tool
         {
             name = "Hex Converter",
-            Abbreviation = "hex",
+            Abbreviation = "hexc",
             icon = Application.Current.FindResource("iconHexConverter") as ImageSource,
             open = () =>
             {
