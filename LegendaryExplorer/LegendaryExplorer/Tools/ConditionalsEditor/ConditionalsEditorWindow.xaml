@@ -102,6 +102,7 @@
             </Grid.ColumnDefinitions>
 
             <sharedToolControls:RecentsControl x:Name="RecentsController" Grid.Column="0" Grid.ColumnSpan="3"
+                                               ShowGameTabs="False"
                                                Visibility="{Binding File, Converter={StaticResource NullVisibilityConverter}, ConverterParameter='Reversed'}" />
             <ListBox x:Name="ConditionalsListBox" Grid.Column="0" Grid.Row="0" Visibility="{Binding File, Converter={StaticResource NullVisibilityConverter}}"
                      Style="{DynamicResource ListBoxStyle}"

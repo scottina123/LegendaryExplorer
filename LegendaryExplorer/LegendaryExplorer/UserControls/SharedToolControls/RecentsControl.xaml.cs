@@ -105,8 +105,24 @@ namespace LegendaryExplorer.UserControls.SharedToolControls
         private MEGame[] configuredRecentGames;
         private MEGame? defaultRecentGame;
         public IEnumerable<RecentItemGroup> VisibleRecentGroups => RecentGroups.Where(group =>
-            configuredRecentGames == null || group.IsPinned ||
-            group.Game is MEGame game && configuredRecentGames.Contains(game));
+            ShowGameTabs
+                ? configuredRecentGames == null || group.IsPinned ||
+                  group.Game is MEGame game && configuredRecentGames.Contains(game)
+                : group.Game == null);
+
+        public bool ShowGameTabs
+        {
+            get => (bool)GetValue(ShowGameTabsProperty);
+            set => SetValue(ShowGameTabsProperty, value);
+        }
+
+        public static readonly DependencyProperty ShowGameTabsProperty = DependencyProperty.Register(
+            nameof(ShowGameTabs), typeof(bool), typeof(RecentsControl), new PropertyMetadata(true, (sender, _) =>
+            {
+                var control = (RecentsControl)sender;
+                control.OnPropertyChanged(nameof(VisibleRecentGroups));
+                control.RefreshRecentGroups();
+            }));
 
         /// <summary>Use game tabs for this tool's file types, keeping unassigned files in the default tab.</summary>
         public void ConfigureGameTabs(IEnumerable<MEGame> games, MEGame defaultGame)
@@ -149,12 +165,12 @@ namespace LegendaryExplorer.UserControls.SharedToolControls
         {
             // Most tools group non-PCC files under Misc; tools with explicit game tabs
             // also group their own formats (such as Coalesced.bin and mount.dlc) by game.
-            MEGame? game = !IsFolderRecents
+            MEGame? game = ShowGameTabs && !IsFolderRecents
                            && (configuredRecentGames != null || string.Equals(Path.GetExtension(item.Path), ".pcc", StringComparison.OrdinalIgnoreCase))
                            && item.Game is MEGame knownGame && knownGame.IsMEGame()
                 ? item.Game
                 : null;
-            game ??= defaultRecentGame;
+            if (ShowGameTabs) game ??= defaultRecentGame;
             return RecentGroups.First(group => !group.IsPinned && group.Game == game);
         }
 
