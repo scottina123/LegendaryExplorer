@@ -190,8 +190,11 @@
                                 SnapsToDevicePixels="True">
                             <ScrollViewer Style="{DynamicResource {x:Static GridView.GridViewScrollViewerStyleKey}}"
                                           Focusable="False"
+                                          CanContentScroll="{TemplateBinding ScrollViewer.CanContentScroll}"
+                                          HorizontalScrollBarVisibility="{TemplateBinding ScrollViewer.HorizontalScrollBarVisibility}"
+                                          VerticalScrollBarVisibility="{TemplateBinding ScrollViewer.VerticalScrollBarVisibility}"
                                           Padding="{TemplateBinding Padding}">
-                                <ItemsPresenter SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}"/>
+                                <ItemsPresenter x:Name="ItemsPresenter" SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}"/>
                             </ScrollViewer>
                         </Border>
                     </ControlTemplate>
@@ -1448,6 +1451,8 @@
                                                        Width="220"
                                                        Watermark="Search lines"
                                                        Text="{Binding LineSearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                                <TextBlock Text="Searching…" Margin="3,0,8,0" VerticalAlignment="Center"
+                                           Visibility="{Binding IsLineSearchRunning, Converter={StaticResource BoolToVisibilityConverter}}"/>
                                 <CheckBox x:Name="btn_LinePlaybackToggle"
                                           Content="Playback"
                                           Margin="0,0,10,0"
@@ -1459,14 +1464,36 @@
                                         Margin="0,3,10,3"
                                         Padding="8,2"
                                         Click="ExtractFilteredLinesAudio_Click"
-                                        IsEnabled="{Binding IsGettingTLKs, Converter={StaticResource InverseBooleanConverter}}"
-                                        ToolTip="Extract audio for the lines currently shown by the active filter/search."/>
+                                        ToolTip="Extract audio for the lines currently shown by the active filter/search.">
+                                    <Button.Style>
+                                        <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsGettingTLKs}" Value="True">
+                                                    <Setter Property="IsEnabled" Value="False"/>
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding IsLineSearchRunning}" Value="True">
+                                                    <Setter Property="IsEnabled" Value="False"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Button.Style>
+                                </Button>
                                 <TextBlock Text="Parsing TLKs: " Visibility="{Binding IsGettingTLKs, Converter={StaticResource BoolToVisibilityConverter}}" Margin="5,0" VerticalAlignment="Center"/>
                                 <ProgressBar IsIndeterminate="True" Visibility="{Binding IsGettingTLKs, Converter={StaticResource BoolToVisibilityConverter}}" Margin="3,0" Width="170" Height="15"/>
                             </StackPanel>
                             <ListView x:Name="lstbx_Lines" MinWidth="300" ItemsSource="{Binding CurrentDataBase.Lines}" Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" Grid.RowSpan="2" GridViewColumnHeader.Click="views_ColumnHeader_Click" SelectionChanged="lstbx_Lines_SelectionChanged" PreviewMouseRightButtonDown="lstbx_Lines_PreviewMouseRightButtonDown"
                                       Style="{StaticResource NoFocusBorderListViewStyle}"
+                                      VirtualizingPanel.IsVirtualizing="True"
+                                      VirtualizingPanel.VirtualizationMode="Recycling"
+                                      VirtualizingPanel.ScrollUnit="Pixel"
+                                      VirtualizingPanel.CacheLength="1"
+                                      VirtualizingPanel.CacheLengthUnit="Page"
                                       ItemContainerStyle="{DynamicResource {x:Static GridView.GridViewItemContainerStyleKey}}">
+                                <ListView.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <VirtualizingStackPanel/>
+                                    </ItemsPanelTemplate>
+                                </ListView.ItemsPanel>
                                 <ListView.View>
                                     <GridView ColumnHeaderContainerStyle="{DynamicResource AudemusGridViewColumnHeaderStyle}">
                                         <GridViewColumn Width="220" Header="Speaker">

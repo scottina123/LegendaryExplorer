@@ -443,6 +443,18 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         private readonly Dictionary<string, Conversation> _conversationLookup = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, (string FileName, string Location)> _convoFileInfoCache = new(StringComparer.OrdinalIgnoreCase);
         private readonly DispatcherTimer _lineSearchDebounceTimer;
+        private Task<LineSearchIndex> _lineSearchIndexTask;
+        private CancellationTokenSource _lineSearchIndexCancellation = new();
+        private CancellationTokenSource _lineSearchCancellation;
+        private int _lineSearchVersion;
+        private HashSet<ConvoLine> _lineSearchMatches;
+        internal Task PendingLineSearch { get; private set; } = Task.CompletedTask;
+        private bool _isLineSearchRunning;
+        public bool IsLineSearchRunning
+        {
+            get => _isLineSearchRunning;
+            private set => SetProperty(ref _isLineSearchRunning, value);
+        }
 
         public FileListSpecification FileListFilter { get; } = new();
         public AssetFilters AssetFilters { get; private set; }
@@ -840,7 +852,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             {
                 if (SetProperty(ref _selectedLineSearchColumn, value))
                 {
-                    Filter();
+                    ScheduleLineSearchFilter();
                 }
             }
         }
@@ -853,7 +865,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             {
                 if (SetProperty(ref _lineSearchText, value))
                 {
-                    Filter();
+                    ScheduleLineSearchFilter();
                 }
             }
         }
@@ -1268,6 +1280,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
 
             _isClosing = true;
             _lineSearchDebounceTimer?.Stop();
+            InvalidateLineSearchIndex();
             ScottinaPreset.Applied -= OnScottinaPresetApplied;
             // An already-open database can keep its current session without replacing
             // the restored defaults when LEX closes. Subsequent user changes still save.
@@ -1622,6 +1635,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
 
         private void RefreshTlkLookup()
         {
+            InvalidateLineSearchIndex();
             _tlkUsageLookup.Clear();
             foreach (var tlkRecord in CurrentDataBase.TlkStrings)
             {
@@ -1820,6 +1834,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
 
         public void ClearDataBase()
         {
+            InvalidateLineSearchIndex();
             CurrentDataBase.Clear();
             _morphFaceAssets.Clear();
             CurrentDataBase.Game = CurrentGame;
@@ -1854,6 +1869,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
 
         private void RebuildConversationLookup()
         {
+            InvalidateLineSearchIndex();
             _conversationLookup.Clear();
             _convoFileInfoCache.Clear();
 
@@ -1964,6 +1980,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
 
         private void ScheduleLineSearchFilter()
         {
+            CancelPendingLineSearch();
             if (currentView != 8)
             {
                 Filter();
@@ -1971,7 +1988,76 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             }
 
             _lineSearchDebounceTimer.Stop();
+            IsLineSearchRunning = true;
             _lineSearchDebounceTimer.Start();
+        }
+
+        private void CancelPendingLineSearch()
+        {
+            _lineSearchVersion++;
+            _lineSearchCancellation?.Cancel();
+            _lineSearchCancellation?.Dispose();
+            _lineSearchCancellation = null;
+        }
+
+        private void InvalidateLineSearchIndex()
+        {
+            CancelPendingLineSearch();
+            IsLineSearchRunning = false;
+            _lineSearchIndexCancellation.Cancel();
+            _lineSearchIndexCancellation.Dispose();
+            _lineSearchIndexCancellation = new CancellationTokenSource();
+            _lineSearchIndexTask = null;
+            _lineSearchMatches = null;
+        }
+
+        private Task<LineSearchIndex> GetLineSearchIndexAsync()
+        {
+            if (_lineSearchIndexTask != null) return _lineSearchIndexTask;
+            // Snapshot on the UI thread; workers only see immutable strings, records, and arrays.
+            var lines = CurrentDataBase.Lines.Select(line => new LineSearchIndex.SourceLine(
+                line, line.StrRef, line.Speaker, line.DisplayLine, line.Convo)).ToArray();
+            var files = FileListExtended.ToArray();
+            var conversations = _conversationLookup.ToDictionary(pair => pair.Key,
+                pair => new LineSearchIndex.SourceConversation(pair.Value.ConvFile.FileKey, pair.Value.OwnerFriendlyName),
+                StringComparer.OrdinalIgnoreCase);
+            var usages = _tlkUsageLookup.ToDictionary(pair => pair.Key, pair => pair.Value.Usages.ToArray());
+            CancellationToken token = _lineSearchIndexCancellation.Token;
+            return _lineSearchIndexTask = Task.Run(() => LineSearchIndex.Build(lines, files, conversations, usages, token), token);
+        }
+
+        private async Task FilterLinesAsync()
+        {
+            _lineSearchDebounceTimer.Stop();
+            CancelPendingLineSearch();
+            if (_isClosing) return;
+            int version = _lineSearchVersion;
+            var cancellation = _lineSearchCancellation = new CancellationTokenSource();
+            CancellationToken token = cancellation.Token;
+            string text = LineSearchText;
+            string column = SelectedLineSearchColumn;
+            string speaker = cmbbx_filterSpkrs.SelectedItem as string;
+            IsLineSearchRunning = true;
+            try
+            {
+                HashSet<ConvoLine> matches = null;
+                if (!string.IsNullOrWhiteSpace(text) || speaker != null)
+                {
+                    LineSearchIndex index = await GetLineSearchIndexAsync().WaitAsync(token);
+                    matches = await Task.Run(() => index.Search(text, column, speaker, token), token);
+                }
+                if (token.IsCancellationRequested || version != _lineSearchVersion || _isClosing || currentView != 8) return;
+                _lineSearchMatches = matches;
+                // WPF only checks membership here; text matching and file resolution ran on a worker.
+                ICollectionView view = CollectionViewSource.GetDefaultView(CurrentDataBase.Lines);
+                view.Filter = LineFilter;
+                lstbx_Lines.ItemsSource = view;
+            }
+            catch (OperationCanceledException) { }
+            finally
+            {
+                if (version == _lineSearchVersion) IsLineSearchRunning = false;
+            }
         }
 
         private static IMEPackage OpenOwnerResolverPackage(string packageName)
@@ -2701,6 +2787,12 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                 menu_SaveXEmptyLines.IsEnabled = true;
             }
             IsGettingTLKs = false;
+            InvalidateLineSearchIndex();
+            if (!_isClosing)
+            {
+                _ = GetLineSearchIndexAsync();
+                if (currentView == 8) Filter();
+            }
             if (CurrentDataBase.Lines.Count == 0)
             {
                 MessageBox.Show("Line list is empty! Make sure you have TLKs loaded in TLK Manager.");
@@ -5964,53 +6056,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
 
         bool LineFilter(object d)
         {
-            if (d is ConvoLine line)
-            {
-                bool showthis = true;
-                if (cmbbx_filterSpkrs.SelectedIndex >= 0)
-                {
-                    string selectedSpeaker = cmbbx_filterSpkrs.SelectedItem.ToString();
-                    string displaySpeaker = GetSpeakerDisplayForSearch(line);
-                    string filterSpeaker = GetSpeakerFilterValue(line);
-                    showthis = string.Equals(line.Speaker, selectedSpeaker, StringComparison.CurrentCultureIgnoreCase)
-                               || string.Equals(filterSpeaker, selectedSpeaker, StringComparison.CurrentCultureIgnoreCase)
-                               || string.Equals(displaySpeaker, selectedSpeaker, StringComparison.CurrentCultureIgnoreCase);
-                }
-                if (showthis && !string.IsNullOrWhiteSpace(LineSearchText))
-                {
-                    showthis = LineMatchesSearch(line, LineSearchText);
-                }
-
-                return showthis;
-            }
-
-            return false;
-        }
-
-        private bool LineMatchesSearch(ConvoLine line, string searchText)
-        {
-            if (string.IsNullOrWhiteSpace(searchText))
-            {
-                return true;
-            }
-
-            var speakerDisplay = GetSpeakerDisplayForSearch(line);
-
-            return SelectedLineSearchColumn switch
-            {
-                SpeakerLineSearchColumn => ContainsText(speakerDisplay, searchText),
-                TlkStringRefLineSearchColumn => ContainsText(line.StrRef.ToString(), searchText),
-                LineTextSearchColumn => ContainsText(line.DisplayLine, searchText),
-                LineConversationSearchColumn => ContainsText(line.Convo, searchText),
-                FileLineSearchColumn => ContainsText(GetLineFileDisplay(line), searchText),
-                LocationLineSearchColumn => ContainsText(GetLineLocationDisplay(line), searchText),
-                _ => ContainsText(speakerDisplay, searchText)
-                     || ContainsText(line.StrRef.ToString(), searchText)
-                     || ContainsText(line.DisplayLine, searchText)
-                     || ContainsText(line.Convo, searchText)
-                     || ContainsText(GetLineFileDisplay(line), searchText)
-                     || ContainsText(GetLineLocationDisplay(line), searchText)
-            };
+            return d is ConvoLine line && (_lineSearchMatches == null || _lineSearchMatches.Contains(line));
         }
 
         private bool ContainsText(string source, string searchText)
@@ -6143,11 +6189,15 @@ namespace LegendaryExplorer.Tools.AssetDatabase
 
         public string GetLineFileDisplay(ConvoLine line)
         {
+            if (_lineSearchIndexTask is { IsCompletedSuccessfully: true }
+                && _lineSearchIndexTask.Result.TryGetUsageText(line, out string files, out _)) return files;
             return GetLineUsageDisplay(line, static file => file.FileName);
         }
 
         public string GetLineLocationDisplay(ConvoLine line)
         {
+            if (_lineSearchIndexTask is { IsCompletedSuccessfully: true }
+                && _lineSearchIndexTask.Result.TryGetUsageText(line, out _, out string locations)) return locations;
             return GetLineUsageDisplay(line, static file => file.Directory);
         }
 
@@ -6570,9 +6620,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                     lstbx_Scaleform.ItemsSource = viewG;
                     break;
                 case 8: //Lines
-                    ICollectionView viewL = CollectionViewSource.GetDefaultView(CurrentDataBase.Lines);
-                    viewL.Filter = LineFilter;
-                    lstbx_Lines.ItemsSource = viewL;
+                    PendingLineSearch = FilterLinesAsync();
                     break;
                 case 9: // PlotElements
                     var lstbx = GetSelectedPlotListBox();
