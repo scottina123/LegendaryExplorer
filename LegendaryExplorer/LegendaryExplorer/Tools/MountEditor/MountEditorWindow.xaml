@@ -5,15 +5,32 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:bases="clr-namespace:LegendaryExplorer.SharedUI.Bases"
         xmlns:xctk="http://schemas.xceed.com/wpf/xaml/toolkit"
+        xmlns:sharedToolControls="clr-namespace:LegendaryExplorer.UserControls.SharedToolControls"
         mc:Ignorable="d"
         d:DataContext="{Binding RelativeSource={RelativeSource Self}}"
         DragOver="Window_DragOver"
         Drop="Window_Drop"
         AllowDrop="True"
         Icon="pack://application:,,,/Tools/Icons/16x16/MountEditor_Icon_16.ico"
-        Title="Mount Editor" Height="358" Width="500">
+        Title="Mount Editor" Height="520" Width="1040" MinHeight="460" MinWidth="900" Closed="Root_Closed">
+    <DockPanel>
+        <Menu DockPanel.Dock="Top">
+            <MenuItem Header="_File">
+                <MenuItem Header="_Open..." Click="LoadMountFile_Click"/>
+                <MenuItem x:Name="Recents_MenuItem" Header="Recent"/>
+                <Separator/>
+                <MenuItem Header="Save _As..." Click="SaveMountFile_Click"/>
+            </MenuItem>
+        </Menu>
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition x:Name="EditorColumn" Width="460" MinWidth="420"/>
+                <ColumnDefinition x:Name="RecentsSplitterColumn" Width="5"/>
+                <ColumnDefinition x:Name="RecentsColumn" Width="*" MinWidth="350"/>
+            </Grid.ColumnDefinitions>
+            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
     <StackPanel>
-        <TextBlock Text="Use this tool to create new or modify existing mount.dlc files.&#10;Loading a file will load its values into the editor." Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" Padding="5,5,5,5"/>
+        <TextBlock Text="Use this tool to create new or modify existing mount.dlc files.&#10;Loading a file will load its values into the editor." TextWrapping="Wrap" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" Padding="5,5,5,5"/>
         <StackPanel Margin="5">
             <TextBlock Text="Mount priority"/>
             <xctk:WatermarkTextBox Watermark="DLC loading priority" PreviewTextInput="PreviewShortInput"  Name="MountPriority_TextBox" ToolTip="Mount priority changes the load order of DLC loading.&#10;Higher value DLC with same-named files will override lower priority ones.&#10;Take great care when setting this, as you will break other mods if yours is higher and is not compatible with the other mod's changes."/>
@@ -79,4 +96,13 @@
             </StackPanel>
         </StackPanel>
     </StackPanel>
+            </ScrollViewer>
+            <GridSplitter x:Name="RecentsSplitter" Grid.Column="1" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                          ResizeDirection="Columns" ResizeBehavior="PreviousAndNext"/>
+            <DockPanel x:Name="RecentsPane" Grid.Column="2" Margin="8,5,5,5">
+                <TextBlock DockPanel.Dock="Top" Text="Recent and pinned files" FontSize="16" Margin="5,0,5,8"/>
+                <sharedToolControls:RecentsControl x:Name="RecentsController"/>
+            </DockPanel>
+        </Grid>
+    </DockPanel>
 </bases:TrackingNotifyPropertyChangedWindowBase>

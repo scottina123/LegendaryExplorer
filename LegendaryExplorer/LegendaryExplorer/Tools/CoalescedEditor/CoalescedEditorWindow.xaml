@@ -5,6 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:bases="clr-namespace:LegendaryExplorer.SharedUI.Bases"
         xmlns:local="clr-namespace:LegendaryExplorer.Tools.CoalescedEditor"
+        xmlns:sharedToolControls="clr-namespace:LegendaryExplorer.UserControls.SharedToolControls"
         xmlns:avalonedit="http://icsharpcode.net/sharpdevelop/avalonedit"
         mc:Ignorable="d"
         Icon="pack://application:,,,/Tools/Icons/16x16/CoalescedCompiler_Icon_16.ico"
@@ -26,6 +27,7 @@
         <Menu DockPanel.Dock="Top">
             <MenuItem Header="_File">
                 <MenuItem Header="_Open..." Command="{Binding OpenFileCommand}" InputGestureText="Ctrl+O" />
+                <MenuItem x:Name="Recents_MenuItem" Header="Recent"/>
                 <MenuItem Header="_Save" Command="{Binding SaveCommand}" InputGestureText="Ctrl+S" />
                 <MenuItem Header="Save _As..." Command="{Binding SaveAsCommand}" InputGestureText="Ctrl+Shift+S" />
                 <Separator />
@@ -186,11 +188,9 @@
                                             ContextMenu="{StaticResource EditorContextMenu}" />
                 </DockPanel>
             </Grid>
-            <!-- Startup text shown when no files are open -->
-            <TextBlock x:Name="WelcomeText" Grid.RowSpan="2"
-                       Text="Drag and drop a Coalesced.bin file here, or use File → Open to get started."
-                       HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="16" Foreground="Gray"
-                       Visibility="Collapsed" />
+            <!-- Recent and pinned files are available when no documents are open. -->
+            <sharedToolControls:RecentsControl x:Name="RecentsController" Grid.RowSpan="2"
+                                              Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"/>
         </Grid>
     </DockPanel>
     <Window.InputBindings>

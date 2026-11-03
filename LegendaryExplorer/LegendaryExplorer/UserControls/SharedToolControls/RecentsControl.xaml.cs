@@ -102,6 +102,25 @@ namespace LegendaryExplorer.UserControls.SharedToolControls
         };
 
         public RecentItemGroup PinnedGroup => RecentGroups.Last();
+        private MEGame[] configuredRecentGames;
+        private MEGame? defaultRecentGame;
+        public IEnumerable<RecentItemGroup> VisibleRecentGroups => RecentGroups.Where(group =>
+            configuredRecentGames == null || group.IsPinned ||
+            group.Game is MEGame game && configuredRecentGames.Contains(game));
+
+        /// <summary>Use game tabs for this tool's file types, keeping unassigned files in the default tab.</summary>
+        public void ConfigureGameTabs(IEnumerable<MEGame> games, MEGame defaultGame)
+        {
+            var supportedGames = games.Distinct().ToArray();
+            if (!supportedGames.Contains(defaultGame) || supportedGames.Any(game => !game.IsMEGame()))
+                throw new ArgumentException("The default game must be one of the supported ME games.", nameof(games));
+
+            configuredRecentGames = supportedGames;
+            defaultRecentGame = defaultGame;
+            OnPropertyChanged(nameof(VisibleRecentGroups));
+            RefreshRecentGroups();
+        }
+
         public bool ShowPinnedSearch => PinnedItems.Count > 9;
         public string PinBrowseLabel => IsFolderRecents ? "Pin folder…" : "Pin file…";
         public string PinnedFileFilter { get; set; } = GameFileFilters.OpenFileFilter;
@@ -128,12 +147,14 @@ namespace LegendaryExplorer.UserControls.SharedToolControls
 
         private RecentItemGroup GetRecentGroup(RecentItem item)
         {
-            // Non-PCC files can also carry a game (for example, ME3 SFARs).
+            // Most tools group non-PCC files under Misc; tools with explicit game tabs
+            // also group their own formats (such as Coalesced.bin and mount.dlc) by game.
             MEGame? game = !IsFolderRecents
-                           && string.Equals(Path.GetExtension(item.Path), ".pcc", StringComparison.OrdinalIgnoreCase)
+                           && (configuredRecentGames != null || string.Equals(Path.GetExtension(item.Path), ".pcc", StringComparison.OrdinalIgnoreCase))
                            && item.Game is MEGame knownGame && knownGame.IsMEGame()
                 ? item.Game
                 : null;
+            game ??= defaultRecentGame;
             return RecentGroups.First(group => !group.IsPinned && group.Game == game);
         }
 
@@ -144,13 +165,16 @@ namespace LegendaryExplorer.UserControls.SharedToolControls
                 group.Items.ReplaceAll(RecentItems.Where(item => GetRecentGroup(item) == group));
             }
 
-            if (preferredItem != null)
+            var visibleGroups = VisibleRecentGroups.ToArray();
+            if (preferredItem != null && visibleGroups.Contains(GetRecentGroup(preferredItem)))
             {
                 SelectedRecentGroup = GetRecentGroup(preferredItem);
             }
-            else if (SelectedRecentGroup == null || (!SelectedRecentGroup.IsPinned && !SelectedRecentGroup.Items.Any))
+            else if (!visibleGroups.Contains(SelectedRecentGroup) || (!SelectedRecentGroup.IsPinned && !SelectedRecentGroup.Items.Any))
             {
-                SelectedRecentGroup = RecentItems.Count > 0 ? GetRecentGroup(RecentItems[0]) : RecentGroups[0];
+                SelectedRecentGroup = RecentItems.Select(GetRecentGroup).FirstOrDefault(visibleGroups.Contains)
+                    ?? visibleGroups.FirstOrDefault(group => defaultRecentGame.HasValue && group.Game == defaultRecentGame)
+                    ?? visibleGroups[0];
             }
         }
 

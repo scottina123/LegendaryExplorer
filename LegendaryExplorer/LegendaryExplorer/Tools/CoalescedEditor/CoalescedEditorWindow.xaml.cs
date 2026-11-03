@@ -17,6 +17,8 @@ using LegendaryExplorer.Misc;
 using LegendaryExplorer.Misc.AppSettings;
 using LegendaryExplorer.SharedUI;
 using LegendaryExplorer.SharedUI.Bases;
+using LegendaryExplorer.SharedUI.Interfaces;
+using LegendaryExplorer.UserControls.SharedToolControls;
 using LegendaryExplorerCore.Coalesced;
 using LegendaryExplorerCore.Misc;
 using LegendaryExplorerCore.Packages;
@@ -45,9 +47,10 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
     /// <summary>
     /// A direct in-editor coalesced file editor that opens .bin files without extracting to XML.
     /// </summary>
-    public partial class CoalescedEditorWindow : TrackingNotifyPropertyChangedWindowBase
+    public partial class CoalescedEditorWindow : TrackingNotifyPropertyChangedWindowBase, IRecents
     {
-        private static readonly string StateFilePath = Path.Combine(AppDirectories.AppDataFolder, "CoalescedEditorState.json");
+        private readonly string StateFilePath;
+        public string Toolname { get; }
         private const string DefaultGame3ManifestBaseName = "Coalesced";
         private static readonly Regex TlkReferenceRegex = new(@"\b\d{5,10}\b", RegexOptions.Compiled);
         private static readonly Regex PlotAssignmentRegex = new(@"(?<key>\b[A-Za-z_][A-Za-z0-9_]*\b)\s*=\s*(?<id>\d+)", RegexOptions.Compiled);
@@ -184,19 +187,45 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
         private Point _tabDragStartPoint;
         private OpenCoalescedFile _tabDragSource;
 
-        public CoalescedEditorWindow() : base("Coalesced Editor", true)
+        public CoalescedEditorWindow() : this("CoalescedEditor",
+            Path.Combine(AppDirectories.AppDataFolder, "CoalescedEditorState.json"), restoreSession: true)
         {
+        }
+
+        internal CoalescedEditorWindow(string recentsToolName, string stateFilePath, bool restoreSession)
+            : base("Coalesced Editor", true)
+        {
+            Toolname = recentsToolName;
+            StateFilePath = stateFilePath;
             _tlkInlineAnnotationGenerator = new TlkInlineAnnotationGenerator(SelectTlkStringRef);
             LoadCommands();
             InitializeComponent();
             DataContext = this;
+            RecentsController.ConfigureGameTabs(new[] { MEGame.ME3, MEGame.LE3 }, MEGame.LE3);
+            RecentsController.InitRecentControl(Toolname, Recents_MenuItem, LoadCoalescedFile,
+                "Coalesced files (*.bin)|*.bin");
             TextEditor.TextArea.TextView.BackgroundRenderers.Add(_xmlTagMatchRenderer);
             TextEditor.TextArea.TextView.BackgroundRenderers.Add(_selectionMatchRenderer);
             TextEditor.TextArea.TextView.ElementGenerators.Add(_tlkInlineAnnotationGenerator);
             TextEditor.TextChanged += TextEditor_TextChanged;
             TextEditor.TextArea.Caret.PositionChanged += TextArea_Caret_PositionChanged;
             TextEditor.TextArea.SelectionChanged += TextArea_SelectionChanged;
-            RestoreOpenFiles();
+            if (restoreSession)
+            {
+                bool hasHistory = File.Exists(Path.Combine(AppDirectories.AppDataFolder, Toolname, "RECENTFILES"));
+                RestoreOpenFiles();
+                if (!hasHistory && OpenFiles.Count > 0)
+                {
+                    // Seed the first history from existing tabs; later restores keep saved MRU order.
+                    var restoredRecents = OpenFiles.OrderByDescending(file => file == SelectedFile).Select(file =>
+                    {
+                        MEGame game = GetFileGame(file.FilePath);
+                        return new RecentsControl.RecentItem(file.FilePath, game == MEGame.Unknown ? null : game);
+                    }).ToArray();
+                    RecentsController.PropogateRecentsChange(false, restoredRecents);
+                    RecentsController.SaveRecentList(true);
+                }
+            }
             UpdateWelcomeVisibility();
             ScottinaPreset.Applied += OnScottinaPresetApplied;
         }
@@ -429,6 +458,7 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
                 if (existing != null)
                 {
                     SelectedFile = existing;
+                    if (!_isRestoringState) AddRecentFile(filePath);
                     StatusText = $"Switched to already-open file: {Path.GetFileName(filePath)}";
                     return;
                 }
@@ -472,6 +502,7 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
                 SelectedFile = coalFile;
                 UpdateWelcomeVisibility();
                 StatusText = $"Opened: {Path.GetFileName(filePath)} ({coalFile.FileNames.Count} files)";
+                if (!_isRestoringState) AddRecentFile(filePath);
             }
             catch (Exception ex)
             {
@@ -583,6 +614,7 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
                 coalFile.LastSaved = File.GetLastWriteTime(destinationPath);
                 coalFile.HasUnsavedChanges = false;
                 StatusText = $"Saved: {Path.GetFileName(destinationPath)}";
+                AddRecentFile(destinationPath);
             }
             catch (Exception ex)
             {
@@ -771,8 +803,8 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
 
         private void UpdateWelcomeVisibility()
         {
-            if (WelcomeText != null)
-                WelcomeText.Visibility = OpenFiles.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+            if (RecentsController != null)
+                RecentsController.Visibility = OpenFiles.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
             if (ContentArea != null)
                 ContentArea.Visibility = OpenFiles.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
             if (FilesTabControl != null)
@@ -1680,9 +1712,17 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
             };
         }
 
-        private MEGame GetSelectedFileGame()
+        private void AddRecentFile(string path)
         {
-            var filePath = SelectedFile?.FilePath;
+            MEGame game = GetFileGame(path);
+            // The recents file uses a three-character game prefix; unknown files use NUL.
+            RecentsController.AddRecent(path, false, game == MEGame.Unknown ? null : game);
+        }
+
+        private MEGame GetSelectedFileGame() => GetFileGame(SelectedFile?.FilePath);
+
+        private static MEGame GetFileGame(string filePath)
+        {
             if (string.IsNullOrWhiteSpace(filePath))
                 return MEGame.Unknown;
 
@@ -1749,6 +1789,12 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
         {
             ScottinaPreset.Applied -= OnScottinaPresetApplied;
             SaveOpenFilesList();
+            RecentsController.Dispose();
+        }
+
+        public void PropogateRecentsChange(string propogationToolSource, IEnumerable<RecentsControl.RecentItem> newRecents)
+        {
+            if (propogationToolSource == Toolname) RecentsController.PropogateRecentsChange(false, newRecents);
         }
 
         private void OnScottinaPresetApplied(object sender, EventArgs e)

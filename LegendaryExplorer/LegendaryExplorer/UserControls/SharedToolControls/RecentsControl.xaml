@@ -153,7 +153,7 @@
     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
                   HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
         <Grid>
-            <TabControl x:Name="RecentTabs" ItemsSource="{Binding RecentGroups}" SelectedItem="{Binding SelectedRecentGroup, Mode=TwoWay}"
+            <TabControl x:Name="RecentTabs" ItemsSource="{Binding VisibleRecentGroups}" SelectedItem="{Binding SelectedRecentGroup, Mode=TwoWay}"
                         HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch" Padding="8">
                 <TabControl.ItemTemplate>
                     <DataTemplate>

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Microsoft.WindowsAPICodePack.Dialogs;
 using System.Collections.Generic;
 using System.IO;
@@ -8,6 +8,8 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using LegendaryExplorer.Misc;
 using LegendaryExplorer.SharedUI.Bases;
+using LegendaryExplorer.SharedUI.Interfaces;
+using LegendaryExplorer.UserControls.SharedToolControls;
 using LegendaryExplorer.Tools.TlkManagerNS;
 using LegendaryExplorerCore.GameFilesystem;
 using LegendaryExplorerCore.Helpers;
@@ -23,8 +25,9 @@ namespace LegendaryExplorer.Tools.MountEditor
     /// <summary>
     /// Interaction logic for MountEditorWPF.xaml
     /// </summary>
-    public partial class MountEditorWindow : TrackingNotifyPropertyChangedWindowBase
+    public partial class MountEditorWindow : TrackingNotifyPropertyChangedWindowBase, IRecents
     {
+        public string Toolname { get; }
         public ObservableCollectionExtended<MountFlag> MountOptions { get; } = new();
         //private readonly List<UIMountFlag> ME2MountFlags = new();
         //private readonly List<UIMountFlag> ME3MountFlags = new();
@@ -70,13 +73,40 @@ namespace LegendaryExplorer.Tools.MountEditor
             set => SetProperty(ref _currentMountFileText, value);
         }
 
-        public MountEditorWindow() : base("Mount Editor", true)
+        public MountEditorWindow() : this("MountEditor")
         {
+        }
+
+        internal MountEditorWindow(string recentsToolName) : base("Mount Editor", true)
+        {
+            Toolname = recentsToolName;
             CurrentMountFileText = "No mount file loaded. Mouse over fields for descriptions of their values.";
             DataContext = this;
             InitializeComponent();
             SelectedGame = Games[0];
+            RecentsController.ConfigureGameTabs(Games.Select(game => game.Game), MEGame.LE3);
+            RecentsController.InitRecentControl(Toolname, Recents_MenuItem, OpenRecentMountFile,
+                "Mount files (*.dlc)|*.dlc");
         }
+
+        private void OpenRecentMountFile(string path)
+        {
+            try
+            {
+                LoadFile(path);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, $"Unable to open mount file:\n{ex.Message}", "Mount Editor", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        public void PropogateRecentsChange(string propogationToolSource, IEnumerable<RecentsControl.RecentItem> newRecents)
+        {
+            if (propogationToolSource == Toolname) RecentsController.PropogateRecentsChange(false, newRecents);
+        }
+
+        private void Root_Closed(object sender, EventArgs e) => RecentsController.Dispose();
 
         private void PreviewIntegerInput(object sender, TextCompositionEventArgs e)
         {
@@ -131,6 +161,24 @@ namespace LegendaryExplorer.Tools.MountEditor
             CurrentMountFileText = fileName;
             SetSelectedFlagsUI(mf.MountFlags.FlagValue);
             loadingNewData = false;
+            RecentsController.AddRecent(fileName, false, mf.Game);
+            CloseStartView();
+        }
+
+        private void CloseStartView()
+        {
+            if (RecentsPane.Visibility == Visibility.Collapsed) return;
+
+            RecentsPane.Visibility = Visibility.Collapsed;
+            RecentsSplitter.Visibility = Visibility.Collapsed;
+            RecentsColumn.MinWidth = 0;
+            RecentsColumn.Width = new GridLength(0);
+            RecentsSplitterColumn.Width = new GridLength(0);
+            EditorColumn.Width = new GridLength(1, GridUnitType.Star);
+            MinWidth = 500;
+            MinHeight = 386;
+            Width = 500;
+            Height = 386;
         }
 
         private void SetSelectedFlagsUI(int flag)
@@ -171,23 +219,30 @@ namespace LegendaryExplorer.Tools.MountEditor
                 m.Filters.Add(new CommonFileDialogFilter("Mount files", "*.dlc"));
                 if (DirectoryMemory.ShowDialog(m) == CommonFileDialogResult.Ok)
                 {
-                    var mf = new MountFile() //We will write this to disk
-                    {
-                        Game = SelectedGame.Game,
-                        MountPriority = ushort.Parse(MountPriority_TextBox.Text.Trim()),
-                        TLKID = int.Parse(TLKID_TextBox.Text.Trim()),
-                        MountFlags = GetCurrentMountFlag()
-                    };
-
-                    if (mf.Game.IsGame2())
-                    {
-                        mf.ME2Only_DLCFolderName = DLCFolder_TextBox.Text;
-                        mf.ME2Only_DLCHumanName = HumanReadable_TextBox.Text;
-                    }
-                    mf.WriteMountFile(m.FileName);
+                    SaveFile(m.FileName);
                     MessageBox.Show("Done.");
                 }
             }
+        }
+
+        internal void SaveFile(string fileName)
+        {
+            var mf = new MountFile
+            {
+                Game = SelectedGame.Game,
+                MountPriority = ushort.Parse(MountPriority_TextBox.Text.Trim()),
+                TLKID = int.Parse(TLKID_TextBox.Text.Trim()),
+                MountFlags = GetCurrentMountFlag()
+            };
+            if (mf.Game.IsGame2())
+            {
+                mf.ME2Only_DLCFolderName = DLCFolder_TextBox.Text;
+                mf.ME2Only_DLCHumanName = HumanReadable_TextBox.Text;
+            }
+            mf.WriteMountFile(fileName);
+            CurrentMountFileText = fileName;
+            RecentsController.AddRecent(fileName, false, mf.Game);
+            CloseStartView();
         }
 
         private MountFlag GetCurrentMountFlag()
