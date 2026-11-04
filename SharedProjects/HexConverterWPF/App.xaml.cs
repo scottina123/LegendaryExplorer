@@ -12,6 +12,7 @@ namespace HexConverter
     {
         private const int DwmUseImmersiveDarkModeAttribute = 20;
         private const int DwmUseImmersiveDarkModeAttributeBefore20H1 = 19;
+        private const int DwmCloakAttribute = 13;
         private static bool _isDarkTheme = true;
 
         protected override void OnStartup(StartupEventArgs e)
@@ -84,6 +85,8 @@ namespace HexConverter
                 return;
             }
 
+            HideUntilContentRendered(window, hwnd);
+
             // WPF can display the HWND's clear colour before its first content frame.
             if (window.Background is SolidColorBrush background && HwndSource.FromHwnd(hwnd)?.CompositionTarget is HwndTarget target)
             {
@@ -96,6 +99,46 @@ namespace HexConverter
                 DwmSetWindowAttribute(hwnd, DwmUseImmersiveDarkModeAttributeBefore20H1, ref useDarkMode, sizeof(int));
             }
         }
+
+        private static void HideUntilContentRendered(Window window, IntPtr hwnd)
+        {
+            // Setting the clear colour alone cannot stop DWM showing the native
+            // surface before WPF has submitted its first themed content frame.
+            int cloak = 1;
+            bool cloaked = DwmSetWindowAttribute(hwnd, DwmCloakAttribute, ref cloak, sizeof(int)) == 0;
+            double opacity = window.Opacity;
+            if (!cloaked) window.Opacity = 0;
+
+            EventHandler rendered = null;
+            EventHandler closed = null;
+            void Detach()
+            {
+                window.ContentRendered -= rendered;
+                window.Closed -= closed;
+            }
+
+            rendered = (_, _) =>
+            {
+                Detach();
+                // Wait for the submitted surface to reach DWM before revealing it.
+                DwmFlush();
+                if (cloaked)
+                {
+                    int uncloak = 0;
+                    DwmSetWindowAttribute(hwnd, DwmCloakAttribute, ref uncloak, sizeof(int));
+                }
+                else
+                {
+                    window.Opacity = opacity;
+                }
+            };
+            closed = (_, _) => Detach();
+            window.ContentRendered += rendered;
+            window.Closed += closed;
+        }
+
+        [DllImport("dwmapi.dll")]
+        private static extern int DwmFlush();
 
         [DllImport("dwmapi.dll")]
         private static extern int DwmSetWindowAttribute(IntPtr hwnd, int dwAttribute, ref int pvAttribute, int cbAttribute);
