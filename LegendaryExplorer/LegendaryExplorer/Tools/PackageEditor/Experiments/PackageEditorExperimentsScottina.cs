@@ -25,6 +25,7 @@ using LegendaryExplorerCore.Misc;
 using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.Packages.CloningImportingAndRelinking;
 using LegendaryExplorerCore.Shaders;
+using LegendaryExplorerCore.Textures;
 using LegendaryExplorerCore.Unreal;
 using LegendaryExplorerCore.Unreal.BinaryConverters;
 using LegendaryExplorerCore.Unreal.Collections;
@@ -35,7 +36,6 @@ using MessageBoxButton = System.Windows.MessageBoxButton;
 using MessageBoxImage = System.Windows.MessageBoxImage;
 using MessageBoxResult = System.Windows.MessageBoxResult;
 using Texture2D = LegendaryExplorerCore.Unreal.Classes.Texture2D;
-using TextureImage = LegendaryExplorerCore.Textures.Image;
 
 namespace LegendaryExplorer.Tools.PackageEditor.Experiments
 {
@@ -765,7 +765,7 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             if (candidateTextures.Count == 0)
             {
                 MessageBox.Show(pew,
-                    "No package stored textures that are 1024x1024 or larger were found in the current package.",
+                    "No movable package stored textures that are 1024x1024 or larger were found.",
                     "Move large package stored textures to TFC",
                     MessageBoxButton.OK,
                     MessageBoxImage.Information);
@@ -807,7 +807,7 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             }
 
             if (MessageBox.Show(pew,
-                    $"This will move {candidateTextures.Count} package stored texture{(candidateTextures.Count == 1 ? string.Empty : "s")} that are 1024x1024 or larger into '{selectedTfcName}'.\n\nContinue?",
+                    $"This will move {candidateTextures.Count} package stored texture{(candidateTextures.Count == 1 ? string.Empty : "s")} that are 1024x1024 or larger into '{selectedTfcName}', including lightmaps and shadow maps. Cooked mip data and lighting settings will be preserved without image conversion.\n\nContinue?",
                     "Move large package stored textures to TFC",
                     MessageBoxButton.YesNo,
                     MessageBoxImage.Question) != MessageBoxResult.Yes)
@@ -2462,6 +2462,8 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             try
             {
                 var texture = new Texture2D(export);
+                if (!TextureCacheMover.IsBakedLighting(export)
+                    && texture.Mips.Count(m => m.storageType != StorageTypes.empty) <= 6) return false;
                 var topMip = texture.GetTopMip();
                 return topMip != null
                        && topMip.IsPackageStored
@@ -2476,59 +2478,31 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
 
         private static TextureMoveSummary MoveTexturesToTfc(List<ExportEntry> textures, string targetTfcName, IMEPackage package)
         {
-            string tempDirectory = Path.Combine(Path.GetTempPath(), "LegendaryExplorer", "MoveLargePackageStoredTexturesToTfc", Guid.NewGuid().ToString("N"));
-            Directory.CreateDirectory(tempDirectory);
-
             int movedCount = 0;
             int failedCount = 0;
             var messages = new List<string>();
             var failures = new List<string>();
             string targetTfcPath = GetDlcCookedTfcPath(package, targetTfcName);
 
-            try
-            {
-                if (!string.IsNullOrWhiteSpace(targetTfcPath))
-                {
-                    EnsureTfcFileExists(targetTfcPath);
-                }
-
-                foreach (ExportEntry textureExport in textures)
-                {
-                    try
-                    {
-                        var texture = new Texture2D(textureExport);
-                        string tempTexturePath = Path.Combine(tempDirectory, $"{textureExport.UIndex:D8}_{SanitizeFileName(textureExport.InstancedFullPath)}.tga");
-                        texture.ExportToFile(tempTexturePath);
-
-                        var props = textureExport.GetProperties();
-                        var image = TextureImage.LoadFromFile(tempTexturePath, LegendaryExplorerCore.Textures.PixelFormat.ARGB);
-                        List<string> replaceMessages = texture.Replace(image, props, tempTexturePath, forcedTFCName: targetTfcName, forcedTFCPath: targetTfcPath);
-
-                        movedCount++;
-                        messages.Add($"Moved #{textureExport.UIndex} {textureExport.InstancedFullPath} to '{targetTfcName}'.");
-                        messages.AddRange(replaceMessages.Select(message => $"#{textureExport.UIndex} {textureExport.ObjectName.Instanced}: {message}"));
-                    }
-                    catch (Exception ex)
-                    {
-                        failedCount++;
-                        failures.Add($"FAILED #{textureExport.UIndex} {textureExport.InstancedFullPath}: {ex.Message}");
-                    }
-                }
-            }
-            finally
+            foreach (ExportEntry textureExport in textures)
             {
                 try
                 {
-                    if (Directory.Exists(tempDirectory))
+                    int mipCount = TextureCacheMover.MoveToCache(textureExport, targetTfcPath);
+                    if (mipCount == 0)
                     {
-                        Directory.Delete(tempDirectory, true);
+                        messages.Add($"Skipped #{textureExport.UIndex} {textureExport.InstancedFullPath}: no movable mips.");
+                        continue;
                     }
+                    movedCount++;
+                    messages.Add($"Moved #{textureExport.UIndex} {textureExport.InstancedFullPath} to '{targetTfcName}' without changing pixel data or mipmaps.");
                 }
-                catch
+                catch (Exception ex)
                 {
+                    failedCount++;
+                    failures.Add($"FAILED #{textureExport.UIndex} {textureExport.InstancedFullPath}: {ex.Message}");
                 }
             }
-
             return new TextureMoveSummary(movedCount, failedCount, messages, failures);
         }
 
@@ -2560,18 +2534,6 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             return Path.GetDirectoryName(filePath);
         }
 
-        private static void EnsureTfcFileExists(string targetTfcPath)
-        {
-            if (File.Exists(targetTfcPath))
-            {
-                return;
-            }
-
-            Directory.CreateDirectory(Path.GetDirectoryName(targetTfcPath));
-            using var fs = new FileStream(targetTfcPath, FileMode.CreateNew, FileAccess.Write);
-            fs.WriteGuid(Guid.NewGuid());
-        }
-
         private static string GetPreferredTextureTfcName(IMEPackage package)
         {
             string filePath = package?.FilePath;
@@ -2596,12 +2558,6 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             return string.IsNullOrWhiteSpace(topLevelFolderName)
                 ? null
                 : $"Textures_{topLevelFolderName}";
-        }
-
-        private static string SanitizeFileName(string value)
-        {
-            var invalidChars = Path.GetInvalidFileNameChars();
-            return new string((value ?? string.Empty).Select(c => invalidChars.Contains(c) ? '_' : c).ToArray());
         }
 
         private static bool TryFixBrokenPlayerFaceFxReference(ExportEntry bioConversation, out int referenceFixes, out List<string> warnings)
