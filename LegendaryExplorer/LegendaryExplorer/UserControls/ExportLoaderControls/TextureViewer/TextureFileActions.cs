@@ -196,36 +196,16 @@ internal static class TextureFileActions
 
     private static List<string> MoveToTfc(ExportEntry export, string targetTfcName)
     {
-        string tempDirectory = Path.Combine(Path.GetTempPath(), "LegendaryExplorer", "MoveTextureBetweenTfcs", Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(tempDirectory);
-        try
-        {
-            var texture = new Texture2D(export);
-            var invalidChars = Path.GetInvalidFileNameChars();
-            string safeName = new(export.InstancedFullPath.Select(c => invalidChars.Contains(c) ? '_' : c).ToArray());
-            string tempTexturePath = Path.Combine(tempDirectory, $"{export.UIndex:D8}_{safeName}.tga");
-            // Moving must read the actual top mip. ExportToFile can fall back to a small internal mip
-            // when the source cache is missing, which would reduce the texture's resolution on import.
-            var topMip = texture.GetTopMip() ?? throw new InvalidOperationException("The texture has no non-empty mips to move.");
-            byte[] textureData = Texture2D.GetTextureData(topMip, export.Game);
-            TexConverter.SaveTexture(textureData, (uint)topMip.width, (uint)topMip.height,
-                Image.getPixelFormatType(texture.TextureFormat), tempTexturePath);
-            var image = Image.LoadFromFile(tempTexturePath, PixelFormat.ARGB);
-            var messages = texture.Replace(image, export.GetProperties(), tempTexturePath, forcedTFCName: targetTfcName);
-            messages.Insert(0, $"Moved {export.InstancedFullPath} to '{targetTfcName}'.");
-            return messages;
-        }
-        finally
-        {
-            try
-            {
-                Directory.Delete(tempDirectory, true);
-            }
-            catch
-            {
-                // Cleanup failure must not hide the result of the texture operation.
-            }
-        }
+        string packagePath = export.FileRef.FilePath;
+        if (string.IsNullOrWhiteSpace(packagePath))
+            throw new InvalidOperationException("Save the package before moving its texture to a TFC.");
+
+        string targetPath = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(packagePath)), targetTfcName + ".tfc");
+        int movedMips = TextureCacheMover.MoveToCache(export, targetPath);
+        if (movedMips == 0)
+            throw new InvalidOperationException("The texture has no movable mips. Ordinary textures keep their six smallest mips in the package; lightmaps and shadow maps can also move their top mip.");
+
+        return [$"Moved {export.InstancedFullPath} to '{targetTfcName}' losslessly. Cooked mip data was copied directly without image conversion or mipmap regeneration."];
     }
 
     private static string GetDestinationTfcName(ExportEntry export, FrameworkElement owner)
