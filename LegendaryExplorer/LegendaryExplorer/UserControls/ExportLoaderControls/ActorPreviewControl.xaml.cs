@@ -409,6 +409,7 @@ public partial class ActorPreviewControl : ExportLoaderControl, IActorEditorCont
     public override bool CanParse(ExportEntry exportEntry) =>
         !exportEntry.IsDefaultObject
         && (ActorProxy.CanCreate(exportEntry)
+            || CanPreviewModelActor(exportEntry)
             || exportEntry.IsA("SkeletalMeshComponent") && HasMorphHeadProperty(exportEntry));
 
     public override void LoadExport(ExportEntry exportEntry)
@@ -439,9 +440,7 @@ public partial class ActorPreviewControl : ExportLoaderControl, IActorEditorCont
             }
 
             BusyText = "Loading actor";
-            _actor = ActorProxy.CanCreate(requestedExport)
-                ? ActorProxy.Create(this, requestedExport)
-                : new SkeletalMeshComponentPreviewActorProxy(this, requestedExport);
+            _actor = CreatePreviewActor(requestedExport);
             if (_actor is null)
             {
                 RenderContext.ErrorText = $"Could not create preview object of type: '{requestedExport.ClassName}'";
@@ -549,7 +548,9 @@ public partial class ActorPreviewControl : ExportLoaderControl, IActorEditorCont
         // component rotation and animation-parent transforms all affect the initial view.
         Matrix4x4 localToWorld = actor.Components.OfType<MeshComponentProxy>()
             .FirstOrDefault(component => component.IsVisible)?.LocalToWorld ?? actor.LocalToWorld;
-        Vector3 forward = Vector3.TransformNormal(Vector3.UnitX, localToWorld);
+        bool modelOnly = actor.Components.Any(component => component is ActorModelPreviewComponent)
+                         && !actor.Components.Any(component => component is MeshComponentProxy);
+        Vector3 forward = Vector3.TransformNormal(modelOnly ? Vector3.Normalize(new Vector3(1, -1, 0.65f)) : Vector3.UnitX, localToWorld);
         float lengthSquared = forward.LengthSquared();
         forward = float.IsFinite(lengthSquared) && lengthSquared > 1e-8f
             ? Vector3.Normalize(forward)

@@ -102,6 +102,13 @@ namespace LegendaryExplorer.Tools.Meshplorer
         private bool _showStaticMeshes = true;
         private bool _showSkeletalMeshes = true;
         private bool _showBrushes = true;
+        private bool _showModels = true;
+        public bool ShowModels
+        {
+            get => _showModels;
+            set { SetProperty(ref _showModels, value); MeshesView.Refresh(); }
+        }
+
         private string _meshSearchText;
 
         public bool ShowStaticMeshes
@@ -149,8 +156,9 @@ namespace LegendaryExplorer.Tools.Meshplorer
             if (obj is ExportEntry exp)
             {
                 bool matchesMeshType = (exp.ClassName == "SkeletalMesh" && ShowSkeletalMeshes)
-                                       || (exp.ClassName == "Brush" && ShowBrushes)
-                                       || (exp.ClassName == "StaticMesh" && ShowStaticMeshes);
+                                       || (exp.ClassName is "Brush" or "BrushComponent" && ShowBrushes)
+                                       || (exp.ClassName is "Model" or "ModelComponent" && ShowModels)
+                                       || (exp.ClassName is "StaticMesh" or "FracturedStaticMesh" && ShowStaticMeshes);
 
                 if (!matchesMeshType)
                 {

@@ -483,6 +483,16 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 {
                     MeshContext.Wireframe = false;
                     LEXPreview.Render(renderPass, MeshContext, CurrentLOD, Matrix4x4.Identity);
+                    if (IsModel && renderPass == RenderPass.Default)
+                    {
+                        // Trigger surfaces normally have no material. Keep solid mode useful too.
+                        var constants = new MeshRenderContext.WorldConstants(Matrix4x4.Transpose(MeshContext.Camera.ProjectionMatrix),
+                            Matrix4x4.Transpose(MeshContext.Camera.ViewMatrix), Matrix4x4.Identity, MeshContext.CurrentTextureViewFlags);
+                        MeshContext.DefaultEffect.PrepDraw(MeshContext.ImmediateContext, MeshContext.AlphaBlendState);
+                        foreach (var section in LEXPreview.LODs[CurrentLOD].Sections.Where(s => !LEXPreview.Materials.ContainsKey(s.MaterialName)))
+                            MeshContext.DefaultEffect.RenderObject(MeshContext.ImmediateContext, constants,
+                                LEXPreview.LODs[CurrentLOD].Mesh, (int)section.StartIndex, (int)section.TriangleCount * 3, MeshContext.WhiteTexView);
+                    }
                 }
                 if (RenderGameShader && GameShaderPreview != null && CurrentLOD < GameShaderPreview.LODs.Count)
                 {
@@ -497,7 +507,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 MeshContext.Wireframe = true;
                 var viewConstants = new MeshRenderContext.WorldConstants(Matrix4x4.Transpose(MeshContext.Camera.ProjectionMatrix), Matrix4x4.Transpose(MeshContext.Camera.ViewMatrix), Matrix4x4.Identity, MeshContext.CurrentTextureViewFlags);
                 MeshContext.DefaultEffect.PrepDraw(SceneViewer.Context.ImmediateContext, MeshContext.AlphaBlendState);
-                MeshContext.DefaultEffect.RenderObject(SceneViewer.Context.ImmediateContext, viewConstants, LEXPreview.LODs[CurrentLOD].Mesh, [null]);
+                MeshContext.DefaultEffect.RenderObject(SceneViewer.Context.ImmediateContext, viewConstants, LEXPreview.LODs[CurrentLOD].Mesh, [IsModel ? MeshContext.WhiteTexView : null]);
             }
             RenderMorphHairWireframe();
             if (IsStaticMesh && ShowCollisionMesh && STMCollisionMesh != null)
@@ -577,7 +587,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 return;
             }
 
-            MeshContext.Camera.FocusDepth = MathF.Max(boundsHalfSize.Length() * 1.2f, 1f);
+            MeshContext.Camera.FocusDepth = IsModel ? ModelFocusDepth(boundsHalfSize) : MathF.Max(boundsHalfSize.Length() * 1.2f, 1f);
             CenterView();
             SceneViewer.Focus();
         }
@@ -615,6 +625,13 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     MeshContext.Camera.Yaw = MathF.PI / 4.0f;
                 }
             }
+        }
+
+        private float ModelFocusDepth(Vector3 halfSize)
+        {
+            float halfFov = MathF.Min(MeshContext.Camera.FOV / 2,
+                MathF.Atan(MathF.Tan(MeshContext.Camera.FOV / 2) * MathF.Max(MeshContext.Camera.aspect, 0.1f)));
+            return MathF.Max(halfSize.Length() * 1.1f / MathF.Sin(halfFov), 1f);
         }
         #endregion
 
@@ -687,6 +704,12 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         }
 
         private bool _isModel;
+        private string _modelPreviewStatus;
+        public string ModelPreviewStatus
+        {
+            get => _modelPreviewStatus;
+            set => SetProperty(ref _modelPreviewStatus, value);
+        }
         public bool IsModel
         {
             get => _isModel;
@@ -1126,6 +1149,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             else if (CurrentLoadedExport.ClassName == "ModelComponent")
             {
                 IsModel = true;
+                RenderWireframe = true;
                 BusyText = "Fetching assets";
                 BusyProgressIndeterminate = true;
                 IsBusy = true;
@@ -1172,6 +1196,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             else if (CurrentLoadedExport.ClassName == "Model")
             {
                 IsModel = true;
+                RenderWireframe = true;
                 loadMesh = () =>
                 {
                     BusyText = "Fetching assets";
@@ -1184,39 +1209,14 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                         sections = new List<ModelPreviewSection>(),
                         texturePreviewMaterials = new List<PreloadedTextureData>(),
                     };
-                    foreach (var mcExp in modelComp.Export.FileRef.Exports.Where(x =>
-                        x.ClassName == "ModelComponent" && !x.IsDefaultObject))
+                    foreach (int materialIndex in ModelGeometry.GetFaces(modelComp).Select(face => face.Material).Distinct())
                     {
-                        var mc = ObjectBinary.From<ModelComponent>(mcExp);
-                        if (mc.Model == modelComp.Self)
-                        {
-                            foreach (var element in mc.Elements)
-                            {
-                                if (CurrentLoadedExport == null) return pmd;
-                                if (CurrentLoadedExport.FileRef.IsUExport(element.Material))
-                                {
-                                    ExportEntry entry = CurrentLoadedExport.FileRef.GetUExport(element.Material);
-                                    AddMaterialBackgroundThreadTextures(pmd.texturePreviewMaterials, entry, assetCache);
-                                }
-                                else if (CurrentLoadedExport.FileRef.TryGetImport(element.Material, out var matImp) &&
-                                         alreadyLoadedImportMaterials.All(x => x != matImp.InstancedFullPath))
-                                {
-                                    var extMaterialExport = EntryImporter.ResolveImport(matImp, assetCache);
-                                    if (extMaterialExport != null)
-                                    {
-                                        AddMaterialBackgroundThreadTextures(pmd.texturePreviewMaterials,
-                                            extMaterialExport, assetCache);
-                                        alreadyLoadedImportMaterials.Add(extMaterialExport.InstancedFullPath);
-                                    }
-                                    else
-                                    {
-                                        Debug.WriteLine("Could not find import material from FModelElement.");
-                                        Debug.WriteLine("Import material: " +
-                                                        CurrentLoadedExport.FileRef.GetEntryString(element.Material));
-                                    }
-                                }
-                            }
-                        }
+                        IEntry entry = modelComp.Export.FileRef.GetEntry(materialIndex);
+                        ExportEntry material = entry as ExportEntry;
+                        if (entry is ImportEntry import)
+                            material = EntryImporter.ResolveImport(import, assetCache);
+                        if (material != null)
+                            AddMaterialBackgroundThreadTextures(pmd.texturePreviewMaterials, material, assetCache);
                     }
                     return pmd;
                 };
@@ -1319,12 +1319,21 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                                     MeshContext.Camera.FocusDepth = LEXPreview.LODs[0].Mesh.AABBHalfSize.Length() * 1.2f;
                                     break;
                                 case ModelComponent mc:
-                                    LEXPreview = new ModelPreview<WorldVertex>(MeshContext.Device, GetMeshFromModelComponent(mc), MeshContext.TextureCache, assetCache, pmd);
-                                    //SceneViewer.Context.Camera.FocusDepth = Preview.LODs[0].Mesh.AABBHalfSize.Length() * 1.2f;
+                                    var componentSections = new List<ModelPreviewSection>();
+                                    var componentMesh = GetMeshFromModelComponent(mc, componentSections);
+                                    pmd.sections = componentSections;
+                                    LEXPreview = new ModelPreview<WorldVertex>(MeshContext.Device, componentMesh, MeshContext.TextureCache, assetCache, pmd);
+                                    ModelPreviewStatus = $"ModelComponent: {componentMesh.Triangles.Count:N0} triangles.";
+                                    MeshContext.Camera.FocusDepth = ModelFocusDepth(LEXPreview.LODs[0].Mesh.AABBHalfSize);
                                     break;
                                 case Model m:
                                     var sections = new List<ModelPreviewSection>();
                                     Mesh<WorldVertex> mesh = GetMeshFromModelSubcomponents(m, sections);
+                                    ModelPreviewStatus = mesh.Triangles.Count == 0
+                                        ? "This cooked Model contains no geometry and has no brush collision geometry to preview."
+                                        : m.Nodes.Length == 0 && m.VertexBuffer.Length == 0
+                                            ? $"Model: {mesh.Triangles.Count:N0} triangles (Polys or cooked volume collision; shared volumes shown in world space)."
+                                            : $"Model: {mesh.Triangles.Count:N0} triangles.";
                                     pmd.sections = sections;
                                     if (mesh.Vertices.Any())
                                     {
@@ -1332,7 +1341,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                                     }
 
                                     LEXPreview = new ModelPreview<WorldVertex>(MeshContext.Device, mesh, MeshContext.TextureCache, assetCache, pmd);
-                                    //SceneViewer.Context.Camera.FocusDepth = Preview.LODs[0].Mesh.AABBHalfSize.Length() * 1.2f;
+                                    MeshContext.Camera.FocusDepth = ModelFocusDepth(LEXPreview.LODs[0].Mesh.AABBHalfSize);
                                     break;
                             }
                             if (IsMorphEditorMode)
@@ -1555,80 +1564,35 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         }
 
         private WorldMesh GetMeshFromModelSubcomponents(Model model, List<ModelPreviewSection> sections)
+            => GetMeshFromModelFaces(model, ModelGeometry.GetFaces(model), sections);
+
+        private WorldMesh GetMeshFromModelFaces(Model model, IEnumerable<ModelGeometry.Face> faces, List<ModelPreviewSection> sections)
         {
-            // LOL this will run terribly i'm sure
-            var vertexList = new List<WorldVertex>();
+            var vertices = new List<WorldVertex>();
             var triangles = new List<Triangle>();
-
-            foreach (var vertex in model.VertexBuffer)
+            foreach (var face in faces)
             {
-                // We don't know the normal vectors yet
-                vertexList.Add(new WorldVertex(new Vector3(-vertex.Position.X, vertex.Position.Z, vertex.Position.Y), Vector3.Zero, new Vector2(vertex.TexCoord.X, vertex.TexCoord.Y)));
+                uint first = (uint)vertices.Count;
+                Vector3 normal = face.Normal;
+                if (normal.LengthSquared() < 0.0001f)
+                    normal = Vector3.Normalize(Vector3.Cross(face.Vertices[1] - face.Vertices[0], face.Vertices[2] - face.Vertices[0]));
+                foreach (Vector3 point in face.Vertices)
+                    vertices.Add(new WorldVertex(new Vector3(-point.X, point.Z, point.Y),
+                        new Vector3(-normal.X, normal.Z, normal.Y), Vector2.Zero));
+                string material = model.Export.FileRef.GetEntry(face.Material)?.ObjectName.Name ?? "";
+                int[] indices = ModelGeometry.Triangulate(face.Vertices);
+                sections.Add(new ModelPreviewSection(material, (uint)triangles.Count * 3, (uint)indices.Length / 3));
+                for (int i = 0; i < indices.Length; i += 3)
+                    triangles.Add(new Triangle(first + (uint)indices[i], first + (uint)indices[i + 1], first + (uint)indices[i + 2]));
             }
-            Span<WorldVertex> vertsSpan = CollectionsMarshal.AsSpan(vertexList);
-
-            foreach (var mcExp in model.Export.FileRef.Exports.Where(x => x.ClassName == "ModelComponent" && !x.IsDefaultObject))
-            {
-                var mc = ObjectBinary.From<ModelComponent>(mcExp);
-                if (mc.Model == model.Self)
-                {
-                    foreach (var modelElement in mc.Elements)
-                    {
-                        foreach (var node in modelElement.Nodes)
-                        {
-                            var matchingNode = model.Nodes[node];
-                            var surface = model.Surfs[matchingNode.iSurf];
-                            sections.Add(new ModelPreviewSection(model.Export.FileRef.getObjectName(surface.Material), (uint)triangles.Count * 3, ((uint)matchingNode.NumVertices - 2) * 3));
-
-                            for (uint i = 2; i < matchingNode.NumVertices; i++)
-                            {
-                                triangles.Add(new Triangle((uint)matchingNode.iVertexIndex, (uint)matchingNode.iVertexIndex + i - 1, (uint)matchingNode.iVertexIndex + i));
-                            }
-                            // Overwrite the normal vectors of the included vertices now that we know them
-                            Vector3 normal = model.Vectors[model.Surfs[matchingNode.iSurf].vNormal];
-                            for (int i = 0; i < matchingNode.NumVertices; i++)
-                            {
-                                vertsSpan[matchingNode.iVertexIndex + i].Normal = new Vector3(-normal.X, normal.Z, normal.Y);
-                            }
-                        }
-                    }
-                }
-            }
-
-            return new WorldMesh(SceneViewer.Context.Device, triangles, vertexList);
+            return new WorldMesh(SceneViewer.Context.Device, triangles, vertices);
         }
 
-        private WorldMesh GetMeshFromModelComponent(ModelComponent mc)
+        private WorldMesh GetMeshFromModelComponent(ModelComponent mc, List<ModelPreviewSection> sections)
         {
-            var parentModel = ObjectBinary.From<Model>(mc.Export.FileRef.GetUExport(mc.Model));
-            var vertices = new List<WorldVertex>();
-
-            foreach (var point in parentModel.Points)
-            {
-                vertices.Add(new WorldVertex(new Vector3(-point.X, point.Z, point.Y), Vector3.Zero, Vector2.Zero));
-            }
-
-            var triangles = new List<Triangle>();
-
-            foreach (var modelElement in mc.Elements)
-            {
-                foreach (var node in modelElement.Nodes)
-                {
-                    var matchingNode = parentModel.Nodes[node];
-                    //var surface = parentModel.Surfs[matchingNode.iSurf];
-                    //var nodeVertices = new List<LegendaryExplorerCore.SharpDX.Vector3>(matchingNode.NumVertices);
-
-                    var vert0 = parentModel.Verts[matchingNode.iVertPool];
-
-                    for (uint i = 2; i < matchingNode.NumVertices; i++)
-                    {
-                        var tri = new Triangle((uint)vert0.pVertex, (uint)parentModel.Verts[matchingNode.iVertPool + i - 1].pVertex, (uint)parentModel.Verts[matchingNode.iVertPool + i].pVertex);
-                        triangles.Add(tri); // 0 is the base point. The rest of the triangles share this point
-                    }
-                }
-            }
-
-            return new WorldMesh(SceneViewer.Context.Device, triangles, vertices);
+            var model = ObjectBinary.From<Model>(mc.Export.FileRef.GetUExport(mc.Model));
+            return GetMeshFromModelFaces(model, ModelGeometry.GetFaces(model,
+                mc.Elements.SelectMany(element => element.Nodes).Select(index => (int)index)), sections);
         }
 
         private void BuildSkeletonLineBuffer(SkeletalMesh skm, Vector3[] animatedPositions = null)
@@ -2581,6 +2545,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             IsSkeletalMesh = false;
             IsStaticMesh = false;
             IsModel = false;
+            ModelPreviewStatus = null;
             CurrentLoadedExport = null;
             ViewportLoadAction = null;
             STMCollisionMesh?.Dispose();

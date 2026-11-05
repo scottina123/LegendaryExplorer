@@ -68,6 +68,9 @@
                     <MenuItem Header="Replace from glTF (Experimental)" Command="{Binding ReplaceFromGltfCommand}"/>
                     <MenuItem Header="Import new mesh(es) from glTF (Experimental)" Command="{Binding ImportNewFromGltfCommand}"/>
                 </MenuItem>
+                <MenuItem Header="Draw Model…" Padding="4" Click="DrawModel_Click"
+                          IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}"
+                          ToolTip="Draw an outline and extrude it into a new closed Model and Polys."/>
                 <MenuItem Header="Import Meshes" Padding="4" Command="{Binding ImportFromAssetDatabaseCommand}"
                           ToolTip="Import skeletal or static meshes from the Asset Database into this PCC."/>
             </Menu>
@@ -103,11 +106,12 @@
                 <DockPanel Grid.Row="0" Grid.Column="0"
                            Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"
                            IsHitTestVisible="{Binding IsRendererBusy, Converter={StaticResource BoolEnabledConverter}, ConverterParameter='Not'}">
-                    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="5">
+                    <WrapPanel DockPanel.Dock="Top" Margin="5">
+                        <CheckBox Content="Models" IsChecked="{Binding ShowModels}" Margin="0,0,5,4"/>
                         <CheckBox Content="Brushes" IsChecked="{Binding ShowBrushes}"/>
                         <CheckBox Content="SkeletalMeshes" Margin="5,0" IsChecked="{Binding ShowSkeletalMeshes}"/>
                         <CheckBox Content="StaticMeshes" IsChecked="{Binding ShowStaticMeshes}"/>
-                    </StackPanel>
+                    </WrapPanel>
                     <controls:SearchBox x:Name="MeshSearchBox" DockPanel.Dock="Top" Margin="5,0,5,5"
                                         WatermarkText="Search meshes"
                                         TextChanged="MeshSearchBox_OnTextChanged"/>
