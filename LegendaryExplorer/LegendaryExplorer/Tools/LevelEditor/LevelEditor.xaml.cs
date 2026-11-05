@@ -172,6 +172,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
                 }
 
                 UpdateStatusBarText();
+                if (IsDrawingVolume && value != _volumeDrawFile) CancelVolumeDrawing();
             }
         }
     }
@@ -521,6 +522,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
             if (SetProperty(ref _showVolumes, value))
             {
                 Settings.LevelEditor_ShowVolumes = value;
+                RenderContext.ShowVolumes = value;
                 SceneViewer?.MarkRenderDirty();
             }
         }
@@ -865,6 +867,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         RenderContext.ShowLightIcons = _showLightIcons;
         RenderContext.ShowLensFlareIcons = _showLensFlareIcons;
         RenderContext.ShowEmitters = _showEmitters;
+        RenderContext.ShowVolumes = _showVolumes;
         RenderContext.SetShowEmitterVfx(_showEmitters && _showEmitterVfx);
         RenderContext.TransformWidget.OnDragComplete = OnWidgetDragComplete;
         _backgroundColor = GetThemeDefaultBackgroundColor();
@@ -891,6 +894,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         RefreshRecentsMenu();
 
         SceneViewer.Context = RenderContext;
+        VolumeDrawing.PropertyChanged += VolumeDrawingSettingsChanged;
         CopyViewportIssuesCommand = SceneViewer.CreateCopyViewportIssuesCommand(() => TextBelowActors);
         UndoHistory.PropertyChanged += UndoHistory_PropertyChanged;
         ThemeManager.ThemeChanged += OnThemeChanged;
@@ -1059,6 +1063,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
             DoRenderPass(RenderPass.HitTest, liveVisibleActors);
         }
 
+        RenderVolumeDrawing();
         RenderContext.DrawUI();
     }
 
@@ -1071,6 +1076,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         for (int actorIndex = 0; actorIndex < RenderContext.DrawList_3D.Count; actorIndex++)
         {
             ActorProxy actor = RenderContext.DrawList_3D[actorIndex];
+            if (_volumeEdit != null && actor.Export == _volumeEdit.Actor) continue;
             if (actor is DecalActorProxy && !ShowDecalActors) continue;
             if (actor is SFXPointOfInterestProxy && !ShowPointsOfInterest) continue;
             if (!RenderContext.IsActorVisible(actor)) continue;
@@ -1273,6 +1279,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         var prev = selectedActor;
         if (SetProperty(ref selectedActor, actor, nameof(SelectedActor)))
         {
+            OnPropertyChanged(nameof(CanEditSelectedVolume));
             ActiveFile = actor?.OwningFile ?? OpenFiles.FirstOrDefault();
             SceneViewer?.MarkRenderDirty();
             if (prev is not null)
@@ -3321,6 +3328,8 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         }
 
         CloseLevelMorphEditor();
+        CancelVolumeDrawing();
+        _volumeXrayState?.Dispose();
         CloseAllFiles();
 
         RenderContext.UpdateScene -= UpdateScene;
@@ -3875,6 +3884,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
 
     private void OnViewportRightClickActor(ActorProxy actor)
     {
+        if (IsDrawingVolume) return;
         Point viewportPoint = Mouse.GetPosition(SceneViewer);
         var contextMenu = BuildActorContextMenu(actor, viewportPoint);
         contextMenu.PlacementTarget = SceneViewer;
@@ -3884,6 +3894,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
 
     private void OnViewportRightClickViewport()
     {
+        if (IsDrawingVolume) return;
         Point viewportPoint = Mouse.GetPosition(SceneViewer);
         var contextMenu = new System.Windows.Controls.ContextMenu
         {
@@ -3964,6 +3975,9 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         };
 
         var interpActorItem = new System.Windows.Controls.MenuItem { Header = "Interp Actor..." };
+        var drawVolumeItem = new System.Windows.Controls.MenuItem { Header = "Draw Volume Here", IsEnabled = Game.IsLEGame() };
+        drawVolumeItem.Click += (_, _) => BeginVolumeDrawing(location);
+        createMenu.Items.Add(drawVolumeItem);
         interpActorItem.Click += async (_, _) => await CreateStaticMeshActor("InterpActor", location);
         createMenu.Items.Add(interpActorItem);
 
@@ -4655,6 +4669,12 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
 
         AddPropertiesMenuItems(contextMenu, actor.Export,
             $"{actor.Export.UIndex}: {actor.Export.ObjectName.Instanced} ({actor.Export.ClassName})");
+        if (!actor.IsReadOnly && VolumeGeometryEdit.FindComponent(actor.Export) != null)
+        {
+            var editVolumeItem = new System.Windows.Controls.MenuItem { Header = "Edit volume geometry..." };
+            editVolumeItem.Click += (_, _) => BeginVolumeEdit(actor);
+            contextMenu.Items.Add(editVolumeItem);
+        }
 
         if (actor.Components.Count > 0)
         {
@@ -5060,6 +5080,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
 
     private void SceneViewer_PreviewMouseDownForMaterialPicking(object sender, MouseButtonEventArgs e)
     {
+        if (VolumeDrawingMouseDown(e)) return;
         if (IsLevelMaterialEditorOpen && e.ChangedButton == MouseButton.Left && _levelLiveMaterialActor is not null)
         {
             _levelMaterialPickMouseDownPosition = e.GetPosition(SceneViewer);
@@ -5068,6 +5089,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
 
     private void SceneViewer_PreviewMouseUpForMaterialPicking(object sender, MouseButtonEventArgs e)
     {
+        if (VolumeDrawingMouseUp(e)) return;
         if (e.ChangedButton != MouseButton.Left || _levelMaterialPickMouseDownPosition is not { } mouseDownPosition)
         {
             return;

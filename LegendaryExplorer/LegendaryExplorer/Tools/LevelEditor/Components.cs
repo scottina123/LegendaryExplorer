@@ -947,6 +947,36 @@ public abstract class MeshComponentProxy : PrimitiveComponentProxy, ILevelRender
         }
     }
 
+    internal bool TryGetDrawingSurfaceHit(Vector3 rayOrigin, Vector3 rayDirection, out Vector3 point, out Vector3 normal, out float distance)
+    {
+        point = normal = default;
+        distance = float.PositiveInfinity;
+        BoxSphereBounds bounds = GetBounds();
+        float along = MathF.Max(Vector3.Dot(bounds.Origin - rayOrigin, rayDirection), 0);
+        if (!IsVisible || Vector3.DistanceSquared(rayOrigin + rayDirection * along, bounds.Origin) > bounds.SphereRadius * bounds.SphereRadius
+            || !EnsureRenderResources()) return false;
+        float nearest = float.PositiveInfinity;
+        Vector3 hitNormal = default;
+        void Check<TVertex>(Mesh<TVertex> mesh) where TVertex : IVertexBase
+        {
+            foreach (Triangle triangle in mesh.Triangles)
+            {
+                Vector3 a = Vector3.Transform(mesh.Vertices[(int)triangle.Vertex1].Position, mesh.LocalToWorld);
+                Vector3 b = Vector3.Transform(mesh.Vertices[(int)triangle.Vertex2].Position, mesh.LocalToWorld);
+                Vector3 c = Vector3.Transform(mesh.Vertices[(int)triangle.Vertex3].Position, mesh.LocalToWorld);
+                if (RayIntersectsTriangle(rayOrigin, rayDirection, a, b, c, out float t) && t < nearest)
+                { nearest = t; hitNormal = Vector3.Normalize(Vector3.Cross(b - a, c - a)); }
+            }
+        }
+        if (GameShaderMesh?.LODs.Count > 0) Check(GameShaderMesh.LODs[Math.Clamp(LOD, 0, GameShaderMesh.LODs.Count - 1)].Mesh);
+        else if (Mesh?.LODs.Count > 0) Check(Mesh.LODs[Math.Clamp(LOD, 0, Mesh.LODs.Count - 1)].Mesh);
+        if (!float.IsFinite(nearest)) return false;
+        distance = nearest;
+        point = rayOrigin + rayDirection * nearest;
+        normal = Vector3.Dot(hitNormal, rayDirection) > 0 ? -hitNormal : hitNormal;
+        return true;
+    }
+
     private static bool RayIntersectsTriangle(Vector3 rayOrigin, Vector3 rayDirection,
         Vector3 vertex0, Vector3 vertex1, Vector3 vertex2, out float distance)
     {
@@ -1738,6 +1768,8 @@ public class BrushComponentProxy : PrimitiveComponentProxy
             context.RenderMeshAsWireframe(Brush);
         }
     }
+
+    public override BoxSphereBounds GetBounds() => Brush?.TransformedBounds ?? base.GetBounds();
 
     public override void UpdateLocalToWorld()
     {

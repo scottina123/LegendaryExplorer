@@ -54,7 +54,8 @@ public static partial class ModelGeometry
         return faces;
     }
 
-    private static ExportEntry Resolve(IEntry entry, PackageCache cache) => entry switch {
+    private static ExportEntry Resolve(IEntry entry, PackageCache cache) => entry switch
+    {
         ExportEntry export => export,
         ImportEntry import => EntryImporter.ResolveImport(import, cache),
         _ => null
@@ -223,6 +224,12 @@ public static partial class ModelGeometry
             Vector2 a = points[i], b = points[(i + 1) % points.Length];
             faces.Add([new(a, bottom), new(b, bottom), new(b, bottom + height), new(a, bottom + height)]);
         }
+        return CreateFromFaces(faces);
+    }
+
+    public static (Model Model, Polys Polys) CreateFromFaces(List<Vector3[]> faces)
+    {
+        if (faces == null || faces.Count == 0) throw new ArgumentException("The volume has no boundary faces.");
         Model model = Model.Create();
         Polys polys = Polys.Create();
         var vertices = new List<Vector3>();
@@ -232,9 +239,13 @@ public static partial class ModelGeometry
         var nodes = new List<BspNode>();
         var surfaces = new List<BspSurf>();
         var polygons = new List<Poly>();
-        var lightmass = new LightmassPrimitiveSettings {
-            FullyOccludedSamplesFraction = 1, EmissiveLightFalloffExponent = 2,
-            EmissiveBoost = 1, DiffuseBoost = 1, SpecularBoost = 1
+        var lightmass = new LightmassPrimitiveSettings
+        {
+            FullyOccludedSamplesFraction = 1,
+            EmissiveLightFalloffExponent = 2,
+            EmissiveBoost = 1,
+            DiffuseBoost = 1,
+            SpecularBoost = 1
         };
         for (int f = 0; f < faces.Count; f++)
         {
@@ -247,15 +258,33 @@ public static partial class ModelGeometry
             // Unreal planes store dot(N, P) in W, rather than System.Numerics' -dot.
             var plane = new Plane(normal, Vector3.Dot(normal, face[0]));
             vectors.AddRange([normal, u, v]);
-            surfaces.Add(new BspSurf {
-                pBase = first, vNormal = firstVector, vTextureU = firstVector + 1, vTextureV = firstVector + 2,
-                iBrushPoly = f, Plane = plane, ShadowMapScale = 32, LightingChannels = 1, iLightmassIndex = 0
+            surfaces.Add(new BspSurf
+            {
+                pBase = first,
+                vNormal = firstVector,
+                vTextureU = firstVector + 1,
+                vTextureV = firstVector + 2,
+                iBrushPoly = f,
+                Plane = plane,
+                ShadowMapScale = 32,
+                LightingChannels = 1,
+                iLightmassIndex = 0
             });
             vertices.Add(face[0]);
-            polygons.Add(new Poly {
-                Base = face[0], Normal = normal, TextureU = u, TextureV = v, Vertices = face,
-                ItemName = "None", RulesetVariation = "None", iLink = -1, iBrushPoly = f,
-                ShadowMapScale = 32, LightingChannels = 1, LightmassSettings = lightmass
+            polygons.Add(new Poly
+            {
+                Base = face[0],
+                Normal = normal,
+                TextureU = u,
+                TextureV = v,
+                Vertices = face,
+                ItemName = "None",
+                RulesetVariation = "None",
+                iLink = -1,
+                iBrushPoly = f,
+                ShadowMapScale = 32,
+                LightingChannels = 1,
+                LightmassSettings = lightmass
             });
         }
         BuildBsp(faces, surfaces, vertices, verts, renderVertices, nodes);

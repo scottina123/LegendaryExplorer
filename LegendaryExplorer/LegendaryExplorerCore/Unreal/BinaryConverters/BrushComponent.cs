@@ -1,10 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
 using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.Unreal.ObjectInfo;
 using LegendaryExplorerCore.Unreal.PhysX;
-using CommunityToolkit.HighPerformance;
 
 namespace LegendaryExplorerCore.Unreal.BinaryConverters
 {
@@ -25,6 +25,20 @@ namespace LegendaryExplorerCore.Unreal.BinaryConverters
                     CachedConvexElements = []
                 }
             };
+        }
+
+        /// <summary>Cooks detached, component-local convex pieces without modifying a package.</summary>
+        public static KCachedConvexData CookConvexData(IEnumerable<Vector3[]> pieces, Vector3 scale)
+        {
+            var elements = new List<KCachedConvexDataElement>();
+            using var cooker = new PhysXCooker();
+            foreach (var piece in pieces)
+            {
+                var vertices = new Vector3[piece.Length];
+                for (int i = 0; i < piece.Length; i++) vertices[i] = piece[i] * scale * PhysXSDK.UnrealtoPhysXScale;
+                elements.Add(new KCachedConvexDataElement { ConvexElementData = cooker.GenerateCachedPhysicsData(vertices) });
+            }
+            return new KCachedConvexData { CachedConvexElements = elements.ToArray() };
         }
 
         //appears to work, but the resulting data is untested
@@ -52,25 +66,9 @@ namespace LegendaryExplorerCore.Unreal.BinaryConverters
                 scale *= ActorUtils.GetActorTotalScale(parent.GetProperties());
             }
 
-            using (var cooker = new PhysXCooker())
-            {
-                var verts = new List<Vector3>();
-                CachedPhysBrushData.CachedConvexElements = new KCachedConvexDataElement[convexElemsProp.Count];
-                for (int i = 0; i < convexElemsProp.Count; i++)
-                {
-                    var vertexDataProp = convexElemsProp[i].GetProp<ArrayProperty<StructProperty>>("VertexData") ?? throw new Exception("Malformed BrushAggGeom");
-                    verts.EnsureCapacity(vertexDataProp.Count);
-                    verts.Clear();
-                    foreach (StructProperty vertProp in vertexDataProp)
-                    {
-                        verts.Add(CommonStructs.GetVector3(vertProp) * scale * PhysXSDK.UnrealtoPhysXScale);
-                    }
-                    CachedPhysBrushData.CachedConvexElements[i] = new KCachedConvexDataElement
-                    {
-                        ConvexElementData = cooker.GenerateCachedPhysicsData(verts.AsSpan())
-                    };
-                }
-            }
+            CachedPhysBrushData = CookConvexData(convexElemsProp.Select(piece =>
+                (piece.GetProp<ArrayProperty<StructProperty>>("VertexData") ?? throw new Exception("Malformed BrushAggGeom"))
+                .Select(CommonStructs.GetVector3).ToArray()), scale);
 
             props.AddOrReplaceProp(new IntProperty(Export.Game is MEGame.LE1 ? 33882375 : 34079762, "CachedPhysBrushDataVersion"));
             Export.WriteProperties(props);

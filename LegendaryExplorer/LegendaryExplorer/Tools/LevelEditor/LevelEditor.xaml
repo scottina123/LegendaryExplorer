@@ -22,6 +22,7 @@
         Loaded="LevelEditor_Loaded"
         Closing="LevelEditor_Closing"
         KeyDown="LevelEditor_KeyDown"
+        PreviewKeyDown="VolumeDrawing_PreviewKeyDown"
         mc:Ignorable="d"
         DataContext="{Binding RelativeSource={RelativeSource Self}}"
         Title="LevelEditor" Height="800" Width="1000">
@@ -139,6 +140,10 @@
             </Menu>
             <WrapPanel DockPanel.Dock="Top">
                 <ToolBar ToolBarTray.IsLocked="True" OverflowMode="Never">
+                    <Button Content="Edit volume" Click="EditVolume_Click" IsEnabled="{Binding CanEditSelectedVolume}"
+                            ToolTip="Edit the selected actor's volume vertices. Commit creates new vanilla Model geometry and updates only this actor."/>
+                    <ToggleButton Content="Draw volume" Click="DrawVolume_Click" IsChecked="{Binding IsDrawingVolume, Mode=OneWay}"
+                                  IsEnabled="{Binding HasAnyFileOpen}" ToolTip="Draw a volume directly in the loaded level viewport."/>
                     <Button Content="Commit Changes" ToolTip="Commit changes made in Level Editor (does not save the file to disk!)" Command="{Binding CommitChangesCommand}">
                         <Button.Style>
                             <Style TargetType="Button">
@@ -318,6 +323,7 @@
                                           IsChecked="{Binding ShowStatsOverlay}"
                                           ToolTip="Show the FPS counter and camera location in the viewport. Clear to hide both."/>
                                 <scene3D:SceneControlOptionsControl/>
+
                                 <Separator Margin="0,4,0,4"/>
                                 <CheckBox Content="Use in-game mesh shaders" Margin="4,1,4,5"
                                           IsChecked="{Binding UseGameMeshShaders}"
@@ -621,8 +627,83 @@
 
                 <scene3D:SceneRenderControl Grid.Column="2" x:Name="SceneViewer" MaximumFramesPerSecond="60"
                                             PreviewMouseDown="SceneViewer_PreviewMouseDownForMaterialPicking"
+                                            PreviewMouseMove="VolumeDrawing_MouseMove"
                                             PreviewMouseUp="SceneViewer_PreviewMouseUpForMaterialPicking" />
-
+                <Border Grid.Column="2" Panel.ZIndex="10" VerticalAlignment="Top" Margin="8" Padding="8" CornerRadius="4"
+                        HorizontalAlignment="Left" Width="760" MaxWidth="{Binding ActualWidth, ElementName=SceneViewer}"
+                        Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"
+                        BorderBrush="DeepSkyBlue" BorderThickness="1"
+                        Visibility="{Binding IsDrawingVolume, Converter={StaticResource BoolToVisibilityConverter}}">
+                    <StackPanel>
+                        <TextBlock Text="{Binding VolumeDrawingTitle}" FontWeight="Bold"/>
+                        <TextBlock Text="{Binding VolumeDrawTarget, StringFormat='Target: {0}'}" TextTrimming="CharacterEllipsis"/>
+                        <Expander Header="Drawing options" IsExpanded="True">
+                        <StackPanel>
+                        <StackPanel Visibility="{Binding IsEditingVolume, Converter={StaticResource BoolToVisibilityConverter}, ConverterParameter=Not}">
+                        <TextBlock Text="Left-click corners; drag to edit. Right-drag / WASD navigates. Drag the yellow handle to extrude." TextWrapping="Wrap" Margin="0,3"/>
+                        <WrapPanel Margin="0,3">
+                            <TextBox Text="{Binding VolumeDrawing.Name, UpdateSourceTrigger=PropertyChanged}" Width="135" Margin="0,0,6,0" ToolTip="New volume name"/>
+                            <ComboBox SelectedIndex="{Binding VolumeDrawing.KindIndex}" Width="135" Margin="0,0,6,0">
+                                <ComboBoxItem Content="Blocking volume"/><ComboBoxItem Content="Trigger volume"/>
+                            </ComboBox>
+                            <ComboBox SelectedIndex="{Binding VolumeDrawing.PlaneIndex}" Width="95" ToolTip="Work plane">
+                                <ComboBoxItem Content="XY floor"/><ComboBoxItem Content="XZ wall"/><ComboBoxItem Content="YZ wall"/><ComboBoxItem Content="Surface"/>
+                            </ComboBox>
+                        </WrapPanel>
+                        <WrapPanel Margin="0,3">
+                            <TextBlock Text="Origin X" VerticalAlignment="Center"/>
+                            <xctk:SingleUpDown Value="{Binding VolumeDrawing.X}" Width="85" Increment="25" Margin="3,0,6,0"/>
+                            <TextBlock Text="Y" VerticalAlignment="Center"/>
+                            <xctk:SingleUpDown Value="{Binding VolumeDrawing.Y}" Width="85" Increment="25" Margin="3,0,6,0"/>
+                            <TextBlock Text="Z" VerticalAlignment="Center"/>
+                            <xctk:SingleUpDown Value="{Binding VolumeDrawing.Z}" Width="85" Increment="25" Margin="3,0,6,0"/>
+                            <Button Content="Pick surface" Click="PickVolumeSurface_Click" Padding="4,2" Margin="0,0,4,0"/>
+                            <Button Content="At selection" Click="VolumeAtSelection_Click" Padding="4,2"/>
+                        </WrapPanel>
+                        <WrapPanel Margin="0,3">
+                            <TextBlock Text="Pitch" VerticalAlignment="Center"/>
+                            <xctk:SingleUpDown Value="{Binding VolumeDrawing.Pitch}" Width="65" Increment="5" Margin="3,0,6,0"/>
+                            <TextBlock Text="Yaw" VerticalAlignment="Center"/>
+                            <xctk:SingleUpDown Value="{Binding VolumeDrawing.Yaw}" Width="65" Increment="5" Margin="3,0,6,0"/>
+                            <TextBlock Text="Roll" VerticalAlignment="Center"/>
+                            <xctk:SingleUpDown Value="{Binding VolumeDrawing.Roll}" Width="65" Increment="5" Margin="3,0,6,0"/>
+                            <TextBlock Text="Height" VerticalAlignment="Center"/>
+                            <xctk:SingleUpDown Value="{Binding VolumeDrawing.Height}" Width="80" Increment="25" Minimum="0.1" Margin="3,0,6,0"/>
+                            <TextBlock Text="Grid" VerticalAlignment="Center"/>
+                            <xctk:SingleUpDown Value="{Binding VolumeDrawing.Step}" Width="65" Increment="5" Minimum="0.01" Maximum="100000" Margin="3,0,6,0"/>
+                        </WrapPanel>
+                        </StackPanel>
+                        <StackPanel Visibility="{Binding IsEditingVolume, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <TextBlock Text="Select and drag vertex markers in the loaded level. Convex pieces stay closed. Cancel leaves the existing actor and shared geometry untouched." TextWrapping="Wrap" Margin="0,3"/>
+                            <WrapPanel Margin="0,3" IsEnabled="{Binding HasSelectedVolumeVertex}">
+                                <TextBlock Text="Vertex X" VerticalAlignment="Center"/>
+                                <xctk:SingleUpDown Value="{Binding VolumeVertexX}" Width="95" Increment="10" Margin="3,0,6,0"/>
+                                <TextBlock Text="Y" VerticalAlignment="Center"/>
+                                <xctk:SingleUpDown Value="{Binding VolumeVertexY}" Width="95" Increment="10" Margin="3,0,6,0"/>
+                                <TextBlock Text="Z" VerticalAlignment="Center"/>
+                                <xctk:SingleUpDown Value="{Binding VolumeVertexZ}" Width="95" Increment="10" Margin="3,0,6,0"/>
+                            </WrapPanel>
+                            <WrapPanel Margin="0,3">
+                                <TextBlock Text="Drag along" VerticalAlignment="Center"/>
+                                <ComboBox SelectedIndex="{Binding VolumeEditAxis}" Width="115" Margin="4,0,10,0">
+                                    <ComboBoxItem Content="View plane"/><ComboBoxItem Content="World X"/><ComboBoxItem Content="World Y"/><ComboBoxItem Content="World Z"/>
+                                </ComboBox>
+                                <TextBlock Text="Snap step" VerticalAlignment="Center"/>
+                                <xctk:SingleUpDown Value="{Binding VolumeDrawing.Step}" Width="70" Increment="5" Minimum="0.01" Maximum="100000" Margin="4,0,0,0"/>
+                            </WrapPanel>
+                        </StackPanel>
+                        <WrapPanel Margin="0,3">
+                            <CheckBox Content="Snap" IsChecked="{Binding VolumeDrawing.Snap}" Margin="0,0,8,0"/>
+                            <CheckBox Content="X-ray draft" IsChecked="{Binding VolumeDrawing.Xray}" Margin="0,0,8,0"/>
+                            <Button Content="{Binding VolumeUndoLabel}" Click="UndoVolumeCorner_Click" Padding="4,2" Margin="0,0,6,0"/>
+                            <Button Content="{Binding VolumeCommitLabel}" Click="FinishVolumeDrawing_Click" IsEnabled="{Binding CanFinishVolume}" Padding="4,2" Margin="0,0,6,0"/>
+                            <Button Content="Cancel" Click="CancelVolumeDrawing_Click" Padding="4,2"/>
+                        </WrapPanel>
+                        </StackPanel>
+                        </Expander>
+                        <TextBlock Text="{Binding VolumeDrawStatus}" TextWrapping="Wrap" Margin="0,3,0,0"/>
+                    </StackPanel>
+                </Border>
 
                 <Grid Grid.Column="4">
                     <Grid.RowDefinitions>

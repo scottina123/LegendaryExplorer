@@ -238,7 +238,8 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy, ITr
     public bool IsReadOnly => (OwningFile is null || OwningFile.IsReadOnly)
                            && !(Editor?.IsApplyingUndoRedo ?? false);
 
-    public virtual bool IsVolume => false;
+    private bool _usesModelGeometry;
+    public virtual bool IsVolume => _usesModelGeometry;
     public bool IsVolumetricMesh { get; protected set; }
     public bool IsHidden { get; private set; }
     public virtual bool HasLightSettings => false;
@@ -290,6 +291,15 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy, ITr
     protected virtual void LoadFromProperties()
     {
         PropertyCollection props = Properties;
+        // Cache classification when properties load, rather than resolving references
+        // for every viewport visibility/hit-test query. RefreshFromExport updates it too.
+        bool IsModelReference(ObjectProperty reference)
+        {
+            var entry = Pcc.GetEntry(reference.Value);
+            return entry != null && (entry.ClassName is "Model" or "ModelComponent" || entry.IsA("BrushComponent"));
+        }
+        _usesModelGeometry = props.OfType<ObjectProperty>().Any(IsModelReference)
+            || props.OfType<ArrayProperty<ObjectProperty>>().Any(array => array.Any(IsModelReference));
 
         props.ReadProp(ref Tag);
         IsHidden = props.GetProp<BoolProperty>("bHidden")?.Value ?? false;

@@ -42,8 +42,8 @@
                   ToolTip="Show collision meshes"/>
         <CheckBox Content="Show light icons" IsChecked="{Binding ShowLightIcons}" Grid.Row="4" Grid.Column="0" VerticalAlignment="Center" Margin="0,1,12,1"
                   ToolTip="Show selection icons for light actors"/>
-        <CheckBox Content="Show volumes" IsChecked="{Binding ShowVolumes}" Grid.Row="4" Grid.Column="1" VerticalAlignment="Center" Margin="0,1,0,1"
-                  ToolTip="Show volume wireframes"/>
+        <CheckBox x:Name="ShowVolumesCheckBox" Content="Volumes / models" IsChecked="{Binding ShowVolumes}" Grid.Row="4" Grid.Column="1" VerticalAlignment="Center" Margin="0,1,0,1"
+                  ToolTip="Show volumes and actors that reference Model geometry. Clear to hide them from the viewport. Level Editor remembers this choice."/>
         <CheckBox Content="Show volumetric meshes" IsChecked="{Binding ShowVolumetrics}" Grid.Row="5" Grid.Column="0" VerticalAlignment="Center" Margin="0,1,12,1"
                   ToolTip="Volumetrics are large spheroids used for fog, dust, etc. Since LEX can't display those effects, they just get in the way."/>
         <CheckBox Content="Unlit" IsChecked="{Binding Unlit}" Grid.Row="5" Grid.Column="1" VerticalAlignment="Center" Margin="0,1,0,1"
