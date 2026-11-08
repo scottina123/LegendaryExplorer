@@ -32,6 +32,7 @@ namespace LegendaryExplorer.Startup
         private const string DialogueEditorTool = "Dialogue Editor";
         private const string SequenceEditorTool = "Sequence Editor";
         private const string LevelEditorTool = "Level Editor";
+        private const string MeshplorerTool = "Meshplorer";
 
         // Documentation: 
         // https://github.com/dotnet/command-line-api
@@ -78,44 +79,7 @@ namespace LegendaryExplorer.Startup
                         OpenTool<SoundplorerWPF>(s => s.LoadFile(file.FullName));
                         break;
                     default:
-                        switch(file.Extension.ToLower())
-                        {
-                            case ".pcc":
-                            case ".sfm":
-                            case ".upk":
-                            case ".u":
-                            case ".udk":
-                                OpenPackageFile(file.FullName, UIndex, file.Extension);
-                                break;
-                            case ".tlk":
-                                var elhw = new ExportLoaderHostedWindow(new TLKEditorExportLoader(), file.FullName)
-                                {
-                                    Title = $"TLK Editor - {file.FullName}"
-                                };
-                                elhw.Show();
-                                break;
-                            case ".dlc":
-                                var me = new MountEditorWindow();
-                                me.Show();
-                                me.LoadFile(file.FullName);
-                                break;
-                            case ".isb":
-                            case ".afc":
-                                OpenTool<SoundplorerWPF>(s => s.LoadFile(file.FullName));
-                                break;
-                            case ".cnd":
-                                var ce = new ConditionalsEditorWindow();
-                                ce.Show();
-                                ce.LoadFile(file.FullName);
-                                break;
-                            case ".bin":
-                                if (CoalescedEditorWindow.IsCoalescedBinFileName(file.FullName))
-                                {
-                                    OpenTool<CoalescedEditorWindow>(w => w.LoadCoalescedFile(file.FullName));
-                                }
-                                break;
-
-                        }
+                        OpenFile(file.FullName, UIndex);
                         break;
 
                 }
@@ -163,6 +127,54 @@ namespace LegendaryExplorer.Startup
             }
         }
 
+        /// <summary>
+        /// Opens a file in the tool appropriate for its extension. PCC files prompt the user to choose a tool.
+        /// </summary>
+        /// <returns>True if the file type is supported and was handed to a tool (or the tool chooser)</returns>
+        public static bool OpenFile(string fileName, int uIndex = 0)
+        {
+            string extension = Path.GetExtension(fileName);
+            switch (extension.ToLower())
+            {
+                case ".pcc":
+                case ".sfm":
+                case ".upk":
+                case ".u":
+                case ".udk":
+                    OpenPackageFile(fileName, uIndex, extension);
+                    return true;
+                case ".tlk":
+                    var elhw = new ExportLoaderHostedWindow(new TLKEditorExportLoader(), fileName)
+                    {
+                        Title = $"TLK Editor - {fileName}"
+                    };
+                    elhw.Show();
+                    return true;
+                case ".dlc":
+                    var me = new MountEditorWindow();
+                    me.Show();
+                    me.LoadFile(fileName);
+                    return true;
+                case ".isb":
+                case ".afc":
+                    OpenTool<SoundplorerWPF>(s => s.LoadFile(fileName));
+                    return true;
+                case ".cnd":
+                    var ce = new ConditionalsEditorWindow();
+                    ce.Show();
+                    ce.LoadFile(fileName);
+                    return true;
+                case ".bin":
+                    if (CoalescedEditorWindow.IsCoalescedBinFileName(fileName))
+                    {
+                        OpenTool<CoalescedEditorWindow>(w => w.LoadCoalescedFile(fileName));
+                        return true;
+                    }
+                    return false;
+            }
+            return false;
+        }
+
         private static void OpenPackageFile(string fileName, int uIndex, string extension)
         {
             if (extension.Equals(".pcc", StringComparison.OrdinalIgnoreCase))
@@ -182,6 +194,9 @@ namespace LegendaryExplorer.Startup
                         break;
                     case LevelEditorTool:
                         OpenTool<LevelEditor>(async l => await l.LoadFileAsync(fileName));
+                        break;
+                    case MeshplorerTool:
+                        OpenTool<MeshplorerWindow>((m) => m.LoadFile(fileName, uIndex));
                         break;
                 }
             }

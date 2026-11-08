@@ -185,6 +185,30 @@ namespace LegendaryExplorer.MainWindow
             e.Handled = true;
         }
 
+        private void MainWindow_PreviewDragOver(object sender, DragEventArgs e)
+        {
+            // Only handle files dragged in from outside; internal drags (e.g. taskbar pin reordering) pass through
+            if (!e.Data.GetDataPresent(DataFormats.FileDrop)) return;
+            e.Effects = DragDropEffects.Copy;
+            e.Handled = true;
+        }
+
+        private void MainWindow_PreviewDrop(object sender, DragEventArgs e)
+        {
+            if (!e.Data.GetDataPresent(DataFormats.FileDrop)) return;
+            e.Handled = true;
+            if (e.Data.GetData(DataFormats.FileDrop) is not string[] files) return;
+
+            // Defer opening so the drag source (e.g. Windows Explorer) isn't blocked while the tool chooser dialog is open
+            Dispatcher.BeginInvoke(() =>
+            {
+                foreach (string file in files.Where(System.IO.File.Exists))
+                {
+                    CommandLineArgs.OpenFile(file);
+                }
+            });
+        }
+
         private void SystemCommand_CanExecute(object sender, CanExecuteRoutedEventArgs e)
         {
             e.CanExecute = true;
