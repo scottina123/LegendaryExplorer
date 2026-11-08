@@ -202,7 +202,10 @@ namespace LegendaryExplorer.MainWindow
             // Defer opening so the drag source (e.g. Windows Explorer) isn't blocked while the tool chooser dialog is open
             Dispatcher.BeginInvoke(() =>
             {
-                foreach (string file in files.Where(System.IO.File.Exists))
+                // Coalesced files/manifests/folders are compiled or decompiled in place (like ME3Tweaks Mod Manager); everything else opens in a tool
+                var remaining = CoalescedDropHandler.HandleDrop(files,
+                    msg => MessageBox.Show(this, msg, "Coalesced", MessageBoxButton.OK, MessageBoxImage.Error));
+                foreach (string file in remaining.Where(System.IO.File.Exists))
                 {
                     CommandLineArgs.OpenFile(file);
                 }
