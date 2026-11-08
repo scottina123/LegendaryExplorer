@@ -3231,23 +3231,26 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
 
     private async void AddFile()
     {
-        var d = AppDirectories.GetOpenPackageDialog();
+        var d = AppDirectories.GetOpenPackageDialog("Add level file(s)");
+        d.Multiselect = true;
         if (DirectoryMemory.ShowDialog(d) == true)
         {
-
-#if !DEBUG
-            try
+            using var guard = new RenderGuard(this);
+            foreach (string fileName in d.FileNames)
             {
-#endif
-                using var guard = new RenderGuard(this);
-                await AddLevelFile(d.FileName).ConfigureAwait(true);
 #if !DEBUG
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show("Unable to open file:" + ex.Message);
-            }
+                try
+                {
 #endif
+                    await AddLevelFile(fileName).ConfigureAwait(true);
+#if !DEBUG
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"Unable to open {Path.GetFileName(fileName)}: {ex.Message}");
+                }
+#endif
+            }
         }
     }
 
@@ -3279,8 +3282,8 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
             if (files.Length is 0) return;
             if (PackageIsLoaded())
             {
-                string q = files.Length is 1 ? "these files" : "";
-                var result = MessageBox.Show("Do you want to add" + q + "to the existing level view? Select no to unload all open files first.", "Add to files?", MessageBoxButton.YesNoCancel);
+                string q = files.Length is 1 ? "this file" : "these files";
+                var result = MessageBox.Show($"Do you want to add {q} to the existing level view? Select No to unload all open files first.", "Add to files?", MessageBoxButton.YesNoCancel);
                 if (result == MessageBoxResult.Cancel) return;
                 isFirst = result == MessageBoxResult.No;
             }
