@@ -1405,12 +1405,14 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 int curIndex = (i + pos) % CleanedStrings.Count;
                 TLKStringRef node = CleanedStrings[curIndex];
 
-                bool matches = searchById
-                    ? node.StringID == searchId
-                    : node.Data?.Contains(searchTerm, StringComparison.OrdinalIgnoreCase) == true;
-                if (matches)
+                int matchStart = searchById
+                    ? (node.StringID == searchId ? 0 : -1)
+                    : node.Data?.IndexOf(searchTerm, StringComparison.OrdinalIgnoreCase) ?? -1;
+                if (matchStart >= 0)
                 {
-                    FocusString(node, searchById ? 0 : 1);
+                    ResetSearchState();
+                    FocusSearchMatch(new TlkSearchMatch(curIndex, node, searchById ? 0 : 1, matchStart,
+                        searchById ? node.StringID.ToString().Length : searchTerm.Length));
                     return;
                 }
             }
@@ -2446,7 +2448,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             return TryGetRowTextBox(item, 1, "TextColumnEditor", out textBox);
         }
 
-        private bool TryGetRowTextBox(TLKStringRef item, int columnIndex, string tag, out TextBox textBox)
+        private bool TryGetRowTextBox(TLKStringRef item, int columnIndex, string editorName, out TextBox textBox)
         {
             textBox = null;
             if (DisplayedString_ListBox is null || DisplayedString_ListBox.Columns.Count <= columnIndex)
@@ -2462,7 +2464,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 return false;
             }
 
-            textBox = FindVisualChild<TextBox>(row, candidate => candidate.DataContext == item && Equals(candidate.Tag, tag));
+            // The ID editor uses Tag to remember its original value while editing.
+            textBox = FindVisualChild<TextBox>(row, candidate => candidate.DataContext == item && candidate.Name == editorName);
             return textBox is not null;
         }
 

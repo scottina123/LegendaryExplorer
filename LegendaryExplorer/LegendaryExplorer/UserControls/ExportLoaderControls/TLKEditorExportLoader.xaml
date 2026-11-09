@@ -445,7 +445,7 @@
                     <DataGridTemplateColumn Header="ID" Width="140">
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate>
-                                    <TextBox Text="{Binding StringID, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
+                                    <TextBox x:Name="IdColumnEditor" Text="{Binding StringID, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
                                              BorderThickness="0"
                                              Background="Transparent"
                                              Style="{StaticResource TlkStringIdEditorStyle}"
@@ -467,7 +467,7 @@
                     <DataGridTemplateColumn Header="Text" Width="*">
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate>
-                                <TextBox Text="{Binding Data, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                <TextBox x:Name="TextColumnEditor" Text="{Binding Data, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                          Style="{StaticResource TlkInlineEditorStyle}"
                                          BorderThickness="0"
                                          Background="Transparent"
