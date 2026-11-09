@@ -100,7 +100,7 @@ namespace LegendaryExplorer.Dialogs
             InitializeComponent();
             ShowUpdateEventsCheckbox = showUpdateEvents;
             SelectedGame = game;
-            SampleRate_Combobox.SelectedIndex = 0;
+            SampleRate_Combobox.SelectedItem = 44100;
             AfcFileDest_TextBox.Text = destAFCFile;
             ShowDestAFCFile = !string.IsNullOrWhiteSpace(destAFCFile);
             ShowBulkReplaceOption = showBulkReplaceOption;
