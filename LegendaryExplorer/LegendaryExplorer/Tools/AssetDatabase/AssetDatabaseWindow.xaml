@@ -461,6 +461,12 @@
                     <MenuItem Header="Database" Padding="4" >
                         <MenuItem Header="Generate New Database" Command="{Binding GenerateDBCommand}" InputGestureText="Ctrl+G" ToolTip="Scan Game Properties"/>
                         <MenuItem Header="Generate Databases for All Games" Command="{Binding GenerateAllDBCommand}" ToolTip="Scan and save databases for all supported games."/>
+                        <Separator />
+                        <MenuItem Header="Cutscene Corpus (LE3)" ToolTip="Separate scan of conversations, node timelines, BioStages and measured camera shots, written as JSONL for agents. Does not touch the asset database.">
+                            <MenuItem Header="Generate Cutscene Corpus..." Command="{Binding GenerateCutsceneCorpusCommand}" ToolTip="Scan LE3 conversations and stages; packages unchanged since the last run are reused from cache."/>
+                            <MenuItem Header="Rebuild Cutscene Corpus (ignore cache)..." Command="{Binding RebuildCutsceneCorpusCommand}" ToolTip="Rescan every conversation and stage package from scratch."/>
+                            <MenuItem Header="Open Cutscene Corpus Folder" Command="{Binding OpenCutsceneCorpusFolderCommand}"/>
+                        </MenuItem>
                         <MenuItem Header="Save Database" Command="{Binding SaveDBCommand}" ToolTip="Save Database Properties" Visibility="{x:Static global:App.IsDebugVisibility}"/>
                         <Separator />
                         <MenuItem Name="switchME1_menu" Header="ME1 Database" Command="{Binding SwitchMECommand}" CommandParameter="ME1" InputGestureText="Ctrl+1" ToolTip="Switch to ME1 Database">

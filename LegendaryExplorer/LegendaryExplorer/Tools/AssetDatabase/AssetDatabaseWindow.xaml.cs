@@ -1006,6 +1006,9 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         public const string CustomListDesc = "Custom File Lists allow the database to be filtered so only assets that are in certain files or groups of files are shown. Lists can be saved/reloaded.";
         public ICommand GenerateDBCommand { get; set; }
         public ICommand GenerateAllDBCommand { get; set; }
+        public ICommand GenerateCutsceneCorpusCommand { get; set; }
+        public ICommand RebuildCutsceneCorpusCommand { get; set; }
+        public ICommand OpenCutsceneCorpusFolderCommand { get; set; }
         public ICommand SaveDBCommand { get; set; }
         public ICommand SwitchMECommand { get; set; }
         public ICommand CancelDumpCommand { get; set; }
@@ -1034,6 +1037,10 @@ namespace LegendaryExplorer.Tools.AssetDatabase
 
         private bool CanCancelDump()
         {
+            if (_cutsceneCorpusCancellation is not null)
+            {
+                return !_cutsceneCorpusCancellation.IsCancellationRequested;
+            }
             return ProcessingQueue != null && ProcessingQueue.Completion.Status == TaskStatus.WaitingForActivation && !DumpCanceled;
         }
 
@@ -1185,6 +1192,9 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         {
             GenerateDBCommand = new GenericCommand(GenerateDatabase);
             GenerateAllDBCommand = new GenericCommand(GenerateAllDatabases);
+            GenerateCutsceneCorpusCommand = new GenericCommand(() => GenerateCutsceneCorpus(rebuild: false), () => _cutsceneCorpusCancellation is null && !isProcessing);
+            RebuildCutsceneCorpusCommand = new GenericCommand(() => GenerateCutsceneCorpus(rebuild: true), () => _cutsceneCorpusCancellation is null && !isProcessing);
+            OpenCutsceneCorpusFolderCommand = new GenericCommand(() => OpenCutsceneCorpusFolder());
             SaveDBCommand = new GenericCommand(SaveDatabase);
             SetFilterCommand = new RelayCommand(SetFilters, CanSetFilter);
             SwitchMECommand = new RelayCommand(SwitchGame,
@@ -7266,8 +7276,102 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             }
         }
 
+        #region Cutscene corpus
+
+        private CancellationTokenSource _cutsceneCorpusCancellation;
+
+        /// <summary>
+        /// Separate from the asset database scan: writes the LE3 cutscene corpus (JSONL files for agents) to a folder.
+        /// </summary>
+        private async void GenerateCutsceneCorpus(bool rebuild)
+        {
+            if (_cutsceneCorpusCancellation is not null || isProcessing)
+            {
+                return;
+            }
+
+            string outputDirectory = CutsceneCorpus.CutsceneCorpusBuilder.DefaultOutputDirectory(MEGame.LE3);
+            MessageBoxResult choice = MessageBox.Show(this,
+                $"Build the LE3 cutscene corpus in:\n{outputDirectory}\n\n" +
+                (rebuild ? "Every package will be rescanned.\n\n" : "Unchanged packages are reused from the last run.\n\n") +
+                "Yes = use this folder, No = choose another folder, Cancel = stop.",
+                "Cutscene Corpus", MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
+            if (choice == MessageBoxResult.Cancel)
+            {
+                return;
+            }
+            if (choice == MessageBoxResult.No)
+            {
+                var folderDialog = new OpenFolderDialog { Title = "Cutscene corpus output folder", Multiselect = false };
+                if (folderDialog.ShowDialog(this) != true)
+                {
+                    return;
+                }
+                outputDirectory = folderDialog.FolderName;
+            }
+
+            _cutsceneCorpusCancellation = new CancellationTokenSource();
+            TopDock.IsEnabled = false;
+            MidDock.IsEnabled = false;
+            IsBusy = true;
+            BusyHeader = "Building cutscene corpus (LE3)";
+            BusyText = "Starting...";
+            BusyBarInd = true;
+            CommandManager.InvalidateRequerySuggested();
+            var progress = new Progress<string>(message => BusyText = message);
+            try
+            {
+                CutsceneCorpus.CorpusManifest manifest = await CutsceneCorpus.CutsceneCorpusBuilder.BuildAsync(
+                    new CutsceneCorpus.CutsceneCorpusOptions
+                    {
+                        Game = MEGame.LE3,
+                        OutputDirectory = outputDirectory,
+                        UseCache = !rebuild
+                    }, progress, _cutsceneCorpusCancellation.Token);
+
+                string counts = string.Join("\n", manifest.Counts.Select(pair => $"{pair.Key}: {pair.Value:N0}"));
+                MessageBoxResult open = MessageBox.Show(this,
+                    $"Cutscene corpus written in {manifest.ScanSeconds:0}s ({manifest.FilesScanned} packages scanned, {manifest.FilesFromCache} from cache, {manifest.ErrorCount} errors).\n\n{counts}\n\nOpen the folder?",
+                    "Cutscene Corpus", MessageBoxButton.YesNo, MessageBoxImage.Information);
+                if (open == MessageBoxResult.Yes)
+                {
+                    OpenCutsceneCorpusFolder(outputDirectory);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                MessageBox.Show(this, "Cutscene corpus build canceled. Packages already scanned are cached for the next run.",
+                    "Cutscene Corpus", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            catch (Exception exception)
+            {
+                MessageBox.Show(this, $"Cutscene corpus build failed:\n{exception.Message}", "Cutscene Corpus",
+                    MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+            finally
+            {
+                _cutsceneCorpusCancellation.Dispose();
+                _cutsceneCorpusCancellation = null;
+                IsBusy = false;
+                BusyBarInd = false;
+                TopDock.IsEnabled = true;
+                MidDock.IsEnabled = true;
+                CommandManager.InvalidateRequerySuggested();
+            }
+        }
+
+        private static void OpenCutsceneCorpusFolder(string directory = null)
+        {
+            directory ??= CutsceneCorpus.CutsceneCorpusBuilder.DefaultOutputDirectory(MEGame.LE3);
+            Directory.CreateDirectory(directory);
+            Process.Start(new ProcessStartInfo("explorer.exe", $"\"{directory}\"") { UseShellExecute = true });
+        }
+
+        #endregion
+
         private void CancelDump(object obj)
         {
+            _cutsceneCorpusCancellation?.Cancel();
             DumpCanceled = true;
             AllDumpingItems?.ForEach(x => x.DumpCanceled = true);
             CommandManager.InvalidateRequerySuggested(); //Refresh commands

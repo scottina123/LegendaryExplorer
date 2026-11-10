@@ -598,7 +598,7 @@ internal static class StageBoneOriginResolver
             foreach (string propertyName in propertyNames)
             {
                 ObjectProperty componentProperty = properties.GetProp<ObjectProperty>(propertyName);
-                if (componentProperty?.Value != 0
+                if (componentProperty is { Value: not 0 }
                     && ResolveExport(componentProperty.ResolveToEntry(current.FileRef), cache) is { } component)
                 {
                     return component;
@@ -978,6 +978,123 @@ internal static class StageBoneOriginResolver
 
         string siblingPath = Path.Combine(Path.GetDirectoryName(package.FilePath)!, baseFileName);
         return File.Exists(siblingPath) ? siblingPath : null;
+    }
+
+    /// <summary>
+    /// Headless stage geometry for a BioStage: its world origin, every RefSkeleton bone resolved to world space,
+    /// the resolved stage cameras, and the raw camera property layers (archetype defaults first, instance binary last).
+    /// Used by batch tools that cannot show selection dialogs.
+    /// </summary>
+    internal sealed record HeadlessStageGeometry(
+        ExportEntry Stage,
+        CameraOrigin StageOrigin,
+        IReadOnlyList<(string Name, int Index, int ParentIndex, string MeshPath)> Bones,
+        IReadOnlyDictionary<string, CameraOrigin> BoneOrigins,
+        IReadOnlyDictionary<string, StageCameraDefinition> Cameras,
+        IReadOnlyDictionary<string, List<PropertyCollection>> CameraPropertyLayers);
+
+    /// <summary>
+    /// A StartConversation action with one linked BioStage, resolved without UI.
+    /// </summary>
+    internal sealed record HeadlessStageConversationContext(
+        ExportEntry StartConversation,
+        string ConversationName,
+        string ConversationPath,
+        HeadlessStageGeometry Geometry,
+        IReadOnlyDictionary<string, CameraOrigin> ActorOrigins,
+        IReadOnlyDictionary<string, string> VariableLinkSubtitles);
+
+    internal static readonly string[] StartConversationClassNames =
+        ["BioSeqAct_StartConversation", "SFXSeqAct_StartConversation", "SFXSeqAct_StartAmbientConv"];
+
+    internal static HeadlessStageGeometry ResolveStageGeometryHeadless(ExportEntry stage, PackageCache cache)
+    {
+        CameraOrigin stageOrigin = ResolveStageOrigin(stage, cache);
+        List<BoneOption> stageBones = FindBones(stage, new Dictionary<string, string>(), cache);
+        IReadOnlyDictionary<string, CameraOrigin> boneOrigins = ResolveStageNodeOrigins(stageBones, stageOrigin, cache);
+        IReadOnlyDictionary<string, StageCameraDefinition> cameras =
+            ResolveStageCameras(stage, stageBones, stageOrigin, cache, out _);
+        var layers = new Dictionary<string, List<PropertyCollection>>(StringComparer.OrdinalIgnoreCase);
+        if (stage.Game.IsGame3())
+        {
+            foreach ((NameReference name, List<PropertyCollection> cameraLayers) in ResolveStageCameraPropertyLayers(stage, cache).Values)
+            {
+                layers[name.Instanced] = cameraLayers;
+            }
+        }
+
+        var bones = stageBones
+            .Select(option => (option.Bone.Name.Instanced, option.Index, option.Bone.ParentIndex, option.Mesh.InstancedFullPath))
+            .ToList();
+        return new HeadlessStageGeometry(stage, stageOrigin, bones, boneOrigins, cameras, layers);
+    }
+
+    /// <summary>
+    /// Resolves every StartConversation in <paramref name="package"/> that links a BioStage, without UI.
+    /// Failures for individual actions are reported through <paramref name="onError"/> and skipped.
+    /// </summary>
+    internal static List<HeadlessStageConversationContext> ResolveAllStageContextsHeadless(IMEPackage package,
+        PackageCache cache, Action<string> onError = null)
+    {
+        var contexts = new List<HeadlessStageConversationContext>();
+        var geometryCache = new Dictionary<ExportEntry, HeadlessStageGeometry>();
+        foreach (ExportEntry startConversation in package.Exports.Where(export =>
+                     StartConversationClassNames.Contains(export.ClassName) && !export.IsDefaultObject))
+        {
+            try
+            {
+                IEntry conversationEntry = startConversation.GetProperty<ObjectProperty>("Conv")?.ResolveToEntry(package);
+                List<VarLinkInfo> variableLinks = KismetHelper.GetVariableLinks(startConversation.GetProperties(), package);
+                VarLinkInfo stageLink = variableLinks
+                    .FirstOrDefault(link => string.Equals(link.LinkDesc, "Stage", StringComparison.OrdinalIgnoreCase));
+                if (stageLink is null)
+                {
+                    continue;
+                }
+
+                IReadOnlyDictionary<string, string> subtitles = ResolveVariableLinkSubtitles(variableLinks, cache);
+                IReadOnlyDictionary<string, IReadOnlyList<ExportEntry>> actorBindings =
+                    ResolveLinkedActorBindings(variableLinks, cache);
+                foreach (IEntry linkedNode in stageLink.LinkedNodes)
+                {
+                    ExportEntry stage = ResolveLinkedStage(linkedNode, cache);
+                    if (stage is null)
+                    {
+                        continue;
+                    }
+
+                    if (!geometryCache.TryGetValue(stage, out HeadlessStageGeometry geometry))
+                    {
+                        geometry = ResolveStageGeometryHeadless(stage, cache);
+                        geometryCache[stage] = geometry;
+                    }
+
+                    IReadOnlyDictionary<string, CameraOrigin> actorOrigins = ResolveLinkedActorOrigins(
+                        geometry.BoneOrigins, variableLinks, actorBindings, cache);
+                    contexts.Add(new HeadlessStageConversationContext(startConversation,
+                        conversationEntry?.ObjectName.Instanced, conversationEntry?.InstancedFullPath,
+                        geometry, actorOrigins, subtitles));
+                }
+            }
+            catch (Exception exception)
+            {
+                onError?.Invoke($"{startConversation.InstancedFullPath}: {exception.Message}");
+            }
+        }
+        return contexts;
+    }
+
+    private static CameraOrigin ResolveStageOrigin(ExportEntry stage, PackageCache cache)
+    {
+        PropertyCollection stageProperties = GetPropertiesIncludingArchetypes(stage, cache);
+        StructProperty locationProperty = stageProperties.GetProp<StructProperty>("location")
+                                           ?? stageProperties.GetProp<StructProperty>("Location");
+        StructProperty rotationProperty = stageProperties.GetProp<StructProperty>("Rotation");
+        Vector3 stageLocation = locationProperty is null ? Vector3.Zero : CommonStructs.GetVector3(locationProperty);
+        Vector3 stageRotation = rotationProperty is null
+            ? Vector3.Zero
+            : CommonStructs.GetRotator(rotationProperty).GetDegreesVector();
+        return new CameraOrigin(stageLocation, stageRotation);
     }
 
     internal static void RefreshStageData(StageConversationContext context)
