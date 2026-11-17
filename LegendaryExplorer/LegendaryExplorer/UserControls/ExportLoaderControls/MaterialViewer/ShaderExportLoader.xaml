@@ -14,7 +14,7 @@
         xmlns:avalonedit="http://icsharpcode.net/sharpdevelop/avalonedit"
         xmlns:materialViewer="clr-namespace:LegendaryExplorer.UserControls.ExportLoaderControls.MaterialViewer"
         mc:Ignorable="d" 
-        Background="{DynamicResource Theme.Background.Window}"
+        Background="{x:Static SystemColors.WindowBrush}"
         d:DesignHeight="450" d:DesignWidth="800"
         Loaded="ShaderExportLoader_OnLoaded"
         d:DataContext="{Binding RelativeSource={RelativeSource Self}}">
@@ -86,13 +86,13 @@
                                 </StackPanel>
                             </DataTemplate>
                             <SolidColorBrush x:Key="{x:Static SystemColors.HighlightBrushKey}"
-                                             Color="{DynamicResource Theme.Color.Selected}" />
+                                             Color="LightBlue" />
                             <SolidColorBrush x:Key="{x:Static SystemColors.HighlightTextBrushKey}"
-                                             Color="{DynamicResource Theme.Color.OnAccent}" />
+                                             Color="Black" />
                             <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightBrushKey}"
-                                             Color="{DynamicResource Theme.Color.Selected}" />
+                                             Color="LightBlue" />
                             <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightTextBrushKey}"
-                                             Color="{DynamicResource Theme.Color.OnAccent}" />
+                                             Color="Black" />
                         </TreeView.Resources>
                         <b:Interaction.Behaviors>
                             <peregrineTreeView:TreeSelectionBehavior SelectedItem="{Binding SelectedItem}" />
