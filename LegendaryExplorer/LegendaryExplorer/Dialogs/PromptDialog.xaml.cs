@@ -1,5 +1,4 @@
-﻿using LegendaryExplorer.Misc;
-using LegendaryExplorer.SharedUI;
+﻿using LegendaryExplorer.SharedUI;
 using System;
 using System.Windows;
 using System.Windows.Controls;
@@ -11,7 +10,7 @@ namespace LegendaryExplorer.Dialogs
     /// Interaction logic for PromptDialog.xaml
     /// A dialog window that prompts the user for text input with optional validation.
     /// </summary>
-    public partial class PromptDialog : NotifyPropertyChangedWindowBase
+    public partial class PromptDialog : Window
     {
         /// <summary>
         /// Defines the type of input control to display in the dialog.

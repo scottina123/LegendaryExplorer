@@ -1,4 +1,3 @@
-using LegendaryExplorer.Misc;
 using LegendaryExplorer.SharedUI;
 using System;
 using System.Collections.Generic;
@@ -12,7 +11,7 @@ namespace LegendaryExplorer.Dialogs
     /// Interaction logic for AddStringRangeDialog.xaml
     /// A dialog window that prompts the user to enter a range of String IDs to add in batch.
     /// </summary>
-    public partial class AddStringRangeDialog : NotifyPropertyChangedWindowBase
+    public partial class AddStringRangeDialog : Window
     {
         /// <summary>
         /// Validation function that checks if the range is valid.

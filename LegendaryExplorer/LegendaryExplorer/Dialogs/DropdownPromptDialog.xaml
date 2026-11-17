@@ -1,8 +1,7 @@
-﻿<misc:NotifyPropertyChangedWindowBase xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+﻿<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
          x:Class="LegendaryExplorer.Dialogs.DropdownPromptDialog"
          xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
          xmlns:xctk="http://schemas.xceed.com/wpf/xaml/toolkit"
-         xmlns:misc="clr-namespace:LegendaryExplorer.Misc"
          DataContext="{Binding RelativeSource={RelativeSource Self}}"
          WindowStartupLocation="CenterOwner"
          SizeToContent="WidthAndHeight"
@@ -19,4 +18,4 @@
             <Button Content="_Cancel" IsCancel="True" Margin="5" Width="50" Height="25" Name="btnCancel" Click="btnCancel_Click" />
         </StackPanel>
     </StackPanel>
-</misc:NotifyPropertyChangedWindowBase>
+</Window>
