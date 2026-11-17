@@ -4,12 +4,11 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Input;
-using LegendaryExplorer.Misc;
 using LegendaryExplorer.Tools.LevelEditor;
 
 namespace LegendaryExplorer.Tools.InterpEditor;
 
-public partial class ActorPickerDialog : NotifyPropertyChangedWindowBase
+public partial class ActorPickerDialog : Window
 {
     public ActorProxy SelectedActor { get; private set; }
 
