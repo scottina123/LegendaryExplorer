@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Threading.Tasks;
 using System.Windows;
 using Be.Windows.Forms;
 using LegendaryExplorer.Misc.AppSettings;
@@ -42,27 +41,14 @@ namespace LegendaryExplorer.Misc
         public static AppTheme CurrentTheme => ParseThemeName(Settings.Global_Theme);
         public static bool IsDarkTheme => CurrentTheme != AppTheme.Light;
         public static bool IsModernDark => CurrentTheme == AppTheme.ModernDark;
-        public static Color DarkCanvasDrawingColor => IsModernDark
-            ? Color.FromArgb(5, 8, 13)
-            : Color.FromArgb(30, 30, 30);
-        public static System.Windows.Media.Color DarkCanvasMediaColor => IsModernDark
-            ? System.Windows.Media.Color.FromRgb(5, 8, 13)
-            : System.Windows.Media.Color.FromRgb(30, 30, 30);
-        public static System.Windows.Media.Color MeshplorerBackgroundMediaColor => CurrentTheme switch
-        {
-            AppTheme.Dark => System.Windows.Media.Color.FromRgb(32, 32, 32),
-            AppTheme.ModernDark => DarkCanvasMediaColor,
-            _ => System.Windows.Media.Color.FromRgb(128, 128, 128)
-        };
-        public static Color PathfindingBackgroundDrawingColor => CurrentTheme switch
-        {
-            AppTheme.Dark => Color.FromArgb(28, 27, 27),
-            AppTheme.ModernDark => DarkCanvasDrawingColor,
-            _ => Color.FromArgb(130, 130, 130)
-        };
-        public static bool IsDarkCanvasColor(System.Windows.Media.Color color) =>
-            color == System.Windows.Media.Color.FromRgb(5, 8, 13)
-            || color == System.Windows.Media.Color.FromRgb(30, 30, 30);
+        public static Color DarkCanvasDrawingColor => (DarkThemePalette.Current ?? DarkThemePalette.Dark).Canvas;
+        public static System.Windows.Media.Color DarkCanvasMediaColor => DarkThemePalette.ToMedia(DarkCanvasDrawingColor);
+        public static System.Windows.Media.Color MeshplorerBackgroundMediaColor => DarkThemePalette.Current is { } palette
+            ? DarkThemePalette.ToMedia(palette.MeshplorerBackground)
+            : System.Windows.Media.Color.FromRgb(128, 128, 128);
+        public static Color PathfindingBackgroundDrawingColor => DarkThemePalette.Current?.PathfindingBackground
+            ?? Color.FromArgb(130, 130, 130);
+        public static bool IsDarkCanvasColor(System.Windows.Media.Color color) => DarkThemePalette.IsDarkCanvasColor(color);
 
         public static bool IsDarkThemeName(string themeName) => ParseThemeName(themeName) != AppTheme.Light;
 
@@ -128,19 +114,8 @@ namespace LegendaryExplorer.Misc
                     mergedDictionaries.Remove(oldTheme);
                 }
 
-                Color hexBackground = theme switch
-                {
-                    AppTheme.ModernDark => Color.FromArgb(0x08, 0x0D, 0x13),
-                    AppTheme.Dark => Color.FromArgb(0x1E, 0x1E, 0x1E),
-                    _ => Color.White
-                };
-                Color hexForeground = theme switch
-                {
-                    AppTheme.ModernDark => Color.FromArgb(0xE8, 0xF0, 0xF5),
-                    AppTheme.Dark => Color.FromArgb(0xE0, 0xE0, 0xE0),
-                    _ => Color.Black
-                };
-                HexBox.SetColors(hexBackground, hexForeground);
+                DarkThemePalette palette = DarkThemePalette.For(theme);
+                HexBox.SetColors(palette?.HexBackground ?? Color.White, palette?.HexText ?? Color.Black);
 
                 ApplyGraphEditorTheme(theme);
                 UpdateAllHexBoxThemes(theme);
@@ -181,69 +156,35 @@ namespace LegendaryExplorer.Misc
         /// <param name="theme">The active application theme.</param>
         private static void ApplyGraphEditorTheme(AppTheme theme)
         {
-            if (theme == AppTheme.ModernDark)
+            if (DarkThemePalette.For(theme) is { } palette)
             {
-                // Dark theme - Visual Studio dark mode inspired colors
-                SObj.NodeBrushColor = Color.FromArgb(22, 36, 51);
-                SObj.TitleBoxBrushColor = Color.FromArgb(16, 26, 37);
-                SObj.CommentTextColor = Color.FromArgb(71, 180, 213);
-                SObj.BoxTextColor = Color.FromArgb(232, 240, 245);
+                SObj.NodeBrushColor = palette.GraphNode;
+                SObj.TitleBoxBrushColor = palette.GraphTitleBox;
+                SObj.CommentTextColor = palette.GraphComment;
+                SObj.BoxTextColor = palette.GraphText;
 
-                // Wwise Graph Editor dark theme
-                WwiseHircObjNode.NodeBrushColor = Color.FromArgb(22, 36, 51);
-                WwiseHircObjNode.TitleBoxBrushColor = Color.FromArgb(16, 26, 37);
-                WwiseHircObjNode.CommentTextColor = Color.FromArgb(71, 180, 213);
-                WwiseHircObjNode.BoxTextColor = Color.FromArgb(232, 240, 245);
-                WwiseHircObjNode.ConnectionColor = Color.White;
+                WwiseHircObjNode.NodeBrushColor = palette.GraphNode;
+                WwiseHircObjNode.TitleBoxBrushColor = palette.GraphTitleBox;
+                WwiseHircObjNode.CommentTextColor = palette.GraphComment;
+                WwiseHircObjNode.BoxTextColor = palette.GraphText;
+                WwiseHircObjNode.ConnectionColor = palette.GraphConnection;
 
-                // Dialogue Editor dark theme
-                DBox.lineColor = Color.FromArgb(130, 180, 255);
-                DObj.linkTextColor = Color.White;
-                DObj.paraintColor = Color.FromArgb(100, 149, 237);
-                DObj.renintColor = Color.FromArgb(255, 99, 71);
-                DObj.agreeColor = Color.FromArgb(135, 206, 250);
-                DObj.disagreeColor = Color.FromArgb(255, 160, 122);
-                DObj.friendlyColor = Color.FromArgb(100, 149, 237);
-                DObj.hostileColor = Color.FromArgb(205, 92, 92);
-                DObj.connectionColor = Color.White;
-                DObj.entryColor = Color.FromArgb(218, 165, 32);
-                DObj.entryPenColor = Color.FromArgb(220, 220, 220);
-                DObj.replyColor = Color.FromArgb(95, 158, 160);
-                DObj.replyPenColor = Color.FromArgb(220, 220, 220);
-                DObj.graphBackgroundColor = Color.FromArgb(5, 8, 13);
-                DObj.boxColor = Color.FromArgb(22, 36, 51);
-                DObj.boxTextColor = Color.FromArgb(232, 240, 245);
-            }
-            else if (theme == AppTheme.Dark)
-            {
-                // Traditional Legendary Explorer dark palette.
-                SObj.NodeBrushColor = Color.FromArgb(45, 45, 48);
-                SObj.TitleBoxBrushColor = Color.FromArgb(37, 37, 38);
-                SObj.CommentTextColor = Color.FromArgb(87, 166, 74);
-                SObj.BoxTextColor = Color.FromArgb(220, 220, 220);
-
-                WwiseHircObjNode.NodeBrushColor = Color.FromArgb(45, 45, 48);
-                WwiseHircObjNode.TitleBoxBrushColor = Color.FromArgb(37, 37, 38);
-                WwiseHircObjNode.CommentTextColor = Color.FromArgb(87, 166, 74);
-                WwiseHircObjNode.BoxTextColor = Color.FromArgb(220, 220, 220);
-                WwiseHircObjNode.ConnectionColor = Color.White;
-
-                DBox.lineColor = Color.FromArgb(130, 180, 255);
-                DObj.linkTextColor = Color.White;
-                DObj.paraintColor = Color.FromArgb(100, 149, 237);
-                DObj.renintColor = Color.FromArgb(255, 99, 71);
-                DObj.agreeColor = Color.FromArgb(135, 206, 250);
-                DObj.disagreeColor = Color.FromArgb(255, 160, 122);
-                DObj.friendlyColor = Color.FromArgb(100, 149, 237);
-                DObj.hostileColor = Color.FromArgb(205, 92, 92);
-                DObj.connectionColor = Color.White;
-                DObj.entryColor = Color.FromArgb(218, 165, 32);
-                DObj.entryPenColor = Color.FromArgb(220, 220, 220);
-                DObj.replyColor = Color.FromArgb(95, 158, 160);
-                DObj.replyPenColor = Color.FromArgb(220, 220, 220);
-                DObj.graphBackgroundColor = Color.FromArgb(30, 30, 30);
-                DObj.boxColor = Color.FromArgb(45, 45, 48);
-                DObj.boxTextColor = Color.FromArgb(220, 220, 220);
+                DBox.lineColor = DarkThemePalette.DialogueLine;
+                DObj.linkTextColor = DarkThemePalette.DialogueLinkText;
+                DObj.paraintColor = DarkThemePalette.DialogueParaint;
+                DObj.renintColor = DarkThemePalette.DialogueRenint;
+                DObj.agreeColor = DarkThemePalette.DialogueAgree;
+                DObj.disagreeColor = DarkThemePalette.DialogueDisagree;
+                DObj.friendlyColor = DarkThemePalette.DialogueFriendly;
+                DObj.hostileColor = DarkThemePalette.DialogueHostile;
+                DObj.connectionColor = palette.GraphConnection;
+                DObj.entryColor = DarkThemePalette.DialogueEntry;
+                DObj.entryPenColor = DarkThemePalette.DialogueEntryPen;
+                DObj.replyColor = DarkThemePalette.DialogueReply;
+                DObj.replyPenColor = DarkThemePalette.DialogueReplyPen;
+                DObj.graphBackgroundColor = palette.Canvas;
+                DObj.boxColor = palette.GraphNode;
+                DObj.boxTextColor = palette.GraphText;
             }
             else
             {
@@ -288,54 +229,56 @@ namespace LegendaryExplorer.Misc
         public static void RegisterHexBox(HexBox hexBox)
         {
             if (hexBox == null) return;
-            
+
             // Clean up dead references and check if already registered
             _registeredHexBoxes.RemoveAll(wr => !wr.TryGetTarget(out _));
-            
-            // Check if already registered
             foreach (var weakRef in _registeredHexBoxes)
             {
                 if (weakRef.TryGetTarget(out var existingHexBox) && existingHexBox == hexBox)
                     return;
             }
-            
+
             _registeredHexBoxes.Add(new WeakReference<HexBox>(hexBox));
-            
-            // Apply theme immediately
+
             ApplyHexBoxTheme(hexBox, CurrentTheme);
-            
-            // Hook into HandleCreated to reapply after control is fully initialized
-            hexBox.HandleCreated += (s, e) => ApplyHexBoxTheme(hexBox, CurrentTheme);
-            
-            // Hook into VisibleChanged for when the control becomes visible
-            hexBox.VisibleChanged += (s, e) => 
-            { 
-                if (hexBox.Visible) 
-                    ApplyHexBoxTheme(hexBox, CurrentTheme);
-            };
-            
-            // Schedule another apply after delays to ensure rendering is complete
-            Task.Delay(50).ContinueWith(_ =>
-            {
-                try
-                {
-                    if (!hexBox.IsDisposed)
-                        ApplyHexBoxTheme(hexBox, CurrentTheme);
-                }
-                catch { }
-            });
-            
-            Task.Delay(200).ContinueWith(_ =>
-            {
-                try
-                {
-                    if (!hexBox.IsDisposed)
-                        ApplyHexBoxTheme(hexBox, CurrentTheme);
-                }
-                catch { }
-            });
+
+            // Host code sometimes assigns colours after registration or recreates the handle.
+            // Re-apply on those events; ApplyHexBoxTheme only touches properties that differ,
+            // so this is cheap when nothing changed. Handlers are static so they never stack.
+            hexBox.HandleCreated -= OnHexBoxHandleCreated;
+            hexBox.HandleCreated += OnHexBoxHandleCreated;
+            hexBox.VisibleChanged -= OnHexBoxVisibleChanged;
+            hexBox.VisibleChanged += OnHexBoxVisibleChanged;
+            hexBox.Disposed -= OnHexBoxDisposed;
+            hexBox.Disposed += OnHexBoxDisposed;
+
+            // One deferred pass on the UI thread once the current layout settles. This replaces two
+            // thread-pool continuations that mutated WinForms state off the UI thread.
+            if (hexBox.IsHandleCreated)
+                hexBox.BeginInvoke(() => ApplyHexBoxTheme(hexBox, CurrentTheme));
         }
-        
+
+        private static void OnHexBoxHandleCreated(object sender, EventArgs e)
+        {
+            if (sender is HexBox hexBox)
+                hexBox.BeginInvoke(() => ApplyHexBoxTheme(hexBox, CurrentTheme));
+        }
+
+        private static void OnHexBoxVisibleChanged(object sender, EventArgs e)
+        {
+            if (sender is HexBox { Visible: true } hexBox)
+                ApplyHexBoxTheme(hexBox, CurrentTheme);
+        }
+
+        private static void OnHexBoxDisposed(object sender, EventArgs e)
+        {
+            if (sender is not HexBox hexBox) return;
+            hexBox.HandleCreated -= OnHexBoxHandleCreated;
+            hexBox.VisibleChanged -= OnHexBoxVisibleChanged;
+            hexBox.Disposed -= OnHexBoxDisposed;
+            _registeredHexBoxes.RemoveAll(wr => !wr.TryGetTarget(out var target) || target == hexBox);
+        }
+
         /// <summary>
         /// Applies the current theme colors to a HexBox control.
         /// </summary>
@@ -349,124 +292,97 @@ namespace LegendaryExplorer.Misc
         public static void ApplyHexBoxTheme(HexBox hexBox, AppTheme theme)
         {
             if (hexBox == null || hexBox.IsDisposed) return;
+            if (hexBox.InvokeRequired)
+            {
+                try { hexBox.BeginInvoke(() => ApplyHexBoxTheme(hexBox, theme)); } catch { }
+                return;
+            }
 
-            bool isDarkMode = theme != AppTheme.Light;
+            DarkThemePalette palette = DarkThemePalette.For(theme);
+            bool isDarkMode = palette != null;
+            bool changed = false;
 
             // HexBox is WinForms-hosted and cannot consume WPF font resources directly.
             // Preserve its established point-sized metrics independently of WPF typography.
-            hexBox.Font = AppTypography.HexDrawingFont;
-            hexBox.BoldFont = AppTypography.HexDrawingFontBold;
-            
-            // Apply dark mode to the scrollbar
-            hexBox.ScrollBarDarkMode = isDarkMode;
+            // HexBox's Font setter always re-lays out the control, so only assign real changes.
+            if (!Equals(hexBox.Font, AppTypography.HexDrawingFont))
+            {
+                hexBox.Font = AppTypography.HexDrawingFont;
+                changed = true;
+            }
+            if (!Equals(hexBox.BoldFont, AppTypography.HexDrawingFontBold))
+            {
+                hexBox.BoldFont = AppTypography.HexDrawingFontBold;
+                changed = true;
+            }
 
-            // Apply dark mode to the context menu
+            if (hexBox.ScrollBarDarkMode != isDarkMode)
+            {
+                hexBox.ScrollBarDarkMode = isDarkMode;
+                changed = true;
+            }
             hexBox.ContextMenuDarkMode = isDarkMode;
 
-            if (theme == AppTheme.ModernDark)
+            if (palette != null)
             {
-                ApplyHexBoxScrollBarMetrics(hexBox, 12);
-                hexBox.VScrollBar.TrackColor = Color.FromArgb(0x08, 0x0D, 0x13);
-                hexBox.VScrollBar.ThumbColor = Color.FromArgb(0x2A, 0x3A, 0x49);
-                hexBox.VScrollBar.ThumbHoverColor = Color.FromArgb(0x49, 0x64, 0x77);
-                hexBox.VScrollBar.ThumbDraggingColor = Color.FromArgb(0x47, 0xB4, 0xD5);
-                hexBox.VScrollBar.ArrowColor = Color.FromArgb(0x8F, 0xA2, 0xB2);
-                hexBox.VScrollBar.BorderColor = Color.FromArgb(0x2A, 0x3A, 0x49);
+                changed |= ApplyHexBoxScrollBarMetrics(hexBox, palette.HexScrollBarWidth
+                    ?? System.Windows.Forms.SystemInformation.VerticalScrollBarWidth);
+                var scrollBar = hexBox.VScrollBar;
+                changed |= Set(scrollBar.TrackColor, palette.ScrollTrack, c => scrollBar.TrackColor = c);
+                changed |= Set(scrollBar.ThumbColor, palette.ScrollThumb, c => scrollBar.ThumbColor = c);
+                changed |= Set(scrollBar.ThumbHoverColor, palette.ScrollThumbHover, c => scrollBar.ThumbHoverColor = c);
+                changed |= Set(scrollBar.ThumbDraggingColor, palette.ScrollThumbDragging, c => scrollBar.ThumbDraggingColor = c);
+                changed |= Set(scrollBar.ArrowColor, palette.ScrollArrow, c => scrollBar.ArrowColor = c);
+                changed |= Set(scrollBar.BorderColor, palette.ScrollBorder, c => scrollBar.BorderColor = c);
 
-                // Dark theme colors - set all color properties explicitly
-                hexBox.BackColor = Color.FromArgb(0x08, 0x0D, 0x13);           // RecessedBackground #080D13
-                hexBox.ForeColor = Color.FromArgb(0xE8, 0xF0, 0xF5);           // Text #E8F0F5
-                hexBox.InfoForeColor = Color.FromArgb(0xB0, 0xB0, 0xB0);       // DarkTextSecondary #FFB0B0B0
-                hexBox.SelectionBackColor = Color.FromArgb(0x00, 0x7A, 0xCC); // DarkHighlight #FF007ACC
-                hexBox.SelectionForeColor = Color.White;                       // DarkHighlightText
-                hexBox.HighlightBackColor = Color.FromArgb(0x26, 0x4F, 0x78); // DarkSelection #FF264F78
-                hexBox.HighlightForeColor = Color.FromArgb(0xFF, 0xFF, 0xE0); // Light yellow for visibility
-                hexBox.BackColorDisabled = Color.FromArgb(0x10, 0x1A, 0x25);  // Panel #101A25
-            }
-            else if (theme == AppTheme.Dark)
-            {
-                ApplyHexBoxScrollBarMetrics(hexBox, System.Windows.Forms.SystemInformation.VerticalScrollBarWidth);
-                hexBox.VScrollBar.TrackColor = Color.FromArgb(0x3E, 0x3E, 0x42);
-                hexBox.VScrollBar.ThumbColor = Color.FromArgb(0x68, 0x68, 0x6B);
-                hexBox.VScrollBar.ThumbHoverColor = Color.FromArgb(0x9E, 0x9E, 0x9E);
-                hexBox.VScrollBar.ThumbDraggingColor = Color.FromArgb(0x9E, 0x9E, 0x9E);
-                hexBox.VScrollBar.ArrowColor = Color.FromArgb(0x99, 0x99, 0x99);
-                hexBox.VScrollBar.BorderColor = Color.FromArgb(0x3F, 0x3F, 0x46);
-
-                hexBox.BackColor = Color.FromArgb(0x1E, 0x1E, 0x1E);
-                hexBox.ForeColor = Color.FromArgb(0xE0, 0xE0, 0xE0);
-                hexBox.InfoForeColor = Color.FromArgb(0xB0, 0xB0, 0xB0);
-                hexBox.SelectionBackColor = Color.FromArgb(0x00, 0x7A, 0xCC);
-                hexBox.SelectionForeColor = Color.White;
-                hexBox.HighlightBackColor = Color.FromArgb(0x26, 0x4F, 0x78);
-                hexBox.HighlightForeColor = Color.FromArgb(0xFF, 0xFF, 0xE0);
-                hexBox.BackColorDisabled = Color.FromArgb(0x2D, 0x2D, 0x30);
+                changed |= Set(hexBox.BackColor, palette.HexBackground, c => hexBox.BackColor = c);
+                changed |= Set(hexBox.ForeColor, palette.HexText, c => hexBox.ForeColor = c);
+                changed |= Set(hexBox.InfoForeColor, palette.MutedText, c => hexBox.InfoForeColor = c);
+                changed |= Set(hexBox.SelectionBackColor, Color.FromArgb(0x00, 0x7A, 0xCC), c => hexBox.SelectionBackColor = c);
+                changed |= Set(hexBox.SelectionForeColor, Color.White, c => hexBox.SelectionForeColor = c);
+                changed |= Set(hexBox.HighlightBackColor, palette.Selection, c => hexBox.HighlightBackColor = c);
+                changed |= Set(hexBox.HighlightForeColor, Color.FromArgb(0xFF, 0xFF, 0xE0), c => hexBox.HighlightForeColor = c);
+                changed |= Set(hexBox.BackColorDisabled, palette.HexDisabledBackground, c => hexBox.BackColorDisabled = c);
             }
             else
             {
-                ApplyHexBoxScrollBarMetrics(hexBox, System.Windows.Forms.SystemInformation.VerticalScrollBarWidth);
+                changed |= ApplyHexBoxScrollBarMetrics(hexBox, System.Windows.Forms.SystemInformation.VerticalScrollBarWidth);
 
                 // Light theme colors (defaults)
-                hexBox.BackColor = Color.White;
-                hexBox.ForeColor = Color.Black;
-                hexBox.InfoForeColor = Color.Gray;
-                hexBox.SelectionBackColor = Color.Blue;
-                hexBox.SelectionForeColor = Color.White;
-                hexBox.HighlightBackColor = Color.Yellow;
-                hexBox.HighlightForeColor = Color.Black;
-                hexBox.BackColorDisabled = Color.FromName("WhiteSmoke");
+                changed |= Set(hexBox.BackColor, Color.White, c => hexBox.BackColor = c);
+                changed |= Set(hexBox.ForeColor, Color.Black, c => hexBox.ForeColor = c);
+                changed |= Set(hexBox.InfoForeColor, Color.Gray, c => hexBox.InfoForeColor = c);
+                changed |= Set(hexBox.SelectionBackColor, Color.Blue, c => hexBox.SelectionBackColor = c);
+                changed |= Set(hexBox.SelectionForeColor, Color.White, c => hexBox.SelectionForeColor = c);
+                changed |= Set(hexBox.HighlightBackColor, Color.Yellow, c => hexBox.HighlightBackColor = c);
+                changed |= Set(hexBox.HighlightForeColor, Color.Black, c => hexBox.HighlightForeColor = c);
+                changed |= Set(hexBox.BackColorDisabled, Color.FromName("WhiteSmoke"), c => hexBox.BackColorDisabled = c);
             }
-            
-            // Force immediate synchronous refresh for WinForms control hosted in WPF
-            try
-            {
-                if (hexBox.InvokeRequired)
-                {
-                    hexBox.Invoke(() => PerformHexBoxRefresh(hexBox));
-                }
-                else
-                {
-                    PerformHexBoxRefresh(hexBox);
-                }
-            }
-            catch
-            {
-                // Control might be disposed
-            }
+
+            // Previously every call (including every visibility toggle) forced Invalidate+Update+Refresh
+            // on both the HexBox and its parent: several synchronous repaints each time.
+            if (changed)
+                hexBox.Invalidate(true);
         }
 
-        private static void ApplyHexBoxScrollBarMetrics(HexBox hexBox, int width)
+        private static bool Set(Color current, Color target, Action<Color> assign)
         {
-            if (hexBox.VScrollBar.Width == width) return;
+            if (current.ToArgb() == target.ToArgb()) return false;
+            assign(target);
+            return true;
+        }
+
+        private static bool ApplyHexBoxScrollBarMetrics(HexBox hexBox, int width)
+        {
+            if (hexBox.VScrollBar.Width == width) return false;
 
             bool wasVisible = hexBox.VScrollBarVisible;
             if (wasVisible) hexBox.VScrollBarVisible = false;
             hexBox.VScrollBar.Width = width;
             if (wasVisible) hexBox.VScrollBarVisible = true;
+            return true;
         }
-        
-        /// <summary>
-        /// Performs the actual refresh operations on the HexBox control
-        /// </summary>
-        private static void PerformHexBoxRefresh(HexBox hexBox)
-        {
-            try
-            {
-                hexBox.Invalidate(true);
-                hexBox.Update();
-                hexBox.Refresh();
-                
-                // Also refresh parent
-                if (hexBox.Parent != null)
-                {
-                    hexBox.Parent.Invalidate(true);
-                    hexBox.Parent.Update();
-                    try { hexBox.Parent.Refresh(); } catch { }
-                }
-            }
-            catch { }
-        }
-        
+
         /// <summary>
         /// Updates all registered HexBox controls with the current theme.
         /// </summary>
@@ -474,8 +390,8 @@ namespace LegendaryExplorer.Misc
         {
             // Clean up dead references as we iterate
             _registeredHexBoxes.RemoveAll(wr => !wr.TryGetTarget(out _));
-            
-            foreach (var weakRef in _registeredHexBoxes)
+
+            foreach (var weakRef in _registeredHexBoxes.ToList())
             {
                 if (weakRef.TryGetTarget(out var hexBox))
                 {

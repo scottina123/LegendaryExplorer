@@ -109,21 +109,24 @@ public static class EditorThemeManager
         }
     }
 
+    // Chrome colours mirror the host LEX palettes so the editor matches the rest of the app:
+    // Modern Dark = LegendaryExplorer/Themes/AudemusDark.Tokens.xaml,
+    // Dark = LegendaryExplorer/Themes/LegendaryDark.Tokens.xaml. Update both together.
     private static EditorThemeResourceDictionary CreateThemeResources(EditorTheme theme)
     {
         var resources = new EditorThemeResourceDictionary();
 
         AddBrush(resources, "AppBackgroundBrush", ThemeColor(theme, "0A1018", "1E1E1E", "FFFFFF"));
-        AddBrush(resources, "PanelBrush", ThemeColor(theme, "101A25", "252526", "F5F5F5"));
-        AddBrush(resources, "PanelRaisedBrush", ThemeColor(theme, "162433", "2D2D30", "EDEDED"));
+        AddBrush(resources, "PanelBrush", ThemeColor(theme, "101A25", "2D2D30", "F5F5F5"));
+        AddBrush(resources, "PanelRaisedBrush", ThemeColor(theme, "162433", "3E3E42", "EDEDED"));
         AddBrush(resources, "BorderBrush", ThemeColor(theme, "2A3A49", "3F3F46", "C8C8C8"));
         AddBrush(resources, "TextBrush", ThemeColor(theme, "E8F0F5", "E0E0E0", "1E1E1E"));
         AddBrush(resources, "MutedTextBrush", ThemeColor(theme, "8FA2B2", "B0B0B0", "5F5F5F"));
         AddBrush(resources, "CanvasSummaryTextBrush", ThemeColor(theme, "8FA2B2", "B0B0B0", "B0B0B0"));
         AddBrush(resources, "AccentBrush", ThemeColor(theme, "47B4D5", "007ACC", "0067C0"));
         AddBrush(resources, "AccentDimBrush", ThemeColor(theme, "243E4B", "264F78", "D6EBF7"));
-        AddBrush(resources, "DangerBrush", ThemeColor(theme, "ED5665", "F06A73", "C42B1C"));
-        AddBrush(resources, "WarningBrush", ThemeColor(theme, "E4AE56", "D7BA7D", "8A6500"));
+        AddBrush(resources, "DangerBrush", ThemeColor(theme, "ED5665", "E05A67", "C42B1C"));
+        AddBrush(resources, "WarningBrush", ThemeColor(theme, "E4AE56", "D7A84A", "8A6500"));
 
         resources[SystemColors.HighlightBrushKey] = CreateBrush(ThemeColor(theme, "29485B", "264F78", "CCE8FF"));
         resources[SystemColors.InactiveSelectionHighlightBrushKey] = CreateBrush(ThemeColor(theme, "213B4B", "3F3F46", "E5E5E5"));

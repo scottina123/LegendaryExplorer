@@ -932,21 +932,11 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
 
     private void ApplyPointOfInterestToolTipTheme(bool isDarkMode)
     {
-        if (isDarkMode)
-        {
-            PointOfInterestToolTip.Background = new System.Windows.Media.SolidColorBrush(
-                System.Windows.Media.Color.FromRgb(0x25, 0x25, 0x26));
-            PointOfInterestToolTip.Foreground = new System.Windows.Media.SolidColorBrush(
-                System.Windows.Media.Color.FromRgb(0xE0, 0xE0, 0xE0));
-            PointOfInterestToolTip.BorderBrush = new System.Windows.Media.SolidColorBrush(
-                System.Windows.Media.Color.FromRgb(0x3F, 0x3F, 0x46));
-        }
-        else
-        {
-            PointOfInterestToolTip.Background = SystemColors.InfoBrush;
-            PointOfInterestToolTip.Foreground = SystemColors.InfoTextBrush;
-            PointOfInterestToolTip.BorderBrush = SystemColors.ActiveBorderBrush;
-        }
+        // Same keys as the themes' ToolTip style, so Light, Dark and Modern Dark all
+        // resolve from their own dictionaries instead of a hard-coded grey copy.
+        PointOfInterestToolTip.SetResourceReference(System.Windows.Controls.Control.BackgroundProperty, SystemColors.InfoBrushKey);
+        PointOfInterestToolTip.SetResourceReference(System.Windows.Controls.Control.ForegroundProperty, SystemColors.InfoTextBrushKey);
+        PointOfInterestToolTip.SetResourceReference(System.Windows.Controls.Control.BorderBrushProperty, SystemColors.ActiveBorderBrushKey);
     }
 
     private string FileQueuedForLoad;
@@ -3340,6 +3330,10 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         RenderContext.SelectActor -= ViewportActorSelect;
         RenderContext.RightClickActor -= OnViewportRightClickActor;
         RenderContext.RightClickViewport -= OnViewportRightClickViewport;
+
+        // ThemeManager.ThemeChanged is static: without this, every closed Level Editor
+        // (scene, render context and loaded packages) stays reachable for the app's lifetime.
+        ThemeManager.ThemeChanged -= OnThemeChanged;
 
         UndoHistory.PropertyChanged -= UndoHistory_PropertyChanged;
         UndoHistory.Clear();

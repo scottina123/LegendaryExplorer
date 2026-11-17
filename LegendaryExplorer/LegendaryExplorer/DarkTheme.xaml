@@ -6,13 +6,15 @@ xmlns:sharedUi="clr-namespace:LegendaryExplorer.SharedUI"
 xmlns:controls="clr-namespace:LegendaryExplorer.SharedUI.Controls">
     <ResourceDictionary.MergedDictionaries>
         <ResourceDictionary Source="/LegendaryExplorer;component/Themes/AudemusTypography.xaml"/>
-        <ResourceDictionary Source="/LegendaryExplorer;component/Themes/AudemusDark.Tokens.xaml"/>
+        <!-- Dark's palette. Both token files define the same keys; Modern Dark merges
+             AudemusDark.Tokens.xaml after this dictionary to swap the palette. Loading the
+             Modern tokens here as well only produced a fully shadowed duplicate. -->
+        <ResourceDictionary Source="/LegendaryExplorer;component/Themes/LegendaryDark.Tokens.xaml"/>
         <ResourceDictionary Source="/LegendaryExplorer;component/Themes/AudemusDark.Primitives.xaml"/>
         <ResourceDictionary Source="/LegendaryExplorer;component/Themes/AudemusDark.Controls.xaml"/>
         <ResourceDictionary Source="/LegendaryExplorer;component/Themes/AudemusDark.DataGrid.xaml"/>
         <ResourceDictionary Source="/LegendaryExplorer;component/Themes/AudemusDark.ToolWindows.xaml"/>
         <ResourceDictionary Source="/LegendaryExplorer;component/Themes/AudemusDark.LegendaryExplorerAdapters.xaml"/>
-        <ResourceDictionary Source="/LegendaryExplorer;component/Themes/LegendaryDark.Tokens.xaml"/>
     </ResourceDictionary.MergedDictionaries>
 
     <!-- Existing implicit templates remain in this compatibility layer until each complex
@@ -774,8 +776,22 @@ xmlns:controls="clr-namespace:LegendaryExplorer.SharedUI.Controls">
                 </ControlTemplate>
             </Setter.Value>
         </Setter>
+        <!-- Replacing the stock TreeViewItem style also drops its virtualization trigger.
+             Without it every child container of an expanded node is realized at once, so
+             large package trees grow slower the longer they are browsed. -->
+        <Style.Triggers>
+            <Trigger Property="VirtualizingPanel.IsVirtualizing" Value="True">
+                <Setter Property="ItemsPanel">
+                    <Setter.Value>
+                        <ItemsPanelTemplate>
+                            <VirtualizingStackPanel/>
+                        </ItemsPanelTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Trigger>
+        </Style.Triggers>
     </Style>
-    
+
     <!-- TreeViewItem Expander Toggle Button Style -->
     <Style x:Key="TreeViewItemExpanderStyle" TargetType="{x:Type ToggleButton}">
         <Setter Property="Focusable" Value="False"/>

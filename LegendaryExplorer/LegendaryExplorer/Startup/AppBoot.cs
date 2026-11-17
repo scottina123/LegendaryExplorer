@@ -57,12 +57,7 @@ namespace LegendaryExplorer.Startup
 
             Settings.LoadSettings();
             SyntaxInfo.LoadFromSettings();
-            PCanvas.InitialBackColorProvider = () => ThemeManager.CurrentTheme switch
-            {
-                AppTheme.ModernDark => System.Drawing.Color.FromArgb(5, 8, 13),
-                AppTheme.Dark => System.Drawing.Color.FromArgb(30, 30, 30),
-                _ => System.Drawing.Color.White
-            };
+            PCanvas.InitialBackColorProvider = () => DarkThemePalette.Current?.Canvas ?? System.Drawing.Color.White;
             initCoreLib();
 
             // AppCenter setup

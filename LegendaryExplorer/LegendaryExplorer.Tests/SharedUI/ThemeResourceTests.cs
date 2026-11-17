@@ -34,6 +34,51 @@ public class ThemeResourceTests
             ((SolidColorBrush)modern["ToolBoxAccentBrush"]).Color);
     }
 
+    [STATestMethod]
+    public void CodePaletteMatchesXamlTokens()
+    {
+        typeof(Application).GetField("_resourceAssembly", BindingFlags.Static | BindingFlags.NonPublic)!
+            .SetValue(null, typeof(App).Assembly);
+
+        foreach ((string file, DarkThemePalette palette) in new[]
+                 {
+                     ("DarkTheme.xaml", DarkThemePalette.Dark),
+                     ("ModernDarkTheme.xaml", DarkThemePalette.ModernDark)
+                 })
+        {
+            ResourceDictionary theme = LoadTheme(file);
+            Assert.AreEqual(theme["AppBackgroundColor"], DarkThemePalette.ToMedia(palette.AppBackground), file);
+            Assert.AreEqual(theme["CanvasBackgroundColor"], DarkThemePalette.ToMedia(palette.Canvas), file);
+            Assert.AreEqual(theme["TextColor"], DarkThemePalette.ToMedia(palette.Text), file);
+            Assert.AreEqual(theme["PanelColor"], DarkThemePalette.ToMedia(palette.Panel), file);
+            Assert.AreEqual(theme["StructuralBorderColor"], DarkThemePalette.ToMedia(palette.StructuralBorder), file);
+            Assert.AreEqual(theme["AccentColor"], DarkThemePalette.ToMedia(palette.Accent), file);
+        }
+    }
+
+    [STATestMethod]
+    public void DarkTreeViewItemsKeepVirtualization()
+    {
+        typeof(Application).GetField("_resourceAssembly", BindingFlags.Static | BindingFlags.NonPublic)!
+            .SetValue(null, typeof(App).Assembly);
+
+        foreach (string file in new[] { "DarkTheme.xaml", "ModernDarkTheme.xaml" })
+        {
+            var style = (Style)LoadTheme(file)[typeof(System.Windows.Controls.TreeViewItem)];
+            bool virtualizes = false;
+            foreach (TriggerBase trigger in style.Triggers)
+            {
+                if (trigger is Trigger { Property: var property, Value: true } t
+                    && property == System.Windows.Controls.VirtualizingPanel.IsVirtualizingProperty)
+                {
+                    foreach (SetterBase setter in t.Setters)
+                        virtualizes |= setter is Setter { Property: var p } && p == System.Windows.Controls.ItemsControl.ItemsPanelProperty;
+                }
+            }
+            Assert.IsTrue(virtualizes, $"{file} TreeViewItem style must switch to a VirtualizingStackPanel when virtualizing.");
+        }
+    }
+
     [TestMethod]
     public void ThemeNamesAreValidatedAndClassified()
     {

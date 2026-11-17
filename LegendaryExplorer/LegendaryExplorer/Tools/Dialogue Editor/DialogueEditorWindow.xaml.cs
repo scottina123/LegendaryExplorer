@@ -1275,29 +1275,25 @@ namespace LegendaryExplorer.DialogueEditor
         {
             bool isDarkMode = Settings.Global_DarkMode_Enabled;
 
-            if (isDarkMode)
+            if (isDarkMode && DarkThemePalette.Current is { } palette)
             {
-                // Dark theme - Visual Studio dark mode inspired colors
-                DBox.lineColor = Color.FromArgb(130, 180, 255);  // Light blue for better visibility
-                DObj.linkTextColor = Color.White;  // White for link text in dark mode
-                DObj.paraintColor = Color.FromArgb(100, 149, 237);  // Cornflower blue
-                DObj.renintColor = Color.FromArgb(255, 99, 71);  // Tomato
-                DObj.agreeColor = Color.FromArgb(135, 206, 250);  // Light sky blue
-                DObj.disagreeColor = Color.FromArgb(255, 160, 122);  // Light salmon
-                DObj.friendlyColor = Color.FromArgb(100, 149, 237);  // Cornflower blue
-                DObj.hostileColor = Color.FromArgb(205, 92, 92);  // Indian red
-                DObj.connectionColor = Color.White;  // White connection lines for dark mode
-                DObj.entryColor = Color.FromArgb(75, 0, 130);  // Indigo
-                DObj.entryPenColor = Color.FromArgb(80, 80, 80);  // Dark grey
-                DObj.replyColor = Color.FromArgb(85, 107, 47);  // Dark olive green
-                DObj.replyPenColor = Color.FromArgb(80, 80, 80);  // Dark grey
-                GraphBackgroundColor = ThemeManager.DarkCanvasDrawingColor;
-                BoxColor = ThemeManager.IsModernDark
-                    ? Color.FromArgb(22, 36, 51)
-                    : Color.FromArgb(45, 45, 48);
-                DObj.boxTextColor = ThemeManager.IsModernDark
-                    ? Color.FromArgb(232, 240, 245)
-                    : Color.FromArgb(220, 220, 220);
+                // Shared dark-theme palette (Dark or Modern Dark)
+                DBox.lineColor = DarkThemePalette.DialogueLine;
+                DObj.linkTextColor = DarkThemePalette.DialogueLinkText;
+                DObj.paraintColor = DarkThemePalette.DialogueParaint;
+                DObj.renintColor = DarkThemePalette.DialogueRenint;
+                DObj.agreeColor = DarkThemePalette.DialogueAgree;
+                DObj.disagreeColor = DarkThemePalette.DialogueDisagree;
+                DObj.friendlyColor = DarkThemePalette.DialogueFriendly;
+                DObj.hostileColor = DarkThemePalette.DialogueHostile;
+                DObj.connectionColor = palette.GraphConnection;
+                DObj.entryColor = DarkThemePalette.DialogueEntry;
+                DObj.entryPenColor = DarkThemePalette.DialogueEntryPen;
+                DObj.replyColor = DarkThemePalette.DialogueReply;
+                DObj.replyPenColor = DarkThemePalette.DialogueReplyPen;
+                GraphBackgroundColor = palette.Canvas;
+                BoxColor = palette.GraphNode;
+                DObj.boxTextColor = palette.GraphText;
             }
             else
             {

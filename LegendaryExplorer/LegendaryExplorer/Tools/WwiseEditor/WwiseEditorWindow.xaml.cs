@@ -280,24 +280,16 @@ namespace LegendaryExplorer.Tools.WwiseEditor
         {
             bool isDarkMode = Settings.Global_DarkMode_Enabled;
 
-            if (isDarkMode)
+            if (isDarkMode && DarkThemePalette.Current is { } palette)
             {
-                // Dark theme - matching Sequence Editor dark mode colors
-                _graphEditorBackColor = ThemeManager.DarkCanvasDrawingColor;
-                _boxFillColor = ThemeManager.IsModernDark
-                    ? Color.FromArgb(22, 36, 51)
-                    : Color.FromArgb(45, 45, 48);
-                _titleBoxColor = ThemeManager.IsModernDark
-                    ? Color.FromArgb(16, 26, 37)
-                    : Color.FromArgb(37, 37, 38);
-                _commentTextColor = ThemeManager.IsModernDark
-                    ? Color.FromArgb(71, 180, 213)
-                    : Color.FromArgb(87, 166, 74);
-                _boxTextColor = ThemeManager.IsModernDark
-                    ? Color.FromArgb(232, 240, 245)
-                    : Color.FromArgb(220, 220, 220);
+                // Shared dark-theme graph palette (same as the Sequence Editor)
+                _graphEditorBackColor = palette.Canvas;
+                _boxFillColor = palette.GraphNode;
+                _titleBoxColor = palette.GraphTitleBox;
+                _commentTextColor = palette.GraphComment;
+                _boxTextColor = palette.GraphText;
                 _boxOutlineColor = Color.FromArgb(35, 34, 34);
-                _connectionColor = Color.White;
+                _connectionColor = palette.GraphConnection;
             }
             else
             {
