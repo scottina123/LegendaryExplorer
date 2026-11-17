@@ -22,9 +22,6 @@
                 <Setter Property="IsIndeterminate" Value="{Binding BusyProgressIndeterminate}"/>
                 <Setter Property="Height" Value="14"/>
                 <Setter Property="Margin" Value="5,0,5,5"/>
-                <Setter Property="Background" Value="{DynamicResource Theme.Background.Control}"/>
-                <Setter Property="Foreground" Value="{DynamicResource Theme.Accent}"/>
-                <Setter Property="BorderBrush" Value="{DynamicResource Theme.Border}"/>
             </Style>
         </xctk:BusyIndicator.ProgressBarStyle>
         <Grid>
@@ -36,7 +33,7 @@
             </Grid.RowDefinitions>
             <ToolBar ToolBarTray.IsLocked="True" Visibility="Visible">
                 <Button Content="Theme Editor" Click="ThemePicker_OnClick"/>
-                <Separator Style="{DynamicResource {x:Static ToolBar.SeparatorStyleKey}}" />
+                <Separator Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" />
                 <Label IsEnabled="False">Text Size:</Label>
                 <Button Name="FontSizeIncrease_Button" ToolTip="Increase font size"
                         Command="{Binding IncreaseFontSizeCommand}"
@@ -48,7 +45,7 @@
                         VerticalAlignment="Center">
                     <fa5:FontAwesome Icon="Solid_Minus"/>
                 </Button>
-                <Separator Style="{DynamicResource {x:Static ToolBar.SeparatorStyleKey}}" />
+                <Separator Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" />
                 <Button Name="DecreaseIndent_Button" ToolTip="Decrease indent of selected lines"
                         Command="{Binding DecreaseIndentCommand}"
                         VerticalAlignment="Center">

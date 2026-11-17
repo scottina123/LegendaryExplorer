@@ -2,7 +2,6 @@
 using LegendaryExplorer.Dialogs;
 using LegendaryExplorer.Misc;
 using LegendaryExplorer.Misc.AppSettings;
-using LegendaryExplorer.Misc.Themes;
 using LegendaryExplorer.Packages;
 using LegendaryExplorer.SharedUI;
 using LegendaryExplorer.SharedUI.Bases;
@@ -114,8 +113,6 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             graphEditor.BackColor = GraphEditorBackColor;
             graphEditor.Camera.MouseDown += backMouseDown_Handler;
             graphEditor.Camera.MouseUp += back_MouseUp;
-            toolBoxExpander.Background = ToolboxExpanderBrush;
-            ThemeManager.ThemeChanged += SequenceEditorWPF_ThemeChanged;
 
             graphEditor.Click += graphEditor_Click;
             graphEditor.DragDrop += SequenceEditor_DragDrop;
@@ -1575,7 +1572,6 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             {
                 if (FindResource("backContextMenu") is ContextMenu contextMenu)
                 {
-                    contextMenu.PlacementTarget = this;
                     contextMenu.IsOpen = true;
                 }
             }
@@ -1681,13 +1677,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
         private ExportEntry ExportQueuedForFocusing;
         private Action<bool> QueuedFocusResult;
         private bool AllowWindowRefocus = true;
-        private static readonly Color LightGraphEditorBackColor = Color.FromArgb(167, 167, 167);
-        private static readonly Color DarkGraphEditorBackColor = Color.FromArgb(120, 120, 120);
-        private static Color GraphEditorBackColor => ThemeManager.IsDarkMode ? DarkGraphEditorBackColor : LightGraphEditorBackColor;
-
-        private static readonly System.Windows.Media.SolidColorBrush LightToolboxExpanderBrush = System.Windows.Media.Brushes.Orange;
-        private static readonly System.Windows.Media.SolidColorBrush DarkToolboxExpanderBrush = new(System.Windows.Media.Color.FromRgb(0xB3, 0x6B, 0x00));
-        private static System.Windows.Media.SolidColorBrush ToolboxExpanderBrush => ThemeManager.IsDarkMode ? DarkToolboxExpanderBrush : LightToolboxExpanderBrush;
+        private static readonly Color GraphEditorBackColor = Color.FromArgb(167, 167, 167);
 
         private void saveView(bool toFile = true)
         {
@@ -2073,7 +2063,6 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                     }
                 }
 
-                contextMenu.PlacementTarget = this;
                 contextMenu.IsOpen = true;
                 graphEditor.DisableDragging();
             }
@@ -2256,19 +2245,10 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             }
         }
 
-        private void SequenceEditorWPF_ThemeChanged(object sender, EventArgs e)
-        {
-            graphEditor.BackColor = GraphEditorBackColor;
-            graphEditor.Refresh();
-            toolBoxExpander.Background = ToolboxExpanderBrush;
-        }
-
         private void SequenceEditorWPF_Closing(object sender, CancelEventArgs e)
         {
             if (e.Cancel)
                 return;
-
-            ThemeManager.ThemeChanged -= SequenceEditorWPF_ThemeChanged;
 
             if (AutoSaveView_MenuItem.IsChecked)
                 saveView();
