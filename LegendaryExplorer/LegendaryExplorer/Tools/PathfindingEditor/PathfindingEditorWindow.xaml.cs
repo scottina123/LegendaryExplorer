@@ -1504,7 +1504,6 @@ namespace LegendaryExplorer.Tools.PathfindingEditor
                 var currentlocation = PathEdUtils.GetLocation(export);
                 CurrentNodeXY = $"{s.GlobalBounds.X},{s.GlobalBounds.Y}";
             }
-            contextMenu.PlacementTarget = this;
             contextMenu.IsOpen = true;
             graphEditor.DisableDragging();
         }
