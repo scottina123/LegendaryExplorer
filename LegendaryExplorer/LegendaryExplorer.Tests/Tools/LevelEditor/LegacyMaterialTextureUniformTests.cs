@@ -65,13 +65,17 @@ public class LegacyMaterialTextureUniformTests
         Assert.AreSame(fixture.ChildTexture, material.GetCachedPixelParameters(fixture.Context).tex2d[0]);
     }
 
+    /// <summary>
+    /// A serialized None texture value defers to the parent, as UMaterialInstanceConstant::GetTextureParameterValue does (upstream's rule): it reads
+    /// like an absent parameter. Only a live None override (see <see cref="MissingTextureParameterUsesCookedDefaultAndLiveNoneCanBeReset"/>) clears it
+    /// </summary>
     [TestMethod]
-    public void SerializedNoneTextureOverrideDoesNotUseCookedDefault()
+    public void SerializedNoneTextureOverrideDefersLikeAnAbsentParameter()
     {
         using var fixture = new MaterialFixture(explicitNone: true);
         LegacyScene.MaterialRenderProxy material = fixture.CreatePreview();
 
-        Assert.IsNull(material.GetCachedPixelParameters(fixture.Context).tex2d[0]);
+        Assert.AreSame(fixture.ChildTexture, material.GetCachedPixelParameters(fixture.Context).tex2d[0]);
     }
 
     [DataTestMethod]

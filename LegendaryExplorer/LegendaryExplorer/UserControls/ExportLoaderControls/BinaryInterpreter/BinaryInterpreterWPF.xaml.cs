@@ -397,6 +397,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             "Const",
             "CookedBulkDataInfoContainer",
             "CoverMeshComponent",
+            "BioDecalComponent",
             "DecalComponent",
             "DecalMaterial",
             "DelegateProperty",
@@ -1408,6 +1409,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                         case "CookedBulkDataInfoContainer":
                             subNodes.AddRange(StartCookedBulkDataInfoContainerScan(data, ref binarystart));
                             break;
+                        case "BioDecalComponent":
                         case "DecalComponent":
                             subNodes.AddRange(StartDecalComponentScan(data, ref binarystart));
                             break;

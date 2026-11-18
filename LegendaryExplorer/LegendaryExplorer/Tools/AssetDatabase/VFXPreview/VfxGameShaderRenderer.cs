@@ -12,6 +12,10 @@ using System.Numerics;
 
 namespace LegendaryExplorer.Tools.AssetDatabase.VFXPreview;
 
+/// <summary>
+/// A view's depth states for effects. Implementations hand out the render context's own states (see
+/// <see cref="MeshRenderContext.GetEffectsDepthState"/>): reversed-Z Greater, written only for opaque and masked materials
+/// </summary>
 public interface IVfxDepthStateProvider
 {
     DepthStencilState GetVfxDepthState(bool depthTest, bool depthWrite);
@@ -20,6 +24,8 @@ public interface IVfxDepthStateProvider
 /// <summary>
 /// Renders sprite emitters with UE3's native particle vertex factories. Each resource records the exact
 /// factory selected from the material shader map and supplies that factory's complete vertex and constant data.
+/// Every draw goes through the render context's game-shader path (<see cref="RenderNativeMaterial{TVertex}"/>): its shader
+/// and blend caches, the frame's view constants, the material's parameter setters and the bind tracker.
 /// </summary>
 public sealed class VfxGameShaderRenderer : IDisposable
 {
@@ -85,6 +91,10 @@ public sealed class VfxGameShaderRenderer : IDisposable
 
     private readonly Dictionary<VfxEmitterDefinition, SpriteResources> spriteEmitters = [];
     private readonly Dictionary<VfxEmitterDefinition, BeamTrailResources> beamTrailEmitters = [];
+    // Reused every frame, so drawing allocates nothing per emitter
+    private readonly List<VfxParticle> particleScratch = [];
+    private readonly List<RibbonSegment> segmentScratch = [];
+    private readonly List<VfxParticle> trailScratch = [];
 
     internal static string SelectSpriteVertexFactory(VfxEmitterDefinition emitter)
     {
@@ -306,20 +316,21 @@ public sealed class VfxGameShaderRenderer : IDisposable
         IReadOnlyList<VfxParticle> particles = particleSource;
         if (particles is null)
         {
-            var sortedParticles = new List<VfxParticle>(emitter.Particles);
+            particleScratch.Clear();
+            particleScratch.AddRange(emitter.Particles);
             VfxBillboardRenderer.SortParticles(
-                sortedParticles,
+                particleScratch,
                 emitter.Definition.SortMode,
-                context.Camera.Position,
+                context.Camera.EyePosition,
                 previewTransform,
                 context.Camera.CameraForward);
             if (emitter.Definition.UseMaxDrawCount
                 && emitter.Definition.MaxDrawCount >= 0
-                && sortedParticles.Count > emitter.Definition.MaxDrawCount)
+                && particleScratch.Count > emitter.Definition.MaxDrawCount)
             {
-                sortedParticles.RemoveRange(emitter.Definition.MaxDrawCount, sortedParticles.Count - emitter.Definition.MaxDrawCount);
+                particleScratch.RemoveRange(emitter.Definition.MaxDrawCount, particleScratch.Count - emitter.Definition.MaxDrawCount);
             }
-            particles = sortedParticles;
+            particles = particleScratch;
         }
         if (particles.Count == 0)
         {
@@ -329,6 +340,10 @@ public sealed class VfxGameShaderRenderer : IDisposable
         EnsureSpriteCapacity(context, resources, particles.Count);
         Mesh<ParticleVertex> mesh = resources.Mesh;
         Matrix4x4 transform = previewTransform == default ? Matrix4x4.Identity : previewTransform;
+        // Vertices are relative to the emitter's origin, which the mesh's LocalToWorld adds back. The game shaders work in
+        // translated (camera-relative) world space, so this keeps large level coordinates out of the vertex data's precision.
+        Vector3 origin = transform.Translation;
+        float largestSize = 0;
         for (int particleIndex = 0; particleIndex < particles.Count; particleIndex++)
         {
             VfxParticle particle = particles[particleIndex];
@@ -358,8 +373,9 @@ public sealed class VfxGameShaderRenderer : IDisposable
                 oldLocalPosition = localPosition - (particle.Velocity / 60f);
             }
 
-            Vector3 worldPosition = Vector3.Transform(localPosition, transform);
-            Vector3 oldWorldPosition = Vector3.Transform(oldLocalPosition, transform);
+            Vector3 worldPosition = Vector3.Transform(localPosition, transform) - origin;
+            Vector3 oldWorldPosition = Vector3.Transform(oldLocalPosition, transform) - origin;
+            largestSize = MathF.Max(largestSize, MathF.Max(size.X, size.Y));
             GetFrameData(emitter.Definition, particle.SubImageIndex,
                 out Vector2 currentMinimum, out Vector2 currentMaximum,
                 out Vector2 nextMinimum, out Vector2 nextMaximum,
@@ -384,8 +400,10 @@ public sealed class VfxGameShaderRenderer : IDisposable
         {
             mesh.Vertices[vertexIndex] = boundsPlaceholder;
         }
-        mesh.LocalToWorld = Matrix4x4.Identity;
+        mesh.LocalToWorld = Matrix4x4.CreateTranslation(origin);
         mesh.UpdateVertices(context.ImmediateContext);
+        // The vertices are particle centers: grow the bounds by the sprites' size, for texture streaming's on-screen size estimate
+        InflateBounds(mesh, largestSize * GetMaximumScale(transform));
         RenderNativeMaterial(
             context,
             resources.Material,
@@ -393,8 +411,19 @@ public sealed class VfxGameShaderRenderer : IDisposable
             resources.BlendDescription,
             resources.DepthTest,
             resources.DepthWrite,
-            particles.Count * 6);
+            particles.Count * 6,
+            isParticleSprite: true);
         return true;
+    }
+
+    internal static void InflateBounds<TVertex>(Mesh<TVertex> mesh, float amount) where TVertex : IVertexBase
+    {
+        if (!(amount > 0) || !float.IsFinite(amount)) return;
+        BoxSphereBounds bounds = mesh.BaseBounds;
+        bounds.BoxExtent += new Vector3(amount);
+        bounds.SphereRadius += amount * 1.7320508f;
+        mesh.BaseBounds = bounds;
+        mesh.TransformedBounds = bounds.TransformBy(mesh.LocalToWorld);
     }
 
     public bool TryRenderBeamTrail(
@@ -407,13 +436,23 @@ public sealed class VfxGameShaderRenderer : IDisposable
             return false;
         }
 
-        List<RibbonSegment> segments = emitter.Definition.RenderMode == VfxEmitterRenderMode.Beam
-            ? BuildBeamSegments(emitter, previewTransform)
-            : BuildTrailSegments(emitter, previewTransform);
+        List<RibbonSegment> segments = segmentScratch;
+        segments.Clear();
+        if (emitter.Definition.RenderMode == VfxEmitterRenderMode.Beam)
+        {
+            BuildBeamSegments(emitter, previewTransform, segments);
+        }
+        else
+        {
+            BuildTrailSegments(emitter, previewTransform, segments, trailScratch);
+        }
         if (segments.Count == 0)
         {
             return true;
         }
+        // Relative to the emitter's origin, for precision (see TryRenderSprite)
+        Vector3 origin = (previewTransform == default ? Matrix4x4.Identity : previewTransform).Translation;
+        float widest = 0;
 
         EnsureBeamTrailCapacity(context, resources, segments.Count);
         List<ParticleBeamTrailVertex> vertices = resources.Mesh.Vertices;
@@ -430,7 +469,7 @@ public sealed class VfxGameShaderRenderer : IDisposable
                 direction = Vector3.Normalize(direction);
             }
             Vector3 midpoint = (segment.Start + segment.End) * 0.5f;
-            Vector3 viewDirection = context.Camera.Position - midpoint;
+            Vector3 viewDirection = context.Camera.EyePosition - midpoint;
             Vector3 side = Vector3.Cross(direction, viewDirection);
             if (side.LengthSquared() < 0.000001f)
             {
@@ -444,10 +483,11 @@ public sealed class VfxGameShaderRenderer : IDisposable
 
             Vector3 startSide = side * (segment.StartWidth * 0.5f);
             Vector3 endSide = side * (segment.EndWidth * 0.5f);
-            Vector3 startLeft = segment.Start - startSide;
-            Vector3 startRight = segment.Start + startSide;
-            Vector3 endRight = segment.End + endSide;
-            Vector3 endLeft = segment.End - endSide;
+            Vector3 startLeft = segment.Start - startSide - origin;
+            Vector3 startRight = segment.Start + startSide - origin;
+            Vector3 endRight = segment.End + endSide - origin;
+            Vector3 endLeft = segment.End - endSide - origin;
+            widest = MathF.Max(widest, MathF.Max(segment.StartWidth, segment.EndWidth));
             int vertexStart = segmentIndex * 4;
             WriteBeamTrailVertex(vertices, vertexStart, startLeft, direction, segment.StartU, 0,
                 segment.Rotation, segment.StartColor, segment.DynamicParameter);
@@ -465,8 +505,9 @@ public sealed class VfxGameShaderRenderer : IDisposable
         {
             vertices[vertexIndex] = placeholder;
         }
-        resources.Mesh.LocalToWorld = Matrix4x4.Identity;
+        resources.Mesh.LocalToWorld = Matrix4x4.CreateTranslation(origin);
         resources.Mesh.UpdateVertices(context.ImmediateContext);
+        InflateBounds(resources.Mesh, widest * 0.5f);
         RenderNativeMaterial(
             context,
             resources.Material,
@@ -474,7 +515,8 @@ public sealed class VfxGameShaderRenderer : IDisposable
             resources.BlendDescription,
             resources.DepthTest,
             resources.DepthWrite,
-            segments.Count * 6);
+            segments.Count * 6,
+            isParticleSprite: true);
         return true;
     }
 
@@ -502,20 +544,21 @@ public sealed class VfxGameShaderRenderer : IDisposable
             dynamicParameter);
     }
 
-    private static List<RibbonSegment> BuildBeamSegments(VfxEmitterState emitter, Matrix4x4 previewTransform)
+    private static readonly VfxParticle[] BeamPlaceholderParticle = [new VfxParticle { Color = Vector4.One, Size = Vector3.One, Random = 0.5f }];
+
+    private static void BuildBeamSegments(VfxEmitterState emitter, Matrix4x4 previewTransform, List<RibbonSegment> segments)
     {
-        var segments = new List<RibbonSegment>();
         VfxBeamDefinition beam = emitter.Definition.Beam;
         if (beam is null)
         {
-            return segments;
+            return;
         }
 
         Matrix4x4 transform = previewTransform == default ? Matrix4x4.Identity : previewTransform;
         float transformScale = GetMaximumScale(transform);
         IReadOnlyList<VfxParticle> particles = emitter.Particles.Count > 0
             ? emitter.Particles
-            : [new VfxParticle { Color = Vector4.One, Size = Vector3.One, Random = 0.5f }];
+            : BeamPlaceholderParticle;
         foreach (VfxParticle particle in particles)
         {
             Vector3 source = Vector3.Transform(beam.Source.Evaluate(particle.RelativeTime, particle.Random), transform);
@@ -544,26 +587,30 @@ public sealed class VfxGameShaderRenderer : IDisposable
                     endU));
             }
         }
-        return segments;
     }
 
-    private static List<RibbonSegment> BuildTrailSegments(VfxEmitterState emitter, Matrix4x4 previewTransform)
+    private static readonly Comparison<VfxParticle> OldestFirst = static (left, right) => right.Age.CompareTo(left.Age);
+
+    private static void BuildTrailSegments(VfxEmitterState emitter, Matrix4x4 previewTransform, List<RibbonSegment> segments,
+        List<VfxParticle> ordered)
     {
-        var segments = new List<RibbonSegment>();
         if (emitter.Particles.Count < 2)
         {
-            return segments;
+            return;
         }
 
         Matrix4x4 transform = previewTransform == default ? Matrix4x4.Identity : previewTransform;
         float transformScale = GetMaximumScale(transform);
-        VfxParticle[] ordered = emitter.Particles.OrderByDescending(particle => particle.Age).ToArray();
-        for (int index = 1; index < ordered.Length; index++)
+        ordered.Clear();
+        ordered.AddRange(emitter.Particles);
+        // Stable, as OrderByDescending was: particles of equal age keep their spawn order
+        StableSort(ordered, OldestFirst);
+        for (int index = 1; index < ordered.Count; index++)
         {
             VfxParticle startParticle = ordered[index - 1];
             VfxParticle endParticle = ordered[index];
-            float startU = (index - 1) / (float)(ordered.Length - 1);
-            float endU = index / (float)(ordered.Length - 1);
+            float startU = (index - 1) / (float)(ordered.Count - 1);
+            float endU = index / (float)(ordered.Count - 1);
             segments.Add(new RibbonSegment(
                 Vector3.Transform(startParticle.Position + startParticle.OrbitOffset, transform),
                 Vector3.Transform(endParticle.Position + endParticle.OrbitOffset, transform),
@@ -576,7 +623,22 @@ public sealed class VfxGameShaderRenderer : IDisposable
                 startU,
                 endU));
         }
-        return segments;
+    }
+
+    /// <summary>An insertion sort: stable, allocation-free, and fast for the nearly sorted lists a trail keeps from frame to frame</summary>
+    internal static void StableSort<T>(List<T> list, Comparison<T> comparison)
+    {
+        for (int i = 1; i < list.Count; i++)
+        {
+            T item = list[i];
+            int j = i - 1;
+            while (j >= 0 && comparison(list[j], item) > 0)
+            {
+                list[j + 1] = list[j];
+                j--;
+            }
+            list[j + 1] = item;
+        }
     }
 
     private static float GetRibbonWidth(VfxParticle particle, VfxEmitterDefinition emitter)
@@ -627,6 +689,17 @@ public sealed class VfxGameShaderRenderer : IDisposable
             dynamicParameter);
     }
 
+    /// <summary>
+    /// Draws <paramref name="indexCount"/> indices of an effect mesh with a cooked material's base-pass shaders, through the render context's
+    /// game-shader path: its cached shaders, input layouts and blend states, the frame's view constants (translated world space, see
+    /// <see cref="LEEffect.BeginFrame(MeshRenderContext)"/>), the material's parameter setters (whose textures and samplers go through
+    /// <see cref="LEEffect.PixelShaderResources"/>), and its reversed-Z depth states. Restores the default depth, rasterizer and sampler states.
+    /// </summary>
+    /// <param name="isParticleSprite">Camera-facing geometry (sprites, ribbons, flares): never culled</param>
+    /// <param name="writeHitProxy">
+    /// Also draws the hit-proxy pass (<see cref="LEEffect.RenderHitProxy"/>), for opaque surfaces: it makes them pickable as
+    /// <see cref="MeshRenderContext.CurrentHitTestId"/> and marks them for the resolve's tonemap, as upstream's meshes are
+    /// </param>
     internal static void RenderNativeMaterial<TVertex>(
         MeshRenderContext context,
         MaterialRenderProxy material,
@@ -635,77 +708,43 @@ public sealed class VfxGameShaderRenderer : IDisposable
         bool depthTest,
         bool depthWrite,
         int indexCount,
-        int startIndex = 0)
+        int startIndex = 0,
+        bool isParticleSprite = false,
+        bool writeHitProxy = false)
         where TVertex : IVertexBase
     {
+        if (indexCount <= 0 || material.UnrealVertexShader is not { } vertexShaderSource || material.UnrealPixelShader is not { } pixelShaderSource)
+        {
+            return;
+        }
+        DeviceContext deviceContext = context.ImmediateContext;
         LEEffect effect = context.LEEffect;
-        PixelShader pixelShader = GetNativeMaterialPixelShader(context,
-            material.UnrealPixelShader.Guid,
-            material.UnrealPixelShader.ShaderByteCode,
-            depthWrite);
+        PixelShader pixelShader = context.GetCachedPixelShader(pixelShaderSource.Guid, pixelShaderSource.ShaderByteCode);
         (VertexShader vertexShader, InputLayout inputLayout) = context.GetCachedVertexShader<TVertex>(
-            material.UnrealVertexShader.Guid,
-            material.UnrealVertexShader.ShaderByteCode);
-        effect.PrepDraw(
-            context.ImmediateContext,
-            vertexShader,
-            pixelShader,
-            inputLayout,
-            context.GetCachedBlendState(blendDescription));
-
-        SceneCamera camera = context.Camera;
-        LEVSConstants vertexConstants = CreateNativeVertexConstants(context,
-            material.VertexFactoryType == "FLensFlareVertexFactory" ? material.LensFlareCameraPosition : null);
-        float depthMultiplier = camera.ProjectionMatrix[2, 2];
-        float depthAddition = camera.ProjectionMatrix[3, 2];
-        var pixelConstants = new LEPSConstants
+            vertexShaderSource.Guid, vertexShaderSource.ShaderByteCode);
+        try
         {
-            ScreenPositionScaleBias = context.ScreenPositionScaleBias,
-            MinZ_MaxZRatio = new Vector4(
-                depthAddition,
-                depthMultiplier,
-                1f / depthAddition,
-                depthMultiplier / depthAddition),
-            DynamicScale = Vector4.One
-        };
-
-        material.UpdateShaderParams(
-            effect.VertexShaderConstantBuffer,
-            effect.PixelShaderConstantBuffer,
-            context,
-            mesh);
-        context.ImmediateContext.OutputMerger.SetDepthStencilState(
-            (context as IVfxDepthStateProvider)?.GetVfxDepthState(depthTest, depthWrite));
-        effect.RenderObject(
-            context.ImmediateContext,
-            vertexConstants,
-            pixelConstants,
-            mesh,
-            startIndex,
-            indexCount);
-        context.ImmediateContext.OutputMerger.SetDepthStencilState(context.DefaultDepthState);
+            effect.PrepDraw(deviceContext, vertexShader, pixelShader, inputLayout, context.GetCachedBlendState(blendDescription));
+            deviceContext.OutputMerger.SetDepthStencilState(context.GetEffectsDepthState(depthTest, depthWrite));
+            context.SetMeshRasterizerState(isParticleSprite || material.IsTwoSided, mesh.LocalToWorld.GetDeterminant() < 0);
+            material.UpdateShaderParams(effect.VertexShaderConstantBuffer, effect.PixelShaderConstantBuffer, context, mesh);
+            effect.RenderObject(deviceContext, mesh, startIndex, indexCount);
+            if (writeHitProxy)
+            {
+                effect.RenderHitProxy(deviceContext, new LEHitProxyConstants
+                {
+                    HitProxyID = context.CurrentHitTestId,
+                    Flags = context.RenderFlags
+                }, startIndex, indexCount);
+            }
+        }
+        finally
+        {
+            deviceContext.OutputMerger.SetDepthStencilState(context.DefaultDepthState);
+            context.RestoreRasterizerState();
+            context.RestoreDefaultSamplers();
+        }
     }
-
-    internal static PixelShader GetNativeMaterialPixelShader(
-        MeshRenderContext context,
-        Guid shaderId,
-        byte[] shaderBytecode,
-        bool depthWrite)
-        // Opaque base-pass shaders can store zero in output alpha. Keep the mesh preview's coverage repair
-        // for those surfaces, without gamma conversion. Blended shaders must retain their cooked alpha.
-        => depthWrite
-            ? context.GetCachedPixelShader(shaderId, shaderBytecode, useSrgbColorManagement: false)
-            : context.GetCachedNativePixelShader(shaderId, shaderBytecode);
-
-    internal static LEVSConstants CreateNativeVertexConstants(MeshRenderContext context, Vector3? cameraPositionOverride = null)
-        => new()
-        {
-            // Match the coordinate space used by MaterialRenderProxy's local-to-world and camera parameters.
-            // Level Editor mesh particles use camera-relative transforms to preserve precision in large levels.
-            ViewProjectionMatrix = context.GetNativeShaderViewMatrix() * context.Camera.ProjectionMatrix,
-            CameraPosition = new Vector4(cameraPositionOverride ?? context.GetNativeShaderCameraPosition(), 1),
-            PreViewTranslation = Vector4.Zero
-        };
 
     private static Vector3 GetParticleSize(VfxParticle particle, VfxEmitterDefinition emitter)
     {
@@ -888,6 +927,10 @@ public sealed class VfxGameShaderRenderer : IDisposable
         return new Mesh<ParticleBeamTrailVertex>(context.Device, triangles, vertices, isDynamic: true);
     }
 
+    /// <summary>
+    /// The blend for a cooked material's blend mode. Like upstream's mesh materials, it writes only RGB: scene-color alpha holds the resolve's
+    /// game-shaded marker (see PSMainResolve), which translucent particles must not blend away
+    /// </summary>
     internal static RenderTargetBlendDescription CreateBlendDescription(EBlendMode blendMode)
         => VfxMaterialBlending.CreateBlendDescription(blendMode switch
         {

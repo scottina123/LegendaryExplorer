@@ -270,7 +270,7 @@ namespace LegendaryExplorerCore.Helpers
         /// <typeparam name="T"></typeparam>
         /// <param name="list"></param>
         /// <param name="predicate"></param>
-        /// <returns></returns>
+        /// <returns>True if something was removed</returns>
         public static bool RemoveAll<T>(this IList<T> list, Predicate<T> predicate)
         {
             bool removed = false;
@@ -1018,6 +1018,19 @@ namespace LegendaryExplorerCore.Helpers
             m.M32 /= scale.Z;
             m.M33 /= scale.Z;
             return (translation, scale, m.GetRotator());
+        }
+
+        public static Matrix4x4 WithoutScaling(this Matrix4x4 m)
+        {
+            static (float, float, float) Normalize(float x, float y, float z)
+            {
+                float length = MathF.Sqrt(x * x + y * y + z * z);
+                return length > 1e-8f ? (x / length, y / length, z / length) : (x, y, z);
+            }
+            (m.M11, m.M12, m.M13) = Normalize(m.M11, m.M12, m.M13);
+            (m.M21, m.M22, m.M23) = Normalize(m.M21, m.M22, m.M23);
+            (m.M31, m.M32, m.M33) = Normalize(m.M31, m.M32, m.M33);
+            return m;
         }
 
         public static uint ReinterpretAsUint(this int i) => BitConverter.ToUInt32(BitConverter.GetBytes(i), 0);

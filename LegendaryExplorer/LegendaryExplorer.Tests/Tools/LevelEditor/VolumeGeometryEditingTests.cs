@@ -182,28 +182,6 @@ public class VolumeGeometryEditingTests
         foreach (var pair in original.Where(p => p.Key != index)) CollectionAssert.AreEqual(pair.Value, package.GetUExport(pair.Key).Data, $"Original export #{pair.Key} changed.");
     }
 
-    [TestMethod]
-    [DataRow("Model", false)]
-    [DataRow("ModelComponent", false)]
-    [DataRow("BrushComponent", true)]
-    [DataRow("StaticMeshComponent", true)]
-    [DataRow("SkeletalMeshComponent", false)]
-    public void ViewFilterClassifiesModelReferencesAndRefreshes(string componentClass, bool array)
-    {
-        using var package = MEPackageHandler.CreateMemoryEmptyPackage("Visibility.pcc", MEGame.LE3);
-        var actor = package.CreateExport("Actor", "Actor");
-        var component = package.CreateExport("Geometry", componentClass, actor);
-        actor.WriteProperties(array ? [new ArrayProperty<ObjectProperty>([new ObjectProperty(component)], "Components")] : [new ObjectProperty(component, "Geometry")]);
-        using var proxy = new DefaultActor(actor);
-        var context = new LevelEditorRenderContext();
-        bool isVolume = componentClass is "Model" or "ModelComponent" or "BrushComponent";
-        Assert.AreEqual(isVolume, proxy.IsVolume);
-        Assert.AreEqual(!isVolume, context.IsActorVisible(proxy));
-        context.ShowVolumes = true; Assert.IsTrue(context.IsActorVisible(proxy));
-        actor.WriteProperties([]); proxy.RefreshFromExport(); Assert.IsFalse(proxy.IsVolume);
-    }
-
-    private sealed class DefaultActor(ExportEntry export) : ActorProxy(null, export);
     private static bool Contains(Model model, Vector3 point)
     {
         int index = 0;

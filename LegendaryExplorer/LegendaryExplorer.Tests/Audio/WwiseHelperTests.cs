@@ -246,7 +246,7 @@ public class WwiseHelperTests
             {
                 Type = HIRCType.EventAction,
                 ID = playActionId,
-                ActionType = WwiseBankParsed.EventActionType.Play_LE,
+                ActionType = WwiseBankParsed.EventActionType.Play,
                 ReferencedObjectID = soundId,
                 unparsed = []
             }, MEGame.LE3),
@@ -455,7 +455,7 @@ public class WwiseHelperTests
         {
             Type = HIRCType.EventAction,
             ID = actionId,
-            ActionType = WwiseBankParsed.EventActionType.Play_LE,
+            ActionType = WwiseBankParsed.EventActionType.Play,
             ReferencedObjectID = targetId,
             unparsed = []
         }, MEGame.LE3);

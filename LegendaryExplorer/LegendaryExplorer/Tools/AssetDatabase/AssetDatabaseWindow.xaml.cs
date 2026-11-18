@@ -295,7 +295,8 @@ namespace LegendaryExplorer.Tools.AssetDatabase
 
         #region Declarations
         // v19.0: Index BioConversation stage directions for every game.
-        public const string dbCurrentBuild = "19.0";
+        // v20.0 (upstream v10.0): Meshes, materials and particle systems record their instanced full path, and materials their class and parent's path, for the Level Editor's asset pickers.
+        public const string dbCurrentBuild = "20.0"; //If changes are made that invalidate old databases edit this.
 
         private int previousView { get; set; }
         private readonly ConditionalWeakTable<ConvoLine, LineUsageExpansionState> _lineUsageExpansionStates = new();
@@ -1188,6 +1189,15 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             importer.Activate();
         }
 
+        //the game to open on, in place of the last one used
+        private readonly MEGame? openOnGame;
+
+        /// <summary>Opens on <paramref name="game"/>'s database, or on its lack of one</summary>
+        public AssetDatabaseWindow(MEGame game) : this()
+        {
+            openOnGame = game;
+        }
+
         private void LoadCommands()
         {
             GenerateDBCommand = new GenericCommand(GenerateDatabase);
@@ -1234,7 +1244,11 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             // Restore saved master PCC for ambient performances
             RestoreAmbPerfMasterPcc();
 
-            if (_isImportMode || (CurrentDBPath != null && CurrentDBPath.EndsWith("zip") && File.Exists(CurrentDBPath) && CurrentGame != MEGame.Unknown && CurrentGame != MEGame.UDK))
+            if (openOnGame is { } requestedGame)
+            {
+                SwitchGame(requestedGame.ToString());
+            }
+            else if (_isImportMode || (CurrentDBPath != null && CurrentDBPath.EndsWith("zip") && File.Exists(CurrentDBPath) && CurrentGame != MEGame.Unknown && CurrentGame != MEGame.UDK))
             {
                 SwitchGame(CurrentGame.ToString());
             }

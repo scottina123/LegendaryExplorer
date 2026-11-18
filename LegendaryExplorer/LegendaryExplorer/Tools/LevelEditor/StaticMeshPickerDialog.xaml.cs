@@ -1,4 +1,4 @@
-using LegendaryExplorer.Misc;
+﻿using LegendaryExplorer.Misc;
 using LegendaryExplorer.SharedUI;
 using LegendaryExplorer.Tools.AssetDatabase;
 using LegendaryExplorerCore.GameFilesystem;
@@ -14,6 +14,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using MessageBox = LegendaryExplorer.SharedUI.ThemedMessageBox;
 
 namespace LegendaryExplorer.Tools.LevelEditor;
 

@@ -244,6 +244,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             Interpreter_TreeView.PreviewKeyDown += PropertyTree_UserInput;
             Unloaded += InterpreterVoAudio_Unloaded;
             HideTopSelector = Settings.Interpreter_HideTopSelector;
+            // Hosts can load an export before this control's Loaded event - store it here
+            Interpreter_Hexbox = (HexBox)Interpreter_Hexbox_Host.Child;
             Settings.StaticPropertyChanged += SettingChanged;
             EditorSetElements.Add(Value_TextBox); //str, strref, int, float, obj
             EditorSetElements.Add(ObjectValueDisplayTextBox); // Object selector display
@@ -3032,6 +3034,20 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     {
                         parsedValue = $"{sp.GetProp<IntProperty>("NumVariations").Value} material variants | {sp.GetProp<IntProperty>("MaterialsPerVariation").Value} materials per variant";
                     }
+                    else if (sp.StructType is "SFXOnlineComponentDescription")
+                    {
+                        var className = sp.GetProp<ObjectProperty>("ClassName");
+                        var resolved = parsingExport.FileRef.GetEntry(className.Value);
+                        var componentType = sp.GetProp<EnumProperty>("ComponentType");
+                        var platform = sp.GetProp<NameProperty>("PlatformName");
+
+                        parsedValue = $"({(platform.Value == "None" ? "All" : platform.Value)}) {componentType.Value} = {resolved?.ObjectName}";
+                    }
+                    else if (sp.StructType is "SimpleVOEvent")
+                    {
+                        var eventName = sp.GetProp<NameProperty>("EventName");
+                        parsedValue = $"Event: {eventName.Value.Instanced}";
+                    }
                     else
                     {
                         parsedValue = sp.StructType;
@@ -3276,10 +3292,10 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                                     else
                                     {
                                         // It's likely a cross level reference.
-                                        var coverRefGuid = level.CrossLevelCoverGuidRefs.Find(x => x.CoverIndexIdx == (int)cover.CoverIndexIdx);
-                                        if (coverRefGuid.Guid != Guid.Empty)
+                                        var coverRefGuid = level.CrossLevelCoverGuidRefs[(int)cover.CoverIndexIdx];
+                                        if (coverRefGuid != Guid.Empty)
                                         {
-                                            return $"Cross Level Cover Reference: {coverRefGuid.Guid} slot {cover.SlotIdx}, DynamicLinkInfoIndex: {dynamicLinkInfoIndex}";
+                                            return $"Cross Level Cover Reference: {coverRefGuid} slot {cover.SlotIdx}, DynamicLinkInfoIndex: {dynamicLinkInfoIndex}";
                                         }
                                         /*else
                                         {

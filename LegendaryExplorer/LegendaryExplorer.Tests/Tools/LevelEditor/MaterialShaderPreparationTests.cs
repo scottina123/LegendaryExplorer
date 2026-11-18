@@ -31,12 +31,16 @@ public class MaterialShaderPreparationTests
     [DataTestMethod]
     [DataRow(MEGame.LE2)]
     [DataRow(MEGame.LE3)]
-    public void LightmappedPreviewIsReadyWithItsAuthoredPolicyAtConstruction(MEGame game)
+    public void LightmappedPreviewIsReadyWithItsAuthoredPolicyAfterThePendingLoad(MEGame game)
     {
         using var fixture = new MaterialFixture(game);
         var preview = new LEShaderPreviewMaterial(fixture.Context, fixture.Material,
             lightMapType: ELightMapType.LMT_2D);
         MaterialRenderProxy material = preview.RenderProxy;
+        // Upstream queues a preview's shaders at construction, with its light-map policy, and loads them off the render thread
+        Assert.IsTrue(material.AwaitsGameShaderLoad);
+        Assert.IsFalse(material.CanRenderWithGameShaders, "Queued shaders aren't loaded in the middle of a frame.");
+        fixture.Context.LoadPendingGameShaders();
 
         Assert.IsTrue(material.CanRenderWithGameShaders, material.GameShaderError);
         Assert.IsTrue(material.UsesLightMap,

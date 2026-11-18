@@ -93,7 +93,7 @@ public sealed class VfxBillboardRenderer : IDisposable
     internal const string ParticleShader = VfxMaterialBlending.ShaderFunctions + """
 struct VS_IN { float4 pos : POSITION0; float3 hitTestID : TANGENT0; float4 normal : NORMAL0; float4 color : COLOR1; float2 uv : TEXCOORD0; };
 struct VS_OUT { float4 pos : SV_POSITION; float4 color : COLOR1; float3 normal : NORMAL; float3 worldPos : TEXCOORD1; float2 uv : TEXCOORD0; };
-cbuffer constants { float4x4 projection; float4x4 view; float4x4 model; float3 HitTestID; int Flags; float4 AmbientColor; float4 LightPositionRadius[4]; float4 LightColorIntensity[4]; float4 LightDirectionInnerCone[4]; float4 LightOuterConeAndType[4]; };
+cbuffer constants { float4x4 projection; float4x4 view; float4x4 model; float3 HitTestID; int Flags; float4 AmbientColor; };
 Texture2D tex : register(t0); SamplerState samstate : register(s0);
 VS_OUT VSMain(VS_IN input) { VS_OUT output = (VS_OUT)0; float4 worldPos = mul(float4(input.pos.xyz, 1), model); output.worldPos = worldPos.xyz; output.pos = mul(mul(worldPos, view), projection); output.color = input.color; output.normal = normalize(mul(float4(input.normal.xyz, 0), model).xyz); output.uv = input.uv; return output; }
 float4 PSMain(VS_OUT input) : SV_TARGET0
@@ -107,18 +107,8 @@ float4 PSMain(VS_OUT input) : SV_TARGET0
     float3 color = textureSample.rgb * input.color.rgb * AmbientColor.rgb;
     if ((Flags & (1 << 20)) == 0)
     {
-        float3 lighting = 0.2;
-        [unroll] for (int i = 0; i < 4; i++)
-        {
-            float radius = LightPositionRadius[i].w;
-            if (radius <= 0) continue;
-            float3 delta = LightPositionRadius[i].xyz - input.worldPos;
-            float distanceToLight = length(delta);
-            if (distanceToLight >= radius) continue;
-            float attenuation = saturate(1 - distanceToLight / radius);
-            attenuation *= attenuation;
-            lighting += LightColorIntensity[i].rgb * (LightColorIntensity[i].a * saturate(dot(normalize(input.normal), delta / max(distanceToLight, 0.0001))) * attenuation);
-        }
+        // The render context's WorldConstants carry no preview lights: a fixed key light, as the mesh fallback uses
+        float3 lighting = saturate(0.35 + 0.65 * saturate(dot(normalize(input.normal), normalize(float3(0.4, 0.5, 0.75)))));
         color *= saturate(lighting);
     }
     return ApplyVfxMaterialBlend(color, alpha, input.color.a, blendMode, opacitySource);
@@ -127,6 +117,7 @@ float4 PSMain(VS_OUT input) : SV_TARGET0
 
     private readonly List<WorldVertex> vertices = [];
     private readonly List<int> indices = [];
+    private readonly List<VfxParticle> particleScratch = [];
     private GenericEffect<MeshRenderContext.WorldConstants> effect;
 
     public void CreateResources(MeshRenderContext context)
@@ -144,11 +135,13 @@ float4 PSMain(VS_OUT input) : SV_TARGET0
 
         vertices.Clear();
         indices.Clear();
-        var particles = new List<VfxParticle>(source);
+        List<VfxParticle> particles = particleScratch;
+        particles.Clear();
+        particles.AddRange(source);
         Matrix4x4 previewSpaceTransform = previewTransform == default ? Matrix4x4.Identity : previewTransform;
         if (particleSource is null)
         {
-            SortParticles(particles, emitter.Definition.SortMode, context.Camera.Position, previewSpaceTransform, context.Camera.CameraForward);
+            SortParticles(particles, emitter.Definition.SortMode, context.Camera.EyePosition, previewSpaceTransform, context.Camera.CameraForward);
         }
 
         // ParticleModuleRequired.MaxDrawCount clamps how many particles are actually rendered.
@@ -213,7 +206,10 @@ float4 PSMain(VS_OUT input) : SV_TARGET0
         context.ImmediateContext.PixelShader.SetShaderResource(0, texture);
         effect.PrepPrimitiveBuffers(context, [], System.Runtime.InteropServices.CollectionsMarshal.AsSpan(vertices), System.Runtime.InteropServices.CollectionsMarshal.AsSpan(indices));
         effect.RenderPrimitives(context, PrimitiveTopology.TriangleList, 0, indices.Count, 0);
+        // This standard preview's own shader bound its texture and sampler directly, past the bind tracker
         context.ImmediateContext.PixelShader.SetShaderResource(0, null);
+        context.LEEffect.PixelShaderResources.Reset();
+        context.RestoreDefaultSamplers();
         context.ImmediateContext.OutputMerger.SetDepthStencilState(context.DefaultDepthState);
     }
 
@@ -223,26 +219,41 @@ float4 PSMain(VS_OUT input) : SV_TARGET0
     /// </summary>
     public static void SortParticles(List<VfxParticle> particles, VfxSortMode sortMode, Vector3 cameraPosition, Matrix4x4 transform, Vector3 cameraForward = default)
     {
-        switch (sortMode)
+        if (sortMode == VfxSortMode.None || particles.Count < 2)
         {
-            case VfxSortMode.None:
-                break;
-            case VfxSortMode.AgeOldestFirst:
-                particles.Sort((left, right) => right.Age.CompareTo(left.Age));
-                break;
-            case VfxSortMode.AgeNewestFirst:
-                particles.Sort((left, right) => left.Age.CompareTo(right.Age));
-                break;
-            case VfxSortMode.ViewProjectionDepth when cameraForward != default:
-                particles.Sort((left, right) => ViewDepth(right, cameraPosition, cameraForward, transform)
-                    .CompareTo(ViewDepth(left, cameraPosition, cameraForward, transform)));
-                break;
-            default:
-                particles.Sort((left, right) => DistanceSquared(right, cameraPosition, transform)
-                    .CompareTo(DistanceSquared(left, cameraPosition, transform)));
-                break;
+            return;
         }
+        if (transform == default)
+        {
+            transform = Matrix4x4.Identity;
+        }
+        // Sorted by a key computed once per particle (rather than by a comparison that recomputes both sides' keys), with a reused key buffer:
+        // this runs for every drawn emitter every frame
+        int count = particles.Count;
+        if (sortKeys is null || sortKeys.Length < count)
+        {
+            sortKeys = new float[Math.Max(count, (sortKeys?.Length ?? 0) * 2)];
+        }
+        Span<float> keys = sortKeys.AsSpan(0, count);
+        Span<VfxParticle> items = System.Runtime.InteropServices.CollectionsMarshal.AsSpan(particles);
+        bool viewDepth = sortMode == VfxSortMode.ViewProjectionDepth && cameraForward != default;
+        for (int index = 0; index < count; index++)
+        {
+            ref readonly VfxParticle particle = ref items[index];
+            keys[index] = sortMode switch
+            {
+                VfxSortMode.AgeOldestFirst => -particle.Age,
+                VfxSortMode.AgeNewestFirst => particle.Age,
+                // back to front: farthest first
+                _ when viewDepth => -ViewDepth(particle, cameraPosition, cameraForward, transform),
+                _ => -DistanceSquared(particle, cameraPosition, transform)
+            };
+        }
+        keys.Sort(items);
     }
+
+    [ThreadStatic]
+    private static float[] sortKeys;
 
     internal static float ViewDepth(in VfxParticle particle, Vector3 cameraPosition, Vector3 cameraForward, Matrix4x4 transform)
         => Vector3.Dot(Vector3.Transform(particle.Position + particle.OrbitOffset, transform) - cameraPosition, cameraForward);

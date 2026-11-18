@@ -51,7 +51,7 @@ public class ActorPreviewCameraTests
             new BoolProperty(absoluteRotation, "AbsoluteRotation"),
             new FloatProperty(3f, "Scale")
         });
-        var component = new SkeletalMeshComponentProxy(null, componentExport, actor);
+        var component = new SkeletalMeshComponentProxy(actor.Editor.RenderContext, componentExport, actor);
         actor.Components.Add(component);
         BoxSphereBounds bounds = new() { Origin = new Vector3(10, 20, 80), SphereRadius = 100 };
 
@@ -81,7 +81,7 @@ public class ActorPreviewCameraTests
         {
             CommonStructs.RotatorProp(new Rotator(0, yaw, 0), "Rotation")
         });
-        return new PreviewActor(export);
+        return new PreviewActor(new PreviewEditor(), export);
     }
 
     private static void AssertCameraInFront(Vector3 position, BoxSphereBounds bounds, Matrix4x4 meshToWorld)
@@ -100,5 +100,12 @@ public class ActorPreviewCameraTests
         Assert.IsGreaterThan(0f, target.Z);
     }
 
-    private sealed class PreviewActor(ExportEntry export) : ActorProxy(null, export);
+    // Upstream's actor proxies read class defaults and register an identity through their editor's render context
+    private sealed class PreviewActor(IActorEditorContext editor, ExportEntry export) : ActorProxy(editor, export);
+
+    private sealed class PreviewEditor : IActorEditorContext
+    {
+        public LevelEditorRenderContext RenderContext { get; } = new();
+        public bool IsApplyingUndoRedo => true;
+    }
 }

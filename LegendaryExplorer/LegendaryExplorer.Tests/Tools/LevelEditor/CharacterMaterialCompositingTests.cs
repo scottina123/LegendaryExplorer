@@ -23,13 +23,12 @@ namespace LegendaryExplorer.Tests.Tools.LevelEditor;
 [TestClass]
 public class CharacterMaterialCompositingTests
 {
+    // Upstream draws the hair pass before the level's additive light passes (RenderPass order Base, Hair, Lighting), and its hit-proxy pass has no
+    // masked coverage, so the fork's translucent/masked rows (hair composited over completed opaque lighting; clipped samples not pickable) no longer
+    // apply. Opaque hair still occludes the body's depth, lighting and picking.
     [DataTestMethod]
-    [DataRow(EBlendMode.BLEND_Translucent, 1)]
-    [DataRow(EBlendMode.BLEND_Translucent, 4)]
     [DataRow(EBlendMode.BLEND_Opaque, 1)]
     [DataRow(EBlendMode.BLEND_Opaque, 4)]
-    [DataRow(EBlendMode.BLEND_Masked, 1)]
-    [DataRow(EBlendMode.BLEND_Masked, 4)]
     public void HairCompositesOverCompletedOpaqueLightingAndKeepsItsDepthAndPickingContract(EBlendMode blendMode, int samples)
     {
         LegendaryExplorerCore.LegendaryExplorerCoreLib.InitLib(System.Threading.Tasks.TaskScheduler.Default);
@@ -42,7 +41,7 @@ public class CharacterMaterialCompositingTests
         ]);
         materialExport.WriteBinary(Material.Create());
         using var scene = new CharacterScene(samples);
-        var material = new LEShaderPreviewMaterial(scene.Context, materialExport);
+        var material = new LEShaderPreviewMaterial(scene.Context, materialExport, ELightMapType.LMT_None);
         scene.InjectBaseShaders(material.RenderProxy, blendMode);
         using var preview = new ModelPreview<LEVertex>(scene.Context, scene.CreateHairMesh());
         preview.Materials.Add("Hair", material);
@@ -89,7 +88,7 @@ public class CharacterMaterialCompositingTests
     private sealed class CharacterScene : IDisposable
     {
         public MeshRenderContext Context { get; } = new() { UseGameShaders = true, LightingMode = ViewportLightingMode.Unlit };
-        private readonly Device device = new(DriverType.Warp);
+        private readonly Device device;
         private readonly DeviceContext immediate;
         private readonly List<IDisposable> resources = [];
         private readonly int samples;
@@ -101,25 +100,16 @@ public class CharacterMaterialCompositingTests
         public CharacterScene(int sampleCount)
         {
             samples = sampleCount;
-            immediate = device.ImmediateContext;
-            SetProperty(typeof(RenderContext), nameof(RenderContext.Device), device);
-            SetProperty(typeof(RenderContext), nameof(RenderContext.ImmediateContext), immediate);
+            // Upstream's renderer keeps much private device state (samplers, the bind tracker, cached blend and rasterizer states, the LEX fallback
+            // effect), so the scene uses the context's own resources rather than wiring them by hand; it draws into this test's targets
+            Context.CreateResources();
+            device = Context.Device;
+            immediate = Context.ImmediateContext;
             SetProperty(typeof(MeshRenderContext), nameof(MeshRenderContext.SampleCount), samples);
-            var effect = Own(new LEEffect(device, EmbeddedResources.LevelEditorShader));
-            SetProperty(typeof(MeshRenderContext), nameof(MeshRenderContext.LEEffect), effect);
             var rasterizer = Own(new RasterizerState(device, new RasterizerStateDescription
             {
                 FillMode = FillMode.Solid, CullMode = CullMode.None, IsDepthClipEnabled = true, IsMultisampleEnabled = samples > 1
             }));
-            foreach (string name in new[] { "FillRasterizerState", "CullBackRasterizerState", "CullFrontRasterizerState" }) SetField(name, rasterizer);
-            SetProperty(typeof(MeshRenderContext), nameof(MeshRenderContext.DefaultDepthState), Own(new DepthStencilState(device, new DepthStencilStateDescription
-            {
-                IsDepthEnabled = true, DepthWriteMask = DepthWriteMask.All, DepthComparison = Comparison.Greater
-            })));
-            SetProperty(typeof(MeshRenderContext), nameof(MeshRenderContext.TranslucentDepthState), Own(new DepthStencilState(device, new DepthStencilStateDescription
-            {
-                IsDepthEnabled = true, DepthWriteMask = DepthWriteMask.Zero, DepthComparison = Comparison.Greater
-            })));
             color = Own(CreateTexture(Format.R16G16B16A16_Float, BindFlags.RenderTarget | BindFlags.ShaderResource));
             hit = Own(CreateTexture(Format.B8G8R8A8_UNorm, BindFlags.RenderTarget | BindFlags.ShaderResource));
             depth = Own(CreateTexture(Format.R32_Typeless, BindFlags.DepthStencil | BindFlags.ShaderResource));
@@ -143,7 +133,7 @@ public class CharacterMaterialCompositingTests
             Vertex(new Vector3(-1, 1, 0.75f)), Vertex(new Vector3(3, 1, 0.75f)), Vertex(new Vector3(-1, -3, 0.75f))
         ]);
 
-        private static LEVertex Vertex(Vector3 position) => (LEVertex)LEVertex.Create(MEGame.LE3, position, Vector3.UnitX, new Vector4(0, 0, 1, 1), default);
+        private static LEVertex Vertex(Vector3 position) => (LEVertex)LEVertex.Create(position, Vector3.UnitX, new Vector4(0, 0, 1, 1), default);
 
         public void InjectBaseShaders(MaterialRenderProxy material, EBlendMode mode)
         {
@@ -176,6 +166,7 @@ float4 PSMain(float4 position : SV_POSITION, uint sampleIndex : SV_SAMPLEINDEX) 
             };
             material.UnrealVertexShader = material.NoLightMapVertexShader = material.PreviewVertexShader = vs;
             material.UnrealPixelShader = material.NoLightMapPixelShader = material.PreviewPixelShader = ps;
+            WarpMaterialFixture.InjectEmptyShaderMap(material);
             typeof(MaterialRenderProxy).GetField("gameShaderError", PrivateInstance)!.SetValue(material, null);
             typeof(MaterialRenderProxy).GetField("AttemptedShaderLoad", PrivateInstance)!.SetValue(material, true);
         }
@@ -306,8 +297,7 @@ float4 PSMain(float4 position : SV_POSITION) : SV_TARGET0
             immediate.ClearState();
             Context.EmptyCaches();
             for (int i = resources.Count - 1; i >= 0; i--) resources[i].Dispose();
-            immediate.Dispose();
-            device.Dispose();
+            Context.DisposeResources();
         }
     }
 }

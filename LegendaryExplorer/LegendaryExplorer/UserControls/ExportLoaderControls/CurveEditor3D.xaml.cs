@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.ObjectModel;
 using System.Collections.Generic;
 using System.ComponentModel;
@@ -1280,7 +1280,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         RenderContext.SetShowEmitterVfx(false);
         if (unlit)
         {
-            RenderContext.RenderFlags |= LevelEditorRenderContext.ShaderFlags.Unlit;
+            RenderContext.SetUnlit(true);
         }
         InterpModes = Enum.GetValues<EInterpCurveMode>();
         LoadCommands();
@@ -3744,14 +3744,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         {
             if (SetProperty(ref unlit, value))
             {
-                if (value)
-                {
-                    RenderContext.RenderFlags |= LevelEditorRenderContext.ShaderFlags.Unlit;
-                }
-                else
-                {
-                    RenderContext.RenderFlags &= ~LevelEditorRenderContext.ShaderFlags.Unlit;
-                }
+                RenderContext.SetUnlit(value);
                 SceneViewer?.MarkRenderDirty();
             }
         }

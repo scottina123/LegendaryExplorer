@@ -32,6 +32,7 @@ namespace LegendaryExplorerCore.GameFilesystem
                     return LoadTlksForGame2(gamePath, game, localization);
                 case MEGame.ME3:
                 case MEGame.LE3:
+                case MEGame.LMP:
                     return LoadTlksForGame3(gamePath, game, localization);
             }
 

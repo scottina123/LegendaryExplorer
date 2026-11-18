@@ -19,7 +19,7 @@ using LegendaryExplorer.SharedUI.PeregrineTreeView;
 using LegendaryExplorer.Tools.CustomFilesManager;
 using LegendaryExplorer.UserControls.ExportLoaderControls.ScriptEditor.IDE;
 using LegendaryExplorerCore;
-using LegendaryExplorerCore.DebugTools;
+using LegendaryExplorerCore.GameFilesystem;
 using LegendaryExplorerCore.Helpers;
 using LegendaryExplorerCore.Misc;
 using LegendaryExplorerCore.Packages;
@@ -176,6 +176,11 @@ namespace LegendaryExplorer.Startup
             PackageSaver.PackageSaveReferenceWarningCallback = PackageSaveService.ConfirmReferenceIssues;
             PackageSaver.PackageSaveDuplicateWarningCallback = PackageSaveService.ConfirmDuplicateIssues;
             CoreLibSettingsBridge.MapSettingsIntoBridge();
+
+
+            // HACK!
+            UDKDirectory.DefaultGamePath = "S:\\Milan\\UDK";
+
             PackageSaver.CheckME3Running = () =>
             {
                 GameController.TryGetMEProcess(MEGame.ME3, out var me3Proc);

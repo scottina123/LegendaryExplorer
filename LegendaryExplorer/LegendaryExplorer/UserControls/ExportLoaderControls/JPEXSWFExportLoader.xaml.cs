@@ -146,6 +146,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                         break;
                     case MEGame.LE3:
                     case MEGame.ME3:
+                    case MEGame.LMP:
                         sharedAssets = ME3SharedAssets;
                         break;
                     case MEGame.LE2:

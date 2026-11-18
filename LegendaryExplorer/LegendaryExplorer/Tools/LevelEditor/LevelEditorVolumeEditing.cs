@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
@@ -7,8 +7,8 @@ using System.Windows;
 using System.Windows.Input;
 using LegendaryExplorer.Tools.LevelEditor.Scene3D;
 using LegendaryExplorerCore.Unreal;
-using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
 using Point = System.Windows.Point;
+using MessageBox = LegendaryExplorer.SharedUI.ThemedMessageBox;
 
 namespace LegendaryExplorer.Tools.LevelEditor;
 

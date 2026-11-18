@@ -11,12 +11,13 @@ namespace LegendaryExplorerCore.Packages.CloningImportingAndRelinking
 {
     public class EntryExporter
     {
-        private static List<EntryStringPair> ExportExportToPackageInternal(ExportEntry sourceExport, IMEPackage targetPackage, out IEntry portedEntry, PackageCache cache = null, RelinkerOptionsPackage customROP = null, ObjectInstanceDB targetDb = null)
+        private static List<EntryStringPair> ExportExportToPackageInternal(ExportEntry sourceExport, IMEPackage targetPackage, out IEntry portedEntry, PackageCache cache = null, RelinkerOptionsPackage customROP = null, ObjectInstanceDB targetDb = null, IEntry targetParent = null)
         {
-            List<EntryStringPair> issues = new List<EntryStringPair>();
+            List<EntryStringPair> issues = [];
 
             // Does entry already exist in destination package?
-            var newEntry = targetPackage.FindEntry(sourceExport.InstancedFullPath, sourceExport.ClassName);
+            string targetPath = targetParent is null ? sourceExport.InstancedFullPath : $"{targetParent.InstancedFullPath}.{sourceExport.ObjectName.Instanced}";
+            var newEntry = targetPackage.FindEntry(targetPath, sourceExport.ClassName);
             if (newEntry != null)
             {
                 portedEntry = newEntry;
@@ -70,10 +71,10 @@ namespace LegendaryExplorerCore.Packages.CloningImportingAndRelinking
             customROP?.CrossPackageMap.Clear();
 
             // Import the original item now
-            var lParent = PortParents(sourceExport, targetPackage, cache: cache, customROP: customROP);
+            var lParent = targetParent ?? PortParents(sourceExport, targetPackage, cache: cache, customROP: customROP);
 
             // Test the entry was not ported in already, such as from a Parent reference
-            newEntry = targetPackage.FindEntry(sourceExport.InstancedFullPath, sourceExport.ClassName);
+            newEntry = targetPackage.FindEntry(targetPath, sourceExport.ClassName);
             if (newEntry == null)
             {
                 var relinkResults2 = EntryImporter.ImportAndRelinkEntries(EntryImporter.PortingOption.CloneAllDependencies, sourceExport, targetPackage, lParent, true,
@@ -103,10 +104,13 @@ namespace LegendaryExplorerCore.Packages.CloningImportingAndRelinking
         /// <param name="targetPackage"></param>
         /// <param name="newEntry"></param>
         /// <param name="packageCache"></param>
+        /// <param name="targetParent">The entry of the target package to port it under, in place of the source's parents, which are then not ported</param>
         /// <returns></returns>
-        public static List<EntryStringPair> ExportExportToPackage(ExportEntry sourceExport, IMEPackage targetPackage, out IEntry newEntry, PackageCache packageCache = null, RelinkerOptionsPackage customROP = null)
+        public static List<EntryStringPair> ExportExportToPackage(ExportEntry sourceExport, IMEPackage targetPackage, out IEntry newEntry, PackageCache packageCache = null, RelinkerOptionsPackage customROP = null, IEntry targetParent = null)
         {
-            var exp = ExportExportToPackageInternal(sourceExport, targetPackage, out var nEntry, packageCache, customROP);
+            if (targetParent is not null && targetParent.FileRef != targetPackage)
+                throw new ArgumentException($"{targetParent.InstancedFullPath} isn't an entry of the target package.", nameof(targetParent));
+            var exp = ExportExportToPackageInternal(sourceExport, targetPackage, out var nEntry, packageCache, customROP, targetParent: targetParent);
             newEntry = nEntry;
             return exp;
         }
@@ -136,6 +140,8 @@ namespace LegendaryExplorerCore.Packages.CloningImportingAndRelinking
         /// <param name="source"></param>
         /// <param name="target"></param>
         /// <param name="importAsImport">If the parents should be imported as an import instead of an export if they don't exist. This should only be used if you're porting in an import and creating its parents.</param>
+        /// <param name="cache">Cache assigned to the internal RelinkerOptionPackages if you don't pass in a custom one.</param>
+        /// <param name="customROP">Custom RelinkerOptionsPackage to use for the operation. If set, the cache parameter goes unused.</param>
         /// <returns></returns>
         public static IEntry PortParents(IEntry source, IMEPackage target, bool importAsImport = false, PackageCache cache = null, RelinkerOptionsPackage customROP = null)
         {
@@ -212,8 +218,12 @@ namespace LegendaryExplorerCore.Packages.CloningImportingAndRelinking
                 var existingEntry = target.FindEntry(ifp);
                 if (existingEntry == null)
                 {
-                    var entriesBC = target.ExportCount;
-                    if (pEntry.ClassName == "Package")
+                    if (customROP?.PortParentAsPackage?.Invoke(pEntry) == true)
+                    {
+                        // Replace the selected parent with an empty package rather than porting the original object.
+                        parent = ExportCreator.CreatePackageExport(target, pEntry.ObjectName, parent);
+                    }
+                    else if (pEntry.ClassName == "Package")
                     {
                         // Port in package
                         if (importAsImport)
@@ -240,13 +250,6 @@ namespace LegendaryExplorerCore.Packages.CloningImportingAndRelinking
                         // Unsure if we should set PortImportsMemorySafe on it to make sure things pull in properly.
                         EntryImporter.ImportAndRelinkEntries(EntryImporter.PortingOption.AddSingularAsChild, pEntry, target, parent, true, customROP ?? new RelinkerOptionsPackage() { ImportExportDependencies = true, PortImportsMemorySafe = true, Cache = cache }, out parent);
                     }
-                    //var entriesAC = target.ExportCount;
-                    //if (entriesAC - entriesBC > parentCount)
-                    //{
-                    //    // We ported in too many things!!
-                    //    Debug.WriteLine("We appear to have ported too many things!!");
-                    //    // Debugger.Break();
-                    //}
                 }
                 else
                 {
@@ -258,7 +261,7 @@ namespace LegendaryExplorerCore.Packages.CloningImportingAndRelinking
         }
 
         /// <summary>
-        /// Prepares a global package for porting by moving all objects referenced by it's objectreferencer into the subpackage of the same name
+        /// Moves all top-level non-forced export objects underneath a package of the same name, mimicing a forced-export style package layout.
         /// </summary>
         /// <param name="sourcePackage"></param>
         /// <param name="packagename"></param>
@@ -277,26 +280,7 @@ namespace LegendaryExplorerCore.Packages.CloningImportingAndRelinking
             }
 
             var fileRefExp = sourcePackage.FindExport(packagename, "Package");
-            /*var objReferencer = sourcePackage.Exports.FirstOrDefault(x => x.idxLink == 0 && x.ObjectName == "ObjectReferencer" && x.ClassName == "ObjectReferencer");
-            if (objReferencer != null)
-            {
-                // We need to enumerate all referenced objects. They are the items unique in this 'package' that are not sourced from others.
-                // We only care about the roots as the rest will cascade the change
-                var refed = objReferencer.GetProperty<ArrayProperty<ObjectProperty>>("ReferencedObjects").Select(x => x.ResolveToEntry(sourcePackage) as ExportEntry).Where(x => x != null && x.idxLink == 0).ToList();
 
-                foreach (var refX in refed)
-                {
-                    // Point under package so it matches how it would be
-                    // if it was cooked into a non-master file
-                    refX.idxLink = fileRefExp.UIndex;
-
-                    // Set as ForcedExport as we are now 'forced' into subpackage export
-                    refX.ExportFlags |= UnrealFlags.EExportFlags.ForcedExport;
-                }
-            }
-            else
-            {*/
-            // Probably a map
             // For convenience we just find root objects and nest them
             foreach (var obj in sourcePackage.Exports.Where(x => x.idxLink == 0 && (x.ExportFlags & EExportFlags.ForcedExport) == 0).ToList())
             {

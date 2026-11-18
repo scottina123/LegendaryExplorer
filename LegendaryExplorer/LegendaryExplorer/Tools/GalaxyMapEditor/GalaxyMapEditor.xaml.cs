@@ -375,7 +375,7 @@ public sealed class GalaxyMapSharedStaticMeshProxy : PrimitiveComponentProxy
         {
             Fixed4<Vector4> uvSet = default;
             uvSet[0] = new Vector4(uvs[i], 0, 0);
-            vertices.Add((LEVertex)LEVertex.Create(modelExport.Game, positions[i], Vector3.Zero,
+            vertices.Add((LEVertex)LEVertex.Create(positions[i], Vector3.Zero,
                 new Vector4(normals[i], 1f), uvSet));
         }
 

@@ -6,7 +6,6 @@ using LegendaryExplorerCore.Unreal;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using System;
 using System.Numerics;
-using System.Reflection;
 using System.Threading.Tasks;
 
 namespace LegendaryExplorer.Tests.Tools.LevelEditor;
@@ -23,10 +22,13 @@ public class LevelEditorUpstreamIntegrationTests
         using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("Visibility.pcc", MEGame.LE3);
         ExportEntry export = package.CreateExport("Actor", "Actor", indexed: false);
         export.WriteProperties([new BoolProperty(true, "bHidden")]);
-        var context = new LevelEditorRenderContext();
-        using var hidden = new TestActor(export);
-        using var volume = new TestActor(export, volume: true);
-        using var volumetric = new TestActor(export, volumetric: true);
+        var editor = new TestEditor();
+        LevelEditorRenderContext context = editor.RenderContext;
+        using var hidden = new TestActor(editor, export);
+        using var volume = new TestActor(editor, export, volume: true);
+        using var volumetric = new TestActor(editor, export, volumetric: true);
+        // The window's View options > Show > Hidden actors (upstream's default is off)
+        context.ShowHidden = true;
 
         Assert.IsTrue(context.IsActorVisible(hidden));
         Assert.IsFalse(context.IsActorVisible(volume));
@@ -55,8 +57,9 @@ public class LevelEditorUpstreamIntegrationTests
             new BoolProperty(true, "bTransformFromAnimParent"),
             CommonStructs.Vector3Prop(new Vector3(0, 0, -88), "Translation")
         ]);
-        var context = new LevelEditorRenderContext();
-        using var actor = new TestActor(actorExport);
+        var editor = new TestEditor();
+        LevelEditorRenderContext context = editor.RenderContext;
+        using var actor = new TestActor(editor, actorExport);
         var body = new SkeletalMeshComponentProxy(context, bodyExport, actor);
         actor.Components.Add(body);
         var child = new SkeletalMeshComponentProxy(context, childExport, actor);
@@ -87,38 +90,25 @@ public class LevelEditorUpstreamIntegrationTests
         actorExport.WriteProperties([new ObjectProperty(component, "LightComponent")]);
         var editor = new TestEditor();
         using var actor = new PointLightActorProxy(editor, actorExport);
-        editor.RenderContext.LoadActors([actor]);
-        try
-        {
-            actor.Location = new Vector3(300, 400, 500);
-            actor.LightRadius = 2048;
-            actor.Brightness = 2;
-            typeof(LevelEditorRenderContext).GetMethod("FlushPendingActorVisualInvalidations",
-                BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(editor.RenderContext, null);
-            var lights = (SceneLight[])typeof(MeshRenderContext).GetField("Lights",
-                BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(editor.RenderContext)!;
+        // Upstream rebuilds an edited light into the scene through the window (OnLightEdited -> OpenLevelFile.UpdateLight); the light the actor
+        // adds, with its uncommitted edits, is the same one that rebuild makes
+        actor.Location = new Vector3(300, 400, 500);
+        actor.LightRadius = 2048;
+        actor.Brightness = 2;
+        Assert.IsTrue(actor.TryGetSceneLight(out SceneLight light));
 
-            Assert.HasCount(1, lights);
-            Assert.AreEqual(actor.Location, lights[0].Position);
-            Assert.AreEqual(2048f, lights[0].Radius);
-            Assert.AreEqual(new Vector3(2), lights[0].Color);
-            Assert.AreEqual(lightGuid, lights[0].LightGuid);
-            Assert.AreEqual(lightmapGuid, lights[0].LightmapGuid);
-            Assert.AreEqual(1024f, component.GetProperty<FloatProperty>("Radius").Value);
-            Assert.AreEqual(1f, component.GetProperty<FloatProperty>("Brightness").Value);
+        Assert.AreEqual(actor.Location, light.Position);
+        Assert.AreEqual(2048f, light.Radius);
+        Assert.AreEqual(new Vector3(2), light.Color);
+        Assert.AreEqual(lightGuid, light.LightGuid);
+        Assert.AreEqual(lightmapGuid, light.LightmapGuid);
+        Assert.AreEqual(1024f, component.GetProperty<FloatProperty>("Radius").Value);
+        Assert.AreEqual(1f, component.GetProperty<FloatProperty>("Brightness").Value);
 
-            actor.CommitChanges();
-            Assert.AreEqual(actor.LocalToWorld,
-                CommonStructs.GetMatrix(component.GetProperty<StructProperty>("CachedParentToWorld")));
-            editor.RenderContext.RemoveActor(actor);
-            lights = (SceneLight[])typeof(MeshRenderContext).GetField("Lights",
-                BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(editor.RenderContext)!;
-            Assert.HasCount(0, lights);
-        }
-        finally
-        {
-            editor.RenderContext.UnloadLevel();
-        }
+        actor.CommitChanges();
+        Assert.AreEqual(actor.LocalToWorld,
+            CommonStructs.GetMatrix(component.GetProperty<StructProperty>("CachedParentToWorld")));
+        Assert.AreEqual(2048f, component.GetProperty<FloatProperty>("Radius").Value);
     }
 
     private sealed class TestActor : ActorProxy
@@ -126,7 +116,7 @@ public class LevelEditorUpstreamIntegrationTests
         private readonly bool volume;
         public override bool IsVolume => volume;
 
-        public TestActor(ExportEntry export, bool volume = false, bool volumetric = false) : base(null, export)
+        public TestActor(IActorEditorContext editor, ExportEntry export, bool volume = false, bool volumetric = false) : base(editor, export)
         {
             this.volume = volume;
             IsVolumetricMesh = volumetric;

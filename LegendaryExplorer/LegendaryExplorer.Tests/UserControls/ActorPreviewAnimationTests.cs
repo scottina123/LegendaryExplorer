@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Linq;
 using System.Numerics;
 using System.Reflection;
@@ -187,10 +187,7 @@ public class ActorPreviewAnimationTests
                     }] },
                 }],
             };
-            typeof(SkeletalMeshComponentProxy).GetField("skeletalMesh", BindingFlags.Instance | BindingFlags.NonPublic)!
-                .SetValue(component, mesh);
-            typeof(SkeletalMeshComponentProxy).GetField("skeletalMeshGame", BindingFlags.Instance | BindingFlags.NonPublic)!
-                .SetValue(component, MEGame.LE3);
+            component.AttachPreviewSkeleton(mesh, MEGame.LE3);
             owner.Components.Add(component);
             return component;
         }

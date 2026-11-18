@@ -35,6 +35,8 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
         private readonly Dictionary<string, float> ScalarParameterValues = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, LinearColor> VectorParameterValues = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, string> TextureParameterValues = new(StringComparer.OrdinalIgnoreCase);
+        //every texture parameter the material chain declares, including ones set to None (which defer to the parent for their value)
+        private readonly HashSet<string> DeclaredTextureParameters = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, IEntry> TextureParameterEntries = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, HashSet<string>> DefaultTextureParameterNames = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, (bool Exists, float Value)> PreviewScalarBaselines = new(StringComparer.OrdinalIgnoreCase);
@@ -108,7 +110,7 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
         internal bool DefinesVectorParameter(string name) => PreviewVectorBaselines.TryGetValue(name, out var baseline)
             ? baseline.Exists : VectorParameterValues.ContainsKey(name);
         internal bool DefinesTextureParameter(string name) => PreviewTextureBaselines.TryGetValue(name, out var baseline)
-            ? baseline.Exists : TextureParameterValues.ContainsKey(name);
+            ? baseline.Exists : TextureParameterValues.ContainsKey(name) || DeclaredTextureParameters.Contains(name);
 
         public void SetScalarParameter(string parameterName, float value)
         {
@@ -329,6 +331,7 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
         protected override void ReadMaterialInstanceConstant(ExportEntry matInst, PropertyCollection props)
         {
             base.ReadMaterialInstanceConstant(matInst, props);
+            //The most derived value wins (UMaterialInstanceConstant::Get*ParameterValue); a null texture defers to the parent
             if (props.GetProp<ArrayProperty<StructProperty>>("ScalarParameterValues") is { } scalarValues)
             {
                 foreach (StructProperty scalarValue in scalarValues)
@@ -355,8 +358,13 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
             {
                 foreach (StructProperty textureValue in textureValues)
                 {
+                    if (textureValue.GetProp<NameProperty>("ParameterName") is { } declaredName)
+                    {
+                        DeclaredTextureParameters.Add(declaredName.Value.Instanced);
+                    }
                     if (textureValue.GetProp<NameProperty>("ParameterName") is { } paramNameProp
-                        && textureValue.GetProp<ObjectProperty>("ParameterValue") is { } valProp)
+                        && textureValue.GetProp<ObjectProperty>("ParameterValue") is { } valProp
+                        && valProp.ResolveToEntry(matInst.FileRef) is { } texEntry)
                     {
                         IEntry textureEntry = valProp.ResolveToEntry(matInst.FileRef);
                         TextureParameterValues.TryAdd(paramNameProp.Value.Instanced, textureEntry?.InstancedFullPath);

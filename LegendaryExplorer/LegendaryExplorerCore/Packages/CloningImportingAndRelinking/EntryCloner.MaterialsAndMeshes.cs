@@ -162,7 +162,7 @@ namespace LegendaryExplorerCore.Packages.CloningImportingAndRelinking
             HashSet<ExportEntry> externalME1Textures = FindExternalME1TexturesWithClonedParents(plannedExports);
 
             var objectMap = new ListenableDictionary<IEntry, IEntry>();
-            ExportEntry clone = cloneTree ? CloneTree(mesh, objectMap, true) : CloneEntry(mesh, objectMap);
+            ExportEntry clone = cloneTree ? CloneTreeEntries(mesh, objectMap, true) : CloneEntry(mesh, objectMap);
             foreach (ExportEntry asset in assets)
             {
                 if (!objectMap.ContainsKey(asset))

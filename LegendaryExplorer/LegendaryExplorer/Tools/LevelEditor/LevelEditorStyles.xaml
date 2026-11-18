@@ -1,0 +1,86 @@
+﻿<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:xctk="http://schemas.xceed.com/wpf/xaml/toolkit">
+    <!--
+        Fork adapter for upstream's Level Editor style keys. Upstream's version of this file hard-codes its own dark palette and restyles every
+        control; the fork keeps its own app-wide theme (Light / Dark / Modern Dark through ThemeManager, which overrides SystemColors and the
+        implicit control styles). So these keys only follow the fork theme's colors (DynamicResource, so a theme switch updates them), and no implicit styles are defined here: upstream's panels
+        pick up the fork theme like every other window.
+    -->
+    <SolidColorBrush x:Key="EditorChrome" Color="{DynamicResource {x:Static SystemColors.ControlColorKey}}"/>
+    <SolidColorBrush x:Key="EditorPanel" Color="{DynamicResource {x:Static SystemColors.ControlColorKey}}"/>
+    <SolidColorBrush x:Key="EditorRaised" Color="{DynamicResource {x:Static SystemColors.ControlLightColorKey}}"/>
+    <SolidColorBrush x:Key="EditorInput" Color="{DynamicResource {x:Static SystemColors.WindowColorKey}}"/>
+    <SolidColorBrush x:Key="EditorBorder" Color="{DynamicResource {x:Static SystemColors.ControlDarkColorKey}}"/>
+    <SolidColorBrush x:Key="EditorText" Color="{DynamicResource {x:Static SystemColors.ControlTextColorKey}}"/>
+    <SolidColorBrush x:Key="EditorMuted" Color="{DynamicResource {x:Static SystemColors.GrayTextColorKey}}"/>
+    <SolidColorBrush x:Key="EditorAccent" Color="{DynamicResource {x:Static SystemColors.HighlightColorKey}}"/>
+    <SolidColorBrush x:Key="EditorHover" Color="{DynamicResource {x:Static SystemColors.ControlLightColorKey}}"/>
+    <!-- semantic colors, readable on both the fork's light and dark themes -->
+    <SolidColorBrush x:Key="EditorDirty" Color="#D99A2B"/>
+    <SolidColorBrush x:Key="EditorProblem" Color="#D9574A"/>
+    <SolidColorBrush x:Key="EditorX" Color="#C0392B"/>
+    <SolidColorBrush x:Key="EditorY" Color="#2E8B3E"/>
+    <SolidColorBrush x:Key="EditorZ" Color="#2E6DB4"/>
+
+    <!-- upstream's shared base for every button kind; empty so it can be applied to or based on by any ButtonBase.
+         Styles built on it should prefer BasedOn their own type ({x:Type Button} / {x:Type ToggleButton}) to keep the fork theme's look -->
+    <Style x:Key="EditorButtonBase" TargetType="ButtonBase"/>
+    <Style x:Key="EditorToggleButton" TargetType="ToggleButton" BasedOn="{StaticResource {x:Type ToggleButton}}"/>
+    <Style x:Key="EditorCompactButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+        <Setter Property="Padding" Value="5,4"/>
+    </Style>
+    <Style x:Key="CommitButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+        <Setter Property="Padding" Value="10,5"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+    </Style>
+    <Style x:Key="EditorDropDownButton" TargetType="xctk:DropDownButton" BasedOn="{StaticResource {x:Type xctk:DropDownButton}}">
+        <Setter Property="Padding" Value="7,4"/>
+    </Style>
+    <Style x:Key="EditorToolbarSeparator" TargetType="Border">
+        <Setter Property="Width" Value="1"/>
+        <Setter Property="Height" Value="22"/>
+        <Setter Property="Margin" Value="6,0"/>
+        <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}"/>
+    </Style>
+    <Style x:Key="EditorDockTitle" TargetType="Border">
+        <Setter Property="Padding" Value="8,4"/>
+    </Style>
+    <Style x:Key="EditorDockTabs" TargetType="TabControl" BasedOn="{StaticResource {x:Type TabControl}}"/>
+    <Style x:Key="EditorDockTab" TargetType="TabItem" BasedOn="{StaticResource {x:Type TabItem}}"/>
+    <Style x:Key="EditorSectionLabel" TargetType="TextBlock">
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}"/>
+        <Setter Property="Margin" Value="0,9,0,4"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+    </Style>
+    <Style x:Key="EditorAxisLabel" TargetType="TextBlock">
+        <Setter Property="Foreground" Value="White"/>
+        <Setter Property="Padding" Value="5,0"/>
+        <Setter Property="TextAlignment" Value="Center"/>
+        <Setter Property="VerticalAlignment" Value="Stretch"/>
+    </Style>
+    <Style x:Key="OutlinerGroupExpander" TargetType="Expander">
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Expander">
+                    <StackPanel>
+                        <ToggleButton x:Name="HeaderSite" Style="{StaticResource EditorToggleButton}" IsChecked="{Binding IsExpanded, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}"
+                                      HorizontalContentAlignment="Stretch" Padding="0" AutomationProperties.Name="Expand or collapse group">
+                            <DockPanel>
+                                <TextBlock x:Name="Arrow" Text="›" Width="14" TextAlignment="Center" VerticalAlignment="Center"/>
+                                <ContentPresenter ContentSource="Header"/>
+                            </DockPanel>
+                        </ToggleButton>
+                        <ContentPresenter x:Name="GroupItems" ContentSource="Content" Visibility="Collapsed" Margin="8,0,0,0"/>
+                    </StackPanel>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsExpanded" Value="True">
+                            <Setter TargetName="GroupItems" Property="Visibility" Value="Visible"/>
+                            <Setter TargetName="Arrow" Property="Text" Value="⌄"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+</ResourceDictionary>

@@ -2,14 +2,9 @@ using System;
 using System.Linq;
 using System.Numerics;
 using System.Runtime.InteropServices;
-using LegendaryExplorer.Resources;
-using LegendaryExplorer.Tools.AssetDatabase.VFXPreview;
 using LegendaryExplorer.Tools.LevelEditor.Scene3D;
-using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.Unreal.BinaryConverters.Shaders;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
-using SharpDX.Direct3D;
-using Device = SharpDX.Direct3D11.Device;
 using NativeSetters = LegendaryExplorer.Tools.LevelEditor.Scene3D.ShaderParameterSetters;
 
 namespace LegendaryExplorer.Tests.Tools.LevelEditor;
@@ -23,22 +18,20 @@ public class WorldMappedMaterialTests
     private const byte Sentinel = 0xCD;
     private const float TerrainTextureScale = 1200f;
 
+    /// <summary>
+    /// Game shaders work in upstream's translated world space (FSceneView::PreViewTranslation = -eye for a perspective view): the factory's LocalToWorld is
+    /// translated, the frame's view-projection undoes it, and the material's CameraWorldPosition (the view origin) restores world positions for
+    /// world-mapped (triplanar) materials. Moving the camera must not move them.
+    /// </summary>
     [DataTestMethod]
     [DataRow("FirstPerson")]
     [DataRow("Orbit")]
-    [DataRow("Orthographic")]
     public void GroundWorldMappingStaysAnchoredAcrossCameraMoves(string cameraMode)
     {
-        using var fixture = new MaterialFixture();
+        using var fixture = new WarpMaterialFixture();
         MeshRenderContext context = fixture.Context;
-        context.UseCameraRelativeNativeRendering = true;
         ConfigureCamera(context.Camera, cameraMode);
-        using var mesh = new Mesh<LEVertex>(null, [], [])
-        {
-            LocalToWorld = Matrix4x4.CreateScale(1.5f, 0.75f, 2f)
-                           * Matrix4x4.CreateRotationZ(0.4f)
-                           * Matrix4x4.CreateTranslation(-33000, 12500, 6400)
-        };
+        using var mesh = CreateGroundMesh();
         Vector3[] localPoints = [new(7, 11, 3), new(-240, 375, 40), new(100, -75, 12)];
         Vector3[] expectedWorldPoints = localPoints.Select(point => Vector3.Transform(point, mesh.LocalToWorld)).ToArray();
 
@@ -46,18 +39,9 @@ public class WorldMappedMaterialTests
         {
             MoveCamera(context.Camera, move);
             context.LEEffect.BeginFrame(context);
-            LEVSConstants shared = VfxGameShaderRenderer.CreateNativeVertexConstants(context);
-            Assert.AreEqual(new Vector4(Vector3.Zero, 1), shared.CameraPosition,
-                "The vertex shader's view direction must keep the camera-relative origin.");
-            Assert.AreEqual(Vector4.Zero, shared.PreViewTranslation);
+            Assert.AreEqual(-context.Camera.EyePosition, context.LEEffect.PreViewTranslation);
 
-            byte[] factoryBuffer = new byte[64];
-            var factoryParameters = new FLocalVertexFactoryShaderParameters
-            {
-                LocalToWorld = new FShaderParameter { BaseIndex = 0, NumBytes = 64 }
-            };
-            NativeSetters.WriteValues(factoryParameters, factoryBuffer, context, mesh, fixture.Material);
-            Matrix4x4 shaderLocalToWorld = MemoryMarshal.Read<Matrix4x4>(factoryBuffer);
+            Matrix4x4 shaderLocalToWorld = WriteLocalToWorld(fixture, mesh);
             AssertVector(mesh.LocalToWorld.Translation - context.Camera.EyePosition, shaderLocalToWorld.Translation, 0.01f);
 
             (Vector3 vertexCamera, Vector3 pixelCamera) = WriteMaterialCameras(fixture, mesh);
@@ -74,22 +58,42 @@ public class WorldMappedMaterialTests
                 AssertVector(expectedWorldPoints[pointIndex], reconstructedWorld, 0.01f);
                 AssertVector(expectedWorldPoints[pointIndex] / TerrainTextureScale,
                     reconstructedWorld / TerrainTextureScale, 0.00001f);
-
-                Vector4 expectedClip = Vector4.Transform(new Vector4(expectedWorldPoints[pointIndex], 1), context.Camera.ViewProjectionMatrix);
-                Vector4 actualClip = Vector4.Transform(new Vector4(varying, 1), shared.ViewProjectionMatrix);
-                Assert.IsTrue(Vector4.Distance(expectedClip, actualClip) < 0.01f,
-                    $"Camera-relative placement changed in {cameraMode}, move {move}: expected {expectedClip}, got {actualClip}.");
+                AssertClipPlacement(context, expectedWorldPoints[pointIndex], varying, $"{cameraMode}, move {move}");
             }
+        }
+    }
+
+    /// <summary>
+    /// An orthographic view isn't translated (its FSceneView::ViewOrigin is a direction): the factory's LocalToWorld is the primitive's own
+    /// </summary>
+    [TestMethod]
+    public void OrthographicViewsAreNotTranslated()
+    {
+        using var fixture = new WarpMaterialFixture();
+        MeshRenderContext context = fixture.Context;
+        ConfigureCamera(context.Camera, "Orthographic");
+        using var mesh = CreateGroundMesh();
+
+        for (int move = 0; move < 3; move++)
+        {
+            MoveCamera(context.Camera, move);
+            context.LEEffect.BeginFrame(context);
+            Assert.AreEqual(Vector3.Zero, context.LEEffect.PreViewTranslation);
+
+            Matrix4x4 shaderLocalToWorld = WriteLocalToWorld(fixture, mesh);
+            AssertVector(mesh.LocalToWorld.Translation, shaderLocalToWorld.Translation, 0.01f);
+            Vector3 point = new(-240, 375, 40);
+            AssertClipPlacement(context, Vector3.Transform(point, mesh.LocalToWorld), Vector3.Transform(point, shaderLocalToWorld),
+                $"Orthographic, move {move}");
         }
     }
 
     [DataTestMethod]
     [DataRow("FirstPerson")]
     [DataRow("Orbit")]
-    [DataRow("Orthographic")]
-    public void AbsoluteRenderingMaterialParametersStillUseTheActualEye(string cameraMode)
+    public void MaterialParametersUseTheActualEye(string cameraMode)
     {
-        using var fixture = new MaterialFixture();
+        using var fixture = new WarpMaterialFixture();
         ConfigureCamera(fixture.Context.Camera, cameraMode);
         MoveCamera(fixture.Context.Camera, 1);
         fixture.Context.LEEffect.BeginFrame(fixture.Context);
@@ -99,35 +103,36 @@ public class WorldMappedMaterialTests
 
         AssertVector(fixture.Context.Camera.EyePosition, vertexCamera, 0);
         AssertVector(fixture.Context.Camera.EyePosition, pixelCamera, 0);
-        Assert.AreEqual(new Vector4(fixture.Context.Camera.EyePosition, 1),
-            VfxGameShaderRenderer.CreateNativeVertexConstants(fixture.Context).CameraPosition);
+        Assert.AreEqual(fixture.Context.Camera.EyePosition, fixture.Context.LEEffect.ViewOrigin);
     }
 
-    [DataTestMethod]
-    [DataRow(false)]
-    [DataRow(true)]
-    public void LensFlareMaterialParametersKeepTheirExplicitCameraOverride(bool cameraRelative)
+    private static Mesh<LEVertex> CreateGroundMesh() => new(null, [], [])
     {
-        using var fixture = new MaterialFixture();
-        ConfigureCamera(fixture.Context.Camera, "Orbit");
-        MoveCamera(fixture.Context.Camera, 1);
-        fixture.Context.UseCameraRelativeNativeRendering = cameraRelative;
-        fixture.Context.LEEffect.BeginFrame(fixture.Context);
-        typeof(MaterialRenderProxy).GetProperty(nameof(MaterialRenderProxy.VertexFactoryType))!
-            .SetValue(fixture.Material, "FLensFlareVertexFactory");
-        Vector3 factoryEye = new(-33750, 11900, 6350);
-        fixture.Material.LensFlareCameraPosition = factoryEye;
-        using var mesh = new Mesh<LEVertex>(null, [], []);
+        LocalToWorld = Matrix4x4.CreateScale(1.5f, 0.75f, 2f)
+                       * Matrix4x4.CreateRotationZ(0.4f)
+                       * Matrix4x4.CreateTranslation(-33000, 12500, 6400)
+    };
 
-        (Vector3 vertexCamera, Vector3 pixelCamera) = WriteMaterialCameras(fixture, mesh);
-
-        AssertVector(factoryEye, vertexCamera, 0);
-        AssertVector(factoryEye, pixelCamera, 0);
-        Assert.AreEqual(new Vector4(factoryEye, 1),
-            VfxGameShaderRenderer.CreateNativeVertexConstants(fixture.Context, factoryEye).CameraPosition);
+    private static Matrix4x4 WriteLocalToWorld(WarpMaterialFixture fixture, Mesh<LEVertex> mesh)
+    {
+        byte[] factoryBuffer = new byte[64];
+        var factoryParameters = new FLocalVertexFactoryShaderParameters
+        {
+            LocalToWorld = new FShaderParameter { BaseIndex = 0, NumBytes = 64 }
+        };
+        NativeSetters.WriteValues(factoryParameters, factoryBuffer, fixture.Context, mesh, fixture.Material);
+        return MemoryMarshal.Read<Matrix4x4>(factoryBuffer);
     }
 
-    private static (Vector3 vertex, Vector3 pixel) WriteMaterialCameras(MaterialFixture fixture, Mesh<LEVertex> mesh)
+    private static void AssertClipPlacement(MeshRenderContext context, Vector3 world, Vector3 translated, string description)
+    {
+        Vector4 expectedClip = Vector4.Transform(new Vector4(world, 1), context.Camera.ViewProjectionMatrix);
+        Vector4 actualClip = Vector4.Transform(new Vector4(translated, 1), context.LEEffect.TranslatedViewProjectionMatrix);
+        Assert.IsTrue(Vector4.Distance(expectedClip, actualClip) < 0.01f,
+            $"Translated placement changed in {description}: expected {expectedClip}, got {actualClip}.");
+    }
+
+    private static (Vector3 vertex, Vector3 pixel) WriteMaterialCameras(WarpMaterialFixture fixture, Mesh<LEVertex> mesh)
     {
         var binding = new FShaderParameter { BaseIndex = CameraOffset, NumBytes = CameraBytes };
         var vertexParameters = new FMaterialVertexShaderParameters
@@ -174,38 +179,5 @@ public class WorldMappedMaterialTests
     {
         Assert.IsTrue(buffer.Take(CameraOffset).All(value => value == Sentinel));
         Assert.IsTrue(buffer.Skip(CameraOffset + CameraBytes).All(value => value == Sentinel));
-    }
-
-    private sealed class MaterialFixture : IDisposable
-    {
-        private readonly IMEPackage package;
-        private readonly Device device = new(DriverType.Warp);
-        public MeshRenderContext Context { get; } = new();
-        public MaterialRenderProxy Material { get; }
-
-        public MaterialFixture()
-        {
-            typeof(RenderContext).GetProperty(nameof(RenderContext.Device))!.GetSetMethod(true)!.Invoke(Context, [device]);
-            typeof(RenderContext).GetProperty(nameof(RenderContext.ImmediateContext))!.GetSetMethod(true)!
-                .Invoke(Context, [device.ImmediateContext]);
-            typeof(MeshRenderContext).GetProperty(nameof(MeshRenderContext.LEEffect))!.GetSetMethod(true)!
-                .Invoke(Context, [new LEEffect(device, EmbeddedResources.LevelEditorShader)]);
-
-            LegendaryExplorerCore.LegendaryExplorerCoreLib.InitLib(System.Threading.Tasks.TaskScheduler.Default);
-            package = MEPackageHandler.CreateMemoryEmptyPackage("WorldMappedTerrain.pcc", MEGame.LE2);
-            // An orphan MIC exercises the production material setters without an installed game
-            // or an external cooked shader cache. No uniform expressions or textures are needed.
-            ExportEntry export = package.CreateExport("Terrain", "MaterialInstanceConstant", indexed: false);
-            export.WriteProperties([]);
-            Material = new MaterialRenderProxy(Context, export);
-        }
-
-        public void Dispose()
-        {
-            package.Dispose();
-            Context.LEEffect.Dispose();
-            Context.ImmediateContext.Dispose();
-            device.Dispose();
-        }
     }
 }

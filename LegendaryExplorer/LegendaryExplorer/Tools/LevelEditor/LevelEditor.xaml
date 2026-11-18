@@ -1,4 +1,4 @@
-<bases:WPFBase
+﻿<misc:NotifyPropertyChangedWindowBase
         x:Class="LegendaryExplorer.Tools.LevelEditor.LevelEditor"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -7,12 +7,11 @@
         xmlns:misc="clr-namespace:LegendaryExplorer.Misc"
         xmlns:local="clr-namespace:LegendaryExplorer.Tools.LevelEditor"
         xmlns:scene3D="clr-namespace:LegendaryExplorer.Tools.LevelEditor.Scene3D"
+        xmlns:lightmass="clr-namespace:LegendaryExplorer.Lightmaps.Lightmass"
         xmlns:converters="clr-namespace:LegendaryExplorer.SharedUI.Converters"
         xmlns:sharedUi="clr-namespace:LegendaryExplorer.SharedUI"
         xmlns:xctk="http://schemas.xceed.com/wpf/xaml/toolkit"
         xmlns:sharedToolControls="clr-namespace:LegendaryExplorer.UserControls.SharedToolControls"
-        xmlns:bases="clr-namespace:LegendaryExplorer.SharedUI.Bases"
-        xmlns:packages="clr-namespace:LegendaryExplorerCore.Packages;assembly=LegendaryExplorerCore"
         xmlns:fa="http://schemas.fontawesome.com/icons/"
         xmlns:exportLoaderControls="clr-namespace:LegendaryExplorer.UserControls.ExportLoaderControls"
         Icon="pack://application:,,,/Tools/Icons/16x16/LiveLevelEditor_Icon_16.ico"
@@ -21,60 +20,108 @@
         AllowDrop="True"
         Loaded="LevelEditor_Loaded"
         Closing="LevelEditor_Closing"
-        KeyDown="LevelEditor_KeyDown"
-        PreviewKeyDown="VolumeDrawing_PreviewKeyDown"
+        PreviewKeyDown="LevelEditor_PreviewKeyDown"
         mc:Ignorable="d"
         DataContext="{Binding RelativeSource={RelativeSource Self}}"
-        Title="LevelEditor" Height="800" Width="1000">
+        Title="Level Editor" Height="800" Width="1000">
     <Window.Resources>
-        <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
-        <converters:NullEnabledConverter x:Key="NullEnabledConverter"/>
-        <converters:BoolEnabledConverter x:Key="BoolEnabledConverter"/>
-        <converters:NullVisibilityConverter x:Key="NullVisibilityConverter"/>
-        <converters:ObjectStructPropertyTypeConverter x:Key="ObjectStructPropertyTypeConverter"/>
-        <converters:EntryFileTypeConverter x:Key="EntryFileTypeConverter"/>
-        <converters:EntryFileTypeIconPathConverter x:Key="EntryFileTypeIconPathConverter"/>
-        <converters:EmbeddedFileToolTipConverter x:Key="EmbeddedFileToolTipConverter"/>
-        <converters:GameTypeConverter x:Key="GameTypeConverter"/>
-        <converters:GameToImageIconConverter x:Key="GameToImageIconConverter"/>
-        <converters:InverseBooleanConverter x:Key="InverseBooleanConverter"/>
-        <sharedUi:BindingProxy x:Key="bindingProxy" Data="{Binding}"/>
-        <Style x:Key="LevelFileReferenceMenuItemStyle" TargetType="MenuItem">
-            <Setter Property="Header" Value="{Binding FileName}"/>
-            <Setter Property="HeaderTemplate">
-                <Setter.Value>
-                    <DataTemplate><TextBlock Text="{Binding}"/></DataTemplate>
-                </Setter.Value>
-            </Setter>
-            <Setter Property="ToolTip" Value="{Binding FilePath}"/>
-            <Setter Property="CommandParameter" Value="{Binding FilePath}"/>
-        </Style>
-        <converters:UnsavedChangesForegroundConverter x:Key="UnsavedChangesForegroundConverter"/>
-        <TextDecorationCollection x:Key="XTextDeco">
-            <TextDecoration Location="Underline" PenOffset="2">
-                <TextDecoration.Pen>
-                    <Pen Brush="Red" Thickness="3"/>
-                </TextDecoration.Pen>
-            </TextDecoration>
-        </TextDecorationCollection>
-        <TextDecorationCollection x:Key="YTextDeco">
-            <TextDecoration Location="Underline" PenOffset="2">
-                <TextDecoration.Pen>
-                    <Pen Brush="#00C91D" Thickness="3"/>
-                </TextDecoration.Pen>
-            </TextDecoration>
-        </TextDecorationCollection>
-        <TextDecorationCollection x:Key="ZTextDeco">
-            <TextDecoration Location="Underline" PenOffset="2">
-                <TextDecoration.Pen>
-                    <Pen Brush="Blue" Thickness="3"/>
-                </TextDecoration.Pen>
-            </TextDecoration>
-        </TextDecorationCollection>
+        <ResourceDictionary>
+            <!--fork theme adapter for the upstream panels' style keys (aliases the fork theme's brushes; no implicit styles)-->
+            <ResourceDictionary.MergedDictionaries><ResourceDictionary Source="LevelEditorStyles.xaml"/></ResourceDictionary.MergedDictionaries>
+            <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
+            <converters:NullEnabledConverter x:Key="NullEnabledConverter"/>
+            <converters:BoolEnabledConverter x:Key="BoolEnabledConverter"/>
+            <converters:NullVisibilityConverter x:Key="NullVisibilityConverter"/>
+            <converters:GameToImageIconConverter x:Key="GameToImageIconConverter"/>
+            <converters:InverseBooleanConverter x:Key="InverseBooleanConverter"/>
+            <sharedUi:BindingProxy x:Key="bindingProxy" Data="{Binding}"/>
+            <local:OutlinerGroupStateConverter x:Key="OutlinerGroupStateConverter"/>
+            <Style x:Key="LevelFileReferenceMenuItemStyle" TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
+                <Setter Property="Header" Value="{Binding FileName}"/>
+                <Setter Property="HeaderTemplate">
+                    <Setter.Value>
+                        <DataTemplate><TextBlock Text="{Binding}"/></DataTemplate>
+                    </Setter.Value>
+                </Setter>
+                <Setter Property="ToolTip" Value="{Binding FilePath}"/>
+                <Setter Property="CommandParameter" Value="{Binding FilePath}"/>
+            </Style>
+            <TextDecorationCollection x:Key="XTextDeco">
+                <TextDecoration Location="Underline" PenOffset="2">
+                    <TextDecoration.Pen>
+                        <Pen Brush="Red" Thickness="3"/>
+                    </TextDecoration.Pen>
+                </TextDecoration>
+            </TextDecorationCollection>
+            <TextDecorationCollection x:Key="YTextDeco">
+                <TextDecoration Location="Underline" PenOffset="2">
+                    <TextDecoration.Pen>
+                        <Pen Brush="#00C91D" Thickness="3"/>
+                    </TextDecoration.Pen>
+                </TextDecoration>
+            </TextDecorationCollection>
+            <TextDecorationCollection x:Key="ZTextDeco">
+                <TextDecoration Location="Underline" PenOffset="2">
+                    <TextDecoration.Pen>
+                        <Pen Brush="Blue" Thickness="3"/>
+                    </TextDecoration.Pen>
+                </TextDecoration>
+            </TextDecorationCollection>
+            <!--outliner group headers: a level (the fork's per-file buttons) and, grouped by category, a category with its viewport eye toggle (upstream)-->
+            <DataTemplate x:Key="OutlinerLevelHeader">
+                <DockPanel x:Name="FileGroupHeader" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" Margin="0,2,0,0">
+                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Visibility="{Binding Data.CanEditScene, Source={StaticResource bindingProxy}, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <ToggleButton Padding="2,0" Margin="2,0"
+                                      IsEnabled="{Binding Name.CanChangeReadOnly}"
+                                      IsChecked="{Binding Name.IsReadOnly, Mode=TwoWay}" ToolTipService.ShowOnDisabled="True"
+                                      AutomationProperties.Name="Read-only package">
+                            <ToggleButton.Style>
+                                <Style TargetType="ToggleButton" BasedOn="{StaticResource {x:Type ToggleButton}}">
+                                    <Setter Property="ToolTip" Value="Toggle read-only — actors cannot be edited when enabled"/>
+                                    <Style.Triggers><DataTrigger Binding="{Binding Name.CanChangeReadOnly}" Value="False"><Setter Property="ToolTip" Value="Read-only is unavailable while the file has new or deleted actors to commit"/></DataTrigger></Style.Triggers>
+                                </Style>
+                            </ToggleButton.Style>
+                            <Grid Width="12" Height="12">
+                                <fa:ImageAwesome Icon="Solid_Lock" Width="12" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"
+                                                 Visibility="{Binding IsChecked, RelativeSource={RelativeSource AncestorType=ToggleButton}, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                                <fa:ImageAwesome Icon="Solid_LockOpen" Width="12" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"
+                                                 Visibility="{Binding IsChecked, RelativeSource={RelativeSource AncestorType=ToggleButton}, Converter={StaticResource BoolToVisibilityConverter}, ConverterParameter='Not'}"/>
+                            </Grid>
+                        </ToggleButton>
+                        <Button Content="Commit" Padding="4,0" Margin="2,0"
+                                Command="{Binding Data.CommitSingleFileCommand, Source={StaticResource bindingProxy}}"
+                                CommandParameter="{Binding Name}" ToolTip="Commit Level Editor changes for this file" FontSize="10"/>
+                        <Button Content="Save" Padding="4,0" Margin="2,0"
+                                Command="{Binding Data.SaveSingleFileCommand, Source={StaticResource bindingProxy}}"
+                                CommandParameter="{Binding Name}" ToolTip="Save this file" FontSize="10"/>
+                        <Button Content="X" Padding="4,0" Margin="2,0"
+                                Command="{Binding Data.CloseFileCommand, Source={StaticResource bindingProxy}}"
+                                CommandParameter="{Binding Name}" ToolTip="Close this file" FontSize="10"/>
+                    </StackPanel>
+                    <TextBlock Text="{Binding Name.FileName, Mode=OneTime}" ToolTip="{Binding Name.FilePath, Mode=OneTime}" FontWeight="Bold" Padding="4,2" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                </DockPanel>
+            </DataTemplate>
+            <DataTemplate x:Key="OutlinerCategoryHeader">
+                <Border Background="{DynamicResource {x:Static SystemColors.ControlLightBrushKey}}" Padding="6,3" Margin="0,4,0,1">
+                    <DockPanel>
+                        <ToggleButton DockPanel.Dock="Right" Padding="4,0" Margin="6,0,0,0"
+                                      IsChecked="{Binding DataContext.Category.IsVisible, RelativeSource={RelativeSource AncestorType=Expander}, Mode=TwoWay}"
+                                      AutomationProperties.Name="{Binding Name, StringFormat='Show {0} in viewport'}" ToolTip="Show or hide this category in the viewport">
+                            <Grid Width="13" Height="13">
+                                <fa:ImageAwesome Icon="Regular_Eye" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}" Visibility="{Binding IsChecked, RelativeSource={RelativeSource AncestorType=ToggleButton}, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                                <fa:ImageAwesome Icon="Regular_EyeSlash" Foreground="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}" Visibility="{Binding IsChecked, RelativeSource={RelativeSource AncestorType=ToggleButton}, Converter={StaticResource BoolToVisibilityConverter}, ConverterParameter=Not}"/>
+                            </Grid>
+                        </ToggleButton>
+                        <TextBlock DockPanel.Dock="Right" Text="{Binding ItemCount}" Foreground="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}" Margin="8,0,0,0" VerticalAlignment="Center"/>
+                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                    </DockPanel>
+                </Border>
+            </DataTemplate>
+        </ResourceDictionary>
     </Window.Resources>
     <Window.InputBindings>
         <KeyBinding Key="O" Modifiers="Control" Command="{Binding OpenFileCommand}"/>
-        <KeyBinding Key="O" Modifiers="Control+Shift" Command="{Binding AddFileCommand}"/>
+        <KeyBinding Key="O" Modifiers="Control+Shift" Command="{Binding AddFilesCommand}"/>
         <KeyBinding Key="S" Modifiers="Control" Command="{Binding SaveAllCommand}"/>
         <KeyBinding Key="S" Modifiers="Control+Shift" Command="{Binding SaveAsCommand}"/>
         <KeyBinding Key="Z" Modifiers="Control" Command="{Binding UndoCommand}"/>
@@ -92,10 +139,10 @@
             </Style>
         </xctk:BusyIndicator.ProgressBarStyle>
         <DockPanel>
-            <Menu DockPanel.Dock="Top">
+            <Menu DockPanel.Dock="Top" Visibility="{Binding CanEditScene, Converter={StaticResource BoolToVisibilityConverter}}">
                 <MenuItem Header="File" Padding="4" >
                     <MenuItem Header="Open" Command="{Binding OpenFileCommand}" InputGestureText="Ctrl+O" ToolTip="Open a level file (replaces current)"/>
-                    <MenuItem Header="Add File..." Command="{Binding AddFileCommand}" InputGestureText="Ctrl+Shift+O" ToolTip="Add another level file to the scene"/>
+                    <MenuItem Header="Add File..." Command="{Binding AddFilesCommand}" InputGestureText="Ctrl+Shift+O" ToolTip="Add another level file to the scene"/>
                     <MenuItem Header="Load Related Levels" Command="{Binding LoadRelatedLevelsCommand}" ToolTip="Load all related level files for the current level" IsEnabled="{Binding HasAnyFileOpen}"/>
                     <MenuItem Header="Level presets..." Click="LevelPresets_Click" ToolTip="Create, edit, search, or open named groups of level files"/>
                     <MenuItem Header="Save levels as preset..." Click="SaveLevelPreset_Click" IsEnabled="{Binding HasAnyFileOpen}" ToolTip="Save the currently loaded levels as a named preset"/>
@@ -103,7 +150,7 @@
                     <MenuItem Header="Save All" Command="{Binding SaveAllCommand}" InputGestureText="Ctrl+S" ToolTip="Commit and save all open files in-place" IsEnabled="{Binding HasAnyFileOpen}"/>
                     <MenuItem Header="Save Individual File" ItemsSource="{Binding OpenFiles}" IsEnabled="{Binding HasAnyFileOpen}" ToolTip="Commit and save a selected open file">
                         <MenuItem.ItemContainerStyle>
-                            <Style TargetType="{x:Type MenuItem}">
+                            <Style TargetType="{x:Type MenuItem}" BasedOn="{StaticResource {x:Type MenuItem}}">
                                 <Setter Property="Header" Value="{Binding FileName}"/>
                                 <Setter Property="Command" Value="{Binding Data.SaveSingleFileCommand, Source={StaticResource bindingProxy}}"/>
                                 <Setter Property="CommandParameter" Value="{Binding}"/>
@@ -135,18 +182,48 @@
                     <Separator />
                     <MenuItem Header="Capture Viewport..." Command="{Binding CaptureViewportCommand}" ToolTip="Save the current viewport as a PNG image"/>
                     <Separator />
-                    <MenuItem Name="Recents_MenuItem" Header="Recent" IsEnabled="false"/>
+                    <MenuItem x:Name="Recents_MenuItem" Header="Recent" IsEnabled="false"/>
+                </MenuItem>
+                <MenuItem Header="Edit" Padding="4">
+                    <MenuItem Header="Undo" Command="{Binding UndoCommand}" IsEnabled="{Binding CanUndo, Converter={StaticResource BoolEnabledConverter}}" InputGestureText="Ctrl+Z"/>
+                    <MenuItem Header="Redo" Command="{Binding RedoCommand}" IsEnabled="{Binding CanRedo, Converter={StaticResource BoolEnabledConverter}}" InputGestureText="Ctrl+Y"/>
+                    <Separator/>
+                    <MenuItem Header="Delete Selected Actor" Command="{Binding DeleteActorCommand}" InputGestureText="Delete"/>
+                    <MenuItem Header="Duplicate Selected Actor" Command="{Binding DuplicateActorCommand}" ToolTip="Alt-drag a gizmo axis to duplicate while moving"/>
+                    <Separator/>
+                    <MenuItem Header="Commit Changes" Command="{Binding CommitChangesCommand}" IsEnabled="{Binding IsDirty, Converter={StaticResource BoolEnabledConverter}}"/>
+                    <MenuItem Header="Reset Uncommitted Changes..." Click="ResetUncommittedChanges_Click" IsEnabled="{Binding IsDirty}"/>
+                </MenuItem>
+                <MenuItem Header="View" Padding="4">
+                    <MenuItem Header="Focus Selected Actor" Command="{Binding FocusSelectedCommand}" InputGestureText="F"/>
+                    <MenuItem Header="Top Down" IsCheckable="True" IsChecked="{Binding IsOrthographicView}" InputGestureText="Numpad 5"/>
+                    <MenuItem Header="Local Coordinates" IsCheckable="True" IsChecked="{Binding UseLocalCoordsForWidget}" InputGestureText="L"/>
+                    <Separator/>
+                    <MenuItem Header="Open Selected Actor in Package Editor" Command="{Binding OpenInPackageEditorCommand}"/>
+                </MenuItem>
+                <MenuItem Header="Build" Padding="4" IsEnabled="{Binding CanEditScene}">
+                    <MenuItem Header="Bake Lighting in Lightmass Baker..." Click="OpenInLightmassBaker_Click"
+                              ToolTip="Opens the UDK Lightmass Baker with the open files (read-only ones only cast shadows). It bakes the files as saved on disk."/>
+                    <MenuItem Header="Scottina's Lightmass Baker..." Click="ScottinaLightmassBaker_Click" IsEnabled="{Binding HasAnyFileOpen}"
+                              ToolTip="Bake static lighting with the Level Editor's own baker (C# or native backend): choose the target levels and every setting, then Create Lightmass"/>
+                    <Separator/>
+                    <MenuItem Header="Generate Navigation" Command="{Binding GenerateNavigationCommand}"
+                              ToolTip="Generate pathing and cover with the settings in the toolbar's Navigation dropdown"/>
+                </MenuItem>
+                <MenuItem Header="Help" Padding="4">
+                    <MenuItem Header="Level Editor Help" Click="Help_Click"/>
                 </MenuItem>
             </Menu>
-            <WrapPanel DockPanel.Dock="Top">
+            <WrapPanel DockPanel.Dock="Top" Visibility="{Binding CanEditScene, Converter={StaticResource BoolToVisibilityConverter}}">
                 <ToolBar ToolBarTray.IsLocked="True" OverflowMode="Never">
                     <Button Content="Edit volume" Click="EditVolume_Click" IsEnabled="{Binding CanEditSelectedVolume}"
                             ToolTip="Edit the selected actor's volume vertices. Commit creates new vanilla Model geometry and updates only this actor."/>
                     <ToggleButton Content="Draw volume" Click="DrawVolume_Click" IsChecked="{Binding IsDrawingVolume, Mode=OneWay}"
                                   IsEnabled="{Binding HasAnyFileOpen}" ToolTip="Draw a volume directly in the loaded level viewport."/>
-                    <Button Content="Commit Changes" ToolTip="Commit changes made in Level Editor (does not save the file to disk!)" Command="{Binding CommitChangesCommand}">
+                    <Button Content="Commit Changes" ToolTip="Commit changes made in Level Editor (does not save the file to disk!)" Command="{Binding CommitChangesCommand}"
+                            IsEnabled="{Binding IsDirty, Converter={StaticResource BoolEnabledConverter}}">
                         <Button.Style>
-                            <Style TargetType="Button">
+                            <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
                                 <Style.Triggers>
                                     <DataTrigger Binding="{Binding IsDirty}" Value="true">
                                         <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.ControlLightBrushKey}}"/>
@@ -155,13 +232,58 @@
                             </Style>
                         </Button.Style>
                     </Button>
-                    <Button Name="UndoMenuItem" Click="Undo_Clicked" ToolTip="Undo (Ctrl-Z)" IsEnabled="{Binding CanUndo, Converter={StaticResource BoolEnabledConverter}, Mode=OneWay}">
-                        <fa:ImageAwesome Icon="Solid_Undo" Width="16"/>
+                    <Button Content="Save All" Command="{Binding SaveAllCommand}" IsEnabled="{Binding HasAnyFileOpen}" ToolTip="Commit and save all open files in-place (Ctrl+S)"/>
+                    <Button x:Name="UndoMenuItem" Command="{Binding UndoCommand}" ToolTip="Undo (Ctrl-Z)" IsEnabled="{Binding CanUndo, Converter={StaticResource BoolEnabledConverter}, Mode=OneWay}">
+                        <fa:ImageAwesome Icon="Solid_Undo" Width="16" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
                     </Button>
-                    <Button Name="RedoMenuItem" Click="Redo_Clicked" ToolTip="Redo (Ctrl-Y)" IsEnabled="{Binding CanRedo, Converter={StaticResource BoolEnabledConverter}, Mode=OneWay}">
-                        <fa:ImageAwesome Icon="Solid_Redo" Width="16"/>
+                    <Button x:Name="RedoMenuItem" Command="{Binding RedoCommand}" ToolTip="Redo (Ctrl-Y)" IsEnabled="{Binding CanRedo, Converter={StaticResource BoolEnabledConverter}, Mode=OneWay}">
+                        <fa:ImageAwesome Icon="Solid_Redo" Width="16" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
                     </Button>
-                    <Separator Name="SaveToggle_Separator" Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" />
+                    <xctk:DropDownButton x:Name="HistoryDropDown" Opened="HistoryDropDown_Opened" CloseOnFocusLoss="True" MaxDropDownHeight="640"
+                                         ToolTip="History and uncommitted changes: double-click a step to go back or forward to it"
+                                         BorderBrush="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}"
+                                         DropDownContentBackground="{DynamicResource {x:Static SystemColors.ControlBrushKey}}">
+                        <StackPanel Orientation="Horizontal">
+                            <fa:ImageAwesome Icon="Solid_History" Width="15" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
+                            <TextBlock Text="{Binding PendingChangeCount, StringFormat=' {0}'}" VerticalAlignment="Center"
+                                       Visibility="{Binding HasPendingChanges, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                        </StackPanel>
+                        <xctk:DropDownButton.DropDownContent>
+                            <DockPanel Width="560" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}">
+                                <TextBlock DockPanel.Dock="Top" Text="History" FontWeight="SemiBold" Margin="8,6,8,2"/>
+                                <TextBlock DockPanel.Dock="Top" Text="Double-click a step to go back or forward to it." FontSize="11" Margin="8,0,8,4"
+                                           Foreground="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}"/>
+                                <ListBox DockPanel.Dock="Top" ItemsSource="{Binding HistoryEntries}" MaxHeight="220" Margin="6,0,6,6"
+                                         ScrollViewer.HorizontalScrollBarVisibility="Disabled" HorizontalContentAlignment="Stretch">
+                                    <ListBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border Background="Transparent" Padding="2,1" MouseLeftButtonDown="HistoryEntryBorder_MouseLeftButtonDown">
+                                                <DockPanel>
+                                                    <TextBlock DockPanel.Dock="Left" Text="{Binding Position}" Width="34" TextAlignment="Right" Margin="0,0,8,0"
+                                                               Foreground="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}"/>
+                                                    <TextBlock Text="{Binding Description}" TextTrimming="CharacterEllipsis">
+                                                        <TextBlock.Style>
+                                                            <Style TargetType="TextBlock">
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding IsCurrent}" Value="True"><Setter Property="FontWeight" Value="Bold"/></DataTrigger>
+                                                                    <DataTrigger Binding="{Binding IsUndone}" Value="True">
+                                                                        <Setter Property="FontStyle" Value="Italic"/>
+                                                                        <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}"/>
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </TextBlock.Style>
+                                                    </TextBlock>
+                                                </DockPanel>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ListBox.ItemTemplate>
+                                </ListBox>
+                                <local:ChangesPanel Height="200"/>
+                            </DockPanel>
+                        </xctk:DropDownButton.DropDownContent>
+                    </xctk:DropDownButton>
+                    <Separator x:Name="SaveToggle_Separator" Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" />
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                         <TextBlock Text="Loc" Margin="0,0,6,0" VerticalAlignment="Center"/>
                         <TextBlock Text="X:" Margin="0,0,4,0" VerticalAlignment="Center" TextDecorations="{StaticResource XTextDeco}"/>
@@ -232,7 +354,6 @@
                                            ButtonSpinnerLocation="Left" FormatString="F2"
                                            VerticalContentAlignment="Center" ToolTip="Camera position adjustment step"/>
                     </StackPanel>
-                    <!-- Light icon controls: radius (distance) and max count -->
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="6,0,0,0">
                         <TextBlock Text="Rot" Margin="0,0,6,0" VerticalAlignment="Center"/>
                         <TextBlock Text="X:" Margin="0,0,4,0" VerticalAlignment="Center" TextDecorations="{StaticResource XTextDeco}"/>
@@ -311,9 +432,10 @@
                         <xctk:IntegerUpDown Width="60" Value="{Binding MaxLightIcons}" Minimum="0" Maximum="2000" ButtonSpinnerLocation="Left" VerticalContentAlignment="Center" ToolTip="Maximum number of light icons to display"/>
                     </StackPanel>
                     <Separator Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" />
-                    <xctk:DropDownButton Content="View options" MaxDropDownHeight="300" CloseOnFocusLoss="False"
+                    <xctk:DropDownButton Content="View options" MaxDropDownHeight="620" CloseOnFocusLoss="False"
                                          BorderBrush="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}">
                         <xctk:DropDownButton.DropDownContent>
+                            <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="600">
                             <StackPanel Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}">
                                 <Button Content="Copy viewport issues" Margin="4,4,4,0" Padding="6,3"
                                         Command="{Binding CopyViewportIssuesCommand}"
@@ -322,7 +444,60 @@
                                 <CheckBox Content="Show FPS and location" Margin="4,1,4,5"
                                           IsChecked="{Binding ShowStatsOverlay}"
                                           ToolTip="Show the FPS counter and camera location in the viewport. Clear to hide both."/>
-                                <scene3D:SceneControlOptionsControl/>
+                                <!--the fork's scene options (its SceneControlOptionsControl), bound to this window-->
+                                <Grid Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" MinWidth="270" Margin="4,0,4,0">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                    </Grid.RowDefinitions>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <RadioButton GroupName="ViewOptionsWidgetMode" Content="Translate" IsChecked="{Binding IsTranslateMode}" Grid.Row="0" Grid.Column="0" VerticalAlignment="Center" Margin="0,1,12,1" ToolTip="Translate"/>
+                                    <RadioButton GroupName="ViewOptionsWidgetMode" Content="Rotate" IsChecked="{Binding IsRotateMode}" Grid.Row="0" Grid.Column="1" VerticalAlignment="Center" Margin="0,1,0,1" ToolTip="Rotate"/>
+                                    <RadioButton GroupName="ViewOptionsWidgetMode" Content="Scale" IsChecked="{Binding IsScaleMode}" Grid.Row="1" Grid.Column="0" VerticalAlignment="Center" Margin="0,1,12,1" ToolTip="Scale"/>
+                                    <RadioButton GroupName="ViewOptionsWidgetMode" Content="Uniform Scale" IsChecked="{Binding IsUniformScaleMode}" Grid.Row="1" Grid.Column="1" VerticalAlignment="Center" Margin="0,1,0,1" ToolTip="Uniform Scale"/>
+                                    <Separator Grid.Row="2" Grid.ColumnSpan="2" Margin="0,4,0,6"/>
+                                    <CheckBox Content="Local coords" IsChecked="{Binding UseLocalCoordsForWidget}" Grid.Row="3" Grid.Column="0" VerticalAlignment="Center" Margin="0,1,12,1"
+                                              ToolTip="Use local coordinates for the transform widget"/>
+                                    <CheckBox Content="Show collision" IsChecked="{Binding ShowCollision}" Grid.Row="3" Grid.Column="1" VerticalAlignment="Center" Margin="0,1,0,1"
+                                              ToolTip="Show collision meshes"/>
+                                    <CheckBox Content="Show light icons" IsChecked="{Binding ShowLightIcons}" Grid.Row="4" Grid.Column="0" VerticalAlignment="Center" Margin="0,1,12,1"
+                                              ToolTip="Show selection icons for light actors (the outliner's Lights category)"/>
+                                    <CheckBox Content="Volumes / models" IsChecked="{Binding ShowVolumes}" Grid.Row="4" Grid.Column="1" VerticalAlignment="Center" Margin="0,1,0,1"
+                                              ToolTip="Show volumes and actors that reference Model geometry (the outliner's Volumes category). Level Editor remembers this choice."/>
+                                    <CheckBox Content="Show volumetric meshes" IsChecked="{Binding ShowVolumetrics}" Grid.Row="5" Grid.Column="0" VerticalAlignment="Center" Margin="0,1,12,1"
+                                              ToolTip="Volumetrics are large spheroids used for fog, dust, etc. Since LEX can't display those effects, they just get in the way."/>
+                                    <CheckBox Content="Unlit" IsChecked="{Binding Unlit}" Grid.Row="5" Grid.Column="1" VerticalAlignment="Center" Margin="0,1,0,1"
+                                              ToolTip="Display the scene without lighting (the Lighting menu's Unlit mode)"/>
+                                    <Separator Grid.Row="6" Grid.ColumnSpan="2" Margin="0,4,0,6"/>
+                                    <CheckBox Content="Red channel" IsChecked="{Binding ShowRedChannel}" Grid.Row="7" Grid.Column="0" VerticalAlignment="Center" Margin="0,1,12,1"/>
+                                    <CheckBox Content="Green channel" IsChecked="{Binding ShowGreenChannel}" Grid.Row="7" Grid.Column="1" VerticalAlignment="Center" Margin="0,1,0,1"/>
+                                    <CheckBox Content="Blue channel" IsChecked="{Binding ShowBlueChannel}" Grid.Row="8" Grid.Column="0" VerticalAlignment="Center" Margin="0,1,12,1"/>
+                                    <CheckBox Content="Alpha channel" IsChecked="{Binding ShowAlphaChannel}" Grid.Row="8" Grid.Column="1" VerticalAlignment="Center" Margin="0,1,0,1"/>
+                                    <CheckBox Content="Alpha as black" IsChecked="{Binding SetAlphaToBlack}" Grid.Row="9" Grid.Column="0" VerticalAlignment="Center" Margin="0,1,12,1"/>
+                                    <TextBlock Text="Background color:" Grid.Column="0" Grid.Row="10" VerticalAlignment="Center" Margin="0,2,12,0"/>
+                                    <xctk:ColorPicker UsingAlphaChannel="False" SelectedColor="{Binding BackgroundColor}" Grid.Row="10" Grid.Column="1" Margin="0,2,0,0"/>
+                                </Grid>
+
+                                <Separator Margin="0,4,0,4"/>
+                                <TextBlock Text="Show" FontWeight="SemiBold" Margin="4,0,4,2"/>
+                                <CheckBox Content="Hidden actors" Margin="4,1" IsChecked="{Binding ShowHidden}"
+                                          ToolTip="Show actors and components that are hidden in game (bHidden, HiddenGame)"/>
+                                <CheckBox Content="Collision" Margin="4,1" IsChecked="{Binding ShowCollision}"
+                                          ToolTip="Draw collision geometry"/>
+                                <CheckBox Content="Selected light's reach" Margin="4,1,4,5" IsChecked="{Binding ShowLightReach}"
+                                          ToolTip="Tint and outline the meshes the selected light is eligible to light"/>
 
                                 <Separator Margin="0,4,0,4"/>
                                 <CheckBox Content="Use in-game mesh shaders" Margin="4,1,4,5"
@@ -370,91 +545,7 @@
                                           IsChecked="{Binding ShowCover}"
                                           ToolTip="Draw CoverLinks, cover slots, and their facing directions for all loaded levels. Vaultable slots and mantle connections are magenta."/>
                             </StackPanel>
-                        </xctk:DropDownButton.DropDownContent>
-                    </xctk:DropDownButton>
-                    <xctk:DropDownButton Content="Create Lightmass" MaxDropDownHeight="620" CloseOnFocusLoss="False"
-                                         BorderBrush="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}"
-                                         DropDownContentBackground="{DynamicResource {x:Static SystemColors.ControlBrushKey}}">
-                        <xctk:DropDownButton.DropDownContent>
-                            <Border Padding="6" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}">
-                                <StackPanel Width="330">
-                                    <TextBlock Text="Bake static lighting" FontWeight="SemiBold" Margin="0,0,0,5"/>
-                                    <TextBlock Text="Lights and occluding static meshes come from every loaded level. Select which writable levels receive generated lightmaps and shadow maps."
-                                               TextWrapping="Wrap" Margin="0,0,0,7"/>
-                                    <TextBlock Text="Target levels" FontWeight="SemiBold"/>
-                                    <Border BorderBrush="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}"
-                                            BorderThickness="1" Padding="4" Margin="0,3,0,7" MaxHeight="145">
-                                        <ScrollViewer VerticalScrollBarVisibility="Auto">
-                                            <ItemsControl ItemsSource="{Binding OpenFiles}">
-                                                <ItemsControl.ItemTemplate>
-                                                    <DataTemplate>
-                                                        <CheckBox Content="{Binding FileName}" IsChecked="{Binding IncludeInLightmass}"
-                                                                  IsEnabled="{Binding IsReadOnly, Converter={StaticResource InverseBooleanConverter}}"
-                                                                  ToolTip="Read-only levels still contribute lights and occlusion, but cannot receive baked data."/>
-                                                    </DataTemplate>
-                                                </ItemsControl.ItemTemplate>
-                                            </ItemsControl>
-                                        </ScrollViewer>
-                                    </Border>
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="125"/>
-                                        </Grid.ColumnDefinitions>
-                                        <Grid.RowDefinitions>
-                                            <RowDefinition Height="Auto"/>
-                                            <RowDefinition Height="Auto"/>
-                                            <RowDefinition Height="Auto"/>
-                                            <RowDefinition Height="Auto"/>
-                                            <RowDefinition Height="Auto"/>
-                                            <RowDefinition Height="Auto"/>
-                                            <RowDefinition Height="Auto"/>
-                                            <RowDefinition Height="Auto"/>
-                                            <RowDefinition Height="Auto"/>
-                                            <RowDefinition Height="Auto"/>
-                                            <RowDefinition Height="Auto"/>
-                                        </Grid.RowDefinitions>
-                                        <TextBlock Grid.Row="0" Text="Lightmap resolution" VerticalAlignment="Center"/>
-                                        <ComboBox Grid.Row="0" Grid.Column="1" ItemsSource="{Binding LightmassResolutions}"
-                                                  SelectedItem="{Binding LightmassResolution}" Margin="2"/>
-                                        <TextBlock Grid.Row="1" Text="Texture format" VerticalAlignment="Center"/>
-                                        <ComboBox Grid.Row="1" Grid.Column="1" ItemsSource="{Binding LightmassTextureFormats}"
-                                                  SelectedItem="{Binding LightmassTextureFormat}" Margin="2"
-                                                  ToolTip="DXT1 is compressed; ARGB is uncompressed."/>
-                                        <TextBlock Grid.Row="2" Text="Indirect/environment floor" VerticalAlignment="Center"/>
-                                        <xctk:SingleUpDown Grid.Row="2" Grid.Column="1" Value="{Binding LightmassAmbientIntensity}"
-                                                           Minimum="0" Maximum="10" Increment="0.01" FormatString="F2" Margin="2"/>
-                                        <TextBlock Grid.Row="3" Text="Ray shadow bias" VerticalAlignment="Center"/>
-                                        <xctk:SingleUpDown Grid.Row="3" Grid.Column="1" Value="{Binding LightmassShadowBias}"
-                                                           Minimum="0.01" Maximum="100" Increment="0.25" FormatString="F2" Margin="2"/>
-                                        <TextBlock Grid.Row="4" Text="Soft-shadow samples" VerticalAlignment="Center"/>
-                                        <xctk:IntegerUpDown Grid.Row="4" Grid.Column="1" Value="{Binding LightmassShadowSamples}"
-                                                            Minimum="1" Maximum="64" Increment="1" Margin="2"/>
-                                        <TextBlock Grid.Row="5" Text="Point/spot source radius" VerticalAlignment="Center"/>
-                                        <xctk:SingleUpDown Grid.Row="5" Grid.Column="1" Value="{Binding LightmassSourceRadius}"
-                                                           Minimum="0" Maximum="10000" Increment="1" FormatString="F1" Margin="2"/>
-                                        <TextBlock Grid.Row="6" Text="Directional source angle" VerticalAlignment="Center"/>
-                                        <xctk:SingleUpDown Grid.Row="6" Grid.Column="1" Value="{Binding LightmassDirectionalSourceAngle}"
-                                                           Minimum="0" Maximum="10" Increment="0.1" FormatString="F1" Margin="2"/>
-                                        <TextBlock Grid.Row="7" Text="TFC name (blank = auto)" VerticalAlignment="Center"/>
-                                        <TextBox Grid.Row="7" Grid.Column="1" Text="{Binding LightmassTextureCacheName, UpdateSourceTrigger=PropertyChanged}"
-                                                 Margin="2" VerticalContentAlignment="Center"/>
-                                        <TextBlock Grid.Row="8" Text="Worker threads (0 = auto)" VerticalAlignment="Center"/>
-                                        <xctk:IntegerUpDown Grid.Row="8" Grid.Column="1" Value="{Binding LightmassWorkerThreads}"
-                                                            Minimum="0" Maximum="256" Increment="1" Margin="2"/>
-                                        <TextBlock Grid.Row="9" Text="UV/spatial work tile" VerticalAlignment="Center"/>
-                                        <ComboBox Grid.Row="9" Grid.Column="1" ItemsSource="{Binding LightmassWorkTileSizes}"
-                                                  SelectedItem="{Binding LightmassWorkTileSize}" Margin="2"/>
-                                        <TextBlock Grid.Row="10" Text="Bake backend" VerticalAlignment="Center"/>
-                                        <ComboBox Grid.Row="10" Grid.Column="1" ItemsSource="{Binding LightmassBackends}"
-                                                  DisplayMemberPath="DisplayName" SelectedValuePath="Backend"
-                                                  SelectedValue="{Binding LightmassBackend}" Margin="2"/>
-                                    </Grid>
-                                    <TextBlock Text="Bulk mapping is automatic: architectural, large, and broad low-poly receivers use LightMap2D at exactly the selected resolution; compact or dense receivers use LightMap1D. Direct lighting and ray-traced static shadows are baked into the selected mapping. Existing outputs are replaced; TFC data is reused or created as needed."
-                                               TextWrapping="Wrap" Margin="0,0,0,7"/>
-                                    <Button Content="Create Lightmass" Command="{Binding GenerateStaticLightingCommand}" Padding="8,4"/>
-                                </StackPanel>
-                            </Border>
+                            </ScrollViewer>
                         </xctk:DropDownButton.DropDownContent>
                     </xctk:DropDownButton>
                     <xctk:DropDownButton Content="Navigation" MaxDropDownHeight="520" CloseOnFocusLoss="False"
@@ -510,6 +601,13 @@
                     </xctk:DropDownButton>
                     <Separator Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" />
                     <ToggleButton Content="Top Down" ToolTip="Toggle top-down orthographic view (Numpad 5)" IsChecked="{Binding IsOrthographicView}"/>
+                    <StackPanel Orientation="Horizontal" Margin="4,0,0,0" VerticalAlignment="Center"
+                                Visibility="{Binding IsOrthographicView, Converter={StaticResource BoolToVisibilityConverter}}"
+                                ToolTip="Hide everything above this height, to see beneath a level's ceilings. Starts at the camera's height when Top Down is turned on.">
+                        <TextBlock Text="Clip height" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                        <xctk:SingleUpDown Width="90" Value="{Binding TopDownClipHeight}" Increment="100" FormatString="F0" ButtonSpinnerLocation="Left"
+                                           VerticalContentAlignment="Center" AutomationProperties.Name="Top-down clip height"/>
+                    </StackPanel>
                     <Separator Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" />
                     <CheckBox Content="Z Cutoff" VerticalAlignment="Center" Margin="2,0,4,0"
                               IsChecked="{Binding ZCutoffEnabled}"
@@ -520,84 +618,156 @@
                                        IsEnabled="{Binding ZCutoffEnabled}"
                                        ToolTip="Z position cutoff — actors at or above this height are hidden"/>
                 </ToolBar>
+                <ToolBar ToolBarTray.IsLocked="True" OverflowMode="Never">
+                    <!--upstream: gizmo mode, local axes, viewport lighting and camera speed-->
+                    <RadioButton GroupName="ToolbarWidgetMode" Content="Move" IsChecked="{Binding IsTranslateMode}" ToolTip="Translate the selected actor" VerticalAlignment="Center" Margin="2,0"/>
+                    <RadioButton GroupName="ToolbarWidgetMode" Content="Rotate" IsChecked="{Binding IsRotateMode}" ToolTip="Rotate the selected actor" VerticalAlignment="Center" Margin="2,0"/>
+                    <RadioButton GroupName="ToolbarWidgetMode" Content="Scale" IsChecked="{Binding IsScaleMode}" ToolTip="Scale the selected actor" VerticalAlignment="Center" Margin="2,0"/>
+                    <RadioButton GroupName="ToolbarWidgetMode" Content="Uniform" IsChecked="{Binding IsUniformScaleMode}" ToolTip="Scale uniformly" VerticalAlignment="Center" Margin="2,0"/>
+                    <ToggleButton Content="Local" IsChecked="{Binding UseLocalCoordsForWidget}" ToolTip="Use local transform axes (L). Off uses world axes." Margin="4,0,0,0"/>
+                    <Separator Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" />
+                    <Menu Background="Transparent" VerticalAlignment="Center">
+                        <MenuItem x:Name="LightingMenu" Header="{Binding LightingMenuHeader}" Padding="6,2" ToolTip="Choose viewport lighting and isolate lightmaps or runtime lighting.">
+                            <MenuItem x:Name="LevelLightingMenuItem" Header="Level lighting" IsChecked="{Binding IsLevelLighting, Mode=OneWay}" Command="{Binding SetLightingModeCommand}" CommandParameter="{x:Static scene3D:ViewportLightingMode.Level}" StaysOpenOnClick="True" ToolTip="Use the level's lightmaps and runtime lighting. Unsupported materials use neutral lighting."/>
+                            <MenuItem x:Name="PreviewLightingMenuItem" Header="Preview lighting" IsChecked="{Binding IsPreviewLighting, Mode=OneWay}" Command="{Binding SetLightingModeCommand}" CommandParameter="{x:Static scene3D:ViewportLightingMode.Preview}" StaysOpenOnClick="True" ToolTip="Preview direct lighting and approximate shadows from the current level lights and geometry, without sampling existing lightmaps and shadowmaps. Eligibility follows the selected assignment policy. Does not include baked bounced lighting. Unsupported materials use neutral lighting."/>
+                            <MenuItem Header="Preview / bake assignments">
+                                <MenuItem Header="Preserve existing assignments" IsChecked="{Binding PreserveAssignments, Mode=OneWay}" Command="{Binding SetAssignmentPolicyCommand}" CommandParameter="{x:Static lightmass:LightAssignmentPolicy.PreserveExistingAssignments}" StaysOpenOnClick="True"/>
+                                <MenuItem Header="Recompute assignments" IsChecked="{Binding RecomputeAssignments, Mode=OneWay}" Command="{Binding SetAssignmentPolicyCommand}" CommandParameter="{x:Static lightmass:LightAssignmentPolicy.RecomputeAssignments}" StaysOpenOnClick="True"/>
+                            </MenuItem>
+                            <MenuItem x:Name="NeutralLightingMenuItem" Header="Neutral lighting" IsChecked="{Binding IsNeutralLighting, Mode=OneWay}" Command="{Binding SetLightingModeCommand}" CommandParameter="{x:Static scene3D:ViewportLightingMode.Neutral}" StaysOpenOnClick="True" ToolTip="Use a neutral light to inspect materials and geometry, independent of the level's lights and lightmaps."/>
+                            <MenuItem x:Name="UnlitMenuItem" Header="Unlit" IsChecked="{Binding IsUnlit, Mode=OneWay}" Command="{Binding SetLightingModeCommand}" CommandParameter="{x:Static scene3D:ViewportLightingMode.Unlit}" StaysOpenOnClick="True" ToolTip="Show material colors without lighting."/>
+                            <Separator/>
+                            <MenuItem x:Name="DynamicLightingMenuItem" Header="Runtime lighting" IsCheckable="True" IsChecked="{Binding UseDynamicLighting}" IsEnabled="{Binding IsLevelLighting}" StaysOpenOnClick="True" ToolTip="Include lighting evaluated at runtime, including lights with precomputed shadowmaps. Lights baked into a lightmap remain part of that lightmap."/>
+                            <MenuItem x:Name="LightMapsMenuItem" Header="Lightmaps" IsCheckable="True" IsChecked="{Binding UseLightMaps}" IsEnabled="{Binding IsLevelLighting}" StaysOpenOnClick="True" ToolTip="Include baked texture and vertex lighting. Turn off Runtime lighting to view lightmaps alone."/>
+                        </MenuItem>
+                    </Menu>
+                    <Separator Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" />
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" ToolTip="How fast the camera flies, in units per second, with W A S D Q E. The scroll wheel and left or middle dragging scale with it. Hold Shift with the keys or the wheel to go ten times faster.">
+                        <TextBlock Text="Camera speed" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                        <xctk:SingleUpDown Width="80" Value="{Binding CameraSpeed}" Minimum="1" DefaultValue="500" DisplayDefaultValueOnEmptyText="True" Increment="250" FormatString="F0"
+                                           ButtonSpinnerLocation="Left" VerticalContentAlignment="Center" AutomationProperties.Name="Camera speed"/>
+                    </StackPanel>
+                </ToolBar>
             </WrapPanel>
+
+            <Border DockPanel.Dock="Top" Background="#351519" BorderBrush="#F05252" BorderThickness="0,0,0,2" Padding="20,16" Margin="0,0,0,4"
+                    Visibility="{Binding IsBakePreview, Converter={StaticResource BoolToVisibilityConverter}}">
+                <TextBlock Text="BAKED LIGHTING PREVIEW" Foreground="#FF6464" FontSize="30" FontWeight="Bold"
+                           HorizontalAlignment="Center" TextWrapping="Wrap" TextAlignment="Center"/>
+            </Border>
 
             <StatusBar Height="23" DockPanel.Dock="Bottom">
                 <sharedToolControls:StatusBarGameIDIndicator Visibility="{Binding HasAnyFileOpen, Converter={StaticResource BoolToVisibilityConverter}}"
-                                                 GameType="{Binding Pcc.Game}" Margin="0,-4"/>
+                                                 GameType="{Binding Game}" Margin="0,-4"/>
                 <StatusBarItem>
                     <TextBlock x:Name="StatusBar_LeftMostText"/>
                 </StatusBarItem>
                 <sharedToolControls:PackageMountWarning Package="{Binding Pcc}" />
-                <StatusBarItem HorizontalAlignment="Right" Visibility="{Binding Pcc, Converter={StaticResource NullVisibilityConverter}}">
+                <StatusBarItem HorizontalAlignment="Right">
                     <StackPanel Orientation="Horizontal">
-                        <TextBlock Name="StatusBar_RightSide_LastSaved" Text="{Binding Pcc.LastSaved, StringFormat='Last saved at {0}'}" Foreground="Gray"/>
+                        <!--the selected actor, and the file it's in-->
+                        <TextBlock Margin="0,0,12,0" ToolTip="{Binding SelectedActor.OwningFile.FilePath}"><Run Text="{Binding SelectedActor.ActorName, Mode=OneWay, TargetNullValue=''}"/><Run Text="{Binding SelectedActor.OwningFileName, Mode=OneWay, StringFormat=' ({0})', TargetNullValue=''}"/></TextBlock>
+                        <TextBlock Text="{Binding CurrentModeName}" Margin="0,0,12,0" Foreground="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}"
+                                   Visibility="{Binding HasAnyFileOpen, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                        <TextBlock Name="StatusBar_RightSide_LastSaved" Text="{Binding Pcc.LastSaved, StringFormat='Last saved at {0}'}" Foreground="Gray"
+                                   Visibility="{Binding Pcc, Converter={StaticResource NullVisibilityConverter}}"/>
                     </StackPanel>
                 </StatusBarItem>
             </StatusBar>
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*" MinHeight="300"/>
+                </Grid.RowDefinitions>
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition MinWidth="80" Width="300"/>
                     <ColumnDefinition MinWidth="5" MaxWidth="5"/>
                     <ColumnDefinition Width="*" MinWidth="300"/>
-                    <ColumnDefinition MinWidth="5" MaxWidth="5"/>
-                    <ColumnDefinition MinWidth="80" Width="340"/>
+                    <ColumnDefinition x:Name="DetailsSplitterColumn" MinWidth="5" MaxWidth="5"/>
+                    <ColumnDefinition x:Name="DetailsColumn" MinWidth="80" Width="340"/>
                 </Grid.ColumnDefinitions>
 
 
                 <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Stretch"/>
-                <GridSplitter Grid.Column="3" Width="5" HorizontalAlignment="Stretch"/>
+                <GridSplitter Grid.Column="3" Width="5" HorizontalAlignment="Stretch" Visibility="{Binding CanEditScene, Converter={StaticResource BoolToVisibilityConverter}}"/>
 
-                <DockPanel Grid.Column="0" >
+                <TabControl Grid.Column="0" Padding="0">
+                    <TabItem Header="World Outliner" IsSelected="True">
+                <DockPanel>
                     <StackPanel  DockPanel.Dock="Top" Orientation="Horizontal" VerticalAlignment="Center" Margin="5,0,0,0" Height="24">
                         <xctk:WatermarkTextBox Watermark="UIndex" Name="Goto_TextBox" Width="70" KeyUp="Goto_TextBox_KeyUp" IsEnabled="{Binding HasAnyFileOpen}"  VerticalContentAlignment="Center"/>
                         <Button Content="Goto #" Click="GotoButton_Clicked" IsEnabled="{Binding HasAnyFileOpen}" Style="{StaticResource {x:Type Button}}" Padding="7,0"/>
-                        <Button Content="Add File..." Command="{Binding AddFileCommand}" Style="{StaticResource {x:Type Button}}" Padding="7,0" Margin="4,0,0,0"
+                        <Button Content="Add File..." Command="{Binding AddFilesCommand}" Style="{StaticResource {x:Type Button}}" Padding="7,0" Margin="4,0,0,0"
                                 ToolTip="Add another level file to the scene (Ctrl+Shift+O)"/>
                     </StackPanel>
                     <xctk:WatermarkTextBox DockPanel.Dock="Top" Watermark="Search actors..." Name="ActorFilter_TextBox" Margin="5,2,5,2" Height="22"
-                                           KeyUp="ActorFilter_TextBox_KeyUp" IsEnabled="{Binding HasAnyFileOpen}" VerticalContentAlignment="Center"/>
+                                           TextChanged="ActorFilter_TextBox_TextChanged" IsEnabled="{Binding HasAnyFileOpen}" VerticalContentAlignment="Center"
+                                           ToolTip="Search actor names, tags, classes, subtitles, categories, or #UIndex"/>
+                    <DockPanel DockPanel.Dock="Top" Margin="5,0,5,2">
+                        <Button DockPanel.Dock="Right" Content="Collapse all" Click="CollapseOutlinerGroups_Clicked" IsEnabled="{Binding HasAnyFileOpen}" Padding="5,0"
+                                ToolTip="Collapse all outliner categories and level groups"/>
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock Text="Group by" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                            <RadioButton GroupName="OutlinerGrouping" Content="Level" IsChecked="{Binding GroupActorsByLevel}" Margin="0,0,6,0" VerticalAlignment="Center"
+                                         ToolTip="Group actors by their level package"/>
+                            <RadioButton GroupName="OutlinerGrouping" Content="Category" IsChecked="{Binding GroupActorsByCategory}" VerticalAlignment="Center"
+                                         ToolTip="Group actors by category across all loaded levels. Each category's eye shows or hides it in the viewport (volumes, lights, effects helpers and others start hidden)."/>
+                        </StackPanel>
+                    </DockPanel>
 
+                    <TextBlock DockPanel.Dock="Bottom" Text="{Binding Actors.BindableCount, StringFormat='{}{0} actors loaded'}" Margin="5,2" FontSize="11"
+                               Foreground="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}"/>
                     <TextBlock DockPanel.Dock="Bottom" Text="{Binding TextBelowActors}" TextWrapping="Wrap"/>
 
                     <ListBox DockPanel.Dock="Bottom" ItemsSource="{Binding ActorsView}" Name="MeshExportsList" SelectedItem="{Binding SelectedActor}" HorizontalContentAlignment="Stretch"
                              VirtualizingStackPanel.IsVirtualizing="True" VirtualizingStackPanel.VirtualizationMode="Recycling"
-                             VirtualizingPanel.IsVirtualizingWhenGrouping="True"
+                             VirtualizingPanel.IsVirtualizingWhenGrouping="True" ScrollViewer.CanContentScroll="True"
+                             IsVisibleChanged="MeshExportsList_IsVisibleChanged"
                              MouseDoubleClick="MeshExportsList_MouseDoubleClick"
                              ContextMenuOpening="MeshExportsList_ContextMenuOpening">
                         <ListBox.GroupStyle>
                             <GroupStyle>
+                                <GroupStyle.ContainerStyle>
+                                    <Style TargetType="GroupItem">
+                                        <Setter Property="Template">
+                                            <Setter.Value>
+                                                <ControlTemplate TargetType="GroupItem">
+                                                    <Expander Style="{StaticResource OutlinerGroupExpander}" IsExpanded="{Binding IsExpanded, Mode=TwoWay}"
+                                                              Header="{TemplateBinding Content}" HeaderTemplate="{TemplateBinding ContentTemplate}">
+                                                        <Expander.DataContext>
+                                                            <MultiBinding Converter="{StaticResource OutlinerGroupStateConverter}" Mode="OneWay">
+                                                                <Binding Path="Content" RelativeSource="{RelativeSource TemplatedParent}"/>
+                                                                <Binding Path="Data" Source="{StaticResource bindingProxy}"/>
+                                                            </MultiBinding>
+                                                        </Expander.DataContext>
+                                                        <ItemsPresenter/>
+                                                    </Expander>
+                                                </ControlTemplate>
+                                            </Setter.Value>
+                                        </Setter>
+                                    </Style>
+                                </GroupStyle.ContainerStyle>
                                 <GroupStyle.HeaderTemplate>
                                     <DataTemplate>
-                                        <DockPanel x:Name="FileGroupHeader" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" Margin="0,2,0,0">
-                                            <Button DockPanel.Dock="Right" Content="X" Padding="4,0" Margin="2,0"
-                                                    Command="{Binding Data.CloseFileCommand, Source={StaticResource bindingProxy}}"
-                                                    CommandParameter="{Binding Name}" ToolTip="Close this file" FontSize="10"/>
-                                            <Button DockPanel.Dock="Right" Content="Save" Padding="4,0" Margin="2,0"
-                                                    Command="{Binding Data.SaveSingleFileCommand, Source={StaticResource bindingProxy}}"
-                                                    CommandParameter="{Binding Name}" ToolTip="Save this file" FontSize="10"/>
-                                            <Button DockPanel.Dock="Right" Content="Commit" Padding="4,0" Margin="2,0"
-                                                    Command="{Binding Data.CommitSingleFileCommand, Source={StaticResource bindingProxy}}"
-                                                    CommandParameter="{Binding Name}" ToolTip="Commit Level Editor changes for this file" FontSize="10"/>
-                                            <ToggleButton DockPanel.Dock="Right" Padding="2,0" Margin="2,0"
-                                                          IsChecked="{Binding Name.IsReadOnly, Mode=TwoWay}"
-                                                          ToolTip="Toggle read-only — actors cannot be edited when enabled">
-                                                <Grid Width="12" Height="12">
-                                                    <fa:ImageAwesome Icon="Solid_Lock" Width="12"
-                                                                     Visibility="{Binding IsChecked, RelativeSource={RelativeSource AncestorType=ToggleButton}, Converter={StaticResource BoolToVisibilityConverter}}"/>
-                                                    <fa:ImageAwesome Icon="Solid_LockOpen" Width="12"
-                                                                     Visibility="{Binding IsChecked, RelativeSource={RelativeSource AncestorType=ToggleButton}, Converter={StaticResource BoolToVisibilityConverter}, ConverterParameter='Not'}"/>
-                                                </Grid>
-                                            </ToggleButton>
-                                            <TextBlock Text="{Binding Name.FileName, Mode=OneTime}" FontWeight="Bold" Padding="4,2" VerticalAlignment="Center"/>
-                                        </DockPanel>
+                                        <ContentControl Content="{Binding}" HorizontalContentAlignment="Stretch">
+                                            <ContentControl.Style>
+                                                <Style TargetType="ContentControl">
+                                                    <Setter Property="ContentTemplate" Value="{StaticResource OutlinerCategoryHeader}"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsBottomLevel}" Value="True">
+                                                            <Setter Property="ContentTemplate" Value="{StaticResource OutlinerLevelHeader}"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </ContentControl.Style>
+                                        </ContentControl>
                                     </DataTemplate>
                                 </GroupStyle.HeaderTemplate>
                             </GroupStyle>
                         </ListBox.GroupStyle>
                         <ListBox.Resources>
                             <DataTemplate DataType="{x:Type local:ActorProxy}">
-                                <Grid HorizontalAlignment="Stretch" Margin="0" x:Name="ExportContainer">
+                                <Grid HorizontalAlignment="Stretch" Margin="0" x:Name="ExportContainer" Background="Transparent" ToolTip="{Binding CoverageToolTip}">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="Auto"/>
                                         <ColumnDefinition Width="*"/>
@@ -606,8 +776,8 @@
                                         <RowDefinition Height="Auto"/>
                                         <RowDefinition Height="Auto"/>
                                     </Grid.RowDefinitions>
-                                    <TextBlock Grid.Row="0" Grid.Column="0" Text="{Binding Export.UIndex, Mode=OneTime}" VerticalAlignment="Center" Margin="0,0,5,0" FontWeight="Bold" ToolTip="Export index"/>
-                                    <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding DisplayText, Mode=OneTime}" VerticalAlignment="Center"/>
+                                    <TextBlock Grid.Row="0" Grid.Column="0" Text="{Binding IndexLabel}" VerticalAlignment="Center" Margin="0,0,5,0" FontWeight="Bold" ToolTip="Export index"/>
+                                    <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding DisplayText}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
                                     <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding DisplaySubtitle}" FontSize="10" Foreground="{DynamicResource SecondaryTextBrush}"
                                                TextTrimming="CharacterEllipsis" ToolTip="{Binding DisplaySubtitle}"
                                                Visibility="{Binding DisplaySubtitle, Converter={StaticResource NullVisibilityConverter}}"/>
@@ -616,14 +786,28 @@
                                     <DataTrigger Binding="{Binding IsDirty}" Value="true">
                                         <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.ControlLightBrushKey}}" TargetName="ExportContainer"/>
                                     </DataTrigger>
+                                    <DataTrigger Binding="{Binding IsPendingChange}" Value="true">
+                                        <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.ControlLightBrushKey}}" TargetName="ExportContainer"/>
+                                    </DataTrigger>
                                 </DataTemplate.Triggers>
                             </DataTemplate>
-                            <Style TargetType="{x:Type ListBoxItem}">
+                            <Style TargetType="{x:Type ListBoxItem}" BasedOn="{StaticResource {x:Type ListBoxItem}}">
                                 <Setter Property="Padding" Value="0"/>
                             </Style>
                         </ListBox.Resources>
                     </ListBox>
                 </DockPanel>
+                    </TabItem>
+                    <TabItem Header="Place Actors" Visibility="{Binding CanEditScene, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <local:PlaceActorsPanel/>
+                    </TabItem>
+                    <TabItem Header="Terrain" Visibility="{Binding CanEditScene, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <local:TerrainPanel/>
+                    </TabItem>
+                    <TabItem Header="Problems">
+                        <local:ProblemsPanel/>
+                    </TabItem>
+                </TabControl>
 
                 <scene3D:SceneRenderControl Grid.Column="2" x:Name="SceneViewer" MaximumFramesPerSecond="60"
                                             PreviewMouseDown="SceneViewer_PreviewMouseDownForMaterialPicking"
@@ -705,7 +889,7 @@
                     </StackPanel>
                 </Border>
 
-                <Grid Grid.Column="4">
+                <Grid Grid.Column="4" Visibility="{Binding CanEditScene, Converter={StaticResource BoolToVisibilityConverter}}">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*" MinHeight="120"/>
@@ -742,8 +926,16 @@
                     </TabControl>
                     <GridSplitter Grid.Row="2" Height="5" HorizontalAlignment="Stretch"
                                   Background="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}"/>
-                    <ScrollViewer Grid.Row="3" VerticalScrollBarVisibility="Auto">
+                    <ScrollViewer Grid.Row="3" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                         <StackPanel>
+                    <!--upstream: what the selected actor is, and why it's drawn as it is-->
+                    <StackPanel Margin="7,5,7,0" Visibility="{Binding SelectedActor, Converter={StaticResource NullVisibilityConverter}}">
+                        <TextBlock Text="{Binding SelectedActor.CoverageLabel}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                        <TextBlock Text="{Binding SelectedActor.CoverageReason}" TextWrapping="Wrap" FontSize="11"
+                                   Foreground="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}"/>
+                        <TextBlock Text="Read-only package" Foreground="{StaticResource EditorDirty}" Margin="0,3,0,0"
+                                   Visibility="{Binding SelectedActor.OwningFile.IsReadOnly, Converter={StaticResource BoolToVisibilityConverter}, FallbackValue=Collapsed}"/>
+                    </StackPanel>
                     <GroupBox Header="Camera" Margin="5,5,5,0" BorderThickness="2" Padding="5"
                               IsEnabled="{Binding HasAnyFileOpen}"
                               Visibility="Collapsed">
@@ -816,21 +1008,18 @@
                                 <RowDefinition Height="Auto"/>
                                 <RowDefinition Height="Auto"/>
                             </Grid.RowDefinitions>
-                            <!-- Translate -->
                             <CheckBox Grid.Row="0" Grid.Column="0" Content="Translate" VerticalAlignment="Center"
                                       IsChecked="{Binding TranslateSnapEnabled}" Margin="0,2,0,2"/>
                             <xctk:SingleUpDown Grid.Row="0" Grid.Column="1" Value="{Binding TranslateSnapValue}"
                                                Minimum="0.001" FormatString="F1" ButtonSpinnerLocation="Left"
                                                ToolTip="Snap step in world units" Margin="5,2,0,2"/>
                             <TextBlock Grid.Row="0" Grid.Column="2" Text="units" VerticalAlignment="Center" Margin="4,0,0,0"/>
-                            <!-- Rotation -->
                             <CheckBox Grid.Row="1" Grid.Column="0" Content="Rotation" VerticalAlignment="Center"
                                       IsChecked="{Binding RotateSnapEnabled}" Margin="0,2,0,2"/>
                             <xctk:SingleUpDown Grid.Row="1" Grid.Column="1" Value="{Binding RotateSnapValue}"
                                                Minimum="0.1" Maximum="180" FormatString="F1" ButtonSpinnerLocation="Left"
                                                ToolTip="Snap step in degrees" Margin="5,2,0,2"/>
                             <TextBlock Grid.Row="1" Grid.Column="2" Text="°" VerticalAlignment="Center" Margin="4,0,0,0"/>
-                            <!-- Scale -->
                             <CheckBox Grid.Row="2" Grid.Column="0" Content="Scale" VerticalAlignment="Center"
                                       IsChecked="{Binding ScaleSnapEnabled}" Margin="0,2,0,2"/>
                             <xctk:SingleUpDown Grid.Row="2" Grid.Column="1" Value="{Binding ScaleSnapValue}"
@@ -841,7 +1030,7 @@
                     </GroupBox>
                     <WrapPanel x:Name="wrapPanel" IsEnabled="{Binding ., Converter={StaticResource NullEnabledConverter}}" DataContext="{Binding SelectedActor}">
                     <GroupBox Header="Light" Margin="5,0,5,5" BorderThickness="2" Padding="5"
-                              Visibility="{Binding HasLightSettings, Converter={StaticResource BoolToVisibilityConverter}}">
+                              Visibility="{Binding HasLightSettings, Converter={StaticResource BoolToVisibilityConverter}, FallbackValue=Collapsed}">
                         <StackPanel Orientation="Vertical">
                             <StackPanel Orientation="Horizontal"
                                         Visibility="{Binding HasLightRadius, Converter={StaticResource BoolToVisibilityConverter}}">
@@ -1096,6 +1285,12 @@
                         </StackPanel>
                     </GroupBox>
                     </WrapPanel>
+                    <!--upstream detail panels: mesh and material choices, decal, spline, the light's channels and shadows, and actor lighting-->
+                    <local:MeshPanel/>
+                    <local:DecalPanel/>
+                    <local:SplinePanel/>
+                    <local:LightPanel/>
+                    <local:ActorLightingPanel/>
                         </StackPanel>
                     </ScrollViewer>
 
@@ -1127,7 +1322,7 @@
                                                               IsMorphEditorOnly="True"/>
                 </Grid>
 
-                <Grid Grid.Column="0" Grid.ColumnSpan="5" Visibility="{Binding HasAnyFileOpen, Converter={StaticResource BoolToVisibilityConverter}, ConverterParameter='Not'}"
+                <Grid Grid.Column="0" Grid.ColumnSpan="5" Visibility="{Binding ShowLandingPage, Converter={StaticResource BoolToVisibilityConverter}}"
                       Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}">
                     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
                                   HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
@@ -1309,6 +1504,7 @@
                     </ScrollViewer>
                 </Grid>
             </Grid>
+            </Grid>
         </DockPanel>
     </xctk:BusyIndicator>
-</bases:WPFBase>
+</misc:NotifyPropertyChangedWindowBase>

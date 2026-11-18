@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
@@ -347,7 +347,7 @@ public static class ToolSet
             icon = Application.Current.FindResource("iconLiveLevelEditor") as ImageSource,
             open = () =>
             {
-                MEGame[] supportedGames = [MEGame.ME2, MEGame.ME3, MEGame.LE1, MEGame.LE2, MEGame.LE3];
+                MEGame[] supportedGames = [MEGame.ME2, MEGame.ME3, MEGame.LE1, MEGame.LE2, MEGame.LE3, MEGame.LMP];
                 var gameDialog = new GameSelectionDialog(null, "Live Level Editor game selector",
                     promptText: "Choose a game to use Live Level Editor with:", supportedGames: supportedGames,
                     defaultGame: GameController.GetRunningMEGame(supportedGames) ?? MEGame.LE3);
@@ -879,7 +879,20 @@ public static class ToolSet
             },
             tags = ["user", "developer", "me1", "me2", "me3"],
             category = "Core Editors",
-            description = "Level Editor is a minimalist level editor, capable only of displaying and editing the positions, rotations, and scale of Actors.",
+            description = "Level Editor can display and edit Legendary Edition level files.",
+        });
+        set.Add(new Tool
+        {
+            name = "Lightmass Baker",
+            type = typeof(Tools.LightmassBaker.LightmassBakerWindow),
+            icon = Application.Current.FindResource("iconLightmassBaker") as ImageSource,
+            open = () =>
+            {
+                (new Tools.LightmassBaker.LightmassBakerWindow()).Show();
+            },
+            tags = ["user", "developer", "me1", "me2", "me3", "lightmap", "lighting", "lightmass", "bake", "shadow"],
+            category = "Meshes + Textures",
+            description = "Lightmass Baker rebuilds static lighting for LE1, LE2 and LE3, preserving existing lightmap types and supporting shadow-only meshes. Requires UDK-2015-02.",
         });
         set.Add(new Tool
         {

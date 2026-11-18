@@ -1,4 +1,4 @@
-using LegendaryExplorer.Tools.LevelEditor;
+﻿using LegendaryExplorer.Tools.LevelEditor;
 using LegendaryExplorer.Tools.LevelEditor.Scene3D;
 using LegendaryExplorer.Misc.AppSettings;
 using LegendaryExplorerCore.Packages;
@@ -16,16 +16,14 @@ using Color = System.Windows.Media.Color;
 
 namespace LegendaryExplorer.Tools.AssetDatabase.VFXPreview;
 
+/// <summary>
+/// The Asset Database's particle system preview. It is an upstream <see cref="MeshRenderContext"/> like the Level Editor's: effects draw through
+/// its game-shader path, caches and bind tracker (see <see cref="VfxGameShaderRenderer.RenderNativeMaterial{TVertex}"/>), into its linear
+/// MSAA scene color, which its resolve tonemaps. Soft particles and depth-biased materials sample a copy of the scene depth
+/// (<see cref="MeshRenderContext.CopySceneDepthForEffects"/>), taken after the opaque effects and actor have drawn.
+/// </summary>
 public sealed class VfxPreviewRenderContext : MeshRenderContext, IVfxDepthStateProvider
 {
-    /// <summary>
-    /// Native soft-particle materials require scene depth even when there is no opaque preview scene behind them.
-    /// Sampling zero represents the far plane in the reversed depth buffer.
-    /// </summary>
-    public override ShaderResourceView PreviewSceneDepthTextureView => BlackTexView;
-
-    protected override int PreferredSampleCount => 1;
-    public override bool UsesLegacyNativeMeshColorPipeline => true;
 
     private sealed class ActorMeshResources : IDisposable
     {
@@ -52,15 +50,17 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext, IVfxDepthStateP
     private readonly VfxBillboardRenderer billboardRenderer = new();
     private readonly VfxMeshRenderer meshRenderer = new();
     private readonly VfxGameShaderRenderer gameShaderRenderer = new();
-    private VfxSceneColorBuffer sceneColorBuffer;
     private readonly BatchedPrimitives primitives = new();
     private readonly Dictionary<VfxEmitterDefinition, PreviewTextureCache.TextureEntry> textures = [];
     private readonly Dictionary<VfxEmitterDefinition, VfxMeshRenderer.MeshEmitterResources> meshEmitters = [];
-    private readonly Dictionary<VfxBlendMode, BlendState> blendStates = [];
-    private readonly Dictionary<(bool DepthTest, bool DepthWrite), DepthStencilState> depthStates = [];
 
-    public DepthStencilState GetVfxDepthState(bool depthTest, bool depthWrite)
-        => depthStates.GetValueOrDefault((depthTest, depthWrite));
+    /// <summary>The context's own depth states (reversed-Z): see <see cref="MeshRenderContext.GetEffectsDepthState"/></summary>
+    public DepthStencilState GetVfxDepthState(bool depthTest, bool depthWrite) => GetEffectsDepthState(depthTest, depthWrite);
+
+    // Reused by the blended pass every frame
+    private readonly List<float[]> blendedDepthScratch = [];
+    private readonly List<IReadOnlyList<float>> blendedDepthViews = [];
+    private readonly List<VfxParticle> blendedParticleScratch = [];
     private readonly Dictionary<string, bool> luminanceOpacityCache = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<PreviewActorModelComponent, ActorMeshResources> actorModels = [];
     private readonly Dictionary<string, Matrix4x4> actorBoneTransforms = new(StringComparer.OrdinalIgnoreCase);
@@ -145,14 +145,7 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext, IVfxDepthStateP
         {
             shadingMode = value;
             Wireframe = value == VfxPreviewShadingMode.Wireframe;
-            if (value == VfxPreviewShadingMode.Unlit)
-            {
-                RenderFlags |= ShaderFlags.Unlit;
-            }
-            else
-            {
-                RenderFlags &= ~ShaderFlags.Unlit;
-            }
+            SetUnlit(value == VfxPreviewShadingMode.Unlit);
         }
     }
 
@@ -165,7 +158,7 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext, IVfxDepthStateP
         Camera.Pitch = -0.15f;
         Camera.FocusDepth = DefaultFocusDepth;
         Background = VfxPreviewBackground.NeutralGray;
-        RenderFlags |= ShaderFlags.Unlit | ShaderFlags.PreserveTextureAlpha;
+        RenderFlags |= ShaderFlags.Unlit;
         SceneLights.Add(new SceneLight(new Vector3(-200, -200, 300), 1200, Vector3.One, 1.25f, false, Vector3.Zero, 0, 0));
         SceneLights.Add(new SceneLight(new Vector3(250, 100, 100), 900, new Vector3(0.55f, 0.65f, 1), 0.6f, false, Vector3.Zero, 0, 0));
         RenderScene += RenderPreview;
@@ -193,9 +186,6 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext, IVfxDepthStateP
         base.CreateResources();
         billboardRenderer.CreateResources(this);
         meshRenderer.CreateResources(this);
-        sceneColorBuffer = new VfxSceneColorBuffer(Device);
-        CreateBlendStates();
-        CreateDepthStates();
         RefreshTextures();
     }
 
@@ -824,10 +814,7 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext, IVfxDepthStateP
 
                 section.Material.IsSupported = true;
                 section.IsOpaque = section.Material.BlendMode is VfxBlendMode.Opaque or VfxBlendMode.Masked;
-                blendStates.TryGetValue(section.Material.BlendMode, out BlendState blendState);
-                section.BlendState = blendState;
-                depthStates.TryGetValue((!section.Material.DisableDepthTest, section.IsOpaque), out DepthStencilState depthState);
-                section.DepthState = depthState;
+                section.Blend = VfxMaterialBlending.CreateBlendDescription(section.Material.BlendMode);
             }
 
             meshEmitters[emitter] = resources;
@@ -1303,32 +1290,13 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext, IVfxDepthStateP
         Matrix4x4 Transform,
         Action<IReadOnlyList<VfxParticle>> Render);
 
-    public override void CreateSizeDependentResources(int width, int height, SharpDX.Direct3D11.Texture2D newBackBuffer)
-    {
-        base.CreateSizeDependentResources(width, height, newBackBuffer);
-        sceneColorBuffer.Resize(width, height);
-    }
-
-    public override void DisposeSizeDependentResources()
-    {
-        sceneColorBuffer?.DisposeSizeDependentResources();
-        base.DisposeSizeDependentResources();
-    }
-
     private void RenderPreview(object sender, EventArgs args)
     {
-        sceneColorBuffer.Begin(ImmediateContext, DepthBufferView, HitBufferView,
-            new SharpDX.Mathematics.Interop.RawColor4(
-                BackgroundColor.R / 255f, BackgroundColor.G / 255f,
-                BackgroundColor.B / 255f, BackgroundColor.A / 255f));
+        // Cooked particle shaders output HDR emissive color for the game's tonemapping post-process. Upstream's resolve tonemaps game-shaded
+        // pixels (scene-color alpha 2), and additive or translucent particles never mark the pixels they cover: so the whole background is
+        // marked, with the color that tonemaps back to the chosen one
+        ClearSceneColorAsGameShaded(BackgroundColor);
         RenderPreviewEffects();
-    }
-
-    protected override void ResolveSceneColor()
-    {
-        // Resolve hit IDs through the shared renderer, then retain the VFX preview's display transfer.
-        base.ResolveSceneColor();
-        sceneColorBuffer.Resolve(ImmediateContext, BackbufferView, DepthBufferView, HitBufferView);
     }
 
     private void RenderPreviewEffects()
@@ -1420,21 +1388,27 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext, IVfxDepthStateP
 
             VfxParticleMaterialDefinition material = emitter.Definition.ParticleMaterial;
             textures.TryGetValue(emitter.Definition, out PreviewTextureCache.TextureEntry texture);
-            blendStates.TryGetValue(material.BlendMode, out BlendState blendState);
+            if (!material.IsSupported || texture is null)
+            {
+                continue;
+            }
+            // The standard preview's own shader, with the context's cached blend and depth states. Linear texels: the scene color is linear
+            BlendState blendState = GetCachedBlendState(VfxMaterialBlending.CreateBlendDescription(material.BlendMode));
             bool fallbackDepthWrite = material.BlendMode is VfxBlendMode.Opaque or VfxBlendMode.Masked;
-            depthStates.TryGetValue((!material.DisableDepthTest, fallbackDepthWrite), out DepthStencilState depthState);
-            if (!material.IsSupported || texture?.TextureView is null)
+            DepthStencilState depthState = GetEffectsDepthState(!material.DisableDepthTest, fallbackDepthWrite);
+            ShaderResourceView textureView = texture.GetLinearView(FullChainPixels);
+            if (textureView is null)
             {
                 continue;
             }
             if (fallbackDepthWrite)
             {
-                billboardRenderer.Render(this, emitter, texture.TextureView, blendState, depthState, previewTransform: previewTransform);
+                billboardRenderer.Render(this, emitter, textureView, blendState, depthState, previewTransform: previewTransform);
             }
             else
             {
                 blendedEmitters.Add(new BlendedEmitterBatch(GetDrawableParticles(emitter, previewTransform), previewTransform,
-                    batch => billboardRenderer.Render(this, emitter, texture.TextureView, blendState, depthState, batch, previewTransform)));
+                    batch => billboardRenderer.Render(this, emitter, textureView, blendState, depthState, batch, previewTransform)));
             }
         }
 
@@ -1443,6 +1417,11 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext, IVfxDepthStateP
         RenderActor(RenderPass.Hair);
         RenderActor(RenderPass.Lighting);
         EndLightingPass();
+        // Everything that writes depth has drawn: soft particles and depth-biased materials fade against this copy of it
+        if (blendedEmitters.Count > 0 && useGameShader)
+        {
+            CopySceneDepthForEffects();
+        }
         RenderActor(RenderPass.Translucent);
         RenderBlendedEmitters(blendedEmitters);
     }
@@ -1467,15 +1446,22 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext, IVfxDepthStateP
 
     private void RenderBlendedEmitters(List<BlendedEmitterBatch> emitters)
     {
-        var depths = new List<IReadOnlyList<float>>(emitters.Count);
-        foreach (BlendedEmitterBatch emitter in emitters)
+        List<IReadOnlyList<float>> depths = blendedDepthViews;
+        depths.Clear();
+        for (int batchIndex = 0; batchIndex < emitters.Count; batchIndex++)
         {
-            var emitterDepths = new float[emitter.Particles.Count];
+            BlendedEmitterBatch emitter = emitters[batchIndex];
+            if (blendedDepthScratch.Count <= batchIndex) blendedDepthScratch.Add([]);
+            float[] emitterDepths = blendedDepthScratch[batchIndex];
+            if (emitterDepths.Length != emitter.Particles.Count)
+            {
+                emitterDepths = blendedDepthScratch[batchIndex] = new float[emitter.Particles.Count];
+            }
             for (int index = 0; index < emitter.Particles.Count; index++)
             {
                 VfxParticle particle = emitter.Particles[index];
                 Vector3 position = Vector3.Transform(particle.Position + particle.OrbitOffset, emitter.Transform);
-                emitterDepths[index] = Vector3.Dot(position - Camera.Position, Camera.CameraForward);
+                emitterDepths[index] = Vector3.Dot(position - Camera.EyePosition, Camera.CameraForward);
             }
             depths.Add(emitterDepths);
         }
@@ -1483,7 +1469,8 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext, IVfxDepthStateP
         // Merge the already ordered emitter streams. This preserves None/age order within each emitter and
         // allows native sprites, fallback sprites and mesh particles to overlap in one shared blended pass.
         int activeBatch = -1;
-        var particles = new List<VfxParticle>();
+        List<VfxParticle> particles = blendedParticleScratch;
+        particles.Clear();
         foreach ((int batchIndex, int particleIndex) in VfxRenderOrdering.MergeBackToFront(depths))
         {
             if (activeBatch >= 0 && activeBatch != batchIndex)
@@ -1716,58 +1703,12 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext, IVfxDepthStateP
     private List<VfxParticle> GetDrawableParticles(VfxEmitterState emitter, Matrix4x4 previewTransform)
     {
         var particles = new List<VfxParticle>(emitter.Particles);
-        VfxBillboardRenderer.SortParticles(particles, emitter.Definition.SortMode, Camera.Position, previewTransform, Camera.CameraForward);
+        VfxBillboardRenderer.SortParticles(particles, emitter.Definition.SortMode, Camera.EyePosition, previewTransform, Camera.CameraForward);
         if (emitter.Definition.UseMaxDrawCount && emitter.Definition.MaxDrawCount >= 0 && particles.Count > emitter.Definition.MaxDrawCount)
         {
             particles.RemoveRange(emitter.Definition.MaxDrawCount, particles.Count - emitter.Definition.MaxDrawCount);
         }
         return particles;
-    }
-
-    private void CreateBlendStates()
-    {
-        DisposeBlendStates();
-        foreach (VfxBlendMode blendMode in Enum.GetValues<VfxBlendMode>())
-        {
-            var description = new BlendStateDescription();
-            description.RenderTarget[0] = VfxMaterialBlending.CreateBlendDescription(blendMode);
-            blendStates[blendMode] = new BlendState(Device, description);
-        }
-    }
-
-    private void DisposeBlendStates()
-    {
-        foreach (BlendState blendState in blendStates.Values)
-        {
-            blendState.Dispose();
-        }
-        blendStates.Clear();
-    }
-
-    private void CreateDepthStates()
-    {
-        DisposeDepthStates();
-        foreach (bool depthTest in new[] { false, true })
-        {
-            foreach (bool depthWrite in new[] { false, true })
-            {
-                depthStates[(depthTest, depthWrite)] = new DepthStencilState(Device, new DepthStencilStateDescription
-                {
-                    IsDepthEnabled = depthTest,
-                    DepthComparison = Comparison.GreaterEqual,
-                    DepthWriteMask = depthWrite ? DepthWriteMask.All : DepthWriteMask.Zero
-                });
-            }
-        }
-    }
-
-    private void DisposeDepthStates()
-    {
-        foreach (DepthStencilState depthState in depthStates.Values)
-        {
-            depthState.Dispose();
-        }
-        depthStates.Clear();
     }
 
     private void DrawHelpers()
@@ -1853,7 +1794,7 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext, IVfxDepthStateP
             Matrix4x4 emitterTransform = GetEmitterPreviewTransform(emitter.Definition, previewTransform);
             if (emitter.Definition.RenderMode != VfxEmitterRenderMode.Mesh
                 || !meshEmitters.TryGetValue(emitter.Definition, out VfxMeshRenderer.MeshEmitterResources resources)
-                || !VfxMeshRenderer.TryGetBounds(emitter, resources, emitterTransform, Camera.Position, Camera.CameraRight, Camera.CameraUp, Camera.CameraForward, out VfxBounds meshBounds))
+                || !VfxMeshRenderer.TryGetBounds(emitter, resources, emitterTransform, Camera.EyePosition, Camera.CameraRight, Camera.CameraUp, Camera.CameraForward, out VfxBounds meshBounds))
             {
                 continue;
             }
@@ -1884,13 +1825,10 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext, IVfxDepthStateP
     public override void DisposeResources()
     {
         RenderScene -= RenderPreview;
-        DisposeBlendStates();
-        DisposeDepthStates();
         billboardRenderer.Dispose();
         meshRenderer.Dispose();
         gameShaderRenderer.Dispose();
-        sceneColorBuffer?.Dispose();
-        sceneColorBuffer = null;
+        DisposeEffectsResources();
         DisposeMeshEmitters();
         DisposeActorMeshes();
         textures.Clear();

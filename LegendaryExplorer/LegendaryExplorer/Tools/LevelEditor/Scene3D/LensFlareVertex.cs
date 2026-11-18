@@ -36,7 +36,7 @@ public struct LensFlareVertex : IVertexBase
     public void ToFloats(Span<float> floats) =>
         MemoryMarshal.CreateSpan(ref Unsafe.As<LensFlareVertex, float>(ref this), Stride / 4).CopyTo(floats);
 
-    public static IVertexBase Create(MEGame game, Vector3 position, Vector3 tangent, Vector4 normal, Fixed4<Vector4> uvs) =>
+    public static IVertexBase Create(Vector3 position, Vector3 tangent, Vector4 normal, Fixed4<Vector4> uvs) =>
         new LensFlareVertex(position, Vector2.One, 0, new Vector2(uvs[0].X, uvs[0].Y), Vector4.One, Vector4.One);
 
     public static int Stride => 76;

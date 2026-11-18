@@ -40,19 +40,22 @@ namespace LegendaryExplorerCore.Shaders
         private static Dictionary<Guid, int> ME2ShaderOffsets;
         private static Dictionary<Guid, int> ME1ShaderOffsets;
 
+        private static Dictionary<Guid, int> LMPShaderOffsets;
         private static Dictionary<Guid, int> LE3ShaderOffsets;
         private static Dictionary<Guid, int> LE2ShaderOffsets;
         private static Dictionary<Guid, int> LE1ShaderOffsets;
 
-        private static int[] OffsetOfShaderTypeCRCMap = new int[7];
-        private static int[] OffsetOfVertexFactoryTypeCRCMap = new int[7];
-        private static long[] CachedRefShaderCacheSize = new long[7];
+        // These need updated if you add to MEGame enum as they are indexed by the MEGame value.
+        private static int[] OffsetOfShaderTypeCRCMap = new int[9];
+        private static int[] OffsetOfVertexFactoryTypeCRCMap = new int[9];
+        private static long[] CachedRefShaderCacheSize = new long[9];
 
         private static Dictionary<Guid, int> ShaderOffsets(MEGame game) => game switch
         {
             MEGame.ME3 => ME3ShaderOffsets,
             MEGame.ME2 => ME2ShaderOffsets,
             MEGame.ME1 => ME1ShaderOffsets,
+            MEGame.LMP => LMPShaderOffsets,
             MEGame.LE3 => LE3ShaderOffsets,
             MEGame.LE2 => LE2ShaderOffsets,
             MEGame.LE1 => LE1ShaderOffsets,
@@ -65,6 +68,7 @@ namespace LegendaryExplorerCore.Shaders
         private static int ME2MaterialShaderMapsOffset = VanillaMaterialShaderMapsOffset(MEGame.ME2);
         private static int ME1MaterialShaderMapsOffset = VanillaMaterialShaderMapsOffset(MEGame.ME1);
 
+        private static int LMPMaterialShaderMapsOffset = VanillaMaterialShaderMapsOffset(MEGame.LMP);
         private static int LE3MaterialShaderMapsOffset = VanillaMaterialShaderMapsOffset(MEGame.LE3);
         private static int LE2MaterialShaderMapsOffset = VanillaMaterialShaderMapsOffset(MEGame.LE2);
         private static int LE1MaterialShaderMapsOffset = VanillaMaterialShaderMapsOffset(MEGame.LE1);
@@ -74,6 +78,7 @@ namespace LegendaryExplorerCore.Shaders
             MEGame.ME3 => 206341927,
             MEGame.ME2 => 132795914,
             MEGame.ME1 => 69550225,
+            MEGame.LMP => 1263553925, // TODO: FIX THIS FOR FINAL SHIP (upstream placeholder, same as LE3)
             MEGame.LE3 => 1263553925,
             MEGame.LE2 => 1014140890,
             MEGame.LE1 => 720539980,
@@ -84,6 +89,7 @@ namespace LegendaryExplorerCore.Shaders
         private static long ME2RefShaderCacheSize = 151649957;
         private static long ME1RefShaderCacheSize = 76618220;
 
+        private static long LMPRefShaderCacheSize = 1296009525; // TODO: FIX THIS FOR FINAL SHIP
         private static long LE3RefShaderCacheSize = 1296009525;
         private static long LE2RefShaderCacheSize = 1035352391;
         private static long LE1RefShaderCacheSize = 731880291;
@@ -93,6 +99,7 @@ namespace LegendaryExplorerCore.Shaders
             MEGame.ME3 => ME3RefShaderCacheSize,
             MEGame.ME2 => ME2RefShaderCacheSize,
             MEGame.ME1 => ME1RefShaderCacheSize,
+            MEGame.LMP => LMPRefShaderCacheSize,
             MEGame.LE3 => LE3RefShaderCacheSize,
             MEGame.LE2 => LE2RefShaderCacheSize,
             MEGame.LE1 => LE1RefShaderCacheSize,
@@ -106,6 +113,7 @@ namespace LegendaryExplorerCore.Shaders
                 MEGame.ME3 => ME3MaterialShaderMapsOffset,
                 MEGame.ME2 => ME2MaterialShaderMapsOffset,
                 MEGame.ME1 => ME1MaterialShaderMapsOffset,
+                MEGame.LMP => LMPMaterialShaderMapsOffset,
                 MEGame.LE3 => LE3MaterialShaderMapsOffset,
                 MEGame.LE2 => LE2MaterialShaderMapsOffset,
                 MEGame.LE1 => LE1MaterialShaderMapsOffset,
@@ -264,6 +272,7 @@ namespace LegendaryExplorerCore.Shaders
                     MEGame.ME3 => ME3ShaderOffsets ??= [],
                     MEGame.ME2 => ME2ShaderOffsets ??= [],
                     MEGame.ME1 => ME1ShaderOffsets ??= [],
+                    MEGame.LMP => LMPShaderOffsets ??= [],
                     MEGame.LE3 => LE3ShaderOffsets ??= [],
                     MEGame.LE2 => LE2ShaderOffsets ??= [],
                     MEGame.LE1 => LE1ShaderOffsets ??= [],
@@ -324,6 +333,9 @@ namespace LegendaryExplorerCore.Shaders
                             break;
                         case MEGame.ME1:
                             ME1MaterialShaderMapsOffset = (int)fs.Position;
+                            break;
+                        case MEGame.LMP:
+                            LMPMaterialShaderMapsOffset = (int)fs.Position;
                             break;
                         case MEGame.LE3:
                             LE3MaterialShaderMapsOffset = (int)fs.Position;
@@ -451,8 +463,8 @@ namespace LegendaryExplorerCore.Shaders
 
         //Offset of each MaterialShaderMap, keyed by its StaticParameterSet. Built on first use, so that looking up a MaterialShaderMap
         //doesn't have to read through every StaticParameterSet before it (~20ms per lookup for LE3)
-        private static readonly Dictionary<StaticParameterSet, int>[] MaterialShaderMapOffsets = new Dictionary<StaticParameterSet, int>[7];
-        private static readonly long[] MaterialShaderMapOffsetsFileSize = new long[7];
+        private static readonly Dictionary<StaticParameterSet, int>[] MaterialShaderMapOffsets = new Dictionary<StaticParameterSet, int>[(int)MEGame.LMP + 1];
+        private static readonly long[] MaterialShaderMapOffsetsFileSize = new long[(int)MEGame.LMP + 1];
 
         private static Dictionary<StaticParameterSet, int> GetMaterialShaderMapOffsets(MEGame game, SerializingContainer sc, long fileSize, string gamePathOverride)
         {
@@ -531,7 +543,7 @@ namespace LegendaryExplorerCore.Shaders
 
         public static void RemoveStaticParameterSetsThatAreInTheGlobalCache(HashSet<StaticParameterSet> paramSets, MEGame game, string gamePathOverride = null)
         {
-            string filePath = ShaderFilePath(game);
+            string filePath = ShaderFilePath(game, gamePathOverride);
             if (File.Exists(filePath))
             {
                 using FileStream fs = File.OpenRead(filePath);
@@ -575,8 +587,8 @@ namespace LegendaryExplorerCore.Shaders
 
         //The header and name table of each game's ref shader cache. Reading them takes a few ms, which adds up when shaders are looked up for many materials.
         //Only used for reading, so it's safe to share between threads.
-        private static readonly IMEPackage[] ShaderCachePackages = new IMEPackage[7];
-        private static readonly long[] ShaderCachePackagesFileSize = new long[7];
+        private static readonly IMEPackage[] ShaderCachePackages = new IMEPackage[Enum.GetValues(typeof(MEGame)).Length];
+        private static readonly long[] ShaderCachePackagesFileSize = new long[Enum.GetValues(typeof(MEGame)).Length];
 
         /// <summary>
         /// Gets the header and name table of the ref shader cache that <paramref name="fs"/> was just opened on. Do not dispose the result.

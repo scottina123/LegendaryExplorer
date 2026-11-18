@@ -10,6 +10,7 @@ using System.Threading.Tasks;
 using LegendaryExplorerCore.Gammtek.Collections.Specialized;
 using LegendaryExplorerCore.Helpers;
 using LegendaryExplorerCore.Misc;
+using LegendaryExplorerCore.Packages.CloningImportingAndRelinking;
 using LegendaryExplorerCore.TLK.ME1;
 using LegendaryExplorerCore.Unreal;
 using LegendaryExplorerCore.Unreal.BinaryConverters;
@@ -101,6 +102,12 @@ namespace LegendaryExplorerCore.Packages
         private EntryTree _tree;
         private bool lookupTableNeedsToBeRegenerated = true;
 
+        /// <summary>
+        /// The first export with each path that <see cref="EntryLookupTable"/> holds an import for instead. Built when it's first needed,
+        /// which resolving imports makes common: most lookups in a package for an import's path are for a path it only has as an import
+        /// </summary>
+        private CaseInsensitiveDictionary<ExportEntry> exportsBehindImports;
+
         public void InvalidateLookupTable()
         {
             if (!SuppressLookupTableInvalidation)
@@ -165,6 +172,7 @@ namespace LegendaryExplorerCore.Packages
             MEGame.LE1 => MEPackage.LE1UnrealVersion,
             MEGame.LE2 => MEPackage.LE2UnrealVersion,
             MEGame.LE3 => MEPackage.LE3UnrealVersion,
+            MEGame.LMP => MEPackage.LE3UnrealVersion, // LMP uses LE3 UnrealVersion.
             MEGame.UDK => UDKPackage.UDKUnrealVersion2015, // This is technically not correct since UDK has many versions we support
             _ => throw new ArgumentOutOfRangeException(nameof(game), game, null)
         };
@@ -177,6 +185,7 @@ namespace LegendaryExplorerCore.Packages
             MEGame.LE1 => MEPackage.LE1LicenseeVersion,
             MEGame.LE2 => MEPackage.LE2LicenseeVersion,
             MEGame.LE3 => MEPackage.LE3LicenseeVersion,
+            MEGame.LMP => MEPackage.LMPLicenseeVersion,
             MEGame.UDK => UDKPackage.UDKLicenseeVersion,
             _ => throw new ArgumentOutOfRangeException(nameof(game), game, null)
         };
@@ -265,6 +274,24 @@ namespace LegendaryExplorerCore.Packages
             NameCount = names.Count;
         }
 
+        /// <summary>
+        /// Restores the import list to a previous snapshot, e.g. after a speculative port that ended up being
+        /// discarded. Unhooks change notifications from any import that isn't part of the restored list.
+        /// </summary>
+        public void restoreImports(List<ImportEntry> list)
+        {
+            foreach (var imp in imports)
+            {
+                if (!list.Contains(imp))
+                {
+                    imp.PropertyChanged -= importChanged;
+                }
+            }
+            imports = list;
+            ImportCount = imports.Count;
+            InvalidateLookupTable();
+        }
+
         private void mapNames()
         {
             nameLookupTable.Clear();
@@ -322,8 +349,8 @@ namespace LegendaryExplorerCore.Packages
         public void AddExport(ExportEntry exportEntry)
         {
             // Uncomment this to debug when an export is being added
-            //if (exportEntry.ObjectName == TrashPackageName)
-            //    Debugger.Break();
+            if (exportEntry.InstancedFullPath == "BioT_Rannoch_Ext.MissingTexture")
+                Debugger.Break();
 
             if (exportEntry.FileRef != this)
                 throw new Exception("Cannot add an export entry from another package file");
@@ -333,6 +360,8 @@ namespace LegendaryExplorerCore.Packages
             //    Debugger.Break(); // Found duplicate.
 
             exportEntry.DataChanged = true;
+            //a new export is a change to the package, header and all (which also marks the package modified)
+            exportEntry.HeaderChanged = true;
             exportEntry.HeaderOffset = 1; //This will make it so when setting idxLink it knows the export has been attached to the tree, even though this doesn't do anything. Find by offset may be confused by this. Updates on save
             exportEntry.Index = exports.Count;
             if (exportEntry.Parent is ExportEntry parent)
@@ -358,6 +387,12 @@ namespace LegendaryExplorerCore.Packages
 
         public IEntry FindEntry(string instancedPath)
         {
+            if (instancedPath == null)
+            {
+                // Can't find null.
+                return null;
+            }
+
             IEntry matchingEntry;
             // START CRITICAL SECTION ---------------------------------
             lock (_findEntrySyncObj)
@@ -449,7 +484,6 @@ namespace LegendaryExplorerCore.Packages
 
         public ExportEntry FindExport(string instancedPath)
         {
-            IEntry matchingEntry;
             // START CRITICAL SECTION ---------------------------------
             lock (_findEntrySyncObj)
             {
@@ -457,27 +491,32 @@ namespace LegendaryExplorerCore.Packages
                 {
                     RebuildLookupTable();
                 }
-                EntryLookupTable.TryGetValue(instancedPath, out matchingEntry);
+                EntryLookupTable.TryGetValue(instancedPath, out IEntry matchingEntry);
+                if (matchingEntry is ImportEntry)
+                {
+                    // We want export version
+                    // Some files like LE2 Engine.pcc have imports and exports for same named thing
+                    // for some reason
+                    exportsBehindImports ??= FindExportsBehindImports();
+                    return exportsBehindImports.GetValueOrDefault(instancedPath);
+                }
+                return matchingEntry as ExportEntry;
             }
             // END CRITICAL SECTION ------------------------------------
+        }
 
-            if (matchingEntry is ImportEntry)
+        private CaseInsensitiveDictionary<ExportEntry> FindExportsBehindImports()
+        {
+            var result = new CaseInsensitiveDictionary<ExportEntry>();
+            foreach (ExportEntry exp in Exports)
             {
-                // We want export version
-                // Some files like LE2 Engine.pcc have imports and exports for same named thing
-                // for some reason
-                // Look manually for object
-                var dotIndex = instancedPath.LastIndexOf('.');
-                var objName = dotIndex > 0 ? instancedPath.AsSpan(dotIndex + 1) : instancedPath.AsSpan();
-                foreach (var exp in Exports)
+                string path = exp.InstancedFullPath;
+                if (EntryLookupTable.TryGetValue(path, out IEntry entry) && entry is ImportEntry)
                 {
-                    if (exp.ObjectName.EqualsInstancedString(objName)
-                        && exp.InstancedFullPath.CaseInsensitiveEquals(instancedPath)) // This goes second because if the object name does not match this will never be called. This reduces memory allocations
-                        return exp;
+                    result.TryAdd(path, exp);
                 }
             }
-
-            return matchingEntry as ExportEntry;
+            return result;
         }
 
         public ExportEntry FindExport(string instancedPath, string className)
@@ -562,6 +601,7 @@ namespace LegendaryExplorerCore.Packages
                 }
 #endif
                 EntryLookupTable[importEntry.InstancedFullPath] = importEntry;
+                exportsBehindImports = null;
                 _tree.Add(importEntry);
             }
 
@@ -584,6 +624,7 @@ namespace LegendaryExplorerCore.Packages
             lock (_packageSyncObj)
             {
                 EntryLookupTable.Clear();
+                exportsBehindImports = null;
                 //pre-order traversal of entry tree
                 //this is superior to just looping through the export and import arrays and calculating the InstancedFullPath anew for each one
                 //as InstancedFullPath has to recurse up from leaf to root, performing multiple string concats per node.
@@ -641,7 +682,7 @@ namespace LegendaryExplorerCore.Packages
             return false;
         }
 
-#endregion
+        #endregion
 
         #region IEntry
         /// <summary>
@@ -893,16 +934,31 @@ namespace LegendaryExplorerCore.Packages
             return tlks;
         }
 
-        public bool HasDuplicateObjects()
+        /// <summary>
+        /// Returns if the lookup table is the same size as the count of imports and exports put together. If you exclude trash, this lookup is a bit slower.
+        /// </summary>
+        /// <returns></returns>
+        public bool HasDuplicateObjects(bool excludeTrash = false)
         {
-            if (lookupTableNeedsToBeRegenerated)
+            if (excludeTrash)
             {
-                RebuildLookupTable();
+                if (this is IMEPackage ime)
+                {
+                    return EntryChecker.CheckForDuplicateIndices(ime).Count > 0;
+                }
+                throw new Exception("Cannot check for duplicate objects with excludeTrash=true on a package that is not an IMEPackage");
             }
-
-            lock (_findEntrySyncObj)
+            else
             {
-                return EntryLookupTable?.Count != (ImportCount + ExportCount);
+                if (lookupTableNeedsToBeRegenerated)
+                {
+                    RebuildLookupTable();
+                }
+
+                lock (_findEntrySyncObj)
+                {
+                    return EntryLookupTable?.Count != (ImportCount + ExportCount);
+                }
             }
         }
 
@@ -1072,13 +1128,23 @@ namespace LegendaryExplorerCore.Packages
             });
         }
 
+        private int changeCount;
+        public int ChangeCount => Volatile.Read(ref changeCount);
+
         private void UpdateTools(PackageChange change, int index)
         {
+            Interlocked.Increment(ref changeCount);
             if (_users.Count == 0 && WeakUsers.Count == 0)
             {
                 return;
             }
             var update = new PackageUpdate(change, index);
+            if (editScope is not null)
+            {
+                //held until the scope's edits are kept, and dropped if they're abandoned
+                editScope.Updates.Add(update);
+                return;
+            }
             lock (_updatelock)
             {
                 pendingUpdates.Add(update);
@@ -1098,7 +1164,7 @@ namespace LegendaryExplorerCore.Packages
         /// List of stack traces for when the RefCount was incremented
         /// </summary>
         public List<string> RegisterStackTraces = new();
-        
+
         /// <summary>
         /// Stack trace for how this package object was created - used for memory leak tracing
         /// </summary>

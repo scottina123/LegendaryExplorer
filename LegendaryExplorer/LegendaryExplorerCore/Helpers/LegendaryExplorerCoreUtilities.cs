@@ -12,7 +12,6 @@ namespace LegendaryExplorerCore.Helpers
 {
     public static class LegendaryExplorerCoreUtilities
     {
-#if WINDOWS
         public static bool OpenAndSelectFileInExplorer(string filePath)
         {
             if (!File.Exists(filePath))
@@ -75,7 +74,6 @@ namespace LegendaryExplorerCore.Helpers
 
         [DllImport("shell32.dll")]
         private static extern void ILFree(IntPtr pidl);
-#endif
         public static string LoadStringFromCompressedResource(string resourceName, string assetName)
         {
             try

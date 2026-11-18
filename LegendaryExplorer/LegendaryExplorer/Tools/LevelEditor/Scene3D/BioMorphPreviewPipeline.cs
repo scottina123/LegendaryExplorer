@@ -113,8 +113,7 @@ internal static class BioMorphPreviewPipeline
                 textureExport = null;
             }
             PreviewTextureCache.TextureEntry cachedTexture = textureExport is not null
-                ? renderContext.TextureCache.LoadTexture(textureExport, renderContext.PackageCache,
-                    gameShaderMesh.UsesSrgbColorManagement)
+                ? renderContext.TextureCache.LoadTexture(textureExport, renderContext.PackageCache) //upstream samples linear views; no sRGB variant
                 : null;
             foreach (MaterialRenderProxy material in materials)
             {

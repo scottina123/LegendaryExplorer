@@ -1139,8 +1139,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             {
                 if (!objectsById.TryGetValue(eventActionId, out HIRCDisplayObject eventAction)
                     || eventAction.ObjType != (byte)HIRCType.EventAction
-                    || eventAction.EventActionType is not (WwiseBankParsed.EventActionType.Play
-                        or WwiseBankParsed.EventActionType.Play_LE)
+                    || eventAction.EventActionType is not WwiseBankParsed.EventActionType.Play
+                        /* upstream folded Play_LE into Play (same value) */
                     || !objectsById.TryGetValue(eventAction.ReferencedObjectID, out HIRCDisplayObject referencedObject)
                     || referencedObject.ObjType != (byte)HIRCType.SoundSXFSoundVoice)
                 {

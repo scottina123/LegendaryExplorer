@@ -13,8 +13,12 @@ using System.Numerics;
 namespace LegendaryExplorer.Tools.LevelEditor;
 
 /// <summary>
-/// Shared, native-shader particle resources for the Level Editor. Particle definitions and cooked shader
-/// resources are cached per ParticleSystem, while each placed component keeps its own lightweight simulation.
+/// The Level Editor's particle effects. Particle definitions and their materials' cooked shaders are prepared once per ParticleSystem
+/// (<see cref="PreparedSystem"/>), while each placed component keeps its own lightweight simulation (<see cref="Instance"/>).
+/// Nothing here renders on its own: each Emitter's <see cref="ParticleSystemComponentProxy"/> draws through the Level Editor's passes,
+/// opaque and masked emitters in <see cref="RenderPass.Base"/> and the rest from the context's sorted translucent queue
+/// (<see cref="LevelEditorRenderContext.QueueTranslucentEffect"/>), every draw going through the context's game-shader path
+/// (<see cref="VfxGameShaderRenderer.RenderNativeMaterial{TVertex}"/>).
 /// </summary>
 internal sealed class LevelVfxRenderer : IDisposable
 {
@@ -36,11 +40,23 @@ internal sealed class LevelVfxRenderer : IDisposable
         private readonly Dictionary<VfxEmitterDefinition, VfxMeshRenderer.MeshEmitterResources> meshEmitters = [];
 
         public VfxPreviewDefinition Definition { get; }
+        public ExportEntry Source { get; }
         public bool HasRenderableEmitter { get; private set; }
+        /// <summary>Whether any emitter draws in the opaque (depth-writing) pass, and whether any blends</summary>
+        public bool HasOpaqueEmitters { get; private set; }
+        public bool HasTranslucentEmitters { get; private set; }
+        /// <summary>Set if drawing it threw: it isn't drawn again (until the level is reloaded or the system is edited)</summary>
+        public bool Failed { get; private set; }
+        /// <summary>Released (the level was unloaded, or the system edited): instances of it must be made again</summary>
+        public bool Disposed { get; private set; }
+        /// <summary>The UIndexes, in <see cref="Source"/>'s package, of the ParticleSystem and everything under it (emitters, LODs, modules)</summary>
+        public HashSet<int> SourceUIndexes { get; }
 
-        public PreparedSystem(VfxPreviewDefinition definition)
+        public PreparedSystem(VfxPreviewDefinition definition, ExportEntry source)
         {
             Definition = definition;
+            Source = source;
+            SourceUIndexes = [source.UIndex, .. source.GetAllDescendants().Select(entry => entry.UIndex)];
         }
 
         public void Prepare(LevelEditorRenderContext context, LevelVfxRenderer owner)
@@ -56,20 +72,34 @@ internal sealed class LevelVfxRenderer : IDisposable
                         owner.PopulateNativeMaterial(context, materialExport, emitter.ParticleMaterial);
                     }
 
+                    bool depthWrite = false;
                     switch (emitter.RenderMode)
                     {
                         case VfxEmitterRenderMode.Sprite when materialExport is not null:
                             loaded = gameShaderRenderer.TryLoadSprite(context, emitter, materialExport, out string spriteWarning);
                             TraceWarning(emitter, spriteWarning);
+                            loaded = loaded && gameShaderRenderer.TryGetSpriteDepthWrite(emitter, out depthWrite);
                             break;
                         case VfxEmitterRenderMode.Beam when materialExport is not null:
                         case VfxEmitterRenderMode.Trail when materialExport is not null:
                             loaded = gameShaderRenderer.TryLoadBeamTrail(context, emitter, materialExport, out string beamWarning);
                             TraceWarning(emitter, beamWarning);
+                            loaded = loaded && gameShaderRenderer.TryGetBeamTrailDepthWrite(emitter, out depthWrite);
                             break;
                         case VfxEmitterRenderMode.Mesh:
                             loaded = PrepareMeshEmitter(context, owner, emitter);
+                            if (loaded)
+                            {
+                                VfxMeshRenderer.MeshEmitterResources resources = meshEmitters[emitter];
+                                HasOpaqueEmitters |= resources.HasOpaqueGameShaderSections;
+                                HasTranslucentEmitters |= resources.HasBlendedGameShaderSections;
+                            }
                             break;
+                    }
+                    if (loaded && emitter.RenderMode is not VfxEmitterRenderMode.Mesh)
+                    {
+                        HasOpaqueEmitters |= depthWrite;
+                        HasTranslucentEmitters |= !depthWrite;
                     }
                 }
                 catch (Exception exception)
@@ -119,8 +149,7 @@ internal sealed class LevelVfxRenderer : IDisposable
                     return false;
                 }
 
-                // Level Editor never uses the standard VFX fallback. Release the duplicate WorldVertex copy once
-                // the Meshplorer/Morph Editor native-material copy is ready.
+                // The Level Editor only draws mesh emitters with their game shaders: release the standard preview's copy of the mesh
                 resources.Preview?.Dispose();
                 resources.Preview = null;
                 resources.Mesh = null;
@@ -154,34 +183,49 @@ internal sealed class LevelVfxRenderer : IDisposable
             return emitter.Material;
         }
 
-        public void Render(LevelEditorRenderContext context, Instance instance, Matrix4x4 componentTransform)
+        /// <summary>
+        /// Draws the emitters that write depth (opaque and masked sprites, ribbons and mesh sections), in <see cref="RenderPass.Base"/>.
+        /// Mesh sections also draw their hit proxies, so clicking one selects the Emitter
+        /// </summary>
+        public void RenderOpaque(LevelEditorRenderContext context, Instance instance, Matrix4x4 componentTransform)
+            => Render(context, instance, componentTransform, opaque: true);
+
+        /// <summary>Draws the blended emitters, from the translucent queue (back to front among effects), in authored emitter order</summary>
+        public void RenderTranslucent(LevelEditorRenderContext context, Instance instance, Matrix4x4 componentTransform)
+            => Render(context, instance, componentTransform, opaque: false);
+
+        private void Render(LevelEditorRenderContext context, Instance instance, Matrix4x4 componentTransform, bool opaque)
         {
-            foreach (VfxEmitterState emitter in instance.Simulation.Emitters)
+            if (Failed || Disposed || (opaque ? !HasOpaqueEmitters : !HasTranslucentEmitters)) return;
+            try
             {
-                Matrix4x4 emitterTransform = emitter.Definition.AttachmentTransform * componentTransform;
-                switch (emitter.Definition.RenderMode)
+                foreach (VfxEmitterState emitter in instance.Simulation.Emitters)
                 {
-                    case VfxEmitterRenderMode.Sprite:
-                        gameShaderRenderer.TryRenderSprite(context, emitter, emitterTransform);
-                        break;
-                    case VfxEmitterRenderMode.Beam:
-                    case VfxEmitterRenderMode.Trail:
-                        gameShaderRenderer.TryRenderBeamTrail(context, emitter, emitterTransform);
-                        break;
-                    case VfxEmitterRenderMode.Mesh when meshEmitters.TryGetValue(emitter.Definition,
-                        out VfxMeshRenderer.MeshEmitterResources resources):
-                        bool previousCameraRelative = context.UseCameraRelativeNativeRendering;
-                        context.UseCameraRelativeNativeRendering = true;
-                        try
-                        {
-                            VfxMeshRenderer.RenderGameShader(context, emitter, resources, emitterTransform);
-                        }
-                        finally
-                        {
-                            context.UseCameraRelativeNativeRendering = previousCameraRelative;
-                        }
-                        break;
+                    if (emitter.Particles.Count == 0 && emitter.Definition.RenderMode is not VfxEmitterRenderMode.Beam) continue;
+                    Matrix4x4 emitterTransform = emitter.Definition.AttachmentTransform * componentTransform;
+                    switch (emitter.Definition.RenderMode)
+                    {
+                        case VfxEmitterRenderMode.Sprite
+                            when gameShaderRenderer.TryGetSpriteDepthWrite(emitter.Definition, out bool depthWrite) && depthWrite == opaque:
+                            gameShaderRenderer.TryRenderSprite(context, emitter, emitterTransform);
+                            break;
+                        case VfxEmitterRenderMode.Beam or VfxEmitterRenderMode.Trail
+                            when gameShaderRenderer.TryGetBeamTrailDepthWrite(emitter.Definition, out bool depthWrite) && depthWrite == opaque:
+                            gameShaderRenderer.TryRenderBeamTrail(context, emitter, emitterTransform);
+                            break;
+                        case VfxEmitterRenderMode.Mesh when meshEmitters.TryGetValue(emitter.Definition,
+                            out VfxMeshRenderer.MeshEmitterResources resources):
+                            VfxMeshRenderer.RenderGameShader(context, emitter, resources, emitterTransform, opaquePass: opaque,
+                                writeHitProxy: opaque);
+                            break;
+                    }
                 }
+            }
+            catch (Exception exception) when (exception is not OutOfMemoryException)
+            {
+                // One bad material mustn't take the viewport down (an exception from a render pass replaces the scene with its message)
+                Failed = true;
+                Debug.WriteLine($"Level Editor VFX: {Source.InstancedFullPath} stopped drawing: {exception}");
             }
         }
 
@@ -195,6 +239,7 @@ internal sealed class LevelVfxRenderer : IDisposable
 
         public void Dispose()
         {
+            Disposed = true;
             gameShaderRenderer.Dispose();
             foreach (VfxMeshRenderer.MeshEmitterResources resources in meshEmitters.Values)
             {
@@ -206,98 +251,105 @@ internal sealed class LevelVfxRenderer : IDisposable
 
     private readonly LevelEditorRenderContext context;
     private readonly Dictionary<ExportEntry, PreparedSystem> preparedSystems = [];
+    private readonly HashSet<ExportEntry> unrenderableSystems = [];
     private readonly Dictionary<string, (bool DisableDepthTest, bool UsesDynamicParameter,
         VfxBlendMode BlendMode, IEntry Texture)> materialFlags
         = new(StringComparer.OrdinalIgnoreCase);
-    private readonly Dictionary<(bool DepthTest, bool DepthWrite), DepthStencilState> depthStates = [];
-    private readonly object depthStateLock = new();
+
+    // Preparing a system (converting it, loading its materials' shaders and textures) is spread across frames, so that a level
+    // full of emitters doesn't stall the viewport the first time they come into view
+    private const double PreparationBudgetMilliseconds = 12;
+    private uint preparationFrame = uint.MaxValue;
+    private long preparationTicks;
 
     public LevelVfxRenderer(LevelEditorRenderContext context)
     {
         this.context = context;
     }
 
-    public Instance CreateInstance(IEntry particleSystemEntry)
+    /// <summary>
+    /// Makes a simulation of a ParticleSystem, preparing the system first if this is its first instance. False if that has to wait for a later
+    /// frame (this frame's preparation budget is spent); otherwise true, with a null <paramref name="instance"/> if it has nothing that can be drawn
+    /// </summary>
+    public bool TryCreateInstance(IEntry particleSystemEntry, out Instance instance)
     {
+        instance = null;
         ExportEntry particleSystem = context.ResolveExportCached(particleSystemEntry);
-        if (particleSystem is null || particleSystem.ClassName != "ParticleSystem")
+        if (particleSystem is null || particleSystem.ClassName != "ParticleSystem" || unrenderableSystems.Contains(particleSystem))
         {
-            return null;
+            return true;
         }
 
         if (!preparedSystems.TryGetValue(particleSystem, out PreparedSystem prepared))
         {
-            EnsureDepthStates();
+            if (preparationFrame != context.NumFrames)
+            {
+                preparationFrame = context.NumFrames;
+                preparationTicks = 0;
+            }
+            else if (Stopwatch.GetElapsedTime(0, preparationTicks).TotalMilliseconds >= PreparationBudgetMilliseconds)
+            {
+                return false;
+            }
+            long start = Stopwatch.GetTimestamp();
             try
             {
                 VfxPreviewDefinition definition = new ParticleSystemSourceAdapter()
                     .CreateDefinition(particleSystem, context.PackageCache);
-                prepared = new PreparedSystem(definition);
+                prepared = new PreparedSystem(definition, particleSystem);
                 prepared.Prepare(context, this);
-                preparedSystems.Add(particleSystem, prepared);
             }
             catch (Exception exception)
             {
                 prepared?.Dispose();
+                prepared = null;
                 Debug.WriteLine($"Level Editor VFX: {particleSystem.InstancedFullPath}: {exception}");
-                return null;
             }
-        }
-
-        return prepared.HasRenderableEmitter ? new Instance(prepared) : null;
-    }
-
-    public void Render(Instance instance, Matrix4x4 componentTransform)
-    {
-        if (instance is null)
-        {
-            return;
-        }
-        bool previousDepthFallback = context.UseVfxSceneDepthFallback;
-        context.UseVfxSceneDepthFallback = true;
-        try
-        {
-            instance.System.Render(context, instance, componentTransform);
-        }
-        finally
-        {
-            context.UseVfxSceneDepthFallback = previousDepthFallback;
-        }
-    }
-
-    public DepthStencilState GetDepthState(bool depthTest, bool depthWrite)
-    {
-        EnsureDepthStates();
-        return depthStates.GetValueOrDefault((depthTest, depthWrite));
-    }
-
-    private void EnsureDepthStates()
-    {
-        if (depthStates.Count == 4)
-        {
-            return;
-        }
-        lock (depthStateLock)
-        {
-            if (depthStates.Count == 4)
+            finally
             {
-                return;
+                preparationTicks += Stopwatch.GetTimestamp() - start;
             }
-            foreach (bool depthTest in new[] { false, true })
+            if (prepared is null || !prepared.HasRenderableEmitter)
             {
-                foreach (bool depthWrite in new[] { false, true })
-                {
-                    depthStates[(depthTest, depthWrite)] = new DepthStencilState(context.Device,
-                        new DepthStencilStateDescription
-                        {
-                            IsDepthEnabled = depthTest,
-                            DepthComparison = Comparison.GreaterEqual,
-                            DepthWriteMask = depthWrite ? DepthWriteMask.All : DepthWriteMask.Zero
-                        });
-                }
+                prepared?.Dispose();
+                unrenderableSystems.Add(particleSystem);
+                return true;
+            }
+            preparedSystems.Add(particleSystem, prepared);
+        }
+
+        instance = prepared.Failed ? null : new Instance(prepared);
+        return true;
+    }
+
+    /// <summary>
+    /// Forgets the prepared ParticleSystems that any of <paramref name="uIndexes"/> in <paramref name="package"/> belong to (edited in the package
+    /// editor), so their next instances are prepared from the new data. True if any was
+    /// </summary>
+    public bool Invalidate(IMEPackage package, HashSet<int> uIndexes)
+    {
+        bool any = false;
+        foreach (PreparedSystem prepared in preparedSystems.Values.ToList())
+        {
+            if (prepared.Source.FileRef == package && prepared.SourceUIndexes.Overlaps(uIndexes))
+            {
+                preparedSystems.Remove(prepared.Source);
+                prepared.Dispose();
+                any = true;
             }
         }
+        if (unrenderableSystems.RemoveWhere(system => system.FileRef == package && uIndexes.Contains(system.UIndex)) > 0) any = true;
+        if (any) materialFlags.Clear();
+        return any;
     }
+
+    /// <summary>Whether a ParticleSystem's source exports include any of <paramref name="uIndexes"/>: its prepared copy is out of date</summary>
+    public bool IsAffectedBy(ExportEntry particleSystem, HashSet<int> uIndexes)
+        => particleSystem is not null && (uIndexes.Contains(particleSystem.UIndex)
+            || preparedSystems.TryGetValue(particleSystem, out PreparedSystem prepared) && prepared.SourceUIndexes.Overlaps(uIndexes));
+
+    /// <summary>The context's depth states (reversed-Z): see <see cref="MeshRenderContext.GetEffectsDepthState"/></summary>
+    public DepthStencilState GetDepthState(bool depthTest, bool depthWrite) => context.GetEffectsDepthState(depthTest, depthWrite);
 
     private void PopulateNativeMaterial(LevelEditorRenderContext renderContext, ExportEntry materialExport,
         VfxParticleMaterialDefinition material)
@@ -433,6 +485,7 @@ internal sealed class LevelVfxRenderer : IDisposable
         return current;
     }
 
+    /// <summary>Forgets every prepared system (the level was unloaded). Placed components prepare theirs again as they're drawn</summary>
     public void Clear()
     {
         foreach (PreparedSystem prepared in preparedSystems.Values)
@@ -440,16 +493,13 @@ internal sealed class LevelVfxRenderer : IDisposable
             prepared.Dispose();
         }
         preparedSystems.Clear();
+        unrenderableSystems.Clear();
         materialFlags.Clear();
     }
 
     public void Dispose()
     {
         Clear();
-        foreach (DepthStencilState depthState in depthStates.Values)
-        {
-            depthState.Dispose();
-        }
-        depthStates.Clear();
+        context.DisposeEffectsResources();
     }
 }

@@ -31,7 +31,10 @@ public class PreviewShaderMatrixTests
         using var mesh = new Mesh<LEVertex>(null, [], []);
         mesh.LocalToWorld = Matrix4x4.CreateRotationZ(actorYaw * MathF.PI / 180)
                             * Matrix4x4.CreateTranslation(1200, -800, 75);
-        var context = new MeshRenderContext();
+        // Upstream's factory setters translate LocalToWorld by the frame's PreViewTranslation, so the context needs its LEEffect
+        using var fixture = new WarpMaterialFixture();
+        MeshRenderContext context = fixture.Context;
+        context.LEEffect.BeginFrame(context);
         NativeSetters.WriteValues(CreateFactoryParameters(), buffer, context, mesh, null);
 
         Vector3 localDirection = CameraDirection(cameraYaw);

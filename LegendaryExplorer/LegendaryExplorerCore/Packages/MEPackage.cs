@@ -25,7 +25,6 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 namespace LegendaryExplorerCore.Packages
 {
     [DebuggerDisplay("MEPackage {FilePath} | {Game}")]
-
     public sealed class MEPackage : UnrealPackageFile, IMEPackage, ILazyLoadPackage, IDisposable
     {
         /// <summary>
@@ -76,6 +75,7 @@ namespace LegendaryExplorerCore.Packages
         // PS4 Orbis uses this version information too
         public const ushort LE3UnrealVersion = 685;
         public const ushort LE3LicenseeVersion = 205;
+        public const ushort LMPLicenseeVersion = 206;
 
         /// <summary>
         /// Indicates what type of package file this is. 0 is normal, 1 is TESTPATCH patch package.
@@ -303,6 +303,10 @@ namespace LegendaryExplorerCore.Packages
                     Game = MEGame.LE3;
                     Platform = GamePlatform.PC;
                     return;
+                case LE3UnrealVersion when licenseeVersion == LMPLicenseeVersion:
+                    Game = MEGame.LMP;
+                    Platform = GamePlatform.PC;
+                    return;
                 default:
                     throw new FormatException("Not a Mass Effect Package!");
             }
@@ -389,7 +393,7 @@ namespace LegendaryExplorerCore.Packages
             Flags = (EPackageFlags)packageReader.ReadUInt32();
 
             //Xenon Demo ME3 doesn't read this. Xenon ME3 Retail does
-            if (Game is MEGame.ME3 or MEGame.LE3
+            if (Game.IsGame3()
                 && (Flags.Has(EPackageFlags.Cooked) || Platform != GamePlatform.PC) && licenseeVersion != ME3Xenon2011DemoLicenseeVersion)
             {
                 //Consoles are always cooked.
@@ -748,6 +752,7 @@ namespace LegendaryExplorerCore.Packages
         private static MemoryStream saveUncompressed(MEPackage mePackage, bool isSaveAs, bool includeAdditionalPackageToCook = true, bool includeDependencyTable = true)
         {
             if (mePackage.Platform != GamePlatform.PC) throw new Exception("Cannot save packages for platforms other than PC");
+            mePackage.ThrowIfInEditScope();
             var sourceIsCompressed = mePackage.IsCompressed;
             mePackage.Flags &= ~EPackageFlags.Compressed;
 
@@ -763,6 +768,7 @@ namespace LegendaryExplorerCore.Packages
                     break;
                 case MEGame.ME3:
                 case MEGame.LE3:
+                case MEGame.LMP:
                     nameTableSize = nameTableSize * 2 + 6 * mePackage.NameCount;
                     break;
                 case MEGame.LE1:
@@ -804,6 +810,7 @@ namespace LegendaryExplorerCore.Packages
                         break;
                     case MEGame.ME3:
                     case MEGame.LE3:
+                    case MEGame.LMP:
                         ms.WriteUnrealStringUnicode(name);
                         break;
                     case MEGame.LE1:
@@ -894,6 +901,7 @@ namespace LegendaryExplorerCore.Packages
         private static MemoryStream saveCompressed(MEPackage package, bool isSaveAs, bool includeAdditionalPackageToCook = true, bool includeDependencyTable = true)
         {
             if (package.Platform != GamePlatform.PC) throw new Exception("Cannot save packages for platforms other than PC");
+            package.ThrowIfInEditScope();
             var sourceIsCompressed = package.IsCompressed;
             try
             {
@@ -932,6 +940,7 @@ namespace LegendaryExplorerCore.Packages
                         break;
                     case MEGame.ME3:
                     case MEGame.LE3:
+                    case MEGame.LMP:
                         // UNICODE
                         nameTableSize = validNameTableSize * 2 /* x2 for unicode */ + 6 * validNameCount; // size (4), null terminator (2 in unicode)
                         nameTableSize += 4 * invalidNameCount; // 4 bytes for size and nothing else. Null and empty strings are just the length of 0
@@ -983,6 +992,7 @@ namespace LegendaryExplorerCore.Packages
                     MEGame.LE1 => CompressionType.OodleLeviathan,
                     MEGame.LE2 => CompressionType.OodleLeviathan,
                     MEGame.LE3 => CompressionType.OodleLeviathan,
+                    MEGame.LMP => CompressionType.OodleLeviathan,
                     _ => CompressionType.LZO
                 };
                 var maxBlockSize = package.Game.IsOTGame() ? CompressionHelper.MAX_BLOCK_SIZE_OT : CompressionHelper.MAX_BLOCK_SIZE_LE;
@@ -1052,6 +1062,7 @@ namespace LegendaryExplorerCore.Packages
                             break;
                         case MEGame.ME3:
                         case MEGame.LE3:
+                        case MEGame.LMP:
                             foreach (string name in package.names)
                             {
                                 ms.WriteUnrealStringUnicode(name);
@@ -1334,6 +1345,10 @@ namespace LegendaryExplorerCore.Packages
                     ms.WriteUInt16(LE3UnrealVersion);
                     ms.WriteUInt16(LE3LicenseeVersion);
                     break;
+                case MEGame.LMP:
+                    ms.WriteUInt16(LE3UnrealVersion);
+                    ms.WriteUInt16(LMPLicenseeVersion);
+                    break;
             }
             ms.WriteInt32(FullHeaderSize);
             if (Game.IsGame3())
@@ -1389,6 +1404,7 @@ namespace LegendaryExplorerCore.Packages
                     break;
                 case MEGame.ME3:
                 case MEGame.LE3:
+                case MEGame.LMP:
                     ms.WriteInt32(6383);
                     ms.WriteInt32(196715);
                     break;
@@ -1440,6 +1456,7 @@ namespace LegendaryExplorerCore.Packages
                     ms.WriteInt32(145752064);
                     break;
                 case MEGame.LE3:
+                case MEGame.LMP:
                     ms.WriteInt32(372637696);
                     ms.WriteInt32(145358848);
                     break;
@@ -1538,6 +1555,16 @@ namespace LegendaryExplorerCore.Packages
 
         //is only set when lazy loading
         private readonly Stream decompressionStream;
+
+        Stream ILazyLoadPackage.OpenExportDataStream(ExportEntry export)
+        {
+            ArgumentNullException.ThrowIfNull(export);
+            if (!ReferenceEquals(export.FileRef, this) || !TryGetUExport(export.UIndex, out var owned) || !ReferenceEquals(export, owned))
+                throw new ArgumentException("The export must belong to this package.", nameof(export));
+            if (decompressionStream is null)
+                throw new InvalidOperationException("Export stream views require a lazy-loaded package.");
+            return new BoundedReadOnlyStream(decompressionStream, export.DataOffset, export.DataSize);
+        }
 
         ExportEntry ILazyLoadPackage.LoadExport(ExportEntry export, bool loadParents)
         {

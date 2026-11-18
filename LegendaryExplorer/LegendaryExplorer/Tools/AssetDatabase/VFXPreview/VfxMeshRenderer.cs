@@ -70,8 +70,8 @@ float4 PSMain(VS_OUT input) : SV_TARGET0
         public ExportEntry GameShaderMaterial;
         public VfxParticleMaterialDefinition Material = new();
         public PreviewTextureCache.TextureEntry Texture;
-        public BlendState BlendState;
-        public DepthStencilState DepthState;
+        /// <summary>The standard (fallback) preview's blend, from the resolved material's blend mode</summary>
+        public RenderTargetBlendDescription Blend = VfxMaterialBlending.CreateBlendDescription(VfxBlendMode.Translucent);
         public bool IsOpaque;
     }
 
@@ -88,6 +88,12 @@ float4 PSMain(VS_OUT input) : SV_TARGET0
         public Mesh<WorldVertex> Mesh;
         public List<MeshSection> Sections = [];
         public VfxBounds LocalBounds;
+        /// <summary>Whether the in-game shader preview has opaque/masked sections, and blended ones (set as it loads)</summary>
+        public bool HasOpaqueGameShaderSections;
+        public bool HasBlendedGameShaderSections;
+        // The particle color last written into GameShaderMesh's vertex colors, so the stream is only rewritten when it changes
+        internal Vector4? UploadedParticleColor;
+        internal readonly List<VfxParticle> ParticleScratch = [];
 
         public void Dispose()
         {
@@ -230,7 +236,19 @@ float4 PSMain(VS_OUT input) : SV_TARGET0
             resources.GameShaderMesh = new Mesh<LEVertex>(context.Device,
                 [.. lod.Mesh.Triangles], [.. lod.Mesh.Vertices], isDynamic: true);
             resources.GameShaderVertexColors = vertexColors;
+            resources.UploadedParticleColor = null;
             resources.GameShaderPreview = preview;
+            resources.HasOpaqueGameShaderSections = false;
+            resources.HasBlendedGameShaderSections = false;
+            foreach (ModelPreviewSection section in lod.Sections)
+            {
+                if (preview.Materials[section.MaterialName] is LEShaderPreviewMaterial sectionMaterial)
+                {
+                    bool opaque = sectionMaterial.RenderProxy.BlendMode is EBlendMode.BLEND_Opaque or EBlendMode.BLEND_Masked;
+                    resources.HasOpaqueGameShaderSections |= opaque;
+                    resources.HasBlendedGameShaderSections |= !opaque;
+                }
+            }
             return true;
         }
         catch (Exception exception)
@@ -243,11 +261,9 @@ float4 PSMain(VS_OUT input) : SV_TARGET0
 
     public static bool HasBlendedSections(MeshEmitterResources resources, bool useGameShader)
     {
-        if (useGameShader && resources.GameShaderPreview is { } preview && resources.GameShaderMesh is not null)
+        if (useGameShader && resources.GameShaderPreview is not null && resources.GameShaderMesh is not null)
         {
-            return preview.LODs[0].Sections.Any(section =>
-                preview.Materials[section.MaterialName] is LEShaderPreviewMaterial material
-                && material.RenderProxy.BlendMode is not (EBlendMode.BLEND_Opaque or EBlendMode.BLEND_Masked));
+            return resources.HasBlendedGameShaderSections;
         }
         return resources.Sections.Any(section => !section.IsOpaque);
     }
@@ -275,15 +291,22 @@ float4 PSMain(VS_OUT input) : SV_TARGET0
     }
 
     /// <summary>
-    /// Draws live mesh particles with their native material shaders and VFX blend/depth state.
+    /// Draws live mesh particles with their native material shaders, through the render context's game-shader path
+    /// (<see cref="VfxGameShaderRenderer.RenderNativeMaterial{TVertex}"/>).
     /// </summary>
+    /// <param name="opaquePass">
+    /// True: only opaque/masked sections (depth-writing, drawn with the opaque scene); false: only blended sections (drawn back-to-front
+    /// with the translucent effects); null: both, in that order
+    /// </param>
+    /// <param name="writeHitProxy">Opaque sections also draw the hit-proxy pass (see <see cref="VfxGameShaderRenderer.RenderNativeMaterial{TVertex}"/>)</param>
     public static bool RenderGameShader(
         MeshRenderContext context,
         VfxEmitterState emitter,
         MeshEmitterResources resources,
         Matrix4x4 previewTransform,
         IReadOnlyList<VfxParticle> particleSource = null,
-        bool? opaquePass = null)
+        bool? opaquePass = null,
+        bool writeHitProxy = false)
     {
         if (resources?.GameShaderPreview is null || resources.GameShaderMesh is null)
         {
@@ -296,35 +319,37 @@ float4 PSMain(VS_OUT input) : SV_TARGET0
             return true;
         }
         Matrix4x4 transform = previewTransform == default ? Matrix4x4.Identity : previewTransform;
-        if (particleSource is null && HasBlendedSections(resources, useGameShader: true))
+        if (particleSource is null && (resources.HasBlendedGameShaderSections
+            || emitter.Definition.UseMaxDrawCount && emitter.Definition.MaxDrawCount >= 0 && particles.Count > emitter.Definition.MaxDrawCount))
         {
-            var sortedParticles = new List<VfxParticle>(particles);
-            VfxBillboardRenderer.SortParticles(sortedParticles, emitter.Definition.SortMode, context.Camera.Position, transform,
-                context.Camera.CameraForward);
+            List<VfxParticle> sortedParticles = resources.ParticleScratch;
+            sortedParticles.Clear();
+            sortedParticles.AddRange(emitter.Particles);
+            if (resources.HasBlendedGameShaderSections)
+            {
+                VfxBillboardRenderer.SortParticles(sortedParticles, emitter.Definition.SortMode, context.Camera.EyePosition, transform,
+                    context.Camera.CameraForward);
+            }
+            if (emitter.Definition.UseMaxDrawCount && emitter.Definition.MaxDrawCount >= 0 && sortedParticles.Count > emitter.Definition.MaxDrawCount)
+            {
+                sortedParticles.RemoveRange(emitter.Definition.MaxDrawCount, sortedParticles.Count - emitter.Definition.MaxDrawCount);
+            }
             particles = sortedParticles;
-        }
-        if (particleSource is null && emitter.Definition.UseMaxDrawCount
-            && emitter.Definition.MaxDrawCount >= 0
-            && particles.Count > emitter.Definition.MaxDrawCount)
-        {
-            particles = [.. particles.Take(emitter.Definition.MaxDrawCount)];
         }
         if (opaquePass is null)
         {
             // Complete depth-writing surfaces before any transparency even for callers that do not use
             // the preview's shared render queue.
-            RenderGameShader(context, emitter, resources, transform, particles, opaquePass: true);
-            RenderGameShader(context, emitter, resources, transform, particles, opaquePass: false);
+            RenderGameShader(context, emitter, resources, transform, particles, opaquePass: true, writeHitProxy);
+            RenderGameShader(context, emitter, resources, transform, particles, opaquePass: false, writeHitProxy);
             return true;
         }
 
-        ModelPreviewLOD<LEVertex> lod = resources.GameShaderPreview.LODs[0];
-        if (opaquePass is { } requestedOpaque && !lod.Sections.Any(section =>
-                resources.GameShaderPreview.Materials[section.MaterialName] is LEShaderPreviewMaterial material
-                && (material.RenderProxy.BlendMode is EBlendMode.BLEND_Opaque or EBlendMode.BLEND_Masked) == requestedOpaque))
+        if (opaquePass.Value ? !resources.HasOpaqueGameShaderSections : !resources.HasBlendedGameShaderSections)
         {
             return true;
         }
+        ModelPreviewLOD<LEVertex> lod = resources.GameShaderPreview.LODs[0];
         Mesh<LEVertex> mesh = resources.GameShaderMesh;
         foreach (VfxParticle particle in particles)
         {
@@ -332,50 +357,48 @@ float4 PSMain(VS_OUT input) : SV_TARGET0
                 particle,
                 emitter.Definition,
                 emitter.Definition.MeshEmitter,
-                context.Camera.Position,
+                context.Camera.EyePosition,
                 context.Camera.CameraRight,
                 context.Camera.CameraUp,
                 context.Camera.CameraForward,
                 transform);
             mesh.LocalToWorld = model;
-            for (int vertexIndex = 0; vertexIndex < mesh.Vertices.Count; vertexIndex++)
+            if (resources.UploadedParticleColor != particle.Color)
             {
-                // The local factory consumes COLOR1. Keep authored mesh color and apply the instance color
-                // through that stream so vertex-color material expressions receive particle fades as well.
-                mesh.Vertices[vertexIndex] = lod.Mesh.Vertices[vertexIndex]
-                    .WithColor(resources.GameShaderVertexColors[vertexIndex] * particle.Color);
+                for (int vertexIndex = 0; vertexIndex < mesh.Vertices.Count; vertexIndex++)
+                {
+                    // The local factory consumes COLOR1. Keep authored mesh color and apply the instance color
+                    // through that stream so vertex-color material expressions receive particle fades as well.
+                    mesh.Vertices[vertexIndex] = lod.Mesh.Vertices[vertexIndex]
+                        .WithColor(resources.GameShaderVertexColors[vertexIndex] * particle.Color);
+                }
+                mesh.UpdateVertices(context.ImmediateContext);
+                resources.UploadedParticleColor = particle.Color;
             }
-            mesh.UpdateVertices(context.ImmediateContext);
             for (int sectionIndex = 0; sectionIndex < lod.Sections.Count; sectionIndex++)
             {
                 MeshSection resolvedSection = resources.Sections[sectionIndex];
                 ModelPreviewSection section = lod.Sections[sectionIndex];
                 if (resources.GameShaderPreview.Materials[section.MaterialName] is not LEShaderPreviewMaterial shaderMaterial
-                    || !shaderMaterial.CanRender || !shaderMaterial.RenderProxy.HasRequiredTextures(context))
+                    || !shaderMaterial.CanRender)
                 {
                     continue;
                 }
                 MaterialRenderProxy material = shaderMaterial.RenderProxy;
                 bool isOpaque = material.BlendMode is EBlendMode.BLEND_Opaque or EBlendMode.BLEND_Masked;
-                if (opaquePass is { } drawOpaque && isOpaque != drawOpaque)
+                if (isOpaque != opaquePass.Value)
                 {
                     continue;
                 }
-                try
-                {
-                    // Native shaders retain their cooked alpha. The general model preview recompiles alpha
-                    // for inspection and uses default depth writes, which breaks translucent mesh particles.
-                    VfxGameShaderRenderer.RenderNativeMaterial(context, material, mesh,
-                        VfxGameShaderRenderer.CreateBlendDescription(material.BlendMode),
-                        !resolvedSection.Material.DisableDepthTest,
-                        isOpaque,
-                        (int)section.TriangleCount * 3,
-                        startIndex: (int)section.StartIndex);
-                }
-                finally
-                {
-                    context.ResetTextureSamplers();
-                }
+                // Native shaders retain their cooked alpha. The general model preview uses default depth writes, which breaks
+                // translucent mesh particles, so these draw with the effect's own blend and depth state.
+                VfxGameShaderRenderer.RenderNativeMaterial(context, material, mesh,
+                    VfxGameShaderRenderer.CreateBlendDescription(material.BlendMode),
+                    !resolvedSection.Material.DisableDepthTest,
+                    isOpaque,
+                    (int)section.TriangleCount * 3,
+                    startIndex: (int)section.StartIndex,
+                    writeHitProxy: writeHitProxy && isOpaque);
             }
         }
         return true;
@@ -407,7 +430,7 @@ float4 PSMain(VS_OUT input) : SV_TARGET0
         if (particleSource is null && resources.Sections.Any(section => !section.IsOpaque))
         {
             var sortedParticles = new List<VfxParticle>(particles);
-            VfxBillboardRenderer.SortParticles(sortedParticles, emitter.Definition.SortMode, context.Camera.Position, transform,
+            VfxBillboardRenderer.SortParticles(sortedParticles, emitter.Definition.SortMode, context.Camera.EyePosition, transform,
                 context.Camera.CameraForward);
             particles = sortedParticles;
         }
@@ -420,7 +443,7 @@ float4 PSMain(VS_OUT input) : SV_TARGET0
         void RenderParticles(bool drawOpaque)
         {
             MeshSection[] sections = resources.Sections
-                .Where(section => section.IsOpaque == drawOpaque && section.Texture?.TextureView is not null)
+                .Where(section => section.IsOpaque == drawOpaque && section.Texture is not null)
                 .ToArray();
             // All sections of a farther particle must be blended before any section of a nearer one.
             // A section-outer loop changes that order when particles have multiple translucent materials.
@@ -430,7 +453,7 @@ float4 PSMain(VS_OUT input) : SV_TARGET0
                     particle,
                     emitter.Definition,
                     meshDefinition,
-                    context.Camera.Position,
+                    context.Camera.EyePosition,
                     context.Camera.CameraRight,
                     context.Camera.CameraUp,
                     context.Camera.CameraForward,
@@ -451,15 +474,17 @@ float4 PSMain(VS_OUT input) : SV_TARGET0
                             section.Material.OpacityMaskClipValue),
                         Flags = BuildFlags(section.Material)
                     };
-                    effect.PrepDraw(context.ImmediateContext, section.BlendState ?? context.AlphaBlendState, constants);
+                    effect.PrepDraw(context.ImmediateContext, context.GetCachedBlendState(section.Blend), constants);
                     context.ImmediateContext.PixelShader.SetSampler(0, context.SampleState);
-                    context.ImmediateContext.OutputMerger.SetDepthStencilState(section.DepthState);
+                    context.ImmediateContext.OutputMerger.SetDepthStencilState(
+                        context.GetEffectsDepthState(!section.Material.DisableDepthTest, section.IsOpaque));
+                    // Linear (sRGB-decoded) texels: the scene color is linear, and the resolve encodes it for display
                     effect.RenderObject(
                         context.ImmediateContext,
                         resources.Mesh,
                         (int)section.Section.StartIndex,
                         (int)section.Section.TriangleCount * 3,
-                        section.Texture.TextureView);
+                        section.Texture.GetLinearView(context.TexturePixels(resources.Mesh.TransformedBounds)));
                 }
             }
         }
@@ -471,7 +496,10 @@ float4 PSMain(VS_OUT input) : SV_TARGET0
         {
             RenderParticles(drawOpaque: false);
         }
+        // This standard preview's own shader bound its texture and sampler directly, past the bind tracker
         context.ImmediateContext.PixelShader.SetShaderResource(0, null);
+        context.LEEffect.PixelShaderResources.Reset();
+        context.RestoreDefaultSamplers();
         context.ImmediateContext.OutputMerger.SetDepthStencilState(context.DefaultDepthState);
     }
 

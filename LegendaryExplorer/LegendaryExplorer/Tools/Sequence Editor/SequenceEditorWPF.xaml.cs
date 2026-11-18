@@ -1,4 +1,4 @@
-using Gammtek.Conduit.MassEffect3.SFXGame.StateEventMap;
+﻿using Gammtek.Conduit.MassEffect3.SFXGame.StateEventMap;
 using GongSolutions.Wpf.DragDrop;
 using LegendaryExplorer.Dialogs;
 using LegendaryExplorer.Misc;
@@ -491,10 +491,12 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             SequenceEditorExperimentsM.InstallSequencePrefab(sourceExp, SelectedSequence);
         }
 
-        public SequenceEditorWPF(ExportEntry export) : this()
+        /// <param name="onFocused">Called with whether <paramref name="export"/> could be shown, once its package is loaded. Not called if it couldn't be, which is said</param>
+        public SequenceEditorWPF(ExportEntry export, Action<bool> onFocused = null) : this()
         {
             PackageQueuedForLoad = export.FileRef;
             ExportQueuedForFocusing = export;
+            QueuedFocusResult = onFocused;
         }
 
         public SequenceEditorWPF(IMEPackage package) : this()
@@ -3714,6 +3716,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
         private IMEPackage PackageQueuedForLoad;
         private string FileQueuedForLoad;
         private ExportEntry ExportQueuedForFocusing;
+        private Action<bool> QueuedFocusResult;
         private bool AllowWindowRefocus = true;
         
         private Color _graphEditorBackColor = Color.FromArgb(79, 79, 79);
@@ -7253,8 +7256,11 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
 
                     if (ExportQueuedForFocusing != null)
                     {
-                        GoToExport(ExportQueuedForFocusing);
+                        bool shown = GoToExport(ExportQueuedForFocusing);
                         ExportQueuedForFocusing = null;
+                        //(a package that couldn't be loaded has been said to)
+                        if (Pcc is not null) QueuedFocusResult?.Invoke(shown);
+                        QueuedFocusResult = null;
                     }
 
                     Activate();
@@ -7281,13 +7287,15 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             }
         }
 
-        private void GoToExport(ExportEntry expToNavigateTo, bool goIntoSequences = true)
+        /// <summary>Shows an export: a sequence, or an object in the sequence that lists it</summary>
+        /// <returns>Whether it's shown, which it can't be if no loaded sequence lists it. Before the window's loaded, it's queued to be, and this is true</returns>
+        public bool GoToExport(ExportEntry expToNavigateTo, bool goIntoSequences = true)
         {
             if (!IsLoaded && !(isEmbedded && isEmbeddedContentLoaded))
             {
                 // Do not try to navigate if UI has not finished loading
                 ExportQueuedForFocusing = expToNavigateTo;
-                return;
+                return true;
             }
 
             if (goIntoSequences && (expToNavigateTo.ClassName is "SequenceReference" or "Sequence"
@@ -7295,26 +7303,28 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             {
                 if (expToNavigateTo.ClassName == "SequenceReference")
                 {
-                    var sequenceprop = expToNavigateTo.GetProperty<ObjectProperty>("oSequenceReference");
-                    if (sequenceprop != null)
+                    // (one that refers to an import has nothing in this package to show)
+                    if (expToNavigateTo.GetProperty<ObjectProperty>("oSequenceReference") is not { } sequenceprop
+                        || Pcc?.GetEntry(sequenceprop.Value) is not ExportEntry referenced)
                     {
-                        expToNavigateTo = Pcc?.GetUExport(sequenceprop.Value);
+                        return false;
                     }
-                    else
-                    {
-                        return;
-                    }
+                    expToNavigateTo = referenced;
                 }
 
-                SelectedItem = TreeViewRootNodes.SelectMany(node => node.FlattenTree())
-                    .FirstOrDefault(node => node.UIndex == expToNavigateTo.UIndex);
-                return;
+                // (one that isn't in the tree leaves what's shown as it is)
+                if (TreeViewRootNodes.SelectMany(node => node.FlattenTree()).FirstOrDefault(node => node.UIndex == expToNavigateTo.UIndex) is not { } node)
+                {
+                    return false;
+                }
+                SelectedItem = node;
+                return true;
             }
 
             if (CurrentObjects.FirstOrDefault(obj => obj.Export == expToNavigateTo) is SObj currentObject)
             {
                 CurrentObjects_ListBox.SelectedItem = currentObject;
-                return;
+                return true;
             }
 
             else
@@ -7327,15 +7337,12 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                     ExportEntry sequence = exp;
                     if (sequence.ClassName == "SequenceReference")
                     {
-                        var sequenceprop = sequence.GetProperty<ObjectProperty>("oSequenceReference");
-                        if (sequenceprop != null)
+                        if (sequence.GetProperty<ObjectProperty>("oSequenceReference") is not { } sequenceprop
+                            || Pcc.GetEntry(sequenceprop.Value) is not ExportEntry referenced)
                         {
-                            sequence = Pcc.GetUExport(sequenceprop.Value);
+                            continue;
                         }
-                        else
-                        {
-                            return;
-                        }
+                        sequence = referenced;
                     }
 
                     // Enumerate the objects in the sequence to see if what we are looking for is in this sequence
@@ -7350,14 +7357,17 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                     if (seqObjs != null && seqObjs.Any(objProp => objProp.Value == expToNavigateTo.UIndex))
                     {
                         //This is our sequence
-                        var nodes = TreeViewRootNodes.SelectMany(node => node.FlattenTree())
-                            .ToList(); // This is to debug selection failures
-                        SelectedItem = nodes.First(node => node.UIndex == sequence.UIndex);
+                        if (TreeViewRootNodes.SelectMany(node => node.FlattenTree()).FirstOrDefault(node => node.UIndex == sequence.UIndex) is not { } sequenceNode)
+                        {
+                            return false;
+                        }
+                        SelectedItem = sequenceNode;
                         CurrentObjects_ListBox.SelectedItem =
                             CurrentObjects.FirstOrDefault(x => x.Export == expToNavigateTo);
-                        break;
+                        return CurrentObjects_ListBox.SelectedItem is not null;
                     }
                 }
+                return false;
             }
         }
 

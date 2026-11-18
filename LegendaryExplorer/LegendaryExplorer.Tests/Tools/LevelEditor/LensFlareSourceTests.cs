@@ -16,8 +16,6 @@ public class LensFlareSourceTests
     public static void Initialize(TestContext _) => LegendaryExplorerCoreLib.InitLib(TaskScheduler.Default);
 
     [TestMethod]
-    [DataRow(MEGame.ME2)]
-    [DataRow(MEGame.ME3)]
     [DataRow(MEGame.LE2)]
     [DataRow(MEGame.LE3)]
     public void FactorySupportsLensFlareSourcesAndCustomSubclasses(MEGame game)
@@ -25,7 +23,8 @@ public class LensFlareSourceTests
         using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("LensFlare.pcc", game);
         ExportEntry source = package.CreateExport("Flare", "LensFlareSource", indexed: false);
         var context = new EditorContext();
-        Assert.IsTrue(ActorProxy.CanCreate(source));
+        // Lens flare sources are helpers (Effects helpers category) in upstream's classification
+        Assert.IsTrue(ActorProxy.CanCreate(source, includeHelpers: true));
         using ActorProxy actor = ActorProxy.Create(context, source);
         Assert.IsInstanceOfType<LensFlareSourceProxy>(actor);
 
@@ -36,7 +35,7 @@ public class LensFlareSourceTests
         package.AddExport(subclass);
         var customSource = new ExportEntry(package, 0, "CustomFlare") { Class = subclass };
         package.AddExport(customSource);
-        Assert.IsTrue(ActorProxy.CanCreate(customSource));
+        Assert.IsTrue(ActorProxy.CanCreate(customSource, includeHelpers: true));
         using ActorProxy customActor = ActorProxy.Create(context, customSource);
         Assert.IsInstanceOfType<LensFlareSourceProxy>(customActor);
     }
@@ -54,9 +53,9 @@ public class LensFlareSourceTests
         ExportEntry unrelated = package.CreateExport("OtherFlare", "LensFlareSource", indexed: false);
         if (hasComponentReference)
             source.WriteProperty(new ObjectProperty(component, "LensFlareComp"));
-        using var actor = new LensFlareSourceProxy(new EditorContext(), source);
+        using var actor = CreateSource(source);
 
-        Assert.AreSame(component, actor.LensFlareComp.Export);
+        Assert.AreSame(component, actor.LensFlareComponentExport);
         ExportEntry[] properties = actor.GetPropertyExports().ToArray();
         Assert.AreSame(source, properties[0]);
         Assert.AreSame(component, properties[1]);
@@ -65,15 +64,20 @@ public class LensFlareSourceTests
         Assert.IsFalse(actor.TestUIndexes([unrelated.UIndex]));
     }
 
+    /// <summary>
+    /// Component edits made through the inspector's exports, then a transform edit committed by the marker, all survive the rebuild
+    /// upstream does when an actor's own exports change
+    /// </summary>
     [TestMethod]
-    public void ComponentPropertyEditsSurviveActorMovementAndRefresh()
+    public void ComponentPropertyEditsSurviveActorMovementAndRebuild()
     {
         using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("LensFlare.pcc", MEGame.LE3);
         ExportEntry source = package.CreateExport("Flare", "LensFlareSource", indexed: false);
         ExportEntry component = package.CreateExport("FlareComponent", "LensFlareComponent", source, indexed: false);
         ExportEntry template = package.CreateExport("SunFlare", "LensFlare", indexed: false);
         source.WriteProperty(new ObjectProperty(component, "LensFlareComp"));
-        using var actor = new LensFlareSourceProxy(new EditorContext(), source);
+        source.WriteProperty(CommonStructs.Vector3Prop(Vector3.Zero, "Location"));
+        using var actor = CreateSource(source);
 
         // These are the same exports used by the right-column property editor.
         ExportEntry editableComponent = actor.GetPropertyExports().Single(export => export == component);
@@ -84,39 +88,42 @@ public class LensFlareSourceTests
             CommonStructs.Vector3Prop(new Vector3(5, 10, 15), "Translation")
         });
         source.WriteProperty(new BoolProperty(false, "bCurrentlyActive"));
-        actor.RefreshFromExport();
-        Assert.AreEqual("SunFlare", actor.DisplaySubtitle);
-        Assert.IsFalse(actor.LensFlareComp.Properties.GetProp<BoolProperty>("bAutoActivate").Value);
+        Assert.IsTrue(actor.TestUIndexes([component.UIndex]), "A component edit must refresh the actor.");
+        Assert.IsTrue(actor.GetPropertyExports().Contains(template), "The flare template in the same file is offered too.");
 
-        actor.Location = new Vector3(100, 200, 300);
-        Assert.AreEqual(new Vector3(105, 210, 315), actor.GetBounds().Origin);
-        actor.CommitChanges();
-        actor.RefreshFromExport();
+        using (var rebuilt = CreateSource(source))
+        {
+            Assert.AreEqual("SunFlare", rebuilt.DisplaySubtitle);
+            Assert.IsFalse(rebuilt.IsFlareActive);
+            rebuilt.Location = new Vector3(100, 200, 300);
+            Assert.AreEqual(new Vector3(100, 200, 300), rebuilt.GetBounds().Origin);
+            rebuilt.CommitChanges();
+        }
 
-        Assert.AreEqual(new Vector3(100, 200, 300), actor.Location);
+        using var committed = CreateSource(source);
+        Assert.AreEqual(new Vector3(100, 200, 300), committed.Location);
         Assert.IsFalse(source.GetProperty<BoolProperty>("bCurrentlyActive").Value);
         Assert.IsFalse(component.GetProperty<BoolProperty>("bAutoActivate").Value);
         Assert.AreEqual(template.UIndex, component.GetProperty<ObjectProperty>("Template").Value);
     }
 
     [TestMethod]
-    public void RefreshFollowsReplacedComponentReference()
+    public void RebuildFollowsReplacedComponentReference()
     {
         using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("LensFlare.pcc", MEGame.LE3);
         ExportEntry source = package.CreateExport("Flare", "LensFlareSource", indexed: false);
         ExportEntry first = package.CreateExport("FirstComponent", "LensFlareComponent", source, indexed: false);
         ExportEntry second = package.CreateExport("SecondComponent", "LensFlareComponent", source, indexed: false);
         source.WriteProperty(new ObjectProperty(first, "LensFlareComp"));
-        using var actor = new LensFlareSourceProxy(new EditorContext(), source);
+        using var actor = CreateSource(source);
+        Assert.AreSame(first, actor.LensFlareComponentExport);
 
         source.WriteProperty(new ObjectProperty(second, "LensFlareComp"));
-        second.WriteProperty(CommonStructs.Vector3Prop(new Vector3(20, 30, 40), "Translation"));
-        actor.RefreshFromExport();
+        Assert.IsTrue(actor.TestUIndexes([source.UIndex]));
+        using var rebuilt = CreateSource(source);
 
-        Assert.AreSame(second, actor.LensFlareComp.Export);
-        Assert.HasCount(1, actor.Components);
-        Assert.AreSame(second, actor.GetPropertyExports().ElementAt(1));
-        Assert.AreEqual(new Vector3(20, 30, 40), actor.GetBounds().Origin);
+        Assert.AreSame(second, rebuilt.LensFlareComponentExport);
+        Assert.AreSame(second, rebuilt.GetPropertyExports().ElementAt(1));
     }
 
     [TestMethod]
@@ -126,15 +133,24 @@ public class LensFlareSourceTests
         ExportEntry source = package.CreateExport("PointOfInterest", "SFXPointOfInterest", indexed: false);
         ExportEntry module = package.CreateExport("UseModule", "SFXSimpleUseModule", source, indexed: false);
         source.WriteProperty(new ArrayProperty<ObjectProperty>([new ObjectProperty(module)], "Modules"));
-        using var actor = new SFXPointOfInterestProxy(new EditorContext(), source);
+        using ActorProxy actor = ActorProxy.Create(new EditorContext(), source);
 
+        Assert.IsInstanceOfType<SFXPointOfInterestProxy>(actor);
         CollectionAssert.AreEqual(new[] { source, module }, actor.GetPropertyExports().ToArray());
+    }
+
+    private static LensFlareSourceProxy CreateSource(ExportEntry source)
+    {
+        ActorProxy actor = ActorProxy.Create(new EditorContext(), source);
+        Assert.IsInstanceOfType<LensFlareSourceProxy>(actor, actor.Coverage.Reason);
+        return (LensFlareSourceProxy)actor;
     }
 
     private sealed class EditorContext : IActorEditorContext
     {
-        // Primitive component property/transform editing requires no GPU resources.
+        // Marker actors and their property exports need no GPU resources: without a Level Editor view, the flare isn't previewed
         public LevelEditorRenderContext RenderContext => null;
         public bool IsApplyingUndoRedo => true;
+        public PackageCache PackageCache { get; } = new();
     }
 }

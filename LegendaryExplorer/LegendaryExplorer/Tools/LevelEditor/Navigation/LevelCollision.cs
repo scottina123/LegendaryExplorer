@@ -403,8 +403,9 @@ public sealed class LevelCollisionScene
         return new LevelCollisionScene(collisionTriangles, buildBvh);
     }
 
+    //(a draft's class is its record's: a new or copied volume has no export until its commit)
     private static bool IsBlockingBrush(ActorProxy actor) =>
-        actor.Export.ClassName.Contains("BlockingVolume", StringComparison.OrdinalIgnoreCase) ||
+        actor.ClassName.Contains("BlockingVolume", StringComparison.OrdinalIgnoreCase) ||
         !actor.IsVolume;
 
     public bool Raycast(Vector3 origin, Vector3 direction, float maximumDistance,

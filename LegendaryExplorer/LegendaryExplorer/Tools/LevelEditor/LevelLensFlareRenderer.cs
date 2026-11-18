@@ -10,6 +10,11 @@ using SharpDX.Direct3D11;
 
 namespace LegendaryExplorer.Tools.LevelEditor;
 
+/// <summary>
+/// The Level Editor's lens flares. A LensFlare template's elements are prepared once (one material per element material, with the
+/// FLensFlareVertexFactory shaders), and each LensFlareSource's <see cref="LensFlareComponentProxy"/> draws through the context's translucent queue
+/// and game-shader path (<see cref="VfxGameShaderRenderer.RenderNativeMaterial{TVertex}"/>)
+/// </summary>
 internal sealed class LevelLensFlareRenderer(LevelEditorRenderContext context) : IDisposable
 {
     private const string VertexFactory = "FLensFlareVertexFactory";
@@ -29,8 +34,11 @@ internal sealed class LevelLensFlareRenderer(LevelEditorRenderContext context) :
         public Dictionary<IEntry, MaterialResources> Materials = [];
         public (ExportEntry Export, byte[] Data)[] SourceData;
         public bool HasAnimatedMaterials => Materials.Values.Any(resource => resource.Material.HasFrameDependentUniforms);
+        /// <summary>Released: components holding it prepare their flare again</summary>
+        public bool Disposed { get; private set; }
         public void Dispose()
         {
+            Disposed = true;
             foreach (MaterialResources resource in Materials.Values) resource.Dispose();
             Materials.Clear();
         }
@@ -95,13 +103,13 @@ internal sealed class LevelLensFlareRenderer(LevelEditorRenderContext context) :
         }
     }
 
+    /// <summary>Draws a flare's elements (from the translucent queue). Vertices are relative to the source, for precision</summary>
     public void Render(PreparedFlare flare, Matrix4x4 localToWorld, Vector4 sourceColor)
     {
-        if (flare is null || flare.Materials.Count == 0) return;
+        if (flare is null || flare.Disposed || flare.Materials.Count == 0) return;
         SceneCamera camera = context.Camera;
-        Matrix4x4.Invert(camera.ViewMatrix, out Matrix4x4 viewToWorld);
-        Vector3 eye = viewToWorld.Translation;
-        Vector3 viewForward = Vector3.TransformNormal(Vector3.UnitZ, viewToWorld);
+        Vector3 eye = camera.EyePosition;
+        Vector3 viewForward = camera.CameraForward;
         Vector3 source = localToWorld.Translation;
         Vector3 sourceToCamera = eye - source;
         float intensity = flare.Definition.GetIntensity(sourceToCamera, Vector3.TransformNormal(Vector3.UnitX, localToWorld));
@@ -114,39 +122,34 @@ internal sealed class LevelLensFlareRenderer(LevelEditorRenderContext context) :
         float worldScale = camera.IsOrthographic ? camera.OrthoWidth : depth;
         float actorScale = Vector3.TransformNormal(Vector3.UnitX, localToWorld).Length();
         float occlusion = flare.Definition.GetOcclusion(1);
-        bool previousDepthFallback = context.UseVfxSceneDepthFallback;
-        context.UseVfxSceneDepthFallback = true;
-        try
+        Matrix4x4 sourceTranslation = Matrix4x4.CreateTranslation(source);
+        // The point on the view axis at the source's depth: reflections are spread along the ray from the source through it
+        Vector3 axisPoint = eye + viewForward * depth;
+        foreach (LensFlareElementPreview element in flare.Definition.Elements)
         {
-            foreach (LensFlareElementPreview element in flare.Definition.Elements)
-            {
-                if (!element.IsEnabled) continue;
-                float radialDistance = element.NormalizeRadialDistance
-                    ? MathF.Max(MathF.Abs(sourceNdc.X), MathF.Abs(sourceNdc.Y)) : sourceNdc.Length();
-                LensFlareElementSample sample = element.Evaluate(radialDistance, distance, sourceColor);
-                if (sample.Material is null || !flare.Materials.TryGetValue(sample.Material, out MaterialResources resource)
-                    || sample.Color.W <= 0) continue;
-                Vector3 center = LensFlarePreview.GetElementPosition(source, camera, element.RayDistance)
-                                 + Vector3.TransformNormal(sample.Offset, localToWorld);
-                Vector2 size = sample.Size * worldScale * actorScale;
-                if (!float.IsFinite(size.X) || !float.IsFinite(size.Y) || !float.IsFinite(sample.Rotation)) continue;
-                var parameters = new Vector4(element.RayDistance, radialDistance, distance, intensity);
-                var vertices = resource.Mesh.Vertices;
-                vertices[0] = new LensFlareVertex(center, size, sample.Rotation, new Vector2(0, 0), parameters, sample.Color);
-                vertices[1] = new LensFlareVertex(center, size, sample.Rotation, new Vector2(1, 0), parameters, sample.Color);
-                vertices[2] = new LensFlareVertex(center, size, sample.Rotation, new Vector2(1, 1), parameters, sample.Color);
-                vertices[3] = new LensFlareVertex(center, size, sample.Rotation, new Vector2(0, 1), parameters, sample.Color);
-                resource.Mesh.LocalToWorld = Matrix4x4.Identity;
-                resource.Mesh.UpdateVertices(context.ImmediateContext);
-                resource.Material.LensFlareOcclusion = occlusion;
-                resource.Material.LensFlareCameraPosition = eye;
-                VfxGameShaderRenderer.RenderNativeMaterial(context, resource.Material, resource.Mesh, resource.Blend,
-                    depthTest: true, depthWrite: false, indexCount: 6);
-            }
-        }
-        finally
-        {
-            context.UseVfxSceneDepthFallback = previousDepthFallback;
+            if (!element.IsEnabled) continue;
+            float radialDistance = element.NormalizeRadialDistance
+                ? MathF.Max(MathF.Abs(sourceNdc.X), MathF.Abs(sourceNdc.Y)) : sourceNdc.Length();
+            LensFlareElementSample sample = element.Evaluate(radialDistance, distance, sourceColor);
+            if (sample.Material is null || !flare.Materials.TryGetValue(sample.Material, out MaterialResources resource)
+                || sample.Color.W <= 0) continue;
+            Vector3 center = Vector3.Lerp(source, axisPoint, element.RayDistance)
+                             + Vector3.TransformNormal(sample.Offset, localToWorld) - source;
+            Vector2 size = sample.Size * worldScale * actorScale;
+            if (!float.IsFinite(size.X) || !float.IsFinite(size.Y) || !float.IsFinite(sample.Rotation)) continue;
+            var parameters = new Vector4(element.RayDistance, radialDistance, distance, intensity);
+            var vertices = resource.Mesh.Vertices;
+            vertices[0] = new LensFlareVertex(center, size, sample.Rotation, new Vector2(0, 0), parameters, sample.Color);
+            vertices[1] = new LensFlareVertex(center, size, sample.Rotation, new Vector2(1, 0), parameters, sample.Color);
+            vertices[2] = new LensFlareVertex(center, size, sample.Rotation, new Vector2(1, 1), parameters, sample.Color);
+            vertices[3] = new LensFlareVertex(center, size, sample.Rotation, new Vector2(0, 1), parameters, sample.Color);
+            resource.Mesh.LocalToWorld = sourceTranslation;
+            resource.Mesh.UpdateVertices(context.ImmediateContext);
+            //the vertices are the element's center: its size, for texture streaming's on-screen size estimate
+            VfxGameShaderRenderer.InflateBounds(resource.Mesh, MathF.Max(size.X, size.Y));
+            resource.Material.LensFlareOcclusion = occlusion;
+            VfxGameShaderRenderer.RenderNativeMaterial(context, resource.Material, resource.Mesh, resource.Blend,
+                depthTest: true, depthWrite: false, indexCount: 6, isParticleSprite: true);
         }
     }
 
@@ -156,5 +159,10 @@ internal sealed class LevelLensFlareRenderer(LevelEditorRenderContext context) :
         templates.Clear();
     }
 
-    public void Dispose() => Clear();
+    public void Dispose()
+    {
+        Clear();
+        //the depth copy and depth state effects share (LevelVfxRenderer releases them too, whichever goes first)
+        context.DisposeEffectsResources();
+    }
 }

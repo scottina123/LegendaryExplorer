@@ -32,7 +32,8 @@ internal static class VfxMaterialBlending
             SourceAlphaBlend = preservesAlpha ? BlendOption.Zero : BlendOption.One,
             DestinationAlphaBlend = preservesAlpha ? BlendOption.One : opaque ? BlendOption.Zero : BlendOption.InverseSourceAlpha,
             AlphaBlendOperation = BlendOperation.Add,
-            RenderTargetWriteMask = ColorWriteMaskFlags.All
+            // RGB only: scene-color alpha is the resolve's game-shaded marker (see PSMainResolve), which blending must keep
+            RenderTargetWriteMask = ColorWriteMaskFlags.Red | ColorWriteMaskFlags.Green | ColorWriteMaskFlags.Blue
         };
     }
 

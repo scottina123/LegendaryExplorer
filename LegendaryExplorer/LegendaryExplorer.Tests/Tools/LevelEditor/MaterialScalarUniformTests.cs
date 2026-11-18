@@ -30,9 +30,6 @@ public class MaterialScalarUniformTests
     private static readonly float[] TerrainValues = [10f, 1200f, 1f, 4f, 3.5f, 1f, 2f];
 
     [DataTestMethod]
-    [DataRow(MEGame.ME1)]
-    [DataRow(MEGame.ME2)]
-    [DataRow(MEGame.ME3)]
     [DataRow(MEGame.LE1)]
     [DataRow(MEGame.LE2)]
     [DataRow(MEGame.LE3)]
@@ -43,7 +40,8 @@ public class MaterialScalarUniformTests
             .Select(index => Binding(index, ScalarOffset + index * sizeof(float), sizeof(float))).ToArray();
 
         var nativePixelBuffer = CreateBuffer();
-        WriteScalars(nativePixelBuffer, bindings, fixture.NativeMaterial.GetCachedPixelParameters(fixture.NativeContext).scalar, game);
+        // Upstream's renderer packs four scalar expressions per cached vector in every LE game (its setters read Index / 4, Index % 4)
+        WriteScalars(nativePixelBuffer, bindings, fixture.NativeMaterial.GetCachedPixelParameters(fixture.NativeContext).scalar, MEGame.LE3);
         AssertBuffer(nativePixelBuffer, TerrainValues);
 
         var legacyPixelBuffer = CreateBuffer();
@@ -126,7 +124,9 @@ public class MaterialScalarUniformTests
     private sealed class MaterialFixture : IDisposable
     {
         private readonly IMEPackage package;
-        public MeshRenderContext NativeContext { get; } = new();
+        // Upstream's vertex parameter setter reads the frame's view origin, so the native context needs its LEEffect
+        private readonly WarpMaterialFixture warp = new();
+        public MeshRenderContext NativeContext => warp.Context;
         public LegacyScene.MeshRenderContext LegacyContext { get; } = new();
         public MaterialRenderProxy NativeMaterial { get; }
         public LegacyScene.MaterialRenderProxy LegacyMaterial { get; }
@@ -139,6 +139,7 @@ public class MaterialScalarUniformTests
             // uniform expressions stand in for its shader map while the real material evaluators run.
             ExportEntry export = package.CreateExport("Terrain", "MaterialInstanceConstant", indexed: false);
             export.WriteProperties([]);
+            NativeContext.LEEffect.BeginFrame(NativeContext);
             NativeMaterial = new MaterialRenderProxy(NativeContext, export);
             LegacyMaterial = new LegacyScene.MaterialRenderProxy(export);
             InjectExpressions(NativeMaterial);
@@ -155,10 +156,25 @@ public class MaterialScalarUniformTests
                 DefaultValue = index == 1 ? 1000f : TerrainValues[index]
             }).ToArray();
             const BindingFlags flags = BindingFlags.NonPublic | BindingFlags.Instance;
+            if (material is MaterialRenderProxy)
+            {
+                // Upstream evaluates the shader map's uniform expressions
+                material.GetType().GetField("ShaderMap", flags)!.SetValue(material, new MaterialShaderMap
+                {
+                    UniformPixelScalarExpressions = expressions, UniformVertexScalarExpressions = expressions,
+                    UniformPixelVectorExpressions = [], UniformVertexVectorExpressions = [],
+                    Uniform2DTextureExpressions = [], UniformCubeTextureExpressions = []
+                });
+                return;
+            }
             material.GetType().GetField("PixelScalarExpressions", flags)!.SetValue(material, expressions);
             material.GetType().GetField("VertexScalarExpressions", flags)!.SetValue(material, expressions);
         }
 
-        public void Dispose() => package.Dispose();
+        public void Dispose()
+        {
+            package.Dispose();
+            warp.Dispose();
+        }
     }
 }

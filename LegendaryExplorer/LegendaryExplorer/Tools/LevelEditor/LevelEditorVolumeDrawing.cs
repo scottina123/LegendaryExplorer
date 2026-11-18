@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
@@ -15,9 +15,9 @@ using LegendaryExplorerCore.Unreal;
 using LegendaryExplorerCore.Unreal.BinaryConverters;
 using SharpDX.Direct3D;
 using SharpDX.Direct3D11;
-using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
 using Point = System.Windows.Point;
 using ShaderFlags = LegendaryExplorer.Tools.LevelEditor.Scene3D.RenderContext.ShaderFlags;
+using MessageBox = LegendaryExplorer.SharedUI.ThemedMessageBox;
 
 namespace LegendaryExplorer.Tools.LevelEditor;
 

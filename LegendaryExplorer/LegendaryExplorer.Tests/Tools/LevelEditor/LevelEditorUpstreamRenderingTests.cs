@@ -31,29 +31,32 @@ public class LevelEditorUpstreamRenderingTests
         var near = Vector4.Transform(new Vector4(0, 0, camera.ZNear, 1), camera.ProjectionMatrix);
         var far = Vector4.Transform(new Vector4(0, 0, camera.ZFar, 1), camera.ProjectionMatrix);
         Assert.AreEqual(1f, near.Z / near.W, 0.00001f);
-        Assert.AreEqual(0f, far.Z / far.W, 0.00001f);
+        // Upstream's perspective far plane is at infinity: depth is ZNear / view depth, above 0 at any distance. The orthographic range ends at 0
+        Assert.AreEqual(orthographic ? 0f : camera.ZNear / camera.ZFar, far.Z / far.W, 0.00001f);
+        Assert.IsTrue(far.Z / far.W < near.Z / near.W);
     }
 
-    [DataTestMethod]
-    [DataRow(MEGame.LE3, 0.5f)]
-    [DataRow(MEGame.ME3, 127.5f)]
-    public void AnimatedTangentsRetainUvColorAndGamePacking(MEGame game, float encodedZero)
+    /// <summary>
+    /// Upstream rebuilds skinned vertices with <see cref="LEVertex.Create"/>: tangents are packed for the LE vertex shaders' "* 2 - 1" unpack,
+    /// and the UVs and white vertex color stay put
+    /// </summary>
+    [TestMethod]
+    public void SkinnedVerticesUseLegendaryEditionPackingAndRetainUvs()
     {
         Fixed4<Vector4> uvs = default;
         uvs[0] = new Vector4(0.1f, 0.2f, 0.3f, 0.4f);
         uvs[1] = Vector4.One;
-        LEVertex original = ((LEVertex)LEVertex.Create(game, Vector3.Zero, Vector3.UnitX,
-            new Vector4(0, 0, 1, -1), uvs)).WithColor(new Vector4(0.25f, 0.5f, 0.75f, 1));
-        LEVertex rotated = original.WithPositionNormalAndTangent(game, Vector3.One,
-            new Vector4(0, 0, 1, -1), Vector3.UnitY);
+        var rotated = (LEVertex)LEVertex.Create(Vector3.One, Vector3.UnitY, new Vector4(0, 0, 1, -1), uvs);
+        var unrotated = (LEVertex)LEVertex.Create(Vector3.Zero, Vector3.UnitX, new Vector4(0, 0, 1, -1), uvs);
         var before = new float[LEVertex.Stride / sizeof(float)];
         var after = new float[before.Length];
-        original.ToFloats(before);
+        unrotated.ToFloats(before);
         rotated.ToFloats(after);
         CollectionAssert.AreEqual(before.Skip(11).ToArray(), after.Skip(11).ToArray());
-        Assert.AreEqual(encodedZero, after[4]);
-        Assert.AreEqual(encodedZero * 2, after[5]);
-        Assert.AreEqual(encodedZero, after[6]);
+        Assert.AreEqual(0.5f, after[4]);
+        Assert.AreEqual(1f, after[5]);
+        Assert.AreEqual(0.5f, after[6]);
+        Assert.AreEqual(1f, after[9]);
         Assert.AreEqual(0f, after[10]);
         Assert.AreEqual(Vector3.One, rotated.Position);
     }
@@ -78,7 +81,7 @@ public class LevelEditorUpstreamRenderingTests
     [TestMethod]
     public void MeshVertexColorDefaultsToWhite()
     {
-        var vertex = (LEVertex)LEVertex.Create(MEGame.LE3, Vector3.Zero, Vector3.UnitX,
+        var vertex = (LEVertex)LEVertex.Create(Vector3.Zero, Vector3.UnitX,
             new Vector4(0, 0, 1, 1), default);
         var stream = new float[LEVertex.Stride / sizeof(float)];
         vertex.ToFloats(stream);
@@ -124,89 +127,6 @@ public class LevelEditorUpstreamRenderingTests
     }
 
     [TestMethod]
-    public void TextureChannelInspectionRetainsDiffuseShaderDiagnostics()
-    {
-        var context = new MeshRenderContext();
-        Assert.IsTrue(context.HasDefaultTextureChannels);
-        context.RenderFlags &= ~RenderContext.ShaderFlags.EnableRedChannel;
-        Assert.IsFalse(context.HasDefaultTextureChannels);
-        context.RenderFlags |= RenderContext.ShaderFlags.EnableRedChannel;
-        context.RenderFlags |= RenderContext.ShaderFlags.Selected;
-        Assert.IsTrue(context.HasDefaultTextureChannels);
-        context.RenderFlags &= ~RenderContext.ShaderFlags.EnableAlphaChannel;
-        Assert.IsFalse(context.HasDefaultTextureChannels);
-    }
-
-    [DataTestMethod]
-    [DataRow(false, 0f)]
-    [DataRow(true, 1f)]
-    public void NativeMeshPipelineKeepsHdrOutputAndLegacyCoverageSeparate(bool legacyPipeline, float expectedAlpha)
-    {
-        const string shader = """
-float4 VSMain(uint id : SV_VertexID) : SV_POSITION
-{
-    float2 corner = float2((id << 1) & 2, id & 2);
-    return float4(corner * float2(2, -2) + float2(-1, 1), 0, 1);
-}
-float4 PSMain(float4 position : SV_POSITION) : SV_TARGET0
-{
-    return float4(position.xyz * float3(0.5, 1, 1) + float3(0, 0, 0.75), 0);
-}
-""";
-        using var device = new SharpDX.Direct3D11.Device(DriverType.Warp);
-        DeviceContext context = device.ImmediateContext;
-        MeshRenderContext renderContext = legacyPipeline ? new LegacyColorRenderContext() : new MeshRenderContext();
-        // Supply the software test device without creating an interactive viewport or hardware renderer.
-        typeof(RenderContext).GetProperty(nameof(RenderContext.Device)).SetValue(renderContext, device);
-        using var vertexBytecode = ShaderBytecode.Compile(shader, "VSMain", "vs_5_0");
-        using var pixelBytecode = ShaderBytecode.Compile(shader, "PSMain", "ps_5_0");
-        using var vertexShader = new VertexShader(device, vertexBytecode);
-        PixelShader pixelShader = renderContext.GetCachedMeshPixelShader(
-            Guid.NewGuid(), pixelBytecode.Bytecode.Data, useSrgbColorManagement: false);
-        var description = new Texture2DDescription
-        {
-            Width = 1, Height = 1, MipLevels = 1, ArraySize = 1,
-            Format = Format.R32G32B32A32_Float,
-            SampleDescription = new SampleDescription(1, 0),
-            Usage = ResourceUsage.Default,
-            BindFlags = BindFlags.RenderTarget
-        };
-        using var target = new Texture2D(device, description);
-        using var targetView = new RenderTargetView(device, target);
-        description.Usage = ResourceUsage.Staging;
-        description.BindFlags = BindFlags.None;
-        description.CpuAccessFlags = CpuAccessFlags.Read;
-        using var staging = new Texture2D(device, description);
-        using var rasterizer = new RasterizerState(device, new RasterizerStateDescription
-        {
-            FillMode = FillMode.Solid, CullMode = CullMode.None, IsDepthClipEnabled = true
-        });
-        try
-        {
-            context.Rasterizer.State = rasterizer;
-            context.Rasterizer.SetViewport(0, 0, 1, 1);
-            context.InputAssembler.PrimitiveTopology = PrimitiveTopology.TriangleList;
-            context.VertexShader.Set(vertexShader);
-            context.PixelShader.Set(pixelShader);
-            context.OutputMerger.SetRenderTargets(targetView);
-            context.ClearRenderTargetView(targetView, new RawColor4(0, 0, 0, 1));
-            context.Draw(3, 0);
-            context.CopyResource(target, staging);
-            var mapped = context.MapSubresource(staging, 0, MapMode.Read, SharpDX.Direct3D11.MapFlags.None);
-            Vector4 pixel;
-            try { pixel = Marshal.PtrToStructure<Vector4>(mapped.DataPointer); }
-            finally { context.UnmapSubresource(staging, 0); }
-
-            Assert.AreEqual(new Vector4(0.25f, 0.5f, 0.75f, expectedAlpha), pixel);
-        }
-        finally
-        {
-            context.ClearState();
-            renderContext.EmptyCaches();
-        }
-    }
-
-    [TestMethod]
     public void BakedLightInteractionsRemainAvailableToMaterialsWithoutTheCookedMapPolicy()
     {
         LegendaryExplorerCore.LegendaryExplorerCoreLib.InitLib(System.Threading.Tasks.TaskScheduler.Default);
@@ -235,6 +155,8 @@ float4 PSMain(float4 position : SV_POSITION) : SV_TARGET0
             LODModels = [new StaticMeshRenderData
             {
                 NumVertices = 1,
+                // a 1D (vertex) light-map fits a LOD with as many vertices as it has samples
+                PositionVertexBuffer = new PositionVertexBuffer { VertexData = [Vector3.Zero] },
                 VertexBuffer = new StaticMeshVertexBuffer { NumTexCoords = 0, VertexData = [] }
             }]
         };
@@ -250,12 +172,12 @@ float4 PSMain(float4 position : SV_POSITION) : SV_TARGET0
             Assert.IsNotNull(lighting);
             Assert.AreEqual(ELightMapType.LMT_1D, lighting.LightMapType);
             var bounds = new BoxSphereBounds { Origin = Vector3.Zero, BoxExtent = Vector3.One, SphereRadius = 1 };
-            CollectionAssert.AreEqual(new[] { dynamic }, lighting.GetLightInteractions(bounds).Select(interaction => interaction.Light).ToArray());
-            CollectionAssert.AreEquivalent(new[] { baked, dynamic }, lighting.GetLightInteractions(bounds, includeLightMappedLights: true)
+            CollectionAssert.AreEqual(new[] { dynamic }, lighting.GetLightInteractions(bounds, ignorePrecomputed: false).Select(interaction => interaction.Light).ToArray());
+            CollectionAssert.AreEquivalent(new[] { baked, dynamic }, lighting.GetLightInteractions(bounds, ignorePrecomputed: true)
                 .Select(interaction => interaction.Light).ToArray());
             // A fallback draw must not change the cached normal draw and double-count its baked light.
-            CollectionAssert.AreEqual(new[] { dynamic }, lighting.GetLightInteractions(bounds).Select(interaction => interaction.Light).ToArray());
-            Assert.HasCount(0, lighting.GetLightInteractions(new BoxSphereBounds { Origin = new Vector3(10000), BoxExtent = Vector3.One, SphereRadius = 1 }, includeLightMappedLights: true));
+            CollectionAssert.AreEqual(new[] { dynamic }, lighting.GetLightInteractions(bounds, ignorePrecomputed: false).Select(interaction => interaction.Light).ToArray());
+            Assert.HasCount(0, lighting.GetLightInteractions(new BoxSphereBounds { Origin = new Vector3(10000), BoxExtent = Vector3.One, SphereRadius = 1 }, ignorePrecomputed: true));
         }
         finally { context.EmptyCaches(); }
 
@@ -273,27 +195,38 @@ float4 PSMain(float4 position : SV_POSITION) : SV_TARGET0
     }
 
     [TestMethod]
-    public void ExistingUnlitViewportFlagSuppressesLevelLightsAndModulatedShadows()
+    public void UnlitLightingModeSuppressesLevelLightsAndModulatedShadows()
     {
+        LegendaryExplorerCore.LegendaryExplorerCoreLib.InitLib(System.Threading.Tasks.TaskScheduler.Default);
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("UnlitLights.pcc", MEGame.LE3);
+        ExportEntry actor = package.CreateExport("Light", "PointLight", indexed: false);
+        ExportEntry lightComponent = package.CreateExport("LightComponent", "PointLightComponent", actor, indexed: false);
+        lightComponent.WriteProperties([
+            new FloatProperty(1024, "Radius"), new FloatProperty(1, "Brightness"),
+            CommonStructs.GuidProp(Guid.NewGuid(), "LightGuid"),
+            CommonStructs.MatrixProp(Matrix4x4.Identity, "CachedParentToWorld")
+        ]);
         var context = new MeshRenderContext();
-        context.AddLights([new SceneLight(Vector3.Zero, 1024, Vector3.One, 1, false, Vector3.UnitZ, 0, 0)]);
+        context.AddLights([SceneLight.Create(lightComponent, "PointLight", context.PackageCache, Matrix4x4.Identity)]);
         Assert.IsTrue(context.IsLevelLightingActive);
-        context.RenderFlags |= RenderContext.ShaderFlags.Unlit;
+        context.LightingMode = ViewportLightingMode.Unlit;
         Assert.IsTrue(context.IsUnlit);
         Assert.IsFalse(context.IsLevelLightingActive);
         Assert.IsFalse(context.AreModulatedShadowsActive);
-        context.RenderFlags &= ~RenderContext.ShaderFlags.Unlit;
+        context.LightingMode = ViewportLightingMode.Level;
         Assert.IsTrue(context.IsLevelLightingActive);
     }
 
+    /// <summary>
+    /// Upstream's hit proxy pass redraws a surface with LEEffect's own depth state (reversed-Z GreaterEqual, no write) after its base pass:
+    /// the frontmost pixels get the selection tint and game-shaded alpha marker, and the hit ID, whether or not the base pass wrote depth
+    /// </summary>
     [DataTestMethod]
-    [DataRow(true, true, true)]
-    [DataRow(true, true, false)]
-    [DataRow(true, false, false)]
-    [DataRow(false, false, false)]
-    public void NativeHitProxyPreservesMaskedCoverageAndNonWritingDepthModes(bool depthEnabled, bool writesDepth, bool masked)
+    [DataRow(true)]
+    [DataRow(false)]
+    public void NativeHitProxyMarksDepthTestedSurfaces(bool writesDepth)
     {
-        string shader = (masked ? "#define MASKED\n" : "") + """
+        const string shader = """
 float4 VSMain(uint id : SV_VertexID) : SV_POSITION
 {
     float2 corner = float2((id << 1) & 2, id & 2);
@@ -301,9 +234,6 @@ float4 VSMain(uint id : SV_VertexID) : SV_POSITION
 }
 float4 PSMain(float4 position : SV_POSITION) : SV_TARGET0
 {
-#ifdef MASKED
-    if (position.x < 1) discard;
-#endif
     return float4(0.25, 0.5, 0.75, 0);
 }
 """;
@@ -338,7 +268,7 @@ float4 PSMain(float4 position : SV_POSITION) : SV_TARGET0
         using var depthView = new DepthStencilView(device, depth);
         using var baseDepthState = new DepthStencilState(device, new DepthStencilStateDescription
         {
-            IsDepthEnabled = depthEnabled,
+            IsDepthEnabled = true,
             DepthWriteMask = writesDepth ? DepthWriteMask.All : DepthWriteMask.Zero,
             DepthComparison = Comparison.Greater,
             IsStencilEnabled = false
@@ -359,33 +289,22 @@ float4 PSMain(float4 position : SV_POSITION) : SV_TARGET0
             context.OutputMerger.SetDepthStencilState(baseDepthState);
             context.ClearRenderTargetView(colorView, new RawColor4(0.1f, 0.2f, 0.3f, 1));
             context.ClearRenderTargetView(hitView, new RawColor4(0, 0, 0, 0));
-            // Disabled-depth materials must remain selectable even in front of a closer depth value.
-            context.ClearDepthStencilView(depthView, DepthStencilClearFlags.Depth, depthEnabled ? 0 : 1, 0);
+            context.ClearDepthStencilView(depthView, DepthStencilClearFlags.Depth, 0, 0);
             context.DrawIndexed(3, 0, 0);
             var hitConstants = new LEHitProxyConstants
             {
                 HitProxyID = new Vector3(0.3f, 0.4f, 0.5f),
                 Flags = RenderContext.ShaderFlags.Selected
             };
-            if (depthEnabled) effect.RenderHitProxy(context, hitConstants, 0, 3, baseDepthState);
-            else effect.RenderHitProxy(context, hitConstants, 0, 3); // Existing API infers disabled depth.
+            effect.RenderHitProxy(context, hitConstants, 0, 3);
             context.ClearState();
 
             Vector4[] colors = ReadPixels(color);
             Vector4[] hits = ReadPixels(hit);
             AssertPixel(new Vector4(0.2f, 0.4f, 1.2f, 2), colors[1]);
             AssertPixel(new Vector4(hitConstants.HitProxyID, 1), hits[1]);
-            if (masked)
-            {
-                // The clipped pixel keeps its background color/alpha and never becomes clickable.
-                AssertPixel(new Vector4(0.1f, 0.2f, 0.3f, 1), colors[0]);
-                AssertPixel(Vector4.Zero, hits[0]);
-            }
-            else
-            {
-                AssertPixel(colors[1], colors[0]);
-                AssertPixel(hits[1], hits[0]);
-            }
+            AssertPixel(colors[1], colors[0]);
+            AssertPixel(hits[1], hits[0]);
         }
         finally { context.ClearState(); }
 
@@ -407,11 +326,6 @@ float4 PSMain(float4 position : SV_POSITION) : SV_TARGET0
             Assert.AreEqual(expected.Z, actual.Z, 0.00001f);
             Assert.AreEqual(expected.W, actual.W, 0.00001f);
         }
-    }
-
-    private sealed class LegacyColorRenderContext : MeshRenderContext
-    {
-        public override bool UsesLegacyNativeMeshColorPipeline => true;
     }
 
 }

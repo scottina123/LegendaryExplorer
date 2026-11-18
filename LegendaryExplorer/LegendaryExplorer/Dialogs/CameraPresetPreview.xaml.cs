@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -202,7 +202,7 @@ public partial class CameraPresetPreview : UserControl, IDisposable, IActorEdito
         {
             if (SetRenderOption(ref _unlit, value))
             {
-                SetRenderFlag(LevelEditorRenderContext.ShaderFlags.Unlit, value);
+                _renderContext.SetUnlit(value);
             }
         }
     }
@@ -281,7 +281,7 @@ public partial class CameraPresetPreview : UserControl, IDisposable, IActorEdito
         _renderContext.ShowLightIcons = _showLightIcons;
         _renderContext.ShowVolumes = _showVolumes;
         _renderContext.ShowVolumetrics = _showVolumetrics;
-        SetRenderFlag(LevelEditorRenderContext.ShaderFlags.Unlit, _unlit);
+        _renderContext.SetUnlit(_unlit);
         SetRenderFlag(LevelEditorRenderContext.ShaderFlags.AlphaAsBlack, _setAlphaToBlack);
         _renderContext.EnableTransformWidget();
         _renderContext.TransformWidget.UseLocalCoords = true;

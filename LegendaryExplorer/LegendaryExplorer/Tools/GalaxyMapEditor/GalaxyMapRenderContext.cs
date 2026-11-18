@@ -76,7 +76,7 @@ internal sealed class GalaxyMap2DRenderContext : LevelEditorRenderContext
         return base.MouseMove(x, y);
     }
 
-    public override bool MouseScroll(int delta)
+    public override bool MouseScroll(int delta, System.Windows.Input.ModifierKeys modifiers)
     {
         // Zoom: positive delta = scroll up = zoom in (reduce OrthoSize)
         float factor = delta > 0 ? 0.85f : 1.15f;

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Globalization;
@@ -403,7 +403,7 @@ public sealed partial class BioStageEditor : ExportLoaderControl, IActorEditorCo
         RenderContext.ShowEmitterIcons = false;
         RenderContext.ShowPointsOfInterest = false;
         RenderContext.SetShowEmitterVfx(false);
-        if (unlit) RenderContext.RenderFlags |= LevelEditorRenderContext.ShaderFlags.Unlit;
+        if (unlit) RenderContext.SetUnlit(true);
         ApplyColorChannelFlags();
 
         ToggleTranslateCommand = new GenericCommand(() => SetWidgetMode(EWidgetMode.Translate));
@@ -570,8 +570,7 @@ public sealed partial class BioStageEditor : ExportLoaderControl, IActorEditorCo
         set
         {
             if (!SetProperty(ref unlit, value)) return;
-            if (value) RenderContext.RenderFlags |= LevelEditorRenderContext.ShaderFlags.Unlit;
-            else RenderContext.RenderFlags &= ~LevelEditorRenderContext.ShaderFlags.Unlit;
+            RenderContext.SetUnlit(value);
             SceneViewer?.MarkRenderDirty();
         }
     }

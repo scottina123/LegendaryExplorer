@@ -47,13 +47,11 @@ public class SharedRendererCompatibilityTests
 
             if (context is VfxPreviewRenderContext vfx)
             {
-                Assert.AreEqual(1, context.SampleCount,
-                    "VFX's custom Hable scene buffer must share the depth and hit targets' sample count.");
+                // VFX renders on upstream's MSAA scene targets (its own Hable scene buffer is gone); soft particles read the effects depth copy
                 Assert.IsTrue(context.UseGameShaders);
                 Assert.AreEqual(ViewportLightingMode.Preview, context.LightingMode);
-                Assert.AreSame(context.BlackTexView, vfx.PreviewSceneDepthTextureView);
-                Assert.AreEqual(Comparison.GreaterEqual, vfx.GetVfxDepthState(true, true).Description.DepthComparison);
-                Assert.AreEqual(Comparison.GreaterEqual, vfx.GetVfxDepthState(true, false).Description.DepthComparison);
+                Assert.AreEqual(Comparison.Greater, vfx.GetVfxDepthState(true, true).Description.DepthComparison);
+                Assert.AreEqual(Comparison.Greater, vfx.GetVfxDepthState(true, false).Description.DepthComparison);
                 Assert.AreEqual(DepthWriteMask.All, vfx.GetVfxDepthState(true, true).Description.DepthWriteMask);
                 Assert.AreEqual(DepthWriteMask.Zero, vfx.GetVfxDepthState(true, false).Description.DepthWriteMask);
                 vfx.UseGameShader = false;
@@ -79,11 +77,11 @@ public class SharedRendererCompatibilityTests
             context.Render();
             Assert.IsNull(context.ErrorText, context.ErrorText);
             pixel = ReadPixel(context, backbuffer, 1, 31);
-            byte[] expectedHdr = vfxPreview ? [115, 186, 220] : [215, 247, 252];
+            byte[] expectedHdr = [215, 247, 252];
             for (int channel = 0; channel < expectedHdr.Length; channel++)
             {
                 Assert.AreEqual(expectedHdr[channel], pixel[channel], 1,
-                    "Shared previews use the LE3 display transfer, while VFX retains its existing Hable transfer.");
+                    "Shared and VFX previews both use upstream's LE3 display transfer for game-shaded pixels.");
             }
         }
         finally

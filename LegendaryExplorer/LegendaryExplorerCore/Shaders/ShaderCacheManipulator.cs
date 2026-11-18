@@ -15,13 +15,14 @@ namespace LegendaryExplorerCore.Shaders
 {
     public static class ShaderCacheManipulator
     {
-        public static void CompactSeekFreeShaderCaches(IMEPackage pcc, string gamePathOverride = null)
+        /// <param name="localOnly">Keep the local shader maps the global (Ref) shader cache also has, for packages that must not depend on it</param>
+        public static void CompactSeekFreeShaderCaches(IMEPackage pcc, string gamePathOverride = null, bool localOnly = false)
         {
             var staticParamSetsInFile = new HashSet<StaticParameterSet>();
             //figure out which MaterialShaderMaps to keep
             foreach (ExportEntry export in pcc.Exports)
             {
-                if (export.ClassName == "Material")
+                if (export.IsA("Material"))
                 {
                     staticParamSetsInFile.Add((StaticParameterSet)ObjectBinary.From<Material>(export).SM3MaterialResource.ID);
                 }
@@ -29,14 +30,39 @@ namespace LegendaryExplorerCore.Shaders
                 {
                     staticParamSetsInFile.Add(ObjectBinary.From<MaterialInstance>(export).SM3StaticParameterSet);
                 }
+                else if (export.IsA("Terrain"))
+                {
+                    // Mirrors GetLocalShadersForMaterials/GetBrokenMaterials: a terrain's own combined-layer
+                    // shader maps (CachedTerrainMaterials[i].ID) and its individual layer materials
+                    // (MaterialIds) both need to survive compaction; neither is reachable through the
+                    // Material/MaterialInstance branches above since Terrain isn't a material export.
+                    var terrain = ObjectBinary.From<Terrain>(export);
+                    foreach (var ctm in terrain.CachedTerrainMaterials)
+                    {
+                        staticParamSetsInFile.Add((StaticParameterSet)ctm.ID);
+                        foreach (var matid in ctm.MaterialIds)
+                        {
+                            staticParamSetsInFile.Add((StaticParameterSet)matid);
+                        }
+                    }
+                }
             }
-            RefShaderCacheReader.RemoveStaticParameterSetsThatAreInTheGlobalCache(staticParamSetsInFile, pcc.Game, gamePathOverride);
+            if (!localOnly)
+            {
+                RefShaderCacheReader.RemoveStaticParameterSetsThatAreInTheGlobalCache(staticParamSetsInFile, pcc.Game, gamePathOverride);
+            }
 
             var localCache = pcc.FindExport("SeekFreeShaderCache");
 
             localCache?.WriteBinary(GetLocalShaders(staticParamSetsInFile, localCache));
         }
 
+        /// <summary>
+        /// Gets ALL shaders for a material, including from the ref shader cache.
+        /// </summary>
+        /// <param name="materials"></param>
+        /// <param name="gamePathOverride"></param>
+        /// <returns>A shader cache object that contains the material shader maps and the shaders.</returns>
         public static ShaderCache GetAllShadersForMaterials(List<ExportEntry> materials, string gamePathOverride = null)
         {
             if (materials.Count is 0)
@@ -54,7 +80,7 @@ namespace LegendaryExplorerCore.Shaders
 
             foreach (ExportEntry export in materials)
             {
-                if (export.ClassName == "Material")
+                if (export.IsA("Material"))
                 {
                     staticParamSets.Add((StaticParameterSet)ObjectBinary.From<Material>(export).SM3MaterialResource.ID);
                 }
@@ -79,6 +105,12 @@ namespace LegendaryExplorerCore.Shaders
             return allShaderCache;
         }
 
+        /// <summary>
+        /// Returns shaders in the local shader cache for the given materials
+        /// </summary>
+        /// <param name="materials"></param>
+        /// <param name="gamePathOverride"></param>
+        /// <returns></returns>
         public static ShaderCache GetLocalShadersForMaterials(List<ExportEntry> materials, string gamePathOverride = null)
         {
             if (materials.Count is 0)
@@ -97,13 +129,26 @@ namespace LegendaryExplorerCore.Shaders
 
             foreach (ExportEntry export in materials)
             {
-                if (export.ClassName == "Material")
+                if (export.IsA("Material"))
                 {
                     staticParamSets.Add((StaticParameterSet)ObjectBinary.From<Material>(export).SM3MaterialResource.ID);
                 }
                 else if (export.IsA("MaterialInstance") && export.GetProperty<BoolProperty>("bHasStaticPermutationResource"))
                 {
                     staticParamSets.Add(ObjectBinary.From<MaterialInstance>(export).SM3StaticParameterSet);
+                }
+                else if (export.IsA("Terrain"))
+                {
+                    var terrain = ObjectBinary.From<Terrain>(export);
+                    var ids = terrain.CachedTerrainMaterials.Select(x => (StaticParameterSet)x.ID);
+                    foreach (var ctm in terrain.CachedTerrainMaterials)
+                    {
+                        staticParamSets.Add((StaticParameterSet)ctm.ID);
+                        foreach (var matid in ctm.MaterialIds)
+                        {
+                            staticParamSets.Add((StaticParameterSet)matid);
+                        }
+                    }
                 }
             }
 
@@ -224,7 +269,15 @@ namespace LegendaryExplorerCore.Shaders
             return tempCache;
         }
 
-        public static void AddShadersToFile(IMEPackage destFile, ShaderCache shadersToAdd)
+        /// <summary>
+        /// Adds shaders from the given cache into the target package, creating cache if necessary.
+        /// </summary>
+        /// <param name="destFile"></param>
+        /// <param name="shadersToAdd"></param>
+        /// <param name="overwrite">If true, entries already present in the destination cache are replaced with the incoming
+        /// version instead of being left alone. Needed to force-refresh a material whose shader map already exists locally
+        /// (e.g. from a prior install) but is stale.</param>
+        public static void AddShadersToFile(IMEPackage destFile, ShaderCache shadersToAdd, bool overwrite = false)
         {
             const string seekfreeshadercache = "SeekFreeShaderCache";
             var destCacheExport = destFile.FindExport(seekfreeshadercache);
@@ -247,15 +300,27 @@ namespace LegendaryExplorerCore.Shaders
 
             foreach ((StaticParameterSet key, MaterialShaderMap materialShaderMap) in shadersToAdd.MaterialShaderMaps)
             {
-                destCache.MaterialShaderMaps.TryAdd(key, materialShaderMap);
+                if (overwrite)
+                {
+                    destCache.MaterialShaderMaps[key] = materialShaderMap;
+                }
+                else
+                {
+                    destCache.MaterialShaderMaps.TryAdd(key, materialShaderMap);
+                }
             }
 
             foreach ((Guid key, Shader shader) in shadersToAdd.Shaders)
             {
-                destCache.Shaders.TryAdd(key, shader);
+                if (overwrite)
+                {
+                    destCache.Shaders[key] = shader;
+                }
+                else
+                {
+                    destCache.Shaders.TryAdd(key, shader);
+                }
             }
-
-            
 
             destCacheExport.WriteBinary(destCache);
         }
@@ -265,7 +330,8 @@ namespace LegendaryExplorerCore.Shaders
         /// </summary>
         private static Lock shaderCacheReaderObj = new();
 
-        public static List<ExportEntry> GetBrokenMaterials(IMEPackage pcc, string gamePathOverride = null)
+        /// <param name="localOnly">Treat a material as broken unless the local shader cache has its shader map, ignoring the global (Ref) shader cache</param>
+        public static List<ExportEntry> GetBrokenMaterials(IMEPackage pcc, string gamePathOverride = null, bool localOnly = false)
         {
             var brokenMaterials = new List<ExportEntry>();
             if (!pcc.Game.IsMEGame())
@@ -276,13 +342,25 @@ namespace LegendaryExplorerCore.Shaders
 
             foreach (ExportEntry export in pcc.Exports)
             {
-                if (export.ClassName == "Material")
+                if (export.IsA("Material"))
                 {
                     staticParamSetsToMaterialsDict.AddToListAt((StaticParameterSet)ObjectBinary.From<Material>(export).SM3MaterialResource.ID, export);
                 }
                 else if (export.IsA("MaterialInstance") && export.GetProperty<BoolProperty>("bHasStaticPermutationResource"))
                 {
                     staticParamSetsToMaterialsDict.AddToListAt(ObjectBinary.From<MaterialInstance>(export).SM3StaticParameterSet, export);
+                }
+                else if (export.IsA("Terrain"))
+                {
+                    var terrain = ObjectBinary.From<Terrain>(export);
+                    foreach(var ctm in terrain.CachedTerrainMaterials)
+                    {
+                        staticParamSetsToMaterialsDict.AddToListAt((StaticParameterSet)ctm.ID, export);
+                        foreach(var matid in ctm.MaterialIds)
+                        {
+                            staticParamSetsToMaterialsDict.AddToListAt((StaticParameterSet)matid, export);
+                        }
+                    }
                 }
             }
             if (staticParamSetsToMaterialsDict.Count is 0)
@@ -305,9 +383,12 @@ namespace LegendaryExplorerCore.Shaders
                 return brokenMaterials;
             }
 
-            lock (shaderCacheReaderObj)
+            if (!localOnly)
             {
-                RefShaderCacheReader.RemoveStaticParameterSetsThatAreInTheGlobalCache(staticParamSets, pcc.Game, gamePathOverride);
+                lock (shaderCacheReaderObj)
+                {
+                    RefShaderCacheReader.RemoveStaticParameterSetsThatAreInTheGlobalCache(staticParamSets, pcc.Game, gamePathOverride);
+                }
             }
 
             foreach (StaticParameterSet staticParamSet in staticParamSets)
@@ -324,7 +405,7 @@ namespace LegendaryExplorerCore.Shaders
 
             var staticParamSetsToMaterialsDict = new Dictionary<StaticParameterSet, List<ExportEntry>>();
 
-            if (export.ClassName == "Material")
+            if (export.IsA("Material"))
             {
                 staticParamSetsToMaterialsDict.AddToListAt((StaticParameterSet)ObjectBinary.From<Material>(export).SM3MaterialResource.ID, export);
             }
@@ -394,11 +475,8 @@ namespace LegendaryExplorerCore.Shaders
         /// <exception cref="Exception"></exception>
         public static Guid? CopyRefShadersToLocal(ExportEntry material, bool cloneIfLocal = false)
         {
-            StaticParameterSet sps = material.ClassName switch
-            {
-                "Material" or "DecalMaterial" => (StaticParameterSet)ObjectBinary.From<Material>(material).SM3MaterialResource.ID,
-                _ => ObjectBinary.From<MaterialInstance>(material).SM3StaticParameterSet
-            };
+            // Fork fix kept: GetShaderMapId also handles DecalMaterial, which would otherwise be read as a MaterialInstance
+            StaticParameterSet sps = GetShaderMapId(material);
             ShaderCache seekFreeShaderCache;
             Guid newMatGuid;
             //if (material.FileRef.Exports.FirstOrDefault(exp => exp.ClassName == "ShaderCache") is { } seekFreeShaderCacheExport) // Old code. Not sure if there are other shader caches, since this is not ref?
@@ -517,7 +595,7 @@ namespace LegendaryExplorerCore.Shaders
 
         //if MaterialInstanceConstant, bHasStaticPermutationResource _must_ be true!
         public static (MaterialShaderMap, Shader[]) GetMaterialShaderMapAndShaders(ExportEntry material, params string[] shaderTypes)
-            => GetMaterialShaderMapAndShadersForVertexFactory(material, "FLocalVertexFactory", shaderTypes);
+            => GetMaterialShaderMapAndShaders(material, (Func<IMEPackage, ShaderCache>)null, shaderTypes);
 
         /// <summary>
         /// Resolves a material's shaders for one specific vertex factory. Particle renderers must use the
@@ -531,34 +609,49 @@ namespace LegendaryExplorerCore.Shaders
         /// <summary>Resolves a vertex factory's shaders while allowing callers to cache parsed package shader caches.</summary>
         public static (MaterialShaderMap, Shader[]) GetMaterialShaderMapAndShadersForVertexFactory(
             ExportEntry material, string vertexFactoryType, Func<IMEPackage, ShaderCache> getSeekFreeShaderCache, params string[] shaderTypes)
-            => GetMaterialShaderMapAndShaders(material, getSeekFreeShaderCache, vertexFactoryType, shaderTypes);
+            => GetMaterialShaderMapAndShaders(material, getSeekFreeShaderCache, vertexFactoryShaders: true, shaderTypes, vertexFactoryType ?? "FLocalVertexFactory");
 
         /// <param name="material">A Material, or a MaterialInstance with a StaticPermutationResource</param>
         /// <param name="getSeekFreeShaderCache">Gets the parsed SeekFreeShaderCache of a package, or null if it doesn't have one.
         /// For callers that want to avoid re-parsing the same ShaderCache for each material in a package. If null, the package's ShaderCache is parsed.</param>
         /// <param name="shaderTypes">The FLocalVertexFactory shader types to retrieve</param>
         public static (MaterialShaderMap, Shader[]) GetMaterialShaderMapAndShaders(ExportEntry material, Func<IMEPackage, ShaderCache> getSeekFreeShaderCache, params string[] shaderTypes)
-            => GetMaterialShaderMapAndShaders(material, getSeekFreeShaderCache, "FLocalVertexFactory", shaderTypes);
+            => GetMaterialShaderMapAndShaders(material, getSeekFreeShaderCache, vertexFactoryShaders: true, shaderTypes);
+
+        public static (MaterialShaderMap, Shader[]) GetMaterialShaderMapAndFactoryShaders(ExportEntry material, Func<IMEPackage, ShaderCache> getSeekFreeShaderCache,
+            string vertexFactoryType, params string[] shaderTypes)
+            => GetMaterialShaderMapAndShaders(material, getSeekFreeShaderCache, true, shaderTypes, vertexFactoryType);
 
         /// <summary>
         /// Gets shaders that aren't specific to a vertex factory, such as FLightFunctionPixelShader. They're in the material shader map itself, rather than one of its mesh shader maps.
         /// </summary>
         /// <inheritdoc cref="GetMaterialShaderMapAndShaders(ExportEntry, Func{IMEPackage, ShaderCache}, string[])"/>
         public static (MaterialShaderMap, Shader[]) GetMaterialShaderMapAndMaterialShaders(ExportEntry material, Func<IMEPackage, ShaderCache> getSeekFreeShaderCache, params string[] shaderTypes)
-            => GetMaterialShaderMapAndShaders(material, getSeekFreeShaderCache, null, shaderTypes);
+            => GetMaterialShaderMapAndShaders(material, getSeekFreeShaderCache, vertexFactoryShaders: false, shaderTypes);
 
-        private static (MaterialShaderMap, Shader[]) GetMaterialShaderMapAndShaders(ExportEntry material, Func<IMEPackage, ShaderCache> getSeekFreeShaderCache, string vertexFactoryType,
-            string[] shaderTypes)
+        /// <summary>The key a material's shaders are cached under: a Material's resource ID, or a MaterialInstance's static parameter set</summary>
+        public static StaticParameterSet GetShaderMapId(ExportEntry material) => material.ClassName switch
         {
-            StaticParameterSet sps = material.ClassName switch
-            {
-                "Material" or "DecalMaterial" => (StaticParameterSet)ObjectBinary.From<Material>(material).SM3MaterialResource.ID,
-                _ => ObjectBinary.From<MaterialInstance>(material).SM3StaticParameterSet
-            };
+            "Material" or "DecalMaterial" => (StaticParameterSet)ObjectBinary.From<Material>(material).SM3MaterialResource.ID,
+            _ => ObjectBinary.From<MaterialInstance>(material).SM3StaticParameterSet
+        };
+
+        private static (MaterialShaderMap, Shader[]) GetMaterialShaderMapAndShaders(ExportEntry material, Func<IMEPackage, ShaderCache> getSeekFreeShaderCache, bool vertexFactoryShaders,
+            string[] shaderTypes, string vertexFactoryType = "FLocalVertexFactory")
+            => GetMaterialShaderMapAndShaders(material.FileRef, GetShaderMapId(material), getSeekFreeShaderCache, vertexFactoryShaders, shaderTypes, vertexFactoryType);
+
+        /// <summary>
+        /// Looks up the shader map cached under <paramref name="sps"/>: in <paramref name="package"/>'s SeekFreeShaderCache, then the game's reference shader cache.
+        /// For material resources that aren't a material export, such as a terrain's FTerrainMaterialResources (keyed by their ID)
+        /// </summary>
+        /// <param name="vertexFactoryShaders">Whether <paramref name="shaderTypes"/> are in the <paramref name="vertexFactoryType"/> mesh shader map, rather than the material shader map itself</param>
+        public static (MaterialShaderMap, Shader[]) GetMaterialShaderMapAndShaders(IMEPackage package, StaticParameterSet sps, Func<IMEPackage, ShaderCache> getSeekFreeShaderCache,
+            bool vertexFactoryShaders, string[] shaderTypes, string vertexFactoryType = "FLocalVertexFactory")
+        {
             var shaders = new Shader[shaderTypes.Length];
             ShaderCache seekFreeShaderCache = getSeekFreeShaderCache is not null
-                ? getSeekFreeShaderCache(material.FileRef)
-                : material.FileRef.FindExport("SeekFreeShaderCache", "ShaderCache") is { } seekFreeShaderCacheExport
+                ? getSeekFreeShaderCache(package)
+                : package.FindExport("SeekFreeShaderCache", "ShaderCache") is { } seekFreeShaderCacheExport
                     ? ObjectBinary.From<ShaderCache>(seekFreeShaderCacheExport)
                     : null;
             if (seekFreeShaderCache is not null)
@@ -580,7 +673,7 @@ namespace LegendaryExplorerCore.Shaders
             }
 
             var shaderGuids = new Guid[shaderTypes.Length];
-            MaterialShaderMap materialShaderMap = RefShaderCacheReader.GetMaterialShaderMap(material.Game, sps, out _);
+            MaterialShaderMap materialShaderMap = RefShaderCacheReader.GetMaterialShaderMap(package.Game, sps, out _);
             if (GetShaderRefs(materialShaderMap) is { } refs)
             {
                 for (int i = 0; i < shaderTypes.Length; i++)
@@ -590,17 +683,18 @@ namespace LegendaryExplorerCore.Shaders
                         shaderGuids[i] = shaderRef.Id;
                     }
                 }
-                RefShaderCacheReader.GetShaders(material.Game, shaderGuids, out _, out _)?.CopyTo(shaders, 0);
+                RefShaderCacheReader.GetShaders(package.Game, shaderGuids, out _, out _)?.CopyTo(shaders, 0);
             }
             return (materialShaderMap, shaders);
 
             UMultiMap<NameReference, ShaderReference> GetShaderRefs(MaterialShaderMap shaderMap)
             {
+                //the reference shader cache has no shader map for these static parameters: the material has no shaders
                 if (shaderMap is null)
                 {
                     return null;
                 }
-                if (vertexFactoryType is null)
+                if (!vertexFactoryShaders)
                 {
                     return shaderMap.Shaders;
                 }

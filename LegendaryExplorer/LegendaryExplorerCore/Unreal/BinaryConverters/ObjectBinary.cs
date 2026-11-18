@@ -70,6 +70,7 @@ namespace LegendaryExplorerCore.Unreal.BinaryConverters
                 case "FracturedSkinnedMeshComponent":
                 case "StaticMeshComponent":
                     return From<StaticMeshComponent>(export, packageCache, dataOffsetOverride);
+                case "BioDecalComponent":
                 case "DecalComponent":
                     return From<DecalComponent>(export, packageCache, dataOffsetOverride);
                 case "Terrain":
@@ -263,6 +264,7 @@ namespace LegendaryExplorerCore.Unreal.BinaryConverters
                 MEGame.LE1 => LE1UnrealObjectInfo.ObjectInfo.Classes,
                 MEGame.LE2 => LE2UnrealObjectInfo.ObjectInfo.Classes,
                 MEGame.LE3 => LE3UnrealObjectInfo.ObjectInfo.Classes,
+                MEGame.LMP => LMPUnrealObjectInfo.ObjectInfo.Classes, 
                 _ => throw new ArgumentOutOfRangeException(nameof(game), game, null)
             };
             while (true)
@@ -316,6 +318,7 @@ namespace LegendaryExplorerCore.Unreal.BinaryConverters
                 case "FracturedSkinnedMeshComponent":
                 case "StaticMeshComponent":
                     return StaticMeshComponent.Create();
+                case "BioDecalComponent":
                 case "DecalComponent":
                     return DecalComponent.Create();
                 case "Terrain":

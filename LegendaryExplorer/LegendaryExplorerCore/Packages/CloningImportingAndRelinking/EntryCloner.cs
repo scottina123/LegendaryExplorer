@@ -10,15 +10,19 @@ namespace LegendaryExplorerCore.Packages.CloningImportingAndRelinking
 {
     public static partial class EntryCloner
     {
-        public static T CloneTree<T>(T entry, bool incrementIndex = true) where T : IEntry
+        /// <param name="objectMap">
+        /// If given, filled with each cloned entry's clone, by the entry it's a clone of. Pass it empty: the clones' references are relinked through
+        /// everything in it, entries it already had among them
+        /// </param>
+        public static T CloneTree<T>(T entry, bool incrementIndex = true, ListenableDictionary<IEntry, IEntry> objectMap = null) where T : IEntry
         {
-            var objectMap = new ListenableDictionary<IEntry, IEntry>();
-            T newRoot = CloneTree(entry, objectMap, incrementIndex);
+            objectMap ??= new ListenableDictionary<IEntry, IEntry>();
+            T newRoot = CloneTreeEntries(entry, objectMap, incrementIndex);
             RelinkClonedEntries(entry.FileRef, objectMap);
             return newRoot;
         }
 
-        private static T CloneTree<T>(T entry, ListenableDictionary<IEntry, IEntry> objectMap, bool incrementIndex) where T : IEntry
+        private static T CloneTreeEntries<T>(T entry, ListenableDictionary<IEntry, IEntry> objectMap, bool incrementIndex) where T : IEntry
         {
             T newRoot = CloneEntry(entry, objectMap, incrementIndex);
             EntryTree tree = entry.FileRef.Tree;
@@ -160,7 +164,7 @@ namespace LegendaryExplorerCore.Packages.CloningImportingAndRelinking
             }
 
             var objectMap = new ListenableDictionary<IEntry, IEntry>();
-            ExportEntry clone = cloneTree ? CloneTree(material, objectMap, true) : CloneEntry(material, objectMap);
+            ExportEntry clone = cloneTree ? CloneTreeEntries(material, objectMap, true) : CloneEntry(material, objectMap);
             if (materialCloneName is NameReference renamedMaterial)
             {
                 clone.ObjectName = renamedMaterial;
