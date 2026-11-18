@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -43,6 +43,9 @@ public sealed class LightmassBakeJob
 
     /// <summary>Uses the Lightmass settings BioWare changed for ME3 (<see cref="LightmassIni.ApplyBioWareOverrides"/>) instead of UDK's stock ones.</summary>
     public bool BioWareLightmassSettings { get; set; } = true;
+
+    /// <summary>Fork: turns on bUsePrecomputedShadows on every static mesh of the baked levels first, so all of them get baked lighting (<see cref="LightmassBakeSettings.UsePrecomputedShadowsOnAllMeshes"/>)</summary>
+    public bool UsePrecomputedShadowsOnAllMeshes { get; set; } = true;
 
     /// <summary>Name of the texture file cache the streamed lightmap textures go in. An existing cache of that name is added to.</summary>
     public string TfcName { get; set; } = "Textures_DLC_MOD_LEXLightmaps";
@@ -219,6 +222,7 @@ public sealed class LightmassBakeJob
                 UdkBinaries = ResolvedUdkBinaries,
                 Quality = Quality,
                 BioWareLightmassSettings = BioWareLightmassSettings,
+                UsePrecomputedShadowsOnAllMeshes = UsePrecomputedShadowsOnAllMeshes,
                 TfcName = TfcName,
                 TfcDirectory = preview.TemporaryDirectory,
                 CopiedCacheSource = preview.CopiedCacheSource,

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.IO;
@@ -184,12 +184,21 @@ public partial class LightmassBakerWindow : TrackingNotifyPropertyChangedWindowB
     /// <summary>Not shown in the window: kept from the opened job.</summary>
     private bool bioWareLightmassSettings = true;
 
+    private bool usePrecomputedShadowsOnAllMeshes = true;
+    /// <summary>Fork: turn on Use precomputed shadows on every static mesh before the bake, so all of them are baked (on by default)</summary>
+    public bool UsePrecomputedShadowsOnAllMeshes
+    {
+        get => usePrecomputedShadowsOnAllMeshes;
+        set => SetProperty(ref usePrecomputedShadowsOnAllMeshes, value);
+    }
+
     private LightmassBakeJob ToJob() => new()
     {
         Files = Files.Select(f => new LightmassBakeJobFile { Path = f.Path, Editable = f.Editable }).ToList(),
         Quality = Quality,
         AssignmentPolicy = AssignmentPolicy,
         BioWareLightmassSettings = bioWareLightmassSettings,
+        UsePrecomputedShadowsOnAllMeshes = UsePrecomputedShadowsOnAllMeshes,
         TfcName = TfcName,
         UdkBinaries = UdkBinaries,
         OutputDirectory = SaveInPlace || string.IsNullOrWhiteSpace(OutputDirectory) ? null : OutputDirectory,
@@ -202,6 +211,7 @@ public partial class LightmassBakerWindow : TrackingNotifyPropertyChangedWindowB
         Quality = job.Quality;
         AssignmentPolicy = job.AssignmentPolicy;
         bioWareLightmassSettings = job.BioWareLightmassSettings;
+        UsePrecomputedShadowsOnAllMeshes = job.UsePrecomputedShadowsOnAllMeshes;
         TfcName = job.TfcName;
         UdkBinaries = job.ResolvedUdkBinaries;
         OutputDirectory = job.OutputDirectory;

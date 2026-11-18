@@ -1,4 +1,4 @@
-<bases:TrackingNotifyPropertyChangedWindowBase x:Class="LegendaryExplorer.Tools.LightmassBaker.LightmassBakerWindow"
+﻿<bases:TrackingNotifyPropertyChangedWindowBase x:Class="LegendaryExplorer.Tools.LightmassBaker.LightmassBakerWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
@@ -68,6 +68,7 @@
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
                 <TextBlock Grid.Row="0" Grid.Column="0" Text="Quality" VerticalAlignment="Center" Margin="0,0,10,6"/>
                 <ComboBox Grid.Row="0" Grid.Column="1" ItemsSource="{Binding Qualities}" SelectedItem="{Binding Quality}" Margin="0,0,6,6" HorizontalAlignment="Left" MinWidth="160"/>
@@ -92,6 +93,9 @@
                 <TextBlock Grid.Row="4" Grid.Column="0" Text="Assignments" VerticalAlignment="Center" Margin="0,6,10,0"/>
                 <ComboBox Grid.Row="4" Grid.Column="1" ItemsSource="{Binding AssignmentPolicies}" SelectedValue="{Binding AssignmentPolicy}" SelectedValuePath="Key" DisplayMemberPath="Value" Margin="0,6,6,0" HorizontalAlignment="Left" MinWidth="160"
                           ToolTip="Preserve existing assignments keeps historical restrictions. Recompute assignments uses current settings and geometry. Both allocate missing mappings where supported."/>
+
+                <CheckBox Grid.Row="5" Grid.Column="1" Content="Use precomputed shadows on all meshes" IsChecked="{Binding UsePrecomputedShadowsOnAllMeshes}" Margin="0,8,6,0"
+                          ToolTip="Turns on Use precomputed shadows (bUsePrecomputedShadows) for every static mesh in the levels being baked before the bake. A mesh without it isn't baked, so nothing of it is written to the texture cache. The setting is saved with the baked levels."/>
             </Grid>
 
             <TextBlock Grid.Row="3" Text="{Binding Problems}" Foreground="OrangeRed" TextWrapping="Wrap" Margin="0,8,0,0">

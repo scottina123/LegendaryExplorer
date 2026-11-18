@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -9,7 +9,9 @@ using LegendaryExplorer.Lightmaps.Codec;
 using LegendaryExplorer.Lightmaps.Game;
 using LegendaryExplorerCore.Misc;
 using LegendaryExplorerCore.Packages;
+using LegendaryExplorerCore.Unreal;
 using LegendaryExplorerCore.Unreal.BinaryConverters;
+using LegendaryExplorerCore.Unreal.ObjectInfo;
 
 namespace LegendaryExplorer.Lightmaps.Lightmass;
 
@@ -20,6 +22,11 @@ public sealed class LightmassBakeSettings
     public LightmassQuality Quality = LightmassQuality.Preview;
     /// <summary>Applies <see cref="LightmassIni.ApplyBioWareOverrides"/> over UDK's BaseLightmass.ini.</summary>
     public bool BioWareLightmassSettings = true;
+    /// <summary>
+    /// Fork: turns on bUsePrecomputedShadows on every static mesh placed in the levels being baked before the bake, so each of them is given baked lighting
+    /// (written to the TFC): without static shadowing a mesh isn't part of the bake (UStaticMeshComponent::GetStaticLightingInfo). Saved with the bake
+    /// </summary>
+    public bool UsePrecomputedShadowsOnAllMeshes = true;
     public LightmassSceneOptions Scene = new();
     /// <summary>Where the mod TFC for streamed lightmap textures is written, and its name (Textures_DLC_MOD_..., for the game to find it).</summary>
     public string TfcDirectory;
@@ -61,6 +68,38 @@ public sealed class LightmassBakeResult
 /// </summary>
 public static class LightmassBake
 {
+    /// <summary>
+    /// Fork: sets bUsePrecomputedShadows on every static mesh component (static, spline, InterpActor and collection meshes...) placed in a level of
+    /// <paramref name="levels"/> that's baked (not one only read for context), so that the bake gives each of them static lighting
+    /// </summary>
+    static void UsePrecomputedShadowsOnAllMeshes(IReadOnlyList<IMEPackage> levels, ICollection<IMEPackage> contextOnly, Action<string> log)
+    {
+        int changed = 0;
+        foreach (var level in levels)
+        {
+            if (contextOnly?.Contains(level) == true) continue;
+            foreach (var component in level.Exports)
+            {
+                if (component.IsDefaultObject || !component.IsA("StaticMeshComponent") || !IsPlacedInLevel(component)) continue;
+                if (component.GetProperty<BoolProperty>("bUsePrecomputedShadows") is { Value: true }) continue;
+                component.WriteProperty(new BoolProperty(true, "bUsePrecomputedShadows"));
+                changed++;
+            }
+        }
+        if (changed > 0) log($"Use precomputed shadows turned on for {changed} static {(changed == 1 ? "mesh" : "meshes")}, so they're baked.");
+
+        // A level actor's component (Level > actor > component), or a collection's member (Level > collection > component), not an archetype or template
+        static bool IsPlacedInLevel(ExportEntry component)
+        {
+            IEntry owner = component.Parent;
+            for (int depth = 0; depth < 3 && owner is ExportEntry outer; depth++, owner = outer.Parent)
+            {
+                if (outer.ClassName == "Level") return depth > 0;
+            }
+            return false;
+        }
+    }
+
     /// <summary>BioWare's LMT_3/4 colour against the directional look (LE3_Lightmaps.md §16.1, provisional).</summary>
     const float VectorBrightness = 1.16f;
 
@@ -98,6 +137,7 @@ public static class LightmassBake
             log($"Materials can't be rendered ({e.Message}), so they all get a constant albedo.");
         }
         settings.Scene.MaterialCapture = capture;
+        if (settings.UsePrecomputedShadowsOnAllMeshes) UsePrecomputedShadowsOnAllMeshes(levels, settings.Scene.ContextOnly, log);
         using var builder = new LightmassSceneBuilder(settings.Scene);
         LightmassScene scene;
         try
