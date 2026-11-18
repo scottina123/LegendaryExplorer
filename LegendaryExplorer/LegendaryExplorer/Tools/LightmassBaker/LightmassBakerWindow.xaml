@@ -95,7 +95,7 @@
                           ToolTip="Preserve existing assignments keeps historical restrictions. Recompute assignments uses current settings and geometry. Both allocate missing mappings where supported."/>
 
                 <CheckBox Grid.Row="5" Grid.Column="1" Content="Use precomputed shadows on all meshes" IsChecked="{Binding UsePrecomputedShadowsOnAllMeshes}" Margin="0,8,6,0"
-                          ToolTip="Turns on Use precomputed shadows (bUsePrecomputedShadows) for every static mesh in the levels being baked before the bake. A mesh without it isn't baked, so nothing of it is written to the texture cache. The setting is saved with the baked levels."/>
+                          ToolTip="Turns on Use precomputed shadows (bUsePrecomputedShadows) for every static mesh in the levels being baked before the bake. A mesh without it isn't baked, so nothing of it is written to the texture cache. Meshes baked by Scottina's Lightmass Baker also get Accepts lights turned back on, since Lightmass leaves out a mesh that doesn't accept lights. The settings are saved with the baked levels."/>
             </Grid>
 
             <TextBlock Grid.Row="3" Text="{Binding Problems}" Foreground="OrangeRed" TextWrapping="Wrap" Margin="0,8,0,0">

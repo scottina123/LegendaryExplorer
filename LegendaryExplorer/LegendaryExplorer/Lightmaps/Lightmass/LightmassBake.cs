@@ -74,19 +74,44 @@ public static class LightmassBake
     /// </summary>
     static void UsePrecomputedShadowsOnAllMeshes(IReadOnlyList<IMEPackage> levels, ICollection<IMEPackage> contextOnly, Action<string> log)
     {
-        int changed = 0;
+        int changed = 0, restored = 0;
         foreach (var level in levels)
         {
             if (contextOnly?.Contains(level) == true) continue;
             foreach (var component in level.Exports)
             {
                 if (component.IsDefaultObject || !component.IsA("StaticMeshComponent") || !IsPlacedInLevel(component)) continue;
-                if (component.GetProperty<BoolProperty>("bUsePrecomputedShadows") is { Value: true }) continue;
-                component.WriteProperty(new BoolProperty(true, "bUsePrecomputedShadows"));
-                changed++;
+                var props = component.GetProperties();
+                bool write = false;
+                if (props.GetProp<BoolProperty>("bUsePrecomputedShadows") is not { Value: true })
+                {
+                    props.AddOrReplaceProp(new BoolProperty(true, "bUsePrecomputedShadows"));
+                    changed++;
+                    write = true;
+                }
+                if (BakedByScottinasBaker(props))
+                {
+                    // Scottina's Lightmass Baker turns lights off on the meshes it bakes (its lighting is all in the lightmap), and Lightmass leaves out a
+                    // mesh that doesn't accept lights (UStaticMeshComponent::GetStaticLightingInfo): they're turned back on, as UE3 bakes have them
+                    props.AddOrReplaceProp(new BoolProperty(true, "bAcceptsLights"));
+                    props.AddOrReplaceProp(new BoolProperty(true, "bAcceptsDynamicLights"));
+                    // Its list is of the lights it baked into the coefficients; this bake makes its own
+                    props.RemoveNamedProperty("IrrelevantLights");
+                    restored++;
+                    write = true;
+                }
+                if (write) component.WriteProperties(props);
             }
         }
         if (changed > 0) log($"Use precomputed shadows turned on for {changed} static {(changed == 1 ? "mesh" : "meshes")}, so they're baked.");
+        if (restored > 0) log($"Accepts lights turned back on for {restored} static {(restored == 1 ? "mesh" : "meshes")} that Scottina's Lightmass Baker had baked, so they're baked again.");
+
+        // The properties Scottina's baker (StaticLightingWriter.ApplyStaticLightingProperties) gives a mesh it bakes
+        static bool BakedByScottinasBaker(PropertyCollection props) =>
+            props.GetProp<BoolProperty>("bAcceptsLights") is { Value: false }
+            && props.GetProp<BoolProperty>("bAcceptsDynamicLights") is { Value: false }
+            && props.GetProp<BoolProperty>("bForceDirectLightMap") is { Value: true }
+            && props.GetProp<BoolProperty>("bBioForcePrecomputedShadows") is { Value: true };
 
         // A level actor's component (Level > actor > component), or a collection's member (Level > collection > component), not an archetype or template
         static bool IsPlacedInLevel(ExportEntry component)
@@ -151,6 +176,8 @@ public static class LightmassBake
         }
         foreach (var (what, n) in scene.Report.Where(r => r.Key.StartsWith("material:")))
             log($"{n} {(n == 1 ? "material" : "materials")} {what["material: ".Length..]}");
+        foreach (var (what, n) in scene.Report.Where(r => r.Key.StartsWith("mesh:") || r.Key.StartsWith("mapping:")).OrderBy(r => r.Key))
+            log($"  {what}: {n}");
         cancel.ThrowIfCancellationRequested();
         var mappings = scene.Mappings.ToDictionary(i => i.Guid);
         if (mappings.Count == 0)
