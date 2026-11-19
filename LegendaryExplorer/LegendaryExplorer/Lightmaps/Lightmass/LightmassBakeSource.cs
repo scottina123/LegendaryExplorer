@@ -12,9 +12,10 @@ namespace LegendaryExplorer.Lightmaps.Lightmass;
 /// <summary>
 /// Lightmass's results as lighting for <see cref="LightmapRewriter"/>.
 ///
-/// Lightmass gathers each sample as irradiance along the three orthonormal HL2 basis directions (E_i, with direct light scaled by
-/// DirectionalCoefficientScale·cos^0.85, which is what ME3's directional lightmaps hold) and along the normal (E_N, unscaled, what
-/// simple lightmaps hold). Because of that scale the four aren't one linear field, so the lighting handed on depends on the target:
+/// Lightmass gathers each sample as irradiance along the three orthonormal HL2 basis directions (E_i, light scaled by
+/// DirectionalCoefficientScale·cos^DirectionalCoefficientFalloffPower: UDK's 2·cos^0.85, or plain cos with BioWare's settings, which is what
+/// ME3's directional lightmaps hold) and along the normal (E_N, unscaled, what simple lightmaps hold). Because of that scale the four
+/// aren't one linear field, so the lighting handed on depends on the target:
 /// <list type="bullet">
 /// <item>LMT_1D/2D/3/4: the linear field with b = Σ E_i B_i and no constant term, which reproduces every E_i exactly
 /// (ToDirectional) and gives the Vector fit a sensible dominant direction.</item>
@@ -27,7 +28,9 @@ public sealed class LightmassBakeSource : ILightingSource, IDisposable
 {
     static readonly TangentFrame Identity = new(Vector3.UnitX, Vector3.UnitY, Vector3.UnitZ);
 
-    readonly Dictionary<(ExportEntry, string), (LightmassMapping Mapping, LightmassMappingResult Result)> byLightmap = new();
+    // Every target's mapping; its result is looked up when asked for, so results can still be arriving (a bake writing while it solves)
+    readonly Dictionary<(ExportEntry, string), LightmassMapping> targets = new();
+    readonly IReadOnlyDictionary<Guid, LightmassMappingResult> results;
     readonly Dictionary<IMEPackage, MeshResolver> resolvers = new();
     readonly Dictionary<Guid, Guid> lightGuids;
 
@@ -36,33 +39,56 @@ public sealed class LightmassBakeSource : ILightingSource, IDisposable
     public HashSet<IMEPackage> Unfinished { get; } = [];
     public int Matched { get; private set; }
 
+    /// <param name="results">The bake's results by mapping; it may still be filling (a concurrent dictionary) while lightmaps that are
+    /// <see cref="Ready"/> are asked for</param>
     public LightmassBakeSource(LightmassScene scene, IReadOnlyDictionary<Guid, LightmassMappingResult> results)
     {
+        this.results = results;
         lightGuids = scene.Lights.Where(l => !l.ShadowOnly && !l.IndirectOnly).ToDictionary(l => l.Guid, l => l.Light.LightmapGuid);
         foreach (var mapping in scene.Mappings)
-        {
-            if (!results.TryGetValue(mapping.Guid, out var result)) continue;
             // BSP elements sharing an allocation all get the surface group's result.
             foreach (var target in mapping.Targets)
-                byLightmap[(target.Owner, target.Slot)] = (mapping, result);
-        }
+                targets[(target.Owner, target.Slot)] = mapping;
     }
 
-    void Count(string why) => Report[why] = Report.GetValueOrDefault(why) + 1;
+    bool TryEntry(LightmapRef r, out (LightmassMapping Mapping, LightmassMappingResult Result) entry)
+    {
+        if (targets.TryGetValue((r.Owner, r.Slot), out var mapping) && results.TryGetValue(mapping.Guid, out var result))
+        {
+            entry = (mapping, result);
+            return true;
+        }
+        entry = default;
+        return false;
+    }
+
+    /// <summary>Whether a lightmap's lighting is settled: it isn't in the bake, or its mapping's result is in</summary>
+    public bool Ready(LightmapRef r) => !targets.TryGetValue((r.Owner, r.Slot), out var mapping) || results.ContainsKey(mapping.Guid);
+
+    // The lightmap rewriter asks for atlases' lookups in parallel: the tallies and mesh resolvers are shared
+    readonly object sync = new();
+
+    void Count(string why)
+    {
+        lock (sync) Report[why] = Report.GetValueOrDefault(why) + 1;
+    }
 
     void CountUnfinished(LightmapRef r, string why)
     {
-        Count(why);
-        Unfinished.Add(r.Owner.FileRef);
+        lock (sync)
+        {
+            Count(why);
+            Unfinished.Add(r.Owner.FileRef);
+        }
     }
 
     /// <summary>The light GUIDs Lightmass reported for a lightmap, or null if it wasn't baked.</summary>
-    public Guid[] LightGuids(LightmapRef r) => byLightmap.TryGetValue((r.Owner, r.Slot), out var e)
+    public Guid[] LightGuids(LightmapRef r) => TryEntry(r, out var e)
         ? e.Result.LightGuids.Where(lightGuids.ContainsKey).Select(g => lightGuids[g]).Distinct().ToArray() : null;
 
     public Func<Vector2, (Lighting Lighting, TangentFrame Frame)> For(LightmapRef r)
     {
-        if (!byLightmap.TryGetValue((r.Owner, r.Slot), out var entry)) { Count("not in the bake"); return null; }
+        if (!TryEntry(r, out var entry)) { Count("not in the bake"); return null; }
         var (mapping, result) = entry;
         if (!result.IsTextureMapping || result.SizeX != mapping.SizeX || result.SizeY != mapping.SizeY) { CountUnfinished(r, "result doesn't match its mapping"); return null; }
         bool simple = r.LightMap.LightMapType == ELightMapType.LMT_6;
@@ -72,8 +98,12 @@ public sealed class LightmassBakeSource : ILightingSource, IDisposable
         if (worldFrame)
         {
             if (mapping is not LightmassInstance instance) { CountUnfinished(r, "LMT_4 on something other than a static mesh"); return null; }
-            if (!resolvers.TryGetValue(r.Owner.FileRef, out var resolver)) resolvers[r.Owner.FileRef] = resolver = new MeshResolver(r.Owner.FileRef);
-            var g = ComponentGeometry.Load(r.Owner, resolver, out _, instance.LodIndex);
+            ComponentGeometry g;
+            lock (sync)
+            {
+                if (!resolvers.TryGetValue(r.Owner.FileRef, out var resolver)) resolvers[r.Owner.FileRef] = resolver = new MeshResolver(r.Owner.FileRef);
+                g = ComponentGeometry.Load(r.Owner, resolver, out _, instance.LodIndex);
+            }
             if (g == null || g.LightMapCoordinateIndex < 0) { CountUnfinished(r, "no LE3 geometry for the world-space frame"); return null; }
             locator = new UvLocator(g);
         }
@@ -82,7 +112,7 @@ public sealed class LightmassBakeSource : ILightingSource, IDisposable
         // With bPadMappings Lightmass maps the lightmap UVs 0..1 onto the interior (Size - 2 texels), one texel in; terrain isn't padded.
         bool padded = mapping.Padded && result.SizeX > 2 && result.SizeY > 2;
         int interiorX = padded ? result.SizeX - 2 : result.SizeX, interiorY = padded ? result.SizeY - 2 : result.SizeY, pad = padded ? 1 : 0;
-        Matched++;
+        lock (sync) Matched++;
         return uv =>
         {
             int x = Math.Clamp((int)MathF.Floor(uv.X * interiorX + pad), 0, result.SizeX - 1);
@@ -96,7 +126,7 @@ public sealed class LightmassBakeSource : ILightingSource, IDisposable
 
     public (Lighting Lighting, TangentFrame Frame)[] ForVertices(LightmapRef r)
     {
-        if (!byLightmap.TryGetValue((r.Owner, r.Slot), out var entry)) return null;
+        if (!TryEntry(r, out var entry)) return null;
         var (_, result) = entry;
         if (result.IsTextureMapping) { CountUnfinished(r, "result doesn't match its mapping"); return null; }
         var samples = new (Lighting, TangentFrame)[result.SizeX];

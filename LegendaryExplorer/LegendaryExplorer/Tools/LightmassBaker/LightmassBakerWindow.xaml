@@ -29,7 +29,7 @@
             </Grid.RowDefinitions>
 
             <TextBlock Grid.Row="0" TextWrapping="Wrap" Margin="0,0,0,6"
-                       Text="Bakes static lighting for LE1, LE2 and LE3 levels with UDK's Lightmass. Existing lightmaps keep their type; missing mappings are allocated where geometry and cooked shaders support them. Inspect the baked lighting before choosing Save or Discard. Add every level that makes up the scene: Add Streaming Levels follows their streaming references. Untick Bake for files that should only cast shadows and bounce light."/>
+                       Text="Bakes static lighting for LE1, LE2 and LE3 levels as UE3's Lightmass does, with LEX's own solver on the GPU or CPU, or with UDK's Lightmass. Existing lightmaps keep their type; missing mappings are allocated where geometry and cooked shaders support them. Inspect the baked lighting before choosing Save or Discard. Add every level that makes up the scene: Add Streaming Levels follows their streaming references. Untick Bake for files that should only cast shadows and bounce light."/>
 
             <DockPanel Grid.Row="1" IsEnabled="{Binding IsIdle}">
                 <StackPanel DockPanel.Dock="Right" Margin="6,0,0,0" Width="150">
@@ -69,32 +69,45 @@
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
-                <TextBlock Grid.Row="0" Grid.Column="0" Text="Quality" VerticalAlignment="Center" Margin="0,0,10,6"/>
-                <ComboBox Grid.Row="0" Grid.Column="1" ItemsSource="{Binding Qualities}" SelectedItem="{Binding Quality}" Margin="0,0,6,6" HorizontalAlignment="Left" MinWidth="160"/>
+                <TextBlock Grid.Row="0" Grid.Column="0" Text="Solver" VerticalAlignment="Center" Margin="0,0,10,6"/>
+                <ComboBox Grid.Row="0" Grid.Column="1" ItemsSource="{Binding Solvers}" SelectedValue="{Binding Solver}" SelectedValuePath="Choice" DisplayMemberPath="Label"
+                          Margin="0,0,6,6" HorizontalAlignment="Left" MinWidth="160"
+                          ToolTip="GPU and CPU bake with LEX's own solver, which needs no UDK and follows UE3 Lightmass as closely as it can. UDK Lightmass bakes with UDK's UnrealLightmass.exe through Swarm, the reference the others are compared to.">
+                    <ComboBox.ItemContainerStyle>
+                        <Style TargetType="ComboBoxItem" BasedOn="{StaticResource {x:Type ComboBoxItem}}">
+                            <Setter Property="IsEnabled" Value="{Binding IsEnabled}"/>
+                            <Setter Property="ToolTip" Value="{Binding ToolTip}"/>
+                        </Style>
+                    </ComboBox.ItemContainerStyle>
+                </ComboBox>
 
-                <TextBlock Grid.Row="1" Grid.Column="0" Text="Save to" VerticalAlignment="Center" Margin="0,0,10,6"/>
-                <DockPanel Grid.Row="1" Grid.Column="1" Margin="0,0,6,6">
+                <TextBlock Grid.Row="1" Grid.Column="0" Text="Quality" VerticalAlignment="Center" Margin="0,0,10,6"/>
+                <ComboBox Grid.Row="1" Grid.Column="1" ItemsSource="{Binding Qualities}" SelectedItem="{Binding Quality}" Margin="0,0,6,6" HorizontalAlignment="Left" MinWidth="160"/>
+
+                <TextBlock Grid.Row="2" Grid.Column="0" Text="Save to" VerticalAlignment="Center" Margin="0,0,10,6"/>
+                <DockPanel Grid.Row="2" Grid.Column="1" Margin="0,0,6,6">
                     <CheckBox DockPanel.Dock="Left" Content="The original files" IsChecked="{Binding SaveInPlace}" VerticalAlignment="Center" Margin="0,0,10,0"/>
                     <TextBox Text="{Binding OutputDirectory, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding SaveToFolder}"
                              ToolTip="The folder the baked files are saved to, under their own names."/>
                 </DockPanel>
-                <Button Grid.Row="1" Grid.Column="2" Content="Browse..." Click="BrowseOutput_Click" IsEnabled="{Binding SaveToFolder}" Padding="8,2" Margin="0,0,0,6"/>
+                <Button Grid.Row="2" Grid.Column="2" Content="Browse..." Click="BrowseOutput_Click" IsEnabled="{Binding SaveToFolder}" Padding="8,2" Margin="0,0,0,6"/>
 
-                <TextBlock Grid.Row="2" Grid.Column="0" Text="Texture cache" VerticalAlignment="Center" Margin="0,0,10,6"/>
-                <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding TfcName, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,6,6"
+                <TextBlock Grid.Row="3" Grid.Column="0" Text="Texture cache" VerticalAlignment="Center" Margin="0,0,10,6"/>
+                <TextBox Grid.Row="3" Grid.Column="1" Text="{Binding TfcName, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,6,6"
                          ToolTip="Name of the texture file cache (TFC) for the streamed lightmap textures. For a DLC mod, Textures_DLC_MOD_YourMod. The cache is saved beside the baked files. An existing cache of this name is added to, not replaced."/>
 
-                <TextBlock Grid.Row="3" Grid.Column="0" Text="UDK Binaries" VerticalAlignment="Center" Margin="0,0,10,0"/>
-                <TextBox Grid.Row="3" Grid.Column="1" Text="{Binding UdkBinaries, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,6,0"
-                         ToolTip="UDK's Binaries folder. Requires SwarmAgent.exe version 1.7.6517, included with the February 2015 UDK."/>
-                <Button Grid.Row="3" Grid.Column="2" Content="Browse..." Click="BrowseUdk_Click" Padding="8,2"/>
+                <TextBlock Grid.Row="4" Grid.Column="0" Text="UDK Binaries" VerticalAlignment="Center" Margin="0,0,10,0" IsEnabled="{Binding UsesUdk}"/>
+                <TextBox Grid.Row="4" Grid.Column="1" Text="{Binding UdkBinaries, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,6,0" IsEnabled="{Binding UsesUdk}"
+                         ToolTip="UDK's Binaries folder, for the UDK Lightmass solver only. Requires SwarmAgent.exe version 1.7.6517, included with the February 2015 UDK."/>
+                <Button Grid.Row="4" Grid.Column="2" Content="Browse..." Click="BrowseUdk_Click" Padding="8,2" IsEnabled="{Binding UsesUdk}"/>
 
-                <TextBlock Grid.Row="4" Grid.Column="0" Text="Assignments" VerticalAlignment="Center" Margin="0,6,10,0"/>
-                <ComboBox Grid.Row="4" Grid.Column="1" ItemsSource="{Binding AssignmentPolicies}" SelectedValue="{Binding AssignmentPolicy}" SelectedValuePath="Key" DisplayMemberPath="Value" Margin="0,6,6,0" HorizontalAlignment="Left" MinWidth="160"
+                <TextBlock Grid.Row="5" Grid.Column="0" Text="Assignments" VerticalAlignment="Center" Margin="0,6,10,0"/>
+                <ComboBox Grid.Row="5" Grid.Column="1" ItemsSource="{Binding AssignmentPolicies}" SelectedValue="{Binding AssignmentPolicy}" SelectedValuePath="Key" DisplayMemberPath="Value" Margin="0,6,6,0" HorizontalAlignment="Left" MinWidth="160"
                           ToolTip="Preserve existing assignments keeps historical restrictions. Recompute assignments uses current settings and geometry. Both allocate missing mappings where supported."/>
 
-                <CheckBox Grid.Row="5" Grid.Column="1" Content="Use precomputed shadows on all meshes" IsChecked="{Binding UsePrecomputedShadowsOnAllMeshes}" Margin="0,8,6,0"
+                <CheckBox Grid.Row="6" Grid.Column="1" Content="Use precomputed shadows on all meshes" IsChecked="{Binding UsePrecomputedShadowsOnAllMeshes}" Margin="0,8,6,0"
                           ToolTip="Turns on Use precomputed shadows (bUsePrecomputedShadows) for every static mesh in the levels being baked before the bake. A mesh without it isn't baked, so nothing of it is written to the texture cache. Meshes baked by Scottina's Lightmass Baker also get Accepts lights turned back on, since Lightmass leaves out a mesh that doesn't accept lights. The settings are saved with the baked levels."/>
             </Grid>
 

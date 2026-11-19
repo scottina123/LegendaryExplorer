@@ -326,6 +326,8 @@ public sealed class StaticLightingAreaEmitterIndex
 
     public static StaticLightingAreaEmitterIndex Empty { get; } = new([]);
     public int Count => emitters.Length;
+    /// <summary>Every sample (the light solver's fallback when it has no emissive triangles)</summary>
+    internal IReadOnlyList<StaticLightingAreaEmitter> Emitters => emitters;
     public int NodeCount => nodes.Count;
     public double BuildMilliseconds { get; }
 

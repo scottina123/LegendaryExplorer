@@ -1,4 +1,4 @@
-﻿<Window x:Class="LegendaryExplorer.Tools.LevelEditor.ScottinaLightmassBakerWindow"
+<Window x:Class="LegendaryExplorer.Tools.LevelEditor.ScottinaLightmassBakerWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:xctk="http://schemas.xceed.com/wpf/xaml/toolkit"
@@ -6,11 +6,11 @@
         Title="Scottina's Lightmass Baker" SizeToContent="WidthAndHeight" ResizeMode="NoResize"
         WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
         Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}">
-    <!-- The fork's own static lighting baker (C# and native backends). Its settings are the Level Editor's (DataContext), so they're kept between bakes -->
+    <!-- The fork's own static lighting baker (LEX's light solver on the GPU or CPU, or the classic C# and native backends). Its settings are the Level Editor's (DataContext), so they're kept between bakes -->
     <Window.Resources>
         <converters:InverseBooleanConverter x:Key="InverseBooleanConverter"/>
     </Window.Resources>
-        <StackPanel Width="360" Margin="12">
+        <StackPanel Width="430" Margin="12">
             <TextBlock Text="Bake static lighting" FontWeight="SemiBold" Margin="0,0,0,5"/>
             <TextBlock Text="Lights and occluding static meshes come from every loaded level. Select which writable levels receive generated lightmaps and shadow maps."
                        TextWrapping="Wrap" Margin="0,0,0,7"/>
@@ -32,9 +32,11 @@
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="125"/>
+                    <ColumnDefinition Width="205"/>
                 </Grid.ColumnDefinitions>
                 <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
@@ -78,18 +80,36 @@
                 <TextBlock Grid.Row="9" Text="UV/spatial work tile" VerticalAlignment="Center"/>
                 <ComboBox Grid.Row="9" Grid.Column="1" ItemsSource="{Binding LightmassWorkTileSizes}"
                           SelectedItem="{Binding LightmassWorkTileSize}" Margin="2"/>
-                <TextBlock Grid.Row="10" Text="Bake backend" VerticalAlignment="Center"/>
+                <TextBlock Grid.Row="10" Text="Device" VerticalAlignment="Center"/>
                 <ComboBox Grid.Row="10" Grid.Column="1" ItemsSource="{Binding LightmassBackends}"
-                          DisplayMemberPath="DisplayName" SelectedValuePath="Backend"
-                          SelectedValue="{Binding LightmassBackend}" Margin="2"/>
+                          SelectedValuePath="Backend" SelectedValue="{Binding LightmassBackend}" Margin="2"
+                          ToolTip="GPU and CPU run LEX's light solver: bounced light and sky/environment occlusion on top of the direct light. Classic bakes direct light only.">
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding DisplayName}" ToolTip="{Binding Description}"/>
+                        </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                </ComboBox>
+                <TextBlock Grid.Row="11" Text="Bounces" VerticalAlignment="Center"
+                           IsEnabled="{Binding LightmassUsesLightSolver}"/>
+                <xctk:IntegerUpDown Grid.Row="11" Grid.Column="1" Value="{Binding LightmassBounces}"
+                                    Minimum="0" Maximum="8" Increment="1" Margin="2"
+                                    IsEnabled="{Binding LightmassUsesLightSolver}"
+                                    ToolTip="Times light bounces off surfaces (GPU/CPU only). 0 still occludes the sky and environment."/>
+                <TextBlock Grid.Row="12" Text="Gather rays" VerticalAlignment="Center"
+                           IsEnabled="{Binding LightmassUsesLightSolver}"/>
+                <xctk:IntegerUpDown Grid.Row="12" Grid.Column="1" Value="{Binding LightmassGatherRays}"
+                                    Minimum="4" Maximum="1024" Increment="16" Margin="2"
+                                    IsEnabled="{Binding LightmassUsesLightSolver}"
+                                    ToolTip="Rays per sample that gather bounced light and sky (GPU/CPU only). More rays: less noise, slower bakes."/>
             </Grid>
-            <TextBlock Text="Bulk mapping is automatic: architectural, large, and broad low-poly receivers use LightMap2D at exactly the selected resolution; compact or dense receivers use LightMap1D. Direct lighting and ray-traced static shadows are baked into the selected mapping. Existing outputs are replaced; TFC data is reused or created as needed."
+            <TextBlock Text="Bulk mapping is automatic: architectural, large, and broad low-poly receivers use LightMap2D at exactly the selected resolution; compact or dense receivers use LightMap1D. Direct lighting and ray-traced static shadows are baked into the selected mapping, plus bounced light and occluded sky on the GPU and CPU devices. Existing outputs are replaced; TFC data is reused or created as needed."
                        TextWrapping="Wrap" Margin="0,0,0,7"/>
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                 <Button Content="Create Lightmass" Click="Bake_Click" IsDefault="True" Padding="10,4" Margin="0,0,6,0"/>
                 <Button Content="Cancel" IsCancel="True" Padding="10,4"/>
             </StackPanel>
-            <TextBlock Text="For a full UDK Lightmass bake (bounced lighting), use Build → Bake Lighting in Lightmass Baker."
+            <TextBlock Text="For a full UDK Lightmass bake, use Build → Bake Lighting in Lightmass Baker."
                        TextWrapping="Wrap" Margin="0,7,0,0" Foreground="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}"/>
         </StackPanel>
 </Window>

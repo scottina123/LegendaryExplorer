@@ -19,7 +19,7 @@ public sealed class LightmassMappingResult
     public double ExecutionTime;
     /// <summary>
     /// Incident lighting along the three HL2 basis directions in tangent space (Lightmass's gathered directional coefficients:
-    /// direct light scaled by DirectionalCoefficientScale·cos^DirectionalCoefficientFalloffPower, as ME3 was baked).
+    /// light scaled by DirectionalCoefficientScale·cos^DirectionalCoefficientFalloffPower; ME3 was baked with plain cos).
     /// </summary>
     public Directional.Sample[] Directional;
     /// <summary>Incident lighting along the surface normal (the simple coefficient), unscaled.</summary>

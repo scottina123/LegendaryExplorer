@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
@@ -33,6 +33,8 @@ public sealed class LightmapRewriter(IMEPackage package, TfcWriter tfc, ByteEnco
         /// <summary>DXT1 loss on the written colour atlases: squared byte error summed over mapped top-mip texel channels, and the count.</summary>
         public double DxtSquaredError; public long DxtSamples;
         public List<string> Notes = [];
+        /// <summary>How long each stage of the rewrite took, for the log</summary>
+        public string Timing;
         /// <summary>Per-vertex lightmaps (LMT_1D, LMT_3) written from the bake, and those whose sample count isn't the mesh's vertex count.</summary>
         public int VertexLightmaps, VertexCountMismatches;
         public int AllocatedLightmaps, SkippedNewMappings;
@@ -48,45 +50,162 @@ public sealed class LightmapRewriter(IMEPackage package, TfcWriter tfc, ByteEnco
         public List<(float R, int Lit)> VertexCorrelations = [], VertexShiftedCorrelations = [];
     }
 
+    // In place, atlases are rebuilt in parallel: the caches below are shared between them
     readonly Dictionary<int, DecodedTexture> cache = new();
-    DecodedTexture Read(int uIndex) => cache.TryGetValue(uIndex, out var t) ? t : cache[uIndex] = PackageLightmaps.ReadTopMip(package, uIndex);
+    DecodedTexture Read(int uIndex)
+    {
+        lock (cache)
+            if (cache.TryGetValue(uIndex, out var t)) return t;
+        var read = PackageLightmaps.ReadTopMip(package, uIndex);
+        lock (cache) return cache.TryAdd(uIndex, read) ? read : cache[uIndex];
+    }
 
     /// <summary>A destination texel: its index in the atlas being built, its value, and whether it is mapped (coverage).</summary>
     readonly record struct Texel<T>(int Dest, T Value, bool Mapped);
 
+    /// <summary>One atlas (texture set) of the package's lightmaps: whether it's rewritten, and once it's rebuilt, its textures encoded and ready to write</summary>
+    sealed class AtlasWork(List<LightmapRef> refs)
+    {
+        public readonly List<LightmapRef> Refs = refs;
+        public bool Decided;
+        /// <summary>The atlas's allocations when it's rewritten; null when it's left alone (<see cref="Skipped"/>)</summary>
+        public List<Allocation> Allocations;
+        public string Skipped;
+        /// <summary>In place: its textures, encoded (null until then)</summary>
+        public List<(QueuedTexture Texture, LightmapTextureWriter.Prepared Prepared, double Squared, long Samples)> Encoded;
+    }
+
+    readonly Summary summary = new();
+    readonly object planLock = new();
+    List<LightmapRef> refs;
+    List<AtlasWork> atlases;
+    TfcWriter tfcWriter = tfc;
+
+    /// <summary>The texture cache the textures are written to, when it's made after the rewriter (<see cref="PrepareReady"/> runs before)</summary>
+    public void UseTfc(TfcWriter writer) => tfcWriter = writer;
+
+    void Plan()
+    {
+        lock (planLock)
+        {
+            if (atlases != null) return;
+            refs = PackageLightmaps.Enumerate(package).ToList();
+            atlases = refs.Where(r => r.LightMap is LightMap_2D or LightMap_4or6).GroupBy(r => TextureKey(r.LightMap)).Select(g => new AtlasWork(g.ToList())).ToList();
+        }
+    }
+
+    /// <summary>
+    /// While a bake is still solving: rebuilds and encodes (in place) the atlases whose lightmaps are all <paramref name="ready"/>, so that
+    /// <see cref="RewriteAll"/> only has the rest left, and the writing. It leaves the package and texture cache alone
+    /// </summary>
+    public void PrepareReady(Func<LightmapRef, bool> ready, int maxParallel)
+    {
+        Plan();
+        List<AtlasWork> todo;
+        lock (planLock) todo = atlases.Where(a => !a.Decided && a.Refs.All(ready)).ToList();
+        System.Threading.Tasks.Parallel.ForEach(todo, new System.Threading.Tasks.ParallelOptions { MaxDegreeOfParallelism = Math.Max(1, maxParallel) }, a =>
+        {
+            lock (a) Rebuild(a);
+        });
+    }
+
+    /// <summary>Whether an atlas is rewritten, and its allocations (its textures decoded and the bake's lookups made, the slow part)</summary>
+    void Decide(AtlasWork a)
+    {
+        if (a.Decided) return;
+        var list = a.Refs;
+        // Every lightmap carrier (static/spline meshes, BSP, terrain).
+        if (list.Any(r => r.Owner.ClassName is not ("StaticMeshComponent" or "SplineMeshComponent" or "ModelComponent" or "TerrainComponent"))) a.Skipped = "carrier";
+        else
+        {
+            var allocations = Allocations(list);
+            if (allocations.Any(al => al.Padding < 0))
+                a.Skipped = $"{Read(TextureKey(list[0].LightMap)).Export.ObjectName.Instanced}: an allocation follows neither convention; left untouched";
+            // Re-encoding an atlas the bake doesn't touch would only add DXT1 loss (and, streamed, another copy in the TFC).
+            else if (bake != null && !allocations.Any(al => Baked(al.Refs[0]) != null)) a.Skipped = "unbaked";
+            else
+            {
+                foreach (var al in allocations) Baked(al.Refs[0]);
+                a.Allocations = allocations;
+            }
+        }
+        a.Decided = true;
+    }
+
+    /// <summary>In place: decides, rebuilds and encodes an atlas (once)</summary>
+    void Rebuild(AtlasWork a)
+    {
+        Decide(a);
+        if (a.Allocations == null || a.Encoded != null) return;
+        var queue = new List<QueuedTexture>();
+        RewriteInPlace(a.Allocations, summary, queue);
+        a.Encoded = queue.Select(q =>
+        {
+            var (encoded, squared, samples) = Encode(q.Format, q.Top, q.Averaging);
+            bool streamed = q.Export.GetProperty<NameProperty>("TextureFileCacheName") is { } n && n.Value.Name != "None";
+            return (q, LightmapTextureWriter.Prepare(encoded, streamed), squared, samples);
+        }).ToList();
+    }
+
     public Summary RewriteAll(bool repack)
     {
-        var summary = new Summary();
-        var refs = PackageLightmaps.Enumerate(package).ToList();
-        var eligible = new List<List<Allocation>>();
-        foreach (var group in refs.Where(r => r.LightMap is LightMap_2D or LightMap_4or6).GroupBy(r => TextureKey(r.LightMap)))
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        var stages = new List<string>();
+        void Stage(string name) { stages.Add($"{name} {clock.Elapsed.TotalSeconds:F1}s"); clock.Restart(); }
+        Plan();
+        int early = atlases.Count(a => a.Encoded != null);
+        // What's left: each atlas decided (and in place, rebuilt and encoded) in parallel
+        System.Threading.Tasks.Parallel.ForEach(atlases, a =>
         {
-            var list = group.ToList();
-            // Every lightmap carrier (static/spline meshes, BSP, terrain).
-            if (list.Any(r => r.Owner.ClassName is not ("StaticMeshComponent" or "SplineMeshComponent" or "ModelComponent" or "TerrainComponent"))) { summary.SkippedSets++; continue; }
-            var allocations = Allocations(list);
-            if (allocations.Any(a => a.Padding < 0))
+            lock (a)
+            {
+                if (repack) Decide(a);
+                else Rebuild(a);
+            }
+        });
+        var eligible = new List<List<Allocation>>();
+        foreach (var a in atlases)
+        {
+            if (a.Allocations != null) eligible.Add(a.Allocations);
+            else if (a.Skipped == "unbaked") summary.UnbakedSets++;
+            else
             {
                 summary.SkippedSets++;
-                summary.Notes.Add($"{Read(TextureKey(list[0].LightMap)).Export.ObjectName.Instanced}: an allocation follows neither convention; left untouched");
-                continue;
+                if (a.Skipped != "carrier") summary.Notes.Add(a.Skipped);
             }
-            // Re-encoding an atlas the bake doesn't touch would only add DXT1 loss (and, streamed, another copy in the TFC).
-            if (bake != null && !allocations.Any(a => Baked(a.Refs[0]) != null)) { summary.UnbakedSets++; continue; }
-            eligible.Add(allocations);
         }
         summary.TextureSets = eligible.Count;
         summary.Allocations = eligible.Sum(l => l.Count);
-        summary.SharedLightmaps = eligible.Sum(l => l.Sum(a => a.Refs.Count - 1));
+        summary.SharedLightmaps = eligible.Sum(l => l.Sum(al => al.Refs.Count - 1));
+        Stage(early > 0 ? $"atlases ({early} encoded during the solve)" : "atlases");
 
         if (repack) Repack(eligible, summary);
-        else foreach (var list in eligible) RewriteInPlace(list, summary);
+        else
+        {
+            // Into the package and texture cache one at a time, in the atlases' order
+            foreach (var a in atlases.Where(a => a.Encoded != null))
+                foreach (var (q, prepared, squared, samples) in a.Encoded)
+                {
+                    bool toTfc = tfcWriter != null && prepared.ToTfc;
+                    LightmapTextureWriter.Write(q.Export, q.Format, q.Top.Width, q.Top.Height, prepared, toTfc ? tfcWriter : null, q.Srgb);
+                    summary.DxtSquaredError += squared;
+                    summary.DxtSamples += samples;
+                    summary.Textures++;
+                }
+            foreach (var list in eligible)
+            foreach (var al in list.Where(al => Baked(al.Refs[0]) != null))
+                foreach (var r in al.Refs) RecordAppliedLightmap(r, al.Refs[0], summary);
+            Stage("writing textures");
+        }
 
         if (bake != null) RewriteVertexLightmaps(refs, summary);
+        Stage("vertex lightmaps");
 
         // Each LightMap belongs to its component's parsed binary; write every component back once.
         foreach (var r in refs.GroupBy(r => r.Owner).Select(g => g.First()))
             r.Owner.WriteBinary(r.Binary);
+        Stage("components");
+        summary.Timing = string.Join(", ", stages);
         return summary;
     }
 
@@ -126,8 +245,11 @@ public sealed class LightmapRewriter(IMEPackage package, TfcWriter tfc, ByteEnco
     Func<Vector2, (Lighting Lighting, TangentFrame Frame)> Baked(LightmapRef first)
     {
         if (bake == null) return null;
-        if (!lookups.TryGetValue(first, out var f)) lookups[first] = f = bake.For(first);
-        return f;
+        lock (lookups)
+            if (lookups.TryGetValue(first, out var f)) return f;
+        // An allocation is in one atlas, so only that atlas's worker asks for it
+        var made = bake.For(first);
+        lock (lookups) return lookups.TryAdd(first, made) ? made : lookups[first];
     }
 
     void RecordAppliedLightmap(LightmapRef target, LightmapRef source, Summary summary)
@@ -167,8 +289,17 @@ public sealed class LightmapRewriter(IMEPackage package, TfcWriter tfc, ByteEnco
 
     // ================= in place =================
 
-    void RewriteInPlace(List<Allocation> list, Summary summary)
+    /// <summary>A texture an atlas rebuild produced, to encode and write once every atlas is rebuilt</summary>
+    sealed record QueuedTexture(ExportEntry Export, string Format, MipLevel Top, MipAveraging Averaging, bool? Srgb);
+
+    /// <summary>
+    /// Rebuilds one atlas in place. It can run alongside the others: it touches only its own allocations' lightmaps and queues its textures
+    /// (<paramref name="queue"/>) for encoding and writing
+    /// </summary>
+    void RewriteInPlace(List<Allocation> list, Summary summary, List<QueuedTexture> queue)
     {
+        void WriteTexture(ExportEntry export, string format, MipLevel top, MipAveraging averaging, bool? srgb, Summary _) =>
+            queue.Add(new QueuedTexture(export, format, top, averaging, srgb));
         switch (list[0].First)
         {
             case LightMap_2D first:
@@ -197,7 +328,7 @@ public sealed class LightmapRewriter(IMEPackage package, TfcWriter tfc, ByteEnco
                 var (colour, dir) = (Read(first.Texture1), Read(first.Texture2));
                 if (colour.Width != dir.Width * 2 || colour.Height != dir.Height * 2)
                 {
-                    summary.Notes.Add($"{colour.Export.ObjectName}: direction atlas not half resolution; left untouched");
+                    lock (summary) summary.Notes.Add($"{colour.Export.ObjectName}: direction atlas not half resolution; left untouched");
                     return;
                 }
                 var (colourTop, dirTop) = (MipLevel.Create(colour.Width, colour.Height), MipLevel.Create(dir.Width, dir.Height));
@@ -241,8 +372,26 @@ public sealed class LightmapRewriter(IMEPackage package, TfcWriter tfc, ByteEnco
                 break;
             }
         }
-        foreach (var a in list.Where(a => Baked(a.Refs[0]) != null))
-            foreach (var r in a.Refs) RecordAppliedLightmap(r, a.Refs[0], summary);
+    }
+
+    /// <summary>A texture's dilated mip chain, encoded, with the DXT1 loss on its mapped top-mip texels</summary>
+    (List<byte[]> Encoded, double Squared, long Samples) Encode(string format, MipLevel top, MipAveraging averaging)
+    {
+        var levels = MipChain.BuildDilated(top, averaging, minSize: MipChain.MinMipSize(format));
+        var encoded = LightmapTextureWriter.Encode(levels, format);
+        double squared = 0;
+        long samples = 0;
+        if (format == "PF_DXT1")
+        {
+            var decoded = Dxt1.Decode(encoded[0], top.Width, top.Height);
+            for (int i = 0; i < top.Coverage.Length; i++)
+            {
+                if (top.Coverage[i] == 0) continue;
+                for (int c = 0; c < 3; c++) { double d = decoded[i * 3 + c] - levels[0].Rgb[i * 3 + c]; squared += d * d; }
+                samples += 3;
+            }
+        }
+        return (encoded, squared, samples);
     }
 
     /// <summary>
@@ -654,20 +803,11 @@ public sealed class LightmapRewriter(IMEPackage package, TfcWriter tfc, ByteEnco
     /// <param name="streamed">Whether the texture goes to the mod TFC; null keeps the export's current storage.</param>
     void WriteTexture(ExportEntry export, string format, MipLevel top, MipAveraging averaging, bool? srgb, Summary summary, bool? streamed = null)
     {
-        var levels = MipChain.BuildDilated(top, averaging, minSize: MipChain.MinMipSize(format));
-        var encoded = LightmapTextureWriter.Encode(levels, format);
-        if (format == "PF_DXT1")
-        {
-            var decoded = Dxt1.Decode(encoded[0], top.Width, top.Height);
-            for (int i = 0; i < top.Coverage.Length; i++)
-            {
-                if (top.Coverage[i] == 0) continue;
-                for (int c = 0; c < 3; c++) { double d = decoded[i * 3 + c] - levels[0].Rgb[i * 3 + c]; summary.DxtSquaredError += d * d; }
-                summary.DxtSamples += 3;
-            }
-        }
+        var (encoded, squared, samples) = Encode(format, top, averaging);
+        summary.DxtSquaredError += squared;
+        summary.DxtSamples += samples;
         bool toTfc = streamed ?? (export.GetProperty<NameProperty>("TextureFileCacheName") is { } n && n.Value.Name != "None");
-        LightmapTextureWriter.Write(export, format, top.Width, top.Height, encoded, toTfc ? tfc : null, srgb);
+        LightmapTextureWriter.Write(export, format, top.Width, top.Height, encoded, toTfc ? tfcWriter : null, srgb);
         summary.Textures++;
     }
 

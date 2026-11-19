@@ -28,8 +28,53 @@ public enum StaticLightingMappingMode
 
 public enum StaticLightingBakeBackend
 {
+    /// <summary>Classic: the managed direct-light evaluator</summary>
     CSharp,
-    NativeCpp
+    /// <summary>Classic: LightmassNative's direct-light evaluator</summary>
+    NativeCpp,
+    /// <summary>LEX's light solver on a hardware Direct3D 11 device: direct light, bounced light and occluded sky/environment</summary>
+    Gpu,
+    /// <summary>The same light solver on Direct3D 11's WARP device (every CPU core)</summary>
+    Cpu
+}
+
+public static class StaticLightingBakeBackends
+{
+    public const string ClassicDisplayName = "Classic (CPU, direct light only)";
+
+    /// <summary>Whether the backend bakes with LEX's light solver (bounced light and sky occlusion) rather than the classic direct-light evaluators</summary>
+    public static bool UsesLightSolver(StaticLightingBakeBackend backend) =>
+        backend is StaticLightingBakeBackend.Gpu or StaticLightingBakeBackend.Cpu;
+
+    /// <summary>The backend new settings start with: the GPU solver when a hardware device exists, else the same solver on the CPU</summary>
+    public static StaticLightingBakeBackend DefaultBackend(bool gpuAvailable) =>
+        gpuAvailable ? StaticLightingBakeBackend.Gpu : StaticLightingBakeBackend.Cpu;
+
+    /// <summary><see cref="DefaultBackend(bool)"/> for this machine; a failing device probe counts as no GPU</summary>
+    public static StaticLightingBakeBackend DefaultBackend() => DefaultBackend(IsGpuAvailable);
+
+    private static readonly Lazy<bool> gpuAvailable = new(() =>
+    {
+        try
+        {
+            return global::LegendaryExplorer.Lightmaps.Solver.LightSolver.IsGpuAvailable();
+        }
+        catch
+        {
+            return false;
+        }
+    });
+
+    /// <summary>Whether the light solver can use a hardware device (probed once)</summary>
+    public static bool IsGpuAvailable => gpuAvailable.Value;
+
+    public static string DisplayName(StaticLightingBakeBackend backend) => backend switch
+    {
+        StaticLightingBakeBackend.Gpu => "GPU light solver",
+        StaticLightingBakeBackend.Cpu => "CPU light solver",
+        StaticLightingBakeBackend.NativeCpp => "Native C++",
+        _ => "C#"
+    };
 }
 
 public enum StaticLightingTextureFormat
@@ -101,6 +146,14 @@ public sealed class StaticLightingGenerationSettings
     public int WorkTileSize { get; set; } = 16;
     /// <summary>The compute backend only; extraction, Unreal serialization, and package writes remain managed.</summary>
     public StaticLightingBakeBackend Backend { get; set; } = StaticLightingBakeBackend.CSharp;
+    /// <summary>Light solver backends only: indirect lighting bounces (0 still gathers the occluded sky and environment)</summary>
+    public int SolverBounces { get; set; } = 2;
+    /// <summary>Light solver backends only: final gather rays per sample</summary>
+    public int SolverGatherRays { get; set; } = 64;
+
+    public const int MaximumSolverBounces = 8;
+    public const int MinimumSolverGatherRays = 4;
+    public const int MaximumSolverGatherRays = 1024;
 
     public int EffectiveWorkerThreads => WorkerThreads > 0
         ? WorkerThreads
@@ -136,6 +189,12 @@ public sealed class StaticLightingGenerationSettings
         if (WorkTileSize is < 8 or > 128 || !BitOperations.IsPow2((uint)WorkTileSize))
             throw new ArgumentOutOfRangeException(nameof(WorkTileSize),
                 "Bake tile size must be a power of two from 8 through 128.");
+        if (SolverBounces is < 0 or > MaximumSolverBounces)
+            throw new ArgumentOutOfRangeException(nameof(SolverBounces),
+                $"Bounces must be from 0 through {MaximumSolverBounces}.");
+        if (SolverGatherRays is < MinimumSolverGatherRays or > MaximumSolverGatherRays)
+            throw new ArgumentOutOfRangeException(nameof(SolverGatherRays),
+                $"Gather rays must be from {MinimumSolverGatherRays} through {MaximumSolverGatherRays}.");
         if (!string.IsNullOrWhiteSpace(TextureCacheName) &&
             TextureCacheName.IndexOfAny(System.IO.Path.GetInvalidFileNameChars()) >= 0)
             throw new ArgumentException("The texture-cache name contains invalid filename characters.",
@@ -391,6 +450,8 @@ public sealed class StaticLightingBakeResult
     public double OccupiedTexelDiscoveryMilliseconds { get; init; }
     public double TextureConstructionMilliseconds { get; init; }
     public StaticLightingBakeBackend Backend { get; init; }
+    /// <summary>Light solver backends: the device, job size, settings, timings and how materials got their albedo</summary>
+    public string LightSolverSummary { get; init; } = "";
     public double NativeBvhConstructionMilliseconds { get; init; }
     public int NativeBvhNodeCount { get; init; }
     public long NativeRayTriangleTests { get; init; }

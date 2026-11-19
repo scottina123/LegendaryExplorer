@@ -3,7 +3,8 @@ using System.Windows;
 namespace LegendaryExplorer.Tools.LevelEditor;
 
 /// <summary>
-/// Scottina's Lightmass Baker: the fork's static lighting baker (C# and native backends), opened from the Level Editor's Build menu. It edits the Level
+/// Scottina's Lightmass Baker: the fork's static lighting baker (LEX's light solver on the GPU or CPU, or the classic C# and native backends), opened
+/// from the Level Editor's Build menu. It edits the Level
 /// Editor's own lightmass settings (its DataContext), and its Create Lightmass runs the editor's bake, whose progress the editor shows
 /// </summary>
 public partial class ScottinaLightmassBakerWindow : Window

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using System.Numerics;
 using LegendaryExplorerCore.Misc;
 using LegendaryExplorerCore.Packages;
@@ -24,14 +25,27 @@ public static class LightmassIni
     /// bAllowLightmapCompression and DefaultStaticMeshLightingRes are the editor's (the bake keeps the levels' DXT1 atlases and
     /// allocations), and bVisualizeVolumeLightSamples only makes Lightmass return debug samples for the editor to draw.
     /// SurfaceLightSampleSpacing is for volume samples, which the bake doesn't import; a coarser spacing just makes them cheaper.
+    ///
+    /// The directional coefficients take incident light as plain cos(d, B_i), not UDK's 2·cos^0.85: ME3/LE3's own lightmaps (BioA_CitHub_Embassy,
+    /// whose lights ME3 and LE3 share unchanged) decode about half as bright as a bake with UDK's values, and match one with these
+    /// (with <see cref="BioWareWorldDiffuseBoost"/>) to within the per-mesh scatter.
     /// </summary>
     public static void ApplyBioWareOverrides(this DuplicatingIni ini)
     {
+        Set(ini, "DevOptions.StaticLightingSceneConstants", "DirectionalCoefficientScale", "1");
+        Set(ini, "DevOptions.StaticLightingSceneConstants", "DirectionalCoefficientFalloffPower", "1");
         Set(ini, "DevOptions.StaticShadows", "bFilterShadowFactor", "False");
         Set(ini, "DevOptions.StaticShadows", "MinUnoccludedFraction", "0.01");
         Set(ini, "DevOptions.StaticShadows", "NumBounceShadowRays", "4");
         Set(ini, "DevOptions.PrecomputedDynamicObjectLighting", "SurfaceLightSampleSpacing", "750");
     }
+
+    /// <summary>
+    /// The level DiffuseBoost ME3's bakes behave as having when the level doesn't set one. WorldInfo's class default is 5, but material
+    /// albedo boosted 5x (and clamped at 1) makes bounced light 4-5x what LE3's own lightmaps hold and greys out its colour; an unboosted
+    /// albedo matches them (see <see cref="ApplyBioWareOverrides"/>).
+    /// </summary>
+    public const float BioWareWorldDiffuseBoost = 1;
 
     /// <summary>Replaces the key whatever its case: reads match it case-insensitively, but SetSingleEntry only removes an exact match.</summary>
     static void Set(DuplicatingIni ini, string section, string key, string value)
@@ -86,9 +100,20 @@ public sealed class LightmassWorldSettings
     public float FullyOccludedSamplesFraction = 1;
     public float MaxOcclusionDistance = 200;
 
-    public static LightmassWorldSettings FromWorldInfo(ExportEntry worldInfo)
+    /// <param name="defaultDiffuseBoost">The DiffuseBoost when the level doesn't set one (null: WorldInfo's class default)</param>
+    public static LightmassWorldSettings FromWorldInfo(ExportEntry worldInfo, float? defaultDiffuseBoost = null)
+    {
+        var settings = Read(worldInfo, defaultDiffuseBoost);
+        // Tuning: LEX_SOLVER_DEBUG=diffuseboost:X replaces the level's DiffuseBoost
+        if (System.Environment.GetEnvironmentVariable("LEX_SOLVER_DEBUG")?.Split(',').FirstOrDefault(t => t.StartsWith("diffuseboost:", StringComparison.OrdinalIgnoreCase)) is { } boost)
+            settings.DiffuseBoost = float.Parse(boost[13..], CultureInfo.InvariantCulture);
+        return settings;
+    }
+
+    static LightmassWorldSettings Read(ExportEntry worldInfo, float? defaultDiffuseBoost)
     {
         var settings = new LightmassWorldSettings();
+        if (defaultDiffuseBoost is { } boost) settings.DiffuseBoost = boost;
         if (worldInfo?.GetProperty<StructProperty>("LightmassSettings") is not { } s) return settings;
         float F(string name, float fallback) => s.GetProp<FloatProperty>(name)?.Value ?? fallback;
         bool B(string name, bool fallback) => s.GetProp<BoolProperty>(name)?.Value ?? fallback;

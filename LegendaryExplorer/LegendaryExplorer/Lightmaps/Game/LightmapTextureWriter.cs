@@ -152,8 +152,31 @@ public static class LightmapTextureWriter
     /// <param name="levels">Encoded data per level, top first: DXT1 blocks or BGRA bytes (MipChain.EncodeDxt1 / EncodeBgra).</param>
     /// <param name="sizeX">Top level size; lower levels are max(1, size >> i), as UE3 records them.</param>
     /// <param name="srgb">Serialized SRGB: false for LightMapVector_Dir; null leaves the property absent (default TRUE).</param>
-    public static void Write(ExportEntry export, string pixelFormat, int sizeX, int sizeY, List<byte[]> levels, TfcWriter tfc, bool? srgb)
+    public static void Write(ExportEntry export, string pixelFormat, int sizeX, int sizeY, List<byte[]> levels, TfcWriter tfc, bool? srgb) =>
+        Write(export, pixelFormat, sizeX, sizeY, Prepare(levels, tfc != null), tfc, srgb);
+
+    /// <summary>A texture's encoded levels, with the ones bound for a texture cache already compressed (null for those stored in the package)</summary>
+    public sealed record Prepared(List<byte[]> Levels, byte[][] Compressed, bool ToTfc);
+
+    /// <summary>
+    /// Compresses the levels that go to a texture cache (<paramref name="toTfc"/>). It touches no package or cache, so textures can be
+    /// prepared in parallel and written (<see cref="Write(ExportEntry, string, int, int, Prepared, TfcWriter, bool?)"/>) one at a time
+    /// </summary>
+    public static Prepared Prepare(List<byte[]> levels, bool toTfc)
     {
+        var compressed = new byte[levels.Count][];
+        if (toTfc)
+            for (int i = 0; i < levels.Count - PackageStoredMips; i++)
+                compressed[i] = TextureCompression.CompressTexture(levels[i], StorageTypes.extOodle);
+        return new Prepared(levels, compressed, toTfc);
+    }
+
+    /// <param name="tfc">The texture cache, when <paramref name="prepared"/> was prepared for one</param>
+    public static void Write(ExportEntry export, string pixelFormat, int sizeX, int sizeY, Prepared prepared, TfcWriter tfc, bool? srgb)
+    {
+        var levels = prepared.Levels;
+        if (prepared.ToTfc != (tfc != null))
+            prepared = Prepare(levels, tfc != null);
         var texture = new Texture2D(export);
         var mips = new List<Texture2DMipInfo>();
         for (int i = 0; i < levels.Count; i++)
@@ -176,7 +199,7 @@ public static class LightmapTextureWriter
             }
             else
             {
-                var compressed = TextureCompression.CompressTexture(data, StorageTypes.extOodle);
+                var compressed = prepared.Compressed[i] ?? TextureCompression.CompressTexture(data, StorageTypes.extOodle);
                 mip.storageType = StorageTypes.extOodle;
                 mip.compressedSize = compressed.Length;
                 mip.externalOffset = tfc.Append(compressed);

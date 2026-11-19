@@ -5,8 +5,10 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading;
+using System.Threading.Tasks;
 using LegendaryExplorer.Lightmaps.Codec;
 using LegendaryExplorer.Lightmaps.Game;
+using LegendaryExplorer.Lightmaps.Solver;
 using LegendaryExplorerCore.Misc;
 using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.Unreal;
@@ -17,10 +19,15 @@ namespace LegendaryExplorer.Lightmaps.Lightmass;
 
 public sealed class LightmassBakeSettings
 {
-    /// <summary>UDK's Binaries folder (SwarmAgent.exe, Win64\UnrealLightmass.exe, Win64\AgentInterface.dll).</summary>
+    /// <summary>UDK's Binaries folder (SwarmAgent.exe, Win64\UnrealLightmass.exe, Win64\AgentInterface.dll). Only the UDK Lightmass solver needs it.</summary>
     public string UdkBinaries;
+    /// <summary>LEX's solver on the GPU or CPU, or UDK's Lightmass through Swarm</summary>
+    public LightmassSolverChoice Solver = LightmassSolverChoice.Gpu;
     public LightmassQuality Quality = LightmassQuality.Preview;
-    /// <summary>Applies <see cref="LightmassIni.ApplyBioWareOverrides"/> over UDK's BaseLightmass.ini.</summary>
+    /// <summary>
+    /// Applies <see cref="LightmassIni.ApplyBioWareOverrides"/> over Lightmass's settings (UDK's BaseLightmass.ini for UDK Lightmass, LEX's copy of its
+    /// defaults, <see cref="LightmassDefaultIni"/>, for LEX's solver).
+    /// </summary>
     public bool BioWareLightmassSettings = true;
     /// <summary>
     /// Fork: turns on bUsePrecomputedShadows on every static mesh placed in the levels being baked before the bake, so each of them is given baked lighting
@@ -45,6 +52,8 @@ public sealed class LightmassBakeResult
     public LightmassScene Scene;
     public Dictionary<Guid, LightmassMappingResult> Results = new();
     public List<string> Alerts = [];
+    /// <summary>What solved the lighting, for the report: "Lightmass", or LEX's solver and its device</summary>
+    public string SolverName = "Lightmass";
     /// <summary>Mappings Lightmass failed, and mappings it delivered no results for. They keep their original lighting.</summary>
     public int FailedTasks, MissingMappings;
     /// <summary>Whether every mapping was baked.</summary>
@@ -139,18 +148,122 @@ public static class LightmassBake
     {
         log ??= _ => { };
         var result = new LightmassBakeResult();
-        string win64 = Path.Combine(settings.UdkBinaries, "Win64");
-        string lightmassExe = Path.Combine(win64, "UnrealLightmass.exe");
-        if (!File.Exists(lightmassExe)) throw new FileNotFoundException("UnrealLightmass.exe wasn't found in the UDK's Binaries\\Win64 folder", lightmassExe);
-        var ini = DuplicatingIni.LoadIni(Path.Combine(settings.UdkBinaries, "..", "Engine", "Config", "BaseLightmass.ini"));
-        if (settings.BioWareLightmassSettings && levels.Count > 0 && levels[0].Game == MEGame.LE3) ini.ApplyBioWareOverrides();
-
+        var ini = LoadIni(settings, levels.Count > 0 ? levels[0].Game : MEGame.LE3);
         var timer = Stopwatch.StartNew();
+        using var builder = BuildScene(levels, settings, ini, log);
+        var scene = result.Scene = builder.Scene;
+        cancel.ThrowIfCancellationRequested();
+        if (!scene.Mappings.Any())
+        {
+            log("Nothing to bake: no compatible lightmap or shadow-only mappings in these levels.");
+            return result;
+        }
+        result.ExportTime = timer.Elapsed;
+
+        // LEX's solver hands its results over batch by batch, so atlases can be encoded while the rest is still solving
+        using var early = settings.Solver != LightmassSolverChoice.UdkLightmass && !settings.Repack ? new EarlyWrite(scene) : null;
+        if (settings.Solver == LightmassSolverChoice.UdkLightmass) SolveWithLightmass(levels, scene, settings, ini, result, log, cancel);
+        else SolveLocally(scene, settings, ini, result, log, cancel, solved: early == null ? null : early.Solved);
+        if (result.Results.Count == 0) return result;
+        cancel.ThrowIfCancellationRequested();
+
+        timer.Restart();
+        log("Writing lightmaps...");
+        Apply(levels, scene, result, settings, builder.Builder.PackageCache, log, cancel, early);
+        result.ApplyTime = timer.Elapsed;
+        log($"Done in {result.ApplyTime:mm\\:ss}.");
+        return result;
+    }
+
+    /// <summary>
+    /// Lightmap atlases rebuilt and encoded while the bake is still solving: each one as soon as all its lightmaps' mappings are solved, on spare
+    /// cores. The writing itself (package and texture cache) still happens in <see cref="Apply"/>, in the same order, so the files come out the same
+    /// </summary>
+    sealed class EarlyWrite : IDisposable
+    {
+        readonly ConcurrentDictionary<Guid, LightmassMappingResult> results = new();
+        readonly Dictionary<IMEPackage, LightmapRewriter> rewriters = new();
+        readonly List<IMEPackage> packages;
+        readonly object gate = new();
+        Task work = Task.CompletedTask;
+
+        public LightmassBakeSource Source { get; }
+
+        public EarlyWrite(LightmassScene scene)
+        {
+            Source = new LightmassBakeSource(scene, results);
+            packages = scene.Mappings.SelectMany(m => m.OutputTargets).Select(t => t.Owner.FileRef).Distinct().ToList();
+        }
+
+        public LightmapRewriter Rewriter(IMEPackage package)
+        {
+            lock (rewriters)
+                return rewriters.TryGetValue(package, out var r) ? r
+                    : rewriters[package] = new LightmapRewriter(package, null, ByteEncoding.Gamma22, Source, VectorBrightness);
+        }
+
+        public void Solved(IReadOnlyList<LightmassMappingResult> batch)
+        {
+            foreach (var r in batch) results[r.Guid] = r;
+            // One preparation after another; each takes every atlas that has become ready
+            lock (gate)
+                work = work.ContinueWith(_ =>
+                {
+                    foreach (var package in packages)
+                        Rewriter(package).PrepareReady(Source.Ready, Math.Max(1, Environment.ProcessorCount / 2));
+                }, TaskScheduler.Default);
+        }
+
+        /// <summary>Waits for the preparation to finish. A failure there only means the writing does those atlases itself</summary>
+        public void Wait()
+        {
+            Task pending;
+            lock (gate) pending = work;
+            try { pending.Wait(); } catch (AggregateException) { }
+        }
+
+        public void Dispose()
+        {
+            Wait();
+            Source.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Lightmass's settings for the bake: UDK's BaseLightmass.ini for UDK's Lightmass, LEX's copy of its defaults (<see cref="LightmassDefaultIni"/>) for
+    /// LEX's solver or when no UDK is set, with BioWare's changes for LE3 if the settings ask for them
+    /// </summary>
+    public static DuplicatingIni LoadIni(LightmassBakeSettings settings, MEGame game)
+    {
+        DuplicatingIni ini;
+        if (settings.Solver == LightmassSolverChoice.UdkLightmass)
+        {
+            if (string.IsNullOrWhiteSpace(settings.UdkBinaries)) throw new InvalidOperationException("UDK Lightmass needs UDK's Binaries folder.");
+            ini = DuplicatingIni.LoadIni(Path.Combine(settings.UdkBinaries, "..", "Engine", "Config", "BaseLightmass.ini"));
+        }
+        else ini = LightmassDefaultIni.Load();
+        if (settings.BioWareLightmassSettings && game == MEGame.LE3) ini.ApplyBioWareOverrides();
+        return ini;
+    }
+
+    /// <summary>A built scene and the builder that keeps the packages its imports resolved in, until it's disposed</summary>
+    public sealed class BuiltScene(LightmassSceneBuilder builder, LightmassScene scene) : IDisposable
+    {
+        public LightmassSceneBuilder Builder { get; } = builder;
+        public LightmassScene Scene { get; } = scene;
+        public void Dispose() => Builder.Dispose();
+    }
+
+    /// <summary>Gathers the scene to bake (rendering materials with the game's shaders where it can), at the material sample sizes of <paramref name="ini"/></summary>
+    public static BuiltScene BuildScene(IReadOnlyList<IMEPackage> levels, LightmassBakeSettings settings, DuplicatingIni ini, Action<string> log)
+    {
         log("Gathering the scene...");
         const string materialSection = "DevOptions.StaticLightingMaterial";
         settings.Scene.EmissiveSampleSize = (int)ini.Float(materialSection, "EmissiveSampleSize");
         settings.Scene.DiffuseSampleSize = (int)ini.Float(materialSection, "DiffuseSampleSize");
         settings.Scene.TransmissionSampleSize = (int)ini.Float(materialSection, "TransmissionSampleSize");
+        settings.Scene.DefaultWorldDiffuseBoost = settings.BioWareLightmassSettings && levels.Count > 0 && levels[0].Game == MEGame.LE3
+            ? LightmassIni.BioWareWorldDiffuseBoost : null;
         LightmassMaterialCapture capture = null;
         try
         {
@@ -163,11 +276,16 @@ public static class LightmassBake
         }
         settings.Scene.MaterialCapture = capture;
         if (settings.UsePrecomputedShadowsOnAllMeshes) UsePrecomputedShadowsOnAllMeshes(levels, settings.Scene.ContextOnly, log);
-        using var builder = new LightmassSceneBuilder(settings.Scene);
+        var builder = new LightmassSceneBuilder(settings.Scene);
         LightmassScene scene;
         try
         {
-            scene = result.Scene = builder.Build(levels, log);
+            scene = builder.Build(levels, log);
+        }
+        catch
+        {
+            builder.Dispose();
+            throw;
         }
         finally
         {
@@ -178,13 +296,47 @@ public static class LightmassBake
             log($"{n} {(n == 1 ? "material" : "materials")} {what["material: ".Length..]}");
         foreach (var (what, n) in scene.Report.Where(r => r.Key.StartsWith("mesh:") || r.Key.StartsWith("mapping:")).OrderBy(r => r.Key))
             log($"  {what}: {n}");
-        cancel.ThrowIfCancellationRequested();
-        var mappings = scene.Mappings.ToDictionary(i => i.Guid);
-        if (mappings.Count == 0)
+        return new BuiltScene(builder, scene);
+    }
+
+    /// <summary>
+    /// Lights the scene's mappings with LEX's solver on the settings' device (the CPU when the GPU was chosen but has no usable Direct3D 11 device), into
+    /// <paramref name="result"/>
+    /// </summary>
+    /// <param name="only">Solves only these mappings (comparisons); null: all of them</param>
+    /// <param name="solved">Called with each batch's results as they come (see <see cref="LightmassLocalSolve.Solve"/>)</param>
+    public static void SolveLocally(LightmassScene scene, LightmassBakeSettings settings, DuplicatingIni ini, LightmassBakeResult result, Action<string> log,
+        CancellationToken cancel, Func<LightmassMapping, bool> only = null, Action<IReadOnlyList<LightmassMappingResult>> solved = null)
+    {
+        var device = settings.Solver == LightmassSolverChoice.Cpu ? SolverDevice.Cpu : SolverDevice.Gpu;
+        if (device == SolverDevice.Gpu && !LightSolver.IsGpuAvailable())
         {
-            log("Nothing to bake: no compatible lightmap or shadow-only mappings in these levels.");
-            return result;
+            log("No GPU with Direct3D 11 compute shaders was found, so the bake runs on the CPU.");
+            device = SolverDevice.Cpu;
         }
+        var mappings = scene.Mappings.Where(m => only == null || only(m)).ToList();
+        log($"LEX's solver is baking {mappings.Count} mappings ({settings.Quality} quality, {device})...");
+        var timer = Stopwatch.StartNew();
+        var results = LightmassLocalSolve.Solve(scene, ini, settings.Quality, device, log, cancel, out var statistics, only, solved);
+        foreach (var (guid, r) in results) result.Results[guid] = r;
+        result.LightmassTime = timer.Elapsed;
+        result.SolverName = $"LEX's solver ({statistics.DeviceName ?? device.ToString()})";
+        result.FailedTasks = 0;
+        result.MissingMappings = mappings.Count(m => !result.Results.ContainsKey(m.Guid));
+        log($"{result.SolverName} finished in {result.LightmassTime:hh\\:mm\\:ss}: {result.Results.Count} mappings baked" +
+            $"{(result.MissingMappings > 0 ? $", {result.MissingMappings} missing" : "")}.");
+    }
+
+    /// <summary>Lights the scene's mappings with UDK's Lightmass: writes the channels, runs a Swarm job with a task per mapping and reads the results into <paramref name="result"/></summary>
+    public static void SolveWithLightmass(IReadOnlyList<IMEPackage> levels, LightmassScene scene, LightmassBakeSettings settings, DuplicatingIni ini,
+        LightmassBakeResult result, Action<string> log, CancellationToken cancel)
+    {
+        string win64 = Path.Combine(settings.UdkBinaries, "Win64");
+        string lightmassExe = Path.Combine(win64, "UnrealLightmass.exe");
+        if (!File.Exists(lightmassExe)) throw new FileNotFoundException("UnrealLightmass.exe wasn't found in the UDK's Binaries\\Win64 folder", lightmassExe);
+        var mappings = scene.Mappings.ToDictionary(i => i.Guid);
+        result.SolverName = "Lightmass";
+        var timer = Stopwatch.StartNew();
 
         var sceneGuid = Guid.NewGuid();
         using var swarm = new SwarmClient(settings.UdkBinaries, cancel: cancel);
@@ -229,7 +381,7 @@ public static class LightmassBake
         var exporter = new LightmassExporter(scene, ini, settings.Quality, swarm);
         exporter.Write(sceneGuid);
         log($"Exported ({exporter.MeshesWritten} new meshes, {exporter.MaterialsWritten} new materials and {exporter.TerrainsWritten} new terrains in Swarm's cache).");
-        result.ExportTime = timer.Elapsed;
+        result.ExportTime += timer.Elapsed;
         cancel.ThrowIfCancellationRequested();
 
         // One task per mapping, biggest first (the agent hands them out in order).
@@ -282,15 +434,6 @@ public static class LightmassBake
         result.MissingMappings = mappings.Keys.Count(g => !result.Results.ContainsKey(g) && !failed.Contains(g));
         log($"Lightmass finished in {result.LightmassTime:hh\\:mm\\:ss}: {result.Results.Count} mappings baked" +
             $"{(result.FailedTasks > 0 ? $", {result.FailedTasks} failed" : "")}{(result.MissingMappings > 0 ? $", {result.MissingMappings} missing" : "")}.");
-        if (result.Results.Count == 0) return result;
-        cancel.ThrowIfCancellationRequested();
-
-        timer.Restart();
-        log("Writing lightmaps...");
-        Apply(levels, scene, result, settings, builder.PackageCache, log, cancel);
-        result.ApplyTime = timer.Elapsed;
-        log($"Done in {result.ApplyTime:mm\\:ss}.");
-        return result;
     }
 
     /// <summary>
@@ -332,28 +475,42 @@ public static class LightmassBake
 
     /// <param name="cache">The scene's, which has the packages its materials are in</param>
     static void Apply(IReadOnlyList<IMEPackage> levels, LightmassScene scene, LightmassBakeResult result, LightmassBakeSettings settings, PackageCache cache,
-        Action<string> log, CancellationToken cancel)
+        Action<string> log, CancellationToken cancel, EarlyWrite early = null)
     {
+        var applyTimer = Stopwatch.StartNew();
         string tfcDirectory = settings.TfcDirectory ?? Path.GetDirectoryName(levels[0].FilePath);
-        using var source = new LightmassBakeSource(scene, result.Results);
+        early?.Wait();
+        using var ownSource = early == null ? new LightmassBakeSource(scene, result.Results) : null;
+        var source = early?.Source ?? ownSource;
         var packages = scene.Mappings.Where(m => result.Results.ContainsKey(m.Guid)).SelectMany(m => m.OutputTargets).Select(t => t.Owner.FileRef).Distinct().ToList();
         var tfc = new TfcWriter(tfcDirectory, settings.TfcName, append: true, sourcePackages: packages,
             copiedCacheSource: settings.CopiedCacheSource);
         result.TfcPath = tfc.FilePath;
+        var step = Stopwatch.StartNew();
+        string Lap() { string t = $"{step.Elapsed:mm\\:ss}"; step.Restart(); return t; }
+        log($"Prepared the bake's results for writing in {applyTimer.Elapsed:mm\\:ss}");
         foreach (var package in packages)
         {
             cancel.ThrowIfCancellationRequested();
-            var summary = new LightmapRewriter(package, tfc, ByteEncoding.Gamma22, source, VectorBrightness).RewriteAll(settings.Repack);
+            step.Restart();
+            var rewriter = early?.Rewriter(package) ?? new LightmapRewriter(package, tfc, ByteEncoding.Gamma22, source, VectorBrightness);
+            rewriter.UseTfc(tfc);
+            var summary = rewriter.RewriteAll(settings.Repack);
+            string rewrite = Lap();
             LightmassMappingAllocator.Write(package, tfc, scene, result.Results, summary);
+            string allocate = Lap();
             result.Rewrites[package] = summary;
-            log($"{package.FileNameNoExtension}: {LightmassBakeReport.LightmapLine(summary)}");
+            log($"{package.FileNameNoExtension}: {LightmassBakeReport.LightmapLine(summary)} (lightmaps {rewrite}: {summary.Timing}; new mappings {allocate})");
             var shadows = result.ShadowMaps[package] = new LightmassShadowMapWriter(package, tfc, scene, result.Results).Write(summary.AppliedLightmaps, summary.ShadowOnlyAllocations);
-            log($"{package.FileNameNoExtension}: {LightmassBakeReport.ShadowLine(shadows)}");
+            log($"{package.FileNameNoExtension}: {LightmassBakeReport.ShadowLine(shadows)} ({Lap()})");
             var decals = result.Decals[package] = DecalReceiverLighting.Write(package, DecalReceivers(scene, package, summary), cache);
-            if (decals.Receivers > 0 || decals.Problems.Count > 0) log($"{package.FileNameNoExtension}: {LightmassBakeReport.DecalLine(decals)}");
+            string decalTime = Lap();
+            if (decals.Receivers > 0 || decals.Problems.Count > 0) log($"{package.FileNameNoExtension}: {LightmassBakeReport.DecalLine(decals)} ({decalTime})");
             foreach (string problem in decals.Problems) log(problem);
         }
+        step.Restart();
         tfc.PreserveUnwrittenTextures(packages);
+        log($"Texture cache finished in {Lap()}");
         foreach (var (why, n) in source.Report) result.KeptOriginal[why] = n;
         // A lightmap of a level's own that a mapping Lightmass failed or delivered nothing for, or whose result couldn't be applied
         var unfinished = source.Unfinished
@@ -418,7 +575,7 @@ public static class LightmassBakeReport
         if (mappings == 0) return "There was nothing to bake: none of the baked files have compatible lightmap or shadow-only mappings.";
         var lines = new List<string>
         {
-            $"Lightmass baked {result.Results.Count} of {mappings} mappings in {result.LightmassTime:hh\\:mm\\:ss}" +
+            $"{result.SolverName} baked {result.Results.Count} of {mappings} mappings in {result.LightmassTime:hh\\:mm\\:ss}" +
             (result.Complete ? "." : $" ({result.FailedTasks} failed, {result.MissingMappings} missing: they keep their original lighting).")
         };
         foreach (var (package, summary) in result.Rewrites)

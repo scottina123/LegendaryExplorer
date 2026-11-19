@@ -159,19 +159,46 @@ public partial class LevelEditor
     private int _lightmassWorkTileSize = 16;
     public int LightmassWorkTileSize { get => _lightmassWorkTileSize; set => SetProperty(ref _lightmassWorkTileSize, value); }
     public IReadOnlyList<int> LightmassWorkTileSizes { get; } = [8, 16, 32, 64, 128];
-    private StaticLightingBakeBackend _lightmassBackend = StaticLightingBaker.IsNativeBackendAvailable
-        ? StaticLightingBakeBackend.NativeCpp
-        : StaticLightingBakeBackend.CSharp;
-    public StaticLightingBakeBackend LightmassBackend { get => _lightmassBackend; set => SetProperty(ref _lightmassBackend, value); }
-    public IReadOnlyList<LightmassBackendChoice> LightmassBackends { get; } =
-    [
-        new(StaticLightingBakeBackend.NativeCpp, "Native C++"),
-        new(StaticLightingBakeBackend.CSharp, "C#")
-    ];
+    // New settings bake with the light solver: on the GPU when there's a hardware Direct3D 11 device, else on the CPU (WARP)
+    private StaticLightingBakeBackend _lightmassBackend = StaticLightingBakeBackends.DefaultBackend();
+    /// <summary>The "Device": the light solver on the GPU or CPU, or a classic direct-light backend</summary>
+    public StaticLightingBakeBackend LightmassBackend
+    {
+        get => _lightmassBackend;
+        set
+        {
+            if (SetProperty(ref _lightmassBackend, value))
+                OnPropertyChanged(nameof(LightmassUsesLightSolver));
+        }
+    }
+    public bool LightmassUsesLightSolver => StaticLightingBakeBackends.UsesLightSolver(LightmassBackend);
+    /// <summary>The Device choices; GPU only when there's a hardware Direct3D 11 device</summary>
+    public IReadOnlyList<LightmassBackendChoice> LightmassBackends { get; } = CreateLightmassBackendChoices();
+
+    private static LightmassBackendChoice[] CreateLightmassBackendChoices()
+    {
+        var choices = new List<LightmassBackendChoice>();
+        if (StaticLightingBakeBackends.IsGpuAvailable)
+            choices.Add(new(StaticLightingBakeBackend.Gpu, "GPU",
+                "LEX's light solver on the graphics card: direct light, bounced light and sky/environment occlusion."));
+        choices.Add(new(StaticLightingBakeBackend.Cpu, "CPU",
+            "LEX's light solver on every CPU core (Direct3D 11 WARP): the same lighting as on the GPU, more slowly."));
+        choices.Add(new(StaticLightingBakeBackend.NativeCpp, StaticLightingBakeBackends.ClassicDisplayName,
+            "The classic native C++ baker: direct light, soft shadows, emissive area samples and an unoccluded environment floor."));
+        choices.Add(new(StaticLightingBakeBackend.CSharp, StaticLightingBakeBackends.ClassicDisplayName + ", C#",
+            "The classic baker's managed evaluator: the same lighting as the native one."));
+        return choices.ToArray();
+    }
+    private int _lightmassBounces = 2;
+    /// <summary>Light solver: indirect lighting bounces</summary>
+    public int LightmassBounces { get => _lightmassBounces; set => SetProperty(ref _lightmassBounces, value); }
+    private int _lightmassGatherRays = 64;
+    /// <summary>Light solver: final gather rays per sample</summary>
+    public int LightmassGatherRays { get => _lightmassGatherRays; set => SetProperty(ref _lightmassGatherRays, value); }
     private string _lightmassTextureCacheName = "";
     public string LightmassTextureCacheName { get => _lightmassTextureCacheName; set => SetProperty(ref _lightmassTextureCacheName, value); }
 
-    public sealed record LightmassBackendChoice(StaticLightingBakeBackend Backend, string DisplayName);
+    public sealed record LightmassBackendChoice(StaticLightingBakeBackend Backend, string DisplayName, string Description = "");
 
     private static StaticMeshComponentProxy[] GetStaticLightingComponents(ActorProxy actor) =>
         actor.Components.OfType<StaticMeshComponentProxy>()
@@ -233,8 +260,12 @@ public partial class LevelEditor
             WorkTileSize = LightmassWorkTileSize,
             TextureCacheName = LightmassTextureCacheName,
             TextureFormat = LightmassTextureFormat,
-            Backend = LightmassBackend
+            Backend = LightmassBackend,
+            SolverBounces = LightmassBounces,
+            SolverGatherRays = LightmassGatherRays
         };
+        bool usesLightSolver = StaticLightingBakeBackends.UsesLightSolver(settings.Backend);
+        string backendName = StaticLightingBakeBackends.DisplayName(settings.Backend);
 
         bool busy = false;
         try
@@ -269,14 +300,19 @@ public partial class LevelEditor
             string confirmation = uncommittedWarning + $"{targetDescription}\n\n{targetList}\n\n" +
                                   $"Lights and occluding static geometry are gathered from all {OpenFiles.Count:N0} loaded levels. " +
                                   "Existing lighting channels are preserved and strictly filter which lights may contribute. " +
-                                  "Components authored for emissive static lighting are reduced to bounded area samples and spatially culled per receiver. " +
+                                  (usesLightSolver
+                                      ? "Emissive sections light the scene from their own surfaces; light bounces off every shadow-casting mesh, and the sky and environment are occluded by geometry. "
+                                      : "Components authored for emissive static lighting are reduced to bounded area samples and spatially culled per receiver. ") +
                                   mappingDescription + "\n\n" +
                                   $"Soft shadows: {settings.ShadowSampleCount:N0} deterministic samples, " +
                                   $"{settings.DefaultLightSourceRadius:F1} point/spot radius, " +
                                   $"{settings.DirectionalSourceAngleDegrees:F1}° directional angle.\n" +
+                                  (usesLightSolver
+                                      ? $"Bounced light: {settings.SolverBounces:N0} bounce(s), {settings.SolverGatherRays:N0} gather rays per sample.\n"
+                                      : "") +
                                   $"Bake workers: {settings.EffectiveWorkerThreads:N0}; UV/spatial work tile: {settings.WorkTileSize}×{settings.WorkTileSize}.\n\n" +
                                   $"Lightmap texture format: {settings.TextureFormat}.\n" +
-                                  $"Bake backend: {(settings.Backend == StaticLightingBakeBackend.NativeCpp ? "Native C++" : "C#")}.\n\n" +
+                                  $"Bake backend: {backendName}.\n\n" +
                                   storageDescription + "\n\nThe packages remain unsaved until you use Save, but TFC data is appended during generation.";
             if (MessageBox.Show(this, confirmation, dialogTitle, MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
                 return;
@@ -313,7 +349,7 @@ public partial class LevelEditor
                         SceneDiagnostics = scene.Diagnostics
                     };
                 return new StaticLightingBaker(scene.Targets, scene.Lights, scene.Collision, settings,
-                        scene.Diagnostics, scene.EmissiveEmitters)
+                        scene.Diagnostics, scene.EmissiveEmitters, scene.SolverGeometry)
                     .Bake(CancellationToken.None, progress, scanProgress);
             }).ConfigureAwait(true);
 
@@ -350,7 +386,7 @@ public partial class LevelEditor
                               $"{bake.RaysCast:N0} rays, {bake.AverageVisibility:P1} average visibility; " +
                               $"{bake.LightCount:N0} lights / {bake.EmissiveEmitterCount:N0} emissive area samples / " +
                               $"{bake.SourceTriangleCount:N0} occluder triangles from all loaded levels; " +
-                              $"{(bake.Backend == StaticLightingBakeBackend.NativeCpp ? "Native C++" : "C#")} backend.";
+                              $"{StaticLightingBakeBackends.DisplayName(bake.Backend)} backend.";
             MessageBox.Show(this,
                 mappingFallbackWarning +
                 $"Generated static lighting for {written.ComponentCount:N0} components.\n\n" +
@@ -361,7 +397,8 @@ public partial class LevelEditor
                 $"Shadow maps: {written.ShadowMapCount:N0}\n" +
                 $"Irrelevant-light references: {written.IrrelevantLightReferenceCount:N0}\n" +
                 $"Parallel work units: {bake.WorkUnitCount:N0} on {bake.WorkerCount:N0} workers\n" +
-                $"Bake backend: {(bake.Backend == StaticLightingBakeBackend.NativeCpp ? "Native C++" : "C#")}\n" +
+                $"Bake backend: {StaticLightingBakeBackends.DisplayName(bake.Backend)}\n" +
+                (string.IsNullOrEmpty(bake.LightSolverSummary) ? "" : $"Light solver: {bake.LightSolverSummary}\n") +
                 $"Rays / occluded samples: {bake.RaysCast:N0} / {bake.OccludedSamples:N0}\n" +
                 $"Emissive area samples / evaluated / rays: {bake.EmissiveEmitterCount:N0} / {bake.EmissiveSamplesEvaluated:N0} / {bake.EmissiveRaysCast:N0}\n" +
                 $"Average direct visibility: {bake.AverageVisibility:P1}\n" +
@@ -384,7 +421,9 @@ public partial class LevelEditor
                       $"Native BVH visits / triangle tests / any-hit early-outs: {bake.NativeBvhNodesVisited:N0} / {bake.NativeRayTriangleTests:N0} / {bake.NativeAnyHitEarlyOuts:N0}\n" +
                       $"Native throughput: {bake.NativeSamplesPerSecond:N0} samples/s, {bake.NativeRaysPerSecond:N0} rays/s\n"
                     : "") +
-                "Texture-resolved emissive detail, multi-bounce GI and denoising: not present in this direct-light baker (use Build → Bake Lighting in Lightmass Baker for UDK Lightmass)\n" +
+                (StaticLightingBakeBackends.UsesLightSolver(bake.Backend)
+                    ? ""
+                    : "Texture-resolved emissive detail, multi-bounce GI and denoising: not present in this direct-light baker (choose the GPU or CPU device for bounced light, or use Build → Bake Lighting in Lightmass Baker for UDK Lightmass)\n") +
                 $"Bake wall time / total serialization: {bake.BakeMilliseconds / 1000d:F2}s / {written.SerializationMilliseconds / 1000d:F2}s\n" +
                 $"LightMap1D / LightMap2D serialization: {written.LightMap1DSerializationMilliseconds / 1000d:F2}s / {written.LightMap2DSerializationMilliseconds / 1000d:F2}s\n" +
                 $"Components replacing existing lighting: {written.ReplacedExistingComponentCount:N0}\n\n" +

@@ -52,6 +52,38 @@ public partial class LightmassBakerWindow : TrackingNotifyPropertyChangedWindowB
         set { if (SetProperty(ref assignmentPolicy, value)) ScheduleValidation(); }
     }
 
+    /// <summary>A choice in the Solver list; the GPU is greyed out without a Direct3D 11 GPU</summary>
+    public sealed record SolverOption(LightmassSolverChoice Choice, string Label, bool IsEnabled, string ToolTip);
+
+    public IReadOnlyList<SolverOption> Solvers { get; }
+
+    private LightmassSolverChoice solver = LightmassSolverChoice.Gpu;
+    public LightmassSolverChoice Solver
+    {
+        get => solver;
+        set
+        {
+            // A job that asks for the GPU on a machine without one runs on the CPU (as the bake itself would)
+            if (value == LightmassSolverChoice.Gpu && !gpuAvailable) value = LightmassSolverChoice.Cpu;
+            if (SetProperty(ref solver, value))
+            {
+                OnPropertyChanged(nameof(UsesUdk));
+                ScheduleValidation();
+            }
+        }
+    }
+
+    /// <summary>Whether the chosen solver is UDK's, which needs the UDK Binaries folder</summary>
+    public bool UsesUdk => Solver == LightmassSolverChoice.UdkLightmass;
+
+    private readonly bool gpuAvailable;
+
+    private static bool DetectGpu()
+    {
+        try { return Lightmaps.Solver.LightSolver.IsGpuAvailable(); }
+        catch (Exception) { return false; }
+    }
+
     public IReadOnlyList<LightmassQuality> Qualities { get; } = Enum.GetValues<LightmassQuality>();
 
     private LightmassQuality quality = LightmassQuality.Preview;
@@ -138,6 +170,14 @@ public partial class LightmassBakerWindow : TrackingNotifyPropertyChangedWindowB
 
     public LightmassBakerWindow() : base("Lightmass Baker", true)
     {
+        gpuAvailable = DetectGpu();
+        Solvers =
+        [
+            new(LightmassSolverChoice.Gpu, "GPU", gpuAvailable, gpuAvailable ? "LEX's solver on the GPU." : "No GPU with Direct3D 11 compute shaders was found."),
+            new(LightmassSolverChoice.Cpu, "CPU", true, "LEX's solver on every CPU core: the same results as the GPU, more slowly."),
+            new(LightmassSolverChoice.UdkLightmass, "UDK Lightmass (reference)", true, "UDK's UnrealLightmass.exe through Swarm. Needs the February 2015 UDK."),
+        ];
+        solver = gpuAvailable ? LightmassSolverChoice.Gpu : LightmassSolverChoice.Cpu;
         DataContext = this;
         validationTimer = new DispatcherTimer(DispatcherPriority.Background, Dispatcher) { Interval = TimeSpan.FromMilliseconds(300) };
         validationTimer.Tick += (_, _) => Validate();
@@ -195,6 +235,7 @@ public partial class LightmassBakerWindow : TrackingNotifyPropertyChangedWindowB
     private LightmassBakeJob ToJob() => new()
     {
         Files = Files.Select(f => new LightmassBakeJobFile { Path = f.Path, Editable = f.Editable }).ToList(),
+        Solver = Solver,
         Quality = Quality,
         AssignmentPolicy = AssignmentPolicy,
         BioWareLightmassSettings = bioWareLightmassSettings,
@@ -208,6 +249,7 @@ public partial class LightmassBakerWindow : TrackingNotifyPropertyChangedWindowB
     {
         Files.ClearEx();
         AddFiles(job.Files.Select(f => (f.Path, f.Editable)));
+        Solver = job.Solver;
         Quality = job.Quality;
         AssignmentPolicy = job.AssignmentPolicy;
         bioWareLightmassSettings = job.BioWareLightmassSettings;
@@ -226,7 +268,7 @@ public partial class LightmassBakerWindow : TrackingNotifyPropertyChangedWindowB
         validationTimer.Stop();
         var job = ToJob();
         var found = job.Problems();
-        if (string.IsNullOrWhiteSpace(UdkBinaries)) found.Add("Choose UDK's Binaries folder.");
+        if (UsesUdk && string.IsNullOrWhiteSpace(UdkBinaries)) found.Add("Choose UDK's Binaries folder.");
         if (SaveToFolder && string.IsNullOrWhiteSpace(OutputDirectory)) found.Add("Choose the folder to save the baked files to.");
         hasProblems = found.Count > 0;
         Problems = string.Join("\n", found);

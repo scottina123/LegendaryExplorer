@@ -37,6 +37,14 @@ public sealed class LightmassBakeJob
     [JsonConverter(typeof(StringEnumConverter))]
     public LightmassQuality Quality { get; set; } = LightmassQuality.Preview;
 
+    /// <summary>What lights the bake: LEX's solver on the GPU (the default, also for older jobs that don't say) or the CPU, or UDK's Lightmass</summary>
+    [JsonConverter(typeof(StringEnumConverter))]
+    public LightmassSolverChoice Solver { get; set; } = LightmassSolverChoice.Gpu;
+
+    /// <summary>Whether the bake needs UDK (Swarm and UnrealLightmass.exe)</summary>
+    [JsonIgnore]
+    public bool UsesUdk => Solver == LightmassSolverChoice.UdkLightmass;
+
     // Only deserialization starts in compatibility mode. Explicit JSON values are applied afterwards.
     [OnDeserializing]
     private void ReadLegacyDefaults(StreamingContext context) => AssignmentPolicy = LightAssignmentPolicy.PreserveExistingAssignments;
@@ -94,6 +102,33 @@ public sealed class LightmassBakeJob
     {
         var problems = new List<string>();
         if (!Enum.IsDefined(AssignmentPolicy)) problems.Add("Unknown light assignment policy.");
+        if (!Enum.IsDefined(Solver)) problems.Add("Unknown solver.");
+        if (UsesUdk) problems.AddRange(UdkProblems());
+        if (Files.Count == 0)
+            problems.Add("Add the level files that make up the scene.");
+        else if (!Files.Any(f => f.Editable))
+            problems.Add("Mark at least one file as baked: the others only cast shadows.");
+        foreach (var f in Files.Where(f => !File.Exists(f.Path)))
+            problems.Add($"{f.Path} doesn't exist.");
+        if (string.IsNullOrWhiteSpace(OutputDirectory) && Files.Where(f => f.Editable && File.Exists(f.Path))
+                .Select(f => Path.GetDirectoryName(Path.GetFullPath(f.Path))).Distinct(StringComparer.OrdinalIgnoreCase).Skip(1).Any())
+            problems.Add("To save over the original files, all files marked Bake must be in the same folder so the texture cache can be saved beside them. Choose an output folder or adjust which files are marked Bake.");
+        var duplicates = Files.GroupBy(f => System.IO.Path.GetFileName(f.Path), StringComparer.OrdinalIgnoreCase).Where(g => g.Count() > 1).Select(g => g.Key).ToList();
+        if (duplicates.Count > 0)
+            problems.Add($"More than one file is named {string.Join(", ", duplicates)}: the game loads only one of each.");
+        if (string.IsNullOrWhiteSpace(TfcName) || TfcName.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
+            problems.Add("Enter a valid texture cache name.");
+        if (!string.IsNullOrWhiteSpace(OutputDirectory) && !Directory.Exists(OutputDirectory))
+            problems.Add($"The output folder {OutputDirectory} doesn't exist.");
+        if (ResolvedTfcDirectory is { } tfc && !Directory.Exists(tfc))
+            problems.Add($"The texture cache folder {tfc} doesn't exist.");
+        return problems;
+    }
+
+    /// <summary>What stops UDK's Lightmass from running: a missing UDK, UnrealLightmass.exe, or SwarmAgent.exe of the right version</summary>
+    public List<string> UdkProblems()
+    {
+        var problems = new List<string>();
         if (ResolvedUdkBinaries is not { } udk)
             problems.Add($"Choose UDK's Binaries folder: SwarmAgent.exe version {RequiredSwarmVersion} is required (February 2015 UDK).");
         else
@@ -117,24 +152,6 @@ public sealed class LightmassBakeJob
                 }
             }
         }
-        if (Files.Count == 0)
-            problems.Add("Add the level files that make up the scene.");
-        else if (!Files.Any(f => f.Editable))
-            problems.Add("Mark at least one file as baked: the others only cast shadows.");
-        foreach (var f in Files.Where(f => !File.Exists(f.Path)))
-            problems.Add($"{f.Path} doesn't exist.");
-        if (string.IsNullOrWhiteSpace(OutputDirectory) && Files.Where(f => f.Editable && File.Exists(f.Path))
-                .Select(f => Path.GetDirectoryName(Path.GetFullPath(f.Path))).Distinct(StringComparer.OrdinalIgnoreCase).Skip(1).Any())
-            problems.Add("To save over the original files, all files marked Bake must be in the same folder so the texture cache can be saved beside them. Choose an output folder or adjust which files are marked Bake.");
-        var duplicates = Files.GroupBy(f => System.IO.Path.GetFileName(f.Path), StringComparer.OrdinalIgnoreCase).Where(g => g.Count() > 1).Select(g => g.Key).ToList();
-        if (duplicates.Count > 0)
-            problems.Add($"More than one file is named {string.Join(", ", duplicates)}: the game loads only one of each.");
-        if (string.IsNullOrWhiteSpace(TfcName) || TfcName.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
-            problems.Add("Enter a valid texture cache name.");
-        if (!string.IsNullOrWhiteSpace(OutputDirectory) && !Directory.Exists(OutputDirectory))
-            problems.Add($"The output folder {OutputDirectory} doesn't exist.");
-        if (ResolvedTfcDirectory is { } tfc && !Directory.Exists(tfc))
-            problems.Add($"The texture cache folder {tfc} doesn't exist.");
         return problems;
     }
 
@@ -198,37 +215,14 @@ public sealed class LightmassBakeJob
         if (Problems() is { Count: > 0 } problems) throw new InvalidOperationException(string.Join("\n", problems));
         var preview = new LightmassBakePreview(this, LockTfc());
 
-        log($"Lightmass and Swarm from {ResolvedUdkBinaries}");
-        var ordered = Files.ToList();
-        var packages = preview.Packages;
+        log(UsesUdk ? $"Lightmass and Swarm from {ResolvedUdkBinaries}" : $"LEX's solver ({(Solver == LightmassSolverChoice.Cpu ? "CPU" : "GPU")})");
         try
         {
-            foreach (var file in ordered)
-            {
-                cancel.ThrowIfCancellationRequested();
-                log($"Opening {Path.GetFileName(file.Path)}...");
-                var package = MEPackageHandler.OpenMEPackage(file.Path, forceLoadFromDisk: true);
-                packages.Add(package);
-                ValidateGame(package.Game, packages[0].Game);
-            }
-            var contextOnly = packages.Where((p, i) => !ordered[i].Editable).ToHashSet();
-            // Follow actual streaming references: LE1's persistent worlds are not named BioP_.
-            var world = FindWorldPackage(packages);
-            packages.Remove(world);
-            packages.Insert(0, world);
-            log($"World settings: {world.FileNameNoExtension} ({world.Game})");
-            var settings = new LightmassBakeSettings
-            {
-                UdkBinaries = ResolvedUdkBinaries,
-                Quality = Quality,
-                BioWareLightmassSettings = BioWareLightmassSettings,
-                UsePrecomputedShadowsOnAllMeshes = UsePrecomputedShadowsOnAllMeshes,
-                TfcName = TfcName,
-                TfcDirectory = preview.TemporaryDirectory,
-                CopiedCacheSource = preview.CopiedCacheSource,
-                Scene = new LightmassSceneOptions { ContextOnly = contextOnly, AssignmentPolicy = AssignmentPolicy },
-            };
-            preview.Result = LightmassBake.Run(packages, settings, log, cancel);
+            var contextOnly = OpenLevels(preview.Packages, log, cancel);
+            var settings = BakeSettings(contextOnly);
+            settings.TfcDirectory = preview.TemporaryDirectory;
+            settings.CopiedCacheSource = preview.CopiedCacheSource;
+            preview.Result = LightmassBake.Run(preview.Packages, settings, log, cancel);
             cancel.ThrowIfCancellationRequested();
             return preview;
         }
@@ -238,6 +232,42 @@ public sealed class LightmassBakeJob
             throw;
         }
     }
+
+    /// <summary>
+    /// Opens the job's files fresh from disk into <paramref name="packages"/>, the world (the level streaming the others) first, and returns those that
+    /// only cast shadows and bounce light
+    /// </summary>
+    internal HashSet<IMEPackage> OpenLevels(List<IMEPackage> packages, Action<string> log, CancellationToken cancel)
+    {
+        var ordered = Files.ToList();
+        foreach (var file in ordered)
+        {
+            cancel.ThrowIfCancellationRequested();
+            log($"Opening {Path.GetFileName(file.Path)}...");
+            var package = MEPackageHandler.OpenMEPackage(file.Path, forceLoadFromDisk: true);
+            packages.Add(package);
+            ValidateGame(package.Game, packages[0].Game);
+        }
+        var contextOnly = packages.Where((p, i) => !ordered[i].Editable).ToHashSet();
+        // Follow actual streaming references: LE1's persistent worlds are not named BioP_.
+        var world = FindWorldPackage(packages);
+        packages.Remove(world);
+        packages.Insert(0, world);
+        log($"World settings: {world.FileNameNoExtension} ({world.Game})");
+        return contextOnly;
+    }
+
+    /// <summary>The bake's settings from the job's (without the texture cache folder, which is the caller's)</summary>
+    internal LightmassBakeSettings BakeSettings(HashSet<IMEPackage> contextOnly) => new()
+    {
+        UdkBinaries = ResolvedUdkBinaries,
+        Solver = Solver,
+        Quality = Quality,
+        BioWareLightmassSettings = BioWareLightmassSettings,
+        UsePrecomputedShadowsOnAllMeshes = UsePrecomputedShadowsOnAllMeshes,
+        TfcName = TfcName,
+        Scene = new LightmassSceneOptions { ContextOnly = contextOnly, AssignmentPolicy = AssignmentPolicy },
+    };
 
     public static void ValidateGame(MEGame game, MEGame sceneGame)
     {

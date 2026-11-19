@@ -15,7 +15,8 @@ public interface ILightingSource
 
     /// <summary>
     /// A lookup from mesh lightmap UV (texture lightmaps: the shader's coordinate is uv * CoordinateScale + CoordinateBias) to
-    /// world-space L1 lighting and the LE3 tangent frame at that UV.
+    /// world-space L1 lighting and the LE3 tangent frame at that UV. The rewriter rebuilds atlases in parallel, so this may be called from
+    /// several threads at once (for different lightmaps); each returned lookup is used by one thread.
     /// </summary>
     Func<Vector2, (Lighting Lighting, TangentFrame Frame)> For(LightmapRef r);
 

@@ -313,6 +313,9 @@ public sealed class LightmassSceneOptions
     /// <summary>Linear albedo of materials that can't be rendered (or of all of them, without <see cref="MaterialCapture"/>).</summary>
     public float DefaultAlbedo = 0.18f;
 
+    /// <summary>The level DiffuseBoost when the WorldInfo doesn't set one (null: WorldInfo's class default, 5)</summary>
+    public float? DefaultWorldDiffuseBoost;
+
     /// <summary>Levels that are part of the scene (they cast shadows and bounce light) but whose lightmaps aren't baked.</summary>
     public HashSet<IMEPackage> ContextOnly = [];
 }
@@ -363,7 +366,7 @@ public sealed class LightmassSceneBuilder : IDisposable
         scene = new LightmassScene { Levels = levels.ToList() };
         log?.Invoke($"Light assignment policy: {options.AssignmentPolicy.Describe()}");
         if (levels.Count > 0 && levels[0].Exports.FirstOrDefault(e => e.ClassName.EndsWith("WorldInfo") && e.ObjectName.Name.EndsWith("WorldInfo")) is { } worldInfo)
-            scene.World = LightmassWorldSettings.FromWorldInfo(worldInfo);
+            scene.World = LightmassWorldSettings.FromWorldInfo(worldInfo, options.DefaultWorldDiffuseBoost);
 
         var levelBinaries = new List<(IMEPackage Package, Level Level)>();
         foreach (var package in levels)

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -46,7 +46,7 @@ public static class Dxt1
         int bw = Math.Max(1, (width + 3) / 4), bh = Math.Max(1, (height + 3) / 4);
         var output = new byte[bw * bh * BlockBytes];
         var input = rgb.ToArray();
-        Parallel.For(0, bh, by =>
+        Parallel.For(0, bh, () => new Scratch(), (by, _, scratch) =>
         {
             Span<Vector3> px = stackalloc Vector3[16];
             for (int bx = 0; bx < bw; bx++)
@@ -58,10 +58,44 @@ public static class Dxt1
                     int o = (y * width + x) * 3;
                     px[i] = new Vector3(input[o], input[o + 1], input[o + 2]);
                 }
-                EncodeBlock(px, output.AsSpan((by * bw + bx) * BlockBytes, BlockBytes));
+                EncodeBlock(px, output.AsSpan((by * bw + bx) * BlockBytes, BlockBytes), scratch);
             }
-        });
+            return scratch;
+        }, _ => { });
         return output;
+    }
+
+    /// <summary>
+    /// One worker's state for <see cref="EncodeBlock"/>: the block's pixels as integers, and the endpoint pairs already scored for it.
+    /// Pixels and palette entries are whole numbers 0..255, so a block's squared error is an exact integer (at most 16 · 3 · 255²) and the
+    /// integer scoring here ranks candidates exactly as floating point would
+    /// </summary>
+    sealed class Scratch
+    {
+        public readonly int[] Px = new int[48];
+        const int Slots = 2048;
+        readonly uint[] keys = new uint[Slots];
+        readonly int[] stamps = new int[Slots];
+        int block;
+
+        public void NextBlock(ReadOnlySpan<Vector3> px)
+        {
+            block++;
+            for (int i = 0; i < 16; i++) { Px[i * 3] = (int)px[i].X; Px[i * 3 + 1] = (int)px[i].Y; Px[i * 3 + 2] = (int)px[i].Z; }
+        }
+
+        /// <summary>False if the ordered pair was already scored for this block (it can't be kept now if it wasn't then)</summary>
+        public bool FirstTime(ushort c0, ushort c1)
+        {
+            uint key = (uint)c0 << 16 | c1;
+            int slot = (int)((key * 2654435761u) >> 21);
+            for (int probe = 0; probe < Slots; probe++, slot = (slot + 1) & (Slots - 1))
+            {
+                if (stamps[slot] != block) { stamps[slot] = block; keys[slot] = key; return true; }
+                if (keys[slot] == key) return false;
+            }
+            return true;
+        }
     }
 
     static void BuildPalette(ushort c0, ushort c1, Span<Vector3> palette)
@@ -162,10 +196,13 @@ public static class Dxt1
     /// by least squares and then by +-1 steps on each 565 component. nvtt, which compressed LE3's
     /// lightmaps, chose 3-colour mode for 27-65% of their blocks, so both modes are needed to match it.
     /// </summary>
-    static void EncodeBlock(ReadOnlySpan<Vector3> px, Span<byte> dst)
+    static void EncodeBlock(ReadOnlySpan<Vector3> px, Span<byte> dst, Scratch scratch = null)
     {
+        scratch ??= new Scratch();
+        scratch.NextBlock(px);
         Span<Candidate> best = stackalloc Candidate[RefineCount];
         for (int i = 0; i < best.Length; i++) best[i].Error = float.MaxValue;
+        void Offer(ReadOnlySpan<Vector3> _, ushort a, ushort b, Span<Candidate> into) => OfferScored(scratch, a, b, into);
 
         RangeFit(px, out var hi, out var lo);
         Offer(px, Pack565(hi), Pack565(lo), best);
@@ -222,14 +259,14 @@ public static class Dxt1
         {
             if (winner.Error == 0) break;
             if (seed.Error == float.MaxValue) continue;
-            var refined = Refine(px, seed);
+            var refined = Refine(px, seed, scratch);
             if (refined.Error < winner.Error) winner = refined;
         }
 
         Span<byte> idx = stackalloc byte[16];
-        Span<Vector3> palette = stackalloc Vector3[4];
+        Span<int> palette = stackalloc int[12];
         BuildPalette(winner.C0, winner.C1, palette);
-        AssignIndices(px, palette, idx);
+        Score(scratch.Px, palette, idx, int.MaxValue);
 
         dst[0] = (byte)winner.C0; dst[1] = (byte)(winner.C0 >> 8);
         dst[2] = (byte)winner.C1; dst[3] = (byte)(winner.C1 >> 8);
@@ -238,12 +275,84 @@ public static class Dxt1
         dst[4] = (byte)bits; dst[5] = (byte)(bits >> 8); dst[6] = (byte)(bits >> 16); dst[7] = (byte)(bits >> 24);
     }
 
-    /// <summary>Evaluates an endpoint pair in both modes and keeps it if it ranks among the best seeds.</summary>
-    static void Offer(ReadOnlySpan<Vector3> px, ushort a, ushort b, Span<Candidate> best)
+    /// <summary>
+    /// Evaluates an endpoint pair in both modes and keeps it if it ranks among the best seeds. A pair is scored only until its error reaches the
+    /// worst kept seed's, and only once per block: either way it couldn't be kept, so the seeds come out exactly as a full scoring gives
+    /// </summary>
+    static void OfferScored(Scratch scratch, ushort a, ushort b, Span<Candidate> best)
     {
         ushort hi = Math.Max(a, b), lo = Math.Min(a, b);
-        if (hi != lo) Insert(best, new Candidate { C0 = hi, C1 = lo, Error = Evaluate(px, hi, lo) });
-        Insert(best, new Candidate { C0 = lo, C1 = hi, Error = Evaluate(px, lo, hi) });
+        if (hi != lo) OfferOrdered(scratch, hi, lo, best);
+        OfferOrdered(scratch, lo, hi, best);
+    }
+
+    static void OfferOrdered(Scratch scratch, ushort c0, ushort c1, Span<Candidate> best)
+    {
+        if (!scratch.FirstTime(c0, c1)) return;
+        int bound = Bound(best[^1].Error);
+        int error = Score(scratch.Px, c0, c1, bound);
+        if (error < bound) Insert(best, new Candidate { C0 = c0, C1 = c1, Error = error });
+    }
+
+    /// <summary>A candidate's error (a whole number, or float.MaxValue for none yet) as an integer bound</summary>
+    static int Bound(float error) => error >= int.MaxValue ? int.MaxValue : (int)error;
+
+    /// <summary>An endpoint pair's squared error over the block, or some value at least <paramref name="bound"/> once it reaches it</summary>
+    static int Score(ReadOnlySpan<int> px, ushort c0, ushort c1, int bound)
+    {
+        Span<int> palette = stackalloc int[12];
+        BuildPalette(c0, c1, palette);
+        return Score(px, palette, default, bound);
+    }
+
+    /// <summary>
+    /// Each pixel's nearest palette entry (the first of equals, as <see cref="AssignIndices"/>) into <paramref name="idx"/> when given, and the
+    /// summed squared error, stopping at <paramref name="bound"/>
+    /// </summary>
+    static int Score(ReadOnlySpan<int> px, ReadOnlySpan<int> pal, Span<byte> idx, int bound)
+    {
+        int total = 0;
+        for (int i = 0; i < 16; i++)
+        {
+            int r = px[i * 3], g = px[i * 3 + 1], b = px[i * 3 + 2];
+            int best = 0, bestD = int.MaxValue;
+            for (int k = 0; k < 4; k++)
+            {
+                int dr = r - pal[k * 3], dg = g - pal[k * 3 + 1], db = b - pal[k * 3 + 2];
+                int d = dr * dr + dg * dg + db * db;
+                if (d < bestD) { bestD = d; best = k; }
+            }
+            if (!idx.IsEmpty) idx[i] = (byte)best;
+            total += bestD;
+            if (total >= bound) return total;
+        }
+        return total;
+    }
+
+    /// <summary>
+    /// The decoded palette as integers (r, g, b per entry), exactly what the float <see cref="BuildPalette(ushort, ushort, Span{Vector3})"/>
+    /// rounds to: thirds never fall on .5, and the 3-colour midpoint rounds half to even like MathF.Round
+    /// </summary>
+    static void BuildPalette(ushort c0, ushort c1, Span<int> pal)
+    {
+        int r0 = c0 >> 11 & 31, g0 = c0 >> 5 & 63, b0 = c0 & 31, r1 = c1 >> 11 & 31, g1 = c1 >> 5 & 63, b1 = c1 & 31;
+        pal[0] = r0 << 3 | r0 >> 2; pal[1] = g0 << 2 | g0 >> 4; pal[2] = b0 << 3 | b0 >> 2;
+        pal[3] = r1 << 3 | r1 >> 2; pal[4] = g1 << 2 | g1 >> 4; pal[5] = b1 << 3 | b1 >> 2;
+        for (int ch = 0; ch < 3; ch++)
+        {
+            int a = pal[ch], b = pal[3 + ch];
+            if (c0 > c1)
+            {
+                pal[6 + ch] = (2 * a + b + 1) / 3;
+                pal[9 + ch] = (a + 2 * b + 1) / 3;
+            }
+            else
+            {
+                int sum = a + b, half = sum >> 1;
+                pal[6 + ch] = (sum & 1) != 0 && (half & 1) != 0 ? half + 1 : half;
+                pal[9 + ch] = 0;
+            }
+        }
     }
 
     static void Insert(Span<Candidate> best, Candidate c)
@@ -268,9 +377,9 @@ public static class Dxt1
         return AssignIndices(px, palette, idx);
     }
 
-    static Candidate Refine(ReadOnlySpan<Vector3> px, Candidate c)
+    static Candidate Refine(ReadOnlySpan<Vector3> px, Candidate c, Scratch scratch)
     {
-        Span<Vector3> palette = stackalloc Vector3[4];
+        Span<int> palette = stackalloc int[12];
         Span<byte> idx = stackalloc byte[16];
         bool fourColour = c.C0 > c.C1;
 
@@ -278,12 +387,12 @@ public static class Dxt1
         for (int iter = 0; iter < 2; iter++)
         {
             BuildPalette(c.C0, c.C1, palette);
-            AssignIndices(px, palette, idx);
+            Score(scratch.Px, palette, idx, int.MaxValue);
             if (!SolveEndpoints(px, idx, fourColour, out var e0, out var e1)) break;
             ushort p0 = Pack565(e0), p1 = Pack565(e1);
             if (fourColour ? p0 <= p1 : p0 > p1) break;
-            float err = Evaluate(px, p0, p1);
-            if (err >= c.Error) break;
+            int err = Score(scratch.Px, p0, p1, Bound(c.Error));
+            if (err >= Bound(c.Error)) break;
             c = new Candidate { C0 = p0, C1 = p1, Error = err };
         }
 
@@ -298,8 +407,8 @@ public static class Dxt1
                 ushort n0 = c.C0, n1 = c.C1;
                 if (comp < 3) n0 = Nudge(n0, comp, step); else n1 = Nudge(n1, comp - 3, step);
                 if (fourColour ? n0 <= n1 : n0 > n1) continue;
-                float err = Evaluate(px, n0, n1);
-                if (err < c.Error) { c = new Candidate { C0 = n0, C1 = n1, Error = err }; improved = true; }
+                int err = Score(scratch.Px, n0, n1, Bound(c.Error));
+                if (err < Bound(c.Error)) { c = new Candidate { C0 = n0, C1 = n1, Error = err }; improved = true; }
             }
         }
         return c;
