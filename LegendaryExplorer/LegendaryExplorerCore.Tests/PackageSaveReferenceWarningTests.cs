@@ -139,6 +139,27 @@ public class PackageSaveReferenceWarningTests
     }
 
     [TestMethod]
+    public void SelfOwnedPolysSavesWithoutWarningOrChangingItsBinary()
+    {
+        string path = Destination("SelfOwnedPolys.pcc");
+        using var package = MEPackageHandler.CreateMemoryEmptyPackage(path, MEGame.LE3);
+        var export = package.CreateExport("Polys", "Polys", indexed: false);
+        var polys = Polys.Create();
+        polys.Owner = export.UIndex;
+        export.WriteBinary(polys);
+        byte[] originalBinary = export.GetBinaryData();
+        PackageSaver.PackageSaveReferenceWarningCallback = (_, _, _) =>
+            throw new AssertFailedException("Self-owned Polys must not prompt the user.");
+
+        Assert.IsTrue(package.TrySave(path, compress: false));
+
+        using var reopened = MEPackageHandler.OpenMEPackage(path, forceLoadFromDisk: true);
+        var saved = reopened.FindExport("Polys");
+        Assert.AreEqual(saved.UIndex, ObjectBinary.From<Polys>(saved).Owner);
+        CollectionAssert.AreEqual(originalBinary, saved.GetBinaryData());
+    }
+
+    [TestMethod]
     public void WarningIncludesWrongTypePropertyAndBinaryReferences()
     {
         string path = Destination("PropertyAndBinary.pcc");

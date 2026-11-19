@@ -15,7 +15,8 @@ namespace LegendaryExplorerCore.Unreal.BinaryConverters
             set => Array.Resize(ref Elements, value);
         }
         public int PolyMax;
-        [UIndexRef("Model")]
+        // The serialized array owner is a UObject; vanilla packages can reference the Polys itself.
+        [UIndexRef("Object")]
         public UIndex Owner;
         [UIndexRefContainer]
         public Poly[] Elements;
