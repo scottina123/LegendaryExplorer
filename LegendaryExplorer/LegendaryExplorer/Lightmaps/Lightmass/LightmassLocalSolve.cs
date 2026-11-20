@@ -172,12 +172,24 @@ public static class LightmassLocalSolve
         var mappings = scene.Mappings.Where(m => sceneState.Geometry.ContainsKey(m) && (only == null || only(m))).ToList();
         var batches = Batches(mappings);
         log($"Solver input: {sceneState.Scene.Triangles.Count:N0} triangles, {sceneState.Scene.Lights.Count} lights, {mappings.Count} mappings in " +
-            $"{batches.Count} {(batches.Count == 1 ? "batch" : "batches")}, built in {timer.Elapsed:mm\\:ss\\.f}");
+            $"{batches.Count} {(batches.Count == 1 ? "batch" : "batches")}, built in {timer.Elapsed:mm\\:ss\\.f} ({MemoryNote()})");
         var world = scene.World;
         log($"World: {world.NumIndirectLightingBounces} bounces, environment {world.EnvironmentColor} x {world.EnvironmentIntensity}, diffuse boost {world.DiffuseBoost}, " +
             $"emissive boost {world.EmissiveBoost}, AO {world.UseAmbientOcclusion}; {sceneState.Scene.Materials.Count} materials, mean albedo " +
             $"{(sceneState.Scene.Materials.Count == 0 ? 0 : sceneState.Scene.Materials.Average(m => m.Diffuse?.Texels.Average(t => (t.X + t.Y + t.Z) / 3) ?? 0)):F3}, " +
             $"{sceneState.Scene.Lights.Count(l => l.Type == SolverLightType.Sky)} sky lights");
+        if (System.Environment.GetEnvironmentVariable("LEX_SOLVER_DEBUG")?.Split(',').Contains("materials") == true)
+            foreach (var m in scene.Materials)
+            {
+                static string Mean(MaterialSamples s)
+                {
+                    if (s?.Rgba is not { Length: > 0 } t) return "-";
+                    double r = 0, g = 0, b = 0; int n = t.Length / 4;
+                    for (int i = 0; i < n; i++) { r += (float)t[i * 4]; g += (float)t[i * 4 + 1]; b += (float)t[i * 4 + 2]; }
+                    return $"({r / n:F3},{g / n:F3},{b / n:F3})@{s.Size}";
+                }
+                log($"  material {m.Source}: blend {m.BlendMode}, two-sided {m.TwoSided}, clip {m.OpacityMaskClipValue}, diffuse {Mean(m.Diffuse)}, transmission {Mean(m.Transmission)}, emissive {Mean(m.Emissive)}");
+            }
         if (System.Environment.GetEnvironmentVariable("LEX_SOLVER_DEBUG")?.Split(',').Contains("lights") == true)
             for (int i = 0; i < scene.Lights.Count; i++)
             {
@@ -230,7 +242,7 @@ public static class LightmassLocalSolve
             var s = output.Statistics;
             Log($"Batch {b + 1}/{batches.Count} done (samples {prepareTime.TotalSeconds:F1}s, direct {s.DirectTime.TotalSeconds:F1}s, " +
                 $"bounce {s.IndirectTime.TotalSeconds:F1}s, filtering {finishTime.TotalSeconds:F1}s, distance fields {refineTime.TotalSeconds:F1}s, " +
-                $"convert {sw.Elapsed.TotalSeconds:F1}s)");
+                $"convert {sw.Elapsed.TotalSeconds:F1}s; {MemoryNote()})");
         }
 
         var next = batches.Count > 0 ? Task.Run(() => Prepare(0), cancel) : null;
@@ -249,7 +261,14 @@ public static class LightmassLocalSolve
                 // The previous batch finished on the CPU while this one was on the device
                 finishing.GetAwaiter().GetResult();
                 int index = b;
-                finishing = Task.Run(() => Finish(index, plan, batch, prepareTime), cancel);
+                finishing = Task.Run(() =>
+                {
+                    Finish(index, plan, batch, prepareTime);
+                    // The batch is done with: its arrays (gigabytes) go now. Left to its own pace the GC lets batches' garbage pile up to double the
+                    // bake's memory; a collection per batch costs a fraction of a second
+                    plan = default; batch = null;
+                    GC.Collect(2, GCCollectionMode.Forced, blocking: true, compacting: false);
+                }, cancel);
             }
             finishing.GetAwaiter().GetResult();
         }
@@ -263,6 +282,20 @@ public static class LightmassLocalSolve
         log($"Solved {samples:N0} samples on {statistics.DeviceName ?? device.ToString()} in {total.Elapsed:hh\\:mm\\:ss} (BVH {statistics.BvhTime:mm\\:ss\\.f}, direct " +
             $"{statistics.DirectTime:hh\\:mm\\:ss}, indirect {statistics.IndirectTime:hh\\:mm\\:ss}, {statistics.RaysCast:N0} rays)");
         return results;
+    }
+
+    /// <summary>The process's memory for the log: the managed heap and everything it has committed</summary>
+    internal static string MemoryNote()
+    {
+        using var process = Process.GetCurrentProcess();
+        // Tuning: LEX_SOLVER_DEBUG=memlive collects first and logs what's still in use
+        if (System.Environment.GetEnvironmentVariable("LEX_SOLVER_DEBUG")?.Split(',').Contains("memlive") == true)
+        {
+            GC.Collect(2, GCCollectionMode.Forced, true, true);
+            process.Refresh();
+            return $"memory {GC.GetTotalMemory(false) / (double)(1L << 30):F1} GB managed in use, {process.PrivateMemorySize64 / (double)(1L << 30):F1} GB in all";
+        }
+        return $"memory {GC.GetGCMemoryInfo().HeapSizeBytes / (double)(1L << 30):F1} GB managed, {process.PrivateMemorySize64 / (double)(1L << 30):F1} GB in all";
     }
 
     /// <summary>Tuning: LEX_SOLVER_DEBUG=probe:X:Y logs texel (X, Y) of every texture mapping in the job, and each lightmap light's relation to it</summary>
@@ -629,6 +662,10 @@ public static class LightmassLocalSolve
     static readonly string DebugLight = System.Environment.GetEnvironmentVariable("LEX_SOLVER_DEBUG")?.Split(',')
         .FirstOrDefault(t => t.StartsWith("light:", StringComparison.OrdinalIgnoreCase))?[6..];
 
+    /// <summary>Tuning: LEX_SOLVER_DEBUG=droplight:A|B leaves out lightmap lights whose name contains A or B</summary>
+    static readonly string[] DebugDropLights = System.Environment.GetEnvironmentVariable("LEX_SOLVER_DEBUG")?.Split(',')
+        .FirstOrDefault(t => t.StartsWith("droplight:", StringComparison.OrdinalIgnoreCase))?[10..].Split('|', StringSplitOptions.RemoveEmptyEntries) ?? [];
+
 
     /// <summary>Tuning: LEX_SOLVER_DEBUG=albedo:X scales every material's albedo by X</summary>
     static readonly float DebugAlbedoScale = System.Environment.GetEnvironmentVariable("LEX_SOLVER_DEBUG")?.Split(',')
@@ -648,6 +685,7 @@ public static class LightmassLocalSolve
             {
                 case LightmassLightRoute.Lightmap:
                     if (DebugLight is { } only && !LightName(light).Contains(only, StringComparison.OrdinalIgnoreCase)) break;
+                    if (DebugDropLights.Any(d => LightName(light).Contains(d, StringComparison.OrdinalIgnoreCase))) break;
                     plan.LightmapLights.Add((index, light.Guid));
                     break;
                 case LightmassLightRoute.ShadowMap: plan.ShadowMapLights.Add((index, light.Guid)); break;
@@ -979,14 +1017,14 @@ public static class LightmassLocalSolve
         var result = new LightmassMappingResult
         {
             Guid = plan.Guid, IsTextureMapping = plan.Texture, SizeX = plan.SizeX, SizeY = plan.SizeY,
-            Directional = new Directional.Sample[count], Simple = new Vector3[count], Coverage = new byte[count],
+            Directional = new Directional.Stored[count], Simple = new HalfVector3[count], Coverage = new byte[count],
         };
         for (int i = 0; i < count; i++)
         {
             int s = plan.Samples[i];
             if (s < 0) { if (!plan.Texture) result.Coverage[i] = 255; continue; }
             var (colour, max) = Directional.Split(new Directional.Sample(output.Directional0[s], output.Directional1[s], output.Directional2[s]));
-            result.Directional[i] = Directional.Combine(colour, max);
+            result.Directional[i] = new Directional.Stored(colour, max);
             result.Simple[i] = output.Simple[s];
             result.Coverage[i] = 255;
         }

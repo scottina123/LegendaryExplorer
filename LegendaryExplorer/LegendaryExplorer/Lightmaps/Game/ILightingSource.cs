@@ -20,6 +20,9 @@ public interface ILightingSource
     /// </summary>
     Func<Vector2, (Lighting Lighting, TangentFrame Frame)> For(LightmapRef r);
 
+    /// <summary>Whether <see cref="For"/> has lighting for a texture lightmap, without building its lookup (which can be large)</summary>
+    bool Covers(LightmapRef r) => For(r) != null;
+
     /// <summary>
     /// For a per-vertex lightmap (LMT_1D, LMT_3): lighting and tangent frame per vertex of the lightmap's LOD, indexed like the
     /// mesh's vertices, which is how LE3 orders a vertex lightmap's samples.

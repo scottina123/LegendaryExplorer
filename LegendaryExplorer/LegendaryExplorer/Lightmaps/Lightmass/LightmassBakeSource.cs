@@ -86,6 +86,9 @@ public sealed class LightmassBakeSource : ILightingSource, IDisposable
     public Guid[] LightGuids(LightmapRef r) => TryEntry(r, out var e)
         ? e.Result.LightGuids.Where(lightGuids.ContainsKey).Select(g => lightGuids[g]).Distinct().ToArray() : null;
 
+    public bool Covers(LightmapRef r) => TryEntry(r, out var e) && e.Result.IsTextureMapping && e.Result.SizeX == e.Mapping.SizeX && e.Result.SizeY == e.Mapping.SizeY
+        && (r.LightMap.LightMapType != ELightMapType.LMT_4 || e.Mapping is LightmassInstance);
+
     public Func<Vector2, (Lighting Lighting, TangentFrame Frame)> For(LightmapRef r)
     {
         if (!TryEntry(r, out var entry)) { Count("not in the bake"); return null; }

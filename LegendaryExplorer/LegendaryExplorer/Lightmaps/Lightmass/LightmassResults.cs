@@ -19,11 +19,12 @@ public sealed class LightmassMappingResult
     public double ExecutionTime;
     /// <summary>
     /// Incident lighting along the three HL2 basis directions in tangent space (Lightmass's gathered directional coefficients:
-    /// light scaled by DirectionalCoefficientScale·cos^DirectionalCoefficientFalloffPower; ME3 was baked with plain cos).
+    /// light scaled by DirectionalCoefficientScale·cos^DirectionalCoefficientFalloffPower; ME3 was baked with plain cos), kept as Lightmass keeps them
+    /// (a normalised colour and a maximum per direction) in half precision.
     /// </summary>
-    public Directional.Sample[] Directional;
-    /// <summary>Incident lighting along the surface normal (the simple coefficient), unscaled.</summary>
-    public Vector3[] Simple;
+    public Directional.Stored[] Directional;
+    /// <summary>Incident lighting along the surface normal (the simple coefficient), unscaled, in half precision.</summary>
+    public HalfVector3[] Simple;
     /// <summary>255 where the texel maps to a surface, 0 elsewhere. All 255 for vertex mappings.</summary>
     public byte[] Coverage;
     /// <summary>The lights whose direct lighting this lightmap holds (their LightmapGuids).</summary>
@@ -162,15 +163,15 @@ public static class LightmassResults
     {
         if (samples < 0 || data.Length < (long)samples * 10)
             throw new InvalidDataException($"lightmap of {result.Guid}: {data.Length} bytes for {result.SizeX}x{result.SizeY} samples");
-        result.Directional = new Directional.Sample[samples];
-        result.Simple = new Vector3[samples];
+        result.Directional = new Directional.Stored[samples];
+        result.Simple = new HalfVector3[samples];
         result.Coverage = new byte[samples];
         for (int i = 0; i < samples; i++)
         {
             int o = i * 10;
             result.Coverage[i] = data[o];
             Vector3 C(int k) => new Vector3(Fraction(data[o + 1 + k * 3]), Fraction(data[o + 2 + k * 3]), Fraction(data[o + 3 + k * 3])) * scale[k];
-            result.Directional[i] = Codec.Directional.Combine(C(0), C(1));
+            result.Directional[i] = new Directional.Stored(C(0), C(1));
             result.Simple[i] = C(2);
         }
     }

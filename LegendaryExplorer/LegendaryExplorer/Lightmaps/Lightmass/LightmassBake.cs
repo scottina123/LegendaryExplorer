@@ -45,6 +45,44 @@ public sealed class LightmassBakeSettings
     /// replaces the atlases, which is for testing the rewriter's write path.
     /// </summary>
     public bool Repack;
+    /// <summary>
+    /// How much larger static mesh and BSP texture lightmaps are made than their current allocations; null: the quality's
+    /// (<see cref="DefaultLightmapScale"/>). Other than 1, the bake solves at the new sizes and writes new lightmap textures, trashing the old ones.
+    /// </summary>
+    public float? LightmapScale;
+    /// <summary>The format of the colour lightmap textures (the ones LE3 stores as DXT1); null keeps each texture's</summary>
+    public LightmapTextureFormat? TextureFormat;
+
+    /// <summary>Preview keeps the allocations' sizes; Medium 1.5x, High 2x and Production 4x (each grown to at most 2048 texels)</summary>
+    public static float DefaultLightmapScale(LightmassQuality quality) => quality switch
+    {
+        LightmassQuality.Medium => 1.5f,
+        LightmassQuality.High => 2,
+        LightmassQuality.Production => 4,
+        _ => 1,
+    };
+
+    public float EffectiveLightmapScale => LightmapScale ?? DefaultLightmapScale(Quality);
+
+    /// <summary>Whether the bake writes new lightmap textures (resized or repacked) instead of rewriting the levels' own in place</summary>
+    public bool RepacksLightmaps => Repack || EffectiveLightmapScale != 1;
+
+    /// <summary>The colour lightmaps' pixel format name, or null to keep each texture's</summary>
+    public string ColourPixelFormat => TextureFormat switch
+    {
+        LightmapTextureFormat.DXT1 => "PF_DXT1",
+        LightmapTextureFormat.ARGB => "PF_A8R8G8B8",
+        LightmapTextureFormat.BC7 => "PF_BC7",
+        _ => null,
+    };
+}
+
+/// <summary>Lightmap texture formats a bake can write: DXT1 (the game's own, 4 bits a texel), uncompressed ARGB (32 bits), BC7 (8 bits, far less loss than DXT1)</summary>
+public enum LightmapTextureFormat
+{
+    DXT1,
+    ARGB,
+    BC7,
 }
 
 public sealed class LightmassBakeResult
@@ -161,7 +199,7 @@ public static class LightmassBake
         result.ExportTime = timer.Elapsed;
 
         // LEX's solver hands its results over batch by batch, so atlases can be encoded while the rest is still solving
-        using var early = settings.Solver != LightmassSolverChoice.UdkLightmass && !settings.Repack ? new EarlyWrite(scene) : null;
+        using var early = settings.Solver != LightmassSolverChoice.UdkLightmass && !settings.RepacksLightmaps ? new EarlyWrite(scene, settings.ColourPixelFormat) : null;
         if (settings.Solver == LightmassSolverChoice.UdkLightmass) SolveWithLightmass(levels, scene, settings, ini, result, log, cancel);
         else SolveLocally(scene, settings, ini, result, log, cancel, solved: early == null ? null : early.Solved);
         if (result.Results.Count == 0) return result;
@@ -189,8 +227,11 @@ public static class LightmassBake
 
         public LightmassBakeSource Source { get; }
 
-        public EarlyWrite(LightmassScene scene)
+        readonly string colourFormat;
+
+        public EarlyWrite(LightmassScene scene, string colourFormat)
         {
+            this.colourFormat = colourFormat;
             Source = new LightmassBakeSource(scene, results);
             packages = scene.Mappings.SelectMany(m => m.OutputTargets).Select(t => t.Owner.FileRef).Distinct().ToList();
         }
@@ -199,7 +240,7 @@ public static class LightmassBake
         {
             lock (rewriters)
                 return rewriters.TryGetValue(package, out var r) ? r
-                    : rewriters[package] = new LightmapRewriter(package, null, ByteEncoding.Gamma22, Source, VectorBrightness);
+                    : rewriters[package] = new LightmapRewriter(package, null, ByteEncoding.Gamma22, Source, VectorBrightness) { ColourFormat = colourFormat };
         }
 
         public void Solved(IReadOnlyList<LightmassMappingResult> batch)
@@ -264,6 +305,9 @@ public static class LightmassBake
         settings.Scene.TransmissionSampleSize = (int)ini.Float(materialSection, "TransmissionSampleSize");
         settings.Scene.DefaultWorldDiffuseBoost = settings.BioWareLightmassSettings && levels.Count > 0 && levels[0].Game == MEGame.LE3
             ? LightmassIni.BioWareWorldDiffuseBoost : null;
+        settings.Scene.LightmapScale = settings.EffectiveLightmapScale;
+        if (settings.Scene.LightmapScale != 1)
+            log($"Lightmap size: {settings.Scene.LightmapScale:0.##}x the current static mesh and BSP lightmaps (up to {Game.LightmapMapping.MaxTextureSize}), written as new textures");
         LightmassMaterialCapture capture = null;
         try
         {
@@ -324,7 +368,7 @@ public static class LightmassBake
         result.FailedTasks = 0;
         result.MissingMappings = mappings.Count(m => !result.Results.ContainsKey(m.Guid));
         log($"{result.SolverName} finished in {result.LightmassTime:hh\\:mm\\:ss}: {result.Results.Count} mappings baked" +
-            $"{(result.MissingMappings > 0 ? $", {result.MissingMappings} missing" : "")}.");
+            $"{(result.MissingMappings > 0 ? $", {result.MissingMappings} missing" : "")} ({LightmassLocalSolve.MemoryNote()}).");
     }
 
     /// <summary>Lights the scene's mappings with UDK's Lightmass: writes the channels, runs a Swarm job with a task per mapping and reads the results into <paramref name="result"/></summary>
@@ -488,19 +532,22 @@ public static class LightmassBake
         result.TfcPath = tfc.FilePath;
         var step = Stopwatch.StartNew();
         string Lap() { string t = $"{step.Elapsed:mm\\:ss}"; step.Restart(); return t; }
-        log($"Prepared the bake's results for writing in {applyTimer.Elapsed:mm\\:ss}");
+        log($"Prepared the bake's results for writing in {applyTimer.Elapsed:mm\\:ss} ({LightmassLocalSolve.MemoryNote()})");
         foreach (var package in packages)
         {
             cancel.ThrowIfCancellationRequested();
             step.Restart();
-            var rewriter = early?.Rewriter(package) ?? new LightmapRewriter(package, tfc, ByteEncoding.Gamma22, source, VectorBrightness);
+            var rewriter = early?.Rewriter(package) ?? new LightmapRewriter(package, tfc, ByteEncoding.Gamma22, source, VectorBrightness)
+            {
+                ColourFormat = settings.ColourPixelFormat, SizeScale = settings.Scene.LightmapScale,
+            };
             rewriter.UseTfc(tfc);
-            var summary = rewriter.RewriteAll(settings.Repack);
+            var summary = rewriter.RewriteAll(settings.RepacksLightmaps);
             string rewrite = Lap();
             LightmassMappingAllocator.Write(package, tfc, scene, result.Results, summary);
             string allocate = Lap();
             result.Rewrites[package] = summary;
-            log($"{package.FileNameNoExtension}: {LightmassBakeReport.LightmapLine(summary)} (lightmaps {rewrite}: {summary.Timing}; new mappings {allocate})");
+            log($"{package.FileNameNoExtension}: {LightmassBakeReport.LightmapLine(summary)} (lightmaps {rewrite}: {summary.Timing}; new mappings {allocate}; {LightmassLocalSolve.MemoryNote()})");
             var shadows = result.ShadowMaps[package] = new LightmassShadowMapWriter(package, tfc, scene, result.Results).Write(summary.AppliedLightmaps, summary.ShadowOnlyAllocations);
             log($"{package.FileNameNoExtension}: {LightmassBakeReport.ShadowLine(shadows)} ({Lap()})");
             var decals = result.Decals[package] = DecalReceiverLighting.Write(package, DecalReceivers(scene, package, summary), cache);
@@ -510,7 +557,7 @@ public static class LightmassBake
         }
         step.Restart();
         tfc.PreserveUnwrittenTextures(packages);
-        log($"Texture cache finished in {Lap()}");
+        log($"Texture cache finished in {Lap()} ({LightmassLocalSolve.MemoryNote()})");
         foreach (var (why, n) in source.Report) result.KeptOriginal[why] = n;
         // A lightmap of a level's own that a mapping Lightmass failed or delivered nothing for, or whose result couldn't be applied
         var unfinished = source.Unfinished

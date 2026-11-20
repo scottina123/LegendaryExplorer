@@ -55,6 +55,16 @@ public sealed class LightmassBakeJob
     /// <summary>Fork: turns on bUsePrecomputedShadows on every static mesh of the baked levels first, so all of them get baked lighting (<see cref="LightmassBakeSettings.UsePrecomputedShadowsOnAllMeshes"/>)</summary>
     public bool UsePrecomputedShadowsOnAllMeshes { get; set; } = true;
 
+    /// <summary>
+    /// How much larger static mesh and BSP texture lightmaps are made (new textures replace the old); null or absent: the quality's
+    /// (<see cref="LightmassBakeSettings.DefaultLightmapScale"/>)
+    /// </summary>
+    public float? LightmapScale { get; set; }
+
+    /// <summary>Format of the colour lightmap textures: DXT1, ARGB or BC7; null or absent keeps the levels' own</summary>
+    [JsonConverter(typeof(StringEnumConverter))]
+    public LightmapTextureFormat? TextureFormat { get; set; }
+
     /// <summary>Name of the texture file cache the streamed lightmap textures go in. An existing cache of that name is added to.</summary>
     public string TfcName { get; set; } = "Textures_DLC_MOD_LEXLightmaps";
 
@@ -266,6 +276,8 @@ public sealed class LightmassBakeJob
         BioWareLightmassSettings = BioWareLightmassSettings,
         UsePrecomputedShadowsOnAllMeshes = UsePrecomputedShadowsOnAllMeshes,
         TfcName = TfcName,
+        LightmapScale = LightmapScale,
+        TextureFormat = TextureFormat,
         Scene = new LightmassSceneOptions { ContextOnly = contextOnly, AssignmentPolicy = AssignmentPolicy },
     };
 

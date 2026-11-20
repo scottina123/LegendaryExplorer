@@ -34,6 +34,33 @@ public static class Directional
         public Sample(Vector3 e0, Vector3 e1, Vector3 e2) { E0 = e0; E1 = e1; E2 = e2; }
     }
 
+    /// <summary>
+    /// A sample as a bake's results keep it: Lightmass's own two coefficients (<see cref="Split"/>'s normalised colour and per-basis maxima, which
+    /// <see cref="Combine"/> turns back into the three irradiances) in half precision, 12 bytes. Results hold one per lightmap texel, so this is most
+    /// of a bake's memory; half precision keeps 11 bits, more than the 8-bit lightmaps they're written to
+    /// </summary>
+    public readonly struct Stored
+    {
+        readonly HalfVector3 colour, maxComponents;
+
+        public Stored(Vector3 colour, Vector3 maxComponents) { this.colour = colour; this.maxComponents = maxComponents; }
+
+        public Vector3 Colour => colour;
+        public Vector3 MaxComponents => maxComponents;
+        public Sample Sample => Combine(Colour, MaxComponents);
+        public Vector3 E0 => Colour * maxComponents.X;
+        public Vector3 E1 => Colour * maxComponents.Y;
+        public Vector3 E2 => Colour * maxComponents.Z;
+        public Vector3 this[int i] => Sample[i];
+
+        public static implicit operator Sample(Stored s) => s.Sample;
+        public static implicit operator Stored(Sample s)
+        {
+            var (colour, maxComponents) = Split(s);
+            return new Stored(colour, maxComponents);
+        }
+    }
+
     public static (Vector3 Colour, Vector3 MaxComponents) Split(in Sample s)
     {
         var average = (s.E0 + s.E1 + s.E2) / 3f;

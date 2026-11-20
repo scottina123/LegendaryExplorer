@@ -50,6 +50,20 @@ public sealed class LightmapRewriter(IMEPackage package, TfcWriter tfc, ByteEnco
         public List<(float R, int Lit)> VertexCorrelations = [], VertexShiftedCorrelations = [];
     }
 
+    /// <summary>
+    /// The format the colour lightmaps (the textures LE3 stores as DXT1) are written in: PF_DXT1, PF_A8R8G8B8 or PF_BC7. Null keeps each
+    /// texture's own. Other formats (the LMT_4 direction atlas's uncompressed bytes) are kept either way.
+    /// </summary>
+    public string ColourFormat { get; init; }
+
+    /// <summary>
+    /// Repack only: each static mesh and BSP allocation's interior is scaled by this (LightmapMapping.ScaledInterior), into atlases of up to
+    /// LightmapMapping.AtlasSize. A bake solves its mappings at the same scaled sizes (LightmassSceneOptions.LightmapScale).
+    /// </summary>
+    public float SizeScale { get; init; } = 1;
+
+    string OutputFormat(string format) => ColourFormat != null && format == "PF_DXT1" ? ColourFormat : format;
+
     // In place, atlases are rebuilt in parallel: the caches below are shared between them
     readonly Dictionary<int, DecodedTexture> cache = new();
     DecodedTexture Read(int uIndex)
@@ -58,6 +72,16 @@ public sealed class LightmapRewriter(IMEPackage package, TfcWriter tfc, ByteEnco
             if (cache.TryGetValue(uIndex, out var t)) return t;
         var read = PackageLightmaps.ReadTopMip(package, uIndex);
         lock (cache) return cache.TryAdd(uIndex, read) ? read : cache[uIndex];
+    }
+
+    /// <summary>A texture's export, format and size from its properties, without decoding it (<see cref="Read"/> decodes the top mip)</summary>
+    (ExportEntry Export, string Format, int Width, int Height) Info(int uIndex)
+    {
+        lock (cache)
+            if (cache.TryGetValue(uIndex, out var t)) return (t.Export, t.Format, t.Width, t.Height);
+        var export = package.GetUExport(uIndex);
+        var p = export.GetProperties();
+        return (export, p.GetProp<EnumProperty>("Format")?.Value.Name ?? "?", p.GetProp<IntProperty>("SizeX")?.Value ?? 0, p.GetProp<IntProperty>("SizeY")?.Value ?? 0);
     }
 
     /// <summary>A destination texel: its index in the atlas being built, its value, and whether it is mapped (coverage).</summary>
@@ -106,6 +130,7 @@ public sealed class LightmapRewriter(IMEPackage package, TfcWriter tfc, ByteEnco
         System.Threading.Tasks.Parallel.ForEach(todo, new System.Threading.Tasks.ParallelOptions { MaxDegreeOfParallelism = Math.Max(1, maxParallel) }, a =>
         {
             lock (a) Rebuild(a);
+            BakeMemory.Step();
         });
     }
 
@@ -120,14 +145,10 @@ public sealed class LightmapRewriter(IMEPackage package, TfcWriter tfc, ByteEnco
         {
             var allocations = Allocations(list);
             if (allocations.Any(al => al.Padding < 0))
-                a.Skipped = $"{Read(TextureKey(list[0].LightMap)).Export.ObjectName.Instanced}: an allocation follows neither convention; left untouched";
+                a.Skipped = $"{Info(TextureKey(list[0].LightMap)).Export.ObjectName.Instanced}: an allocation follows neither convention; left untouched";
             // Re-encoding an atlas the bake doesn't touch would only add DXT1 loss (and, streamed, another copy in the TFC).
-            else if (bake != null && !allocations.Any(al => Baked(al.Refs[0]) != null)) a.Skipped = "unbaked";
-            else
-            {
-                foreach (var al in allocations) Baked(al.Refs[0]);
-                a.Allocations = allocations;
-            }
+            else if (bake != null && !allocations.Any(al => Covered(al.Refs[0]))) a.Skipped = "unbaked";
+            else a.Allocations = allocations;
         }
         a.Decided = true;
     }
@@ -139,6 +160,7 @@ public sealed class LightmapRewriter(IMEPackage package, TfcWriter tfc, ByteEnco
         if (a.Allocations == null || a.Encoded != null) return;
         var queue = new List<QueuedTexture>();
         RewriteInPlace(a.Allocations, summary, queue);
+        foreach (var al in a.Allocations) Forget(al.Refs[0]);
         a.Encoded = queue.Select(q =>
         {
             var (encoded, squared, samples) = Encode(q.Format, q.Top, q.Averaging);
@@ -193,7 +215,7 @@ public sealed class LightmapRewriter(IMEPackage package, TfcWriter tfc, ByteEnco
                     summary.Textures++;
                 }
             foreach (var list in eligible)
-            foreach (var al in list.Where(al => Baked(al.Refs[0]) != null))
+            foreach (var al in list.Where(al => Covered(al.Refs[0])))
                 foreach (var r in al.Refs) RecordAppliedLightmap(r, al.Refs[0], summary);
             Stage("writing textures");
         }
@@ -234,7 +256,7 @@ public sealed class LightmapRewriter(IMEPackage package, TfcWriter tfc, ByteEnco
                 LightMap_4or6 v => (v.CoordinateScale, v.CoordinateBias, v.Texture1),
                 _ => default,
             };
-            var t = Read(tex);
+            var t = Info(tex);
             return new Allocation(g.ToList(), first, AtlasRect.Padding(scale, bias, t.Width, t.Height));
         })
         .ToList();
@@ -252,9 +274,31 @@ public sealed class LightmapRewriter(IMEPackage package, TfcWriter tfc, ByteEnco
         lock (lookups) return lookups.TryAdd(first, made) ? made : lookups[first];
     }
 
+    /// <summary>
+    /// Whether the bake has lighting for an allocation, without building its lookup: a lookup holds the allocation's whole texel grid, and a large
+    /// bake's don't all fit in memory at once. When it hasn't, the source is asked for its lookup anyway, which reports why
+    /// </summary>
+    bool Covered(LightmapRef first)
+    {
+        if (bake == null) return false;
+        lock (lookups)
+            if (lookups.TryGetValue(first, out var f)) return f != null;
+        if (bake.Covers(first)) return true;
+        return Baked(first) != null;
+    }
+
+    /// <summary>Drops an allocation's lookup once its texels are written</summary>
+    void Forget(LightmapRef first)
+    {
+        // A null lookup stays: asking again would report the allocation's reason twice
+        lock (lookups)
+            if (lookups.TryGetValue(first, out var f) && f != null) lookups.Remove(first);
+    }
+
     void RecordAppliedLightmap(LightmapRef target, LightmapRef source, Summary summary)
     {
-        summary.AppliedLightmaps.Add((target.Owner, target.Slot));
+        // Repacked atlases are filled in parallel
+        lock (summary.AppliedLightmaps) summary.AppliedLightmaps.Add((target.Owner, target.Slot));
         if (bake?.LightGuids(source) is not { } guids) return;
         switch (target.LightMap)
         {
@@ -299,7 +343,7 @@ public sealed class LightmapRewriter(IMEPackage package, TfcWriter tfc, ByteEnco
     void RewriteInPlace(List<Allocation> list, Summary summary, List<QueuedTexture> queue)
     {
         void WriteTexture(ExportEntry export, string format, MipLevel top, MipAveraging averaging, bool? srgb, Summary _) =>
-            queue.Add(new QueuedTexture(export, format, top, averaging, srgb));
+            queue.Add(new QueuedTexture(export, OutputFormat(format), top, averaging, srgb));
         switch (list[0].First)
         {
             case LightMap_2D first:
@@ -443,7 +487,7 @@ public sealed class LightmapRewriter(IMEPackage package, TfcWriter tfc, ByteEnco
                 LightMap_4or6 v => (v.Texture1, v.CoordinateScale, v.LightMapType.ToString()),
                 _ => throw new InvalidOperationException(),
             };
-            var t = Read(tex);
+            var t = Info(tex);
             bool streamed = t.Export.GetProperty<NameProperty>("TextureFileCacheName") is { } n && n.Value.Name != "None";
             (Vector3, float)? bounds = null;
             if (r.Owner.ClassName is "StaticMeshComponent" or "SplineMeshComponent" && ComponentGeometry.Load(r.Owner, meshes, out _) is { } g)
@@ -451,25 +495,39 @@ public sealed class LightmapRewriter(IMEPackage package, TfcWriter tfc, ByteEnco
                 var (min, max) = g.Bounds();
                 bounds = ((min + max) / 2, Vector3.Distance(min, max) / 2);
             }
+            // Terrain keeps its size: its lightmaps follow its sections' resolution
+            float sizeScale = r.Owner.ClassName is "StaticMeshComponent" or "SplineMeshComponent" or "ModelComponent" ? SizeScale : 1;
             requests.Add(new AtlasRequest(new Source(a.Refs, Snapshot(a.First)), group,
-                (int)MathF.Round(scale.X * t.Width), (int)MathF.Round(scale.Y * t.Height), streamed, bounds, a.Padding));
+                LightmapMapping.ScaledInterior((int)MathF.Round(scale.X * t.Width), sizeScale, a.Padding > 0),
+                LightmapMapping.ScaledInterior((int)MathF.Round(scale.Y * t.Height), sizeScale, a.Padding > 0), streamed, bounds, a.Padding));
             foreach (int u in Textures(a.First)) oldTextures.Add(u);
         }
 
-        var atlases = AtlasPacker.Pack(requests);
+        var atlases = AtlasPacker.Pack(requests, LightmapMapping.AtlasSize(SizeScale));
         summary.NewAtlases = atlases.Count;
         var newToOld = new Dictionary<int, HashSet<int>>();
-        foreach (var atlas in atlases)
-        {
-            var sources = atlas.Placements.Select(p => (Source)p.Request.Key).ToList();
-            var created = atlas.Group switch
+        // The new textures are cloned one at a time (that changes the package), the atlases filled and encoded in parallel (their lookups
+        // and texel grids are large, so a few at a time), then written to the package and texture cache in the atlases' order
+        var exports = atlases.Select(atlas => Textures(((Source)atlas.Placements[0].Request.Key).Original).Select(Clone).ToArray()).ToList();
+        var pending = new List<PendingTexture>[atlases.Count];
+        System.Threading.Tasks.Parallel.For(0, atlases.Count,
+            new System.Threading.Tasks.ParallelOptions { MaxDegreeOfParallelism = Math.Clamp(Environment.ProcessorCount / 2, 1, 8) },
+            i =>
             {
-                "LMT_2D" => BuildDirectionalAtlas(atlas, summary),
-                "LMT_4" => BuildVectorAtlas(atlas, summary),
-                _ => BuildSimpleAtlas(atlas, summary),
-            };
-            foreach (int u in created)
-                newToOld[u] = sources.SelectMany(s => Textures(s.Original)).ToHashSet();
+                pending[i] = atlases[i].Group switch
+                {
+                    "LMT_2D" => BuildDirectionalAtlas(atlases[i], exports[i], summary),
+                    "LMT_4" => BuildVectorAtlas(atlases[i], exports[i], summary),
+                    _ => BuildSimpleAtlas(atlases[i], exports[i], summary),
+                };
+                BakeMemory.Step();
+            });
+        for (int i = 0; i < atlases.Count; i++)
+        {
+            foreach (var t in pending[i]) Write(t, summary);
+            var sources = atlases[i].Placements.Select(p => (Source)p.Request.Key).ToList();
+            foreach (var export in exports[i])
+                newToOld[export.UIndex] = sources.SelectMany(s => Textures(s.Original)).ToHashSet();
         }
 
         // Texture streaming: each new texture inherits the instances of the textures its allocations came from.
@@ -520,21 +578,23 @@ public sealed class LightmapRewriter(IMEPackage package, TfcWriter tfc, ByteEnco
         _ => [],
     };
 
-    int[] BuildDirectionalAtlas(Atlas atlas, Summary summary)
+    List<PendingTexture> BuildDirectionalAtlas(Atlas atlas, ExportEntry[] exports, Summary summary)
     {
         var (nacTop, dmcTop) = (MipLevel.Create(atlas.SizeX, atlas.SizeY), MipLevel.Create(atlas.SizeX, atlas.SizeY));
         var template = (LightMap_2D)((Source)atlas.Placements[0].Request.Key).Original;
-        var (nacExport, dmcExport) = (Clone(template.Texture1), Clone(template.Texture2));
+        var (nacExport, dmcExport) = (exports[0], exports[1]);
         foreach (var p in atlas.Placements)
         {
             var src = (Source)p.Request.Key;
             var orig = (LightMap_2D)src.Original;
-            var (nac, dmc) = (Read(orig.Texture1), Read(orig.Texture2));
             var baked = Baked(src.Refs[0]);
+            // The original atlas is only read for what the bake doesn't cover
+            var (nac, dmc) = baked == null ? (Read(orig.Texture1), Read(orig.Texture2)) : (null, null);
             var texels = Repacked<Directional.Sample>(p, atlas.SizeX, 1, baked != null
                 ? uv => ToDirectional(baked(uv))
                 : uv => DecodeDirectional(nac, dmc, Index(uv, orig.CoordinateScale, orig.CoordinateBias, nac.Width, nac.Height), orig));
             var (s1, s2) = EncodeDirectional(texels, Floor(orig), nacTop, dmcTop);
+            Forget(src.Refs[0]);
             foreach (var r in src.Refs)
             {
                 var live = (LightMap_2D)r.LightMap;
@@ -544,24 +604,22 @@ public sealed class LightmapRewriter(IMEPackage package, TfcWriter tfc, ByteEnco
                 if (baked != null) RecordAppliedLightmap(r, src.Refs[0], summary);
             }
         }
-        var format = Read(template.Texture1).Format;
-        WriteTexture(nacExport, format, nacTop, MipAveraging.Linear, null, summary, atlas.Streamed);
-        WriteTexture(dmcExport, format, dmcTop, MipAveraging.Linear, null, summary, atlas.Streamed);
-        return [nacExport.UIndex, dmcExport.UIndex];
+        var format = Info(template.Texture1).Format;
+        return [Pending(nacExport, format, nacTop, MipAveraging.Linear, null, atlas.Streamed), Pending(dmcExport, format, dmcTop, MipAveraging.Linear, null, atlas.Streamed)];
     }
 
-    int[] BuildVectorAtlas(Atlas atlas, Summary summary)
+    List<PendingTexture> BuildVectorAtlas(Atlas atlas, ExportEntry[] exports, Summary summary)
     {
         var colourTop = MipLevel.Create(atlas.SizeX, atlas.SizeY);
         var dirTop = MipLevel.Create(Math.Max(1, atlas.SizeX / 2), Math.Max(1, atlas.SizeY / 2));
         var template = (LightMap_4or6)((Source)atlas.Placements[0].Request.Key).Original;
-        var (colourExport, dirExport) = (Clone(template.Texture1), Clone(template.Texture2));
+        var (colourExport, dirExport) = (exports[0], exports[1]);
         foreach (var p in atlas.Placements)
         {
             var src = (Source)p.Request.Key;
             var orig = (LightMap_4or6)src.Original;
-            var (colour, dir) = (Read(orig.Texture1), Read(orig.Texture2));
             var baked = Baked(src.Refs[0]);
+            var (colour, dir) = baked == null ? (Read(orig.Texture1), Read(orig.Texture2)) : (null, null);
             var colours = Repacked<Vector3>(p, atlas.SizeX, 1, baked != null
                 ? uv => ToVectorColour(baked(uv))
                 : uv => DecodeColour(colour, Index(uv, orig.CoordinateScale, orig.CoordinateBias, colour.Width, colour.Height), orig));
@@ -569,6 +627,7 @@ public sealed class LightmapRewriter(IMEPackage package, TfcWriter tfc, ByteEnco
                 ? uv => ToVectorDirection(baked(uv))
                 : uv => DecodeDirection(dir, Index(uv, orig.CoordinateScale, orig.CoordinateBias, dir.Width, dir.Height), orig));
             var (cRange, dRange) = EncodeVector(colours, dirs, colourTop, dirTop);
+            Forget(src.Refs[0]);
             foreach (var r in src.Refs)
             {
                 var live = (LightMap_4or6)r.LightMap;
@@ -579,25 +638,25 @@ public sealed class LightmapRewriter(IMEPackage package, TfcWriter tfc, ByteEnco
                 if (baked != null) RecordAppliedLightmap(r, src.Refs[0], summary);
             }
         }
-        WriteTexture(colourExport, Read(template.Texture1).Format, colourTop, MipAveraging.Linear, null, summary, atlas.Streamed);
-        WriteTexture(dirExport, Read(template.Texture2).Format, dirTop, MipAveraging.Bytes, false, summary, atlas.Streamed);
-        return [colourExport.UIndex, dirExport.UIndex];
+        return [Pending(colourExport, Info(template.Texture1).Format, colourTop, MipAveraging.Linear, null, atlas.Streamed),
+            Pending(dirExport, Info(template.Texture2).Format, dirTop, MipAveraging.Bytes, false, atlas.Streamed)];
     }
 
-    int[] BuildSimpleAtlas(Atlas atlas, Summary summary)
+    List<PendingTexture> BuildSimpleAtlas(Atlas atlas, ExportEntry[] exports, Summary summary)
     {
         var top = MipLevel.Create(atlas.SizeX, atlas.SizeY);
         var template = (LightMap_4or6)((Source)atlas.Placements[0].Request.Key).Original;
-        var export = Clone(template.Texture1);
+        var export = exports[0];
         foreach (var p in atlas.Placements)
         {
             var src = (Source)p.Request.Key;
             var orig = (LightMap_4or6)src.Original;
-            var colour = Read(orig.Texture1);
             var baked = Baked(src.Refs[0]);
+            var colour = baked == null ? Read(orig.Texture1) : null;
             var range = EncodeColourRange(Repacked<Vector3>(p, atlas.SizeX, 1, baked != null
                 ? uv => ToSimple(baked(uv))
                 : uv => DecodeColour(colour, Index(uv, orig.CoordinateScale, orig.CoordinateBias, colour.Width, colour.Height), orig)), top);
+            Forget(src.Refs[0]);
             foreach (var r in src.Refs)
             {
                 var live = (LightMap_4or6)r.LightMap;
@@ -607,8 +666,7 @@ public sealed class LightmapRewriter(IMEPackage package, TfcWriter tfc, ByteEnco
                 if (baked != null) RecordAppliedLightmap(r, src.Refs[0], summary);
             }
         }
-        WriteTexture(export, Read(template.Texture1).Format, top, MipAveraging.Linear, null, summary, atlas.Streamed);
-        return [export.UIndex];
+        return [Pending(export, Info(template.Texture1).Format, top, MipAveraging.Linear, null, atlas.Streamed)];
     }
 
     /// <summary>
@@ -800,16 +858,25 @@ public sealed class LightmapRewriter(IMEPackage package, TfcWriter tfc, ByteEnco
         return range;
     }
 
-    /// <param name="streamed">Whether the texture goes to the mod TFC; null keeps the export's current storage.</param>
-    void WriteTexture(ExportEntry export, string format, MipLevel top, MipAveraging averaging, bool? srgb, Summary summary, bool? streamed = null)
+    /// <summary>A repacked texture, encoded (and compressed for the texture cache) and waiting to be written</summary>
+    sealed record PendingTexture(ExportEntry Export, string Format, int Width, int Height, LightmapTextureWriter.Prepared Prepared, double Squared, long Samples, bool? Srgb);
+
+    /// <summary>Encodes a repacked texture without touching the package or texture cache, so atlases can be built in parallel</summary>
+    PendingTexture Pending(ExportEntry export, string format, MipLevel top, MipAveraging averaging, bool? srgb, bool streamed)
     {
+        format = OutputFormat(format);
         var (encoded, squared, samples) = Encode(format, top, averaging);
-        summary.DxtSquaredError += squared;
-        summary.DxtSamples += samples;
-        bool toTfc = streamed ?? (export.GetProperty<NameProperty>("TextureFileCacheName") is { } n && n.Value.Name != "None");
-        LightmapTextureWriter.Write(export, format, top.Width, top.Height, encoded, toTfc ? tfcWriter : null, srgb);
+        return new PendingTexture(export, format, top.Width, top.Height, LightmapTextureWriter.Prepare(encoded, streamed && tfcWriter != null), squared, samples, srgb);
+    }
+
+    void Write(PendingTexture t, Summary summary)
+    {
+        LightmapTextureWriter.Write(t.Export, t.Format, t.Width, t.Height, t.Prepared, t.Prepared.ToTfc ? tfcWriter : null, t.Srgb);
+        summary.DxtSquaredError += t.Squared;
+        summary.DxtSamples += t.Samples;
         summary.Textures++;
     }
+
 
     static float MinChannel(Vector3 v) => MathF.Min(v.X, MathF.Min(v.Y, v.Z));
     static Vector3 V(LegendaryExplorerCore.Gammtek.Fixed8<float> f, int start) => new(f[start], f[start + 1], f[start + 2]);

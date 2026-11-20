@@ -88,6 +88,8 @@ public sealed class LightmassMaterial
     public float OpacityMaskClipValue;
     public float EmissiveBoost = 1;
     public MaterialSamples Emissive, Diffuse, Specular, Transmission;
+    /// <summary>The material it was made from, for the log (LEX_SOLVER_DEBUG=materials)</summary>
+    public string Source;
 }
 
 /// <summary>
@@ -316,6 +318,12 @@ public sealed class LightmassSceneOptions
     /// <summary>The level DiffuseBoost when the WorldInfo doesn't set one (null: WorldInfo's class default, 5)</summary>
     public float? DefaultWorldDiffuseBoost;
 
+    /// <summary>
+    /// Static mesh and BSP texture lightmaps are solved at their allocation's interior scaled by this (LightmapMapping.ScaledInterior); the
+    /// lightmap rewriter then repacks them at the same size into new textures. 1: the allocations' own size.
+    /// </summary>
+    public float LightmapScale = 1;
+
     /// <summary>Levels that are part of the scene (they cast shadows and bounce light) but whose lightmaps aren't baked.</summary>
     public HashSet<IMEPackage> ContextOnly = [];
 }
@@ -512,6 +520,11 @@ public sealed class LightmassSceneBuilder : IDisposable
         if (light.Light.Type == SceneLightType.Sky) light.Brightness = light.LowerBrightness = 0;
     }
 
+    /// <summary>Tuning: LEX_SOLVER_DEBUG=defaultsourceradius:X is the LightSourceRadius of lights that don't set one</summary>
+    static readonly float? DebugDefaultSourceRadius = System.Environment.GetEnvironmentVariable("LEX_SOLVER_DEBUG")?.Split(',')
+        .FirstOrDefault(t => t.StartsWith("defaultsourceradius:", StringComparison.OrdinalIgnoreCase)) is { } t
+        ? float.Parse(t[20..], System.Globalization.CultureInfo.InvariantCulture) : null;
+
     /// <summary>A level light's Lightmass fields (FLightData and its type's struct) without flags, named by its LightmapGuid.</summary>
     static LightmassLight Light(SceneLight light, PropertyCollection props, int levelId)
     {
@@ -526,7 +539,7 @@ public sealed class LightmassSceneBuilder : IDisposable
             LevelId = levelId,
             Color = Bytes(props.GetProp<StructProperty>("LightColor")),
             Brightness = props.GetProp<FloatProperty>("Brightness")?.Value ?? 1,
-            LightSourceRadius = L("LightSourceRadius", 100),
+            LightSourceRadius = L("LightSourceRadius", DebugDefaultSourceRadius ?? 100),
             IndirectLightingScale = L("IndirectLightingScale", 1),
             IndirectLightingSaturation = L("IndirectLightingSaturation", 1),
             ShadowExponent = L("ShadowExponent", 2),
@@ -700,7 +713,8 @@ public sealed class LightmassSceneBuilder : IDisposable
                 {
                     instance.Target = new LightmapRef(component, $"LOD{lod}", lightmap, smc);
                     if (TextureAllocation(component.FileRef, lightmap) is { } size)
-                        (instance.SizeX, instance.SizeY) = size;
+                        (instance.SizeX, instance.SizeY) = (ScaledInterior(size.Width - 2, options.LightmapScale, true) + 2,
+                            ScaledInterior(size.Height - 2, options.LightmapScale, true) + 2);
                     scene.Count($"mapping: {lightmap.LightMapType}");
                 }
             }
@@ -984,8 +998,8 @@ public sealed class LightmassSceneBuilder : IDisposable
             }
             // Each vertex's ShadowTexCoord spans the allocation, which becomes the mapping's interior; Lightmass adds the padding ring.
             var p = textureExport.GetProperties();
-            mapping.SizeX = (int)MathF.Round(scale.X * (p.GetProp<IntProperty>("SizeX")?.Value ?? 0)) + 2;
-            mapping.SizeY = (int)MathF.Round(scale.Y * (p.GetProp<IntProperty>("SizeY")?.Value ?? 0)) + 2;
+            mapping.SizeX = ScaledInterior((int)MathF.Round(scale.X * (p.GetProp<IntProperty>("SizeX")?.Value ?? 0)), options.LightmapScale, false) + 2;
+            mapping.SizeY = ScaledInterior((int)MathF.Round(scale.Y * (p.GetProp<IntProperty>("SizeY")?.Value ?? 0)), options.LightmapScale, false) + 2;
             mapping.Lightmaps = lightmaps;
             mapping.RelevantLights = RelevantLights(BoundsOf(mapping.BoundsMin, mapping.BoundsMax), lightmaps[0].LightMap,
                 lightmaps.SelectMany(PackageShadowMaps.LightGuids).ToHashSet(), new LightPrimitiveSettings(BspChannels(model, nodes), package.FileNameNoExtension,
@@ -1340,7 +1354,7 @@ public sealed class LightmassSceneBuilder : IDisposable
         var material = new LightmassMaterial
         {
             BlendMode = info.BlendMode, TwoSided = info.TwoSided, CastShadowAsMasked = info.CastShadowAsMasked,
-            OpacityMaskClipValue = info.OpacityMaskClipValue, EmissiveBoost = info.EmissiveBoost,
+            OpacityMaskClipValue = info.OpacityMaskClipValue, EmissiveBoost = info.EmissiveBoost, Source = entry?.InstancedFullPath ?? "(default)",
         };
         int Size(int sampleSize) => Math.Clamp((int)(sampleSize * info.ExportResolutionScale), 1, 1024);
         int emissiveSize = Size(options.EmissiveSampleSize), diffuseSize = Size(options.DiffuseSampleSize), transmissionSize = Size(options.TransmissionSampleSize);

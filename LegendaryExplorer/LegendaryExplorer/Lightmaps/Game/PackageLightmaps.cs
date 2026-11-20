@@ -102,6 +102,8 @@ public static class PackageLightmaps
         {
             "PF_DXT1" => Codec.Dxt1.Decode(data, top.width, top.height),
             "PF_A8R8G8B8" => BgraToRgb(data, top.width * top.height),
+            "PF_BC7" => BgraToRgb(LegendaryExplorerCore.Textures.TexConverter.ConvertTexture(data, (uint)top.width, (uint)top.height,
+                LegendaryExplorerCore.Textures.PixelFormat.BC7, LegendaryExplorerCore.Textures.PixelFormat.ARGB), top.width * top.height),
             _ => throw new NotSupportedException($"{export.InstancedFullPath}: unsupported lightmap format {format}"),
         };
         return new DecodedTexture(export, format, top.width, top.height, rgb, data);

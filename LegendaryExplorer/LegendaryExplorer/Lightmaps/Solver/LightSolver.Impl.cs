@@ -208,6 +208,11 @@ internal sealed partial class SolverRun
         }
 
         Combine(output);
+        // The output is all that's left of the batch; its working arrays (hundreds of bytes a sample) go now, not when the batch does
+        samples = null; receiverItems = null; directItems = null; directBlocks = null;
+        d0 = d1 = d2 = ds = i0 = i1 = i2 = iS = null;
+        occlusion = nearestHit = null;
+        gathered = null;
         total.Stop();
         output.Statistics.RaysCast = raysCast;
         output.Statistics.TotalTime = total.Elapsed;

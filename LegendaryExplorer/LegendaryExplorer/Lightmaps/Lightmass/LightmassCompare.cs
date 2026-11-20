@@ -133,6 +133,8 @@ public static class LightmassCompare
             var contextOnly = job.OpenLevels(packages, log, cancel);
             var settings = job.BakeSettings(contextOnly);
             settings.Solver = LightmassSolverChoice.UdkLightmass;
+            // Mappings at the allocations' own sizes, so cached references (--reference-cache) and LEX's results line up
+            settings.LightmapScale = 1;
             var game = packages[0].Game;
             var udkIni = LightmassBake.LoadIni(settings, game);
             // Tuning: LEX_SOLVER_DEBUG=udkini:Section.Key=Value changes [DevOptions.Section] Key in UDK's ini (for probing what Lightmass does)
@@ -324,7 +326,7 @@ public static class LightmassCompare
             for (int i = 0; i < n; i++)
             {
                 var d = r.Directional[i];
-                foreach (var v in new[] { d.E0, d.E1, d.E2, r.Simple[i] }) { w.Write(v.X); w.Write(v.Y); w.Write(v.Z); }
+                foreach (var v in new Vector3[] { d.E0, d.E1, d.E2, r.Simple[i] }) { w.Write(v.X); w.Write(v.Y); w.Write(v.Z); }
             }
             w.Write(r.Coverage);
             w.Write(r.LightGuids.Length);
@@ -350,8 +352,8 @@ public static class LightmassCompare
             string name = r.ReadString();
             var result = new LightmassMappingResult { IsTextureMapping = r.ReadBoolean(), SizeX = r.ReadInt32(), SizeY = r.ReadInt32(), ExecutionTime = r.ReadDouble() };
             int n = r.ReadInt32();
-            result.Directional = new Directional.Sample[n];
-            result.Simple = new Vector3[n];
+            result.Directional = new Directional.Stored[n];
+            result.Simple = new HalfVector3[n];
             Vector3 V() => new(r.ReadSingle(), r.ReadSingle(), r.ReadSingle());
             for (int i = 0; i < n; i++)
             {

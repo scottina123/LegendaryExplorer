@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Numerics;
 using LegendaryExplorer.Lightmaps.Codec;
+using LegendaryExplorer.Lightmaps.Game;
 using LegendaryExplorer.Lightmaps.Lightmass;
 using LegendaryExplorer.Lightmaps.Solver;
 using LegendaryExplorer.Tools.LevelEditor.Scene3D;
@@ -315,14 +316,14 @@ public class LightmassLocalSolveTests
         Assert.AreEqual(plan.Guid, result.Guid);
         Assert.IsTrue(result.IsTextureMapping);
         CollectionAssert.AreEqual(new byte[] { 255, 255, 0, 255 }, result.Coverage);
-        Assert.AreEqual(new Vector3(0.5f, 0, 0), result.Simple[1]);
-        Assert.AreEqual(Vector3.Zero, result.Simple[2]);
-        Assert.AreEqual(new Vector3(2, 2, 2), result.Simple[3]);
-        // The directional coefficients went through Lightmass's colour + max storage
+        Assert.AreEqual(new Vector3(0.5f, 0, 0), (Vector3)result.Simple[1]);
+        Assert.AreEqual(Vector3.Zero, (Vector3)result.Simple[2]);
+        Assert.AreEqual(new Vector3(2, 2, 2), (Vector3)result.Simple[3]);
+        // The directional coefficients went through Lightmass's colour + max storage, kept in half precision
         var (colour, max) = Directional.Split(new Directional.Sample(output.Directional0[0], output.Directional1[0], output.Directional2[0]));
         var expected = Directional.Combine(colour, max);
-        Assert.AreEqual(expected.E0, result.Directional[0].E0);
-        Assert.AreEqual(expected.E2, result.Directional[0].E2);
+        Assert.IsTrue(Vector3.Distance(expected.E0, result.Directional[0].E0) <= 1e-3f * expected.E0.Length(), $"{expected.E0} vs {result.Directional[0].E0}");
+        Assert.IsTrue(Vector3.Distance(expected.E2, result.Directional[0].E2) <= 1e-3f * expected.E2.Length(), $"{expected.E2} vs {result.Directional[0].E2}");
         // The far light doesn't reach any sample, so the lightmap doesn't list it
         CollectionAssert.AreEqual(new[] { guidLit }, result.LightGuids);
         Assert.AreEqual(1, result.ShadowMaps.Count);
@@ -415,6 +416,81 @@ public class LightmassLocalSolveTests
     }
 
     [TestMethod]
+    public void LightmapScale_FollowsTheQualityAndCapsAt2048()
+    {
+        Assert.AreEqual(1f, LightmassBakeSettings.DefaultLightmapScale(LightmassQuality.Preview));
+        Assert.AreEqual(1.5f, LightmassBakeSettings.DefaultLightmapScale(LightmassQuality.Medium));
+        Assert.AreEqual(2f, LightmassBakeSettings.DefaultLightmapScale(LightmassQuality.High));
+        Assert.AreEqual(4f, LightmassBakeSettings.DefaultLightmapScale(LightmassQuality.Production));
+        Assert.IsFalse(new LightmassBakeSettings { Quality = LightmassQuality.Preview }.RepacksLightmaps);
+        Assert.IsTrue(new LightmassBakeSettings { Quality = LightmassQuality.Production }.RepacksLightmaps);
+        Assert.IsFalse(new LightmassBakeSettings { Quality = LightmassQuality.Production, LightmapScale = 1 }.RepacksLightmaps);
+
+        // Padded (static mesh) interiors stay 4k - 2 and grow to at most 2046; one already past the cap keeps its size; unpadded ones are whole blocks
+        Assert.AreEqual(30, LightmapMapping.ScaledInterior(30, 1, true));
+        Assert.AreEqual(46, LightmapMapping.ScaledInterior(30, 1.5f, true));
+        Assert.AreEqual(506, LightmapMapping.ScaledInterior(126, 4, true));
+        Assert.AreEqual(2046, LightmapMapping.ScaledInterior(1022, 4, true));
+        Assert.AreEqual(3000, LightmapMapping.ScaledInterior(3000, 2, true));
+        Assert.AreEqual(152, LightmapMapping.ScaledInterior(100, 1.5f, false));
+        Assert.AreEqual(2048, LightmapMapping.AtlasSize(4));
+        Assert.AreEqual(1024, LightmapMapping.AtlasSize(1));
+
+        var job = JsonConvert.DeserializeObject<LightmassBakeJob>(JsonConvert.SerializeObject(new LightmassBakeJob { LightmapScale = 2, TextureFormat = LightmapTextureFormat.BC7 }));
+        Assert.AreEqual(2f, job.LightmapScale);
+        Assert.AreEqual(LightmapTextureFormat.BC7, job.TextureFormat);
+        Assert.IsNull(JsonConvert.DeserializeObject<LightmassBakeJob>("{\"Quality\":\"High\"}").LightmapScale);
+        Assert.AreEqual("PF_BC7", new LightmassBakeSettings { TextureFormat = LightmapTextureFormat.BC7 }.ColourPixelFormat);
+        Assert.IsNull(new LightmassBakeSettings().ColourPixelFormat);
+    }
+
+    [TestMethod]
+    public void Bc7_EncodesWholeBlocksPerLevel()
+    {
+        var top = MipLevel.Create(8, 8);
+        // A smooth gradient, as lightmaps are
+        for (int i = 0; i < 64; i++)
+            (top.Rgb[i * 3], top.Rgb[i * 3 + 1], top.Rgb[i * 3 + 2]) = ((byte)(20 + 25 * (i % 8)), (byte)(40 + 20 * (i / 8)), (byte)90);
+        Array.Fill(top.Coverage, (byte)255);
+        var levels = MipChain.BuildDilated(top, MipAveraging.Linear, minSize: MipChain.MinMipSize("PF_BC7"));
+        var encoded = LightmapTextureWriter.Encode(levels, "PF_BC7");
+        Assert.AreEqual(levels.Count, encoded.Count);
+        Assert.AreEqual(4 * 16, encoded[0].Length);
+        Assert.IsTrue(encoded.Skip(1).All(e => e.Length == 16));
+        var decoded = LegendaryExplorerCore.Textures.TexConverter.ConvertTexture(encoded[0], 8, 8, LegendaryExplorerCore.Textures.PixelFormat.BC7,
+            LegendaryExplorerCore.Textures.PixelFormat.ARGB);
+        for (int i = 0; i < 64; i++)
+            Assert.AreEqual(top.Rgb[i * 3], decoded[i * 4 + 2], 12, $"texel {i} red");
+    }
+
+    [TestMethod]
+    public void Bc7_KeepsShadowEdgesAndMixedColours()
+    {
+        // A shadow edge through the middle of each block's columns, and a block of four unrelated colours (full mode search)
+        var rgb = new byte[8 * 4 * 3];
+        for (int i = 0; i < 32; i++)
+        {
+            int x = i % 8, y = i / 8;
+            (byte r, byte g, byte b) c = x < 4
+                ? (x % 4 < 2 ? ((byte)30, (byte)35, (byte)40) : ((byte)200, (byte)190, (byte)170))
+                : (y < 2 ? (x < 6 ? ((byte)255, (byte)0, (byte)0) : ((byte)0, (byte)255, (byte)0)) : (x < 6 ? ((byte)0, (byte)0, (byte)255) : ((byte)255, (byte)255, (byte)255)));
+            (rgb[i * 3], rgb[i * 3 + 1], rgb[i * 3 + 2]) = c;
+        }
+        var bgra = LegendaryExplorerCore.Textures.TexConverter.ConvertTexture(Bc7.Encode(rgb, 8, 4), 8, 4, LegendaryExplorerCore.Textures.PixelFormat.BC7,
+            LegendaryExplorerCore.Textures.PixelFormat.ARGB);
+        double edgeError = 0, mixedError = 0;
+        for (int i = 0; i < 32; i++)
+        for (int c = 0; c < 3; c++)
+        {
+            double d = Math.Abs(bgra[i * 4 + 2 - c] - rgb[i * 3 + c]);
+            if (i % 8 < 4) edgeError = Math.Max(edgeError, d);
+            else mixedError += d * d;
+        }
+        Assert.IsTrue(edgeError <= 3, $"shadow edge kept to within 3 (worst {edgeError})");
+        Assert.IsTrue(Math.Sqrt(mixedError / 48) < 40, $"four unrelated colours: RMS {Math.Sqrt(mixedError / 48):F1}");
+    }
+
+    [TestMethod]
     public void Settings_LocalSolverLoadsTheEmbeddedIni()
     {
         var settings = new LightmassBakeSettings { Solver = LightmassSolverChoice.Cpu, UdkBinaries = null };
@@ -463,12 +539,12 @@ public class LightmassLocalSolveTests
         var reference = new LightmassMappingResult
         {
             IsTextureMapping = true, SizeX = 2, SizeY = 2, Coverage = [255, 255, 255, 0],
-            Simple = [new(1, 1, 1), new(2, 2, 2), new(0, 0, 0), new(0, 0, 0)], Directional = new Directional.Sample[4], LightGuids = [],
+            Simple = [new(1, 1, 1), new(2, 2, 2), new(0, 0, 0), new(0, 0, 0)], Directional = new Directional.Stored[4], LightGuids = [],
         };
         var local = new LightmassMappingResult
         {
             IsTextureMapping = true, SizeX = 2, SizeY = 2, Coverage = [255, 255, 255, 0],
-            Simple = [new(1, 1, 1), new(1, 1, 1), new(0, 0, 0), new(0, 0, 0)], Directional = new Directional.Sample[4], LightGuids = [],
+            Simple = [new(1, 1, 1), new(1, 1, 1), new(0, 0, 0), new(0, 0, 0)], Directional = new Directional.Stored[4], LightGuids = [],
         };
         var c = LightmassCompare.Compare("test", reference, local, g => g.ToString());
         Assert.AreEqual(3, c.Covered);

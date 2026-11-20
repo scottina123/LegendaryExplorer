@@ -1,3 +1,4 @@
+using System;
 using System.Linq;
 using System.Numerics;
 using LegendaryExplorerCore.Packages;
@@ -50,6 +51,33 @@ public static class LightmapMapping
         LightMap_3 m => m.DirectionalSamples?.Length ?? 0,
         _ => -1
     };
+
+    /// <summary>
+    /// The largest a bake grows a lightmap to. LE3 draws 4096 textures, but levels whose meshes already have 1024 lightmaps each (as Scottina's
+    /// Lightmass Baker lays them out) would then need ~120 GB to bake and several GB of texture cache, past a TFC's 2 GiB
+    /// </summary>
+    public const int MaxTextureSize = 2048;
+
+    /// <summary>
+    /// A texture allocation's interior (mapped texels) after a bake's lightmap scale: padded allocations (static meshes) keep LE3's 4k - 2 interior
+    /// sizes, unpadded ones (BSP surface groups) whole DXT blocks, grown to at most <see cref="MaxTextureSize"/> (one already larger keeps its size).
+    /// The bake solves each mapping at this size and the rewriter repacks it at the same size, so the two must agree.
+    /// </summary>
+    public static int ScaledInterior(int interior, float scale, bool padded)
+    {
+        if (scale == 1 || interior <= 0) return interior;
+        int wanted = Math.Max(1, (int)MathF.Round(interior * scale));
+        int scaled = padded ? Math.Min(AtlasPacker.InteriorSize(wanted), MaxTextureSize - 2) : Math.Min((wanted + 3) & ~3, MaxTextureSize);
+        return Math.Max(interior, scaled);
+    }
+
+    /// <summary>The atlas size a bake packs scaled lightmaps into: LE3's 1024 at scale 1, growing with the scale up to <see cref="MaxTextureSize"/></summary>
+    public static int AtlasSize(float scale)
+    {
+        int size = 1024;
+        while (size < MaxTextureSize && size < 1024 * scale) size <<= 1;
+        return size;
+    }
 
     public static (int Width, int Height)? TextureAllocation(IMEPackage package, LightMap map)
     {

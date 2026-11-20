@@ -149,7 +149,7 @@ public static class LightmapTextureWriter
 {
     const int PackageStoredMips = 6;
 
-    /// <param name="levels">Encoded data per level, top first: DXT1 blocks or BGRA bytes (MipChain.EncodeDxt1 / EncodeBgra).</param>
+    /// <param name="levels">Encoded data per level, top first: DXT1 or BC7 blocks, or BGRA bytes (MipChain.EncodeDxt1 / EncodeBc7 / EncodeBgra).</param>
     /// <param name="sizeX">Top level size; lower levels are max(1, size >> i), as UE3 records them.</param>
     /// <param name="srgb">Serialized SRGB: false for LightMapVector_Dir; null leaves the property absent (default TRUE).</param>
     public static void Write(ExportEntry export, string pixelFormat, int sizeX, int sizeY, List<byte[]> levels, TfcWriter tfc, bool? srgb) =>
@@ -246,6 +246,10 @@ public static class LightmapTextureWriter
     }
 
     /// <summary>Nominal texture sizes for a chain of MipChain levels (lower DXT1 levels are stored as whole 4x4 blocks).</summary>
-    public static List<byte[]> Encode(List<MipLevel> levels, string pixelFormat) =>
-        pixelFormat == "PF_DXT1" ? MipChain.EncodeDxt1(levels) : MipChain.EncodeBgra(levels);
+    public static List<byte[]> Encode(List<MipLevel> levels, string pixelFormat) => pixelFormat switch
+    {
+        "PF_DXT1" => MipChain.EncodeDxt1(levels),
+        "PF_BC7" => MipChain.EncodeBc7(levels),
+        _ => MipChain.EncodeBgra(levels),
+    };
 }

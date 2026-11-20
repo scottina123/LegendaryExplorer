@@ -46,7 +46,7 @@ public static class LightmassMappingAllocator
             && (result.IsTextureMapping ? result.SizeX == mapping.SizeX && result.SizeY == mapping.SizeY : result.SizeX == count && result.SizeY == 1)
             && result.Coverage?.Length == count && result.Coverage.Any(c => c != 0)
             && result.Directional?.Length == count && result.Simple?.Length == count
-            && result.Directional.All(s => Finite(s.E0) && Finite(s.E1) && Finite(s.E2)) && result.Simple.All(Finite)
+            && result.Directional.All(s => Finite(s.E0) && Finite(s.E1) && Finite(s.E2)) && result.Simple.All(s => Finite(s))
             && result.ShadowMaps.All(s => result.IsTextureMapping ? s.Values?.Length == count
                 : s.Samples?.Length == count && s.Samples.All(float.IsFinite));
     }
@@ -171,7 +171,7 @@ public static class LightmassMappingAllocator
             var split = result.Directional.Select(s => Directional.Split(s)).ToArray();
             var s1 = Quantization.ChooseScale(split.Select(s => s.Colour));
             var s2 = Quantization.ChooseScale(split.Select(s => s.MaxComponents));
-            var s3 = Quantization.ChooseScale(result.Simple);
+            var s3 = Quantization.ChooseScale(result.Simple.Select(s => (Vector3)s));
             Apply(mapping, target => new LightMap_1D
             {
                 LightMapType = ELightMapType.LMT_1D, Owner = target.Owner.UIndex, LightGuids = Guids(result),
@@ -197,7 +197,7 @@ public static class LightmassMappingAllocator
                 var mapping = (LightmassMapping)placement.Request.Key;
                 var result = results[mapping.Guid];
                 var split = result.Directional.Select(s => Directional.Split(s)).ToArray();
-                var scales = new[] { Quantization.ChooseScale(split.Select(s => s.Colour)), Quantization.ChooseScale(split.Select(s => s.MaxComponents)), Quantization.ChooseScale(result.Simple) };
+                var scales = new[] { Quantization.ChooseScale(split.Select(s => s.Colour)), Quantization.ChooseScale(split.Select(s => s.MaxComponents)), Quantization.ChooseScale(result.Simple.Select(s => (Vector3)s)) };
                 for (int y = 0; y < result.SizeY; y++)
                 for (int x = 0; x < result.SizeX; x++)
                 {

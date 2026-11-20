@@ -143,7 +143,7 @@ public partial class LevelEditor
     private int _actorLightmassResolution = 64;
     private StaticLightingTextureFormat _lightmassTextureFormat = StaticLightingTextureFormat.DXT1;
     public StaticLightingTextureFormat LightmassTextureFormat { get => _lightmassTextureFormat; set => SetProperty(ref _lightmassTextureFormat, value); }
-    public IReadOnlyList<StaticLightingTextureFormat> LightmassTextureFormats { get; } = [StaticLightingTextureFormat.DXT1, StaticLightingTextureFormat.ARGB];
+    public IReadOnlyList<StaticLightingTextureFormat> LightmassTextureFormats { get; } = [StaticLightingTextureFormat.DXT1, StaticLightingTextureFormat.ARGB, StaticLightingTextureFormat.BC7];
     private float _lightmassAmbientIntensity = 0.12f;
     public float LightmassAmbientIntensity { get => _lightmassAmbientIntensity; set => SetProperty(ref _lightmassAmbientIntensity, value); }
     private float _lightmassShadowBias = 1f;

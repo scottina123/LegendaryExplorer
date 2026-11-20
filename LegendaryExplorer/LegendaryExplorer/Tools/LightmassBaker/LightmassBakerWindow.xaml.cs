@@ -87,7 +87,38 @@ public partial class LightmassBakerWindow : TrackingNotifyPropertyChangedWindowB
     public IReadOnlyList<LightmassQuality> Qualities { get; } = Enum.GetValues<LightmassQuality>();
 
     private LightmassQuality quality = LightmassQuality.Preview;
-    public LightmassQuality Quality { get => quality; set => SetProperty(ref quality, value); }
+    public LightmassQuality Quality
+    {
+        get => quality;
+        set { if (SetProperty(ref quality, value)) OnPropertyChanged(nameof(LightmapSizes)); }
+    }
+
+    /// <summary>Lightmap size choices by scale: 0 is the quality's default, otherwise a fixed scale of the current lightmaps</summary>
+    public IReadOnlyList<KeyValuePair<float, string>> LightmapSizes =>
+    [
+        new(0f, $"Quality default ({LightmassBakeSettings.DefaultLightmapScale(Quality):0.##}x)"),
+        new(1f, "1x (current size)"),
+        new(1.5f, "1.5x"),
+        new(2f, "2x"),
+        new(4f, "4x"),
+    ];
+
+    private float lightmapSize;
+    /// <summary>The chosen lightmap scale; 0 follows the quality (Preview 1x, Medium 1.5x, High 2x, Production 4x)</summary>
+    public float LightmapSize { get => lightmapSize; set => SetProperty(ref lightmapSize, value); }
+    private float? LightmapScale => LightmapSize > 0 ? LightmapSize : null;
+
+    public IReadOnlyList<KeyValuePair<string, string>> TextureFormats { get; } =
+    [
+        new("Keep", "Keep the levels' (DXT1)"),
+        new(nameof(LightmapTextureFormat.DXT1), "DXT1"),
+        new(nameof(LightmapTextureFormat.ARGB), "ARGB (uncompressed)"),
+        new(nameof(LightmapTextureFormat.BC7), "BC7"),
+    ];
+
+    private string textureFormatChoice = "Keep";
+    public string TextureFormatChoice { get => textureFormatChoice; set => SetProperty(ref textureFormatChoice, value); }
+    private LightmapTextureFormat? TextureFormat => Enum.TryParse<LightmapTextureFormat>(TextureFormatChoice, out var f) ? f : null;
 
     private string tfcName = "Textures_DLC_MOD_LEXLightmaps";
     public string TfcName { get => tfcName; set { if (SetProperty(ref tfcName, value)) ScheduleValidation(); } }
@@ -241,6 +272,8 @@ public partial class LightmassBakerWindow : TrackingNotifyPropertyChangedWindowB
         BioWareLightmassSettings = bioWareLightmassSettings,
         UsePrecomputedShadowsOnAllMeshes = UsePrecomputedShadowsOnAllMeshes,
         TfcName = TfcName,
+        LightmapScale = LightmapScale,
+        TextureFormat = TextureFormat,
         UdkBinaries = UdkBinaries,
         OutputDirectory = SaveInPlace || string.IsNullOrWhiteSpace(OutputDirectory) ? null : OutputDirectory,
     };
@@ -255,6 +288,8 @@ public partial class LightmassBakerWindow : TrackingNotifyPropertyChangedWindowB
         bioWareLightmassSettings = job.BioWareLightmassSettings;
         UsePrecomputedShadowsOnAllMeshes = job.UsePrecomputedShadowsOnAllMeshes;
         TfcName = job.TfcName;
+        LightmapSize = job.LightmapScale ?? 0;
+        TextureFormatChoice = job.TextureFormat?.ToString() ?? "Keep";
         UdkBinaries = job.ResolvedUdkBinaries;
         OutputDirectory = job.OutputDirectory;
         SaveInPlace = string.IsNullOrWhiteSpace(job.OutputDirectory);

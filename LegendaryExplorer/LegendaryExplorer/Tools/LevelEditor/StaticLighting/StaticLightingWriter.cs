@@ -318,6 +318,7 @@ public static class StaticLightingWriter
         {
             StaticLightingTextureFormat.DXT1 => PixelFormat.DXT1,
             StaticLightingTextureFormat.ARGB => PixelFormat.ARGB,
+            StaticLightingTextureFormat.BC7 => PixelFormat.BC7,
             _ => throw new ArgumentOutOfRangeException(nameof(textureFormat))
         };
 
@@ -432,12 +433,49 @@ public static class StaticLightingWriter
         }
         export.WriteBinary(binary);
 
-        var image = CoreImage.LoadFromRaw(sourceData, sourceFormat, resolution, resolution);
         var texture = new Texture2D(export);
+        if (destinationFormat == PixelFormat.BC7 && sourceFormat == PixelFormat.ARGB)
+        {
+            // LEC converts to BC7 through TexConverter, whose encoder loses half of each block's horizontal detail: the chain is encoded
+            // here (Lightmaps.Codec.Bc7) and stored as supplied
+            texture.Replace(Bc7MipChain(sourceData, resolution), export.GetProperties(), forcedTFCName: cacheName, forcedTFCPath: cachePath,
+                isPackageStored: package.Game == MEGame.ME1, forcedNewFormat: destinationFormat, forceMipping: true,
+                forcedTFCStream: cacheStream, forcedTFCGuid: cacheGuid, useSuppliedMips: true);
+            return export;
+        }
+        var image = CoreImage.LoadFromRaw(sourceData, sourceFormat, resolution, resolution);
         texture.Replace(image, export.GetProperties(), forcedTFCName: cacheName, forcedTFCPath: cachePath,
             isPackageStored: package.Game == MEGame.ME1, forcedNewFormat: destinationFormat, forceMipping: true,
             forcedTFCStream: cacheStream, forcedTFCGuid: cacheGuid);
         return export;
+    }
+
+    /// <summary>A full BC7 mip chain from a square BGRA image: each level a 2x2 box average of the one above, as LEC generates lightmap mips</summary>
+    private static CoreImage Bc7MipChain(byte[] bgra, int size)
+    {
+        var mips = new List<MipMap>();
+        int width = size;
+        var level = bgra;
+        while (true)
+        {
+            var rgb = new byte[width * width * 3];
+            for (int i = 0; i < width * width; i++)
+                (rgb[i * 3], rgb[i * 3 + 1], rgb[i * 3 + 2]) = (level[i * 4 + 2], level[i * 4 + 1], level[i * 4]);
+            mips.Add(new MipMap(Lightmaps.Codec.Bc7.Encode(rgb, width, width), width, width, PixelFormat.BC7));
+            if (width == 1) break;
+            int half = width / 2;
+            var next = new byte[half * half * 4];
+            for (int y = 0; y < half; y++)
+            for (int x = 0; x < half; x++)
+            for (int c = 0; c < 4; c++)
+            {
+                int sum = level[((2 * y) * width + 2 * x) * 4 + c] + level[((2 * y) * width + 2 * x + 1) * 4 + c]
+                          + level[((2 * y + 1) * width + 2 * x) * 4 + c] + level[((2 * y + 1) * width + 2 * x + 1) * 4 + c];
+                next[(y * half + x) * 4 + c] = (byte)((sum + 2) / 4);
+            }
+            (level, width) = (next, half);
+        }
+        return new CoreImage(mips, PixelFormat.BC7);
     }
 
     private static void AddStreamingTextureInstances(OpenLevelFile file,

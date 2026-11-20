@@ -80,7 +80,8 @@ public static class StaticLightingBakeBackends
 public enum StaticLightingTextureFormat
 {
     DXT1,
-    ARGB
+    ARGB,
+    BC7
 }
 
 public readonly record struct StaticLightingBuildProgress(

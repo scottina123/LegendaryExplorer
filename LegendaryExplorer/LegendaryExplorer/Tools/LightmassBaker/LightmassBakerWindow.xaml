@@ -70,6 +70,8 @@
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
                 <TextBlock Grid.Row="0" Grid.Column="0" Text="Solver" VerticalAlignment="Center" Margin="0,0,10,6"/>
                 <ComboBox Grid.Row="0" Grid.Column="1" ItemsSource="{Binding Solvers}" SelectedValue="{Binding Solver}" SelectedValuePath="Choice" DisplayMemberPath="Label"
@@ -109,6 +111,16 @@
 
                 <CheckBox Grid.Row="6" Grid.Column="1" Content="Use precomputed shadows on all meshes" IsChecked="{Binding UsePrecomputedShadowsOnAllMeshes}" Margin="0,8,6,0"
                           ToolTip="Turns on Use precomputed shadows (bUsePrecomputedShadows) for every static mesh in the levels being baked before the bake. A mesh without it isn't baked, so nothing of it is written to the texture cache. Meshes baked by Scottina's Lightmass Baker also get Accepts lights turned back on, since Lightmass leaves out a mesh that doesn't accept lights. The settings are saved with the baked levels."/>
+
+                <TextBlock Grid.Row="7" Grid.Column="0" Text="Lightmap size" VerticalAlignment="Center" Margin="0,8,10,0"/>
+                <ComboBox Grid.Row="7" Grid.Column="1" ItemsSource="{Binding LightmapSizes}" SelectedValue="{Binding LightmapSize}" SelectedValuePath="Key" DisplayMemberPath="Value"
+                          Margin="0,8,6,0" HorizontalAlignment="Left" MinWidth="160"
+                          ToolTip="How much larger the static mesh and BSP texture lightmaps are made than they are now, up to 2048 texels. By default it follows the quality: Preview keeps the current size, Medium 1.5x, High 2x, Production 4x. Any size other than 1x bakes at the new size and writes new lightmap textures, removing the old ones from the levels."/>
+
+                <TextBlock Grid.Row="8" Grid.Column="0" Text="Texture format" VerticalAlignment="Center" Margin="0,8,10,0"/>
+                <ComboBox Grid.Row="8" Grid.Column="1" ItemsSource="{Binding TextureFormats}" SelectedValue="{Binding TextureFormatChoice}" SelectedValuePath="Key" DisplayMemberPath="Value"
+                          Margin="0,8,6,0" HorizontalAlignment="Left" MinWidth="160"
+                          ToolTip="Format of the colour lightmap textures. DXT1 is the game's own (smallest, most loss). BC7 is twice DXT1's size with far less loss. ARGB is uncompressed (eight times DXT1's size, no loss)."/>
             </Grid>
 
             <TextBlock Grid.Row="3" Text="{Binding Problems}" Foreground="OrangeRed" TextWrapping="Wrap" Margin="0,8,0,0">

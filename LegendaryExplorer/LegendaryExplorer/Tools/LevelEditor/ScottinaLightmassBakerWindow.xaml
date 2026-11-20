@@ -55,7 +55,7 @@
                 <TextBlock Grid.Row="1" Text="Texture format" VerticalAlignment="Center"/>
                 <ComboBox Grid.Row="1" Grid.Column="1" ItemsSource="{Binding LightmassTextureFormats}"
                           SelectedItem="{Binding LightmassTextureFormat}" Margin="2"
-                          ToolTip="DXT1 is compressed; ARGB is uncompressed."/>
+                          ToolTip="DXT1 is compressed (the game&apos;s own format). BC7 is compressed with far less loss, at twice DXT1&apos;s size. ARGB is uncompressed."/>
                 <TextBlock Grid.Row="2" Text="Indirect/environment floor" VerticalAlignment="Center"/>
                 <xctk:SingleUpDown Grid.Row="2" Grid.Column="1" Value="{Binding LightmassAmbientIntensity}"
                                    Minimum="0" Maximum="10" Increment="0.01" FormatString="F2" Margin="2"/>
