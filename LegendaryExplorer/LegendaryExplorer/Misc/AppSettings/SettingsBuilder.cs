@@ -3,10 +3,10 @@ using Newtonsoft.Json;
 using System.Collections.Generic;
 using System;
 using System.Diagnostics;
-using System.Threading;
 using LegendaryExplorerCore;
 using LegendaryExplorerCore.Packages;
 using Newtonsoft.Json.Linq;
+using System.Threading;
 using LegendaryExplorer.UserControls.ExportLoaderControls.ScriptEditor;
 
 namespace LegendaryExplorer.Misc.AppSettings
@@ -87,15 +87,15 @@ namespace LegendaryExplorer.Misc.AppSettings
             get => _packageeditor_movedlcmodtexturestocurrentdlctfcwhenporting;
             set => SetProperty(ref _packageeditor_movedlcmodtexturestocurrentdlctfcwhenporting, value);
         }
-        private static bool _entryselector_usetreeview = false;
-        public static bool EntrySelector_UseTreeView {
-            get => _entryselector_usetreeview;
-            set => SetProperty(ref _entryselector_usetreeview, value);
-        }
         private static Dictionary<string, string> _packageeditor_boundexperimentshortcuts = new Dictionary<string, string>();
         public static Dictionary<string, string> PackageEditor_BoundExperimentShortcuts {
             get => _packageeditor_boundexperimentshortcuts;
             set => SetProperty(ref _packageeditor_boundexperimentshortcuts, value);
+        }
+        private static bool _entryselector_usetreeview = false;
+        public static bool EntrySelector_UseTreeView {
+            get => _entryselector_usetreeview;
+            set => SetProperty(ref _entryselector_usetreeview, value);
         }
         private static int _sequenceeditor_maxvarstringlength = 40;
         public static int SequenceEditor_MaxVarStringLength {
@@ -147,12 +147,12 @@ namespace LegendaryExplorer.Misc.AppSettings
             get => _sequenceeditor_boxtextcolor;
             set => SetProperty(ref _sequenceeditor_boxtextcolor, value);
         }
-        private static int _sequenceeditor_connectioncolor = -16777216; // Black (0xFF000000)
+        private static int _sequenceeditor_connectioncolor = -16777216;
         public static int SequenceEditor_ConnectionColor {
             get => _sequenceeditor_connectioncolor;
             set => SetProperty(ref _sequenceeditor_connectioncolor, value);
         }
-        private static int _sequenceeditor_varlinkcolor = -16777216; // Black (0xFF000000)
+        private static int _sequenceeditor_varlinkcolor = -16777216;
         public static int SequenceEditor_VarLinkColor {
             get => _sequenceeditor_varlinkcolor;
             set => SetProperty(ref _sequenceeditor_varlinkcolor, value);
@@ -212,11 +212,6 @@ namespace LegendaryExplorer.Misc.AppSettings
             get => _meshplorer_backgroundcolor;
             set => SetProperty(ref _meshplorer_backgroundcolor, value);
         }
-        private static string _actorpreview_backgroundcolor = "#999999";
-        public static string ActorPreview_BackgroundColor {
-            get => _actorpreview_backgroundcolor;
-            set => SetProperty(ref _actorpreview_backgroundcolor, value);
-        }
         private static bool _meshplorer_viewfirstperson = false;
         public static bool Meshplorer_ViewFirstPerson {
             get => _meshplorer_viewfirstperson;
@@ -236,6 +231,11 @@ namespace LegendaryExplorer.Misc.AppSettings
         public static bool Meshplorer_ViewWireframeEnabled {
             get => _meshplorer_viewwireframeenabled;
             set => SetProperty(ref _meshplorer_viewwireframeenabled, value);
+        }
+        private static string _actorpreview_backgroundcolor = "#999999";
+        public static string ActorPreview_BackgroundColor {
+            get => _actorpreview_backgroundcolor;
+            set => SetProperty(ref _actorpreview_backgroundcolor, value);
         }
         private static bool _morpheditor_showregionlabels = true;
         public static bool MorphEditor_ShowRegionLabels {
@@ -307,6 +307,11 @@ namespace LegendaryExplorer.Misc.AppSettings
             get => _leveleditor_usegamemeshshaders;
             set => SetProperty(ref _leveleditor_usegamemeshshaders, value);
         }
+        private static bool _leveleditor_unlit = false;
+        public static bool LevelEditor_Unlit {
+            get => _leveleditor_unlit;
+            set => SetProperty(ref _leveleditor_unlit, value);
+        }
         private static bool _leveleditor_showemitters = true;
         public static bool LevelEditor_ShowEmitters {
             get => _leveleditor_showemitters;
@@ -326,11 +331,6 @@ namespace LegendaryExplorer.Misc.AppSettings
         public static bool LevelEditor_ShowVolumetrics {
             get => _leveleditor_showvolumetrics;
             set => SetProperty(ref _leveleditor_showvolumetrics, value);
-        }
-        private static bool _leveleditor_unlit = false;
-        public static bool LevelEditor_Unlit {
-            get => _leveleditor_unlit;
-            set => SetProperty(ref _leveleditor_unlit, value);
         }
         private static double _pathfindingnetworkeditor_rotationarrowminzoom = 1.0;
         public static double PathfindingNetworkEditor_RotationArrowMinZoom {
@@ -381,6 +381,11 @@ namespace LegendaryExplorer.Misc.AppSettings
         public static string CoalescedEditor_DestinationPath {
             get => _coalescededitor_destinationpath;
             set => SetProperty(ref _coalescededitor_destinationpath, value);
+        }
+        private static bool _conditionalseditor_defaultgraphview = false;
+        public static bool ConditionalsEditor_DefaultGraphView {
+            get => _conditionalseditor_defaultgraphview;
+            set => SetProperty(ref _conditionalseditor_defaultgraphview, value);
         }
         private static bool _wwisegrapheditor_autosaveview = false;
         public static bool WwiseGraphEditor_AutoSaveView {
@@ -467,6 +472,36 @@ namespace LegendaryExplorer.Misc.AppSettings
             get => _soundpanel_loopaudio;
             set => SetProperty(ref _soundpanel_loopaudio, value);
         }
+        private static List<string> _tlkeditor_opentabs = new List<string>();
+        public static List<string> TLKEditor_OpenTabs {
+            get => _tlkeditor_opentabs;
+            set => SetProperty(ref _tlkeditor_opentabs, value);
+        }
+        private static string _tlkeditor_selectedtab = "";
+        public static string TLKEditor_SelectedTab {
+            get => _tlkeditor_selectedtab;
+            set => SetProperty(ref _tlkeditor_selectedtab, value);
+        }
+        private static bool _dialogueeditor_rememberbulkcloneinterpreplacements = false;
+        public static bool DialogueEditor_RememberBulkCloneInterpReplacements {
+            get => _dialogueeditor_rememberbulkcloneinterpreplacements;
+            set => SetProperty(ref _dialogueeditor_rememberbulkcloneinterpreplacements, value);
+        }
+        private static List<string> _dialogueeditor_bulkcloneinterpreplacements = new List<string>();
+        public static List<string> DialogueEditor_BulkCloneInterpReplacements {
+            get => _dialogueeditor_bulkcloneinterpreplacements;
+            set => SetProperty(ref _dialogueeditor_bulkcloneinterpreplacements, value);
+        }
+        private static bool _dialogueeditor_rememberbulkinterpreplacements = false;
+        public static bool DialogueEditor_RememberBulkInterpReplacements {
+            get => _dialogueeditor_rememberbulkinterpreplacements;
+            set => SetProperty(ref _dialogueeditor_rememberbulkinterpreplacements, value);
+        }
+        private static List<string> _dialogueeditor_bulkinterpreplacements = new List<string>();
+        public static List<string> DialogueEditor_BulkInterpReplacements {
+            get => _dialogueeditor_bulkinterpreplacements;
+            set => SetProperty(ref _dialogueeditor_bulkinterpreplacements, value);
+        }
         private static string _tfccompactor_laststagingpath = "";
         public static string TFCCompactor_LastStagingPath {
             get => _tfccompactor_laststagingpath;
@@ -527,11 +562,6 @@ namespace LegendaryExplorer.Misc.AppSettings
             get => _global_tlk_language;
             set => SetProperty(ref _global_tlk_language, value);
         }
-        private static bool _conditionalseditor_defaultgraphview = false;
-        public static bool ConditionalsEditor_DefaultGraphView {
-            get => _conditionalseditor_defaultgraphview;
-            set => SetProperty(ref _conditionalseditor_defaultgraphview, value);
-        }
         private static bool _global_tlk_ismale = true;
         public static bool Global_TLK_IsMale {
             get => _global_tlk_ismale;
@@ -566,36 +596,6 @@ namespace LegendaryExplorer.Misc.AppSettings
         public static Dictionary<string, ThemeData> ScriptIDE_SavedThemes {
             get => _scriptide_savedthemes;
             set => SetProperty(ref _scriptide_savedthemes, value);
-        }
-        private static List<string> _tlkeditor_opentabs = new List<string>();
-        public static List<string> TLKEditor_OpenTabs {
-            get => _tlkeditor_opentabs;
-            set => SetProperty(ref _tlkeditor_opentabs, value);
-        }
-        private static string _tlkeditor_selectedtab = "";
-        public static string TLKEditor_SelectedTab {
-            get => _tlkeditor_selectedtab;
-            set => SetProperty(ref _tlkeditor_selectedtab, value);
-        }
-        private static bool _dialogueeditor_rememberbulkcloneinterpreplacements = false;
-        public static bool DialogueEditor_RememberBulkCloneInterpReplacements {
-            get => _dialogueeditor_rememberbulkcloneinterpreplacements;
-            set => SetProperty(ref _dialogueeditor_rememberbulkcloneinterpreplacements, value);
-        }
-        private static List<string> _dialogueeditor_bulkcloneinterpreplacements = new List<string>();
-        public static List<string> DialogueEditor_BulkCloneInterpReplacements {
-            get => _dialogueeditor_bulkcloneinterpreplacements;
-            set => SetProperty(ref _dialogueeditor_bulkcloneinterpreplacements, value);
-        }
-        private static bool _dialogueeditor_rememberbulkinterpreplacements = false;
-        public static bool DialogueEditor_RememberBulkInterpReplacements {
-            get => _dialogueeditor_rememberbulkinterpreplacements;
-            set => SetProperty(ref _dialogueeditor_rememberbulkinterpreplacements, value);
-        }
-        private static List<string> _dialogueeditor_bulkinterpreplacements = new List<string>();
-        public static List<string> DialogueEditor_BulkInterpReplacements {
-            get => _dialogueeditor_bulkinterpreplacements;
-            set => SetProperty(ref _dialogueeditor_bulkinterpreplacements, value);
         }
 
         public static string Get_SequenceEditor_Favorites (MEGame game) => game switch
@@ -699,8 +699,8 @@ namespace LegendaryExplorer.Misc.AppSettings
             PackageEditor_ShowExperiments = TryGetSetting(settingsJson, "packageeditor_showexperiments", false);
             PackageEditor_DefaultMemorySafeImportPorting = TryGetSetting(settingsJson, "packageeditor_defaultmemorysafeimportporting", false);
             PackageEditor_MoveDlcModTexturesToCurrentDlcTfcWhenPorting = TryGetSetting(settingsJson, "packageeditor_movedlcmodtexturestocurrentdlctfcwhenporting", false);
-            EntrySelector_UseTreeView = TryGetSetting(settingsJson, "entryselector_usetreeview", false);
             PackageEditor_BoundExperimentShortcuts = TryGetSetting(settingsJson, "packageeditor_boundexperimentshortcuts", new Dictionary<string, string>());
+            EntrySelector_UseTreeView = TryGetSetting(settingsJson, "entryselector_usetreeview", false);
             SequenceEditor_MaxVarStringLength = TryGetSetting(settingsJson, "sequenceeditor_maxvarstringlength", 40);
             SequenceEditor_ShowParsedInfo = TryGetSetting(settingsJson, "sequenceeditor_showparsedinfo", true);
             SequenceEditor_AutoSaveViewV2 = TryGetSetting(settingsJson, "sequenceeditor_autosaveviewv2", true);
@@ -724,11 +724,11 @@ namespace LegendaryExplorer.Misc.AppSettings
             Soundplorer_ReverseIDDisplayEndianness = TryGetSetting(settingsJson, "soundplorer_reverseiddisplayendianness", false);
             Soundplorer_AutoplayEntriesOnSelection = TryGetSetting(settingsJson, "soundplorer_autoplayentriesonselection", false);
             Meshplorer_BackgroundColor = TryGetSetting(settingsJson, "meshplorer_backgroundcolor", "#999999");
-            ActorPreview_BackgroundColor = TryGetSetting(settingsJson, "actorpreview_backgroundcolor", "#999999");
             Meshplorer_ViewFirstPerson = TryGetSetting(settingsJson, "meshplorer_viewfirstperson", false);
             Meshplorer_ViewRotating = TryGetSetting(settingsJson, "meshplorer_viewrotating", false);
             Meshplorer_View_SolidEnabled = TryGetSetting(settingsJson, "meshplorer_view_solidenabled", true);
             Meshplorer_ViewWireframeEnabled = TryGetSetting(settingsJson, "meshplorer_viewwireframeenabled", false);
+            ActorPreview_BackgroundColor = TryGetSetting(settingsJson, "actorpreview_backgroundcolor", "#999999");
             MorphEditor_ShowRegionLabels = TryGetSetting(settingsJson, "morpheditor_showregionlabels", true);
             PathfindingEditor_ShowNodeSizes = TryGetSetting(settingsJson, "pathfindingeditor_shownodesizes", false);
             PathfindingEditor_ShowPathfindingNodesLayer = TryGetSetting(settingsJson, "pathfindingeditor_showpathfindingnodeslayer", true);
@@ -743,6 +743,7 @@ namespace LegendaryExplorer.Misc.AppSettings
             LevelEditor_ShowLightIcons = TryGetSetting(settingsJson, "leveleditor_showlighticons", true);
             LevelEditor_ShowLensFlareIcons = TryGetSetting(settingsJson, "leveleditor_showlensflareicons", true);
             LevelEditor_UseGameMeshShaders = TryGetSetting(settingsJson, "leveleditor_usegamemeshshaders", true);
+            LevelEditor_Unlit = TryGetSetting(settingsJson, "leveleditor_unlit", false);
             LevelEditor_ShowEmitters = TryGetSetting(settingsJson, "leveleditor_showemitters", true);
             LevelEditor_ShowEmitterVfx = TryGetSetting(settingsJson, "leveleditor_showemittervfx", false);
             LevelEditor_ShowVolumes = TryGetSetting(settingsJson, "leveleditor_showvolumes", true);
@@ -757,6 +758,7 @@ namespace LegendaryExplorer.Misc.AppSettings
             AssetDB_AmbPerfMasterPccPath = TryGetSetting(settingsJson, "assetdb_ambperfmasterpccpath", "");
             CoalescedEditor_SourcePath = TryGetSetting(settingsJson, "coalescededitor_sourcepath", "");
             CoalescedEditor_DestinationPath = TryGetSetting(settingsJson, "coalescededitor_destinationpath", "");
+            ConditionalsEditor_DefaultGraphView = TryGetSetting(settingsJson, "conditionalseditor_defaultgraphview", false);
             WwiseGraphEditor_AutoSaveView = TryGetSetting(settingsJson, "wwisegrapheditor_autosaveview", false);
             WwiseGraphEditor_BackgroundColor = TryGetSetting(settingsJson, "wwisegrapheditor_backgroundcolor", -5789785);
             WwiseGraphEditor_BoxFillColor = TryGetSetting(settingsJson, "wwisegrapheditor_boxfillcolor", -7566196);
@@ -774,6 +776,12 @@ namespace LegendaryExplorer.Misc.AppSettings
             Interpreter_ShowLinearColorWheel = TryGetSetting(settingsJson, "interpreter_showlinearcolorwheel", false);
             Interpreter_HideTopSelector = TryGetSetting(settingsJson, "interpreter_hidetopselector", false);
             Soundpanel_LoopAudio = TryGetSetting(settingsJson, "soundpanel_loopaudio", false);
+            TLKEditor_OpenTabs = TryGetSetting(settingsJson, "tlkeditor_opentabs", new List<string>());
+            TLKEditor_SelectedTab = TryGetSetting(settingsJson, "tlkeditor_selectedtab", "");
+            DialogueEditor_RememberBulkCloneInterpReplacements = TryGetSetting(settingsJson, "dialogueeditor_rememberbulkcloneinterpreplacements", false);
+            DialogueEditor_BulkCloneInterpReplacements = TryGetSetting(settingsJson, "dialogueeditor_bulkcloneinterpreplacements", new List<string>());
+            DialogueEditor_RememberBulkInterpReplacements = TryGetSetting(settingsJson, "dialogueeditor_rememberbulkinterpreplacements", false);
+            DialogueEditor_BulkInterpReplacements = TryGetSetting(settingsJson, "dialogueeditor_bulkinterpreplacements", new List<string>());
             TFCCompactor_LastStagingPath = TryGetSetting(settingsJson, "tfccompactor_laststagingpath", "");
             Global_PropertyParsing_ParseUnknownArrayTypeAsObject = TryGetSetting(settingsJson, "global_propertyparsing_parseunknownarraytypeasobject", false);
             Global_Analytics_Enabled = TryGetSetting(settingsJson, "global_analytics_enabled", true);
@@ -793,14 +801,6 @@ namespace LegendaryExplorer.Misc.AppSettings
             CustomAssetDirectories = TryGetSetting(settingsJson, "customassetdirectories", new List<string>());
             ScriptIDE_ActiveTheme = TryGetSetting(settingsJson, "scriptide_activetheme", "");
             ScriptIDE_SavedThemes = TryGetSetting(settingsJson, "scriptide_savedthemes", new Dictionary<string, ThemeData>());
-            TLKEditor_OpenTabs = TryGetSetting(settingsJson, "tlkeditor_opentabs", new List<string>());
-            TLKEditor_SelectedTab = TryGetSetting(settingsJson, "tlkeditor_selectedtab", "");
-            DialogueEditor_RememberBulkCloneInterpReplacements = TryGetSetting(settingsJson, "dialogueeditor_rememberbulkcloneinterpreplacements", false);
-            DialogueEditor_BulkCloneInterpReplacements = TryGetSetting(settingsJson, "dialogueeditor_bulkcloneinterpreplacements", new List<string>());
-            DialogueEditor_RememberBulkInterpReplacements = TryGetSetting(settingsJson, "dialogueeditor_rememberbulkinterpreplacements", false);
-            DialogueEditor_BulkInterpReplacements = TryGetSetting(settingsJson, "dialogueeditor_bulkinterpreplacements", new List<string>());
-
-            ConditionalsEditor_DefaultGraphView = TryGetSetting(settingsJson, "conditionalseditor_defaultgraphview", false);
 
             // Settings Bridge Init
             LegendaryExplorerCoreLibSettings.Instance.ParseUnknownArrayTypesAsObject = Global_PropertyParsing_ParseUnknownArrayTypeAsObject;
@@ -822,126 +822,130 @@ namespace LegendaryExplorer.Misc.AppSettings
 
         private static void Save(bool throwOnError)
         {
-            if (_deferSaving) return;
+            // Never before LoadSettings: what's in memory then is only the defaults, which would overwrite the user's settings (favorites, game
+            // paths, completed setup). A process that never loads them (the tests, a tool that creates a window that saves) mustn't write them
+            if (_deferSaving || !Loaded) return;
             var settingsJson = new Dictionary<string,object>();
-            settingsJson["mainwindow_disabletransparencyandanimations"] = MainWindow_DisableTransparencyAndAnimations.ToString();
-            settingsJson["mainwindow_favorites"] = MainWindow_Favorites.ToString();
-            settingsJson["mainwindow_taskbarpins"] = MainWindow_TaskbarPins.ToString();
-            settingsJson["mainwindow_completedinitialsetup"] = MainWindow_CompletedInitialSetup.ToString();
-            settingsJson["gestureanimationimporter_favoritetracks"] = GestureAnimationImporter_FavoriteTracks.ToString();
-            settingsJson["packageeditor_livefiltering"] = PackageEditor_LiveFiltering.ToString();
-            settingsJson["packageeditor_hideinterpreterhexbox"] = PackageEditor_HideInterpreterHexBox.ToString();
-            settingsJson["packageeditor_touchcomfymode"] = PackageEditor_TouchComfyMode.ToString();
-            settingsJson["packageeditor_showimpexpprefix"] = PackageEditor_ShowImpExpPrefix.ToString();
-            settingsJson["packageeditor_showexporttypeicons"] = PackageEditor_ShowExportTypeIcons.ToString();
-            settingsJson["packageeditor_showtreeentrysubtext"] = PackageEditor_ShowTreeEntrySubText.ToString();
-            settingsJson["packageeditor_showexperiments"] = PackageEditor_ShowExperiments.ToString();
-            settingsJson["packageeditor_boundexperimentshortcuts"] = PackageEditor_BoundExperimentShortcuts;
-            settingsJson["packageeditor_defaultmemorysafeimportporting"] = PackageEditor_DefaultMemorySafeImportPorting.ToString();
-            settingsJson["packageeditor_movedlcmodtexturestocurrentdlctfcwhenporting"] = PackageEditor_MoveDlcModTexturesToCurrentDlcTfcWhenPorting.ToString();
-            settingsJson["entryselector_usetreeview"] = EntrySelector_UseTreeView.ToString();
-            settingsJson["sequenceeditor_maxvarstringlength"] = SequenceEditor_MaxVarStringLength.ToString();
-            settingsJson["sequenceeditor_showparsedinfo"] = SequenceEditor_ShowParsedInfo.ToString();
-            settingsJson["sequenceeditor_autosaveviewv2"] = SequenceEditor_AutoSaveViewV2.ToString();
-            settingsJson["sequenceeditor_usesavedviews"] = SequenceEditor_UseSavedViews.ToString();
-            settingsJson["sequenceeditor_showoutputnumbers"] = SequenceEditor_ShowOutputNumbers.ToString();
-            settingsJson["sequenceeditor_backgroundcolor"] = SequenceEditor_BackgroundColor.ToString();
-            settingsJson["sequenceeditor_boxfillcolor"] = SequenceEditor_BoxFillColor.ToString();
-            settingsJson["sequenceeditor_titleboxcolor"] = SequenceEditor_TitleBoxColor.ToString();
-            settingsJson["sequenceeditor_commenttextcolor"] = SequenceEditor_CommentTextColor.ToString();
-            settingsJson["sequenceeditor_boxtextcolor"] = SequenceEditor_BoxTextColor.ToString();
-            settingsJson["sequenceeditor_connectioncolor"] = SequenceEditor_ConnectionColor.ToString();
-            settingsJson["sequenceeditor_varlinkcolor"] = SequenceEditor_VarLinkColor.ToString();
-            settingsJson["sequenceeditor_favorites_me1"] = SequenceEditor_Favorites_ME1.ToString();
-            settingsJson["sequenceeditor_favorites_me2"] = SequenceEditor_Favorites_ME2.ToString();
-            settingsJson["sequenceeditor_favorites_me3"] = SequenceEditor_Favorites_ME3.ToString();
-            settingsJson["sequenceeditor_favorites_le1"] = SequenceEditor_Favorites_LE1.ToString();
-            settingsJson["sequenceeditor_favorites_le2"] = SequenceEditor_Favorites_LE2.ToString();
-            settingsJson["sequenceeditor_favorites_le3"] = SequenceEditor_Favorites_LE3.ToString();
-            settingsJson["sequenceeditor_favorites_lmp"] = SequenceEditor_Favorites_LMP.ToString();
-            settingsJson["sequenceeditor_favorites_udk"] = SequenceEditor_Favorites_UDK.ToString();
-            settingsJson["soundplorer_reverseiddisplayendianness"] = Soundplorer_ReverseIDDisplayEndianness.ToString();
-            settingsJson["soundplorer_autoplayentriesonselection"] = Soundplorer_AutoplayEntriesOnSelection.ToString();
-            settingsJson["meshplorer_backgroundcolor"] = Meshplorer_BackgroundColor.ToString();
-            settingsJson["meshplorer_viewfirstperson"] = Meshplorer_ViewFirstPerson.ToString();
-            settingsJson["meshplorer_viewrotating"] = Meshplorer_ViewRotating.ToString();
-            settingsJson["meshplorer_view_solidenabled"] = Meshplorer_View_SolidEnabled.ToString();
-            settingsJson["meshplorer_viewwireframeenabled"] = Meshplorer_ViewWireframeEnabled.ToString();
-            settingsJson["morpheditor_showregionlabels"] = MorphEditor_ShowRegionLabels.ToString();
-            settingsJson["pathfindingeditor_shownodesizes"] = PathfindingEditor_ShowNodeSizes.ToString();
-            settingsJson["pathfindingeditor_showpathfindingnodeslayer"] = PathfindingEditor_ShowPathfindingNodesLayer.ToString();
-            settingsJson["pathfindingeditor_showactorslayer"] = PathfindingEditor_ShowActorsLayer.ToString();
-            settingsJson["pathfindingeditor_showartlayer"] = PathfindingEditor_ShowArtLayer.ToString();
-            settingsJson["pathfindingeditor_showsplineslayer"] = PathfindingEditor_ShowSplinesLayer.ToString();
-            settingsJson["pathfindingeditor_showeverythingelselayer"] = PathfindingEditor_ShowEverythingElseLayer.ToString();
-            settingsJson["pathfindingeditor_backgroundcolor"] = PathfindingEditor_BackgroundColor.ToString();
-            settingsJson["leveleditor_showstatsoverlay"] = LevelEditor_ShowStatsOverlay.ToString();
-            settingsJson["leveleditor_showcollision"] = LevelEditor_ShowCollision.ToString();
-            settingsJson["leveleditor_showselectedlightwireframe"] = LevelEditor_ShowSelectedLightWireframe.ToString();
-            settingsJson["leveleditor_showlighticons"] = LevelEditor_ShowLightIcons.ToString();
-            settingsJson["leveleditor_showlensflareicons"] = LevelEditor_ShowLensFlareIcons.ToString();
-            settingsJson["leveleditor_usegamemeshshaders"] = LevelEditor_UseGameMeshShaders.ToString();
-            settingsJson["leveleditor_showemitters"] = LevelEditor_ShowEmitters.ToString();
-            settingsJson["leveleditor_showemittervfx"] = LevelEditor_ShowEmitterVfx.ToString();
-            settingsJson["leveleditor_showvolumes"] = LevelEditor_ShowVolumes.ToString();
-            settingsJson["leveleditor_showvolumetrics"] = LevelEditor_ShowVolumetrics.ToString();
-            settingsJson["leveleditor_cameraspeed"] = LevelEditor_CameraSpeed.ToString();
-            settingsJson["leveleditor_showselectionoutline"] = LevelEditor_ShowSelectionOutline.ToString();
-            settingsJson["pathfindingnetworkeditor_rotationarrowminzoom"] = PathfindingNetworkEditor_RotationArrowMinZoom.ToString();
-            settingsJson["assetdb_defaultgame"] = AssetDB_DefaultGame.ToString();
-            settingsJson["assetdbgame"] = AssetDBGame.ToString();
-            settingsJson["assetdbpath"] = AssetDBPath.ToString();
-            settingsJson["assetdb_hidemics"] = AssetDB_HideMICs.ToString();
-            settingsJson["assetdb_ambperfmasterpccpath"] = AssetDB_AmbPerfMasterPccPath.ToString();
-            settingsJson["coalescededitor_sourcepath"] = CoalescedEditor_SourcePath.ToString();
-            settingsJson["coalescededitor_destinationpath"] = CoalescedEditor_DestinationPath.ToString();
-            settingsJson["wwisegrapheditor_autosaveview"] = WwiseGraphEditor_AutoSaveView.ToString();
-            settingsJson["wwisegrapheditor_backgroundcolor"] = WwiseGraphEditor_BackgroundColor.ToString();
-            settingsJson["wwisegrapheditor_boxfillcolor"] = WwiseGraphEditor_BoxFillColor.ToString();
-            settingsJson["wwisegrapheditor_titleboxcolor"] = WwiseGraphEditor_TitleBoxColor.ToString();
-            settingsJson["wwisegrapheditor_commenttextcolor"] = WwiseGraphEditor_CommentTextColor.ToString();
-            settingsJson["wwisegrapheditor_boxtextcolor"] = WwiseGraphEditor_BoxTextColor.ToString();
-            settingsJson["wwisegrapheditor_connectioncolor"] = WwiseGraphEditor_ConnectionColor.ToString();
-            settingsJson["binaryinterpreter_skipautoparsesizecheck"] = BinaryInterpreter_SkipAutoParseSizeCheck.ToString();
-            settingsJson["textureviewer_autoloadmip"] = TextureViewer_AutoLoadMip.ToString();
-            settingsJson["textureviewer_backgroundcolor"] = TextureViewer_BackgroundColor.ToString();
-            settingsJson["interpreter_limitarraypropertysize"] = Interpreter_LimitArrayPropertySize.ToString();
-            settingsJson["interpreter_advanceddisplay"] = Interpreter_AdvancedDisplay.ToString();
-            settingsJson["interpreter_colorize"] = Interpreter_Colorize.ToString();
-            settingsJson["interpreter_showlinearcolorwheel"] = Interpreter_ShowLinearColorWheel.ToString();
-            settingsJson["interpreter_hidetopselector"] = Interpreter_HideTopSelector.ToString();
-            settingsJson["soundpanel_loopaudio"] = Soundpanel_LoopAudio.ToString();
-            settingsJson["tfccompactor_laststagingpath"] = TFCCompactor_LastStagingPath.ToString();
-            settingsJson["global_propertyparsing_parseunknownarraytypeasobject"] = Global_PropertyParsing_ParseUnknownArrayTypeAsObject.ToString();
-            settingsJson["global_analytics_enabled"] = Global_Analytics_Enabled.ToString();
-            settingsJson["global_theme"] = Global_Theme.ToString();
-            settingsJson["global_useownerfriendlynames"] = Global_UseOwnerFriendlyNames.ToString();
-            settingsJson["global_useorbitcameracontrols"] = Global_UseOrbitCameraControls.ToString();
-            settingsJson["global_me1directory"] = Global_ME1Directory.ToString();
-            settingsJson["global_me2directory"] = Global_ME2Directory.ToString();
-            settingsJson["global_me3directory"] = Global_ME3Directory.ToString();
-            settingsJson["global_ledirectory"] = Global_LEDirectory.ToString();
-            settingsJson["global_udkcustomdirectory"] = Global_UDKCustomDirectory.ToString();
-            settingsJson["global_tlk_language"] = Global_TLK_Language.ToString();
-            settingsJson["global_tlk_ismale"] = Global_TLK_IsMale.ToString();
-            settingsJson["global_lastuseddirectories"] = Global_LastUsedDirectories;
-            settingsJson["experimentsbrowser_lastusedexperiments"] = ExperimentsBrowser_LastUsedExperiments;
-            settingsJson["customstartupfiles"] = CustomStartupFiles;
-            settingsJson["customassetdirectories"] = CustomAssetDirectories;
-            settingsJson["scriptide_activetheme"] = ScriptIDE_ActiveTheme.ToString();
-            settingsJson["scriptide_savedthemes"] = ScriptIDE_SavedThemes;
-            settingsJson["tlkeditor_opentabs"] = TLKEditor_OpenTabs;
-            settingsJson["tlkeditor_selectedtab"] = TLKEditor_SelectedTab.ToString();
+                    settingsJson["mainwindow_disabletransparencyandanimations"] = MainWindow_DisableTransparencyAndAnimations.ToString();
+                    settingsJson["mainwindow_favorites"] = MainWindow_Favorites.ToString();
+                    settingsJson["mainwindow_taskbarpins"] = MainWindow_TaskbarPins.ToString();
+                    settingsJson["mainwindow_completedinitialsetup"] = MainWindow_CompletedInitialSetup.ToString();
+                    settingsJson["gestureanimationimporter_favoritetracks"] = GestureAnimationImporter_FavoriteTracks.ToString();
+                    settingsJson["packageeditor_livefiltering"] = PackageEditor_LiveFiltering.ToString();
+                    settingsJson["packageeditor_hideinterpreterhexbox"] = PackageEditor_HideInterpreterHexBox.ToString();
+                    settingsJson["packageeditor_touchcomfymode"] = PackageEditor_TouchComfyMode.ToString();
+                    settingsJson["packageeditor_showimpexpprefix"] = PackageEditor_ShowImpExpPrefix.ToString();
+                    settingsJson["packageeditor_showexporttypeicons"] = PackageEditor_ShowExportTypeIcons.ToString();
+                    settingsJson["packageeditor_showtreeentrysubtext"] = PackageEditor_ShowTreeEntrySubText.ToString();
+                    settingsJson["packageeditor_showexperiments"] = PackageEditor_ShowExperiments.ToString();
+                    settingsJson["packageeditor_defaultmemorysafeimportporting"] = PackageEditor_DefaultMemorySafeImportPorting.ToString();
+                    settingsJson["packageeditor_movedlcmodtexturestocurrentdlctfcwhenporting"] = PackageEditor_MoveDlcModTexturesToCurrentDlcTfcWhenPorting.ToString();
+                    settingsJson["packageeditor_boundexperimentshortcuts"] = PackageEditor_BoundExperimentShortcuts;
+                    settingsJson["entryselector_usetreeview"] = EntrySelector_UseTreeView.ToString();
+                    settingsJson["sequenceeditor_maxvarstringlength"] = SequenceEditor_MaxVarStringLength.ToString();
+                    settingsJson["sequenceeditor_showparsedinfo"] = SequenceEditor_ShowParsedInfo.ToString();
+                    settingsJson["sequenceeditor_autosaveviewv2"] = SequenceEditor_AutoSaveViewV2.ToString();
+                    settingsJson["sequenceeditor_usesavedviews"] = SequenceEditor_UseSavedViews.ToString();
+                    settingsJson["sequenceeditor_showoutputnumbers"] = SequenceEditor_ShowOutputNumbers.ToString();
+                    settingsJson["sequenceeditor_backgroundcolor"] = SequenceEditor_BackgroundColor.ToString();
+                    settingsJson["sequenceeditor_boxfillcolor"] = SequenceEditor_BoxFillColor.ToString();
+                    settingsJson["sequenceeditor_titleboxcolor"] = SequenceEditor_TitleBoxColor.ToString();
+                    settingsJson["sequenceeditor_commenttextcolor"] = SequenceEditor_CommentTextColor.ToString();
+                    settingsJson["sequenceeditor_boxtextcolor"] = SequenceEditor_BoxTextColor.ToString();
+                    settingsJson["sequenceeditor_connectioncolor"] = SequenceEditor_ConnectionColor.ToString();
+                    settingsJson["sequenceeditor_varlinkcolor"] = SequenceEditor_VarLinkColor.ToString();
+                    settingsJson["sequenceeditor_favorites_me1"] = SequenceEditor_Favorites_ME1.ToString();
+                    settingsJson["sequenceeditor_favorites_me2"] = SequenceEditor_Favorites_ME2.ToString();
+                    settingsJson["sequenceeditor_favorites_me3"] = SequenceEditor_Favorites_ME3.ToString();
+                    settingsJson["sequenceeditor_favorites_le1"] = SequenceEditor_Favorites_LE1.ToString();
+                    settingsJson["sequenceeditor_favorites_le2"] = SequenceEditor_Favorites_LE2.ToString();
+                    settingsJson["sequenceeditor_favorites_le3"] = SequenceEditor_Favorites_LE3.ToString();
+                    settingsJson["sequenceeditor_favorites_lmp"] = SequenceEditor_Favorites_LMP.ToString();
+                    settingsJson["sequenceeditor_favorites_udk"] = SequenceEditor_Favorites_UDK.ToString();
+                    settingsJson["soundplorer_reverseiddisplayendianness"] = Soundplorer_ReverseIDDisplayEndianness.ToString();
+                    settingsJson["soundplorer_autoplayentriesonselection"] = Soundplorer_AutoplayEntriesOnSelection.ToString();
+                    settingsJson["meshplorer_backgroundcolor"] = Meshplorer_BackgroundColor.ToString();
+                    settingsJson["meshplorer_viewfirstperson"] = Meshplorer_ViewFirstPerson.ToString();
+                    settingsJson["meshplorer_viewrotating"] = Meshplorer_ViewRotating.ToString();
+                    settingsJson["meshplorer_view_solidenabled"] = Meshplorer_View_SolidEnabled.ToString();
+                    settingsJson["meshplorer_viewwireframeenabled"] = Meshplorer_ViewWireframeEnabled.ToString();
+                    settingsJson["actorpreview_backgroundcolor"] = ActorPreview_BackgroundColor.ToString();
+                    settingsJson["morpheditor_showregionlabels"] = MorphEditor_ShowRegionLabels.ToString();
+                    settingsJson["pathfindingeditor_shownodesizes"] = PathfindingEditor_ShowNodeSizes.ToString();
+                    settingsJson["pathfindingeditor_showpathfindingnodeslayer"] = PathfindingEditor_ShowPathfindingNodesLayer.ToString();
+                    settingsJson["pathfindingeditor_showactorslayer"] = PathfindingEditor_ShowActorsLayer.ToString();
+                    settingsJson["pathfindingeditor_showartlayer"] = PathfindingEditor_ShowArtLayer.ToString();
+                    settingsJson["pathfindingeditor_showsplineslayer"] = PathfindingEditor_ShowSplinesLayer.ToString();
+                    settingsJson["pathfindingeditor_showeverythingelselayer"] = PathfindingEditor_ShowEverythingElseLayer.ToString();
+                    settingsJson["pathfindingeditor_backgroundcolor"] = PathfindingEditor_BackgroundColor.ToString();
+                    settingsJson["leveleditor_showstatsoverlay"] = LevelEditor_ShowStatsOverlay.ToString();
+                    settingsJson["leveleditor_showcollision"] = LevelEditor_ShowCollision.ToString();
+                    settingsJson["leveleditor_showselectedlightwireframe"] = LevelEditor_ShowSelectedLightWireframe.ToString();
+                    settingsJson["leveleditor_showlighticons"] = LevelEditor_ShowLightIcons.ToString();
+                    settingsJson["leveleditor_showlensflareicons"] = LevelEditor_ShowLensFlareIcons.ToString();
+                    settingsJson["leveleditor_usegamemeshshaders"] = LevelEditor_UseGameMeshShaders.ToString();
+                    settingsJson["leveleditor_unlit"] = LevelEditor_Unlit.ToString();
+                    settingsJson["leveleditor_showemitters"] = LevelEditor_ShowEmitters.ToString();
+                    settingsJson["leveleditor_showemittervfx"] = LevelEditor_ShowEmitterVfx.ToString();
+                    settingsJson["leveleditor_showvolumes"] = LevelEditor_ShowVolumes.ToString();
+                    settingsJson["leveleditor_showvolumetrics"] = LevelEditor_ShowVolumetrics.ToString();
+                    settingsJson["pathfindingnetworkeditor_rotationarrowminzoom"] = PathfindingNetworkEditor_RotationArrowMinZoom.ToString();
+                    settingsJson["leveleditor_cameraspeed"] = LevelEditor_CameraSpeed.ToString();
+                    settingsJson["leveleditor_showselectionoutline"] = LevelEditor_ShowSelectionOutline.ToString();
+                    settingsJson["assetdb_defaultgame"] = AssetDB_DefaultGame.ToString();
+                    settingsJson["assetdbgame"] = AssetDBGame.ToString();
+                    settingsJson["assetdbpath"] = AssetDBPath.ToString();
+                    settingsJson["assetdb_hidemics"] = AssetDB_HideMICs.ToString();
+                    settingsJson["assetdb_ambperfmasterpccpath"] = AssetDB_AmbPerfMasterPccPath.ToString();
+                    settingsJson["coalescededitor_sourcepath"] = CoalescedEditor_SourcePath.ToString();
+                    settingsJson["coalescededitor_destinationpath"] = CoalescedEditor_DestinationPath.ToString();
+                    settingsJson["conditionalseditor_defaultgraphview"] = ConditionalsEditor_DefaultGraphView.ToString();
+                    settingsJson["wwisegrapheditor_autosaveview"] = WwiseGraphEditor_AutoSaveView.ToString();
+                    settingsJson["wwisegrapheditor_backgroundcolor"] = WwiseGraphEditor_BackgroundColor.ToString();
+                    settingsJson["wwisegrapheditor_boxfillcolor"] = WwiseGraphEditor_BoxFillColor.ToString();
+                    settingsJson["wwisegrapheditor_titleboxcolor"] = WwiseGraphEditor_TitleBoxColor.ToString();
+                    settingsJson["wwisegrapheditor_commenttextcolor"] = WwiseGraphEditor_CommentTextColor.ToString();
+                    settingsJson["wwisegrapheditor_boxtextcolor"] = WwiseGraphEditor_BoxTextColor.ToString();
+                    settingsJson["wwisegrapheditor_boxoutlinecolor"] = WwiseGraphEditor_BoxOutlineColor.ToString();
+                    settingsJson["wwisegrapheditor_connectioncolor"] = WwiseGraphEditor_ConnectionColor.ToString();
+                    settingsJson["binaryinterpreter_skipautoparsesizecheck"] = BinaryInterpreter_SkipAutoParseSizeCheck.ToString();
+                    settingsJson["textureviewer_autoloadmip"] = TextureViewer_AutoLoadMip.ToString();
+                    settingsJson["textureviewer_backgroundcolor"] = TextureViewer_BackgroundColor.ToString();
+                    settingsJson["interpreter_limitarraypropertysize"] = Interpreter_LimitArrayPropertySize.ToString();
+                    settingsJson["interpreter_advanceddisplay"] = Interpreter_AdvancedDisplay.ToString();
+                    settingsJson["interpreter_colorize"] = Interpreter_Colorize.ToString();
+                    settingsJson["interpreter_showlinearcolorwheel"] = Interpreter_ShowLinearColorWheel.ToString();
+                    settingsJson["interpreter_hidetopselector"] = Interpreter_HideTopSelector.ToString();
+                    settingsJson["soundpanel_loopaudio"] = Soundpanel_LoopAudio.ToString();
+                    settingsJson["tlkeditor_opentabs"] = TLKEditor_OpenTabs;
+                    settingsJson["tlkeditor_selectedtab"] = TLKEditor_SelectedTab.ToString();
+                    settingsJson["dialogueeditor_rememberbulkcloneinterpreplacements"] = DialogueEditor_RememberBulkCloneInterpReplacements.ToString();
+                    settingsJson["dialogueeditor_bulkcloneinterpreplacements"] = DialogueEditor_BulkCloneInterpReplacements;
+                    settingsJson["dialogueeditor_rememberbulkinterpreplacements"] = DialogueEditor_RememberBulkInterpReplacements.ToString();
+                    settingsJson["dialogueeditor_bulkinterpreplacements"] = DialogueEditor_BulkInterpReplacements;
+                    settingsJson["tfccompactor_laststagingpath"] = TFCCompactor_LastStagingPath.ToString();
+                    settingsJson["global_propertyparsing_parseunknownarraytypeasobject"] = Global_PropertyParsing_ParseUnknownArrayTypeAsObject.ToString();
+                    settingsJson["global_analytics_enabled"] = Global_Analytics_Enabled.ToString();
+                    settingsJson["global_theme"] = Global_Theme.ToString();
+                    settingsJson["global_useownerfriendlynames"] = Global_UseOwnerFriendlyNames.ToString();
+                    settingsJson["global_useorbitcameracontrols"] = Global_UseOrbitCameraControls.ToString();
+                    settingsJson["global_me1directory"] = Global_ME1Directory.ToString();
+                    settingsJson["global_me2directory"] = Global_ME2Directory.ToString();
+                    settingsJson["global_me3directory"] = Global_ME3Directory.ToString();
+                    settingsJson["global_ledirectory"] = Global_LEDirectory.ToString();
+                    settingsJson["global_udkcustomdirectory"] = Global_UDKCustomDirectory.ToString();
+                    settingsJson["global_tlk_language"] = Global_TLK_Language.ToString();
+                    settingsJson["global_tlk_ismale"] = Global_TLK_IsMale.ToString();
+                    settingsJson["global_lastuseddirectories"] = Global_LastUsedDirectories;
+                    settingsJson["experimentsbrowser_lastusedexperiments"] = ExperimentsBrowser_LastUsedExperiments;
+                    settingsJson["customstartupfiles"] = CustomStartupFiles;
+                    settingsJson["customassetdirectories"] = CustomAssetDirectories;
+                    settingsJson["scriptide_activetheme"] = ScriptIDE_ActiveTheme.ToString();
+                    settingsJson["scriptide_savedthemes"] = ScriptIDE_SavedThemes;
 
             // Retain the old key for downgrade compatibility. New versions read
             // Global_Theme; older versions still receive a meaningful dark-mode value.
             settingsJson["global_darkmode_enabled"] = Global_DarkMode_Enabled.ToString();
-            settingsJson["dialogueeditor_rememberbulkcloneinterpreplacements"] = DialogueEditor_RememberBulkCloneInterpReplacements.ToString();
-            settingsJson["dialogueeditor_bulkcloneinterpreplacements"] = DialogueEditor_BulkCloneInterpReplacements;
-            settingsJson["dialogueeditor_rememberbulkinterpreplacements"] = DialogueEditor_RememberBulkInterpReplacements.ToString();
-            settingsJson["dialogueeditor_bulkinterpreplacements"] = DialogueEditor_BulkInterpReplacements;
-
-            settingsJson["conditionalseditor_defaultgraphview"] = ConditionalsEditor_DefaultGraphView.ToString();
 
             var settingsText = JsonConvert.SerializeObject(settingsJson, Formatting.Indented);
             try

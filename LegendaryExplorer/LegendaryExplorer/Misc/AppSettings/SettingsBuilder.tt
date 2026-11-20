@@ -170,7 +170,9 @@ namespace LegendaryExplorer.Misc.AppSettings
 
         private static void Save(bool throwOnError)
         {
-            if (_deferSaving) return;
+            // Never before LoadSettings: what's in memory then is only the defaults, which would overwrite the user's settings (favorites, game
+            // paths, completed setup). A process that never loads them (the tests, a tool that creates a window that saves) mustn't write them
+            if (_deferSaving || !Loaded) return;
             var settingsJson = new Dictionary<string,object>();
 <#          foreach (var setting in settings){#>
 <#              if (setting.Item5) { #>

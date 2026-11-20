@@ -48,16 +48,18 @@
   <setting name="SequenceEditor_UseSavedViews" type="bool" defaultvalue="true"/>
   <setting name="SequenceEditor_ShowOutputNumbers" type="bool" defaultvalue="false" category="Sequence Editor"
            friendlyName="Show Output Numbers"/>
-  <setting name="SequenceEditor_BackgroundColor" type="int" defaultvalue="-8355840" category="Sequence Editor"
+  <setting name="SequenceEditor_BackgroundColor" type="int" defaultvalue="-8355840"
            friendlyName="Graph Editor Background Color"/>
-  <setting name="SequenceEditor_BoxFillColor" type="int" defaultvalue="-7892495" category="Sequence Editor"
+  <setting name="SequenceEditor_BoxFillColor" type="int" defaultvalue="-7892495"
            friendlyName="Sequence Box Fill Color"/>
-  <setting name="SequenceEditor_TitleBoxColor" type="int" defaultvalue="-8553424" category="Sequence Editor"
+  <setting name="SequenceEditor_TitleBoxColor" type="int" defaultvalue="-8553424"
            friendlyName="Sequence Title Box Color"/>
-  <setting name="SequenceEditor_CommentTextColor" type="int" defaultvalue="-5978694" category="Sequence Editor"
+  <setting name="SequenceEditor_CommentTextColor" type="int" defaultvalue="-5978694"
            friendlyName="Comment Text Color"/>
-  <setting name="SequenceEditor_BoxTextColor" type="int" defaultvalue="-1" category="Sequence Editor"
+  <setting name="SequenceEditor_BoxTextColor" type="int" defaultvalue="-1"
            friendlyName="Box Text Color"/>
+  <setting name="SequenceEditor_ConnectionColor" type="int" defaultvalue="-16777216"/>
+  <setting name="SequenceEditor_VarLinkColor" type="int" defaultvalue="-16777216"/>
   <setting name="SequenceEditor_Favorites" type="string" defaultvalue="Sequence;SeqAct_Interp;InterpData;BioSeqAct_EndCurrentConvNode;BioSeqEvt_ConvNode;BioSeqVar_ObjectFindByTag;SeqVar_Object;SeqAct_ActivateRemoteEvent;SeqEvent_SequenceActivated;SeqAct_Delay;SeqAct_Gate;BioSeqAct_PMCheckState;BioSeqAct_PMExecuteTransition;SeqAct_FinishSequence;SeqEvent_RemoteEvent"
            pergame="true"/>
     
@@ -73,6 +75,7 @@
   <setting name="Meshplorer_ViewRotating" type="bool" defaultvalue="false"/>
   <setting name="Meshplorer_View_SolidEnabled" type="bool" defaultvalue="true"/>
   <setting name="Meshplorer_ViewWireframeEnabled" type="bool" defaultvalue="false"/>
+  <setting name="ActorPreview_BackgroundColor" type="string" defaultvalue="#999999"/>
 
   <!-- Morph Editor specific settings -->
   <setting name="MorphEditor_ShowRegionLabels" type="bool" defaultvalue="true"/>
@@ -84,7 +87,7 @@
   <setting name="PathfindingEditor_ShowArtLayer" type="bool" defaultvalue="false"/>
   <setting name="PathfindingEditor_ShowSplinesLayer" type="bool" defaultvalue="false"/>
   <setting name="PathfindingEditor_ShowEverythingElseLayer" type="bool" defaultvalue="false"/>
-  <setting name="PathfindingEditor_BackgroundColor" type="int" defaultvalue="-8224126" category="Pathfinding Editor"
+  <setting name="PathfindingEditor_BackgroundColor" type="int" defaultvalue="-8224126"
            friendlyName="Graph Editor Background Color"/>
 
   <!-- Level Editor specific settings -->
@@ -94,6 +97,7 @@
   <setting name="LevelEditor_ShowLightIcons" type="bool" defaultvalue="true"/>
   <setting name="LevelEditor_ShowLensFlareIcons" type="bool" defaultvalue="true"/>
   <setting name="LevelEditor_UseGameMeshShaders" type="bool" defaultvalue="true"/>
+  <setting name="LevelEditor_Unlit" type="bool" defaultvalue="false"/>
   <setting name="LevelEditor_ShowEmitters" type="bool" defaultvalue="true"/>
   <setting name="LevelEditor_ShowEmitterVfx" type="bool" defaultvalue="false"/>
   <setting name="LevelEditor_ShowVolumes" type="bool" defaultvalue="true"/>
@@ -101,7 +105,7 @@
 
   <!-- Pathfinding Network Editor specific settings -->
   <setting name="PathfindingNetworkEditor_RotationArrowMinZoom" type="double" defaultvalue="1.0"
-           category="Pathfinding Network Editor" friendlyName="Rotation Arrow Min Zoom (show rotation arrows above this zoom level)"/>
+           friendlyName="Rotation Arrow Min Zoom (show rotation arrows above this zoom level)"/>
 
   <!-- Level Editor specific settings -->
   <setting name="LevelEditor_CameraSpeed" type="int" defaultvalue="500"/>
@@ -119,7 +123,7 @@
   <setting name="CoalescedEditor_DestinationPath" type="string" defaultvalue=""/>
 
   <!-- Conditionals Editor specific settings -->
-  <setting name="ConditionalsEditor_DefaultGraphView" type="bool" defaultvalue="false" category="Conditionals Editor"
+  <setting name="ConditionalsEditor_DefaultGraphView" type="bool" defaultvalue="false"
            friendlyName="Conditionals Editor: Default to Graph View"/>
 
   <!-- Wwise Graph Editor specific settings -->
@@ -138,6 +142,7 @@
            friendlyName="Binary Interpreter: Skip Auto-parse size limit (20KB)"/>
   <setting name="TextureViewer_AutoLoadMip" type="bool" defaultvalue="true" category="Export Loaders"
            friendlyName="Texture Viewer: Auto-load top mip"/>
+  <setting name="TextureViewer_BackgroundColor" type="string" defaultvalue="#808080"/>
 
   <setting name="Interpreter_LimitArrayPropertySize" type="bool" defaultvalue="true" category="Export Loaders"
            friendlyName="Properties: Limit array property size"/>
@@ -147,6 +152,7 @@
            friendlyName="Properties: Colorize properties"/>
   <setting name="Interpreter_ShowLinearColorWheel" type="bool" defaultvalue="false" category="Export Loaders"
            friendlyName="Properties: Show LinearColor picker"/>
+  <setting name="Interpreter_HideTopSelector" type="bool" defaultvalue="false"/>
   
   <setting name="Soundpanel_LoopAudio" type="bool" defaultvalue="false"/>
 
@@ -156,6 +162,8 @@
   <!-- Dialogue Editor specific settings -->
   <setting name="DialogueEditor_RememberBulkCloneInterpReplacements" type="bool" defaultvalue="false"/>
   <setting name="DialogueEditor_BulkCloneInterpReplacements" type="List&lt;string&gt;" defaultvalue="new List&lt;string&gt;()"/>
+  <setting name="DialogueEditor_RememberBulkInterpReplacements" type="bool" defaultvalue="false"/>
+  <setting name="DialogueEditor_BulkInterpReplacements" type="List&lt;string&gt;" defaultvalue="new List&lt;string&gt;()"/>
 
   <!-- TFC Compactor -->
   <setting name="TFCCompactor_LastStagingPath" type="string" defaultvalue=""/>

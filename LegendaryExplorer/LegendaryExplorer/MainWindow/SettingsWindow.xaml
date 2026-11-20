@@ -70,11 +70,11 @@
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                 <StackPanel>
 
-                        <StackPanel Margin="5,5,5,10">
+                                        <StackPanel Margin="5,5,5,10">
                             <Button x:Name="ApplyScottinaPresetButton" HorizontalAlignment="Left" Padding="5,3"
                                     Click="ApplyScottinaPreset_Click">Apply Scottina's preset</Button>
                         </StackPanel>
-
+                
                 <StackPanel Orientation="Horizontal" Margin="0,5">
                             <CheckBox x:Name="MainWindow_DisableTransparencyAndAnimations" Margin="5,0"
                                       IsChecked="{Binding Path=(settings:Settings.MainWindow_DisableTransparencyAndAnimations)}"/>
@@ -85,7 +85,7 @@
                                       IsChecked="{Binding Path=(settings:Settings.Global_Analytics_Enabled)}"/>
                             <TextBlock>Enable Analytics</TextBlock>
                         </StackPanel>
-                        <StackPanel Orientation="Horizontal" Margin="5,5">
+                                                <StackPanel Orientation="Horizontal" Margin="5,5">
                             <TextBlock VerticalAlignment="Center" Margin="0,0,8,0">Application theme:</TextBlock>
                             <RadioButton x:Name="LightThemeButton" Content="Light" GroupName="ApplicationTheme" Style="{StaticResource ThemeButtonStyle}"
                                          IsChecked="{Binding Path=(settings:Settings.Global_Theme), Mode=TwoWay, Converter={StaticResource ThemeComparisonConverter}, ConverterParameter=Light}"/>
@@ -94,7 +94,7 @@
                             <RadioButton x:Name="ModernDarkThemeButton" Content="Modern Dark" GroupName="ApplicationTheme" Style="{StaticResource ThemeButtonStyle}"
                                          IsChecked="{Binding Path=(settings:Settings.Global_Theme), Mode=TwoWay, Converter={StaticResource ThemeComparisonConverter}, ConverterParameter=ModernDark}"/>
                         </StackPanel>
-                        <StackPanel Orientation="Horizontal" Margin="0,5">
+                                                                            <StackPanel Orientation="Horizontal" Margin="0,5">
                             <CheckBox x:Name="Global_UseOwnerFriendlyNames" Margin="5,0"
                                       IsChecked="{Binding Path=(settings:Settings.Global_UseOwnerFriendlyNames)}"/>
                             <TextBlock>Use owner friendly names in Dialogue Editor, Package Editor, and Properties</TextBlock>
@@ -110,41 +110,35 @@
                                        Text="{Binding Path=(settings:Settings.Global_ME1Directory)}"/>
                             <Button Click="DirectoryBrowse_Click" 
                             Margin="5,0" Tag="">Browse</Button>
-                                                </StackPanel>
-                        <TextBlock Margin="5,5,0,0">Mass Effect 2 (Original Trilogy) Directory:</TextBlock>
+                                                </StackPanel>                        <TextBlock Margin="5,5,0,0">Mass Effect 2 (Original Trilogy) Directory:</TextBlock>
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,5" Tag="Global_ME2Directory">
                             <TextBox Width="450" x:Name="Global_ME2Directory" Margin="5,0,0,0" TextChanged="Setting_OnTextChanged"
                                        Text="{Binding Path=(settings:Settings.Global_ME2Directory)}"/>
                             <Button Click="DirectoryBrowse_Click" 
                             Margin="5,0" Tag="">Browse</Button>
-                                                </StackPanel>
-                        <TextBlock Margin="5,5,0,0">Mass Effect 3 (Original Trilogy) Directory:</TextBlock>
+                                                </StackPanel>                        <TextBlock Margin="5,5,0,0">Mass Effect 3 (Original Trilogy) Directory:</TextBlock>
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,5" Tag="Global_ME3Directory">
                             <TextBox Width="450" x:Name="Global_ME3Directory" Margin="5,0,0,0" TextChanged="Setting_OnTextChanged"
                                        Text="{Binding Path=(settings:Settings.Global_ME3Directory)}"/>
                             <Button Click="DirectoryBrowse_Click" 
                             Margin="5,0" Tag="">Browse</Button>
-                                                </StackPanel>
-                        <TextBlock Margin="5,5,0,0">Mass Effect Legendary Edition Directory:</TextBlock>
+                                                </StackPanel>                        <TextBlock Margin="5,5,0,0">Mass Effect Legendary Edition Directory:</TextBlock>
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,5" Tag="Global_LEDirectory">
                             <TextBox Width="450" x:Name="Global_LEDirectory" Margin="5,0,0,0" TextChanged="Setting_OnTextChanged"
                                        Text="{Binding Path=(settings:Settings.Global_LEDirectory)}"/>
                             <Button Click="DirectoryBrowse_Click" 
                             Margin="5,0" Tag="">Browse</Button>
-                                                </StackPanel>
-                        <TextBlock Margin="5,5,0,0">UDKGame (2015) Directory:</TextBlock>
+                                                </StackPanel>                        <TextBlock Margin="5,5,0,0">UDKGame (2015) Directory:</TextBlock>
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,5" Tag="Global_UDKCustomDirectory">
                             <TextBox Width="450" x:Name="Global_UDKCustomDirectory" Margin="5,0,0,0" TextChanged="Setting_OnTextChanged"
                                        Text="{Binding Path=(settings:Settings.Global_UDKCustomDirectory)}"/>
                             <Button Click="DirectoryBrowse_Click" 
                             Margin="5,0" Tag="">Browse</Button>
-                                                </StackPanel>
-                        <StackPanel Orientation="Horizontal" Margin="0,5">
+                                                </StackPanel>                        <StackPanel Orientation="Horizontal" Margin="0,5">
                             <TextBlock Margin="5,0">TLK Language</TextBlock>
                             <TextBox Width="100" x:Name="Global_TLK_Language"
                                        Text="{Binding Path=(settings:Settings.Global_TLK_Language)}"/>
-                                                    </StackPanel>
-                        <StackPanel Orientation="Horizontal" Margin="0,5">
+                                                    </StackPanel>                        <StackPanel Orientation="Horizontal" Margin="0,5">
                             <CheckBox x:Name="Global_TLK_IsMale" Margin="5,0"
                                       IsChecked="{Binding Path=(settings:Settings.Global_TLK_IsMale)}"/>
                             <TextBlock>Default to Male TLK</TextBlock>
@@ -158,6 +152,7 @@
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                 <StackPanel>
 
+                
                 <StackPanel Orientation="Horizontal" Margin="0,5">
                             <CheckBox x:Name="PackageEditor_HideInterpreterHexBox" Margin="5,0"
                                       IsChecked="{Binding Path=(settings:Settings.PackageEditor_HideInterpreterHexBox)}"/>
@@ -202,6 +197,7 @@
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                 <StackPanel>
 
+                
                                             <StackPanel Orientation="Horizontal" Margin="0,5">
                             <xctk:IntegerUpDown x:Name="SequenceEditor_MaxVarStringLength" Margin="5,0"
 							    Text="{Binding Path=(settings:Settings.SequenceEditor_MaxVarStringLength)}"/>
@@ -226,11 +222,12 @@
                 </ScrollViewer>
             </TabItem>
 
-
+ 
             <TabItem Header="Audio">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                 <StackPanel>
 
+                
                 <StackPanel Orientation="Horizontal" Margin="0,5">
                             <CheckBox x:Name="Soundplorer_ReverseIDDisplayEndianness" Margin="5,0"
                                       IsChecked="{Binding Path=(settings:Settings.Soundplorer_ReverseIDDisplayEndianness)}"/>
@@ -250,11 +247,12 @@
                 </ScrollViewer>
             </TabItem>
 
-
+ 
             <TabItem Header="Export Loaders">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                 <StackPanel>
 
+                
                 <StackPanel Orientation="Horizontal" Margin="0,5">
                             <CheckBox x:Name="BinaryInterpreter_SkipAutoParseSizeCheck" Margin="5,0"
                                       IsChecked="{Binding Path=(settings:Settings.BinaryInterpreter_SkipAutoParseSizeCheck)}"/>
