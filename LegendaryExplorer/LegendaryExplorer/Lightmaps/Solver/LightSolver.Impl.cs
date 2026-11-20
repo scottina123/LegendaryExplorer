@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
@@ -84,6 +85,8 @@ internal sealed partial class SolverRun
 
     // per receiver: (light, kind 0 lightmap / 1 shadow map, shadow map slot) for the GPU
     UInt4[][] receiverItems;
+    // per receiver: its sky lights' upper and lower radiance as six halves (y, z, w), for its gather items
+    UInt4[] receiverSky;
 
     long raysCast;
 
@@ -209,7 +212,7 @@ internal sealed partial class SolverRun
 
         Combine(output);
         // The output is all that's left of the batch; its working arrays (hundreds of bytes a sample) go now, not when the batch does
-        samples = null; receiverItems = null; directItems = null; directBlocks = null;
+        samples = null; receiverItems = null; receiverSky = null; directItems = null; directBlocks = null;
         d0 = d1 = d2 = ds = i0 = i1 = i2 = iS = null;
         occlusion = nearestHit = null;
         gathered = null;
@@ -258,12 +261,22 @@ internal sealed partial class SolverRun
         var lightsIn = scene.Lights ?? [];
         var receivers = job.Receivers ?? [];
         receiverItems = new UInt4[receivers.Count][];
+        receiverSky = new UInt4[receivers.Count];
         for (int r = 0; r < receivers.Count; r++)
         {
             var rec = receivers[r];
             var list = new List<UInt4>();
             if (rec != null)
             {
+                // Sky lights light the receivers they're relevant to (Lightmass evaluates a mapping's relevant sky lights), not the whole scene
+                Vector3 up = Vector3.Zero, down = Vector3.Zero;
+                foreach (int li in (rec.LightmapLights ?? []).Distinct())
+                    if ((uint)li < (uint)lightsIn.Count && lightsIn[li] is { Type: SolverLightType.Sky } sky)
+                    {
+                        up += sky.Color;
+                        down += sky.LowerColor;
+                    }
+                receiverSky[r] = PackSky(up, down);
                 foreach (int li in rec.LightmapLights ?? [])
                     if ((uint)li < (uint)lightsIn.Count && lightsIn[li] is { Type: not SolverLightType.Sky })
                         list.Add(new UInt4((uint)li, 0, 0, 0));
@@ -275,6 +288,10 @@ internal sealed partial class SolverRun
             receiverItems[r] = list.ToArray();
         }
     }
+
+    static uint HalfBits(float v) => BitConverter.HalfToUInt16Bits((System.Half)(float.IsFinite(v) ? Math.Clamp(v, 0, 65504) : 0));
+
+    static UInt4 PackSky(Vector3 up, Vector3 down) => new(0, HalfBits(up.X) | HalfBits(up.Y) << 16, HalfBits(up.Z) | HalfBits(down.X) << 16, HalfBits(down.Y) | HalfBits(down.Z) << 16);
 
     void PackSamples()
     {
@@ -355,7 +372,8 @@ internal sealed partial class SolverRun
             DirScale = settings.DirectionalCoefficientScale,
             DirPower = settings.DirectionalCoefficientFalloffPower,
             SceneExtent = sceneExtent,
-            SceneFlags = (packed.HasTranslucency ? GpuParams.SceneHasTranslucency : 0) | (settings.LightFacingShadows ? GpuParams.SceneLightFacingShadows : 0),
+            SceneFlags = (packed.HasTranslucency ? GpuParams.SceneHasTranslucency : 0) | (settings.LightFacingShadows ? GpuParams.SceneLightFacingShadows : 0)
+                | (settings.Profile != SolverProfile.Lightmass ? GpuParams.SceneSkyBounces : 0),
             NormalTexelScale = Math.Max(0, settings.NormalOffsetTexelScale),
             SkyUpper = packed.SkyUpper,
             SkyLower = packed.SkyLower,
@@ -608,7 +626,11 @@ internal sealed partial class SolverRun
             cancel.ThrowIfCancellationRequested();
             int n = Math.Min(chunk, list.Count - done);
             for (int k = 0; k < n; k++)
-                items[k] = new UInt4((uint)list[done + k], 0, 0, 0);
+            {
+                int s = list[done + k];
+                var sky = receiverSky[job.Samples[s].Receiver];
+                items[k] = new UInt4((uint)s, sky.Y, sky.Z, sky.W);
+            }
 
             sw.Restart();
             d3d.Upload(gpu.Items, items, n);

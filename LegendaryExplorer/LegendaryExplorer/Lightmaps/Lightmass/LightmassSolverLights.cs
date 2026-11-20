@@ -99,10 +99,13 @@ public static class LightmassSolverLights
 
     /// <summary>
     /// Whether the light emits bounce light: lights with static lighting do (Lightmass emits photons for every light with GI_LIGHT_HASSTATICLIGHTING,
-    /// whatever its relevance to primitives), shadow-only twins don't, and nor do sky lights, whose lighting UDK's Lightmass never bounces.
+    /// whatever its relevance to primitives), shadow-only twins don't, and nor do sky lights, whose lighting UDK's Lightmass never bounces. Nor
+    /// does a light that affects none of the scene's primitives (<see cref="LightmassLight.ReachesStaticGeometry"/>): BioWare's bakes show
+    /// none of its light, direct or bounced (the Normandy cabin's character fill lights, Dynamic channel only, would otherwise grey the room).
     /// </summary>
     public static bool Bounces(LightmassLight light) =>
-        !light.ShadowOnly && light.Light.Type != SceneLightType.Sky && (light.Flags & LightFlags.HasStaticLighting) != 0 && light.IndirectLightingScale > 0;
+        !light.ShadowOnly && light.Light.Type != SceneLightType.Sky && (light.Flags & LightFlags.HasStaticLighting) != 0 && light.IndirectLightingScale > 0
+        && light.ReachesStaticGeometry;
 
     /// <summary>FLight::UseStaticLighting(bForceDirectLightMap = false, as every exported mapping has it): static lighting into the direct lightmap</summary>
     public static bool UseStaticLighting(uint flags) => (flags & LightFlags.HasStaticLighting) != 0 && (flags & LightFlags.UseDirectLightMap) != 0;

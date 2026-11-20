@@ -510,6 +510,14 @@ public static class LightmassLocalSolve
             if (System.Environment.GetEnvironmentVariable("LEX_SOLVER_DEBUG")?.Split(',').FirstOrDefault(t => t.StartsWith("noshadow:", StringComparison.OrdinalIgnoreCase)) is { } ns
                 && LightName(light).Contains(ns[9..], StringComparison.OrdinalIgnoreCase))
                 converted.CastShadows = false;
+            // Tuning: LEX_SOLVER_DEBUG=nobounce:A|B stops the lights whose name (Actor.Component) ends with A or B from bouncing
+            if (System.Environment.GetEnvironmentVariable("LEX_SOLVER_DEBUG")?.Split(',').FirstOrDefault(t => t.StartsWith("nobounce:", StringComparison.OrdinalIgnoreCase)) is { } nb
+                && nb[9..].Split('|').Any(n => LightName(light).EndsWith(n, StringComparison.OrdinalIgnoreCase)))
+                converted.Bounces = false;
+            // Tuning: LEX_SOLVER_DEBUG=bouncelevel:Package lets only that package's lights bounce
+            if (System.Environment.GetEnvironmentVariable("LEX_SOLVER_DEBUG")?.Split(',').FirstOrDefault(t => t.StartsWith("bouncelevel:", StringComparison.OrdinalIgnoreCase)) is { } bl
+                && !string.Equals(light.Light.Export?.FileRef.FileNameNoExtension, bl[12..], StringComparison.OrdinalIgnoreCase))
+                converted.Bounces = false;
             solverScene.Lights.Add(converted);
         }
 
@@ -662,7 +670,7 @@ public static class LightmassLocalSolve
     static readonly string DebugLight = System.Environment.GetEnvironmentVariable("LEX_SOLVER_DEBUG")?.Split(',')
         .FirstOrDefault(t => t.StartsWith("light:", StringComparison.OrdinalIgnoreCase))?[6..];
 
-    /// <summary>Tuning: LEX_SOLVER_DEBUG=droplight:A|B leaves out lightmap lights whose name contains A or B</summary>
+    /// <summary>Tuning: LEX_SOLVER_DEBUG=droplight:A|B leaves out lightmap lights whose name (Actor.Component) ends with A or B</summary>
     static readonly string[] DebugDropLights = System.Environment.GetEnvironmentVariable("LEX_SOLVER_DEBUG")?.Split(',')
         .FirstOrDefault(t => t.StartsWith("droplight:", StringComparison.OrdinalIgnoreCase))?[10..].Split('|', StringSplitOptions.RemoveEmptyEntries) ?? [];
 
@@ -685,7 +693,7 @@ public static class LightmassLocalSolve
             {
                 case LightmassLightRoute.Lightmap:
                     if (DebugLight is { } only && !LightName(light).Contains(only, StringComparison.OrdinalIgnoreCase)) break;
-                    if (DebugDropLights.Any(d => LightName(light).Contains(d, StringComparison.OrdinalIgnoreCase))) break;
+                    if (DebugDropLights.Any(d => LightName(light).EndsWith(d, StringComparison.OrdinalIgnoreCase))) break;
                     plan.LightmapLights.Add((index, light.Guid));
                     break;
                 case LightmassLightRoute.ShadowMap: plan.ShadowMapLights.Add((index, light.Guid)); break;

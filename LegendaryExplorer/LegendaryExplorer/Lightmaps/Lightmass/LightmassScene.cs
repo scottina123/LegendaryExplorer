@@ -40,6 +40,12 @@ public sealed class LightmassLight
     public float InnerConeAngle, OuterConeAngle, LowerBrightness;
     public (byte R, byte G, byte B) LowerColor;
     public int LevelId;
+    /// <summary>
+    /// Whether it affects any of the scene's primitives as UE3 decides it (ULightComponent::AffectsPrimitive: lighting channels, radius, volumes,
+    /// levels). One that affects none (a character fill light on the Dynamic channel only, say) lights no static surface, so it has nothing to
+    /// bounce either; BioWare's lightmaps hold no trace of such lights
+    /// </summary>
+    public bool ReachesStaticGeometry = true;
 }
 
 /// <summary>A StaticMesh exported to a persistent channel (all its LODs), named by a hash of its content.</summary>
@@ -362,6 +368,14 @@ public sealed class LightmassSceneBuilder : IDisposable
 
     /// <summary>Why lights do or don't reach primitives, tallied per light type and added to the report once the scene is built.</summary>
     readonly Dictionary<(SceneLightType Type, string Why), int> relevance = new();
+    /// <summary>The lights that affect at least one of the scene's primitives (<see cref="LightmassLight.ReachesStaticGeometry"/>)</summary>
+    readonly HashSet<LightmassLight> affectsSome = [];
+    /// <summary>
+    /// Every light (LightGuid) some primitive in the levels that accepts lights lists as irrelevant (IrrelevantLights). The last bake had these
+    /// lights too, so preserving assignments treats them as known: one it found lit nothing anywhere (in no lightmap or shadow map) stays unlit,
+    /// as the game shows it (GetInteraction: irrelevant and not in the lightmap), rather than being baked as a light added since.
+    /// </summary>
+    readonly HashSet<Guid> vanillaIrrelevant = [];
 
     public LightmassSceneBuilder(LightmassSceneOptions options = null) => this.options = options ?? new LightmassSceneOptions();
 
@@ -390,7 +404,11 @@ public sealed class LightmassSceneBuilder : IDisposable
         foreach (var package in levels)
         {
             foreach (var r in PackageLightmaps.Enumerate(package))
+            {
                 vanillaListed.UnionWith(PrimitiveLightAssignments.Guids(r.LightMap));
+                if (options.AssignmentPolicy == LightAssignmentPolicy.PreserveExistingAssignments)
+                    vanillaIrrelevant.UnionWith(PrimitiveLightAssignments.IrrelevantLights(r));
+            }
             foreach (var (guid, sdf) in PackageShadowMaps.Lights(package))
                 vanillaShadowed[guid] = vanillaShadowed.GetValueOrDefault(guid) || sdf;
         }
@@ -415,6 +433,9 @@ public sealed class LightmassSceneBuilder : IDisposable
         }
         scene.Meshes = meshes.Values.ToList();
         scene.Materials = materials.Values.ToList();
+        foreach (var light in scene.Lights) light.ReachesStaticGeometry = affectsSome.Contains(light);
+        if (scene.Lights.Count(l => !l.ShadowOnly && !l.ReachesStaticGeometry) is > 0 and var unreached)
+            log?.Invoke($"{unreached} {(unreached == 1 ? "light affects" : "lights affect")} none of the scene's meshes (lighting channels, radius, level), so they don't bounce light either.");
         foreach (var ((type, why), n) in relevance) scene.Report[$"relevance: {type} {why}"] = n;
         foreach (var (min, max) in scene.ImportanceVolumes) log?.Invoke($"importance volume {min} .. {max}");
         log?.Invoke($"{scene.Instances.Count} mesh instances ({scene.Instances.Count(i => i.HasOutput)} to bake) of {scene.Meshes.Count} meshes, " +
@@ -867,8 +888,9 @@ public sealed class LightmassSceneBuilder : IDisposable
         foreach (var light in scene.Lights)
         {
             var l = light.Light;
-            bool known = vanillaListed.Contains(l.LightmapGuid) || vanillaShadowed.ContainsKey(l.LightGuid);
+            bool known = vanillaListed.Contains(l.LightmapGuid) || vanillaShadowed.ContainsKey(l.LightGuid) || vanillaIrrelevant.Contains(l.LightGuid);
             var eligibility = LightAssignment.Evaluate(l, bounds, primitive);
+            if (eligibility == LightEligibility.Affects) affectsSome.Add(light);
             if (eligibility == LightEligibility.Affects)
                 eligibility = LightAssignment.EvaluateHistory(l, options.AssignmentPolicy, known, source);
             string why = eligibility.Describe();

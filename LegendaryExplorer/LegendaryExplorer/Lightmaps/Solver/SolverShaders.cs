@@ -31,6 +31,7 @@ internal static class SolverShaders
 
 #define SF_TRANSLUCENCY 1u
 #define SF_LIGHT_FACING 2u
+#define SF_SKY_BOUNCES 4u
 
 #define MAX_TRANSLUCENT_LAYERS 8u
 
@@ -1058,7 +1059,11 @@ void GatherCS(uint3 id : SV_DispatchThreadID)
     if (idx >= ItemCount) return;
     uint local = idx / GatherRays;
     uint ray = idx % GatherRays;
-    uint si = Items[local].x;
+    uint4 item = Items[local];
+    uint si = item.x;
+    // The receiver's sky lights (upper and lower hemisphere radiance as halves): only the sky lights relevant to it light it
+    float3 skyUp = float3(f16tof32(item.y), f16tof32(item.y >> 16), f16tof32(item.z));
+    float3 skyLo = float3(f16tof32(item.z >> 16), f16tof32(item.w), f16tof32(item.w >> 16));
     Sample s = Samples[si];
     float3 nh, t, b;
     GatherFrame(s, nh, t, b);
@@ -1086,7 +1091,10 @@ void GatherCS(uint3 id : SV_DispatchThreadID)
         if (all(thr <= 0)) break;
         if (!hit)
         {
-            L += thr * (d.z >= 0 ? SkyUpper : SkyLower);
+            // The environment lights every escaping ray; sky light only the receiver's own rays (Lightmass never bounces sky light) unless the
+            // profile bounces it
+            bool sky = bounce == 0 || (SceneFlags & SF_SKY_BOUNCES) != 0;
+            L += thr * (d.z >= 0 ? SkyUpper + (sky ? skyUp : 0) : SkyLower + (sky ? skyLo : 0));
             break;
         }
         Tri tri = Tris[h.tri];

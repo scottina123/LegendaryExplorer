@@ -122,7 +122,7 @@ internal struct GpuParams
     public float NormalTexelScale;
     public uint PhotonPad1, PhotonPad2;
 
-    public const uint SceneHasTranslucency = 1, SceneLightFacingShadows = 2;
+    public const uint SceneHasTranslucency = 1, SceneLightFacingShadows = 2, SceneSkyBounces = 4;
     public const uint VariantSpotSphere = 1, VariantNoFalloff = 2, VariantDirectExplicit = 4, VariantLookupSameInstance = 8, VariantLookupFineOnly = 16, VariantPassBack = 32;
 }
 

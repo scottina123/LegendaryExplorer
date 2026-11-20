@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using LegendaryExplorer.Lightmaps.Game;
 using LegendaryExplorerCore.Packages;
+using LegendaryExplorerCore.Unreal;
 using LegendaryExplorerCore.Unreal.BinaryConverters;
 
 namespace LegendaryExplorer.Tools.LevelEditor.Scene3D;
@@ -20,6 +21,8 @@ public sealed class LightAssignmentHistory
         internal readonly Dictionary<(ExportEntry, string), PrimitiveLightAssignments> Primitives = [];
         internal readonly HashSet<Guid> Lightmaps = [];
         internal readonly HashSet<Guid> Shadows = [];
+        /// <summary>The lights (LightGuid) some primitive lists as irrelevant: the last bake had them, though it may have found they lit nothing</summary>
+        internal readonly HashSet<Guid> Irrelevant = [];
         internal readonly List<string> Problems = [];
 
         internal PackageRecords(IMEPackage package) => Package = package;
@@ -30,6 +33,7 @@ public sealed class LightAssignmentHistory
     private readonly Dictionary<IMEPackage, PackageRecords> packages;
     private readonly HashSet<Guid> lightmaps = [];
     private readonly HashSet<Guid> shadows = [];
+    private readonly HashSet<Guid> irrelevant = [];
     public IReadOnlyList<string> Problems { get; }
 
     private LightAssignmentHistory(Dictionary<IMEPackage, PackageRecords> packages)
@@ -39,11 +43,16 @@ public sealed class LightAssignmentHistory
         {
             lightmaps.UnionWith(records.Lightmaps);
             shadows.UnionWith(records.Shadows);
+            irrelevant.UnionWith(records.Irrelevant);
         }
         Problems = packages.Values.SelectMany(records => records.Problems).ToArray();
     }
 
-    public bool IsKnown(SceneLight light) => lightmaps.Contains(light.LightmapGuid) || shadows.Contains(light.LightGuid);
+    /// <summary>
+    /// Whether the last bake had the light: some primitive's lightmap or shadow maps are for it, or some primitive lists it as irrelevant. One
+    /// it found lit nothing anywhere then stays unlit when assignments are preserved, as the game shows it, rather than counting as a new light.
+    /// </summary>
+    public bool IsKnown(SceneLight light) => lightmaps.Contains(light.LightmapGuid) || shadows.Contains(light.LightGuid) || irrelevant.Contains(light.LightGuid);
 
     public bool Contains(IMEPackage package) => packages.ContainsKey(package);
 
@@ -73,6 +82,7 @@ public sealed class LightAssignmentHistory
                     records.Primitives[(source.Owner, source.Slot)] = record;
                     records.Lightmaps.UnionWith(record.Lightmaps);
                     records.Shadows.UnionWith(record.Shadows);
+                    records.Irrelevant.UnionWith(PrimitiveLightAssignments.IrrelevantLights(source));
                 }
                 if (export.ClassName is "ShadowMap1D" or "ShadowMap2D")
                     records.Shadows.Add(PackageShadowMaps.Read(export).LightGuid);
@@ -118,6 +128,20 @@ public sealed record PrimitiveLightAssignments(bool HasSourceRecord, IReadOnlySe
 
     public static PrimitiveLightAssignments Create(LightMap lightmap, IReadOnlySet<Guid> shadows) =>
         new(lightmap is { LightMapType: not ELightMapType.LMT_None } || shadows.Count > 0, Guids(lightmap).ToHashSet(), shadows);
+
+    /// <summary>
+    /// The primitive's IrrelevantLights (LightGuids): a static mesh's or terrain's property (one for all LODs, so read with LOD 0), or a BSP
+    /// element's. A primitive that doesn't accept lights has none that count (Scottina's Lightmass Baker lists the lights it baked there).
+    /// </summary>
+    public static IEnumerable<Guid> IrrelevantLights(LightmapRef source)
+    {
+        if (source.Binary is ModelComponent model)
+            return int.TryParse(source.Slot.AsSpan("Element".Length), out int e) && e < model.Elements.Length ? model.Elements[e].IrrelevantLights ?? [] : [];
+        if (source.Slot is not ("LOD0" or "Terrain")) return [];
+        var props = source.Owner.GetProperties();
+        if (props.GetProp<BoolProperty>("bAcceptsLights") is { Value: false }) return [];
+        return props.GetProp<ArrayProperty<StructProperty>>("IrrelevantLights")?.Select(CommonStructs.GetGuid).ToList() ?? [];
+    }
 
     public static Guid[] Guids(LightMap map) => map switch
     {

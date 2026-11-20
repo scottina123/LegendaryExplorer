@@ -23,6 +23,7 @@ internal sealed class PackedScene
     public uint[] BounceLights;
     public uint NumBounceLights;
     public bool HasTranslucency;
+    /// <summary>What a ray that leaves the scene sees: the environment (sky lights are per receiver, <see cref="SolverRun"/>'s receiver sky)</summary>
     public Vector3 SkyUpper, SkyLower;
     /// <summary>The bounds of the scene's vertices (min above max when there are none)</summary>
     public Vector3 VertexMin, VertexMax;
@@ -181,11 +182,7 @@ internal sealed class PackedScene
             if (l == null)
                 continue;
             if (l.Type == SolverLightType.Sky)
-            {
-                SkyUpper += l.Color;
-                SkyLower += l.LowerColor;
                 continue;
-            }
             Vector3 ind = l.Color * l.IndirectLightingScale;
             float grey = Vector3.Dot(ind, new Vector3(0.3f, 0.59f, 0.11f));
             ind = Vector3.Lerp(new Vector3(grey), ind, l.IndirectLightingSaturation);
