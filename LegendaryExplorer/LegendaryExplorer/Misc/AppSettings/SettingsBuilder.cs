@@ -317,12 +317,12 @@ namespace LegendaryExplorer.Misc.AppSettings
             get => _leveleditor_showemittervfx;
             set => SetProperty(ref _leveleditor_showemittervfx, value);
         }
-        private static bool _leveleditor_showvolumes = false;
+        private static bool _leveleditor_showvolumes = true;
         public static bool LevelEditor_ShowVolumes {
             get => _leveleditor_showvolumes;
             set => SetProperty(ref _leveleditor_showvolumes, value);
         }
-        private static bool _leveleditor_showvolumetrics = false;
+        private static bool _leveleditor_showvolumetrics = true;
         public static bool LevelEditor_ShowVolumetrics {
             get => _leveleditor_showvolumetrics;
             set => SetProperty(ref _leveleditor_showvolumetrics, value);
@@ -341,6 +341,11 @@ namespace LegendaryExplorer.Misc.AppSettings
         public static int LevelEditor_CameraSpeed {
             get => _leveleditor_cameraspeed;
             set => SetProperty(ref _leveleditor_cameraspeed, value);
+        }
+        private static bool _leveleditor_showselectionoutline = false;
+        public static bool LevelEditor_ShowSelectionOutline {
+            get => _leveleditor_showselectionoutline;
+            set => SetProperty(ref _leveleditor_showselectionoutline, value);
         }
         private static string _assetdb_defaultgame = "";
         public static string AssetDB_DefaultGame {
@@ -638,7 +643,8 @@ namespace LegendaryExplorer.Misc.AppSettings
         }
 
         // Settings converters
-        public static double TryGetSetting(Dictionary<string, object> settings, string key, double defaultValue) => settings.TryGetValue(key, out var value) && value is string svalue && double.TryParse(svalue, out var fvalue) ? fvalue : defaultValue;
+        public static float TryGetSetting(Dictionary<string, object> settings, string key, float defaultValue) => settings.TryGetValue(key, out var value) && value is string svalue && float.TryParse(svalue, out var fvalue) ? fvalue : defaultValue;
+        public static double TryGetSetting(Dictionary<string, object> settings, string key, double defaultValue) => settings.TryGetValue(key, out var value) && value is string svalue && double.TryParse(svalue, out var dvalue) ? dvalue : defaultValue;
         public static int TryGetSetting(Dictionary<string, object> settings, string key, int defaultValue) => settings.TryGetValue(key, out var value) && value is string svalue && int.TryParse(svalue, out var ivalue) ? ivalue : defaultValue;
         public static bool TryGetSetting(Dictionary<string, object> settings, string key, bool defaultValue) => settings.TryGetValue(key, out var value) && value is string svalue && bool.TryParse(svalue, out var bvalue) ? bvalue : defaultValue;
         public static string TryGetSetting(Dictionary<string, object> settings, string key, string defaultValue) => settings.TryGetValue(key, out var value) && value is string svalue ? svalue : defaultValue;
@@ -739,10 +745,11 @@ namespace LegendaryExplorer.Misc.AppSettings
             LevelEditor_UseGameMeshShaders = TryGetSetting(settingsJson, "leveleditor_usegamemeshshaders", true);
             LevelEditor_ShowEmitters = TryGetSetting(settingsJson, "leveleditor_showemitters", true);
             LevelEditor_ShowEmitterVfx = TryGetSetting(settingsJson, "leveleditor_showemittervfx", false);
-            LevelEditor_ShowVolumes = TryGetSetting(settingsJson, "leveleditor_showvolumes", false);
-            LevelEditor_ShowVolumetrics = TryGetSetting(settingsJson, "leveleditor_showvolumetrics", false);
+            LevelEditor_ShowVolumes = TryGetSetting(settingsJson, "leveleditor_showvolumes", true);
+            LevelEditor_ShowVolumetrics = TryGetSetting(settingsJson, "leveleditor_showvolumetrics", true);
             PathfindingNetworkEditor_RotationArrowMinZoom = TryGetSetting(settingsJson, "pathfindingnetworkeditor_rotationarrowminzoom", 1.0);
             LevelEditor_CameraSpeed = TryGetSetting(settingsJson, "leveleditor_cameraspeed", 500);
+            LevelEditor_ShowSelectionOutline = TryGetSetting(settingsJson, "leveleditor_showselectionoutline", false);
             AssetDB_DefaultGame = TryGetSetting(settingsJson, "assetdb_defaultgame", "");
             AssetDBGame = TryGetSetting(settingsJson, "assetdbgame", "LE3");
             AssetDBPath = TryGetSetting(settingsJson, "assetdbpath", "");
@@ -879,6 +886,7 @@ namespace LegendaryExplorer.Misc.AppSettings
             settingsJson["leveleditor_showvolumes"] = LevelEditor_ShowVolumes.ToString();
             settingsJson["leveleditor_showvolumetrics"] = LevelEditor_ShowVolumetrics.ToString();
             settingsJson["leveleditor_cameraspeed"] = LevelEditor_CameraSpeed.ToString();
+            settingsJson["leveleditor_showselectionoutline"] = LevelEditor_ShowSelectionOutline.ToString();
             settingsJson["pathfindingnetworkeditor_rotationarrowminzoom"] = PathfindingNetworkEditor_RotationArrowMinZoom.ToString();
             settingsJson["assetdb_defaultgame"] = AssetDB_DefaultGame.ToString();
             settingsJson["assetdbgame"] = AssetDBGame.ToString();

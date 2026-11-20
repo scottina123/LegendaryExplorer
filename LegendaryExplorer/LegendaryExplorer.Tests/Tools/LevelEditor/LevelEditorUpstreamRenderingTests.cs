@@ -219,7 +219,8 @@ public class LevelEditorUpstreamRenderingTests
 
     /// <summary>
     /// Upstream's hit proxy pass redraws a surface with LEEffect's own depth state (reversed-Z GreaterEqual, no write) after its base pass:
-    /// the frontmost pixels get the selection tint and game-shaded alpha marker, and the hit ID, whether or not the base pass wrote depth
+    /// the frontmost pixels get the game-shaded alpha marker (their colour, selection tint included, is the base pass's) and the hit ID,
+    /// whether or not the base pass wrote depth
     /// </summary>
     [DataTestMethod]
     [DataRow(true)]
@@ -301,7 +302,8 @@ float4 PSMain(float4 position : SV_POSITION) : SV_TARGET0
 
             Vector4[] colors = ReadPixels(color);
             Vector4[] hits = ReadPixels(hit);
-            AssertPixel(new Vector4(0.2f, 0.4f, 1.2f, 2), colors[1]);
+            // Only alpha (the game-shaded marker) is written: the game's shaders tint selections themselves (SelectionColor)
+            AssertPixel(new Vector4(0.25f, 0.5f, 0.75f, 2), colors[1]);
             AssertPixel(new Vector4(hitConstants.HitProxyID, 1), hits[1]);
             AssertPixel(colors[1], colors[0]);
             AssertPixel(hits[1], hits[0]);

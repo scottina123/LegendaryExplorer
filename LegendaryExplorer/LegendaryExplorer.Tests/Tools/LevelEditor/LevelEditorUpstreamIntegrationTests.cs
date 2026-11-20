@@ -29,6 +29,11 @@ public class LevelEditorUpstreamIntegrationTests
         using var volumetric = new TestActor(editor, export, volumetric: true);
         // The window's View options > Show > Hidden actors (upstream's default is off)
         context.ShowHidden = true;
+        // Upstream shows the Volumes and Volumetric meshes categories by default; the fork's View options can still hide them
+        Assert.IsTrue(context.ShowVolumes);
+        Assert.IsTrue(context.ShowVolumetrics);
+        context.ShowVolumes = false;
+        context.ShowVolumetrics = false;
 
         Assert.IsTrue(context.IsActorVisible(hidden));
         Assert.IsFalse(context.IsActorVisible(volume));

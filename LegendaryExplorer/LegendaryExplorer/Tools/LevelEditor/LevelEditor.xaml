@@ -496,6 +496,8 @@
                                           ToolTip="Show actors and components that are hidden in game (bHidden, HiddenGame)"/>
                                 <CheckBox Content="Collision" Margin="4,1" IsChecked="{Binding ShowCollision}"
                                           ToolTip="Draw collision geometry"/>
+                                <CheckBox Content="Selection outline" Margin="4,1" IsChecked="{Binding ShowSelectionOutline}"
+                                          ToolTip="Outline the selected actor, as well as tinting it"/>
                                 <CheckBox Content="Selected light's reach" Margin="4,1,4,5" IsChecked="{Binding ShowLightReach}"
                                           ToolTip="Tint and outline the meshes the selected light is eligible to light"/>
 

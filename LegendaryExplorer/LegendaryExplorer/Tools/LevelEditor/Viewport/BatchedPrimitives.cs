@@ -54,7 +54,7 @@ public class BatchedPrimitives(bool depthTested = false)
         if (LineVerts.Count is 0 && MeshVerts.Count is 0) return; 
 
         if (clearDepth) context.ClearDepthBuffer();
-        context.RenderFlags |= RenderContext.ShaderFlags.PrimitiveRendering;
+        context.RenderFlags |= RenderContext.ShaderFlags.PrimitiveRendering | (clearDepth ? RenderContext.ShaderFlags.Overlay : RenderContext.ShaderFlags.None);
         context.DefaultEffect.PrepDraw(context.ImmediateContext, context.AlphaBlendState, context.GetWorldConstants(Matrix4x4.Identity));
         context.DefaultEffect.PrepPrimitiveBuffers(context, CollectionsMarshal.AsSpan(LineVerts), CollectionsMarshal.AsSpan(MeshVerts), CollectionsMarshal.AsSpan(MeshIndices));
 
@@ -89,7 +89,7 @@ public class BatchedPrimitives(bool depthTested = false)
         MeshIndices.Clear();
         MeshStarts.Clear();
 
-        context.RenderFlags &= ~RenderContext.ShaderFlags.PrimitiveRendering;
+        context.RenderFlags &= ~(RenderContext.ShaderFlags.PrimitiveRendering | RenderContext.ShaderFlags.Overlay);
     }
 
     public readonly ref struct MeshBuilder

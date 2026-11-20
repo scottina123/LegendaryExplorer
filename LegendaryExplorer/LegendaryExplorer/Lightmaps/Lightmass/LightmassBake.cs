@@ -544,7 +544,7 @@ public static class LightmassBake
             rewriter.UseTfc(tfc);
             var summary = rewriter.RewriteAll(settings.RepacksLightmaps);
             string rewrite = Lap();
-            LightmassMappingAllocator.Write(package, tfc, scene, result.Results, summary);
+            LightmassMappingAllocator.Write(package, tfc, scene, result.Results, summary, cache, settings.ColourPixelFormat ?? "PF_DXT1");
             string allocate = Lap();
             result.Rewrites[package] = summary;
             log($"{package.FileNameNoExtension}: {LightmassBakeReport.LightmapLine(summary)} (lightmaps {rewrite}: {summary.Timing}; new mappings {allocate}; {LightmassLocalSolve.MemoryNote()})");

@@ -289,6 +289,7 @@ public partial class LevelEditor : NotifyPropertyChangedWindowBase, IActorEditor
         RenderContext.CullingFrustum = UseFrustumCulling ? viewFrustum : null;
         RenderContext.ShowHidden = ShowHidden;
         PrepareForkVisibility();
+        RenderContext.OutlinedHitID = ShowSelectionOutline && selectedActor is not null ? selectedActor.HitID : -1;
         visibleActors.Clear();
         foreach (ActorProxy actor in RenderContext.DrawList_3D)
         {
@@ -417,6 +418,50 @@ public partial class LevelEditor : NotifyPropertyChangedWindowBase, IActorEditor
         if (focus && selectedActor is { HasSpatialRepresentation: true })
         {
             FocusOnBounds(selectedActor.GetBounds());
+        }
+    }
+
+    //UE3's editor viewports are top, front, side and perspective. Shipping levels with views mostly have a camera only in the perspective one
+    private const int PerspectiveEditorView = 3;
+
+    /// <summary>
+    /// Where the camera starts when <paramref name="levelExport"/> is the first file opened: where it was when the recent set being opened was last closed,
+    /// else the level's own perspective editor view, else looking over the whole scene
+    /// </summary>
+    private void PlaceStartingCamera(ExportEntry levelExport)
+    {
+        if (pendingRecentCamera is { } recent)
+        {
+            PlaceCamera(new Vector3(recent.X, recent.Y, recent.Z), recent.Pitch, recent.Yaw);
+        }
+        else if (levelExport.Parent is ExportEntry { ClassName: "World" } worldExport
+                 && worldExport.GetBinaryData<World>().EditorViews[PerspectiveEditorView] is { } view
+                 && (view.CamPosition != Vector3.Zero || view.CamRotation != new Rotator(0, 0, 0)))
+        {
+            //(stored rotators aren't normalized: a pitch of 60000 is -5536)
+            float pitch = ((int)unchecked((short)view.CamRotation.Pitch)).UnrealRotationUnitsToRadians();
+            PlaceCamera(view.CamPosition, pitch, view.CamRotation.Yaw.UnrealRotationUnitsToRadians());
+        }
+        else
+        {
+            CenterView();
+        }
+    }
+
+    /// <summary>
+    /// Puts the perspective camera at <paramref name="position"/>, looking along <paramref name="pitch"/> and <paramref name="yaw"/> (radians).
+    /// The top view is placed over it, clipped at its height, and switching back to perspective returns to it
+    /// </summary>
+    private void PlaceCamera(Vector3 position, float pitch, float yaw)
+    {
+        SceneCamera camera = RenderContext.Camera;
+        camera.Position = position;
+        camera.Pitch = pitch.Clamp(-MathF.PI / 2 + 0.01f, MathF.PI / 2 - 0.01f);
+        camera.Yaw = yaw;
+        if (camera.IsOrthographic)
+        {
+            camera.SavePerspectiveState();
+            PlaceOrthographicCamera(position.X, position.Y, position.Z);
         }
     }
 
@@ -1105,6 +1150,18 @@ public partial class LevelEditor : NotifyPropertyChangedWindowBase, IActorEditor
 
     private string _currentModeName = "Translate";
     public string CurrentModeName { get => _currentModeName; set => SetProperty(ref _currentModeName, value); }
+
+    /// <summary>Outline the selected actor in the viewport, kept between sessions</summary>
+    public bool ShowSelectionOutline
+    {
+        get => Settings.LevelEditor_ShowSelectionOutline;
+        set
+        {
+            if (Settings.LevelEditor_ShowSelectionOutline == value) return;
+            Settings.LevelEditor_ShowSelectionOutline = value;
+            OnPropertyChanged();
+        }
+    }
 
     /// <summary>Units per second the camera flies at, kept between sessions</summary>
     public float CameraSpeed

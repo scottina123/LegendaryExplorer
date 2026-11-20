@@ -884,6 +884,7 @@ public static class ToolSet
         set.Add(new Tool
         {
             name = "Lightmass Baker",
+            Abbreviation = "lmb",
             type = typeof(Tools.LightmassBaker.LightmassBakerWindow),
             icon = Application.Current.FindResource("iconLightmassBaker") as ImageSource,
             open = () =>
