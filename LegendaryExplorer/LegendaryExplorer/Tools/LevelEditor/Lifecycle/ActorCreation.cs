@@ -197,15 +197,27 @@ public static class ActorCreation
     internal static string Refusal(OpenLevelFile file, string className, PackageCache cache, out IEntry actorClass)
     {
         actorClass = null;
+        if (RecipeFor(className) is null) return $"There's no recipe for a new {className}.";
+        return FileRefusal(file) ?? Refusal(file.Package, className, cache, out actorClass);
+    }
+
+    /// <summary>
+    /// Why a new <paramref name="className"/> couldn't be made in <paramref name="package"/>, or null, for a caller with no Level Editor file open (the Package
+    /// Editor's Upgrade to Actor)
+    /// </summary>
+    /// <param name="actorClass">Its class, if it can be made</param>
+    internal static string Refusal(IMEPackage package, string className, PackageCache cache, out IEntry actorClass)
+    {
+        actorClass = null;
         if (RecipeFor(className) is not { } recipe) return $"There's no recipe for a new {className}.";
-        if (FileRefusal(file) is { } refusal) return refusal;
-        try { actorClass = FindClass(file.Package, className, cache); }
+        if (!package.Game.IsLEGame()) return "Only the Legendary Edition's actors can be created.";
+        try { actorClass = FindClass(package, className, cache); }
         catch (Exception error) when (error is not OutOfMemoryException) { return $"Its class couldn't be read: {error.Message}"; }
-        if (actorClass is null) return $"{file.Package.Game} has no {className} class.";
+        if (actorClass is null) return $"{package.Game} has no {className} class.";
         if (recipe.ComponentProperty is { } property
             && (ComponentTemplate(actorClass, property, cache) is not { } template || recipe.AcceptsComponent?.Invoke(template) == false))
             return $"{className}'s class default has no {property} to make its own from.";
-        return ImportRefusal(actorClass, file.Package);
+        return ImportRefusal(actorClass, package);
     }
 
     /// <summary>

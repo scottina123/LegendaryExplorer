@@ -772,15 +772,32 @@
                                 <Grid HorizontalAlignment="Stretch" Margin="0" x:Name="ExportContainer" Background="Transparent" ToolTip="{Binding CoverageToolTip}">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="Auto"/>
                                         <ColumnDefinition Width="*"/>
                                     </Grid.ColumnDefinitions>
                                     <Grid.RowDefinitions>
                                         <RowDefinition Height="Auto"/>
                                         <RowDefinition Height="Auto"/>
                                     </Grid.RowDefinitions>
-                                    <TextBlock Grid.Row="0" Grid.Column="0" Text="{Binding IndexLabel}" VerticalAlignment="Center" Margin="0,0,5,0" FontWeight="Bold" ToolTip="Export index"/>
-                                    <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding DisplayText}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
-                                    <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding DisplaySubtitle}" FontSize="10" Foreground="{DynamicResource SecondaryTextBrush}"
+                                    <Button Grid.Row="0" Grid.RowSpan="2" Grid.Column="0" Margin="0,0,4,0" Padding="2" VerticalAlignment="Center"
+                                            Command="{Binding Data.OpenActorInPackageEditorCommand, Source={StaticResource bindingProxy}}" CommandParameter="{Binding}"
+                                            ToolTip="Open in Package Editor" AutomationProperties.Name="Open in Package Editor"
+                                            Background="Transparent" BorderThickness="0" Focusable="False">
+                                        <Image Source="{StaticResource iconPackageEditor16}" Width="14" Height="14">
+                                            <Image.Style>
+                                                <Style TargetType="Image">
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsEnabled, RelativeSource={RelativeSource AncestorType=Button}}" Value="False">
+                                                            <Setter Property="Opacity" Value="0.35"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Image.Style>
+                                        </Image>
+                                    </Button>
+                                    <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding IndexLabel}" VerticalAlignment="Center" Margin="0,0,5,0" FontWeight="Bold" ToolTip="Export index"/>
+                                    <TextBlock Grid.Row="0" Grid.Column="2" Text="{Binding DisplayText}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                    <TextBlock Grid.Row="1" Grid.Column="2" Text="{Binding DisplaySubtitle}" FontSize="10" Foreground="{DynamicResource SecondaryTextBrush}"
                                                TextTrimming="CharacterEllipsis" ToolTip="{Binding DisplaySubtitle}"
                                                Visibility="{Binding DisplaySubtitle, Converter={StaticResource NullVisibilityConverter}}"/>
                                 </Grid>

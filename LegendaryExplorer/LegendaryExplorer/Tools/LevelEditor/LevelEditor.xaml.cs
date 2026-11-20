@@ -721,6 +721,7 @@ public partial class LevelEditor : NotifyPropertyChangedWindowBase, IActorEditor
     public ICommand FocusSelectedCommand { get; set; }
     public ICommand ToggleLocalCoordsCommand { get; set; }
     public ICommand OpenInPackageEditorCommand { get; set; }
+    public ICommand OpenActorInPackageEditorCommand { get; set; }
     public ICommand OpenRecentSetCommand { get; set; }
     public ICommand UndoCommand { get; set; }
     public ICommand RedoCommand { get; set; }
@@ -838,6 +839,11 @@ public partial class LevelEditor : NotifyPropertyChangedWindowBase, IActorEditor
         {
             if (SelectedActor?.Export is { } export) OpenInPackageEditor(export);
         }, () => CanEditScene && PackageIsLoaded() && SelectedActor is { PackageEditorRefusal: null });
+        // The World Outliner's inline button: opens its row's actor, whichever is selected
+        OpenActorInPackageEditorCommand = new RelayCommand(parameter =>
+        {
+            if (parameter is ActorProxy { Export: { } export }) OpenInPackageEditor(export);
+        }, parameter => PackageIsLoaded() && parameter is ActorProxy { Export: not null, PackageEditorRefusal: null });
         OpenRecentSetCommand = new RelayCommand(obj => { if (obj is RecentFileSet set) OpenRecentFileSet(set); });
         UndoCommand = new GenericCommand(Undo);
         RedoCommand = new GenericCommand(Redo);

@@ -662,7 +662,7 @@ public static class ActorCloning
                 ?? throw new InvalidOperationException($"{snapshot.Game} has no {className} class.");
             // Its Actors are the snapshot's, which isn't written
             root = CollectionMemberUpgrade.MakeActor(clone, Saved((ExportEntry)source.Parent), snapshotLevel, snapshotLevel.GetBinaryData<Level>(), actorClass,
-                copy is ILightProxy, copy);
+                copy is ILightProxy, CollectionMemberUpgrade.Placement.Of(copy));
             root.ObjectName = name;
         }
         var brushes = PrepareForAnotherLevel(root, Saved(sourceLevel));

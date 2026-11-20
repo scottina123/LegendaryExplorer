@@ -200,6 +200,11 @@
                       Click="AddMissingTexturesToInstancesMap_Click"
                       Tag="AddMissingTexturesToInstancesMap"
                       Visibility="Collapsed"/>
+            <MenuItem Header="Upgrade to Actor"
+                      ToolTip="Makes this collection member an actor of its own: the StaticMeshActor or light it was cooked from, keeping its component, lighting and position. The collection no longer lists it."
+                      Click="UpgradeToActor_Click"
+                      Tag="UpgradeToActor"
+                      Visibility="Collapsed"/>
             <MenuItem Header="Strip LightMap (EXPERIMENTAL)"
                       ToolTip="Removes embedded lightmap data from this StaticMeshComponent export."
                       Click="StripLightmap_Click"

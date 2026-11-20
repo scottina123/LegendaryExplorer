@@ -10,6 +10,7 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using LegendaryExplorer.Dialogs;
+using LegendaryExplorer.SharedUI;
 using LegendaryExplorer.Tools.AssetViewer;
 using LegendaryExplorer.Tools.PackageEditor.Experiments;
 using LegendaryExplorer.UserControls.ExportLoaderControls;
@@ -147,9 +148,6 @@ public partial class LevelEditor
                 Placement = PlacementMode.MousePoint
             };
 
-            contextMenu.Items.Add(BuildCreateActorMenu(GetViewportLocationAtSelectedActorDepth(viewportPoint)));
-            contextMenu.Items.Add(new Separator());
-
             var snapItem = new MenuItem
             {
                 Header = "Snap Selected Actor Here",
@@ -178,13 +176,6 @@ public partial class LevelEditor
         };
         ExportEntry actorExport = actor.Export;
         bool canEdit = CanEditScene && !actor.IsReadOnly;
-
-        if (viewportPoint.HasValue && CanEditScene)
-        {
-            contextMenu.Items.Add(BuildCreateActorMenu(GetViewportLocationAtDepth(viewportPoint.Value,
-                actor.HasSpatialRepresentation ? actor.Location : RenderContext.Camera.EyePosition + RenderContext.Camera.CameraForward * 100f)));
-            contextMenu.Items.Add(new Separator());
-        }
 
         if (actorExport is not null)
         {
@@ -225,7 +216,8 @@ public partial class LevelEditor
             contextMenu.Items.Add(PasteMenuItem(contextMenu));
             if (actor.IsCollectionMember)
             {
-                contextMenu.Items.Add(CommandMenuItem("Upgrade to Actor", UpgradeActorCommand, actor, actor.UpgradeRefusal, null, null));
+                contextMenu.Items.Add(CommandMenuItem("Upgrade to Actor", UpgradeActorCommand, actor, actor.UpgradeRefusal, null,
+                    "Makes this collection member an actor of its own (the StaticMeshActor or light it was cooked from) now. If it has other uncommitted changes, it's made one when changes are committed"));
             }
             contextMenu.Items.Add(new Separator());
         }
@@ -893,116 +885,24 @@ public partial class LevelEditor
 
     #endregion
 
-    #region Create submenu
+    #region Sky Light and Point of Interest (the Place Actors tab's Other section)
 
-    private MenuItem BuildCreateActorMenu(Vector3 location)
-    {
-        OpenLevelFile targetFile = CreateTargetFile;
-        var createMenu = new MenuItem
-        {
-            Header = "Create",
-            IsEnabled = targetFile is not null && CanEditScene,
-            ToolTip = targetFile is null ? "No writable level is open" : $"New actors go in {targetFile.FileName} (the Place Actors tab's level)"
-        };
-        ToolTipService.SetShowOnDisabled(createMenu, true);
+    private ICommand createSkyLightCommand, createPointOfInterestCommand;
 
-        var drawVolumeItem = new MenuItem { Header = "Draw Volume Here", IsEnabled = Game.IsLEGame() };
-        drawVolumeItem.Click += (_, _) => BeginVolumeDrawing(location);
-        createMenu.Items.Add(drawVolumeItem);
+    /// <summary>Place Actors → Other → SkyLight: a SkyLight in front of the camera</summary>
+    public ICommand CreateSkyLightCommand => createSkyLightCommand ??=
+        new GenericCommand(() => CreateSkyLight(InFrontOfCamera), () => CanEditScene && CreateTargetFile is not null);
 
-        var interpActorItem = new MenuItem { Header = "Interp Actor..." };
-        interpActorItem.Click += (_, _) => CreateMeshActor("InterpActor", location);
-        createMenu.Items.Add(interpActorItem);
+    /// <summary>Place Actors → Other → SFXPointOfInterest: one in front of the camera (Mass Effect 3)</summary>
+    public ICommand CreatePointOfInterestCommand => createPointOfInterestCommand ??=
+        new GenericCommand(() => CreatePointOfInterest(InFrontOfCamera), () => CanEditScene && CreateTargetFile is { } file && file.Package.Game.IsGame3());
 
-        var staticMeshActorItem = new MenuItem { Header = "Static Mesh Actor..." };
-        staticMeshActorItem.Click += (_, _) => CreateMeshActor("StaticMeshActor", location);
-        createMenu.Items.Add(staticMeshActorItem);
+    private Vector3 InFrontOfCamera => RenderContext.Camera.EyePosition + RenderContext.Camera.CameraForward * 500;
 
-        var emitterItem = new MenuItem { Header = "Emitter..." };
-        emitterItem.Click += (_, _) => CreateEmitter(location);
-        createMenu.Items.Add(emitterItem);
-
-        var pointOfInterestItem = new MenuItem { Header = "Point of Interest", IsEnabled = Game.IsGame3() };
-        pointOfInterestItem.Click += (_, _) => CreatePointOfInterest(location);
-        createMenu.Items.Add(pointOfInterestItem);
-
-        var pointLightItem = new MenuItem { Header = "Point Light" };
-        pointLightItem.Click += (_, _) => PlaceCreatedActor("PointLight", location);
-        createMenu.Items.Add(pointLightItem);
-
-        var spotLightItem = new MenuItem { Header = "Spot Light" };
-        spotLightItem.Click += (_, _) => PlaceCreatedActor("SpotLight", location);
-        createMenu.Items.Add(spotLightItem);
-
-        var directionalLightItem = new MenuItem { Header = "Directional Light" };
-        directionalLightItem.Click += (_, _) => PlaceCreatedActor("DirectionalLight", location);
-        createMenu.Items.Add(directionalLightItem);
-
-        var skyLightItem = new MenuItem { Header = "Sky Light" };
-        skyLightItem.Click += (_, _) => CreateSkyLight(location);
-        createMenu.Items.Add(skyLightItem);
-
-        return createMenu;
-    }
-
-    /// <summary>The level the Create submenu's actors go in: the Place Actors tab's, if it's writable, else the active file, if that is</summary>
+    /// <summary>The level Sky Light and Point of Interest go in: the Place Actors tab's, if it's writable, else the active file, if that is</summary>
     private OpenLevelFile CreateTargetFile =>
         PlacementFile is { IsReadOnly: false } placement && OpenFiles.Contains(placement) ? placement
         : ActiveFile is { IsReadOnly: false } active ? active : null;
-
-    /// <summary>
-    /// Creates <paramref name="className"/> at <paramref name="location"/> with upstream's placement (a draft, committed with the other changes, as one
-    /// undo step), using <paramref name="asset"/> if its class needs one
-    /// </summary>
-    private void PlaceCreatedActor(string className, Vector3 location, AssetReference asset = null)
-    {
-        if (!CanMutateScene || CreateTargetFile is not { } file) return;
-        try
-        {
-            pickInUse = asset;
-            var widget = RenderContext.TransformWidget;
-            UndoHistory.Push(ActorCreation.Place(this, file, className, location, widget.TranslateSnapEnabled ? widget.TranslateSnapValue : 0, asset));
-        }
-        catch (Exception error) when (error is not OutOfMemoryException)
-        {
-            MessageBox.Show(this, error.Message, $"Create {className}");
-        }
-        finally { ReleaseUnusedPick(); }
-    }
-
-    /// <summary>Static Mesh Actor / Interp Actor: the mesh is chosen with the fork's static mesh picker; the actor is placed as upstream places one</summary>
-    private void CreateMeshActor(string className, Vector3 location)
-    {
-        if (!CanMutateScene || CreateTargetFile is not { } file) return;
-        var picker = new StaticMeshPickerDialog(Game, file.Package, this);
-        if (picker.ShowDialog() != true || picker.SelectedResult is not { } pick) return;
-        AssetReference asset;
-        try { asset = ForkPickToAsset(pick, file.Package); }
-        catch (Exception error) when (error is not OutOfMemoryException)
-        {
-            MessageBox.Show(this, error.Message, $"Create {className}");
-            ReleaseUnusedPick();
-            return;
-        }
-        PlaceCreatedActor(className, location, asset);
-    }
-
-    /// <summary>Emitter: the particle system is chosen with the fork's particle system picker (with its VFX preview); the actor is placed as upstream places one</summary>
-    private void CreateEmitter(Vector3 location)
-    {
-        if (!CanMutateScene || CreateTargetFile is not { } file) return;
-        var picker = new ParticleSystemPickerDialog(Game, file.Package, this);
-        if (picker.ShowDialog() != true || picker.SelectedResult is not { } pick) return;
-        AssetReference asset;
-        try { asset = ForkPickToAsset(pick, file.Package); }
-        catch (Exception error) when (error is not OutOfMemoryException)
-        {
-            MessageBox.Show(this, error.Message, "Create Emitter");
-            ReleaseUnusedPick();
-            return;
-        }
-        PlaceCreatedActor("Emitter", location, asset);
-    }
 
     //a new actor the fork's Create menu writes to the package, which the preview refresh adds to the scene: selected once it's there
     private (IMEPackage Package, int UIndex)? _pendingForkSelect;

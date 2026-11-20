@@ -25,6 +25,7 @@
         </StackPanel>
         <TextBlock DockPanel.Dock="Bottom" Text="{Binding PlacementStatus}" Visibility="{Binding PlacementStatus, Converter={StaticResource NullVisibilityConverter}}" TextWrapping="Wrap" Foreground="{StaticResource EditorMuted}" Margin="9,7"/>
         <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Margin="0,6,0,0">
+            <StackPanel>
             <ItemsControl ItemsSource="{Binding PlacementOptions}" Margin="8,0,8,8" Focusable="False">
                 <ItemsControl.GroupStyle>
                     <GroupStyle>
@@ -80,6 +81,28 @@
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
+            <!-- Classes upstream has no placement recipe for: the fork writes them to the level straight away, in front of the camera -->
+            <Border Background="{StaticResource EditorRaised}" Padding="8,6" Margin="8,5,8,1">
+                <DockPanel>
+                    <fa:ImageAwesome Icon="Solid_EllipsisH" Width="12" Height="12" Margin="0,0,7,0"/>
+                    <TextBlock Text="Other" FontWeight="SemiBold"/>
+                </DockPanel>
+            </Border>
+            <Button Command="{Binding CreateSkyLightCommand}" HorizontalContentAlignment="Stretch" Padding="8,5" Margin="8,1,8,0"
+                    ToolTip="Adds a SkyLight in front of the camera. It's written to the level now, not as an uncommitted change" AutomationProperties.Name="Create SkyLight">
+                <StackPanel>
+                    <TextBlock Text="SkyLight" FontWeight="SemiBold"/>
+                    <TextBlock Text="Light from the whole sky, above and below. Baked" TextWrapping="Wrap" Foreground="{StaticResource EditorMuted}" FontSize="11" Margin="0,2,0,0"/>
+                </StackPanel>
+            </Button>
+            <Button Command="{Binding CreatePointOfInterestCommand}" HorizontalContentAlignment="Stretch" Padding="8,5" Margin="8,1,8,8"
+                    ToolTip="Adds an SFXPointOfInterest in front of the camera (Mass Effect 3 only). It's written to the level now, not as an uncommitted change" AutomationProperties.Name="Create SFXPointOfInterest">
+                <StackPanel>
+                    <TextBlock Text="SFXPointOfInterest" FontWeight="SemiBold"/>
+                    <TextBlock Text="Something the player can look at or use (Mass Effect 3)" TextWrapping="Wrap" Foreground="{StaticResource EditorMuted}" FontSize="11" Margin="0,2,0,0"/>
+                </StackPanel>
+            </Button>
+            </StackPanel>
         </ScrollViewer>
     </DockPanel>
 </UserControl>

@@ -133,11 +133,41 @@ public partial class LevelEditor
         };
     }
 
+    /// <summary>
+    /// Upgrade to Actor. A member with nothing else pending is upgraded in its package straight away, as the fork's other menu edits write (and as the
+    /// Package Editor's Upgrade to Actor does), and its view replaced by the actor's. A copy that isn't committed yet, or a member with other uncommitted
+    /// changes (which are written to it as a member), is upgraded by the next commit instead
+    /// </summary>
     private void UpgradeActor(object parameter)
     {
         if (!CanMutateScene || (parameter as ActorProxy ?? SelectedActor) is not { } member) return;
-        try { UndoHistory.Push(CollectionMemberUpgrade.Upgrade(member)); }
-        catch (Exception error) when (error is not OutOfMemoryException) { MessageBox.Show(this, error.Message, "Upgrade to actor"); }
+        try
+        {
+            if (member.IsDraft || member.HasChangesBesidesUpgrade || member.Export is null)
+            {
+                UndoHistory.Push(CollectionMemberUpgrade.Upgrade(member));
+                MessageBox.Show(this, $"{member.ActorName} has uncommitted changes, so it becomes an actor when changes are committed.", "Upgrade to Actor");
+                return;
+            }
+            if (member.UpgradeRefusal is { } refusal) throw new InvalidOperationException(refusal);
+            var actorExport = CollectionMemberUpgrade.UpgradeInPackage(member.Export, RenderContext.PackageCache);
+            ReplaceUpgradedMember(member, actorExport);
+            UpdateGlobalDirtyState();
+        }
+        catch (Exception error) when (error is not OutOfMemoryException) { MessageBox.Show(this, error.Message, "Upgrade to Actor"); }
+    }
+
+    /// <summary>Replaces the view of a member whose component is now <paramref name="actorExport"/>'s with a view of that actor, which stays selected if the member was</summary>
+    private void ReplaceUpgradedMember(ActorProxy member, ExportEntry actorExport)
+    {
+        var file = member.OwningFile;
+        bool selected = SelectedActor == member;
+        if (selected) SelectedActor = null;
+        RemoveActor(member);
+        var actor = ActorProxy.Create(this, actorExport);
+        actor.OwningFile = file;
+        AddActor(actor);
+        if (selected) SelectedActor = actor;
     }
 
     /// <summary>
@@ -189,6 +219,10 @@ public partial class LevelEditor
             // It's made on this thread, and with pending deletions it includes a scan of each package for references. Only the cursor shows it: drawing
             // the busy overlay first would mean running the dispatcher's queue in the middle of the commit
             Exception failure = null;
+            // Collection members the commit makes actors of (Upgrade to Actor, or a decal that needs one). Their views are of the member, so they're
+            // replaced by views of the actors afterwards, as a migrated actor's is. A copy of a member is drawn from its new export like any other copy
+            var moved = migration.Moves.Select(m => (ActorProxy)m.Actor).ToHashSet();
+            var upgrading = files.SelectMany(f => f.Actors).Where(a => a.UpgradePending && !a.IsDraft && a.Export is not null && !moved.Contains(a)).ToList();
             Mouse.OverrideCursor = Cursors.Wait;
             try { ActorCommit.Commit(OpenFiles.Where(files.Contains).ToList(), migration.Apply, migration.Moves.Select(m => (ActorProxy)m.Actor).ToHashSet(), sources); }
             catch (Exception error) when (error is not OutOfMemoryException) { failure = error; }
@@ -212,6 +246,11 @@ public partial class LevelEditor
                 actor.OwningFile = OpenFiles.Single(f => f.Package == move.Destination);
                 AddActor(actor);
                 if (move == selectedMove) SelectedActor = actor;
+            }
+            foreach (var member in upgrading)
+            {
+                // The commit moved the member's component under the actor it made (CollectionMemberUpgrade.MakeActor)
+                if (member.Export.Parent is ExportEntry actorExport && actorExport != member.MemberCollection) ReplaceUpgradedMember(member, actorExport);
             }
         }
         UpdateGlobalDirtyState();

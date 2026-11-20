@@ -8809,6 +8809,43 @@ namespace LegendaryExplorer.Tools.PackageEditor
             });
         }
 
+        /// <summary>
+        /// Upgrade to Actor: makes the selected collection member (a StaticMeshComponent or light component of a StaticMeshCollectionActor or
+        /// StaticLightCollectionActor) the actor it was cooked from, as the Level Editor's Upgrade to Actor does on commit (CollectionMemberUpgrade)
+        /// </summary>
+        private void UpgradeToActor_Click(object sender, RoutedEventArgs e)
+        {
+            ExportEntry export = null;
+            if (sender is MenuItem { Parent: ContextMenu contextMenu } && TryGetContextMenuExport(contextMenu, out var contextExport))
+            {
+                export = contextExport;
+            }
+            else
+            {
+                TryGetSelectedExport(out export);
+            }
+            if (export is null || !Tools.LevelEditor.CollectionMemberUpgrade.IsCollectionMember(export))
+            {
+                MessageBox.Show(this, "Select a member of a StaticMeshCollectionActor or StaticLightCollectionActor.", "Upgrade to Actor",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            ExportEntry actor;
+            try
+            {
+                using var cache = new PackageCache();
+                actor = Tools.LevelEditor.CollectionMemberUpgrade.UpgradeInPackage(export, cache);
+            }
+            catch (Exception error) when (error is not OutOfMemoryException)
+            {
+                MessageBox.Show(this, $"{export.ObjectName.Instanced} couldn't be upgraded to an actor:\n\n{error.Message}", "Upgrade to Actor",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+            GoToNumber(actor.UIndex);
+        }
+
         private void StripLightmap_Click(object sender, RoutedEventArgs e)
         {
             ExportEntry export = null;
@@ -9010,6 +9047,13 @@ namespace LegendaryExplorer.Tools.PackageEditor
             if (stripShadowmapMenuItem is not null)
             {
                 stripShadowmapMenuItem.Visibility = hasExport && CanStripShadowmap(export)
+                    ? Visibility.Visible
+                    : Visibility.Collapsed;
+            }
+
+            if (contextMenu.Items.OfType<MenuItem>().FirstOrDefault(item => Equals(item.Tag, "UpgradeToActor")) is { } upgradeToActorMenuItem)
+            {
+                upgradeToActorMenuItem.Visibility = hasExport && Tools.LevelEditor.CollectionMemberUpgrade.IsCollectionMember(export)
                     ? Visibility.Visible
                     : Visibility.Collapsed;
             }

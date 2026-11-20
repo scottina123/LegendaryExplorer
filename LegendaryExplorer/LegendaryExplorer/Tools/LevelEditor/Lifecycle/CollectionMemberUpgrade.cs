@@ -45,12 +45,70 @@ public static class CollectionMemberUpgrade
     /// <summary>Why <paramref name="member"/> can't become an actor in any file, or null: the actor it was cooked from can't be made again</summary>
     internal static string OriginRefusal(ActorProxy member) => OriginRefusal(member, out _);
 
-    private static string OriginRefusal(ActorProxy member, out IEntry origin)
+    // A copy's component is its source's, archetype and all, until its commit clones it
+    private static string OriginRefusal(ActorProxy member, out IEntry origin) => OriginRefusal(member.Export ?? member.CloneSource, member is ILightProxy, out origin);
+
+    private static string OriginRefusal(ExportEntry component, bool isLight, out IEntry origin)
     {
-        // A copy's component is its source's, archetype and all, until its commit clones it
-        if ((origin = Origin(member.Export ?? member.CloneSource)) is null) return "Its archetype doesn't show what actor it came from.";
-        bool remade = member is ILightProxy ? LightActorProxy.StandaloneClasses.Contains(origin.ClassName) : origin.ClassName == "StaticMeshActor";
+        if ((origin = Origin(component)) is null) return "Its archetype doesn't show what actor it came from.";
+        bool remade = isLight ? LightActorProxy.StandaloneClasses.Contains(origin.ClassName) : origin.ClassName == "StaticMeshActor";
         return remade ? null : $"It came from a {origin.ClassName}, which can't be made again.";
+    }
+
+    /// <summary>Where an actor made from a member goes, and how it's scaled: the member's view, a copy's, or the member's transform in its collection</summary>
+    internal readonly record struct Placement(Vector3 Location, Rotator Rotation, float DrawScale, Vector3 DrawScale3D, Vector3 PrePivot)
+    {
+        internal static Placement Of(ActorProxy actor) => new(actor.Location, actor.Rotation, actor.DrawScale, actor.DrawScale3D, actor.PrePivot);
+
+        /// <summary>The member's transform in its collection, read as the Level Editor reads a member (CollectionActorComponentProxy): a uniform scale is a DrawScale</summary>
+        internal static Placement OfMember(StaticCollectionActor collection, int index)
+        {
+            var (location, scale, rotation) = collection.GetDecomposedTransformationForIndex(index);
+            return scale.X == scale.Y && scale.X == scale.Z
+                ? new Placement(location, rotation, scale.X, Vector3.One, Vector3.Zero)
+                : new Placement(location, rotation, 1f, scale, Vector3.Zero);
+        }
+    }
+
+    /// <summary>Whether <paramref name="component"/> is a member of a static mesh or light collection, which <see cref="UpgradeInPackage"/> can make an actor of</summary>
+    public static bool IsCollectionMember(ExportEntry component) =>
+        component is { Parent: ExportEntry { ClassName: "StaticMeshCollectionActor" or "StaticLightCollectionActor" } }
+        && (component.IsA("StaticMeshComponent") || component.IsA("LightComponent"));
+
+    /// <summary>Why <paramref name="component"/> can't be upgraded by <see cref="UpgradeInPackage"/>, or null</summary>
+    public static string PackageRefusal(ExportEntry component, PackageCache cache) => PackageRefusal(component, cache, out _, out _);
+
+    private static string PackageRefusal(ExportEntry component, PackageCache cache, out IEntry actorClass, out ExportEntry levelExport)
+    {
+        actorClass = null;
+        levelExport = null;
+        if (!IsCollectionMember(component)) return "Only a static mesh or light collection's member can be upgraded to an actor.";
+        var collection = (ExportEntry)component.Parent;
+        if (ActorDeletionPlan.MembershipProblem(component, collection) is { } problem) return problem;
+        if (collection.Parent is not ExportEntry { ClassName: "Level" } level) return $"{collection.ObjectName.Instanced} isn't one of a level's actors.";
+        levelExport = level;
+        return OriginRefusal(component, component.IsA("LightComponent"), out var origin)
+            ?? ActorCreation.Refusal(component.FileRef, origin.ClassName, cache, out actorClass);
+    }
+
+    /// <summary>
+    /// The Package Editor's Upgrade to Actor: makes <paramref name="component"/>, a collection's member, the actor it was cooked from, in its package now (the
+    /// Level Editor's waits for Commit Changes). The same as a commit does: the actor is added to the level, the collection no longer lists the member, and
+    /// decals' Filters that listed it list the actor. Returns the actor
+    /// </summary>
+    /// <param name="cache">Where the actor's class is read from, if the package doesn't have it</param>
+    public static ExportEntry UpgradeInPackage(ExportEntry component, PackageCache cache)
+    {
+        if (PackageRefusal(component, cache, out var actorClass, out var levelExport) is { } refusal) throw new InvalidOperationException(refusal);
+        var collection = (ExportEntry)component.Parent;
+        var collectionBinary = (StaticCollectionActor)ObjectBinary.From(collection);
+        var placement = Placement.OfMember(collectionBinary, collectionBinary.Components.IndexOf(component.UIndex));
+        var level = levelExport.GetBinaryData<Level>();
+        var actor = MakeActor(component, collection, levelExport, level, actorClass, component.IsA("LightComponent"), placement);
+        levelExport.WriteBinary(level);
+        ActorDeletionPlan.RemoveMembers(collection, new HashSet<int> { component.UIndex });
+        UpdateFilters(component.FileRef, [(component, collection)]);
+        return actor;
     }
 
     /// <summary>Marks <paramref name="member"/> for upgrading, as one undo step for the caller to record. Its package is untouched until Commit Changes</summary>
@@ -76,23 +134,23 @@ public static class CollectionMemberUpgrade
         file.LevelExport.WriteBinary(level);
         foreach (var collection in members.GroupBy(m => m.MemberCollection))
             ActorDeletionPlan.RemoveMembers(collection.Key, collection.Select(m => m.Export.UIndex).ToHashSet());
-        UpdateFilters(file.Package, members);
+        UpdateFilters(file.Package, members.Select(m => (m.Export, m.MemberCollection)).ToArray());
     }
 
     /// <summary>
     /// Lists <paramref name="members"/> in decals' Filters as the actors they are now. A Filter the commit wrote, here or moved here, lists a member by its
     /// component, since its actor didn't exist yet (<see cref="DecalFilterSettings.Write"/>). One that lists a collection means its meshes, so those that left it stay listed
     /// </summary>
-    private static void UpdateFilters(IMEPackage package, ActorProxy[] members)
+    private static void UpdateFilters(IMEPackage package, (ExportEntry Component, ExportEntry Collection)[] members)
     {
         foreach (var decal in package.Exports.Where(e => e.IsA("DecalComponent")))
         {
             if (decal.GetProperty<ArrayProperty<ObjectProperty>>("Filter") is not { Count: > 0 } filter) continue;
             bool changed = false;
-            foreach (var member in members)
+            foreach (var (component, collection) in members)
             {
-                if (filter.FirstOrDefault(entry => entry.Value == member.Export.UIndex) is { } listed) listed.Value = member.Export.idxLink;
-                else if (filter.Any(entry => entry.Value == member.MemberCollection.UIndex)) filter.Add(new ObjectProperty(member.Export.idxLink));
+                if (filter.FirstOrDefault(entry => entry.Value == component.UIndex) is { } listed) listed.Value = component.idxLink;
+                else if (filter.Any(entry => entry.Value == collection.UIndex)) filter.Add(new ObjectProperty(component.idxLink));
                 else continue;
                 changed = true;
             }
@@ -107,7 +165,7 @@ public static class CollectionMemberUpgrade
             throw new InvalidOperationException($"{member.ActorName} can't be upgraded. {problem}");
         if (ActorCreation.Refusal(file, Origin(component).ClassName, member.Editor.RenderContext.PackageCache, out var actorClass) is { } refusal)
             throw new InvalidOperationException(refusal);
-        MakeActor(component, collection, file.LevelExport, level, actorClass, member is ILightProxy, member);
+        MakeActor(component, collection, file.LevelExport, level, actorClass, member is ILightProxy, Placement.Of(member));
     }
 
     /// <summary>
@@ -118,7 +176,7 @@ public static class CollectionMemberUpgrade
     /// </summary>
     /// <param name="level"><paramref name="levelExport"/>'s, which the actor is added to the Actors of. The caller writes it</param>
     internal static ExportEntry MakeActor(ExportEntry component, ExportEntry collection, ExportEntry levelExport, Level level, IEntry actorClass, bool isLight,
-        ActorProxy transform)
+        Placement transform)
     {
         var package = component.FileRef;
         var origin = Origin(component);
