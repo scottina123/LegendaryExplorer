@@ -39,6 +39,14 @@ namespace LegendaryExplorerCore.Unreal.BinaryConverters
                     animSeq.UpdateProps(newProps, newGame);
                 }
 
+                // A static decal's stored receivers (its geometry pre-clipped to the meshes it lands on, with their lighting) are the source
+                // game's. Game 3 draws them as stored until a receiver reattaches, and other games' data can cover far more than the decal
+                // (LE2 → LE3 Udina: dark leaf-shadow decals drawn across whole walls). Without them the game projects the decal at load.
+                else if (objbin is DecalComponent decal && export.Game != newGame && newGame.IsGame3())
+                {
+                    decal.StaticReceivers = [];
+                }
+
                 // IDK if this works as internal busses have changed identifiers.
                 // You likely would need to correct bus IDs internally for this to properly work.
                 // Todo: LE3 -> LE2
