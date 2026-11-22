@@ -424,6 +424,11 @@ namespace LegendaryExplorerCore.Packages.CloningImportingAndRelinking
                             if (testExp == null)
                                 testExp = donorPackage.FindExport(seIFP); // Try without specific class.
 
+                            // The database can list a file that doesn't hold the object at this path (it was looked up by a shortened
+                            // path, or the database is older than the file): try the next donor file
+                            if (testExp == null)
+                                continue;
+
                             // 07/20/2024 - support using object redirector for cleaner custom object insertion
                             if (testExp.ClassName.CaseInsensitiveEquals("ObjectRedirector"))
                             {
@@ -490,14 +495,22 @@ namespace LegendaryExplorerCore.Packages.CloningImportingAndRelinking
 
                     if (!isCached)
                     {
-                        // Not found in our cache, we need to locate this object and load it into the cache
-                        var dfp = Path.Combine(MEDirectories.GetDefaultGamePath(destPackage.Game), donorFiles[0]);
-                        if (rop.Cache.TryGetCachedPackage(dfp, true, out donorPackage))
+                        // Not found in our cache, we need to locate this object and load it into the cache: the first donor file that
+                        // actually holds it (the database can list files that don't hold it at this path)
+                        ExportEntry testExp = null;
+                        foreach (var donorFile in donorFiles)
                         {
-                            var testExp = donorPackage.FindExport(ifp, sourceExport.ClassName);
-                            if (testExp == null)
-                                testExp = donorPackage.FindExport(ifp); // Try without specific class, perhaps it changed across games.
+                            var dfp = Path.Combine(MEDirectories.GetDefaultGamePath(destPackage.Game), donorFile);
+                            if (!rop.Cache.TryGetCachedPackage(dfp, true, out donorPackage))
+                                continue;
+                            testExp = donorPackage.FindExport(ifp, sourceExport.ClassName)
+                                      ?? donorPackage.FindExport(ifp); // Try without specific class, perhaps it changed across games.
+                            if (testExp != null)
+                                break;
+                        }
 
+                        if (testExp != null)
+                        {
                             // 07/20/2024 - support using object redirector for cleaner custom object insertion
                             if (testExp.ClassName.CaseInsensitiveEquals("ObjectRedirector"))
                             {
