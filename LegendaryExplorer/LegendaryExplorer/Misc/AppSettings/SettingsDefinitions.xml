@@ -111,6 +111,9 @@
   <setting name="LevelEditor_CameraSpeed" type="int" defaultvalue="500"/>
   <setting name="LevelEditor_ShowSelectionOutline" type="bool" defaultvalue="false"/>
 
+  <!-- Lightmass Baker specific settings -->
+  <setting name="LightmassBaker_OpenPreviewAfterBake" type="bool" defaultvalue="true"/>
+
   <!-- AssetDB specific settings-->
   <setting name="AssetDB_DefaultGame" type="string" defaultvalue=""/>
   <setting name="AssetDBGame" type="string" defaultvalue="LE3"/>

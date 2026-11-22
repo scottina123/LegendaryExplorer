@@ -157,6 +157,8 @@
                 <Button DockPanel.Dock="Right" Content="Preview" Click="Preview_Click" IsEnabled="{Binding CanReview}" Padding="12,4" Margin="5,0,0,0"
                         ToolTip="Inspect the baked lighting. Close the preview window to save or discard."/>
                 <Button DockPanel.Dock="Right" Content="Bake" Click="Bake_Click" IsEnabled="{Binding CanBake}" Padding="20,4"/>
+                <CheckBox DockPanel.Dock="Right" Content="Open preview after baking" IsChecked="{Binding OpenPreviewAfterBake}" VerticalAlignment="Center" Margin="0,0,10,0"
+                          ToolTip="Opens the baked levels in a Level Editor preview as soon as the bake is ready. Turn off for scenes too large to preview: the bake then waits for Save Lighting or Discard, and Preview still opens it on request. Remembered."/>
                 <TextBlock Text="{Binding Status}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
             </DockPanel>
 

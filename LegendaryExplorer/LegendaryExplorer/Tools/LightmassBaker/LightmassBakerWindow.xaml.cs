@@ -271,6 +271,21 @@ public partial class LightmassBakerWindow : TrackingNotifyPropertyChangedWindowB
         set => SetProperty(ref recompileMaterialsWithoutLightmaps, value);
     }
 
+    /// <summary>
+    /// Open the Level Editor preview as soon as a bake is ready (remembered). Off: the bake stops at Save/Discard and Preview opens it on
+    /// request, for scenes too large to load in a preview.
+    /// </summary>
+    public bool OpenPreviewAfterBake
+    {
+        get => LegendaryExplorer.Misc.AppSettings.Settings.LightmassBaker_OpenPreviewAfterBake;
+        set
+        {
+            if (LegendaryExplorer.Misc.AppSettings.Settings.LightmassBaker_OpenPreviewAfterBake == value) return;
+            LegendaryExplorer.Misc.AppSettings.Settings.LightmassBaker_OpenPreviewAfterBake = value;
+            OnPropertyChanged();
+        }
+    }
+
     private LightmassBakeJob ToJob() => new()
     {
         Files = Files.Select(f => new LightmassBakeJobFile { Path = f.Path, Editable = f.Editable }).ToList(),
@@ -464,8 +479,9 @@ public partial class LightmassBakerWindow : TrackingNotifyPropertyChangedWindowB
             }
             else
             {
-                Status = result.Complete ? "Ready to preview. Save or discard after inspecting the lighting."
-                    : $"Ready to preview; {result.FailedTasks + result.MissingMappings} lightmaps weren't baked and keep their original lighting.";
+                string unbaked = result.Complete ? "" : $"; {result.FailedTasks + result.MissingMappings} lightmaps weren't baked and keep their original lighting";
+                Status = OpenPreviewAfterBake ? $"Ready to preview{unbaked}. Save or discard after inspecting the lighting."
+                    : $"Baked{unbaked}. Save Lighting or Discard; Preview opens the level preview.";
                 LogBox.AppendText("The baked files and texture cache have not been saved to their destination.\n");
             }
             UpdatePreviewState();
@@ -491,7 +507,7 @@ public partial class LightmassBakerWindow : TrackingNotifyPropertyChangedWindowB
             Validate();
         }
         // Nothing to look at when only marks of what's changed since the last bake were cleared
-        if (pendingPreview is { Result.Rewrites.Count: > 0 }) await ShowPreviewAsync();
+        if (pendingPreview is { Result.Rewrites.Count: > 0 } && OpenPreviewAfterBake) await ShowPreviewAsync();
     }
 
     private async void Preview_Click(object sender, RoutedEventArgs e) => await ShowPreviewAsync();
