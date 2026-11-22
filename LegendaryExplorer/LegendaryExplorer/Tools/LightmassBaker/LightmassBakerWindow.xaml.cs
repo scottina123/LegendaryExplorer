@@ -263,6 +263,14 @@ public partial class LightmassBakerWindow : TrackingNotifyPropertyChangedWindowB
         set => SetProperty(ref usePrecomputedShadowsOnAllMeshes, value);
     }
 
+    private bool recompileMaterialsWithoutLightmaps = true;
+    /// <summary>Recompile the materials that have no lightmap shaders, so the meshes drawn with them are baked (on by default)</summary>
+    public bool RecompileMaterialsWithoutLightmaps
+    {
+        get => recompileMaterialsWithoutLightmaps;
+        set => SetProperty(ref recompileMaterialsWithoutLightmaps, value);
+    }
+
     private LightmassBakeJob ToJob() => new()
     {
         Files = Files.Select(f => new LightmassBakeJobFile { Path = f.Path, Editable = f.Editable }).ToList(),
@@ -271,6 +279,7 @@ public partial class LightmassBakerWindow : TrackingNotifyPropertyChangedWindowB
         AssignmentPolicy = AssignmentPolicy,
         BioWareLightmassSettings = bioWareLightmassSettings,
         UsePrecomputedShadowsOnAllMeshes = UsePrecomputedShadowsOnAllMeshes,
+        RecompileMaterialsWithoutLightmaps = RecompileMaterialsWithoutLightmaps,
         TfcName = TfcName,
         LightmapScale = LightmapScale,
         TextureFormat = TextureFormat,
@@ -287,6 +296,7 @@ public partial class LightmassBakerWindow : TrackingNotifyPropertyChangedWindowB
         AssignmentPolicy = job.AssignmentPolicy;
         bioWareLightmassSettings = job.BioWareLightmassSettings;
         UsePrecomputedShadowsOnAllMeshes = job.UsePrecomputedShadowsOnAllMeshes;
+        RecompileMaterialsWithoutLightmaps = job.RecompileMaterialsWithoutLightmaps;
         TfcName = job.TfcName;
         LightmapSize = job.LightmapScale ?? 0;
         TextureFormatChoice = job.TextureFormat?.ToString() ?? "Keep";

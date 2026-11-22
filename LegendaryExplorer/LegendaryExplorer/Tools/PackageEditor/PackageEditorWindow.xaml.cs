@@ -56,6 +56,7 @@ using Microsoft.Xaml.Behaviors;
 using Microsoft.WindowsAPICodePack.Dialogs;
 using LegendaryExplorerCore.Audio;
 using LegendaryExplorer.Packages;
+using LegendaryExplorer.Tools.MaterialShaderCompilation;
 using LegendaryExplorerCore.Localization;
 using LegendaryExplorerCore.Pathing;
 using LegendaryExplorerCore.UnrealScript.Language.Tree;
@@ -8080,7 +8081,85 @@ namespace LegendaryExplorer.Tools.PackageEditor
 
                 RefreshView();
                 GoToNumber(newEntry.UIndex);
+
+                if (rop.IsCrossGame)
+                {
+                    var portedMaterials = importedEntries.OfType<ExportEntry>().ToList();
+                    if (newEntry is ExportEntry replaced && !portedMaterials.Contains(replaced)) portedMaterials.Add(replaced);
+                    // Ported exports back to what they were ported from: a stripped graph is recovered from the source game's shaders
+                    var portedFrom = rop.CrossPackageMap.Where(p => p.Key is ExportEntry && p.Value is ExportEntry)
+                        .GroupBy(p => (ExportEntry)p.Value).ToDictionary(g => g.Key, g => (ExportEntry)g.First().Key);
+                    RecompilePortedMaterials(portedMaterials, sourceEntry.Game, portedFrom);
+                }
             }
+        }
+
+        /// <summary>
+        /// Materials ported from another game keep that game's shader map, which this game can't use, so it draws the default
+        /// (checkerboard) material in their place. Recompiles them for this package's game and installs the shaders in its
+        /// SeekFreeShaderCache, setting the usage flags the package draws them with first.
+        /// </summary>
+        private void RecompilePortedMaterials(List<ExportEntry> portedExports, MEGame sourceGame, IReadOnlyDictionary<ExportEntry, ExportEntry> portedFrom) =>
+            RecompileMaterials(portedExports, sourceGame, "ported material", portedFrom);
+
+        /// <summary>
+        /// Recompiles <paramref name="exports"/>' Materials, DecalMaterials and static-permutation MaterialInstances for this package's game
+        /// in the background, installing their shaders in its SeekFreeShaderCache, and reports each one.
+        /// </summary>
+        /// <param name="sourceGame">The game they were ported from, if they were: LE1/LE2 materials keep static lighting on by default.</param>
+        /// <param name="noun">What to call them in messages ("ported material", "material").</param>
+        /// <param name="portedFrom">For ported materials, the export each came from (whose shipped shaders a stripped graph is recovered from).</param>
+        public void RecompileMaterials(IEnumerable<ExportEntry> exports, MEGame? sourceGame, string noun, IReadOnlyDictionary<ExportEntry, ExportEntry> portedFrom = null)
+        {
+            var materials = exports.Where(e => !e.IsDefaultObject && (e.ClassName is "Material" or "DecalMaterial" ||
+                e.IsA("MaterialInstance") && e.GetProperty<BoolProperty>("bHasStaticPermutationResource")?.Value == true)).Distinct().ToList();
+            if (materials.Count == 0) return;
+            IMEPackage package = Pcc;
+            if (!LE3MaterialRecompiler.CanRecompile(package.Game, out string reason))
+            {
+                new ListDialog(materials.Select(m => new EntryStringPair(m, $"{m.InstancedFullPath}: no {package.Game} shaders")),
+                    "Ported materials need shaders",
+                    $"{materials.Count} {noun}{(materials.Count == 1 ? " has" : "s have")} no {package.Game} shaders, so the game will draw the default material in {(materials.Count == 1 ? "its" : "their")} place. {reason}",
+                    this) { DoubleClickEntryHandler = entryDoubleClick }.Show();
+                return;
+            }
+
+            IsBusy = true;
+            BusyText = $"Recompiling {materials.Count} {noun}{(materials.Count == 1 ? "" : "s")} for {package.Game}...";
+            var progress = new Progress<string>(text => BusyText = text);
+            Task.Run(() =>
+            {
+                var recompiler = new LE3MaterialRecompiler();
+                var scanned = recompiler.ScanUses(package);
+                // LE1 and LE2 materials are used with static lighting unless they say otherwise; LE3's aren't. Keep what the
+                // material meant in its own game, so it can still go on a lightmapped mesh here.
+                bool staticLightingByDefault = sourceGame is MEGame.LE1 or MEGame.LE2 or MEGame.ME1 or MEGame.ME2;
+                IEnumerable<LE3MaterialUsage> Uses(ExportEntry baseMaterial)
+                {
+                    var uses = scanned.TryGetValue(baseMaterial, out var found) ? found.ToList() : [];
+                    if (staticLightingByDefault && baseMaterial.GetProperty<BoolProperty>("bUsedWithStaticLighting") == null &&
+                        baseMaterial.GetProperty<EnumProperty>("LightingModel")?.Value.Name != "MLM_Unlit")
+                        uses.AddRange(LE3MaterialUsageAdvisor.LightmappedStaticMesh(simpleLightMaps: false));
+                    return uses;
+                }
+                return recompiler.Recompile(materials, Uses, progress, sourceOf: m => portedFrom != null && portedFrom.TryGetValue(m, out var from) ? from : null);
+            }).ContinueWithOnUIThread(task =>
+            {
+                IsBusy = false;
+                if (task.Exception is { } exception)
+                {
+                    MessageBox.Show(this, $"Recompiling the {noun}s failed:\n{exception.Flatten().InnerException?.Message}", "Material recompile", MessageBoxButton.OK, MessageBoxImage.Error);
+                    return;
+                }
+                var outcomes = task.Result;
+                int failed = outcomes.Count(o => !o.Success);
+                new ListDialog(outcomes.OrderBy(o => o.Success).Select(o => new EntryStringPair(o.Material, o.ToString())),
+                    "Material recompile report",
+                    failed == 0
+                        ? $"Recompiled {outcomes.Count} {noun}{(outcomes.Count == 1 ? "" : "s")} for {package.Game} and added their shaders to this package's SeekFreeShaderCache."
+                        : $"{failed} of {outcomes.Count} {noun}{(outcomes.Count == 1 ? "" : "s")} couldn't be recompiled for {package.Game}; the game draws the default material in their place.",
+                    this) { DoubleClickEntryHandler = entryDoubleClick }.Show();
+            });
         }
 
         private async Task FindNextObjectByClassAsync(string searchClass, bool reverse)

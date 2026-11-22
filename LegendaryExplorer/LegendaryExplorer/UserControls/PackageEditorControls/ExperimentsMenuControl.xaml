@@ -272,7 +272,7 @@ DataContext="{Binding RelativeSource={RelativeSource Self}}">
         <MenuItem Header="Move package stored 1024+ textures to TFC" Click="MoveLargePackageStoredTexturesToTfc_Click" ToolTip="Moves package stored textures of at least 1024x1024 losslessly to a chosen TFC, including lightmaps and shadow maps."/>
         <MenuItem Header="LE2/LE3: Bulk Import Audio" Click="BulkImportAudio_Click" ToolTip="Bulk import WAV files as audio into LE2/LE3 packages."/>
         <MenuItem Header="Gesture Animation Importer" Click="GestureAnimationImporter_Click" ToolTip="Import animations from the asset database into a BioEvtSysTrackGesture and manage gesture entries. Select a BioEvtSysTrackGesture export first."/>
-        <MenuItem Header="Fix broken materials using AssetDB" Click="FixBrokenMaterialsUsingAssetDb_Click" ToolTip="Repairs all broken Material and MaterialInstance exports in the open package by replacing them with the closest asset database match while restoring the original material parameters."/>
+        <MenuItem Header="Recompile materials" Click="RecompileMaterials_Click" ToolTip="LE3: compiles shaders for the selected Material (or static-permutation MaterialInstance), or with no material selected for every broken material in the open package, and installs them in its SeekFreeShaderCache. Sets the bUsedWith flags the package uses them with first. Materials whose graph was stripped by the cooker (LE2) are reported, not compiled."/>
     </MenuItem>
     <MenuItem Header="Other people's box of Legos">
         <MenuItem Header="Export level to T3D" Click="ExportLevelToT3D_Click"/>

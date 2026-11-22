@@ -195,6 +195,9 @@ public partial class LevelEditor
     private int _lightmassGatherRays = 64;
     /// <summary>Light solver: final gather rays per sample</summary>
     public int LightmassGatherRays { get => _lightmassGatherRays; set => SetProperty(ref _lightmassGatherRays, value); }
+    private bool _lightmassRecompileMaterials = true;
+    /// <summary>Recompile receiver materials that don't accept lightmaps (no lightmap shaders) so their meshes are baked</summary>
+    public bool LightmassRecompileMaterials { get => _lightmassRecompileMaterials; set => SetProperty(ref _lightmassRecompileMaterials, value); }
     private string _lightmassTextureCacheName = "";
     public string LightmassTextureCacheName { get => _lightmassTextureCacheName; set => SetProperty(ref _lightmassTextureCacheName, value); }
 
@@ -262,7 +265,8 @@ public partial class LevelEditor
             TextureFormat = LightmassTextureFormat,
             Backend = LightmassBackend,
             SolverBounces = LightmassBounces,
-            SolverGatherRays = LightmassGatherRays
+            SolverGatherRays = LightmassGatherRays,
+            RecompileMaterialsWithoutLightmaps = LightmassRecompileMaterials
         };
         bool usesLightSolver = StaticLightingBakeBackends.UsesLightSolver(settings.Backend);
         string backendName = StaticLightingBakeBackends.DisplayName(settings.Backend);
@@ -312,6 +316,11 @@ public partial class LevelEditor
                                       : "") +
                                   $"Bake workers: {settings.EffectiveWorkerThreads:N0}; UV/spatial work tile: {settings.WorkTileSize}×{settings.WorkTileSize}.\n\n" +
                                   $"Lightmap texture format: {settings.TextureFormat}.\n" +
+                                  (Game == MEGame.LE3
+                                      ? settings.RecompileMaterialsWithoutLightmaps
+                                          ? "Materials that don't accept lightmaps: recompiled so their meshes are baked.\n"
+                                          : "Materials that don't accept lightmaps: not recompiled; their meshes are kept lightmap-free.\n"
+                                      : "") +
                                   $"Bake backend: {backendName}.\n\n" +
                                   storageDescription + "\n\nThe packages remain unsaved until you use Save, but TFC data is appended during generation.";
             if (MessageBox.Show(this, confirmation, dialogTitle, MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
@@ -335,7 +344,7 @@ public partial class LevelEditor
             {
                 var scene = StaticLightingBaker.BuildScene(sceneActors, targetSet, RenderContext,
                     exactTargetComponents, settings.MappingMode, settings.TextureResolution,
-                    settings.Backend, settings.EffectiveWorkerThreads, scanProgress);
+                    settings.Backend, settings.EffectiveWorkerThreads, scanProgress, settings.RecompileMaterialsWithoutLightmaps);
                 if (scene.Targets.Count == 0)
                     return new StaticLightingBakeResult
                     {
@@ -387,8 +396,12 @@ public partial class LevelEditor
                               $"{bake.LightCount:N0} lights / {bake.EmissiveEmitterCount:N0} emissive area samples / " +
                               $"{bake.SourceTriangleCount:N0} occluder triangles from all loaded levels; " +
                               $"{StaticLightingBakeBackends.DisplayName(bake.Backend)} backend.";
+            var recompileLog = bake.SceneDiagnostics.MaterialRecompileLog;
+            string recompileSummary = recompileLog.Count == 0 ? ""
+                : "Materials recompiled for static lighting:\n" + string.Join("\n", recompileLog.Take(12).Select(line => $"  • {line}")) +
+                  (recompileLog.Count > 12 ? $"\n  … and {recompileLog.Count - 12} more" : "") + "\n\n";
             MessageBox.Show(this,
-                mappingFallbackWarning +
+                mappingFallbackWarning + recompileSummary +
                 $"Generated static lighting for {written.ComponentCount:N0} components.\n\n" +
                 $"Unlit/unsupported-material receivers kept lightmap-free: {written.ExcludedUnlitReceiverCount:N0}\n" +
                 $"2D lightmaps: {bake.TextureMappedComponentCount:N0} components\n" +

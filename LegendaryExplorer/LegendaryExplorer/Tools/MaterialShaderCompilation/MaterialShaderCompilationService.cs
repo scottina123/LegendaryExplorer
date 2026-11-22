@@ -46,6 +46,10 @@ namespace LegendaryExplorer.Tools.MaterialShaderCompilation
         public bool Enabled { get; init; }
         /// <summary>Optional MaterialInstance resolver. Without one, instance requests are Unsupported.</summary>
         public IMaterialShaderInstanceResolver InstanceResolver { get; init; }
+        /// <summary>How many of a request's shader jobs compile at once. 1 (the default) compiles them in order;
+        /// more compiles them in parallel, still stopping at the first failure (in job order) and honouring
+        /// cancellation between jobs. The compiled set is the same either way.</summary>
+        public int MaxDegreeOfParallelism { get; init; } = 1;
     }
 
     public sealed record MaterialShaderCompileRequest
@@ -74,6 +78,11 @@ namespace LegendaryExplorer.Tools.MaterialShaderCompilation
         public Compiler.ShouldCacheEnvironmentContext EnvironmentContext { get; init; }
         /// <summary>Evidence-backed resource ShouldCache hook; null results mean unresolved.</summary>
         public Func<Compiler.ResolvedMaterialCompilationInput, Compiler.ShaderCompileTarget, bool?> MaterialResourceShouldCache { get; init; }
+        /// <summary>
+        /// Produces the translation instead of translating the expression graph, e.g. from code recovered from shipped shaders
+        /// (<see cref="Compiler.TranslateRecoveredMaterial"/>) for a material whose cooked graph is stripped.
+        /// </summary>
+        public Func<Compiler, LE3ShaderSourceSnapshot, Compiler.TranslationResult> TranslationOverride { get; init; }
     }
 
     public readonly record struct MaterialShaderCompileProgress(int CompletedJobs, int SelectedJobs, string CurrentTarget);
@@ -273,7 +282,34 @@ namespace LegendaryExplorer.Tools.MaterialShaderCompilation
                 phase = MaterialShaderCompilePhase.Compilation;
                 var targets = session.PlannedTargets;
                 progress?.Report(new MaterialShaderCompileProgress(0, targets.Count, null));
-                for (int i = 0; i < targets.Count; i++)
+                if (options.MaxDegreeOfParallelism > 1 && targets.Count > 1)
+                {
+                    var steps = new MaterialShaderStepResult[targets.Count];
+                    int completed = 0;
+                    Parallel.For(0, targets.Count, new ParallelOptions { MaxDegreeOfParallelism = options.MaxDegreeOfParallelism },
+                        (i, loop) =>
+                        {
+                            if (cancellationToken.IsCancellationRequested) { loop.Stop(); return; }
+                            var jobStep = session.CompileJob(i);
+                            steps[i] = jobStep;
+                            if (!jobStep.Success) { loop.Stop(); return; }
+                            progress?.Report(new MaterialShaderCompileProgress(Interlocked.Increment(ref completed), targets.Count, targets[i]));
+                        });
+                    for (int i = 0; i < targets.Count; i++)
+                    {
+                        if (steps[i] == null) continue;
+                        jobs.Add(new MaterialShaderJobReport(i, targets[i], steps[i].Success, steps[i].Diagnostics));
+                    }
+                    int failed = Array.FindIndex(steps, s => s is { Success: false });
+                    if (failed >= 0)
+                    {
+                        currentTarget = targets[failed];
+                        return Result(MaterialShaderCompileOutcome.Failed,
+                            steps[failed].Errors is { Count: > 0 } ? steps[failed].Errors : [$"Compilation failed for {targets[failed]}."]);
+                    }
+                    if (steps.Any(s => s == null)) return Result(MaterialShaderCompileOutcome.Cancelled);
+                }
+                else for (int i = 0; i < targets.Count; i++)
                 {
                     if (cancellationToken.IsCancellationRequested) return Result(MaterialShaderCompileOutcome.Cancelled);
                     currentTarget = targets[i];
@@ -347,18 +383,21 @@ namespace LegendaryExplorer.Tools.MaterialShaderCompilation
         {
             private readonly Compiler compiler = new(input, getTextureMetadata: request.GetTextureMetadata,
                 getFontTexturePages: request.GetFontTexturePages);
-            private readonly List<Compiler.ShaderCompilationResult> compiled = [];
+            // Indexed by job so parallel compiles keep plan order; null where a job hasn't compiled successfully.
+            private Compiler.ShaderCompilationResult[] compiled = [];
 
             public Compiler.TranslationResult Translation { get; private set; }
             public Compiler.ShaderCompilePlan CompilePlan { get; private set; }
-            public IReadOnlyList<Compiler.ShaderCompilationResult> CompiledShaders => compiled;
+            public IReadOnlyList<Compiler.ShaderCompilationResult> CompiledShaders => compiled.Where(c => c != null).ToArray();
             public Compiler.ShaderCacheFragmentResult Fragment { get; private set; }
             public IReadOnlyList<string> PlannedTargets { get; private set; }
             public bool IsCompleteShaderSet => Fragment?.IsCompleteShaderSet ?? false;
 
             public MaterialShaderStepResult Translate()
             {
-                Translation = compiler.TranslateMaterialResourceHlsl(sources, request.ResourceForcesFloatUsage);
+                Translation = request.TranslationOverride != null
+                    ? request.TranslationOverride(compiler, sources)
+                    : compiler.TranslateMaterialResourceHlsl(sources, request.ResourceForcesFloatUsage);
                 return new MaterialShaderStepResult(Translation.Success, Translation.Errors ?? []);
             }
 
@@ -366,21 +405,26 @@ namespace LegendaryExplorer.Tools.MaterialShaderCompilation
             {
                 CompilePlan = compiler.BuildKnownSubsetCompilePlan(Translation, request.Resource,
                     request.EnvironmentContext, request.MaterialResourceShouldCache);
-                if (CompilePlan.Success) PlannedTargets = CompilePlan.Jobs.Select(job => Describe(job.Target)).ToArray();
+                if (CompilePlan.Success)
+                {
+                    PlannedTargets = CompilePlan.Jobs.Select(job => Describe(job.Target)).ToArray();
+                    compiled = new Compiler.ShaderCompilationResult[CompilePlan.Jobs.Count];
+                }
                 return new MaterialShaderStepResult(CompilePlan.Success, CompilePlan.Errors);
             }
 
+            // Thread-safe across distinct job indexes: each writes only its own slot.
             public MaterialShaderStepResult CompileJob(int jobIndex)
             {
                 var result = compiler.CompileShader(CompilePlan.Jobs[jobIndex], sources);
-                if (result.Success) compiled.Add(result);
+                if (result.Success) compiled[jobIndex] = result;
                 return new MaterialShaderStepResult(result.Success,
                     result.Success || string.IsNullOrEmpty(result.Diagnostics) ? [] : [result.Diagnostics], result.Diagnostics);
             }
 
             public MaterialShaderStepResult Assemble()
             {
-                Fragment = compiler.BuildShaderCacheFragment(Translation, CompilePlan, compiled,
+                Fragment = compiler.BuildShaderCacheFragment(Translation, CompilePlan, CompiledShaders,
                     request.ResourceId, request.FriendlyName, sources);
                 return new MaterialShaderStepResult(Fragment.Success, Fragment.Errors);
             }

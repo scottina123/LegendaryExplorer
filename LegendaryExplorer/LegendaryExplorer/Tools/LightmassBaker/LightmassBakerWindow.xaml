@@ -109,8 +109,12 @@
                 <ComboBox Grid.Row="5" Grid.Column="1" ItemsSource="{Binding AssignmentPolicies}" SelectedValue="{Binding AssignmentPolicy}" SelectedValuePath="Key" DisplayMemberPath="Value" Margin="0,6,6,0" HorizontalAlignment="Left" MinWidth="160"
                           ToolTip="Preserve existing assignments keeps historical restrictions. Recompute assignments uses current settings and geometry. Both allocate missing mappings where supported."/>
 
-                <CheckBox Grid.Row="6" Grid.Column="1" Content="Use precomputed shadows on all meshes" IsChecked="{Binding UsePrecomputedShadowsOnAllMeshes}" Margin="0,8,6,0"
-                          ToolTip="Turns on Use precomputed shadows (bUsePrecomputedShadows) for every static mesh in the levels being baked before the bake. A mesh without it isn't baked, so nothing of it is written to the texture cache. Meshes baked by Scottina's Lightmass Baker also get Accepts lights turned back on, since Lightmass leaves out a mesh that doesn't accept lights. The settings are saved with the baked levels."/>
+                <StackPanel Grid.Row="6" Grid.Column="1" Margin="0,8,6,0">
+                    <CheckBox Content="Use precomputed shadows on all meshes" IsChecked="{Binding UsePrecomputedShadowsOnAllMeshes}"
+                              ToolTip="Turns on Use precomputed shadows (bUsePrecomputedShadows) for every static mesh in the levels being baked before the bake. A mesh without it isn't baked, so nothing of it is written to the texture cache. Meshes baked by Scottina's Lightmass Baker also get Accepts lights turned back on, since Lightmass leaves out a mesh that doesn't accept lights. The settings are saved with the baked levels."/>
+                    <CheckBox Content="Recompile materials that don't accept lightmaps" IsChecked="{Binding RecompileMaterialsWithoutLightmaps}" Margin="0,6,0,0"
+                              ToolTip="LE3: a mesh whose material has no lightmap shaders (not compiled for static lighting) can't take a lightmap. On: those materials are recompiled with lightmap shaders so their meshes are baked. Materials that already accept lightmaps are never recompiled. Off: those meshes are left out of the bake and keep their current lighting."/>
+                </StackPanel>
 
                 <TextBlock Grid.Row="7" Grid.Column="0" Text="Lightmap size" VerticalAlignment="Center" Margin="0,8,10,0"/>
                 <ComboBox Grid.Row="7" Grid.Column="1" ItemsSource="{Binding LightmapSizes}" SelectedValue="{Binding LightmapSize}" SelectedValuePath="Key" DisplayMemberPath="Value"

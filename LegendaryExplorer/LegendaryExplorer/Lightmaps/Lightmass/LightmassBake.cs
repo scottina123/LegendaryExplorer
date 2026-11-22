@@ -34,6 +34,11 @@ public sealed class LightmassBakeSettings
     /// (written to the TFC): without static shadowing a mesh isn't part of the bake (UStaticMeshComponent::GetStaticLightingInfo). Saved with the bake
     /// </summary>
     public bool UsePrecomputedShadowsOnAllMeshes = true;
+    /// <summary>
+    /// Recompiles the materials in the baked levels that a mesh needing a new lightmap draws with but that have no lightmap shaders, so the mesh is
+    /// baked (LE3; <see cref="LightmassSceneOptions.MaterialRecompiler"/>). Off: such meshes are left out of the bake, as before. Other materials aren't touched
+    /// </summary>
+    public bool RecompileMaterialsWithoutLightmaps = true;
     public LightmassSceneOptions Scene = new();
     /// <summary>Where the mod TFC for streamed lightmap textures is written, and its name (Textures_DLC_MOD_..., for the game to find it).</summary>
     public string TfcDirectory;
@@ -119,6 +124,21 @@ public static class LightmassBake
     /// Fork: sets bUsePrecomputedShadows on every static mesh component (static, spline, InterpActor and collection meshes...) placed in a level of
     /// <paramref name="levels"/> that's baked (not one only read for context), so that the bake gives each of them static lighting
     /// </summary>
+    /// <summary>
+    /// A material that isn't compiled for static lighting would otherwise leave its meshes out of the bake: the scene gets a recompiler for those
+    /// materials (when the game's can be compiled), unless <see cref="LightmassBakeSettings.RecompileMaterialsWithoutLightmaps"/> is off.
+    /// </summary>
+    internal static void ConfigureMaterialRecompiler(LightmassBakeSettings settings, MEGame game, Action<string> log)
+    {
+        if (!settings.RecompileMaterialsWithoutLightmaps)
+        {
+            settings.Scene.MaterialRecompiler = null;
+            log?.Invoke("Materials that don't accept lightmaps aren't recompiled: meshes drawn with them are left out of the bake.");
+        }
+        else if (settings.Scene.MaterialRecompiler == null && Tools.MaterialShaderCompilation.LE3MaterialRecompiler.CanRecompile(game, out _))
+            settings.Scene.MaterialRecompiler = new Tools.MaterialShaderCompilation.LE3MaterialRecompiler();
+    }
+
     static void UsePrecomputedShadowsOnAllMeshes(IReadOnlyList<IMEPackage> levels, ICollection<IMEPackage> contextOnly, Action<string> log)
     {
         int changed = 0, restored = 0;
@@ -319,6 +339,7 @@ public static class LightmassBake
             log($"Materials can't be rendered ({e.Message}), so they all get a constant albedo.");
         }
         settings.Scene.MaterialCapture = capture;
+        if (levels.Count > 0) ConfigureMaterialRecompiler(settings, levels[0].Game, log);
         if (settings.UsePrecomputedShadowsOnAllMeshes) UsePrecomputedShadowsOnAllMeshes(levels, settings.Scene.ContextOnly, log);
         var builder = new LightmassSceneBuilder(settings.Scene);
         LightmassScene scene;

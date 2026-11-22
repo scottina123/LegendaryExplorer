@@ -57,6 +57,9 @@ public sealed class LightmassBakeJob
     /// <summary>Fork: turns on bUsePrecomputedShadows on every static mesh of the baked levels first, so all of them get baked lighting (<see cref="LightmassBakeSettings.UsePrecomputedShadowsOnAllMeshes"/>)</summary>
     public bool UsePrecomputedShadowsOnAllMeshes { get; set; } = true;
 
+    /// <summary>Recompiles materials that have no lightmap shaders so their meshes are baked (<see cref="LightmassBakeSettings.RecompileMaterialsWithoutLightmaps"/>)</summary>
+    public bool RecompileMaterialsWithoutLightmaps { get; set; } = true;
+
     /// <summary>
     /// How much larger static mesh and BSP texture lightmaps are made (new textures replace the old); null or absent: the quality's
     /// (<see cref="LightmassBakeSettings.DefaultLightmapScale"/>)
@@ -274,6 +277,7 @@ public sealed class LightmassBakeJob
         Quality = Quality,
         BioWareLightmassSettings = BioWareLightmassSettings,
         UsePrecomputedShadowsOnAllMeshes = UsePrecomputedShadowsOnAllMeshes,
+        RecompileMaterialsWithoutLightmaps = RecompileMaterialsWithoutLightmaps,
         TfcName = TfcName,
         LightmapScale = LightmapScale,
         TextureFormat = TextureFormat,

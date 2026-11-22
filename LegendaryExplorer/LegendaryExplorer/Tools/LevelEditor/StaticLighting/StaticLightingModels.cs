@@ -151,6 +151,11 @@ public sealed class StaticLightingGenerationSettings
     public int SolverBounces { get; set; } = 2;
     /// <summary>Light solver backends only: final gather rays per sample</summary>
     public int SolverGatherRays { get; set; } = 64;
+    /// <summary>
+    /// LE3: recompiles a receiver's material that has no lightmap shaders (in a level being baked) so the receiver is baked; off, such receivers are
+    /// kept lightmap-free as incompatible. Materials that already accept lightmaps are never recompiled
+    /// </summary>
+    public bool RecompileMaterialsWithoutLightmaps { get; set; } = true;
 
     public const int MaximumSolverBounces = 8;
     public const int MinimumSolverGatherRays = 4;
@@ -405,6 +410,11 @@ public sealed class StaticLightingSceneDiagnostics
     /// collision and can still cast baked shadows onto other receivers.
     /// </summary>
     public IReadOnlyList<StaticLightingExcludedReceiver> ExcludedUnlitReceivers { get; init; } = [];
+    /// <summary>
+    /// What happened to receiver materials that weren't compiled for static lighting: recompiled (with bUsedWithStaticLighting set)
+    /// so their meshes could be baked, or why they couldn't be. One line per material. LE3 only.
+    /// </summary>
+    public IReadOnlyList<string> MaterialRecompileLog { get; init; } = [];
 }
 
 public sealed class StaticLightingExcludedReceiver

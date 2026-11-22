@@ -1161,9 +1161,29 @@ namespace LegendaryExplorer.UserControls.PackageEditorControls
             dialog.ShowDialog();
         }
 
-        private void FixBrokenMaterialsUsingAssetDb_Click(object sender, RoutedEventArgs e)
+        private void RecompileMaterials_Click(object sender, RoutedEventArgs e)
         {
-            PackageEditorExperimentsScottina.FixBrokenMaterialsUsingAssetDatabase(GetPEWindow());
+            var pew = GetPEWindow();
+            if (pew?.Pcc == null) return;
+            if (pew.TryGetSelectedExport(out var selected) && (selected.IsA("Material") || selected.IsA("MaterialInstance")))
+            {
+                if (selected.IsA("MaterialInstance") && selected.GetProperty<BoolProperty>("bHasStaticPermutationResource")?.Value != true)
+                {
+                    MessageBox.Show(pew, $"{selected.ObjectName.Instanced} has no static permutation of its own: it draws with its parent's shaders. Recompile its parent instead.",
+                        "Recompile materials", MessageBoxButton.OK, MessageBoxImage.Information);
+                    return;
+                }
+                pew.RecompileMaterials([selected], null, "material");
+                return;
+            }
+            var broken = LegendaryExplorerCore.Shaders.ShaderCacheManipulator.GetBrokenMaterials(pew.Pcc).Where(m => m.IsA("Material") || m.IsA("MaterialInstance")).ToList();
+            if (broken.Count == 0)
+            {
+                MessageBox.Show(pew, "Every material in this package has shaders. Select a material to recompile it anyway.", "Recompile materials",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+            pew.RecompileMaterials(broken, null, "broken material");
         }
 
         private void DeleteFaceFxLineSectionInAllAssets_Click(object sender, RoutedEventArgs e)

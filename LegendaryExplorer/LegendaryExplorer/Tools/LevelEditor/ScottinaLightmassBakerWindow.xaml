@@ -48,6 +48,7 @@
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
                 <TextBlock Grid.Row="0" Text="Lightmap resolution" VerticalAlignment="Center"/>
                 <ComboBox Grid.Row="0" Grid.Column="1" ItemsSource="{Binding LightmassResolutions}"
@@ -102,6 +103,9 @@
                                     Minimum="4" Maximum="1024" Increment="16" Margin="2"
                                     IsEnabled="{Binding LightmassUsesLightSolver}"
                                     ToolTip="Rays per sample that gather bounced light and sky (GPU/CPU only). More rays: less noise, slower bakes."/>
+                <CheckBox Grid.Row="13" Grid.Column="1" Content="Recompile materials that don't accept lightmaps"
+                          IsChecked="{Binding LightmassRecompileMaterials}" Margin="2,6,2,2"
+                          ToolTip="LE3: a mesh whose material has no lightmap shaders (not compiled for static lighting) can't take a lightmap. On: those materials are recompiled with lightmap shaders so their meshes are baked. Materials that already accept lightmaps are never recompiled. Off: those meshes are kept lightmap-free."/>
             </Grid>
             <TextBlock Text="Bulk mapping is automatic: architectural, large, and broad low-poly receivers use LightMap2D at exactly the selected resolution; compact or dense receivers use LightMap1D. Direct lighting and ray-traced static shadows are baked into the selected mapping, plus bounced light and occluded sky on the GPU and CPU devices. Existing outputs are replaced; TFC data is reused or created as needed."
                        TextWrapping="Wrap" Margin="0,0,0,7"/>

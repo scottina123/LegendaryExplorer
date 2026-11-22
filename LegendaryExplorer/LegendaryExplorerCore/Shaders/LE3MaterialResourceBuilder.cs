@@ -48,7 +48,8 @@ public static class LE3MaterialResourceBuilder
         resource.bUsesVertexColor = translation.Material.GetProperty<StructProperty>("WorldPositionOffset")?
             .GetProp<ObjectProperty>("Expression")?.Value is > 0;
         resource.UsingTransforms = translation.UsingTransforms;
-        resource.MaxTextureDependencyLength = translation.Compiler.ComputeMaxTextureDependencyLength(translation.Graph);
+        resource.MaxTextureDependencyLength = translation.RecoveredMaxTextureDependencyLength ??
+                                              translation.Compiler.ComputeMaxTextureDependencyLength(translation.Graph);
         resource.TextureLookups = BuildTextureLookups(translation);
         return resource;
     }

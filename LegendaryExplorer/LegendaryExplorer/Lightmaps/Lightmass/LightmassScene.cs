@@ -334,6 +334,12 @@ public sealed class LightmassSceneOptions
 
     /// <summary>Levels that are part of the scene (they cast shadows and bounce light) but whose lightmaps aren't baked.</summary>
     public HashSet<IMEPackage> ContextOnly = [];
+
+    /// <summary>
+    /// Recompiles a material in a baked level that a mesh needing a new lightmap draws with, when the material isn't compiled for static
+    /// lighting (no bUsedWithStaticLighting, or no lightmap shaders), so the mesh is baked instead of left out. Null: such meshes are left out.
+    /// </summary>
+    public LegendaryExplorer.Tools.MaterialShaderCompilation.LE3MaterialRecompiler MaterialRecompiler;
 }
 
 /// <summary>
@@ -388,6 +394,7 @@ public sealed class LightmassSceneBuilder : IDisposable
         if (scene != null) throw new InvalidOperationException("A LightmassSceneBuilder builds one scene; use a new builder for another.");
         foreach (var package in levels) LightmassBakeJob.ValidateGame(package.Game, levels[0].Game);
         scene = new LightmassScene { Levels = levels.ToList() };
+        buildLog = log;
         log?.Invoke($"Light assignment policy: {options.AssignmentPolicy.Describe()}");
         if (levels.Count > 0 && levels[0].Exports.FirstOrDefault(e => e.ClassName.EndsWith("WorldInfo") && e.ObjectName.Name.EndsWith("WorldInfo")) is { } worldInfo)
             scene.World = LightmassWorldSettings.FromWorldInfo(worldInfo, options.DefaultWorldDiffuseBoost);
@@ -591,7 +598,8 @@ public sealed class LightmassSceneBuilder : IDisposable
                 if (package.TryGetUExport(u, out var c) && IsStaticMeshComponent(c) && seen.Add(c))
                     yield return (c, actor.ClassName);
         }
-        foreach (var export in package.Exports)
+        // A snapshot: recompiling a receiver's material (EnableStaticLighting) can add exports while the scene is gathered
+        foreach (var export in package.Exports.ToList())
         {
             if (!IsStaticMeshComponent(export) || export.Parent is not ExportEntry owner || !actors.Contains(owner) || !seen.Add(export)) continue;
             yield return (export, owner.ClassName);
@@ -711,6 +719,7 @@ public sealed class LightmassSceneBuilder : IDisposable
             {
                 var preferred = LightmassMappingAllocator.MeshSize(component.Game, props, Properties(meshExport), lod,
                     LightmassMappingAllocator.HasUsableUv(lodModel, mesh.LightMapCoordinateIndex));
+                EnableStaticLighting(materialEntries, instance.VertexFactoryType);
                 // The shadow maps come out in the mapping's kind, and the receiver's materials draw each with a light pass of that kind
                 var shadowed = reaching.Where(IsShadowMapped).ToList();
                 bool Lightmap(bool texture) => materialEntries.Count > 0 && materialEntries.All(m => SupportsNewLightmap(m, texture, instance.VertexFactoryType));
@@ -823,6 +832,32 @@ public sealed class LightmassSceneBuilder : IDisposable
         foreach (var light in instance.RelevantLights.Where(IsShadowMapped).Where(l => ReachesBox(l.Light, instance.BoundsMin, instance.BoundsMax)))
             if (!materials.All(m => SupportsShadowMaps(m, light, instance.IsTextureMapping, instance.VertexFactoryType)))
                 scene.Count($"shadow maps: {light.Light.Type} {(instance.IsTextureMapping ? "texture" : "vertex")} shadow maps without a cooked light pass on the receiver's material (written anyway)");
+    }
+
+    Action<string> buildLog;
+
+    /// <summary>
+    /// Recompiles (<see cref="LightmassSceneOptions.MaterialRecompiler"/>) each of a receiver's materials that has no texture lightmap shaders,
+    /// if it's in a baked level, so the receiver can get a lightmap. Static mesh vertex factory only: the recompile is for lightmapped static meshes.
+    /// </summary>
+    void EnableStaticLighting(List<IEntry> materialEntries, string vertexFactoryType)
+    {
+        if (options.MaterialRecompiler is not { } recompiler || vertexFactoryType != "FLocalVertexFactory") return;
+        bool recompiled = false;
+        foreach (var material in materialEntries.Where(m => m != null).Distinct())
+        {
+            if (SupportsNewLightmap(material, true, vertexFactoryType)) continue;
+            if (recompiler.TryEnableStaticLighting(material, p => scene.Levels.Contains(p) && !options.ContextOnly.Contains(p), out string message))
+            {
+                recompiled = true;
+                scene.Count("material: recompiled for static lighting");
+            }
+            if (!string.IsNullOrEmpty(message)) buildLog?.Invoke(message);
+        }
+        if (!recompiled) return;
+        // The recompiled materials have new shader maps (and keys): forget what was looked up before
+        cookedShaders.Clear();
+        allocationShaderCaches.Clear();
     }
 
     bool SupportsNewLightmap(IEntry entry, bool texture, string vertexFactoryType = "FLocalVertexFactory")
@@ -982,6 +1017,8 @@ public sealed class LightmassSceneBuilder : IDisposable
                 // BSP lightmaps are only ever LMT_2D in LE3.
                 if (contextOnly || element.LightMap is not LightMap_2D { LightMapType: ELightMapType.LMT_2D, Texture1: not 0 } lightmap)
                 {
+                    if (!contextOnly && element.LightMap.LightMapType == ELightMapType.LMT_None && nodes.Count > 0)
+                        EnableStaticLighting(nodes.Select(n => package.GetEntry(model.Surfs[model.Nodes[n].iSurf].Material)).ToList(), "FLocalVertexFactory");
                     if (!contextOnly && element.LightMap.LightMapType == ELightMapType.LMT_None
                         && nodes.Count > 0 && nodes.All(n => SupportsNewLightmap(package.GetEntry(model.Surfs[model.Nodes[n].iSurf].Material), true)))
                     {

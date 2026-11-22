@@ -48,7 +48,7 @@ public class MaterialShaderCompilationServiceTests
     private sealed class SyncProgress : IProgress<MaterialShaderCompileProgress>
     {
         public readonly List<MaterialShaderCompileProgress> Reports = [];
-        public void Report(MaterialShaderCompileProgress value) => Reports.Add(value);
+        public void Report(MaterialShaderCompileProgress value) { lock (Reports) Reports.Add(value); }
     }
 
     private sealed class FakeSession : IMaterialShaderCompilerSession
@@ -75,7 +75,7 @@ public class MaterialShaderCompilationServiceTests
         // Mirrors the production session: no planned targets exist until a plan succeeds.
         public IReadOnlyList<string> PlannedTargets => planned ? Targets : null;
 
-        public MaterialShaderStepResult CompileJob(int jobIndex) { Calls.Add($"CompileJob({jobIndex})"); return OnCompileJob(jobIndex); }
+        public MaterialShaderStepResult CompileJob(int jobIndex) { lock (Calls) Calls.Add($"CompileJob({jobIndex})"); return OnCompileJob(jobIndex); }
         public MaterialShaderStepResult Assemble() { Calls.Add("Assemble"); return OnAssemble(); }
         public bool IsCompleteShaderSet => CompleteShaderSet;
         public Compiler.TranslationResult Translation => null;
@@ -1229,6 +1229,66 @@ public class MaterialShaderCompilationServiceTests
         Assert.AreEqual(MaterialShaderCompilePhase.Translation, result.Phase);
         Assert.IsNotNull(result.InstanceResolution);
         Assert.AreSame(fixture.Owner, result.InstanceResolution.PermutationOwner);
+    }
+
+    #endregion
+
+    #region Parallel job compilation
+
+    private static MaterialShaderCompilationService Parallel(FakeBackend backend, int degree = 4) =>
+        new(new MaterialShaderCompilationOptions { Enabled = true, MaxDegreeOfParallelism = degree }, backend);
+
+    [TestMethod]
+    public void OptionsMaxDegreeOfParallelism_DefaultsToSequential() =>
+        Assert.AreEqual(1, new MaterialShaderCompilationOptions().MaxDegreeOfParallelism);
+
+    [TestMethod]
+    public async Task Parallel_AllJobsSucceed_ReportsEveryJobInPlanOrder_ThenAssembles()
+    {
+        var backend = new FakeBackend();
+        backend.Session.Targets = Enumerable.Range(0, 16).Select(i => $"T{i}").ToArray();
+        backend.Session.OnCompileJob = i => Ok($"w{i}");
+        backend.Session.CompleteShaderSet = true;
+        var progress = new SyncProgress();
+        var result = await Parallel(backend).CompileMaterialAsync(Request(CreateMaterial(), new Probe()), progress);
+
+        Assert.AreEqual(MaterialShaderCompileOutcome.SucceededFragment, result.Outcome);
+        Assert.AreEqual(16, result.Jobs.Count);
+        for (int i = 0; i < 16; i++) Assert.AreEqual(new MaterialShaderJobReport(i, $"T{i}", true, $"w{i}"), result.Jobs[i]);
+        Assert.AreEqual("Assemble", backend.Session.Calls[^1]);
+        Assert.AreEqual(16, backend.Session.Calls.Count(c => c.StartsWith("CompileJob")));
+        Assert.IsTrue(result.IsCompleteShaderSet);
+        // (0,N) then one completion per job
+        Assert.AreEqual(17, progress.Reports.Count);
+    }
+
+    [TestMethod]
+    public async Task Parallel_FailedJob_IsReported_AndNothingAssembles()
+    {
+        var backend = new FakeBackend();
+        backend.Session.Targets = Enumerable.Range(0, 8).Select(i => $"T{i}").ToArray();
+        backend.Session.OnCompileJob = i => i == 5 ? Fail("hlsl error") : Ok();
+        var result = await Parallel(backend).CompileMaterialAsync(Request(CreateMaterial(), new Probe()));
+
+        Assert.AreEqual(MaterialShaderCompileOutcome.Failed, result.Outcome);
+        Assert.AreEqual(MaterialShaderCompilePhase.Compilation, result.Phase);
+        Assert.AreEqual("T5", result.FailedTarget);
+        CollectionAssert.AreEqual(new[] { "hlsl error" }, result.Errors.ToArray());
+        CollectionAssert.DoesNotContain(backend.Session.Calls, "Assemble");
+        Assert.IsTrue(result.Jobs.Any(j => j.JobIndex == 5 && !j.Success));
+    }
+
+    [TestMethod]
+    public async Task Parallel_CancelledMidway_IsCancelled_AndNothingAssembles()
+    {
+        var backend = new FakeBackend();
+        backend.Session.Targets = Enumerable.Range(0, 64).Select(i => $"T{i}").ToArray();
+        using var cts = new CancellationTokenSource();
+        backend.Session.OnCompileJob = i => { if (i == 0) cts.Cancel(); return Ok(); };
+        var result = await Parallel(backend, degree: 2).CompileMaterialAsync(Request(CreateMaterial(), new Probe()), null, cts.Token);
+
+        Assert.AreEqual(MaterialShaderCompileOutcome.Cancelled, result.Outcome);
+        CollectionAssert.DoesNotContain(backend.Session.Calls, "Assemble");
     }
 
     #endregion

@@ -296,6 +296,9 @@ namespace LegendaryExplorerCore.Shaders
             public bool UsesSceneColor { get; internal init; }
             public string MaterialHlsl { get; internal init; }
             public bool Success => Errors.Count == 0 && MaterialHlsl != null;
+            /// <summary>Set for a translation of recovered code (<see cref="TranslateRecoveredMaterial"/>): the cooked resource's texture dependency length.</summary>
+            public int? RecoveredMaxTextureDependencyLength { get; internal init; }
+            public bool IsRecovered => RecoveredMaxTextureDependencyLength != null;
         }
 
         public enum ShaderStage
@@ -2179,6 +2182,64 @@ namespace LegendaryExplorerCore.Shaders
             var result = TranslateMaterialHlslCore(sources.ReadSource("MaterialTemplate.usf"), false, true, resourceForcesFloatUsage);
             result.SourceSnapshot = sources;
             return result;
+        }
+
+        /// <summary>
+        /// A translation from code recovered from shipped shaders (<see cref="Recovery.MaterialCodeRecovery"/>) instead of the expression
+        /// graph, for a material whose cooked graph is stripped: the template is filled with the recovered property code, and the
+        /// uniform expressions and texture list are the source shader map's. Planning, compilation and assembly then proceed as for
+        /// any translation.
+        /// </summary>
+        public TranslationResult TranslateRecoveredMaterial(LE3ShaderSourceSnapshot sources, Recovery.RecoveredMaterialCode code)
+        {
+            ArgumentNullException.ThrowIfNull(sources);
+            ArgumentNullException.ThrowIfNull(code);
+            var properties = EffectiveMaterialProperties();
+            bool forceFloatTexCoords = properties.GetProp<BoolProperty>("bForceFullPrecision")?.Value == true;
+            var errors = new List<string>();
+            string materialHlsl = null;
+            try
+            {
+                string declarations = BuildUniformDeclarations("float", code.UniformPixelVectors.Length, code.UniformPixelScalars.Length,
+                    code.Uniform2DTextures.Length, code.UniformCubeTextures.Length, 0, 0);
+                materialHlsl = ApplyMaterialTemplate(sources.ReadSource("MaterialTemplate.usf"), code.PropertyCode, code.NumUserTexCoords, "float",
+                    declarations, properties.GetProp<FloatProperty>("OpacityMaskClipValue")?.Value ?? 0.3333f);
+                if (forceFloatTexCoords)
+                    materialHlsl = materialHlsl.Replace("half2 TexCoords[NUM_MATERIAL_TEXCOORDS];", "float2 TexCoords[NUM_MATERIAL_TEXCOORDS];", StringComparison.Ordinal);
+            }
+            catch (Exception exception) when (exception is FormatException or ArgumentException)
+            {
+                errors.Add(exception.Message);
+            }
+            return new TranslationResult
+            {
+                IncludesMaterialResourceInputs = true,
+                ForcesFloatTexCoords = forceFloatTexCoords,
+                Material = material,
+                Compiler = this,
+                CompilationInput = CompilationInput,
+                Graph = new GraphAnalysis
+                {
+                    IncludesMaterialResourceInputs = true, ConnectedInputs = new Dictionary<string, ExportEntry>(),
+                    ReachableExpressions = [], UnreachableExpressions = [], Errors = []
+                },
+                PropertyCode = code.PropertyCode,
+                Errors = errors,
+                UniformPixelVectorExpressions = Array.AsReadOnly(code.UniformPixelVectors),
+                UniformPixelScalarExpressions = Array.AsReadOnly(code.UniformPixelScalars),
+                Uniform2DTextureExpressions = Array.AsReadOnly(code.Uniform2DTextures),
+                UniformCubeTextureExpressions = Array.AsReadOnly(code.UniformCubeTextures),
+                UniformExpressionTextures = Array.AsReadOnly(code.UniformExpressionTextures),
+                UniformVertexVectorExpressions = [],
+                UniformVertexScalarExpressions = [],
+                NumUserTexCoords = code.NumUserTexCoords,
+                UsingTransforms = code.UsingTransforms,
+                UsesVertexColor = code.UsesVertexColor,
+                UsesTime = code.UsesTime,
+                MaterialHlsl = materialHlsl,
+                SourceSnapshot = sources,
+                RecoveredMaxTextureDependencyLength = code.MaxTextureDependencyLength
+            };
         }
 
         /// <summary>SM5 material-resource translation against caller-supplied template text.
