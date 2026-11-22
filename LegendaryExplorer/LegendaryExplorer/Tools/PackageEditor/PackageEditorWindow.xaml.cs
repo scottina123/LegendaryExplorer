@@ -8086,9 +8086,11 @@ namespace LegendaryExplorer.Tools.PackageEditor
                 {
                     var portedMaterials = importedEntries.OfType<ExportEntry>().ToList();
                     if (newEntry is ExportEntry replaced && !portedMaterials.Contains(replaced)) portedMaterials.Add(replaced);
-                    // Ported exports back to what they were ported from: a stripped graph is recovered from the source game's shaders
-                    var portedFrom = rop.CrossPackageMap.Where(p => p.Key is ExportEntry && p.Value is ExportEntry)
-                        .GroupBy(p => (ExportEntry)p.Value).ToDictionary(g => g.Key, g => (ExportEntry)g.First().Key);
+                    // Ported exports back to what they were ported from (imports the source only referenced resolved to their exports):
+                    // a stripped graph is recovered from the source game's shaders
+                    var portedFrom = LE3MaterialRecompiler.PortedSources(rop);
+                    // Destination-game donors that came with their shaders are already this game's materials
+                    portedMaterials = portedMaterials.Where(m => LE3MaterialRecompiler.NeedsRecompileAfterPort(m, portedFrom.GetValueOrDefault(m))).ToList();
                     RecompilePortedMaterials(portedMaterials, sourceEntry.Game, portedFrom);
                 }
             }

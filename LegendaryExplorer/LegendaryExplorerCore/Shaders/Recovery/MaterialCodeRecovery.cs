@@ -123,12 +123,54 @@ namespace LegendaryExplorerCore.Shaders.Recovery
                     if (other != c && !ExprAlgebra.Derivative(pool, color, e => IsAmbient(e, other)).IsZero)
                         throw new ShaderRecoveryException("The base pass mixes ambient light channels; it isn't a plain Diffuse × AmbientColor.");
             }
-            result.PropertyCode["EmissiveColor"] = mapper.Write(emissive);
-            if (lighting != "MLM_Unlit" && diffuse.Any(d => !d.IsZero)) result.PropertyCode["DiffuseColor"] = mapper.Write(diffuse);
+            // The dynamic directional light's base pass: specular, transmission, and anything of the material that reads the light vector
+            // (the LightVector node), which the unlit pass compiles as (0,0,1)
+            ShaderDataflow lit = null;
+            LeafMapper litMapper = null;
+            string lightVector = null;
+            Func<Expr, Expr> litNeutral = Neutral;
+            if (lighting != "MLM_Unlit" && getShaderBytecode(VertexFactory, DirectionalLightShader) is { } litBytes)
+            {
+                lit = DxbcSymbolicExecutor.Execute(litBytes, pool);
+                // The tangent-space light vector is TEXCOORD3 when the pass also carries vertex fog (in TEXCOORD4), else TEXCOORD4
+                bool fogged = lit.InputSemantics.Values.Contains("TEXCOORD3");
+                lightVector = fogged ? "TEXCOORD3" : "TEXCOORD4";
+                if (fogged)
+                    litNeutral = e => e.Op == ExprOp.Leaf && e.Leaf is "in:TEXCOORD4.x" or "in:TEXCOORD4.y" or "in:TEXCOORD4.z" ? pool.Zero : Neutral(e);
+                litMapper = new LeafMapper(pool, lit, result, lightVector);
+            }
+            bool ReadsLightVector(Expr e) => lightVector != null && ExprAlgebra.Nodes(e).Any(n => n.Op == ExprOp.Leaf && n.Leaf.StartsWith($"in:{lightVector}.", StringComparison.Ordinal) && !n.Leaf.EndsWith(".w", StringComparison.Ordinal));
+
+            var emissiveMapper = mapper;
+            if (lit != null)
+            {
+                // Lit: Color = Emissive + Diffuse × AmbientColor + Transfer × LightColor. Taken from here only when the material reads the
+                // light vector, which this pass has and the unlit one doesn't; LE3's template gives the material the same (normalized)
+                // vector in its lit passes and (0,0,1) in its unlit ones, as LE2's did.
+                var litEmissive = new Expr[3];
+                var litDiffuse = new Expr[3];
+                for (int c = 0; c < 3; c++)
+                {
+                    var color = lit.Output($"o0.{"xyz"[c]}") is { } o ? ExprAlgebra.Substitute(pool, o, litNeutral) : null;
+                    if (color == null) { litEmissive = null; break; }
+                    litDiffuse[c] = ExprAlgebra.Derivative(pool, color, e => IsAmbient(e, c));
+                    litEmissive[c] = ExprAlgebra.Substitute(pool, color, e => e.Op == ExprOp.Leaf &&
+                        (e.Leaf.StartsWith("cb:AmbientColorAndSkyFactor", StringComparison.Ordinal) || e.Leaf.StartsWith("cb:LightColorAndFalloffExponent", StringComparison.Ordinal)) ? pool.Zero : null);
+                }
+                if (litEmissive != null && litEmissive.Concat(litDiffuse).Any(ReadsLightVector))
+                {
+                    emissive = litEmissive;
+                    diffuse = litDiffuse;
+                    emissiveMapper = litMapper;
+                    result.Notes.Add("The material reads the light vector: its emissive and diffuse were recovered from the directional light's base pass.");
+                }
+            }
+            result.PropertyCode["EmissiveColor"] = emissiveMapper.Write("EmissiveColor", emissive);
+            if (lighting != "MLM_Unlit" && diffuse.Any(d => !d.IsZero)) result.PropertyCode["DiffuseColor"] = emissiveMapper.Write("DiffuseColor", diffuse);
 
             // Opacity: the color target's alpha, for translucent blending
             if (blend is "BLEND_Translucent" or "BLEND_AlphaComposite" && unlit.Output("o0.w") is { } alpha)
-                result.PropertyCode["Opacity"] = mapper.Write([ExprAlgebra.Substitute(pool, alpha, UnlitNeutral)]);
+                result.PropertyCode["Opacity"] = mapper.Write("Opacity", [ExprAlgebra.Substitute(pool, alpha, UnlitNeutral)]);
 
             // Opacity mask: the pixel is discarded where GetMaterialMask (mask input - clip value) is below zero
             var kill = unlit.Discard.Op == ExprOp.BoolConst ? unlit.Discard : ExprAlgebra.Substitute(pool, unlit.Discard, UnlitNeutral);
@@ -139,7 +181,7 @@ namespace LegendaryExplorerCore.Shaders.Recovery
                 if (kill.Op != ExprOp.Lt) throw new ShaderRecoveryException("The pixel discard isn't a plain opacity mask test.");
                 float clip = properties.GetProp<FloatProperty>("OpacityMaskClipValue")?.Value ?? 0.3333f;
                 var mask = pool.Add(pool.Sub(kill.Args[0], kill.Args[1]), pool.Const(clip));
-                result.PropertyCode["OpacityMask"] = mapper.Write([mask]);
+                result.PropertyCode["OpacityMask"] = mapper.Write("OpacityMask", [mask]);
             }
 
             // Normal: SV_Target2.xy = normalize(WorldToView × TangentToWorld × Normal).xy × 0.5 + 0.5. The view vector's x is linear in
@@ -175,24 +217,22 @@ namespace LegendaryExplorerCore.Shaders.Recovery
                     if (!ShaderEquivalence.SameValues(inverted, tangent)) tangent = inverted;
                     // Left at its (0,0,1) default when that's what it is
                     if (!(tangent[0].IsZero && tangent[1].IsZero && tangent[2].IsConst && tangent[2].Value > 0))
-                        result.PropertyCode["Normal"] = mapper.Write(tangent);
+                        result.PropertyCode["Normal"] = mapper.Write("Normal", tangent);
                 }
                 else result.Notes.Add("The normal output isn't in the expected normalize(...) form; the normal was left at (0,0,1).");
             }
 
             // Specular and specular power, from the dynamic directional light's base pass:
             // Transfer = Diffuse × DiffuseLighting + exp2(log2(max(|saturate(R·L)|, ε)) × SpecularPower) × Specular
-            if (lighting is null or "MLM_Phong" && getShaderBytecode(VertexFactory, DirectionalLightShader) is { } litBytes)
+            if (lighting is null or "MLM_Phong" && lit != null)
             {
-                var lit = DxbcSymbolicExecutor.Execute(litBytes, pool);
-                var litMapper = new LeafMapper(pool, lit, result);
                 var specular = new Expr[3];
                 var transmission = new Expr[3];
                 Expr power = null;
                 Expr[] normal = null;
                 for (int c = 0; c < 3; c++)
                 {
-                    var color = ExprAlgebra.Substitute(pool, lit.Output($"o0.{"xyz"[c]}"), Neutral);
+                    var color = ExprAlgebra.Substitute(pool, lit.Output($"o0.{"xyz"[c]}"), litNeutral);
                     var transfer = ExprAlgebra.Derivative(pool, color, e => e.Op == ExprOp.Leaf && e.Leaf == $"cb:LightColorAndFalloffExponent[{c}]");
                     var (pow, exponent) = SpecularPowerTerm(pool, transfer);
                     if (pow != null)
@@ -234,12 +274,12 @@ namespace LegendaryExplorerCore.Shaders.Recovery
                 }
                 if (power != null)
                 {
-                    result.PropertyCode["SpecularColor"] = litMapper.Write(specular);
-                    result.PropertyCode["SpecularPower"] = litMapper.Write([power]);
+                    result.PropertyCode["SpecularColor"] = litMapper.Write("SpecularColor", specular);
+                    result.PropertyCode["SpecularPower"] = litMapper.Write("SpecularPower", [power]);
                 }
-                if (transmission.Any(t => !t.IsZero)) result.PropertyCode["TwoSidedLightingMask"] = litMapper.Write(transmission);
+                if (transmission.Any(t => !t.IsZero)) result.PropertyCode["TwoSidedLightingMask"] = litMapper.Write("TwoSidedLightingMask", transmission);
                 if (normal != null && !(normal[0].IsZero && normal[1].IsZero && normal[2].IsConst && normal[2].Value > 0))
-                    result.PropertyCode["Normal"] = litMapper.Write(normal);
+                    result.PropertyCode["Normal"] = litMapper.Write("Normal", normal);
             }
             // Distortion, from the distortion accumulation pass: OutColor = (max(D, 0).xy, |min(D, 0)|.xy) with
             // D = clamp(Distortion × 4, -255, 255) / 255, unless the scene in front occludes it (an engine depth test, dropped here)
@@ -261,7 +301,7 @@ namespace LegendaryExplorerCore.Shaders.Recovery
                     var distortion = new[] { pool.Mul(pool.Sub(o[0], o[2]), pool.Const(scale)), pool.Mul(pool.Sub(o[1], o[3]), pool.Const(scale)) };
                     if (!distortion.All(d => d.IsZero))
                     {
-                        try { result.PropertyCode["Distortion"] = new LeafMapper(pool, distort, result).Write(distortion); }
+                        try { result.PropertyCode["Distortion"] = new LeafMapper(pool, distort, result).Write("Distortion", distortion); }
                         catch (ShaderRecoveryException e) { result.Notes.Add("Distortion not recovered: " + e.Message); }
                     }
                 }
@@ -277,11 +317,6 @@ namespace LegendaryExplorerCore.Shaders.Recovery
         private static (Expr Term, Expr Exponent) SpecularPowerTerm(ExprPool pool, Expr transfer)
         {
             bool Reads(Expr e, Func<string, bool> leaf) => ExprAlgebra.Nodes(e).Any(n => n.Op == ExprOp.Leaf && leaf(n.Leaf));
-            // exp2(log2(R·L) × P); other powers in the material (a triplanar blend's |normal|^k, say) don't read the light vector
-            var exp = ExprAlgebra.Nodes(transfer).FirstOrDefault(e => e.Op == ExprOp.Exp2 && e.Args[0].Op == ExprOp.Mul &&
-                                                                      e.Args[0].Args.Any(a => a.Op == ExprOp.Log2 && Reads(a, IsLightVector)));
-            if (exp != null) return (exp, exp.Args[0].Args.First(a => a.Op != ExprOp.Log2));
-
             bool IsCamera(string leaf) => leaf is "in:TEXCOORD6.x" or "in:TEXCOORD6.y" or "in:TEXCOORD6.z";
             // Whether e reads the camera vector itself, not only through texture coordinates (a parallax-offset normal map makes N·L
             // read the camera vector too, but only inside its samples; R = 2(N·V)N - V reads it directly)
@@ -293,8 +328,20 @@ namespace LegendaryExplorerCore.Shaders.Recovery
                 directCamera[e] = reads;
                 return reads;
             }
+
+            // The engine clamps R·L as max(saturate(R·L), 0.0001); a material's Power node clamps its base as max(|x|, ε)
+            static bool EngineClamp(Expr e) => e.Op == ExprOp.Max && e.Args.Any(a => a.Op == ExprOp.Sat) && e.Args.Any(a => a.IsConst);
+
+            // exp2(log2(R·L) × P). Other powers in the material don't have R·L for a base: a triplanar blend's |normal|^k reads no light
+            // vector, and a material's own rim from its LightVector node ((1 - |L·N|)^k, (1 - |L·V|)^k, e.g. in a two-sided lighting mask)
+            // is a Power node's clamp, not the engine's.
+            var exps = ExprAlgebra.Nodes(transfer).Where(e => e.Op == ExprOp.Exp2 && e.Args[0].Op == ExprOp.Mul &&
+                                                             e.Args[0].Args.Any(a => a.Op == ExprOp.Log2 && Reads(a, IsLightVector) && ReadsCameraDirectly(a))).ToList();
+            var exp = exps.FirstOrDefault(e => e.Args[0].Args.Any(a => a.Op == ExprOp.Log2 && EngineClamp(a.Args[0]))) ?? exps.FirstOrDefault();
+            if (exp != null) return (exp, exp.Args[0].Args.First(a => a.Op != ExprOp.Log2));
             // The clamped R·L: a max reading both the light and the camera vector, not inside another such max
             var bases = ExprAlgebra.Nodes(transfer).Where(e => e.Op == ExprOp.Max && Reads(e, IsLightVector) && ReadsCameraDirectly(e)).ToList();
+            if (bases.Any(EngineClamp)) bases = bases.Where(EngineClamp).ToList();
             var basis = bases.FirstOrDefault(b => !bases.Any(o => o != b && ExprAlgebra.Nodes(o).Contains(b) && o.Op == ExprOp.Max && o.Args.Contains(b)));
             if (basis == null) return (null, null);
             var powers = new Dictionary<Expr, int?>();
@@ -401,17 +448,26 @@ namespace LegendaryExplorerCore.Shaders.Recovery
 
 
         /// <summary>Writes recovered expressions as LE material template HLSL: interpolants as FMaterialPixelParameters fields, uniforms by their template names.</summary>
-        private sealed class LeafMapper(ExprPool pool, ShaderDataflow source, RecoveredMaterialCode result)
+        /// <param name="lightVector">The lit pass's tangent-space light vector interpolant (TEXCOORD3 or TEXCOORD4): the material's LightVector node</param>
+        private sealed class LeafMapper(ExprPool pool, ShaderDataflow source, RecoveredMaterialCode result, string lightVector = null)
         {
             /// <summary>Statements and the return of a scalar (1 value) or vector property.</summary>
-            public string Write(Expr[] values, string format = null)
+            public string Write(string property, Expr[] values, string format = null)
             {
-                var emitter = new HlslEmitter(MapLeaf, "Local");
-                emitter.Prepare(values);
-                var parts = values.Select(emitter.Emit).ToArray();
-                string value = format != null ? string.Format(format, parts)
-                    : parts.Length == 1 ? parts[0] : $"float{parts.Length}({string.Join(", ", parts)})";
-                return emitter.Statements + "\treturn " + value;
+                try
+                {
+                    var emitter = new HlslEmitter(MapLeaf, "Local");
+                    emitter.Prepare(values);
+                    var parts = values.Select(emitter.Emit).ToArray();
+                    string value = format != null ? string.Format(format, parts)
+                        : parts.Length == 1 ? parts[0] : $"float{parts.Length}({string.Join(", ", parts)})";
+                    return emitter.Statements + "\treturn " + value;
+                }
+                catch (ShaderRecoveryException e)
+                {
+                    // Which material input couldn't be written
+                    throw new ShaderRecoveryException($"{property}: {e.Message}");
+                }
             }
 
             private string MapLeaf(string leaf)
@@ -426,6 +482,8 @@ namespace LegendaryExplorerCore.Shaders.Recovery
                 int dot = semanticComponent.LastIndexOf('.');
                 string semantic = semanticComponent[..dot];
                 char c = semanticComponent[dot + 1];
+                // The material's LightVector node; the template normalizes it, as the source shader does before using it
+                if (semantic == lightVector && c is 'x' or 'y' or 'z') return $"Parameters.TangentLightVector.{c}";
                 switch (semantic)
                 {
                     case "TEXCOORD10": result.UsingTransforms |= 0x1; return $"Parameters.TangentToWorld[0].{c}";

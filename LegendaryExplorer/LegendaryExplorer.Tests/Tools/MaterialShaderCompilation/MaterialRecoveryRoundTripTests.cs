@@ -53,12 +53,17 @@ public class MaterialRecoveryRoundTripTests
         var report = new List<string>();
         int matched = 0, recovered = 0;
         string only = Environment.GetEnvironmentVariable("LEX_MATERIAL_RECOVERY_ONLY");
-        foreach (var material in source.Exports.Where(e => (e.ClassName is "Material" or "DecalMaterial") && !e.IsDefaultObject && (only == null || only.Split(",").Contains(e.ObjectName.Instanced))).Take(count))
+        var candidates = source.Exports.Where(e => (e.ClassName is "Material" or "DecalMaterial") && !e.IsDefaultObject && (only == null || only.Split(",").Contains(e.ObjectName.Instanced))).ToList();
+        // Named materials the package only imports: the exports they resolve to (memory-safe porting ports those)
+        if (only != null)
+            foreach (var import in source.Imports.Where(i => i.ClassName is "Material" or "DecalMaterial" && only.Split(",").Contains(i.ObjectName.Instanced)))
+                if (EntryImporter.TryResolveImport(import, out var resolvedImport, cache)) candidates.Add(resolvedImport);
+        foreach (var material in candidates.Take(count))
         {
             string name = material.InstancedFullPath;
             var (map, _) = ShaderCacheManipulator.GetMaterialShaderMapAndShaders(material.FileRef, ShaderCacheManipulator.GetShaderMapId(material), null, true, []);
             if (map == null) { report.Add($"{name}: no LE2 shader map"); continue; }
-            var localCache = source.FindExport("SeekFreeShaderCache", "ShaderCache") is { } ce ? ObjectBinary.From<ShaderCache>(ce) : null;
+            var localCache = material.FileRef.FindExport("SeekFreeShaderCache", "ShaderCache") is { } ce ? ObjectBinary.From<ShaderCache>(ce) : null;
             byte[] Shipping(string vf, string type)
             {
                 var reference = map.MeshShaderMaps.FirstOrDefault(m => m.VertexFactoryType.Name == vf)?.Shaders.FirstOrDefault(x => x.Key.Name == type).Value;

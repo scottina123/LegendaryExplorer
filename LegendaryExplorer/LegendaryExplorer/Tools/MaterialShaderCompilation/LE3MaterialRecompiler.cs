@@ -62,6 +62,34 @@ namespace LegendaryExplorer.Tools.MaterialShaderCompilation
 
         public static string DefaultShaderDirectory => LE3Directory.DefaultGamePath is { Length: > 0 } root ? Path.Combine(root, "Engine", "Shaders") : null;
 
+        /// <summary>
+        /// After a cross-game port: each ported export and the source-game export it was ported from (for <see cref="Recompile"/>'s sourceOf).
+        /// A source the ported package only imported (memory-safe import porting brings in the export it resolves to, e.g. an object of an
+        /// LE2 BioA/BioD level that lives in its BioP) is resolved to that export, the way the port did.
+        /// </summary>
+        public static Dictionary<ExportEntry, ExportEntry> PortedSources(RelinkerOptionsPackage rop)
+        {
+            var sources = new Dictionary<ExportEntry, ExportEntry>();
+            foreach (var (source, ported) in rop.CrossPackageMap)
+                if (source is ExportEntry sourceExport && ported is ExportEntry portedExport)
+                    sources.TryAdd(portedExport, sourceExport);
+            foreach (var (source, ported) in rop.CrossPackageMap)
+            {
+                if (source is not ImportEntry import || ported is not ExportEntry portedExport || sources.ContainsKey(portedExport))
+                    continue;
+                if (EntryImporter.ResolveImport(import, rop.Cache, fileResolver: rop.SourceCustomImportFileResolver) is { } resolved)
+                    sources[portedExport] = resolved;
+            }
+            return sources;
+        }
+
+        /// <summary>
+        /// Whether a material a cross-game port brought in needs recompiling: not when it was ported from the destination game itself (a donor
+        /// that replaced the source game's object) and already has its shaders.
+        /// </summary>
+        public static bool NeedsRecompileAfterPort(ExportEntry ported, ExportEntry portedFrom) =>
+            portedFrom == null || portedFrom.Game != ported.Game || ShaderCacheManipulator.IsMaterialBroken(ported);
+
         /// <summary>Whether materials of <paramref name="game"/> can be recompiled here; if not, why.</summary>
         public static bool CanRecompile(MEGame game, out string reason, string shaderDirectory = null)
         {
