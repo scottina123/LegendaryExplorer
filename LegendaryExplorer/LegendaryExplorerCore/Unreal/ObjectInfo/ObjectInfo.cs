@@ -1484,6 +1484,23 @@ namespace LegendaryExplorerCore.Unreal.ObjectInfo
                 inputLinks = new List<string> { "Override", "Remove Override" }
             };
 
+            _classes["SFXSeqCond_CheckCurrentMap"] = new ClassInfo
+            {
+                baseClass = "SequenceCondition",
+                pccPath = GlobalUnrealObjectInfo.Me3ExplorerCustomNativeAdditionsName,
+                exportIndex = 121, //in LE3Resources.pcc
+                properties =
+                {
+                    new KeyValuePair<NameReference, PropertyInfo>("MapName",
+                        new PropertyInfo(PropertyType.NameProperty)),
+                }
+            };
+            _sequenceObjects["SFXSeqCond_CheckCurrentMap"] = new SequenceObjectInfo
+            {
+                ObjInstanceVersion = 1,
+                inputLinks = new List<string> { "In" }
+            };
+
             _classes["SFXSeqAct_SetPawnMeshes"] = new ClassInfo
             {
                 baseClass = "SequenceAction",

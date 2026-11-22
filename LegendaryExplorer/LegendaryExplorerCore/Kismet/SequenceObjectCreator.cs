@@ -430,6 +430,9 @@ namespace LegendaryExplorerCore.Kismet
                 // edited default to None as that is in every package and should be default if there is no named event to reference. - KK
                 switch (info.ClassName)
                 {
+                    case "SFXSeqCond_CheckCurrentMap":
+                        defaults.Add(new NameProperty("None", "MapName"));
+                        break;
                     case "SeqEvent_Console":
                         defaults.Add(new NameProperty("None", "ConsoleEventName"));
                         break;

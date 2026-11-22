@@ -187,6 +187,9 @@ namespace LegendaryExplorer.Tools.SequenceObjects
                 //I am sure there is a more efficient way to do this we will want to move to if we expand this feature
                 switch (export.ClassName)
                 {
+                    case "SFXSeqCond_CheckCurrentMap":
+                        res += $"Current map: {properties.GetProp<NameProperty>("MapName")?.Value.Instanced ?? "None"}";
+                        break;
                     case "BioSeqAct_ScalarMathUnit":
                         var op = properties.GetProp<EnumProperty>("Operation");
                         if (op == null)
