@@ -34,6 +34,19 @@ namespace LegendaryExplorerCore.Unreal
         private static readonly float Root2Over2 = (float)(Math.Sqrt(2) / 2);
         private const bool ExportCollision = false;
 
+        // Exports name the container node and the LOD0 mesh node after the mesh (Blender's skeletal mesh layout),
+        // and the importer relies on that to regroup LODs. SharpGLTF 1.0.7+ rejects duplicate node names
+        // unless this is allowed; glTF itself does not require unique names.
+        internal static SceneBuilderSchema2Settings ExportSettings
+        {
+            get
+            {
+                var settings = SceneBuilderSchema2Settings.Default;
+                settings.AllowArmatureDuplicatedNames = true;
+                return settings;
+            }
+        }
+
         [GeneratedRegex(@"\.\d+$")]
         private static partial Regex BlenderNameSuffixRegex { get; }
 
@@ -149,7 +162,7 @@ namespace LegendaryExplorerCore.Unreal
                     scene.AddNode(skeletonNodes[i]);
             }
 
-            var gltf = scene.ToGltf2();
+            var gltf = scene.ToGltf2(ExportSettings);
             gltf.Asset.Generator = versionInfo ?? "Legendary Explorer Core";
             gltf.Save(filePath);
         }
@@ -804,7 +817,7 @@ namespace LegendaryExplorerCore.Unreal
                 }
             }
 
-            var gltf = scene.ToGltf2();
+            var gltf = scene.ToGltf2(ExportSettings);
             gltf.Asset.Generator = $"{versionInfo ?? "Legendary Explorer Core"}";
 
             foreach (var (mesh, skeletonNodes) in skeletonMap)

@@ -32,7 +32,7 @@ public class GltfImportTests
         AddTrianglePart(scene, root, "Body", "BodyDetailMaterial", 2);
         AddTrianglePart(scene, root, "Jacket", "JacketMaterial", 4);
 
-        var gltf = scene.ToGltf2();
+        var gltf = scene.ToGltf2(GLTF.ExportSettings);
         GLTF.QueryMeshes(gltf, out var skeletalMeshes, out var staticMeshes);
         Assert.AreEqual(0, skeletalMeshes.Count());
         Assert.AreEqual(1, staticMeshes.Count());
@@ -65,7 +65,7 @@ public class GltfImportTests
         AddTrianglePart(scene, root, "CC_Base_Body1_Std_Eyelash_0_0", "EyelashMaterial", 3);
         AddTrianglePart(scene, root, "Headgear", "HeadgearMaterial", 4);
 
-        var gltf = scene.ToGltf2();
+        var gltf = scene.ToGltf2(GLTF.ExportSettings);
         CollectionAssert.AreEqual(new[]
         {
             "CC_Base_Body1_Std_Skin_Head_0_0",
@@ -105,7 +105,7 @@ public class GltfImportTests
                 Vertex(new Vector3(i * 2, 1, 0), Vector2.UnitY));
         }
         scene.AddRigidMesh(mesh, new NodeBuilder("MixedTangents"));
-        var gltf = scene.ToGltf2();
+        var gltf = scene.ToGltf2(GLTF.ExportSettings);
         using var originalPackage = MEPackageHandler.CreateMemoryEmptyPackage("AuthoredTangents.pcc", MEGame.LE3);
         GLTF.ConvertGltfToMesh(gltf, originalPackage);
         var originalMesh = originalPackage.Exports.Single(export => export.ClassName == "StaticMesh").GetBinaryData<StaticMesh>();
@@ -147,7 +147,7 @@ public class GltfImportTests
                 Vertex(new Vector3(i * 2, 1, 0)));
         }
         scene.AddSkinnedMesh(mesh, Matrix4x4.Identity, bone);
-        var gltf = scene.ToGltf2();
+        var gltf = scene.ToGltf2(GLTF.ExportSettings);
         using var package = MEPackageHandler.CreateMemoryEmptyPackage("SkeletalMaterialFallback.pcc", MEGame.LE3);
         for (int i = 0; i < 2; i++)
             package.CreateExport($"ExistingMaterial{i}", "Material", indexed: false).WriteBinary(Material.Create());
@@ -160,6 +160,61 @@ public class GltfImportTests
         GLTF.ConvertGltfToMesh(gltf, package, existingMesh: existing);
 
         CollectionAssert.AreEqual(new[] { preservedMaterial, 0 }, existing.GetBinaryData<SkeletalMesh>().Materials);
+    }
+
+    [TestMethod]
+    public void SkeletalMeshExportRoundTripsWithLods()
+    {
+        // The exporter names the container node and the LOD0 mesh node after the mesh (Blender's layout).
+        // SharpGLTF rejects duplicate names inside an armature unless explicitly allowed.
+        var scene = new SceneBuilder();
+        var root = new NodeBuilder("RootBone");
+        var child = root.CreateNode("ChildBone").WithLocalTranslation(new Vector3(0, 1, 0));
+        foreach (var (name, offset) in new[] { ("SkinnedBody", 0f), ("SkinnedBody_LOD1", 0f) })
+        {
+            var mesh = new MeshBuilder<VertexPositionNormalTangent, VertexTexture1, VertexJoints4>(name);
+            VertexBuilder<VertexPositionNormalTangent, VertexTexture1, VertexJoints4> Vertex(Vector3 position, int joint) =>
+                new VertexBuilder<VertexPositionNormalTangent, VertexTexture1, VertexJoints4>()
+                    .WithGeometry(position, Vector3.UnitZ, new Vector4(Vector3.UnitX, 1))
+                    .WithMaterial(Vector2.Zero)
+                    .WithSkinning(new[] { (joint, 1f) });
+            mesh.UsePrimitive(new MaterialBuilder("BodyMaterial")).AddTriangle(
+                Vertex(new Vector3(offset, 0, 0), 0),
+                Vertex(new Vector3(offset + 1, 0, 0), 0),
+                Vertex(new Vector3(offset, 1, 0), 1));
+            scene.AddSkinnedMesh(mesh, Matrix4x4.Identity, root, child).WithName(name);
+        }
+        using var package = MEPackageHandler.CreateMemoryEmptyPackage("SkeletalExportRoundTrip.pcc", MEGame.LE3);
+        GLTF.ConvertGltfToMesh(scene.ToGltf2(GLTF.ExportSettings), package);
+        ExportEntry meshExport = package.Exports.Single(export => export.ClassName == "SkeletalMesh");
+        var original = meshExport.GetBinaryData<SkeletalMesh>();
+        Assert.AreEqual(2, original.RefSkeleton.Length);
+        Assert.AreEqual(2, original.LODModels.Length);
+
+        string filePath = Path.Combine(Path.GetTempPath(), $"SkeletalExportRoundTrip-{Guid.NewGuid()}.glb");
+        try
+        {
+            GLTF.ExportMeshToGltf(meshExport, filePath, GLTF.MaterialExportLevel.NameOnly);
+            var exported = ModelRoot.Load(filePath);
+            Assert.AreEqual(1, exported.LogicalSkins.Count);
+            Assert.AreEqual(2, exported.LogicalNodes.Count(node => node.Mesh != null && node.Skin != null));
+
+            GLTF.ConvertGltfToMesh(exported, package, existingMesh: meshExport);
+            var reimported = meshExport.GetBinaryData<SkeletalMesh>();
+            Assert.AreEqual(1, package.Exports.Count(export => export.ClassName == "SkeletalMesh"));
+            CollectionAssert.AreEqual(original.RefSkeleton.Select(bone => bone.Name.Instanced).ToArray(),
+                reimported.RefSkeleton.Select(bone => bone.Name.Instanced).ToArray());
+            Assert.AreEqual(original.LODModels.Length, reimported.LODModels.Length);
+            for (int i = 0; i < original.LODModels.Length; i++)
+            {
+                Assert.AreEqual(original.LODModels[i].NumVertices, reimported.LODModels[i].NumVertices);
+                Assert.AreEqual(original.LODModels[i].IndexBuffer.Length, reimported.LODModels[i].IndexBuffer.Length);
+            }
+        }
+        finally
+        {
+            File.Delete(filePath);
+        }
     }
 
     [TestMethod]
@@ -184,7 +239,7 @@ public class GltfImportTests
         var root = new NodeBuilder("Root");
         scene.AddNode(root);
         AddTrianglePart(scene, root, "Mesh", "NormalMaterial", 0);
-        GLTF.ConvertGltfToMesh(scene.ToGltf2(), package);
+        GLTF.ConvertGltfToMesh(scene.ToGltf2(GLTF.ExportSettings), package);
         string filePath = Path.Combine(Path.GetTempPath(), $"ExportNormals-{Guid.NewGuid()}.glb");
         try
         {
