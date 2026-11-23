@@ -1,8 +1,10 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace LegendaryExplorer.Tools.LevelEditor;
 
@@ -21,6 +23,11 @@ public sealed record NavigationGenerationSettings
     public float CoverProbeDistance { get; init; } = 192f;
     public float CoverSlotInterval { get; init; } = 160f;
     public bool GenerateCover { get; init; } = true;
+    /// <summary>
+    /// Path sizes (radius, half-height) in ascending order; a ReachSpec is stamped with the largest one that can
+    /// traverse it and its PathColorIndex is that size's index. Defaults to ME3/LE3 SFXGame.Default__BioScout.PathSizes.
+    /// </summary>
+    public IReadOnlyList<NavigationPathSize> PathSizes { get; init; } = NavigationPathSize.Game3Defaults;
 
     public void Validate()
     {
@@ -37,11 +44,74 @@ public sealed record NavigationGenerationSettings
     }
 }
 
+/// <summary>A pawn cylinder used to size ReachSpecs (a Scout.PathSizes entry). Height is a half-height.</summary>
+public readonly record struct NavigationPathSize(float Radius, float Height)
+{
+    /// <summary>SFXGame.Default__BioScout.PathSizes: Common, Large, VeryLarge, Max, Vehicle.</summary>
+    public static IReadOnlyList<NavigationPathSize> Game3Defaults { get; } =
+        [new(34, 90), new(40, 95), new(105, 145), new(135, 146), new(140, 195)];
+}
+
+/// <summary>
+/// Generated positions are floor contact points; <see cref="NavigationSerializer"/> lifts them to the heights the
+/// engine places each navigation class at.
+/// </summary>
 public sealed record GeneratedNavigationNode(Vector3 Position, Vector3 FloorNormal);
-public sealed record GeneratedNavigationEdge(int StartNode, int EndNode);
+public sealed record GeneratedNavigationEdge(int StartNode, int EndNode, int SizeIndex = 0);
+public readonly record struct GeneratedCoverRef(int Link, int Slot);
+
+/// <summary>A generated navigation point: a path node (<see cref="Node"/> &gt;= 0) or a cover slot marker.</summary>
+public readonly record struct GeneratedNavTarget(int Node, GeneratedCoverRef Slot)
+{
+    public static GeneratedNavTarget ForNode(int node) => new(node, new GeneratedCoverRef(-1, -1));
+    public static GeneratedNavTarget ForSlot(int link, int slot) => new(-1, new GeneratedCoverRef(link, slot));
+    public bool IsNode => Node >= 0;
+}
+
+public sealed record GeneratedFireLink(GeneratedCoverRef Target, bool IsFallback);
+public sealed record GeneratedExposure(GeneratedCoverRef Target, byte Scale);
+public sealed record GeneratedDanger(GeneratedNavTarget Target, byte Cost);
+
+public enum GeneratedCoverConnectionKind
+{
+    Walk,
+    SlotToSlot,
+    Mantle,
+    CoverSlip,
+    CoverTurn,
+    SwatTurn,
+    /// <summary>CoverLink to its own slot marker (one way, kept out of the navigation octree like cooked levels).</summary>
+    LinkToSlot,
+    /// <summary>CoverLink to a nearby path node.</summary>
+    LinkToNode
+}
+
+/// <summary>
+/// A directed ReachSpec between generated navigation points. <see cref="FromLink"/> is the source CoverLink for the
+/// link-owned kinds (then <see cref="From"/> is unused); <see cref="Direction"/> is the cover SpecDirection
+/// (1 = left, 2 = right, 0 = none).
+/// </summary>
+public sealed record GeneratedCoverConnection(GeneratedNavTarget From, GeneratedNavTarget To,
+    GeneratedCoverConnectionKind Kind, int SizeIndex = 0, byte Direction = 0, int FromLink = -1);
+
 public sealed record GeneratedCoverSlot(Vector3 Position, Vector3 Facing, bool IsStanding,
     bool LeanLeft, bool LeanRight, int NearestNavigationNode,
-    int MantleTargetLink = -1, int MantleTargetSlot = -1);
+    int MantleTargetLink = -1, int MantleTargetSlot = -1)
+{
+    /// <summary>Whether a mid-level slot can pop up over its cover. Null means mid-level slots can.</summary>
+    public bool? CanPopUp { get; init; }
+    public IReadOnlyList<GeneratedFireLink> FireLinks { get; init; } = [];
+    public IReadOnlyList<GeneratedExposure> Exposures { get; init; } = [];
+    public IReadOnlyList<GeneratedDanger> Dangers { get; init; } = [];
+    public GeneratedCoverRef? SlipLeft { get; init; }
+    public GeneratedCoverRef? SlipRight { get; init; }
+    public GeneratedCoverRef? CoverTurnLeft { get; init; }
+    public GeneratedCoverRef? CoverTurnRight { get; init; }
+    public GeneratedCoverRef? SwatTurnLeft { get; init; }
+    public GeneratedCoverRef? SwatTurnRight { get; init; }
+    public bool PopUp => CanPopUp ?? !IsStanding;
+}
+
 public sealed record GeneratedCoverLink(Vector3 Position, Vector3 Facing, IReadOnlyList<GeneratedCoverSlot> Slots);
 
 public sealed record NavigationGenerationResult(
@@ -50,14 +120,30 @@ public sealed record NavigationGenerationResult(
     IReadOnlyList<GeneratedCoverLink> CoverLinks,
     int SampleCount,
     int RejectedForSlope,
-    int RejectedForClearance);
+    int RejectedForClearance)
+{
+    /// <summary>
+    /// Every cover-related ReachSpec. When empty (hand-built results) the serializer derives the basic set:
+    /// slot to nearest node, slot to slot and mantles.
+    /// </summary>
+    public IReadOnlyList<GeneratedCoverConnection> CoverConnections { get; init; } = [];
+
+    /// <summary>Links between navigation points already in the level (spawn points, player starts) and generated nodes.</summary>
+    public IReadOnlyList<GeneratedExistingConnection> ExistingConnections { get; init; } = [];
+}
+
+/// <summary>
+/// A walkable link between the existing navigation point <see cref="Existing"/> (an index into the points passed to
+/// <see cref="NavigationGenerator.Generate"/>) and generated node <see cref="Node"/>.
+/// </summary>
+public sealed record GeneratedExistingConnection(int Existing, int Node, int SizeIndex, bool ToNode, bool FromNode);
 
 /// <summary>
 /// Builds a sparse UE3-style navigation graph from Level Editor collision. It performs multi-floor
 /// projection, pawn-capsule clearance tests, directional step/drop validation, local topology pruning,
 /// and wall-probe cover classification.
 /// </summary>
-public sealed class NavigationGenerator
+public sealed partial class NavigationGenerator
 {
     private const int MaximumCandidateCount = 20000;
     private const int MaximumCoverSampleCount = 100000;
@@ -77,8 +163,12 @@ public sealed class NavigationGenerator
         minimumWalkableNormalZ = MathF.Cos(settings.MaximumSlopeDegrees * MathF.PI / 180f);
     }
 
+    /// <param name="existingNavigationPoints">
+    /// Locations of navigation points already in the level that should join the generated network (spawn points,
+    /// player starts), as UE3's path build connects every NavigationPoint.
+    /// </param>
     public NavigationGenerationResult Generate(Vector3 center, CancellationToken cancellationToken = default,
-        IProgress<string> progress = null)
+        IProgress<string> progress = null, IReadOnlyList<Vector3> existingNavigationPoints = null)
     {
         if (collision.NavigationTriangleCount == 0)
             throw new InvalidOperationException("The loaded levels do not contain usable blocking mesh collision.");
@@ -107,13 +197,87 @@ public sealed class NavigationGenerator
         Prune(candidates, edges, coverCandidates, cancellationToken);
         Reindex(candidates, edges, out List<GeneratedNavigationNode> generatedNodes,
             out List<GeneratedNavigationEdge> generatedEdges);
+        progress?.Report($"Sizing {generatedEdges.Count:N0} connections for large pawns...");
+        generatedEdges = SizeEdges(generatedNodes, generatedEdges, cancellationToken);
 
         progress?.Report("Grouping cover slots...");
-        List<GeneratedCoverLink> coverLinks = GroupCover(coverCandidates, generatedNodes);
+        List<GeneratedCoverLink> coverLinks = GroupCover(coverCandidates, generatedNodes, cancellationToken);
         progress?.Report("Pairing vaultable cover slots...");
         AssignMantleTargets(coverLinks);
+        List<GeneratedCoverConnection> coverConnections = [];
+        if (coverLinks.Count > 0)
+        {
+            progress?.Report("Validating leans, pop-ups, corner turns and cover-to-cover moves...");
+            AnalyzeCoverMoves(coverLinks, cancellationToken);
+            progress?.Report("Tracing fire links, exposure and danger for AI cover selection...");
+            AnalyzeCoverVisibility(coverLinks, generatedNodes, cancellationToken);
+            progress?.Report("Connecting cover to the path network...");
+            coverConnections = BuildCoverConnections(coverLinks, generatedNodes, cancellationToken);
+        }
+        List<GeneratedExistingConnection> existingConnections = [];
+        if (existingNavigationPoints is { Count: > 0 })
+        {
+            progress?.Report($"Connecting {existingNavigationPoints.Count:N0} existing navigation points...");
+            existingConnections = ConnectExistingNavigation(existingNavigationPoints, generatedNodes, cancellationToken);
+        }
         return new NavigationGenerationResult(generatedNodes, generatedEdges, coverLinks,
-            sampleCount, rejectedForSlope, rejectedForClearance);
+            sampleCount, rejectedForSlope, rejectedForClearance)
+        {
+            CoverConnections = coverConnections,
+            ExistingConnections = existingConnections
+        };
+    }
+
+    /// <summary>
+    /// Drops each existing navigation point to the floor below it and links it both ways to every generated node it
+    /// can walk to within the connection distance (or the nearest reachable one a little further out).
+    /// </summary>
+    private List<GeneratedExistingConnection> ConnectExistingNavigation(IReadOnlyList<Vector3> points,
+        List<GeneratedNavigationNode> nodes, CancellationToken cancellationToken)
+    {
+        var perPoint = new List<GeneratedExistingConnection>[points.Count];
+        float connectionSquared = settings.ConnectionDistance * settings.ConnectionDistance;
+        Parallel.For(0, points.Count, new ParallelOptions { CancellationToken = cancellationToken }, index =>
+        {
+            var connections = new List<GeneratedExistingConnection>();
+            perPoint[index] = connections;
+            Vector3 point = points[index];
+            LevelCollisionHit floorHit = default;
+            bool found = false;
+            foreach (LevelCollisionHit hit in collision.RaycastAll(point + Vector3.UnitZ * settings.MaximumStepUp,
+                         -Vector3.UnitZ, 2048f))
+            {
+                if (hit.Normal.Z < minimumWalkableNormalZ) continue;
+                floorHit = hit;
+                found = true;
+                break;
+            }
+            if (!found) return;
+            Vector3 floor = floorHit.Position + Vector3.UnitZ;
+
+            float nearestSquared = connectionSquared * 2.25f;
+            GeneratedExistingConnection nearest = null;
+            for (int node = 0; node < nodes.Count; node++)
+            {
+                float distanceSquared = Vector3.DistanceSquared(floor, nodes[node].Position);
+                if (distanceSquared > connectionSquared * 2.25f) continue;
+                bool toNode = CanTraverse(floor, nodes[node].Position);
+                bool fromNode = CanTraverse(nodes[node].Position, floor);
+                if (!toNode && !fromNode) continue;
+                var connection = new GeneratedExistingConnection(index, node,
+                    toNode && fromNode ? GetLargestPathSize(floor, nodes[node].Position) : 0, toNode, fromNode);
+                if (distanceSquared <= connectionSquared)
+                    connections.Add(connection);
+                else if (distanceSquared < nearestSquared)
+                {
+                    nearestSquared = distanceSquared;
+                    nearest = connection;
+                }
+            }
+            if (connections.Count == 0 && nearest is not null)
+                connections.Add(nearest);
+        });
+        return perPoint.SelectMany(item => item).ToList();
     }
 
     private List<Candidate> SampleWalkableSurfaces(Vector3 center, CancellationToken cancellationToken,
@@ -166,8 +330,7 @@ public sealed class NavigationGenerator
                     }
 
                     Vector3 position = hit.Position + Vector3.UnitZ;
-                    if (collision.OverlapCapsule(GetClearancePosition(position, hit.Normal),
-                            settings.PawnRadius, PawnFullHeight))
+                    if (IsStandingSpaceBlocked(position, hit.Normal))
                     {
                         rejectedForClearance++;
                         continue;
@@ -230,8 +393,7 @@ public sealed class NavigationGenerator
                         continue;
 
                     Vector3 position = hit.Position + Vector3.UnitZ;
-                    if (collision.OverlapCapsule(GetClearancePosition(position, hit.Normal),
-                            settings.PawnRadius, PawnFullHeight))
+                    if (IsStandingSpaceBlocked(position, hit.Normal))
                         continue;
 
                     samples.Add(new Candidate(position, hit.Normal, gridX, gridY));
@@ -286,13 +448,17 @@ public sealed class NavigationGenerator
         return edges;
     }
 
-    private bool CanTraverse(Vector3 start, Vector3 end)
+    private bool CanTraverse(Vector3 start, Vector3 end) =>
+        CanTraverse(start, end, settings.PawnRadius, PawnFullHeight);
+
+    /// <summary>Whether a pawn of <paramref name="radius"/> and full <paramref name="fullHeight"/> can walk between two floor points.</summary>
+    private bool CanTraverse(Vector3 start, Vector3 end, float radius, float fullHeight)
     {
         float heightDifference = end.Z - start.Z;
         if (heightDifference > settings.MaximumStepUp || heightDifference < -settings.MaximumSafeDrop)
             return false;
         float sweepLift = MathF.Max(settings.MaximumStepUp,
-            settings.PawnRadius / minimumWalkableNormalZ - settings.PawnRadius + 1f);
+            radius / minimumWalkableNormalZ - radius + 1f);
         Vector3 sweepOffset = Vector3.UnitZ * sweepLift;
         if (heightDifference < -settings.MaximumStepDown)
         {
@@ -300,13 +466,13 @@ public sealed class NavigationGenerator
             // sweep down to the landing. A diagonal sweep would incorrectly collide with the ledge lip.
             Vector3 overLanding = new(end.X, end.Y, start.Z);
             if (collision.CapsuleSweep(start + sweepOffset, overLanding + sweepOffset,
-                    settings.PawnRadius, PawnFullHeight, out _) ||
+                    radius, fullHeight, out _) ||
                 collision.CapsuleSweep(overLanding + sweepOffset, end + sweepOffset,
-                    settings.PawnRadius, PawnFullHeight, out _))
+                    radius, fullHeight, out _))
                 return false;
         }
         else if (collision.CapsuleSweep(start + sweepOffset, end + sweepOffset,
-                     settings.PawnRadius, PawnFullHeight, out _))
+                     radius, fullHeight, out _))
         {
             return false;
         }
@@ -314,7 +480,7 @@ public sealed class NavigationGenerator
         Vector3 delta = end - start;
         float horizontalDistance = new Vector2(delta.X, delta.Y).Length();
         int steps = Math.Max(1, (int)MathF.Ceiling(horizontalDistance /
-            MathF.Max(settings.PawnRadius, settings.GridSpacing * 0.25f)));
+            MathF.Max(MathF.Min(radius, settings.PawnRadius), settings.GridSpacing * 0.25f)));
         Vector3 previous = start;
         bool usedSafeDrop = false;
         for (int step = 1; step <= steps; step++)
@@ -328,8 +494,7 @@ public sealed class NavigationGenerator
             if (stepHeight > settings.MaximumStepUp ||
                 (stepHeight < -settings.MaximumStepDown &&
                  (usedSafeDrop || stepHeight < -settings.MaximumSafeDrop)) ||
-                collision.OverlapCapsule(GetClearancePosition(current, floor.Normal),
-                    settings.PawnRadius, PawnFullHeight))
+                IsStandingSpaceBlocked(current, floor.Normal, radius, fullHeight))
                 return false;
             if (stepHeight < -settings.MaximumStepDown)
                 usedSafeDrop = true;
@@ -377,8 +542,7 @@ public sealed class NavigationGenerator
                 Vector3 wallNormal = Vector3.Normalize(new Vector3(middleHit.Normal.X, middleHit.Normal.Y, 0f));
                 Vector3 slotPosition = middleHit.Position + wallNormal * (settings.PawnRadius + 4f);
                 slotPosition.Z = floor.Z;
-                if (collision.OverlapCapsule(GetClearancePosition(slotPosition,
-                        candidates[candidateIndex].Normal), settings.PawnRadius, PawnFullHeight))
+                if (IsStandingSpaceBlocked(slotPosition, candidates[candidateIndex].Normal))
                     continue;
 
                 bool standing = collision.Raycast(slotPosition + Vector3.UnitZ * standingHeight,
@@ -423,8 +587,7 @@ public sealed class NavigationGenerator
                     middleHit.Normal.X, middleHit.Normal.Y, 0f));
                 Vector3 slotPosition = middleHit.Position + wallNormal * approachOffset;
                 slotPosition.Z = floor.Z;
-                if (collision.OverlapCapsule(GetClearancePosition(slotPosition, floorHit.Normal),
-                        settings.PawnRadius, PawnFullHeight))
+                if (IsStandingSpaceBlocked(slotPosition, floorHit.Normal))
                     continue;
 
                 bool standing = collision.Raycast(slotPosition + Vector3.UnitZ * standingHeight,
@@ -446,8 +609,7 @@ public sealed class NavigationGenerator
             if (hit.Normal.Z < minimumWalkableNormalZ)
                 continue;
             Vector3 position = hit.Position + Vector3.UnitZ;
-            if (!collision.OverlapCapsule(GetClearancePosition(position, hit.Normal),
-                    settings.PawnRadius, PawnFullHeight))
+            if (!IsStandingSpaceBlocked(position, hit.Normal))
             {
                 floor = hit;
                 return true;
@@ -466,11 +628,72 @@ public sealed class NavigationGenerator
             coverCandidates.Add(cover);
     }
 
-    private Vector3 GetClearancePosition(Vector3 floorPosition, Vector3 floorNormal)
+    private Vector3 GetClearancePosition(Vector3 floorPosition, Vector3 floorNormal) =>
+        GetClearancePosition(floorPosition, floorNormal, settings.PawnRadius);
+
+    /// <summary>
+    /// Geometry below this height is stepped onto rather than blocking a standing pawn (UE3 pawns step up to
+    /// MaxStepHeight), so grating lips and mesh base plates do not reject otherwise open floor.
+    /// </summary>
+    private float StandingStepTolerance => MathF.Min(settings.MaximumStepUp * 0.5f, 16f);
+
+    private bool IsStandingSpaceBlocked(Vector3 floorPosition, Vector3 floorNormal) =>
+        IsStandingSpaceBlocked(floorPosition, floorNormal, settings.PawnRadius, PawnFullHeight);
+
+    /// <summary>Whether a pawn standing at the floor point would overlap blocking geometry above step height.</summary>
+    private bool IsStandingSpaceBlocked(Vector3 floorPosition, Vector3 floorNormal, float radius, float fullHeight)
+    {
+        float tolerance = StandingStepTolerance;
+        Vector3 bottom = GetClearancePosition(floorPosition, floorNormal, radius) + Vector3.UnitZ * tolerance;
+        return collision.OverlapCapsule(bottom, radius, MathF.Max(fullHeight - tolerance, radius * 2f));
+    }
+
+    private Vector3 GetClearancePosition(Vector3 floorPosition, Vector3 floorNormal, float radius)
     {
         float normalZ = MathF.Max(minimumWalkableNormalZ, floorNormal.Z);
-        float supportLift = MathF.Max(0f, settings.PawnRadius / normalZ - settings.PawnRadius) + 1f;
+        float supportLift = MathF.Max(0f, radius / normalZ - radius) + 1f;
         return floorPosition + Vector3.UnitZ * supportLift;
+    }
+
+    /// <summary>
+    /// Stamps every edge with the largest configured path size that can still traverse it, as UE3's path builder
+    /// picks a ReachSpec's CollisionRadius/Height (and PathColorIndex) from Scout.PathSizes.
+    /// </summary>
+    private List<GeneratedNavigationEdge> SizeEdges(List<GeneratedNavigationNode> nodes,
+        List<GeneratedNavigationEdge> edges, CancellationToken cancellationToken)
+    {
+        var sized = new GeneratedNavigationEdge[edges.Count];
+        var cache = new ConcurrentDictionary<(int, int), int>();
+        Parallel.For(0, edges.Count, new ParallelOptions { CancellationToken = cancellationToken }, index =>
+        {
+            GeneratedNavigationEdge edge = edges[index];
+            (int, int) key = (Math.Min(edge.StartNode, edge.EndNode), Math.Max(edge.StartNode, edge.EndNode));
+            int size = cache.GetOrAdd(key, _ =>
+                GetLargestPathSize(nodes[edge.StartNode].Position, nodes[edge.EndNode].Position));
+            sized[index] = edge with { SizeIndex = size };
+        });
+        return [.. sized];
+    }
+
+    /// <summary>Index into <see cref="NavigationGenerationSettings.PathSizes"/> of the largest pawn that can walk both ways.</summary>
+    private int GetLargestPathSize(Vector3 start, Vector3 end)
+    {
+        IReadOnlyList<NavigationPathSize> sizes = settings.PathSizes;
+        int best = 0;
+        for (int index = 0; index < sizes.Count; index++)
+        {
+            NavigationPathSize size = sizes[index];
+            if (size.Radius <= settings.PawnRadius && size.Height <= settings.PawnHeight)
+            {
+                best = index;
+                continue;
+            }
+            if (!CanTraverse(start, end, size.Radius, size.Height * 2f) ||
+                !CanTraverse(end, start, size.Radius, size.Height * 2f))
+                break;
+            best = index;
+        }
+        return best;
     }
 
     private void Prune(List<Candidate> candidates, List<GeneratedNavigationEdge> edges,
@@ -576,7 +799,7 @@ public sealed class NavigationGenerator
     }
 
     private List<GeneratedCoverLink> GroupCover(List<CoverCandidate> candidates,
-        List<GeneratedNavigationNode> navigationNodes)
+        List<GeneratedNavigationNode> navigationNodes, CancellationToken cancellationToken)
     {
         var groups = new List<List<CoverCandidate>>();
         foreach (CoverCandidate candidate in candidates)
@@ -601,39 +824,86 @@ public sealed class NavigationGenerator
         var results = new List<GeneratedCoverLink>();
         foreach (List<CoverCandidate> group in groups)
         {
-            Vector3 facing = Vector3.Normalize(group.Aggregate(Vector3.Zero, (sum, item) => sum + item.Facing));
-            Vector3 tangent = Vector3.Normalize(Vector3.Cross(Vector3.UnitZ, facing));
-            group.Sort((left, right) => Vector3.Dot(left.Position, tangent).CompareTo(Vector3.Dot(right.Position, tangent)));
+            cancellationToken.ThrowIfCancellationRequested();
+            Vector3 facing = Horizontal(group.Aggregate(Vector3.Zero, (sum, item) => sum + item.Facing));
+            if (facing == Vector3.Zero) continue;
+            Vector3 right = RightOf(facing);
+            // Cover plane, measured along the facing, through the probed wall points.
+            float wallPlane = group.Average(item => Vector3.Dot(item.Position, facing)) +
+                              settings.PawnRadius + 4f;
+            group.Sort((left, other) => Vector3.Dot(left.Position, right).CompareTo(Vector3.Dot(other.Position, right)));
+
+            // Each run is extended to the real ends of the cover so the edge slots sit where a pawn can lean
+            // past it (UE3 AutoAdjustSlot), then overlapping runs on the same plane are merged.
+            var intervals = new List<(float Minimum, float Maximum, Vector3 Origin)>();
             foreach (List<CoverCandidate> run in SplitCoverRun(group))
             {
-                var validCandidates = new List<(CoverCandidate Candidate, int NavigationNode)>(run.Count);
-                foreach (CoverCandidate candidate in run)
-                {
-                    int nearestNode = FindNearestNavigationNode(candidate.Position, navigationNodes);
-                    if (nearestNode >= 0)
-                        validCandidates.Add((candidate, nearestNode));
-                }
+                Vector3 origin = run[0].Position;
+                // Detection candidates are only approximately on the cover (some come from diagonal probes), so
+                // each end first walks inward to a position that is a valid slot, then outward to the cover's end.
+                if (!TryFindValidRunEnd(origin, right, facing, wallPlane, Vector3.Dot(run[0].Position, right),
+                        Vector3.Dot(run[^1].Position, right), out float minimum) ||
+                    !TryFindValidRunEnd(origin, right, facing, wallPlane, Vector3.Dot(run[^1].Position, right),
+                        minimum, out float maximum))
+                    continue;
+                minimum = ExtendCoverRun(origin, right, facing, wallPlane, minimum, -1);
+                maximum = ExtendCoverRun(origin, right, facing, wallPlane, maximum, 1);
+                intervals.Add((minimum, maximum, origin));
+            }
+            intervals.Sort((left, other) => left.Minimum.CompareTo(other.Minimum));
+            var merged = new List<(float Minimum, float Maximum, Vector3 Origin)>();
+            foreach (var interval in intervals)
+            {
+                if (merged.Count > 0 && interval.Minimum <= merged[^1].Maximum + 16f)
+                    merged[^1] = (merged[^1].Minimum, MathF.Max(merged[^1].Maximum, interval.Maximum), merged[^1].Origin);
+                else
+                    merged.Add(interval);
+            }
 
-                foreach (List<(CoverCandidate Candidate, int NavigationNode)> validRun in
-                         SplitValidCoverRun(validCandidates))
+            foreach ((float minimum, float maximum, Vector3 origin) in merged)
+            {
+                // A face narrower than a pawn (the end of a thin wall, a pipe) hides nothing.
+                if (maximum - minimum < settings.PawnRadius)
+                    continue;
+                foreach (List<CoverCandidate> slotRun in PlaceCoverSlots(origin, right, facing, wallPlane, minimum, maximum))
                 {
-                    var slots = new List<GeneratedCoverSlot>(validRun.Count);
-                    for (int index = 0; index < validRun.Count; index++)
+                    if (results.Any(existing => OverlapsExistingLink(existing, slotRun)))
+                        continue;
+                    // Cover the path network cannot reach (e.g. a crawlspace under a floor) is split out.
+                    var reachable = new List<GeneratedCoverSlot>();
+                    foreach (CoverCandidate candidate in slotRun)
                     {
-                        (CoverCandidate candidate, int nearestNode) = validRun[index];
-                        slots.Add(new GeneratedCoverSlot(candidate.Position, candidate.Facing,
-                            candidate.IsStanding, index == 0, index == validRun.Count - 1, nearestNode));
+                        int nearestNode = FindNearestNavigationNode(candidate.Position, navigationNodes);
+                        if (nearestNode < 0)
+                        {
+                            AddCoverLink(results, reachable);
+                            reachable = [];
+                            continue;
+                        }
+                        reachable.Add(new GeneratedCoverSlot(candidate.Position, candidate.Facing,
+                            candidate.IsStanding, false, false, nearestNode));
                     }
-
-                    Vector3 position = slots.Aggregate(Vector3.Zero,
-                        (sum, item) => sum + item.Position) / slots.Count;
-                    Vector3 runFacing = Vector3.Normalize(slots.Aggregate(Vector3.Zero,
-                        (sum, item) => sum + item.Facing));
-                    results.Add(new GeneratedCoverLink(position, runFacing, slots));
+                    AddCoverLink(results, reachable);
                 }
             }
         }
         return results;
+    }
+
+    private static void AddCoverLink(List<GeneratedCoverLink> results, List<GeneratedCoverSlot> slots)
+    {
+        if (slots.Count == 0) return;
+        Vector3 position = slots.Aggregate(Vector3.Zero, (sum, item) => sum + item.Position) / slots.Count;
+        Vector3 facing = Horizontal(slots.Aggregate(Vector3.Zero, (sum, item) => sum + item.Facing));
+        results.Add(new GeneratedCoverLink(position, facing, slots));
+    }
+
+    private bool OverlapsExistingLink(GeneratedCoverLink existing, List<CoverCandidate> run)
+    {
+        float minimumSpacing = settings.CoverSlotInterval * 0.4f;
+        return existing.Slots.Any(slot => run.Any(candidate =>
+            Vector3.Dot(slot.Facing, candidate.Facing) > 0.9f &&
+            Vector3.DistanceSquared(slot.Position, candidate.Position) < minimumSpacing * minimumSpacing));
     }
 
     private IEnumerable<List<CoverCandidate>> SplitCoverRun(List<CoverCandidate> group)
@@ -652,21 +922,112 @@ public sealed class NavigationGenerator
         if (run.Count > 0) yield return run;
     }
 
-    private IEnumerable<List<(CoverCandidate Candidate, int NavigationNode)>> SplitValidCoverRun(
-        List<(CoverCandidate Candidate, int NavigationNode)> candidates)
+    private const float CoverEdgeStep = 8f;
+
+    /// <summary>Marches along the cover from a known slot until the wall ends or the slot stops being usable.</summary>
+    private float ExtendCoverRun(Vector3 origin, Vector3 right, Vector3 facing, float wallPlane, float start, int direction)
     {
-        var run = new List<(CoverCandidate Candidate, int NavigationNode)>();
-        foreach ((CoverCandidate candidate, int navigationNode) in candidates)
+        float last = start;
+        float limit = MathF.Max(settings.CoverSlotInterval * 2f, 512f);
+        for (float travelled = CoverEdgeStep; travelled <= limit; travelled += CoverEdgeStep)
         {
-            if (run.Count > 0 && Vector3.Distance(run[^1].Candidate.Position, candidate.Position) >
-                settings.CoverSlotInterval * 1.75f)
+            float along = start + direction * travelled;
+            if (!TryProbeCoverSlot(PointOnRun(origin, right, along), facing, wallPlane, out _))
+                break;
+            last = along;
+        }
+        return last;
+    }
+
+    /// <summary>
+    /// From <paramref name="start"/>, steps toward <paramref name="other"/> (and a little past it, for single-candidate
+    /// runs) until a slot can be placed.
+    /// </summary>
+    private bool TryFindValidRunEnd(Vector3 origin, Vector3 right, Vector3 facing, float wallPlane, float start,
+        float other, out float valid)
+    {
+        float direction = other >= start ? 1f : -1f;
+        float limit = MathF.Abs(other - start) + settings.CoverSlotInterval * 0.5f;
+        for (float travelled = 0f; travelled <= limit; travelled += CoverEdgeStep)
+        {
+            valid = start + direction * travelled;
+            if (TryProbeCoverSlot(PointOnRun(origin, right, valid), facing, wallPlane, out _))
+                return true;
+        }
+        valid = start;
+        return false;
+    }
+
+    private static Vector3 PointOnRun(Vector3 origin, Vector3 right, float along) =>
+        origin + right * (along - Vector3.Dot(origin, right));
+
+    /// <summary>
+    /// Places evenly spaced slots between the cover ends, each re-probed against the wall. A slot that cannot be
+    /// placed (gap, obstruction) splits the cover into separate links.
+    /// </summary>
+    private IEnumerable<List<CoverCandidate>> PlaceCoverSlots(Vector3 origin, Vector3 right, Vector3 facing,
+        float wallPlane, float minimum, float maximum)
+    {
+        float length = maximum - minimum;
+        int count = length < settings.PawnRadius ? 1 :
+            Math.Max(2, (int)MathF.Ceiling(length / settings.CoverSlotInterval) + 1);
+        var run = new List<CoverCandidate>();
+        for (int index = 0; index < count; index++)
+        {
+            float along = count == 1 ? (minimum + maximum) * 0.5f : minimum + length * index / (count - 1);
+            CoverCandidate placed = null;
+            // Nudge interior slots off small obstructions; keep edge slots at the edge.
+            foreach (float nudge in index == 0 || index == count - 1 ? new[] { 0f } : new[] { 0f, -16f, 16f, -32f, 32f })
             {
-                yield return run;
-                run = [];
+                if (TryProbeCoverSlot(PointOnRun(origin, right, along + nudge), facing, wallPlane, out placed))
+                    break;
+                placed = null;
             }
-            run.Add((candidate, navigationNode));
+            if (placed is null)
+            {
+                if (run.Count > 0) yield return run;
+                run = [];
+                continue;
+            }
+            run.Add(placed);
         }
         if (run.Count > 0) yield return run;
+    }
+
+    /// <summary>
+    /// Finds the floor near <paramref name="guess"/>, traces into the cover at mid-level height and places a slot
+    /// AlignDist from the wall. Fails when the wall is missing, belongs to a different plane, or the pawn cannot stand there.
+    /// </summary>
+    private bool TryProbeCoverSlot(Vector3 guess, Vector3 facing, float wallPlane, out CoverCandidate slot)
+    {
+        slot = null;
+        if (!TryFindFloorNear(guess, out LevelCollisionHit floorHit))
+            return false;
+        Vector3 floor = floorHit.Position + Vector3.UnitZ;
+        float middleHeight = MathF.Min(PawnFullHeight - settings.PawnRadius, 72f);
+        Vector3 origin = floor + Vector3.UnitZ * middleHeight - facing * 16f;
+        if (!collision.Raycast(origin, facing, settings.CoverProbeDistance + 16f, out LevelCollisionHit wall,
+                LevelCollisionFlags.CoverProbe) ||
+            MathF.Abs(wall.Normal.Z) > 0.35f)
+            return false;
+        Vector3 wallNormal = Horizontal(wall.Normal);
+        if (Vector3.Dot(wallNormal, -facing) < 0.9f ||
+            MathF.Abs(Vector3.Dot(wall.Position, facing) - wallPlane) > 24f)
+            return false;
+
+        Vector3 position = wall.Position + wallNormal * CoverAlignDistance;
+        position.Z = floor.Z;
+        if (!TryFindFloorNear(position, out LevelCollisionHit slotFloor))
+            return false;
+        position = slotFloor.Position + Vector3.UnitZ;
+        if (IsStandingSpaceBlocked(position, slotFloor.Normal))
+            return false;
+        float standingHeight = MathF.Min(PawnFullHeight - 5f, 128f);
+        bool standing = collision.Raycast(position + Vector3.UnitZ * standingHeight, -wallNormal,
+                            CoverAlignDistance + 16f, out LevelCollisionHit standingHit, LevelCollisionFlags.CoverProbe) &&
+                        MathF.Abs(standingHit.Normal.Z) <= 0.35f;
+        slot = new CoverCandidate(position, -wallNormal, standing);
+        return true;
     }
 
     private void AssignMantleTargets(List<GeneratedCoverLink> links)

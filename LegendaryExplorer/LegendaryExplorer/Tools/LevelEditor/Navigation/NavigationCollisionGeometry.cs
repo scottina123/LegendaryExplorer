@@ -11,10 +11,10 @@ internal static class NavigationCollisionGeometry
 {
     public static LevelCollisionFlags GetFlags(PrimitiveComponentProxy component)
     {
-        // Every loaded static mesh, including collection components and decorative/nonblocking meshes,
-        // contributes visible surfaces to cover discovery. Gameplay collision remains separately filtered
-        // so those meshes do not become floors or block generated paths.
-        LevelCollisionFlags flags = LevelCollisionFlags.CoverProbe;
+        // Cover is only valid against geometry the game itself collides with: UE3's cover building and the
+        // runtime cover/fire traces both ignore non-colliding meshes, so a decorative or skybox mesh must never
+        // produce a slot Shepard can "hide" behind while pawns and bullets pass straight through it.
+        LevelCollisionFlags flags = LevelCollisionFlags.None;
         PropertyCollection actorProperties = component.Actor.Export.GetCondensedProperties();
         if (IsNoCollision(component.Properties) || IsNoCollision(actorProperties) ||
             IsFalse(component.Properties, "CollideActors", "bCollideActors") ||
@@ -39,6 +39,11 @@ internal static class NavigationCollisionGeometry
             GetBool(actorProperties, "BlockNonZeroExtent", "bBlockNonZeroExtent") ?? true)
         {
             flags |= LevelCollisionFlags.BlocksShape;
+        }
+        // Cover must both stop the pawn (shape) and stop weapon fire (zero-extent traces).
+        if (flags == LevelCollisionFlags.Navigation)
+        {
+            flags |= LevelCollisionFlags.CoverProbe;
         }
         return flags;
     }
@@ -87,11 +92,7 @@ internal static class NavigationCollisionGeometry
         {
             LevelCollisionFlags elementFlags = flags;
             if (!element.EnableCollision && !element.OldEnableCollision)
-            {
-                elementFlags &= LevelCollisionFlags.CoverProbe;
-                if (elementFlags == LevelCollisionFlags.None)
-                    continue;
-            }
+                continue;
             int end = Math.Min(indices.Length, (int)element.FirstIndex + (int)element.NumTriangles * 3);
             for (int index = (int)element.FirstIndex; index + 2 < end; index += 3)
             {

@@ -120,9 +120,10 @@ namespace LegendaryExplorerCore.Unreal
                               0f, 1f, 0f, 0f,
                               +sp, 0f, +cp, 0f,
                               0f, 0f, 0f, 1f) *
+                   // Roll, as UE3's FInverseRotationMatrix (identity at zero roll: Z must not be negated).
                    new Matrix4x4(1f, -0f, 0f, 0f,
-                              0f, +cr, +sr, 0f,
-                              0f, -sr, -cr, 0f,
+                              0f, +cr, -sr, 0f,
+                              0f, +sr, +cr, 0f,
                               0f, 0f, 0f, 1f);
         }
 
@@ -132,4 +133,4 @@ namespace LegendaryExplorerCore.Unreal
             return (props.GetProp<FloatProperty>("DrawScale") ?? 1f) * (drawScale3DProp is null ? Vector3.One : CommonStructs.GetVector3(drawScale3DProp));
         }
     }
-}
+}

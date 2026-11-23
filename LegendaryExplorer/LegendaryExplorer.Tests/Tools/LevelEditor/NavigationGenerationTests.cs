@@ -161,15 +161,18 @@ public class NavigationGenerationTests
     }
 
     [TestMethod]
-    public void Generator_UsesNonBlockingVisualMeshForCoverOnEverySide()
+    public void Generator_FindsSmallBlockingCoverOnEverySide()
     {
         var triangles = new List<(Vector3 A, Vector3 B, Vector3 C, LevelCollisionFlags Flags)>();
         triangles.AddRange(CreateQuad(-384, -384, 384, 384, 0)
             .Select(triangle => (triangle.A, triangle.B, triangle.C, LevelCollisionFlags.All)));
-        // This deliberately tiny, offset box falls between the 256-unit path grid and the
+        // This deliberately small, offset box falls between the 256-unit path grid and the
         // 192-unit cover-approach grid. It can only be found reliably from mesh-surface seeds.
-        triangles.AddRange(CreateBox(130, 80, 0, 150, 100, 80)
-            .Select(triangle => (triangle.A, triangle.B, triangle.C, LevelCollisionFlags.CoverProbe)));
+        triangles.AddRange(CreateBox(130, 80, 0, 170, 120, 80)
+            .Select(triangle => (triangle.A, triangle.B, triangle.C, LevelCollisionFlags.All)));
+        // Non-colliding geometry (a decorative or skybox mesh) never carries the cover flag and is ignored.
+        triangles.AddRange(CreateBox(-250, -250, 0, -150, -150, 80)
+            .Select(triangle => (triangle.A, triangle.B, triangle.C, LevelCollisionFlags.None)));
         LevelCollisionScene scene = LevelCollisionScene.FromTriangles(triangles);
         var settings = new NavigationGenerationSettings
         {
@@ -185,18 +188,97 @@ public class NavigationGenerationTests
             GenerationRadius = 0
         };
 
-        Assert.IsFalse(scene.Raycast(new Vector3(0, 90, 50), Vector3.UnitX, 300, out _));
-        Assert.IsTrue(scene.Raycast(new Vector3(0, 90, 50), Vector3.UnitX, 300, out _,
-            LevelCollisionFlags.CoverProbe));
-
         NavigationGenerationResult generated = new NavigationGenerator(scene, settings).Generate(Vector3.Zero);
-        List<Vector3> facings = generated.CoverLinks.SelectMany(link => link.Slots)
-            .Select(slot => slot.Facing).ToList();
+        List<GeneratedCoverSlot> slots = generated.CoverLinks.SelectMany(link => link.Slots).ToList();
+        List<Vector3> facings = slots.Select(slot => slot.Facing).ToList();
 
         Assert.IsTrue(facings.Any(facing => Vector3.Dot(facing, Vector3.UnitX) > 0.8f));
         Assert.IsTrue(facings.Any(facing => Vector3.Dot(facing, -Vector3.UnitX) > 0.8f));
         Assert.IsTrue(facings.Any(facing => Vector3.Dot(facing, Vector3.UnitY) > 0.8f));
         Assert.IsTrue(facings.Any(facing => Vector3.Dot(facing, -Vector3.UnitY) > 0.8f));
+        Assert.IsFalse(slots.Any(slot => slot.Position.X < 0 && slot.Position.Y < 0),
+            "Non-colliding geometry must not produce cover.");
+    }
+
+    [TestMethod]
+    public void Generator_BuildsVanillaStyleCoverDataBetweenOpposingWalls()
+    {
+        // Two low walls 600 apart. Slots behind the south wall face north at the slots behind the north wall.
+        var triangles = new List<(Vector3 A, Vector3 B, Vector3 C)>();
+        triangles.AddRange(CreateQuad(-640, -640, 640, 1240, 0));
+        triangles.AddRange(CreateBox(-160, -10, 0, 160, 10, 80));
+        triangles.AddRange(CreateBox(-160, 590, 0, 160, 610, 80));
+        var settings = new NavigationGenerationSettings { GridSpacing = 128, GenerationRadius = 0 };
+
+        NavigationGenerationResult generated = new NavigationGenerator(
+            LevelCollisionScene.FromTriangles(triangles), settings).Generate(Vector3.Zero);
+
+        List<(GeneratedCoverSlot Slot, int Link)> slots = generated.CoverLinks
+            .SelectMany((link, index) => link.Slots.Select(slot => (slot, index))).ToList();
+        var southBehind = slots.Where(item => item.Slot.Position.Y < -10 && item.Slot.Facing.Y > 0.9f).ToList();
+        var northBehind = slots.Where(item => item.Slot.Position.Y > 610 && item.Slot.Facing.Y < -0.9f).ToList();
+        var between = slots.Where(item => item.Slot.Position.Y is > 10 and < 590).ToList();
+        Assert.IsTrue(southBehind.Count >= 2 && northBehind.Count >= 2, "Both walls need slots on their outer faces.");
+
+        foreach ((GeneratedCoverSlot slot, int link) in slots)
+        {
+            Assert.IsFalse(slot.IsStanding, "80-unit walls are mid-level cover.");
+            Assert.IsTrue(slot.PopUp);
+        }
+        // Edge slots lean, slots are evenly spaced along each face, and both outer faces are fully covered.
+        foreach (int link in southBehind.Select(item => item.Link).Distinct())
+        {
+            IReadOnlyList<GeneratedCoverSlot> run = generated.CoverLinks[link].Slots;
+            Assert.IsTrue(run[0].LeanLeft && run[^1].LeanRight);
+            Assert.IsTrue(run.Skip(1).SkipLast(1).All(slot => !slot.LeanLeft && !slot.LeanRight));
+            float span = MathF.Abs(run[^1].Position.X - run[0].Position.X);
+            Assert.IsTrue(span > 220f, $"Edge slots should reach the wall ends (span {span}).");
+        }
+
+        // Opposing cover can fire on each other; cover never targets its own link.
+        Assert.IsTrue(southBehind.All(item => item.Slot.FireLinks.Any(fire =>
+            northBehind.Any(other => other.Link == fire.Target.Link))));
+        Assert.IsTrue(slots.All(item => item.Slot.FireLinks.All(fire => fire.Target.Link != item.Link)));
+        // Facing an enemy is not exposure; having your back to one is.
+        Assert.IsTrue(southBehind.All(item => item.Slot.Exposures.All(exposure =>
+            northBehind.All(other => other.Link != exposure.Target.Link))));
+        Assert.IsTrue(between.Any(item => item.Slot.Exposures.Count > 0));
+        // Path nodes in front of a slot are danger for whoever crosses them.
+        Assert.IsTrue(southBehind.Any(item => item.Slot.Dangers.Count > 0));
+
+        // Vaulting pairs the two faces of each wall, and every slot is wired into the path network.
+        Assert.IsTrue(slots.All(item => item.Slot.MantleTargetLink >= 0));
+        Assert.IsTrue(generated.CoverConnections.Any(connection =>
+            connection.Kind == GeneratedCoverConnectionKind.Walk && connection.To.IsNode));
+        Assert.IsTrue(generated.CoverConnections.Any(connection =>
+            connection.Kind == GeneratedCoverConnectionKind.Walk && connection.From.IsNode));
+        Assert.AreEqual(slots.Count, generated.CoverConnections.Count(connection =>
+            connection.Kind == GeneratedCoverConnectionKind.LinkToSlot));
+    }
+
+    [TestMethod]
+    public void Generator_FindsCornerTurnsAndCoverToCoverMoves()
+    {
+        var triangles = new List<(Vector3 A, Vector3 B, Vector3 C)>();
+        triangles.AddRange(CreateQuad(-768, -768, 768, 768, 0));
+        // A 200x200 box: its south face wraps around the outside corners onto the east and west faces.
+        triangles.AddRange(CreateBox(-100, 0, 0, 100, 200, 80));
+        // A second low wall in line with the box's south face, a short run to the east.
+        triangles.AddRange(CreateBox(300, 0, 0, 500, 20, 80));
+        var settings = new NavigationGenerationSettings { GridSpacing = 128, GenerationRadius = 0 };
+
+        NavigationGenerationResult generated = new NavigationGenerator(
+            LevelCollisionScene.FromTriangles(triangles), settings).Generate(Vector3.Zero);
+
+        List<GeneratedCoverSlot> southFace = generated.CoverLinks.SelectMany(link => link.Slots)
+            .Where(slot => slot.Facing.Y > 0.9f && slot.Position.Y < 0 && slot.Position.X is > -150 and < 150).ToList();
+        Assert.IsTrue(southFace.Count >= 2);
+        Assert.IsTrue(southFace.Any(slot => slot.CoverTurnLeft is not null || slot.CoverTurnRight is not null),
+            "The box's south edge slots should wrap around its corners.");
+        Assert.IsTrue(southFace.Any(slot => slot.SwatTurnLeft is not null || slot.SwatTurnRight is not null),
+            "The box should connect to the wall in line with it.");
+        Assert.IsTrue(generated.CoverConnections.Any(connection => connection.Kind == GeneratedCoverConnectionKind.CoverTurn));
+        Assert.IsTrue(generated.CoverConnections.Any(connection => connection.Kind == GeneratedCoverConnectionKind.SwatTurn));
     }
 
     [TestMethod]
@@ -234,31 +316,53 @@ public class NavigationGenerationTests
         Assert.AreEqual(2, serialized.PathNodeCount);
         Assert.AreEqual(2, serialized.CoverLinkCount);
         Assert.AreEqual(3, serialized.CoverSlotCount);
-        Assert.IsTrue(serialized.ReachSpecCount >= 18,
-            $"Reported {serialized.ReachSpecCount}; generated classes: {string.Join(", ", package.Exports.TakeLast(20).Select(export => export.ClassName))}");
+        // 2 node edges + 3 link-to-slot + 3x2 slot<->node + 2 slot-to-slot + 2 mantles.
+        Assert.AreEqual(15, serialized.ReachSpecCount,
+            $"Generated classes: {string.Join(", ", package.Exports.TakeLast(20).Select(export => export.ClassName))}");
         Level level = levelExport.GetBinaryData<Level>();
         Assert.IsTrue(level.NavListStart > 0);
         Assert.IsTrue(level.NavListEnd > 0);
         Assert.IsTrue(level.CoverListStart > 0);
         Assert.IsTrue(level.CoverListEnd > 0);
         Assert.AreEqual(2, level.CoverLinkRefs.Count);
+        Assert.AreEqual(2 + 2 + 3, level.NavRefs.Count, "Every generated navigation point is indexable for danger links.");
+        CollectionAssert.AreEqual(Enumerable.Range(0, level.NavRefs.Count).ToList(), level.NavRefIndicies.ToList());
 
         ExportEntry pathNode = package.Exports.First(export => export.ClassName == "PathNode");
         Assert.IsTrue(pathNode.GetProperty<ArrayProperty<ObjectProperty>>("PathList")?.Count > 0);
-        AssertNodeSize(pathNode, 40, 95);
+        AssertNodeSize(pathNode, 34, 90);
+        // Navigation rests on the floor at its cylinder height, as UE3's FindBase places it.
+        Assert.AreEqual(1 + NavigationSerializer.PathNodeHeightAboveFloor, GetLocation(pathNode).Z, 0.01f);
+        ExportEntry pathCylinder = package.GetUExport(pathNode.GetProperty<ObjectProperty>("CylinderComponent").Value);
+        Assert.AreEqual("Engine.Default__PathNode.CollisionCylinder", pathCylinder.Archetype?.InstancedFullPath);
+        // Connected generated navigation shares one NetworkID, distinct from any network already in the level.
+        int networkId = pathNode.GetProperty<IntProperty>("NetworkID")?.Value ?? -1;
+        Assert.IsTrue(networkId >= 0);
+        Assert.IsTrue(package.Exports.Where(export => export.ClassName is "PathNode" or "CoverSlotMarker")
+            .All(export => export.GetProperty<IntProperty>("NetworkID")?.Value == networkId));
         ExportEntry otherPathNode = package.Exports.First(export =>
             export.ClassName == "PathNode" && !ReferenceEquals(export, pathNode));
         PathTools.CreateReachSpec(pathNode, false, otherPathNode, "Engine.ReachSpec", 34, 90);
         Assert.AreEqual("ReachSpec", package.Exports[^1].ClassName);
         ExportEntry coverLink = package.Exports.First(export => export.ClassName == "CoverLink");
-        AssertNodeSize(coverLink, 105, 145);
+        AssertNodeSize(coverLink, 34, 90);
+        Assert.AreEqual(1 + NavigationSerializer.CoverLinkHeightAboveFloor, GetLocation(coverLink).Z, 0.01f);
+        Assert.IsFalse(coverLink.GetProperty<BoolProperty>("bAutoAdjust")?.Value ?? true);
         ArrayProperty<StructProperty> slots = coverLink.GetProperty<ArrayProperty<StructProperty>>("Slots");
         Assert.AreEqual(2, slots?.Count);
         Assert.AreEqual("CT_Standing", slots[0].GetProp<EnumProperty>("ForceCoverType")?.Value.Name);
+        Assert.IsTrue(slots[0].GetProp<BoolProperty>("bForceNoGroundAdjust")?.Value == true);
+        Assert.IsFalse(slots[0].GetProp<BoolProperty>("bCanCoverSlip_Left")?.Value ?? true,
+            "Moves without a target must not be advertised.");
+        Assert.AreEqual(-1, slots[0].GetProp<IntProperty>("TurnTargetPackedProperties")?.Value);
+        Assert.AreEqual(-1, slots[0].GetProp<StructProperty>("MantleTarget")?.GetProp<IntProperty>("SlotIdx")?.Value);
         List<ExportEntry> markers = package.Exports.Where(export => export.ClassName == "CoverSlotMarker").ToList();
         Assert.AreEqual(3, markers.Count);
         ExportEntry marker = markers[0];
-        AssertNodeSize(marker, 40, 95);
+        AssertNodeSize(marker, 34, 90);
+        Assert.AreEqual(1 + NavigationGenerator.CoverSlotHeightAboveFloor, GetLocation(marker).Z, 0.01f);
+        // Slot offsets are relative to the link: the slot sits 2 units above it, as in cooked levels.
+        Assert.AreEqual(2f, CommonStructs.GetVector3(slots[0].GetProp<StructProperty>("LocationOffset")).Z, 0.01f);
         Assert.AreEqual(coverLink.UIndex,
             marker.GetProperty<StructProperty>("OwningSlot")?.GetProp<ObjectProperty>("Link")?.Value);
 
@@ -385,6 +489,72 @@ public class NavigationGenerationTests
         return reference is null ? (byte)0 :
             package.GetUExport(reference.Value).GetProperty<ByteProperty>("SpecDirection")?.Value ?? 0;
     }
+
+    [TestMethod]
+    public void Serializer_PacksFireExposureDangerAndTurnTargetsThroughLevelTables()
+    {
+        string packagePath = Path.Combine(AppContext.BaseDirectory, "exec", "ME3AnimViewer.pcc");
+        using IMEPackage package = MEPackageHandler.OpenMEPackage(packagePath, forceLoadFromDisk: true);
+        ExportEntry levelExport = package.Exports.First(export => export.ClassName == "Level");
+        var target = new GeneratedCoverRef(1, 0);
+        var generated = new NavigationGenerationResult(
+            [new GeneratedNavigationNode(new Vector3(0, -200, 1), Vector3.UnitZ)], [],
+            [
+                new GeneratedCoverLink(new Vector3(0, 0, 1), Vector3.UnitY,
+                [
+                    new GeneratedCoverSlot(new Vector3(0, 0, 1), Vector3.UnitY, false, true, true, 0)
+                    {
+                        FireLinks = [new GeneratedFireLink(target, false)],
+                        Exposures = [new GeneratedExposure(target, 200)],
+                        Dangers = [new GeneratedDanger(GeneratedNavTarget.ForNode(0), 99)],
+                        SwatTurnRight = target,
+                        CoverTurnLeft = target,
+                        SlipLeft = target
+                    }
+                ]),
+                new GeneratedCoverLink(new Vector3(400, 0, 1), Vector3.UnitY,
+                    [new GeneratedCoverSlot(new Vector3(400, 0, 1), Vector3.UnitY, false, true, true, 0)])
+            ], 1, 0, 0);
+
+        NavigationSerializer.Write(package, levelExport, generated, new NavigationGenerationSettings());
+
+        Level level = levelExport.GetBinaryData<Level>();
+        List<ExportEntry> links = package.Exports.Where(export => export.ClassName == "CoverLink").ToList();
+        StructProperty slot = links[0].GetProperty<ArrayProperty<StructProperty>>("Slots")[0];
+        int Resolve(int pairIndex)
+        {
+            CoverIndexPair pair = level.CoverIndexPairs[pairIndex];
+            Assert.AreEqual(links[1].UIndex, level.CoverLinkRefs[(int)pair.CoverIndexIdx]);
+            return pair.SlotIdx;
+        }
+
+        int firePair = slot.GetProp<ArrayProperty<StructProperty>>("FireLinks")[0]
+            .GetProp<IntProperty>("PackedProperties_CoverPairRefAndDynamicInfo").Value;
+        Assert.AreEqual(0, Resolve(firePair & 0xFFFF));
+        int exposed = slot.GetProp<ArrayProperty<IntProperty>>("ExposedCoverPackedProperties")[0].Value;
+        Assert.AreEqual(200, exposed >> 16);
+        Assert.AreEqual(0, Resolve(exposed & 0xFFFF));
+        int danger = slot.GetProp<ArrayProperty<IntProperty>>("DangerCoverPackedProperties")[0].Value;
+        Assert.AreEqual(99, danger >> 16);
+        Assert.AreEqual("PathNode", package.GetUExport(level.NavRefs[danger & 0xFFFF]).ClassName);
+        // Low 16 bits are the left target, high 16 bits the right one; 0xFFFF is none.
+        int swat = slot.GetProp<IntProperty>("TurnTargetPackedProperties").Value;
+        Assert.AreEqual(0xFFFF, swat & 0xFFFF);
+        Assert.AreEqual(0, Resolve((swat >> 16) & 0xFFFF));
+        int turn = slot.GetProp<IntProperty>("CoverTurnTargetPackedProperties").Value;
+        Assert.AreEqual(0xFFFF, (turn >> 16) & 0xFFFF);
+        Assert.AreEqual(0, Resolve(turn & 0xFFFF));
+        Assert.IsTrue(slot.GetProp<BoolProperty>("bCanSwatTurn_Right").Value);
+        Assert.IsTrue(slot.GetProp<BoolProperty>("bCanCoverTurn_Left").Value);
+        Assert.IsTrue(slot.GetProp<BoolProperty>("bCanCoverSlip_Left").Value);
+        StructProperty slip = slot.GetProp<ArrayProperty<StructProperty>>("SlipTarget")[0];
+        Assert.AreEqual(-1, slip.GetProp<IntProperty>("Direction").Value);
+        Assert.AreEqual("CoverSlotMarker", package.GetUExport(slip.GetProp<ObjectProperty>("Actor").Value).ClassName);
+        Assert.AreEqual(1, level.CoverIndexPairs.Count, "One target slot shares one pair entry.");
+    }
+
+    private static Vector3 GetLocation(ExportEntry actor) =>
+        CommonStructs.GetVector3(actor.GetProperty<StructProperty>("location"));
 
     private static void AssertNodeSize(ExportEntry actor, float radius, float height)
     {

@@ -12,6 +12,7 @@ using LegendaryExplorer.Misc;
 using LegendaryExplorer.SharedUI;
 using LegendaryExplorerCore.Helpers;
 using LegendaryExplorerCore.Packages;
+using LegendaryExplorerCore.Unreal;
 using MessageBox = LegendaryExplorer.SharedUI.ThemedMessageBox;
 
 namespace LegendaryExplorer.Tools.LevelEditor;
@@ -520,12 +521,16 @@ public partial class LevelEditor
             IsBusyTaskbar = true;
             ActorProxy[] collisionActors = Actors.ToArray();
             Vector3 generationCenter = RenderContext.Camera.Position;
+            // Spawn points, player starts and other navigation nothing links yet join the generated network.
+            List<ExportEntry> existingNavigation = NavigationSerializer.FindUnconnectedNavigationPoints(activeFile.LevelExport);
+            Vector3[] existingLocations = existingNavigation
+                .Select(actor => CommonStructs.GetVector3(actor.GetProperty<StructProperty>("location"))).ToArray();
             var progress = new Progress<string>(message => BusyText = message);
             var generation = await Task.Run(() =>
             {
                 LevelCollisionScene collision = LevelCollisionScene.Build(collisionActors);
                 NavigationGenerationResult result = new NavigationGenerator(collision, settings).Generate(
-                    generationCenter, CancellationToken.None, progress);
+                    generationCenter, CancellationToken.None, progress, existingLocations);
                 return (Result: result, collision.NavigationSourceCount, collision.CoverSourceCount,
                     collision.NavigationTriangleCount, collision.CoverTriangleCount);
             }).ConfigureAwait(true);
@@ -535,11 +540,21 @@ public partial class LevelEditor
             IsBusyTaskbar = false;
             EndBusy();
             int mantleConnections = generated.CoverLinks.Sum(link => link.Slots.Count(slot => slot.MantleTargetLink >= 0)) / 2;
+            List<GeneratedCoverSlot> generatedSlots = generated.CoverLinks.SelectMany(link => link.Slots).ToList();
+            int coverMoves = generatedSlots.Sum(slot =>
+                (slot.CoverTurnLeft is null ? 0 : 1) + (slot.CoverTurnRight is null ? 0 : 1) +
+                (slot.SwatTurnLeft is null ? 0 : 1) + (slot.SwatTurnRight is null ? 0 : 1));
+            int joinedExisting = generated.ExistingConnections.Select(connection => connection.Existing).Distinct().Count();
             string summary = $"Generated {generated.Nodes.Count:N0} path nodes, " +
                              $"{generated.Edges.Count:N0} directed connections, " +
                              $"{generated.CoverLinks.Count:N0} cover links, and " +
-                             $"{generated.CoverLinks.Sum(link => link.Slots.Count):N0} cover slots, including " +
-                             $"{mantleConnections:N0} validated vault connections.\n\n" +
+                             $"{generatedSlots.Count:N0} cover slots, including " +
+                             $"{mantleConnections:N0} validated vault connections and " +
+                             $"{coverMoves:N0} corner-turn / cover-to-cover moves.\n" +
+                             $"AI data: {generatedSlots.Sum(slot => slot.FireLinks.Count):N0} fire links, " +
+                             $"{generatedSlots.Sum(slot => slot.Exposures.Count):N0} exposures, " +
+                             $"{generatedSlots.Sum(slot => slot.Dangers.Count):N0} danger links. " +
+                             $"{joinedExisting:N0} of {existingNavigation.Count:N0} existing spawn/start points joined.\n\n" +
                              $"Scanned {generation.CoverSourceCount:N0} mesh/brush components for cover " +
                              $"({generation.CoverTriangleCount:N0} triangles); " +
                              $"{generation.NavigationSourceCount:N0} components provide blocking navigation collision.\n\n" +
@@ -552,7 +567,8 @@ public partial class LevelEditor
             SetBusy("Serializing navigation and cover...");
             busy = true;
             IsBusyTaskbar = true;
-            NavigationSerializationResult serialized = NavigationSerializer.Write(activeFile, generated, settings);
+            NavigationSerializationResult serialized = NavigationSerializer.Write(activeFile, generated, settings,
+                existingNavigation);
             RefreshNavigationOverlay();
             ShowPathing = true;
             ShowCover = GenerateCover;
