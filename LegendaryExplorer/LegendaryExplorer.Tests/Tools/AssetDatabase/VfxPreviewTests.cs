@@ -479,6 +479,23 @@ float4 main(VSInput input) : SV_POSITION
         Assert.AreSame(second, ParticleSystemSourceAdapter.SelectEmitterLod(emitter, 1));
     }
 
+    /// <summary>
+    /// A looping system with a warmup time whose emitters finish at once (here: none) used to restart during warmup, warm up again, and
+    /// overflow the stack: the Level Editor crashed opening LE2 TwrHub 400CarPort ported to LE3.
+    /// </summary>
+    [TestMethod]
+    public void LoopingWarmupWhoseEmittersFinishAtOnceDoesNotRecurse()
+    {
+        var definition = new VfxPreviewDefinition { WarmupTime = 2 };
+        var simulation = new VfxSimulation { Loop = true };
+
+        simulation.Load(definition);
+        simulation.Tick(0.1f);
+
+        Assert.IsTrue(simulation.IsPlaying);
+        Assert.AreEqual(0, simulation.ParticleCount);
+    }
+
     [TestMethod]
     public void DynamicParametersEvaluateUserAndVelocityChannels()
     {

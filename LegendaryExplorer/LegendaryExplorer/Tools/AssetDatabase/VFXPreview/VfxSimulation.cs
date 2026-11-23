@@ -33,7 +33,13 @@ public sealed class VfxSimulation
 
     public void Pause() => IsPlaying = false;
 
-    public void Restart()
+    public void Restart() => Reset(warmup: true);
+
+    /// <summary>
+    /// Starts the system over; <paramref name="warmup"/> also fast-forwards it by its warmup time. A loop that ends during warmup starts over
+    /// without warming up again: a system whose emitters finish at once would otherwise warm up, finish, restart and warm up again forever.
+    /// </summary>
+    private void Reset(bool warmup)
     {
         Time = 0;
         previousSourcePosition = SourcePosition;
@@ -52,11 +58,13 @@ public sealed class VfxSimulation
                 : Definition.SystemDelay;
         }
         IsPlaying = true;
-        if (Definition is { WarmupTime: > 0 })
+        if (warmup && Definition is { WarmupTime: > 0 })
         {
             AdvanceWarmup(Definition.WarmupTime);
         }
     }
+
+    private bool warmingUp;
 
     /// <summary>
     /// ParticleSystem.WarmupTime fast-forwards the simulation so the preview opens in a settled state.
@@ -64,11 +72,19 @@ public sealed class VfxSimulation
     private void AdvanceWarmup(float warmupTime)
     {
         float remaining = Math.Min(warmupTime, 10f);
-        while (remaining > 0)
+        warmingUp = true;
+        try
         {
-            float timestep = Math.Min(remaining, MaximumTick);
-            TickStep(timestep);
-            remaining -= timestep;
+            while (remaining > 0)
+            {
+                float timestep = Math.Min(remaining, MaximumTick);
+                TickStep(timestep);
+                remaining -= timestep;
+            }
+        }
+        finally
+        {
+            warmingUp = false;
         }
     }
 
@@ -138,7 +154,7 @@ public sealed class VfxSimulation
         {
             if (Loop)
             {
-                Restart();
+                Reset(warmup: !warmingUp);
             }
             else
             {
