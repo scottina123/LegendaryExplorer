@@ -17,6 +17,10 @@ namespace LegendaryExplorerCore.Unreal.BinaryConverters
         public static StaticMesh ConvertToME3LEStaticMesh(this SkeletalMesh skeletalMesh)
         {
             StaticLODModel lodModel = skeletalMesh.LODModels[0];
+            if (lodModel.HasLargeIndices)
+            {
+                throw new Exception("This skeletal mesh uses the LE3 large-mesh (32-bit index) format; static meshes are limited to 65,535 vertices.");
+            }
             uint numVertices = lodModel.NumVertices;
             var stm = new StaticMesh
             {

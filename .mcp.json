@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "blender": {
+      "type": "stdio",
+      "command": "C:\\Users\\Scottie\\source\\repos\\LE3OutfitWorkflow\\ext\\blender_mcp_venv\\Scripts\\blender-mcp.exe",
+      "args": [],
+      "env": {
+        "BLENDER_PATH": "C:\\Program Files\\Blender Foundation\\Blender 5.2\\blender.exe"
+      }
+    }
+  }
+}

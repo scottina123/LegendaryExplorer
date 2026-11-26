@@ -722,10 +722,11 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
                     }
                 }
                 // Triangles
-                var triangles = new List<Triangle>(lodmodel.IndexBuffer.Length / 3);
-                for (int i = 0; i < lodmodel.IndexBuffer.Length; i += 3)
+                var lodIndices = lodmodel.GetIndices();   // 16-bit or LE3 large-mesh format
+                var triangles = new List<Triangle>(lodIndices.Length / 3);
+                for (int i = 0; i < lodIndices.Length; i += 3)
                 {
-                    triangles.Add(new Triangle(lodmodel.IndexBuffer[i], lodmodel.IndexBuffer[i + 1], lodmodel.IndexBuffer[i + 2]));
+                    triangles.Add(new Triangle((uint)lodIndices[i], (uint)lodIndices[i + 1], (uint)lodIndices[i + 2]));
                 }
                 var mesh = new Mesh<TVertex>(Device, triangles, vertices);
 

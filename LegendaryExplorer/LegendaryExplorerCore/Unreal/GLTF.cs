@@ -538,10 +538,11 @@ namespace LegendaryExplorerCore.Unreal
                 });
             }
 
+            var lodIndices = lod.GetIndices();   // both the 16-bit and the LE3 large-mesh format
             for (var sectionIndex = 0; sectionIndex < lod.Sections.Length; sectionIndex++)
             {
                 var section = lod.Sections[sectionIndex];
-                var endIndex = sectionIndex == lod.Sections.Length - 1 ? lod.IndexBuffer.Length : (int)(lod.Sections[sectionIndex + 1].BaseIndex);
+                var endIndex = sectionIndex == lod.Sections.Length - 1 ? lodIndices.Length : (int)(lod.Sections[sectionIndex + 1].BaseIndex);
                 var intermediateSection = new IntermediateMeshSection
                 {
                     MaterialIndex = materialMapping[section.MaterialIndex],
@@ -553,9 +554,9 @@ namespace LegendaryExplorerCore.Unreal
                 {
                     intermediateSection.Triangles.Add(new IntermediateTriangle()
                     {
-                        VertIndex1 = lod.IndexBuffer[i],
-                        VertIndex2 = lod.IndexBuffer[i + 1],
-                        VertIndex3 = lod.IndexBuffer[i + 2],
+                        VertIndex1 = lodIndices[i],
+                        VertIndex2 = lodIndices[i + 1],
+                        VertIndex3 = lodIndices[i + 2],
                     });
                 }
 
@@ -1078,7 +1079,9 @@ namespace LegendaryExplorerCore.Unreal
                 intermediateStaticMeshes.Add(CombineMeshParts(staticName, staticParts, collisionNodes));
             }
 
-            List<IntermediateMesh> allMeshes = [.. intermediateSkeletalMeshes, .. intermediateStaticMeshes];
+            // LE3 skeletal meshes may exceed 65,535 vertices per LOD: they are written in the large-mesh (32-bit index) format,
+            // which the LE3BigMesh ASI loads in game. Static meshes and the other games keep the 16-bit limit.
+            List<IntermediateMesh> allMeshes = pcc.Game == MEGame.LE3 ? [.. intermediateStaticMeshes] : [.. intermediateSkeletalMeshes, .. intermediateStaticMeshes];
             IReadOnlyList<MeshLodVertexLimitInfo> oversizedLods = GetOversizedLods(allMeshes);
             if (oversizedLods.Count > 0)
             {
@@ -2614,25 +2617,33 @@ namespace LegendaryExplorerCore.Unreal
 
                 void SetupSectionsAndChunks()
                 {
-                    LOD.IndexBuffer = [.. lod.Sections.SelectMany(x => x.Triangles).SelectMany<IntermediateTriangle, ushort>(x => [(ushort)x.VertIndex1, (ushort)x.VertIndex2, (ushort)x.VertIndex3])];
+                    // more than 65,535 vertices: LE3 large-mesh index format (needs the LE3BigMesh ASI in game; saving it
+                    // for any other game still throws in the SkeletalMesh serializer)
+                    LOD.SetIndices([.. lod.Sections.SelectMany(x => x.Triangles).SelectMany<IntermediateTriangle, int>(x => [x.VertIndex1, x.VertIndex2, x.VertIndex3])], intermediateVerts.Count);
 
                     // just make the sections 1:1 with the sections in the intermediate mesh
                     var cumulativeTriangleCount = 0;
                     List<TempSkelMeshSection> skelMeshSections = [];
                     foreach (var intermediateSection in lod.Sections)
                     {
-                        var vertIndices = intermediateSection.Triangles.SelectMany<IntermediateTriangle, int>(x => [x.VertIndex1, x.VertIndex2, x.VertIndex3]);
-                        var section = new TempSkelMeshSection()
+                        // a section's triangle count is a 16-bit field in game (followed by the TriangleSorting byte - see
+                        // SkelMeshSection serialization): split larger sections into consecutive sections with the same material
+                        for (int start = 0; start < intermediateSection.Triangles.Count; start += MaxSkelSectionTriangles)
                         {
-                            TriCount = intermediateSection.Triangles.Count,
-                            BaseTriIndex = cumulativeTriangleCount,
-                            MatIndex = intermediateSection.MaterialIndex,
-                            MaxVertIndex = vertIndices.Max(),
-                            MinVertIndex = vertIndices.Min(),
-                            ChunkIndex = -1
-                        };
-                        cumulativeTriangleCount += intermediateSection.Triangles.Count;
-                        skelMeshSections.Add(section);
+                            int count = Math.Min(MaxSkelSectionTriangles, intermediateSection.Triangles.Count - start);
+                            var vertIndices = intermediateSection.Triangles.Skip(start).Take(count).SelectMany<IntermediateTriangle, int>(x => [x.VertIndex1, x.VertIndex2, x.VertIndex3]).ToList();
+                            var section = new TempSkelMeshSection()
+                            {
+                                TriCount = count,
+                                BaseTriIndex = cumulativeTriangleCount,
+                                MatIndex = intermediateSection.MaterialIndex,
+                                MaxVertIndex = vertIndices.Max(),
+                                MinVertIndex = vertIndices.Min(),
+                                ChunkIndex = -1
+                            };
+                            cumulativeTriangleCount += count;
+                            skelMeshSections.Add(section);
+                        }
                     }
 
                     // TODO if there are consecutive sections with the same material, combine them?
@@ -2883,6 +2894,10 @@ namespace LegendaryExplorerCore.Unreal
                 new Influences(boneIndices[0], boneIndices[1], boneIndices[2], boneIndices[3]),
                 new Influences(byteWeights[0], byteWeights[1], byteWeights[2], byteWeights[3]));
         }
+
+        /// <summary>Most triangles one skeletal mesh section may hold: LE3 reads the count as 16 bits followed by the
+        /// TriangleSorting byte, so a larger count is drawn truncated and with a random sort mode (in-game mosaic).</summary>
+        public const int MaxSkelSectionTriangles = ushort.MaxValue;
 
         private class TempSkelMeshSection
         {

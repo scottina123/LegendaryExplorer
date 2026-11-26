@@ -153,6 +153,46 @@ namespace LegendaryExplorerCore.Unreal.BinaryConverters
         public uint NumTexCoords; //UDK
         public SoftSkinVertex[] ME1VertexBufferGPUSkin; //BulkSerialized
         public SkeletalMeshVertexBuffer VertexBufferGPUSkin;
+
+        // Large-mesh index format (LE3, needs the LE3BigMesh ASI): a LOD with more than 65,535 vertices stores its
+        // indices as 32-bit values inside the 16-bit IndexBuffer - the marker FFFF FFFF 4942 3233 ("BI32"), then each
+        // index as two little-endian 16-bit words. The file still loads as a plain 16-bit array; the ASI drops the
+        // marker and gives the GPU buffer a 32-bit stride. Section.BaseIndex counts decoded indices.
+        public static readonly ushort[] LargeIndexMarker = [0xFFFF, 0xFFFF, 0x4942, 0x3233];
+
+        public bool HasLargeIndices => IndexBuffer is { Length: >= 4 } ib && ib[0] == LargeIndexMarker[0] && ib[1] == LargeIndexMarker[1]
+                                       && ib[2] == LargeIndexMarker[2] && ib[3] == LargeIndexMarker[3];
+
+        /// <summary>The LOD's vertex indices, decoded from either index format.</summary>
+        public int[] GetIndices()
+        {
+            if (IndexBuffer is null) return [];
+            if (!HasLargeIndices) return Array.ConvertAll(IndexBuffer, x => (int)x);
+            var result = new int[(IndexBuffer.Length - 4) / 2];
+            for (int i = 0; i < result.Length; i++)
+            {
+                result[i] = IndexBuffer[4 + 2 * i] | (IndexBuffer[5 + 2 * i] << 16);
+            }
+            return result;
+        }
+
+        /// <summary>Sets the indices, using the large-mesh format when the LOD has more than 65,535 vertices.</summary>
+        public void SetIndices(IReadOnlyList<int> indices, int vertexCount)
+        {
+            if (vertexCount <= ushort.MaxValue)
+            {
+                IndexBuffer = new ushort[indices.Count];
+                for (int i = 0; i < indices.Count; i++) IndexBuffer[i] = (ushort)indices[i];
+                return;
+            }
+            IndexBuffer = new ushort[4 + 2 * indices.Count];
+            LargeIndexMarker.CopyTo(IndexBuffer, 0);
+            for (int i = 0; i < indices.Count; i++)
+            {
+                IndexBuffer[4 + 2 * i] = (ushort)(indices[i] & 0xFFFF);
+                IndexBuffer[5 + 2 * i] = (ushort)((uint)indices[i] >> 16);
+            }
+        }
     }
 
     public class SkelMeshSection
@@ -276,6 +316,9 @@ namespace LegendaryExplorerCore.Unreal.BinaryConverters
             }
             else if (Game >= MEGame.ME3)
             {
+                // LE3 reads these 4 bytes as a 16-bit triangle count + the TriangleSorting byte + padding (the WiiU layout
+                // above): a count over 65,535 renders truncated with a random sort mode. The glTF importer splits larger
+                // sections into consecutive sections sharing one material slot (GLTF.MaxSkelSectionTriangles).
                 Serialize(ref sms.NumTriangles);
             }
             else
@@ -527,8 +570,9 @@ namespace LegendaryExplorerCore.Unreal.BinaryConverters
             Serialize(ref slm.Chunks, Serialize);
             Serialize(ref slm.Size);
             Serialize(ref slm.NumVertices);
-            if (Game.IsMEGame() && slm.NumVertices > ushort.MaxValue)
+            if (Game.IsMEGame() && slm.NumVertices > ushort.MaxValue && !(Game == MEGame.LE3 && slm.HasLargeIndices))
             {
+                // LE3 large-mesh format (32-bit indices, read by the LE3BigMesh ASI) is the one exception
                 throw new Exception($"Mass Effect games do not support SkeletalMeshes with more than {ushort.MaxValue} vertices!");
             }
             if (Game != MEGame.UDK)
